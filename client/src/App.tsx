@@ -1,16 +1,79 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useAuth } from "@/hooks/use-auth";
+import { Loader2 } from "lucide-react";
+import { useEffect } from "react";
+
+// Pages
 import NotFound from "@/pages/not-found";
+import LandingPage from "@/pages/landing";
+import Dashboard from "@/pages/dashboard";
+import Contacts from "@/pages/contacts";
+import ContactDetail from "@/pages/contact-detail";
+
+function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
+  const { user, isLoading } = useAuth();
+  const [location, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!isLoading && !user) {
+      // No user, redirect to landing
+      // Note: Landing is at /, but if we are at a deep route, we might want to redirect to / first
+      // But actually, for this app structure:
+      // / -> Landing (if not logged in) OR Dashboard (if logged in)
+      // So ProtectedRoute logic is simpler: if no user, render null (and effect redirects or we show landing)
+    }
+  }, [user, isLoading, setLocation]);
+
+  if (isLoading) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    // If not logged in, show Landing Page instead of redirecting loop
+    return <LandingPage />;
+  }
+
+  return <Component />;
+}
 
 function Router() {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+     return (
+      <div className="h-screen w-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
     <Switch>
-      {/* Add pages below */}
-      {/* <Route path="/" component={Home}/> */}
-      {/* Fallback to 404 */}
+      {/* 
+        Root path "/" behaves differently based on auth:
+        - Logged in -> Dashboard
+        - Logged out -> Landing Page
+      */}
+      <Route path="/">
+        {user ? <Dashboard /> : <LandingPage />}
+      </Route>
+
+      <Route path="/contacts">
+        <ProtectedRoute component={Contacts} />
+      </Route>
+      
+      <Route path="/contacts/:id">
+        <ProtectedRoute component={ContactDetail} />
+      </Route>
+
       <Route component={NotFound} />
     </Switch>
   );
@@ -20,8 +83,8 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <Toaster />
         <Router />
+        <Toaster />
       </TooltipProvider>
     </QueryClientProvider>
   );
