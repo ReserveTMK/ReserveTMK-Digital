@@ -150,6 +150,9 @@ function CreateContactDialogContent({ onSuccess }: { onSuccess: () => void }) {
       userId: "temp", // Backend will override this with auth user
       name: "",
       email: "",
+      age: undefined,
+      ethnicity: "",
+      location: "",
       role: "Mentee",
       tags: [],
     },
@@ -178,9 +181,26 @@ function CreateContactDialogContent({ onSuccess }: { onSuccess: () => void }) {
           )}
         </div>
         
-        <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
-          <Input id="email" {...form.register("email")} placeholder="jane@example.com" type="email" />
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="email">Email</Label>
+            <Input id="email" {...form.register("email")} placeholder="jane@example.com" type="email" />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="age">Age</Label>
+            <Input id="age" {...form.register("age", { valueAsNumber: true })} type="number" placeholder="30" />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="ethnicity">Ethnicity</Label>
+            <Input id="ethnicity" {...form.register("ethnicity")} placeholder="e.g. Hispanic" />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="location">Location</Label>
+            <Input id="location" {...form.register("location")} placeholder="e.g. London" />
+          </div>
         </div>
 
         <div className="space-y-2">

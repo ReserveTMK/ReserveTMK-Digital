@@ -70,7 +70,12 @@ export default function ContactDetail() {
                 <div>
                   <h1 className="text-4xl font-display font-bold text-foreground">{contact.name}</h1>
                   <p className="text-muted-foreground text-lg">{contact.role}</p>
-                  <div className="flex flex-wrap gap-2 mt-2">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm text-muted-foreground">
+                    {contact.age && <span>{contact.age} years old</span>}
+                    {contact.ethnicity && <span>{contact.ethnicity}</span>}
+                    {contact.location && <span>{contact.location}</span>}
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-3">
                     {contact.tags?.map((tag, i) => (
                       <span key={i} className="px-2 py-0.5 bg-secondary rounded-md text-xs font-medium text-secondary-foreground">
                         #{tag}

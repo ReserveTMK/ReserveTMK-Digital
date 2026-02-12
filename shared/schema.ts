@@ -16,6 +16,9 @@ export const contacts = pgTable("contacts", {
   role: text("role").notNull(), // 'Business Owner', 'Innovator', 'Mentee'
   email: text("email"),
   phone: text("phone"),
+  age: integer("age"),
+  ethnicity: text("ethnicity"),
+  location: text("location"),
   tags: text("tags").array(),
   // Current baseline metrics
   metrics: jsonb("metrics").$type<{
