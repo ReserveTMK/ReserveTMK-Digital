@@ -21,11 +21,15 @@ export const contacts = pgTable("contacts", {
   ethnicity: text("ethnicity").array(),
   location: text("location"),
   tags: text("tags").array(),
-  // Current baseline metrics
+  revenueBand: text("revenue_band"),
   metrics: jsonb("metrics").$type<{
     mindset?: number;
     skill?: number;
     confidence?: number;
+    confidenceScore?: number;
+    systemsInPlace?: number;
+    fundingReadiness?: number;
+    networkStrength?: number;
   }>().default({}), 
   notes: text("notes"),
   active: boolean("active").default(true),
@@ -45,6 +49,10 @@ export const interactions = pgTable("interactions", {
     mindsetScore?: number;
     skillScore?: number;
     confidenceScore?: number;
+    confidenceScoreMetric?: number;
+    systemsInPlaceScore?: number;
+    fundingReadinessScore?: number;
+    networkStrengthScore?: number;
     keyInsights?: string[];
   }>().default({}),
   keywords: text("keywords").array(),
@@ -154,6 +162,10 @@ export type AnalyzeInteractionResponse = {
     mindset: number;
     skill: number;
     confidence: number;
+    confidenceScore: number;
+    systemsInPlace: number;
+    fundingReadiness: number;
+    networkStrength: number;
   };
 };
 

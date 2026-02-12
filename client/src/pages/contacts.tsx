@@ -155,8 +155,22 @@ const ETHNIC_GROUPS = [
   "Other"
 ];
 
+const REVENUE_BANDS = [
+  "Pre-revenue",
+  "$0-10k",
+  "$10k-50k",
+  "$50k-100k",
+  "$100k+",
+];
+
 function CreateContactDialogContent({ onSuccess }: { onSuccess: () => void }) {
   const { mutate, isPending } = useCreateContact();
+  const [metricScores, setMetricScores] = useState<{
+    confidenceScore?: number;
+    systemsInPlace?: number;
+    fundingReadiness?: number;
+    networkStrength?: number;
+  }>({});
   const form = useForm<ContactFormValues>({
     resolver: zodResolver(insertContactSchema),
     defaultValues: {
@@ -168,14 +182,20 @@ function CreateContactDialogContent({ onSuccess }: { onSuccess: () => void }) {
       ethnicity: [],
       location: "",
       role: "Mentee",
+      revenueBand: "",
       tags: [],
     },
   });
 
   const onSubmit = (data: ContactFormValues) => {
-    mutate(data, {
+    const payload = {
+      ...data,
+      metrics: { ...metricScores },
+    };
+    mutate(payload, {
       onSuccess: () => {
         form.reset();
+        setMetricScores({});
         onSuccess();
       },
     });
@@ -251,6 +271,87 @@ function CreateContactDialogContent({ onSuccess }: { onSuccess: () => void }) {
             <option value="Business Owner">Business Owner</option>
             <option value="Innovator">Innovator</option>
           </select>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="revenueBand">Revenue Band</Label>
+          <select
+            id="revenueBand"
+            {...form.register("revenueBand")}
+            data-testid="select-revenue-band"
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <option value="">Not set</option>
+            {REVENUE_BANDS.map(band => (
+              <option key={band} value={band}>{band}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="space-y-3">
+          <Label className="text-sm font-semibold">Baseline Scores (1-10)</Label>
+          <div className="grid grid-cols-2 gap-3 bg-muted/30 p-3 rounded-lg border border-border">
+            <div className="space-y-1">
+              <Label htmlFor="confidenceScore" className="text-xs text-muted-foreground">Confidence Score</Label>
+              <Input
+                id="confidenceScore"
+                type="number"
+                min={1}
+                max={10}
+                data-testid="input-confidence-score"
+                placeholder="1-10"
+                onChange={(e) => {
+                  const val = parseInt(e.target.value);
+                  if (val >= 1 && val <= 10) setMetricScores(prev => ({ ...prev, confidenceScore: val }));
+                }}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="systemsInPlace" className="text-xs text-muted-foreground">Systems in Place</Label>
+              <Input
+                id="systemsInPlace"
+                type="number"
+                min={1}
+                max={10}
+                data-testid="input-systems-in-place"
+                placeholder="1-10"
+                onChange={(e) => {
+                  const val = parseInt(e.target.value);
+                  if (val >= 1 && val <= 10) setMetricScores(prev => ({ ...prev, systemsInPlace: val }));
+                }}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="fundingReadiness" className="text-xs text-muted-foreground">Funding Readiness</Label>
+              <Input
+                id="fundingReadiness"
+                type="number"
+                min={1}
+                max={10}
+                data-testid="input-funding-readiness"
+                placeholder="1-10"
+                onChange={(e) => {
+                  const val = parseInt(e.target.value);
+                  if (val >= 1 && val <= 10) setMetricScores(prev => ({ ...prev, fundingReadiness: val }));
+                }}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="networkStrength" className="text-xs text-muted-foreground">Network Strength</Label>
+              <Input
+                id="networkStrength"
+                type="number"
+                min={1}
+                max={10}
+                data-testid="input-network-strength"
+                placeholder="1-10"
+                onChange={(e) => {
+                  const val = parseInt(e.target.value);
+                  if (val >= 1 && val <= 10) setMetricScores(prev => ({ ...prev, networkStrength: val }));
+                }}
+              />
+            </div>
+          </div>
         </div>
 
         <div className="space-y-2">

@@ -150,7 +150,14 @@ export async function registerRoutes(
         Return a JSON object with:
         - summary: A concise summary of the interaction (max 2 sentences).
         - keywords: Array of 3-5 important tags/keywords.
-        - metrics: Object with 'mindset', 'skill', 'confidence' scores from 1-10 based on the text.
+        - metrics: Object with these scores from 1-10 based on the text:
+          - mindset: Growth mindset and mental resilience
+          - skill: Technical or business skill level
+          - confidence: Overall self-confidence demonstrated
+          - confidenceScore: Business confidence and decision-making assurance
+          - systemsInPlace: How well their business systems and processes are established
+          - fundingReadiness: Readiness and preparedness for seeking or managing funding
+          - networkStrength: Quality and strength of their professional network
         
         Text: "${text}"
       `;
@@ -163,7 +170,6 @@ export async function registerRoutes(
 
       const result = JSON.parse(response.choices[0].message.content || "{}");
       
-      // Default fallback
       const analysis = {
         summary: result.summary || "No summary generated.",
         keywords: result.keywords || [],
@@ -171,6 +177,10 @@ export async function registerRoutes(
           mindset: result.metrics?.mindset || 5,
           skill: result.metrics?.skill || 5,
           confidence: result.metrics?.confidence || 5,
+          confidenceScore: result.metrics?.confidenceScore || 5,
+          systemsInPlace: result.metrics?.systemsInPlace || 5,
+          fundingReadiness: result.metrics?.fundingReadiness || 5,
+          networkStrength: result.metrics?.networkStrength || 5,
         }
       };
 
@@ -247,30 +257,70 @@ export async function registerRoutes(
       });
 
       let totalMindset = 0, totalSkill = 0, totalConfidence = 0, scoredCount = 0;
+      let totalConfidenceScore = 0, totalSystemsInPlace = 0, totalFundingReadiness = 0, totalNetworkStrength = 0;
       flatInteractions.forEach(i => {
         const a = i.analysis as any;
         if (a?.mindsetScore || a?.skillScore || a?.confidenceScore) {
           totalMindset += a.mindsetScore || 0;
           totalSkill += a.skillScore || 0;
           totalConfidence += a.confidenceScore || 0;
+          totalConfidenceScore += a.confidenceScoreMetric || 0;
+          totalSystemsInPlace += a.systemsInPlaceScore || 0;
+          totalFundingReadiness += a.fundingReadinessScore || 0;
+          totalNetworkStrength += a.networkStrengthScore || 0;
           scoredCount++;
         }
       });
+
+      if (scoredCount === 0) {
+        filteredContacts.forEach(c => {
+          const m = c.metrics as any;
+          if (m && (m.mindset || m.skill || m.confidence || m.confidenceScore || m.systemsInPlace || m.fundingReadiness || m.networkStrength)) {
+            totalMindset += m.mindset || 0;
+            totalSkill += m.skill || 0;
+            totalConfidence += m.confidence || 0;
+            totalConfidenceScore += m.confidenceScore || 0;
+            totalSystemsInPlace += m.systemsInPlace || 0;
+            totalFundingReadiness += m.fundingReadiness || 0;
+            totalNetworkStrength += m.networkStrength || 0;
+            scoredCount++;
+          }
+        });
+      }
 
       const contactBreakdowns = filteredContacts.map(c => {
         const cInteractions = flatInteractions.filter(i => i.contactId === c.id);
         const cMeetings = filteredMeetings.filter(m => m.contactId === c.id);
 
         let cMindset = 0, cSkill = 0, cConfidence = 0, cScored = 0;
+        let cConfidenceScore = 0, cSystemsInPlace = 0, cFundingReadiness = 0, cNetworkStrength = 0;
         cInteractions.forEach(i => {
           const a = i.analysis as any;
           if (a?.mindsetScore || a?.skillScore || a?.confidenceScore) {
             cMindset += a.mindsetScore || 0;
             cSkill += a.skillScore || 0;
             cConfidence += a.confidenceScore || 0;
+            cConfidenceScore += a.confidenceScoreMetric || 0;
+            cSystemsInPlace += a.systemsInPlaceScore || 0;
+            cFundingReadiness += a.fundingReadinessScore || 0;
+            cNetworkStrength += a.networkStrengthScore || 0;
             cScored++;
           }
         });
+
+        if (cScored === 0) {
+          const m = c.metrics as any;
+          if (m && (m.mindset || m.skill || m.confidence || m.confidenceScore || m.systemsInPlace || m.fundingReadiness || m.networkStrength)) {
+            cMindset = m.mindset || 0;
+            cSkill = m.skill || 0;
+            cConfidence = m.confidence || 0;
+            cConfidenceScore = m.confidenceScore || 0;
+            cSystemsInPlace = m.systemsInPlace || 0;
+            cFundingReadiness = m.fundingReadiness || 0;
+            cNetworkStrength = m.networkStrength || 0;
+            cScored = 1;
+          }
+        }
 
         return {
           contactId: c.id,
@@ -283,7 +333,12 @@ export async function registerRoutes(
           avgMindset: cScored > 0 ? Math.round((cMindset / cScored) * 10) / 10 : null,
           avgSkill: cScored > 0 ? Math.round((cSkill / cScored) * 10) / 10 : null,
           avgConfidence: cScored > 0 ? Math.round((cConfidence / cScored) * 10) / 10 : null,
+          avgConfidenceScore: cScored > 0 ? Math.round((cConfidenceScore / cScored) * 10) / 10 : null,
+          avgSystemsInPlace: cScored > 0 ? Math.round((cSystemsInPlace / cScored) * 10) / 10 : null,
+          avgFundingReadiness: cScored > 0 ? Math.round((cFundingReadiness / cScored) * 10) / 10 : null,
+          avgNetworkStrength: cScored > 0 ? Math.round((cNetworkStrength / cScored) * 10) / 10 : null,
           currentMetrics: c.metrics,
+          revenueBand: c.revenueBand,
         };
       });
 
@@ -301,6 +356,10 @@ export async function registerRoutes(
           avgMindset: scoredCount > 0 ? Math.round((totalMindset / scoredCount) * 10) / 10 : null,
           avgSkill: scoredCount > 0 ? Math.round((totalSkill / scoredCount) * 10) / 10 : null,
           avgConfidence: scoredCount > 0 ? Math.round((totalConfidence / scoredCount) * 10) / 10 : null,
+          avgConfidenceScore: scoredCount > 0 ? Math.round((totalConfidenceScore / scoredCount) * 10) / 10 : null,
+          avgSystemsInPlace: scoredCount > 0 ? Math.round((totalSystemsInPlace / scoredCount) * 10) / 10 : null,
+          avgFundingReadiness: scoredCount > 0 ? Math.round((totalFundingReadiness / scoredCount) * 10) / 10 : null,
+          avgNetworkStrength: scoredCount > 0 ? Math.round((totalNetworkStrength / scoredCount) * 10) / 10 : null,
         },
         contactBreakdowns,
       });

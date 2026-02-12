@@ -4,7 +4,7 @@ import { useInteractions, useCreateInteraction, useAnalyzeInteraction } from "@/
 import { Button } from "@/components/ui/beautiful-button";
 import { MetricCard } from "@/components/ui/metric-card";
 import { useRoute } from "wouter";
-import { Loader2, Mic, StopCircle, ArrowLeft, Brain, TrendingUp, Sparkles, AlertCircle } from "lucide-react";
+import { Loader2, Mic, StopCircle, ArrowLeft, Brain, TrendingUp, Sparkles, AlertCircle, DollarSign, Settings, Rocket, Network } from "lucide-react";
 import { Link } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -48,6 +48,10 @@ export default function ContactDetail() {
       mindset: i.analysis?.mindsetScore || 0,
       skill: i.analysis?.skillScore || 0,
       confidence: i.analysis?.confidenceScore || 0,
+      bizConfidence: i.analysis?.confidenceScoreMetric || 0,
+      systems: i.analysis?.systemsInPlaceScore || 0,
+      funding: i.analysis?.fundingReadinessScore || 0,
+      network: i.analysis?.networkStrengthScore || 0,
     }));
 
   return (
@@ -82,7 +86,12 @@ export default function ContactDetail() {
                         ))}
                       </div>
                     )}
-                    {contact.location && <span>{contact.location}</span>}
+                      {contact.location && <span>{contact.location}</span>}
+                    {contact.revenueBand && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-md text-xs font-medium">
+                        <DollarSign className="w-3 h-3" /> {contact.revenueBand}
+                      </span>
+                    )}
                   </div>
                   <div className="flex flex-wrap gap-2 mt-3">
                     {contact.tags?.map((tag, i) => (
@@ -106,15 +115,15 @@ export default function ContactDetail() {
           </div>
 
           {/* Current Stats */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
             <MetricCard 
-              title="Mindset Score" 
+              title="Mindset" 
               value={contact.metrics?.mindset || "-"} 
               icon={<Brain className="w-5 h-5" />} 
               color="primary"
             />
             <MetricCard 
-              title="Skill Level" 
+              title="Skill" 
               value={contact.metrics?.skill || "-"} 
               icon={<Sparkles className="w-5 h-5" />} 
               color="secondary"
@@ -124,6 +133,30 @@ export default function ContactDetail() {
               value={contact.metrics?.confidence || "-"} 
               icon={<TrendingUp className="w-5 h-5" />} 
               color="green"
+            />
+            <MetricCard 
+              title="Biz Confidence" 
+              value={contact.metrics?.confidenceScore || "-"} 
+              icon={<Rocket className="w-5 h-5" />} 
+              color="primary"
+            />
+            <MetricCard 
+              title="Systems" 
+              value={contact.metrics?.systemsInPlace || "-"} 
+              icon={<Settings className="w-5 h-5" />} 
+              color="secondary"
+            />
+            <MetricCard 
+              title="Funding Ready" 
+              value={contact.metrics?.fundingReadiness || "-"} 
+              icon={<DollarSign className="w-5 h-5" />} 
+              color="green"
+            />
+            <MetricCard 
+              title="Network" 
+              value={contact.metrics?.networkStrength || "-"} 
+              icon={<Network className="w-5 h-5" />} 
+              color="primary"
             />
           </div>
 
@@ -151,9 +184,13 @@ export default function ContactDetail() {
                           contentStyle={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                         />
                         <Legend />
-                        <Line type="monotone" dataKey="mindset" stroke="#8b5cf6" strokeWidth={3} dot={{r: 4, strokeWidth: 2}} activeDot={{r: 6}} />
-                        <Line type="monotone" dataKey="skill" stroke="#10b981" strokeWidth={3} dot={{r: 4, strokeWidth: 2}} activeDot={{r: 6}} />
-                        <Line type="monotone" dataKey="confidence" stroke="#f59e0b" strokeWidth={3} dot={{r: 4, strokeWidth: 2}} activeDot={{r: 6}} />
+                        <Line type="monotone" dataKey="mindset" stroke="#8b5cf6" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
+                        <Line type="monotone" dataKey="skill" stroke="#10b981" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
+                        <Line type="monotone" dataKey="confidence" stroke="#f59e0b" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
+                        <Line type="monotone" dataKey="bizConfidence" name="Biz Confidence" stroke="#ec4899" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
+                        <Line type="monotone" dataKey="systems" name="Systems" stroke="#06b6d4" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
+                        <Line type="monotone" dataKey="funding" name="Funding" stroke="#14b8a6" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
+                        <Line type="monotone" dataKey="network" name="Network" stroke="#f97316" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
                       </LineChart>
                     </ResponsiveContainer>
                   ) : (
@@ -197,18 +234,34 @@ export default function ContactDetail() {
                          {interaction.summary || interaction.transcript}
                        </p>
                        
-                       <div className="grid grid-cols-3 gap-4 border-t border-border pt-4">
+                       <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 border-t border-border pt-4">
                          <div className="text-center">
                            <p className="text-xs text-muted-foreground mb-1">Mindset</p>
-                           <p className="font-bold text-lg text-primary">{interaction.analysis?.mindsetScore || "-"}</p>
+                           <p className="font-bold text-primary">{interaction.analysis?.mindsetScore || "-"}</p>
                          </div>
-                         <div className="text-center border-l border-border">
+                         <div className="text-center">
                            <p className="text-xs text-muted-foreground mb-1">Skill</p>
-                           <p className="font-bold text-lg text-secondary-foreground">{interaction.analysis?.skillScore || "-"}</p>
+                           <p className="font-bold text-secondary-foreground">{interaction.analysis?.skillScore || "-"}</p>
                          </div>
-                         <div className="text-center border-l border-border">
+                         <div className="text-center">
                            <p className="text-xs text-muted-foreground mb-1">Confidence</p>
-                           <p className="font-bold text-lg text-amber-500">{interaction.analysis?.confidenceScore || "-"}</p>
+                           <p className="font-bold text-amber-500">{interaction.analysis?.confidenceScore || "-"}</p>
+                         </div>
+                         <div className="text-center">
+                           <p className="text-xs text-muted-foreground mb-1">Biz Conf.</p>
+                           <p className="font-bold text-pink-500">{interaction.analysis?.confidenceScoreMetric || "-"}</p>
+                         </div>
+                         <div className="text-center">
+                           <p className="text-xs text-muted-foreground mb-1">Systems</p>
+                           <p className="font-bold text-cyan-500">{interaction.analysis?.systemsInPlaceScore || "-"}</p>
+                         </div>
+                         <div className="text-center">
+                           <p className="text-xs text-muted-foreground mb-1">Funding</p>
+                           <p className="font-bold text-teal-500">{interaction.analysis?.fundingReadinessScore || "-"}</p>
+                         </div>
+                         <div className="text-center">
+                           <p className="text-xs text-muted-foreground mb-1">Network</p>
+                           <p className="font-bold text-orange-500">{interaction.analysis?.networkStrengthScore || "-"}</p>
                          </div>
                        </div>
                      </div>
@@ -293,6 +346,10 @@ function LogInteractionDialog({ contactId }: { contactId: number }) {
         mindsetScore: analysisResult.metrics.mindset,
         skillScore: analysisResult.metrics.skill,
         confidenceScore: analysisResult.metrics.confidence,
+        confidenceScoreMetric: analysisResult.metrics.confidenceScore,
+        systemsInPlaceScore: analysisResult.metrics.systemsInPlace,
+        fundingReadinessScore: analysisResult.metrics.fundingReadiness,
+        networkStrengthScore: analysisResult.metrics.networkStrength,
         keyInsights: analysisResult.keywords
       },
       keywords: analysisResult.keywords
@@ -357,18 +414,34 @@ function LogInteractionDialog({ contactId }: { contactId: number }) {
               </h3>
               <p className="text-sm text-foreground/80 mb-4">{analysisResult.summary}</p>
               
-              <div className="grid grid-cols-3 gap-2 mb-4">
-                <div className="bg-background rounded-lg p-3 text-center border border-border shadow-sm">
+              <div className="grid grid-cols-4 gap-2 mb-4">
+                <div className="bg-background rounded-lg p-2 text-center border border-border shadow-sm">
                   <div className="text-xs text-muted-foreground">Mindset</div>
-                  <div className="font-bold text-xl text-primary">{analysisResult.metrics.mindset}</div>
+                  <div className="font-bold text-lg text-primary">{analysisResult.metrics.mindset}</div>
                 </div>
-                <div className="bg-background rounded-lg p-3 text-center border border-border shadow-sm">
+                <div className="bg-background rounded-lg p-2 text-center border border-border shadow-sm">
                   <div className="text-xs text-muted-foreground">Skill</div>
-                  <div className="font-bold text-xl text-secondary-foreground">{analysisResult.metrics.skill}</div>
+                  <div className="font-bold text-lg text-secondary-foreground">{analysisResult.metrics.skill}</div>
                 </div>
-                <div className="bg-background rounded-lg p-3 text-center border border-border shadow-sm">
+                <div className="bg-background rounded-lg p-2 text-center border border-border shadow-sm">
                   <div className="text-xs text-muted-foreground">Confidence</div>
-                  <div className="font-bold text-xl text-amber-500">{analysisResult.metrics.confidence}</div>
+                  <div className="font-bold text-lg text-amber-500">{analysisResult.metrics.confidence}</div>
+                </div>
+                <div className="bg-background rounded-lg p-2 text-center border border-border shadow-sm">
+                  <div className="text-xs text-muted-foreground">Biz Conf.</div>
+                  <div className="font-bold text-lg text-pink-500">{analysisResult.metrics.confidenceScore}</div>
+                </div>
+                <div className="bg-background rounded-lg p-2 text-center border border-border shadow-sm">
+                  <div className="text-xs text-muted-foreground">Systems</div>
+                  <div className="font-bold text-lg text-cyan-500">{analysisResult.metrics.systemsInPlace}</div>
+                </div>
+                <div className="bg-background rounded-lg p-2 text-center border border-border shadow-sm">
+                  <div className="text-xs text-muted-foreground">Funding</div>
+                  <div className="font-bold text-lg text-teal-500">{analysisResult.metrics.fundingReadiness}</div>
+                </div>
+                <div className="bg-background rounded-lg p-2 text-center border border-border shadow-sm">
+                  <div className="text-xs text-muted-foreground">Network</div>
+                  <div className="font-bold text-lg text-orange-500">{analysisResult.metrics.networkStrength}</div>
                 </div>
               </div>
 

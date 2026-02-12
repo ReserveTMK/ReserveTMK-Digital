@@ -22,6 +22,10 @@ import {
   CalendarDays,
   CalendarRange,
   PartyPopper,
+  Rocket,
+  Settings,
+  DollarSign,
+  Network,
 } from "lucide-react";
 import {
   format,
@@ -46,6 +50,10 @@ type ReportData = {
     avgMindset: number | null;
     avgSkill: number | null;
     avgConfidence: number | null;
+    avgConfidenceScore: number | null;
+    avgSystemsInPlace: number | null;
+    avgFundingReadiness: number | null;
+    avgNetworkStrength: number | null;
   };
   contactBreakdowns: {
     contactId: number;
@@ -58,7 +66,12 @@ type ReportData = {
     avgMindset: number | null;
     avgSkill: number | null;
     avgConfidence: number | null;
-    currentMetrics: { mindset?: number; skill?: number; confidence?: number } | null;
+    avgConfidenceScore: number | null;
+    avgSystemsInPlace: number | null;
+    avgFundingReadiness: number | null;
+    avgNetworkStrength: number | null;
+    currentMetrics: { mindset?: number; skill?: number; confidence?: number; confidenceScore?: number; systemsInPlace?: number; fundingReadiness?: number; networkStrength?: number } | null;
+    revenueBand: string | null;
   }[];
 };
 
@@ -368,37 +381,81 @@ export default function Reports() {
                 </Card>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
                 <Card className="p-4">
-                  <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center gap-2 mb-2">
                     <Brain className="w-4 h-4 text-primary" />
-                    <span className="font-semibold text-sm">Avg Mindset</span>
+                    <span className="font-semibold text-xs">Mindset</span>
                   </div>
-                  <p className="text-3xl font-bold text-primary" data-testid="text-avg-mindset">
+                  <p className="text-2xl font-bold text-primary" data-testid="text-avg-mindset">
                     {report.summary.avgMindset !== null ? report.summary.avgMindset : "-"}
-                    {report.summary.avgMindset !== null && <span className="text-base font-normal text-muted-foreground">/10</span>}
+                    {report.summary.avgMindset !== null && <span className="text-xs font-normal text-muted-foreground">/10</span>}
                   </p>
                 </Card>
 
                 <Card className="p-4">
-                  <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center gap-2 mb-2">
                     <Sparkles className="w-4 h-4 text-green-500" />
-                    <span className="font-semibold text-sm">Avg Skill</span>
+                    <span className="font-semibold text-xs">Skill</span>
                   </div>
-                  <p className="text-3xl font-bold text-green-600" data-testid="text-avg-skill">
+                  <p className="text-2xl font-bold text-green-600" data-testid="text-avg-skill">
                     {report.summary.avgSkill !== null ? report.summary.avgSkill : "-"}
-                    {report.summary.avgSkill !== null && <span className="text-base font-normal text-muted-foreground">/10</span>}
+                    {report.summary.avgSkill !== null && <span className="text-xs font-normal text-muted-foreground">/10</span>}
                   </p>
                 </Card>
 
                 <Card className="p-4">
-                  <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center gap-2 mb-2">
                     <TrendingUp className="w-4 h-4 text-amber-500" />
-                    <span className="font-semibold text-sm">Avg Confidence</span>
+                    <span className="font-semibold text-xs">Confidence</span>
                   </div>
-                  <p className="text-3xl font-bold text-amber-500" data-testid="text-avg-confidence-detail">
+                  <p className="text-2xl font-bold text-amber-500" data-testid="text-avg-confidence-detail">
                     {report.summary.avgConfidence !== null ? report.summary.avgConfidence : "-"}
-                    {report.summary.avgConfidence !== null && <span className="text-base font-normal text-muted-foreground">/10</span>}
+                    {report.summary.avgConfidence !== null && <span className="text-xs font-normal text-muted-foreground">/10</span>}
+                  </p>
+                </Card>
+
+                <Card className="p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Rocket className="w-4 h-4 text-pink-500" />
+                    <span className="font-semibold text-xs">Biz Conf.</span>
+                  </div>
+                  <p className="text-2xl font-bold text-pink-500" data-testid="text-avg-confidence-score">
+                    {report.summary.avgConfidenceScore !== null ? report.summary.avgConfidenceScore : "-"}
+                    {report.summary.avgConfidenceScore !== null && <span className="text-xs font-normal text-muted-foreground">/10</span>}
+                  </p>
+                </Card>
+
+                <Card className="p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Settings className="w-4 h-4 text-cyan-500" />
+                    <span className="font-semibold text-xs">Systems</span>
+                  </div>
+                  <p className="text-2xl font-bold text-cyan-500" data-testid="text-avg-systems">
+                    {report.summary.avgSystemsInPlace !== null ? report.summary.avgSystemsInPlace : "-"}
+                    {report.summary.avgSystemsInPlace !== null && <span className="text-xs font-normal text-muted-foreground">/10</span>}
+                  </p>
+                </Card>
+
+                <Card className="p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <DollarSign className="w-4 h-4 text-teal-500" />
+                    <span className="font-semibold text-xs">Funding</span>
+                  </div>
+                  <p className="text-2xl font-bold text-teal-500" data-testid="text-avg-funding">
+                    {report.summary.avgFundingReadiness !== null ? report.summary.avgFundingReadiness : "-"}
+                    {report.summary.avgFundingReadiness !== null && <span className="text-xs font-normal text-muted-foreground">/10</span>}
+                  </p>
+                </Card>
+
+                <Card className="p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Network className="w-4 h-4 text-orange-500" />
+                    <span className="font-semibold text-xs">Network</span>
+                  </div>
+                  <p className="text-2xl font-bold text-orange-500" data-testid="text-avg-network">
+                    {report.summary.avgNetworkStrength !== null ? report.summary.avgNetworkStrength : "-"}
+                    {report.summary.avgNetworkStrength !== null && <span className="text-xs font-normal text-muted-foreground">/10</span>}
                   </p>
                 </Card>
               </div>
@@ -474,54 +531,75 @@ export default function Reports() {
                     <table className="w-full text-sm" data-testid="table-contact-breakdown">
                       <thead>
                         <tr className="border-b border-border">
-                          <th className="text-left py-3 px-3 font-semibold text-muted-foreground">Member</th>
-                          <th className="text-left py-3 px-3 font-semibold text-muted-foreground">Role</th>
-                          <th className="text-center py-3 px-3 font-semibold text-muted-foreground">Interactions</th>
-                          <th className="text-center py-3 px-3 font-semibold text-muted-foreground">Meetings</th>
-                          <th className="text-center py-3 px-3 font-semibold text-muted-foreground">Mindset</th>
-                          <th className="text-center py-3 px-3 font-semibold text-muted-foreground">Skill</th>
-                          <th className="text-center py-3 px-3 font-semibold text-muted-foreground">Confidence</th>
+                          <th className="text-left py-3 px-2 font-semibold text-muted-foreground">Member</th>
+                          <th className="text-left py-3 px-2 font-semibold text-muted-foreground">Role</th>
+                          <th className="text-center py-3 px-2 font-semibold text-muted-foreground">Revenue</th>
+                          <th className="text-center py-3 px-2 font-semibold text-muted-foreground text-xs">Interactions</th>
+                          <th className="text-center py-3 px-2 font-semibold text-muted-foreground text-xs">Mindset</th>
+                          <th className="text-center py-3 px-2 font-semibold text-muted-foreground text-xs">Skill</th>
+                          <th className="text-center py-3 px-2 font-semibold text-muted-foreground text-xs">Conf.</th>
+                          <th className="text-center py-3 px-2 font-semibold text-muted-foreground text-xs">Biz Conf.</th>
+                          <th className="text-center py-3 px-2 font-semibold text-muted-foreground text-xs">Systems</th>
+                          <th className="text-center py-3 px-2 font-semibold text-muted-foreground text-xs">Funding</th>
+                          <th className="text-center py-3 px-2 font-semibold text-muted-foreground text-xs">Network</th>
                         </tr>
                       </thead>
                       <tbody>
                         {report.contactBreakdowns.map(cb => (
                           <tr key={cb.contactId} className="border-b border-border/50 hover-elevate" data-testid={`row-contact-${cb.contactId}`}>
-                            <td className="py-3 px-3">
+                            <td className="py-3 px-2">
                               <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
+                                <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
                                   {cb.contactName[0]}
                                 </div>
                                 <div>
-                                  <p className="font-medium">{cb.contactName}</p>
+                                  <p className="font-medium text-xs">{cb.contactName}</p>
                                   {cb.businessName && (
                                     <p className="text-xs text-muted-foreground">{cb.businessName}</p>
                                   )}
                                 </div>
                               </div>
                             </td>
-                            <td className="py-3 px-3">
+                            <td className="py-3 px-2">
                               <Badge variant="outline" className="text-xs">{cb.role}</Badge>
                             </td>
-                            <td className="py-3 px-3 text-center font-medium">{cb.interactionCount}</td>
-                            <td className="py-3 px-3 text-center">
-                              <span className="font-medium">{cb.meetingCount}</span>
-                              {cb.completedMeetings > 0 && (
-                                <span className="text-xs text-muted-foreground ml-1">({cb.completedMeetings} done)</span>
-                              )}
+                            <td className="py-3 px-2 text-center">
+                              <span className="text-xs text-muted-foreground">{cb.revenueBand || "-"}</span>
                             </td>
-                            <td className="py-3 px-3 text-center">
-                              <span className={cb.avgMindset !== null ? "font-bold text-primary" : "text-muted-foreground"}>
+                            <td className="py-3 px-2 text-center font-medium text-xs">{cb.interactionCount}</td>
+                            <td className="py-3 px-2 text-center">
+                              <span className={cb.avgMindset !== null ? "font-bold text-xs text-primary" : "text-xs text-muted-foreground"}>
                                 {cb.avgMindset !== null ? cb.avgMindset : "-"}
                               </span>
                             </td>
-                            <td className="py-3 px-3 text-center">
-                              <span className={cb.avgSkill !== null ? "font-bold text-green-600" : "text-muted-foreground"}>
+                            <td className="py-3 px-2 text-center">
+                              <span className={cb.avgSkill !== null ? "font-bold text-xs text-green-600" : "text-xs text-muted-foreground"}>
                                 {cb.avgSkill !== null ? cb.avgSkill : "-"}
                               </span>
                             </td>
-                            <td className="py-3 px-3 text-center">
-                              <span className={cb.avgConfidence !== null ? "font-bold text-amber-500" : "text-muted-foreground"}>
+                            <td className="py-3 px-2 text-center">
+                              <span className={cb.avgConfidence !== null ? "font-bold text-xs text-amber-500" : "text-xs text-muted-foreground"}>
                                 {cb.avgConfidence !== null ? cb.avgConfidence : "-"}
+                              </span>
+                            </td>
+                            <td className="py-3 px-2 text-center">
+                              <span className={cb.avgConfidenceScore !== null ? "font-bold text-xs text-pink-500" : "text-xs text-muted-foreground"}>
+                                {cb.avgConfidenceScore !== null ? cb.avgConfidenceScore : "-"}
+                              </span>
+                            </td>
+                            <td className="py-3 px-2 text-center">
+                              <span className={cb.avgSystemsInPlace !== null ? "font-bold text-xs text-cyan-500" : "text-xs text-muted-foreground"}>
+                                {cb.avgSystemsInPlace !== null ? cb.avgSystemsInPlace : "-"}
+                              </span>
+                            </td>
+                            <td className="py-3 px-2 text-center">
+                              <span className={cb.avgFundingReadiness !== null ? "font-bold text-xs text-teal-500" : "text-xs text-muted-foreground"}>
+                                {cb.avgFundingReadiness !== null ? cb.avgFundingReadiness : "-"}
+                              </span>
+                            </td>
+                            <td className="py-3 px-2 text-center">
+                              <span className={cb.avgNetworkStrength !== null ? "font-bold text-xs text-orange-500" : "text-xs text-muted-foreground"}>
+                                {cb.avgNetworkStrength !== null ? cb.avgNetworkStrength : "-"}
                               </span>
                             </td>
                           </tr>
