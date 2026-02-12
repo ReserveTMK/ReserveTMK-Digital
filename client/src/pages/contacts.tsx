@@ -30,6 +30,7 @@ export default function Contacts() {
 
   const filteredContacts = contacts?.filter(contact => {
     const matchesSearch = contact.name.toLowerCase().includes(search.toLowerCase()) || 
+                          contact.businessName?.toLowerCase().includes(search.toLowerCase()) ||
                           contact.email?.toLowerCase().includes(search.toLowerCase());
     const matchesRole = roleFilter === "all" || contact.role === roleFilter;
     return matchesSearch && matchesRole;
@@ -118,6 +119,9 @@ export default function Contacts() {
                     <h3 className="text-xl font-bold font-display text-foreground mb-1 group-hover:text-primary transition-colors">
                       {contact.name}
                     </h3>
+                    {contact.businessName && (
+                      <p className="text-sm text-foreground/70 truncate" data-testid={`text-business-${contact.id}`}>{contact.businessName}</p>
+                    )}
                     <p className="text-sm text-muted-foreground mb-4 truncate">{contact.email || "No email"}</p>
                     
                     <div className="mt-auto pt-4 border-t border-border/50 flex flex-wrap gap-2">
@@ -156,8 +160,9 @@ function CreateContactDialogContent({ onSuccess }: { onSuccess: () => void }) {
   const form = useForm<ContactFormValues>({
     resolver: zodResolver(insertContactSchema),
     defaultValues: {
-      userId: "temp", // Backend will override this with auth user
+      userId: "temp",
       name: "",
+      businessName: "",
       email: "",
       age: undefined,
       ethnicity: [],
@@ -184,10 +189,15 @@ function CreateContactDialogContent({ onSuccess }: { onSuccess: () => void }) {
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4 max-h-[80vh] overflow-y-auto px-1">
         <div className="space-y-2">
           <Label htmlFor="name">Full Name</Label>
-          <Input id="name" {...form.register("name")} placeholder="e.g. Jane Doe" />
+          <Input id="name" data-testid="input-contact-name" {...form.register("name")} placeholder="e.g. Jane Doe" />
           {form.formState.errors.name && (
             <p className="text-sm text-destructive">{form.formState.errors.name.message}</p>
           )}
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="businessName">Business / Brand Name</Label>
+          <Input id="businessName" data-testid="input-contact-business" {...form.register("businessName")} placeholder="e.g. Acme Ltd (leave blank if N/A)" />
         </div>
         
         <div className="grid grid-cols-2 gap-4">

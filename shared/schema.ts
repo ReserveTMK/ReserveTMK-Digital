@@ -13,6 +13,7 @@ export const contacts = pgTable("contacts", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(), // Links to users.id from auth
   name: text("name").notNull(),
+  businessName: text("business_name"),
   role: text("role").notNull(), // 'Business Owner', 'Innovator', 'Mentee'
   email: text("email"),
   phone: text("phone"),

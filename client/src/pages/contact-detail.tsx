@@ -69,6 +69,9 @@ export default function ContactDetail() {
                 </div>
                 <div>
                   <h1 className="text-4xl font-display font-bold text-foreground">{contact.name}</h1>
+                  {contact.businessName && (
+                    <p className="text-muted-foreground/80 text-base" data-testid="text-business-name">{contact.businessName}</p>
+                  )}
                   <p className="text-muted-foreground text-lg">{contact.role}</p>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm text-muted-foreground">
                     {contact.age && <span>{contact.age} years old</span>}
