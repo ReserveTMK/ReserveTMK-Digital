@@ -17,7 +17,7 @@ export const contacts = pgTable("contacts", {
   email: text("email"),
   phone: text("phone"),
   age: integer("age"),
-  ethnicity: text("ethnicity"),
+  ethnicity: text("ethnicity").array(),
   location: text("location"),
   tags: text("tags").array(),
   // Current baseline metrics

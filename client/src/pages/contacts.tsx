@@ -142,6 +142,15 @@ export default function Contacts() {
   );
 }
 
+const ETHNIC_GROUPS = [
+  "European",
+  "Māori",
+  "Pacific Peoples",
+  "Asian",
+  "Middle Eastern/Latin American/African",
+  "Other"
+];
+
 function CreateContactDialogContent({ onSuccess }: { onSuccess: () => void }) {
   const { mutate, isPending } = useCreateContact();
   const form = useForm<ContactFormValues>({
@@ -151,7 +160,7 @@ function CreateContactDialogContent({ onSuccess }: { onSuccess: () => void }) {
       name: "",
       email: "",
       age: undefined,
-      ethnicity: "",
+      ethnicity: [],
       location: "",
       role: "Mentee",
       tags: [],
@@ -168,11 +177,11 @@ function CreateContactDialogContent({ onSuccess }: { onSuccess: () => void }) {
   };
 
   return (
-    <DialogContent className="sm:max-w-[425px]">
+    <DialogContent className="sm:max-w-[500px]">
       <DialogHeader>
         <DialogTitle>Add New Contact</DialogTitle>
       </DialogHeader>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4 max-h-[80vh] overflow-y-auto px-1">
         <div className="space-y-2">
           <Label htmlFor="name">Full Name</Label>
           <Input id="name" {...form.register("name")} placeholder="e.g. Jane Doe" />
@@ -192,15 +201,33 @@ function CreateContactDialogContent({ onSuccess }: { onSuccess: () => void }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="ethnicity">Ethnicity</Label>
-            <Input id="ethnicity" {...form.register("ethnicity")} placeholder="e.g. Hispanic" />
+        <div className="space-y-2">
+          <Label>Ethnicity (Select all that apply)</Label>
+          <div className="grid grid-cols-2 gap-2 mt-2 bg-muted/30 p-3 rounded-lg border border-border">
+            {ETHNIC_GROUPS.map((group) => (
+              <label key={group} className="flex items-center space-x-2 text-sm cursor-pointer hover:bg-muted/50 p-1 rounded transition-colors">
+                <input
+                  type="checkbox"
+                  value={group}
+                  className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  onChange={(e) => {
+                    const currentValues = form.getValues("ethnicity") || [];
+                    if (e.target.checked) {
+                      form.setValue("ethnicity", [...currentValues, group]);
+                    } else {
+                      form.setValue("ethnicity", currentValues.filter((v: string) => v !== group));
+                    }
+                  }}
+                />
+                <span>{group}</span>
+              </label>
+            ))}
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="location">Location</Label>
-            <Input id="location" {...form.register("location")} placeholder="e.g. London" />
-          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="location">Location</Label>
+          <Input id="location" {...form.register("location")} placeholder="e.g. Auckland Central" />
         </div>
 
         <div className="space-y-2">

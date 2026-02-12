@@ -72,7 +72,13 @@ export default function ContactDetail() {
                   <p className="text-muted-foreground text-lg">{contact.role}</p>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm text-muted-foreground">
                     {contact.age && <span>{contact.age} years old</span>}
-                    {contact.ethnicity && <span>{contact.ethnicity}</span>}
+                    {contact.ethnicity && contact.ethnicity.length > 0 && (
+                      <div className="flex gap-1">
+                        {contact.ethnicity.map((e, i) => (
+                          <span key={i} className="after:content-[','] last:after:content-none">{e}</span>
+                        ))}
+                      </div>
+                    )}
                     {contact.location && <span>{contact.location}</span>}
                   </div>
                   <div className="flex flex-wrap gap-2 mt-3">
