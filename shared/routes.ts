@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { insertContactSchema, insertInteractionSchema, contacts, interactions } from './schema';
+import { insertContactSchema, insertInteractionSchema, insertMeetingSchema, contacts, interactions, meetings } from './schema';
 
 // ============================================
 // SHARED ERROR SCHEMAS
@@ -101,6 +101,50 @@ export const api = {
           }),
         }),
         500: errorSchemas.internal,
+      },
+    },
+  },
+  meetings: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/meetings' as const,
+      responses: {
+        200: z.array(z.custom<typeof meetings.$inferSelect>()),
+      },
+    },
+    get: {
+      method: 'GET' as const,
+      path: '/api/meetings/:id' as const,
+      responses: {
+        200: z.custom<typeof meetings.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/meetings' as const,
+      input: insertMeetingSchema,
+      responses: {
+        201: z.custom<typeof meetings.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/meetings/:id' as const,
+      input: insertMeetingSchema.partial(),
+      responses: {
+        200: z.custom<typeof meetings.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/meetings/:id' as const,
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
       },
     },
   },

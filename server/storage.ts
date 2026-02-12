@@ -2,13 +2,17 @@ import { db } from "./db";
 import {
   contacts,
   interactions,
+  meetings,
   type Contact,
   type InsertContact,
   type Interaction,
   type InsertInteraction,
   type UpdateContactRequest,
+  type Meeting,
+  type InsertMeeting,
+  type UpdateMeetingRequest,
 } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, gte, lte } from "drizzle-orm";
 
 // Import Auth storage to include it in the exported storage (optional pattern, or kept separate)
 import { authStorage, type IAuthStorage } from "./replit_integrations/auth/storage";
@@ -24,6 +28,13 @@ export interface IStorage {
   // Interactions
   getInteractions(contactId: number): Promise<Interaction[]>;
   createInteraction(interaction: InsertInteraction): Promise<Interaction>;
+
+  // Meetings
+  getMeetings(userId: string): Promise<Meeting[]>;
+  getMeeting(id: number): Promise<Meeting | undefined>;
+  createMeeting(meeting: InsertMeeting): Promise<Meeting>;
+  updateMeeting(id: number, updates: UpdateMeetingRequest): Promise<Meeting>;
+  deleteMeeting(id: number): Promise<void>;
   
   // Auth (re-exported or separate)
   auth: IAuthStorage;
@@ -92,6 +103,37 @@ export class DatabaseStorage implements IStorage {
     }
 
     return interaction;
+  }
+
+  // Meetings
+  async getMeetings(userId: string): Promise<Meeting[]> {
+    return await db.select()
+      .from(meetings)
+      .where(eq(meetings.userId, userId))
+      .orderBy(desc(meetings.startTime));
+  }
+
+  async getMeeting(id: number): Promise<Meeting | undefined> {
+    const [meeting] = await db.select().from(meetings).where(eq(meetings.id, id));
+    return meeting;
+  }
+
+  async createMeeting(insertMeeting: InsertMeeting): Promise<Meeting> {
+    const [meeting] = await db.insert(meetings).values(insertMeeting).returning();
+    return meeting;
+  }
+
+  async updateMeeting(id: number, updates: UpdateMeetingRequest): Promise<Meeting> {
+    const [meeting] = await db
+      .update(meetings)
+      .set(updates)
+      .where(eq(meetings.id, id))
+      .returning();
+    return meeting;
+  }
+
+  async deleteMeeting(id: number): Promise<void> {
+    await db.delete(meetings).where(eq(meetings.id, id));
   }
 }
 

@@ -50,14 +50,35 @@ export const interactions = pgTable("interactions", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const meetings = pgTable("meetings", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  contactId: integer("contact_id").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  startTime: timestamp("start_time").notNull(),
+  endTime: timestamp("end_time").notNull(),
+  status: text("status").notNull().default("scheduled"),
+  location: text("location"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // === RELATIONS ===
 export const contactsRelations = relations(contacts, ({ many }) => ({
   interactions: many(interactions),
+  meetings: many(meetings),
 }));
 
 export const interactionsRelations = relations(interactions, ({ one }) => ({
   contact: one(contacts, {
     fields: [interactions.contactId],
+    references: [contacts.id],
+  }),
+}));
+
+export const meetingsRelations = relations(meetings, ({ one }) => ({
+  contact: one(contacts, {
+    fields: [meetings.contactId],
     references: [contacts.id],
   }),
 }));
@@ -81,9 +102,19 @@ export type InsertContact = z.infer<typeof insertContactSchema>;
 export type Interaction = typeof interactions.$inferSelect;
 export type InsertInteraction = z.infer<typeof insertInteractionSchema>;
 
+export const insertMeetingSchema = createInsertSchema(meetings).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type Meeting = typeof meetings.$inferSelect;
+export type InsertMeeting = z.infer<typeof insertMeetingSchema>;
+
 // Request types
 export type CreateContactRequest = InsertContact;
 export type UpdateContactRequest = Partial<InsertContact>;
+export type CreateMeetingRequest = InsertMeeting;
+export type UpdateMeetingRequest = Partial<InsertMeeting>;
 
 export type CreateInteractionRequest = InsertInteraction;
 export type AnalyzeInteractionRequest = {

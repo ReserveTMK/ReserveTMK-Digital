@@ -179,5 +179,83 @@ export async function registerRoutes(
     }
   });
 
+  // === Meetings API ===
+
+  app.get(api.meetings.list.path, isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const meetingsList = await storage.getMeetings(userId);
+    res.json(meetingsList);
+  });
+
+  app.get(api.meetings.get.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const meeting = await storage.getMeeting(id);
+    if (!meeting) return res.status(404).json({ message: "Meeting not found" });
+    if (meeting.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+    res.json(meeting);
+  });
+
+  app.post(api.meetings.create.path, isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const input = api.meetings.create.input.parse({
+        ...req.body,
+        userId,
+        startTime: new Date(req.body.startTime),
+        endTime: new Date(req.body.endTime),
+      });
+
+      const contact = await storage.getContact(input.contactId);
+      if (!contact) return res.status(404).json({ message: "Contact not found" });
+      if (contact.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      const meeting = await storage.createMeeting(input);
+      res.status(201).json(meeting);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      throw err;
+    }
+  });
+
+  app.patch(api.meetings.update.path, isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getMeeting(id);
+      if (!existing) return res.status(404).json({ message: "Meeting not found" });
+      if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+
+      const updates: any = { ...req.body };
+      if (updates.startTime) updates.startTime = new Date(updates.startTime);
+      if (updates.endTime) updates.endTime = new Date(updates.endTime);
+
+      const input = api.meetings.update.input.parse(updates);
+      const updated = await storage.updateMeeting(id, input);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      throw err;
+    }
+  });
+
+  app.delete(api.meetings.delete.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const existing = await storage.getMeeting(id);
+    if (!existing) return res.status(404).json({ message: "Meeting not found" });
+    if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+
+    await storage.deleteMeeting(id);
+    res.status(204).send();
+  });
+
   return httpServer;
 }
