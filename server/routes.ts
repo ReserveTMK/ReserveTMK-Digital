@@ -99,19 +99,22 @@ export async function registerRoutes(
   // === Interactions API ===
 
   app.get(api.interactions.list.path, isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
     const contactId = req.query.contactId ? parseInt(req.query.contactId as string) : undefined;
     
-    if (!contactId) {
-      return res.status(400).json({ message: "Contact ID required" });
+    if (contactId) {
+      const contact = await storage.getContact(contactId);
+      if (!contact) return res.status(404).json({ message: "Contact not found" });
+      if (contact.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+      const interactionsList = await storage.getInteractions(contactId);
+      return res.json(interactionsList);
     }
 
-    // Verify ownership
-    const contact = await storage.getContact(contactId);
-    if (!contact) return res.status(404).json({ message: "Contact not found" });
-    if (contact.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
-
-    const interactions = await storage.getInteractions(contactId);
-    res.json(interactions);
+    const userContacts = await storage.getContacts(userId);
+    const allInteractions = await Promise.all(
+      userContacts.map((c) => storage.getInteractions(c.id))
+    );
+    res.json(allInteractions.flat().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
   });
 
   app.post(api.interactions.create.path, isAuthenticated, async (req, res) => {

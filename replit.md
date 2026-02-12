@@ -47,8 +47,9 @@ The project follows a monorepo pattern with three top-level code directories:
 - **Key tables**:
   - `users` — Replit Auth user records (mandatory, do not drop)
   - `sessions` — Express session storage (mandatory, do not drop)
-  - `contacts` — Mentee/contact records with metrics (mindset, skill, confidence as JSONB)
+  - `contacts` — Mentee/contact records with metrics (mindset, skill, confidence as JSONB), demographics (age, ethnicity array, location)
   - `interactions` — Logged interactions with AI analysis results (JSONB), transcripts, keywords
+  - `meetings` — Scheduled meetings between mentor and mentee (title, description, startTime, endTime, status, location)
   - `conversations` / `messages` — Chat conversation storage for AI voice/text chat
 - **Migrations**: Use `npm run db:push` (drizzle-kit push) to sync schema to database
 
