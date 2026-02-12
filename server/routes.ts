@@ -182,6 +182,118 @@ export async function registerRoutes(
     }
   });
 
+  // === Reports API ===
+
+  app.get("/api/reports", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { startDate, endDate, contactId, role } = req.query;
+
+      if (!startDate || !endDate) {
+        return res.status(400).json({ message: "startDate and endDate are required" });
+      }
+
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+      end.setHours(23, 59, 59, 999);
+
+      const userContacts = await storage.getContacts(userId);
+      let filteredContacts = userContacts;
+
+      if (contactId) {
+        filteredContacts = filteredContacts.filter(c => c.id === parseInt(contactId as string));
+      }
+      if (role && role !== "all") {
+        filteredContacts = filteredContacts.filter(c => c.role === role);
+      }
+
+      const contactIds = filteredContacts.map(c => c.id);
+
+      const allInteractions = await Promise.all(
+        contactIds.map(id => storage.getInteractions(id))
+      );
+      const flatInteractions = allInteractions.flat().filter(i => {
+        const d = new Date(i.date);
+        return d >= start && d <= end;
+      });
+
+      const allMeetings = await storage.getMeetings(userId);
+      const filteredMeetings = allMeetings.filter(m => {
+        const d = new Date(m.startTime);
+        return d >= start && d <= end && contactIds.includes(m.contactId);
+      });
+
+      const interactionsByType: Record<string, number> = {};
+      flatInteractions.forEach(i => {
+        interactionsByType[i.type] = (interactionsByType[i.type] || 0) + 1;
+      });
+
+      const meetingsByStatus: Record<string, number> = {};
+      filteredMeetings.forEach(m => {
+        meetingsByStatus[m.status] = (meetingsByStatus[m.status] || 0) + 1;
+      });
+
+      let totalMindset = 0, totalSkill = 0, totalConfidence = 0, scoredCount = 0;
+      flatInteractions.forEach(i => {
+        const a = i.analysis as any;
+        if (a?.mindsetScore || a?.skillScore || a?.confidenceScore) {
+          totalMindset += a.mindsetScore || 0;
+          totalSkill += a.skillScore || 0;
+          totalConfidence += a.confidenceScore || 0;
+          scoredCount++;
+        }
+      });
+
+      const contactBreakdowns = filteredContacts.map(c => {
+        const cInteractions = flatInteractions.filter(i => i.contactId === c.id);
+        const cMeetings = filteredMeetings.filter(m => m.contactId === c.id);
+
+        let cMindset = 0, cSkill = 0, cConfidence = 0, cScored = 0;
+        cInteractions.forEach(i => {
+          const a = i.analysis as any;
+          if (a?.mindsetScore || a?.skillScore || a?.confidenceScore) {
+            cMindset += a.mindsetScore || 0;
+            cSkill += a.skillScore || 0;
+            cConfidence += a.confidenceScore || 0;
+            cScored++;
+          }
+        });
+
+        return {
+          contactId: c.id,
+          contactName: c.name,
+          businessName: c.businessName,
+          role: c.role,
+          interactionCount: cInteractions.length,
+          meetingCount: cMeetings.length,
+          completedMeetings: cMeetings.filter(m => m.status === "completed").length,
+          avgMindset: cScored > 0 ? Math.round((cMindset / cScored) * 10) / 10 : null,
+          avgSkill: cScored > 0 ? Math.round((cSkill / cScored) * 10) / 10 : null,
+          avgConfidence: cScored > 0 ? Math.round((cConfidence / cScored) * 10) / 10 : null,
+          currentMetrics: c.metrics,
+        };
+      });
+
+      res.json({
+        period: { startDate: start.toISOString(), endDate: end.toISOString() },
+        summary: {
+          totalInteractions: flatInteractions.length,
+          totalMeetings: filteredMeetings.length,
+          totalContacts: filteredContacts.length,
+          interactionsByType,
+          meetingsByStatus,
+          avgMindset: scoredCount > 0 ? Math.round((totalMindset / scoredCount) * 10) / 10 : null,
+          avgSkill: scoredCount > 0 ? Math.round((totalSkill / scoredCount) * 10) / 10 : null,
+          avgConfidence: scoredCount > 0 ? Math.round((totalConfidence / scoredCount) * 10) / 10 : null,
+        },
+        contactBreakdowns,
+      });
+    } catch (error) {
+      console.error("Report generation error:", error);
+      res.status(500).json({ message: "Failed to generate report" });
+    }
+  });
+
   // === Meetings API ===
 
   app.get(api.meetings.list.path, isAuthenticated, async (req, res) => {

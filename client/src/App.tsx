@@ -13,6 +13,7 @@ import LandingPage from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 import Contacts from "@/pages/contacts";
 import ContactDetail from "@/pages/contact-detail";
+import Reports from "@/pages/reports";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -72,6 +73,10 @@ function Router() {
       
       <Route path="/contacts/:id">
         <ProtectedRoute component={ContactDetail} />
+      </Route>
+
+      <Route path="/reports">
+        <ProtectedRoute component={Reports} />
       </Route>
 
       <Route component={NotFound} />

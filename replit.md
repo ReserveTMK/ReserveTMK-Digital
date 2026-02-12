@@ -2,7 +2,7 @@
 
 ## Overview
 
-MentorshipAI is a full-stack web application for tracking mentorship relationships and measuring mentee growth over time. Users can manage contacts (mentees, business owners, innovators), log interactions (calls, meetings, voice notes), and leverage AI to analyze conversation transcripts for mindset, skill, and confidence metrics. The app features voice recording with AI-powered analysis, metric trend visualization via charts, and a polished UI with a purple/indigo design theme.
+MentorshipAI is a full-stack web application for tracking mentorship relationships and measuring mentee growth over time. Users can manage contacts (mentees, business owners, innovators), log interactions (calls, meetings, voice notes), and leverage AI to analyze conversation transcripts for mindset, skill, and confidence metrics. The app features voice recording with AI-powered analysis, metric trend visualization via charts, report generation (monthly/quarterly/ad hoc), and a polished UI with a purple/indigo design theme.
 
 ## User Preferences
 
