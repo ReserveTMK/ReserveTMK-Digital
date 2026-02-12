@@ -18,9 +18,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertContactSchema } from "@shared/schema";
-import type { z } from "zod";
+import { z } from "zod";
 
-type ContactFormValues = z.infer<typeof insertContactSchema>;
+type ContactFormValues = Record<string, any>;
 
 export default function Contacts() {
   const { data: contacts, isLoading } = useContacts();
@@ -171,8 +171,15 @@ function CreateContactDialogContent({ onSuccess }: { onSuccess: () => void }) {
     fundingReadiness?: number;
     networkStrength?: number;
   }>({});
+  const formSchema = insertContactSchema.extend({
+    age: z.union([z.number().int().positive(), z.nan(), z.undefined()]).optional().transform(v => (typeof v === 'number' && !Number.isNaN(v)) ? v : undefined),
+    email: z.string().optional().transform(v => v === '' ? undefined : v),
+    businessName: z.string().optional().transform(v => v === '' ? undefined : v),
+    location: z.string().optional().transform(v => v === '' ? undefined : v),
+    revenueBand: z.string().optional().transform(v => v === '' ? undefined : v),
+  });
   const form = useForm<ContactFormValues>({
-    resolver: zodResolver(insertContactSchema),
+    resolver: zodResolver(formSchema),
     defaultValues: {
       userId: "temp",
       name: "",
@@ -206,12 +213,19 @@ function CreateContactDialogContent({ onSuccess }: { onSuccess: () => void }) {
       <DialogHeader>
         <DialogTitle>Add New Community Member</DialogTitle>
       </DialogHeader>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4 max-h-[80vh] overflow-y-auto px-1">
+      <form onSubmit={form.handleSubmit(onSubmit, (errors) => console.error("Form validation errors:", errors))} className="space-y-4 py-4 max-h-[80vh] overflow-y-auto px-1">
+        {Object.keys(form.formState.errors).length > 0 && (
+          <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md p-3" data-testid="form-errors">
+            Please fix the following: {Object.entries(form.formState.errors).map(([key, err]) => (
+              <span key={key} className="block">{key}: {String((err as any)?.message || "invalid")}</span>
+            ))}
+          </div>
+        )}
         <div className="space-y-2">
           <Label htmlFor="name">Full Name</Label>
           <Input id="name" data-testid="input-contact-name" {...form.register("name")} placeholder="e.g. Jane Doe" />
           {form.formState.errors.name && (
-            <p className="text-sm text-destructive">{form.formState.errors.name.message}</p>
+            <p className="text-sm text-destructive">{String((form.formState.errors.name as any)?.message || "Required")}</p>
           )}
         </div>
 
@@ -367,7 +381,9 @@ function CreateContactDialogContent({ onSuccess }: { onSuccess: () => void }) {
         </div>
 
         <DialogFooter className="mt-6">
-          <Button type="submit" isLoading={isPending} className="w-full">Add to Community</Button>
+          <Button type="submit" disabled={isPending} className="w-full" data-testid="button-submit-contact">
+            {isPending ? <><Loader2 className="animate-spin" /> Adding...</> : "Add to Community"}
+          </Button>
         </DialogFooter>
       </form>
     </DialogContent>
