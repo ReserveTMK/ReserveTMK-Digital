@@ -44,7 +44,7 @@ export default function Contacts() {
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-display font-bold">Contacts</h1>
+              <h1 className="text-3xl font-display font-bold">Community</h1>
               <p className="text-muted-foreground mt-1">Manage your mentees and network.</p>
             </div>
             
@@ -52,7 +52,7 @@ export default function Contacts() {
               <DialogTrigger asChild>
                 <Button className="shadow-lg">
                   <Plus className="w-4 h-4 mr-2" />
-                  Add Contact
+                  Add Member
                 </Button>
               </DialogTrigger>
               <CreateContactDialogContent onSuccess={() => setOpen(false)} />
@@ -98,9 +98,9 @@ export default function Contacts() {
               <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
                 <UsersIcon className="w-8 h-8 text-muted-foreground" />
               </div>
-              <h3 className="text-lg font-semibold mb-2">No contacts found</h3>
-              <p className="text-muted-foreground mb-6">Try adjusting your filters or add a new contact.</p>
-              <Button onClick={() => setOpen(true)} variant="outline">Add Contact</Button>
+              <h3 className="text-lg font-semibold mb-2">No community members found</h3>
+              <p className="text-muted-foreground mb-6">Try adjusting your filters or add a new member.</p>
+              <Button onClick={() => setOpen(true)} variant="outline">Add Member</Button>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -184,7 +184,7 @@ function CreateContactDialogContent({ onSuccess }: { onSuccess: () => void }) {
   return (
     <DialogContent className="sm:max-w-[500px]">
       <DialogHeader>
-        <DialogTitle>Add New Contact</DialogTitle>
+        <DialogTitle>Add New Community Member</DialogTitle>
       </DialogHeader>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4 max-h-[80vh] overflow-y-auto px-1">
         <div className="space-y-2">
@@ -266,7 +266,7 @@ function CreateContactDialogContent({ onSuccess }: { onSuccess: () => void }) {
         </div>
 
         <DialogFooter className="mt-6">
-          <Button type="submit" isLoading={isPending} className="w-full">Create Contact</Button>
+          <Button type="submit" isLoading={isPending} className="w-full">Add to Community</Button>
         </DialogFooter>
       </form>
     </DialogContent>

@@ -33,7 +33,7 @@ export default function ContactDetail() {
   if (!contact) {
     return (
       <div className="flex h-screen items-center justify-center bg-background/50 flex-col gap-4">
-        <h1 className="text-2xl font-bold">Contact not found</h1>
+        <h1 className="text-2xl font-bold">Community member not found</h1>
         <Link href="/contacts"><Button>Go Back</Button></Link>
       </div>
     );
@@ -59,7 +59,7 @@ export default function ContactDetail() {
           {/* Header */}
           <div className="space-y-4">
             <Link href="/contacts" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-2">
-              <ArrowLeft className="w-4 h-4 mr-1" /> Back to Contacts
+              <ArrowLeft className="w-4 h-4 mr-1" /> Back to Community
             </Link>
             
             <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">

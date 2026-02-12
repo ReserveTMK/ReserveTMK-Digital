@@ -122,7 +122,7 @@ export default function Dashboard() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
             <MetricCard
-              title="Active Mentees"
+              title="Community"
               value={loadingContacts ? "..." : totalContacts}
               icon={<Users className="w-5 h-5" />}
               color="primary"
@@ -392,7 +392,7 @@ export default function Dashboard() {
                       );
                     })}
                     <Link href="/contacts" className="text-primary hover:underline text-xs font-medium flex items-center justify-center pt-2">
-                      View all <ArrowRight className="w-3 h-3 ml-1" />
+                      View all members <ArrowRight className="w-3 h-3 ml-1" />
                     </Link>
                   </div>
                 ) : (
@@ -463,7 +463,7 @@ function BookMeetingDialog({
       return;
     }
     if (!contactId) {
-      setFormError("Please select a contact.");
+      setFormError("Please select a community member.");
       return;
     }
 
@@ -524,10 +524,10 @@ function BookMeetingDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="meeting-contact">Mentee / Contact</Label>
+            <Label htmlFor="meeting-contact">Community Member</Label>
             <Select value={contactId} onValueChange={setContactId} required>
               <SelectTrigger data-testid="select-meeting-contact">
-                <SelectValue placeholder="Select a contact" />
+                <SelectValue placeholder="Select a member" />
               </SelectTrigger>
               <SelectContent>
                 {contacts.map((c) => (

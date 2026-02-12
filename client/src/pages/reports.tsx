@@ -258,13 +258,13 @@ export default function Reports() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Contact</Label>
+                  <Label>Community Member</Label>
                   <Select value={contactFilter} onValueChange={setContactFilter}>
                     <SelectTrigger data-testid="select-report-contact">
-                      <SelectValue placeholder="All contacts" />
+                      <SelectValue placeholder="All members" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Contacts</SelectItem>
+                      <SelectItem value="all">All Members</SelectItem>
                       {contacts?.map(c => (
                         <SelectItem key={c.id} value={String(c.id)}>
                           {c.name}{c.businessName ? ` (${c.businessName})` : ""}
@@ -306,7 +306,7 @@ export default function Reports() {
                     <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
                       <Users className="w-4 h-4 text-primary" />
                     </div>
-                    <span className="text-sm text-muted-foreground">Contacts</span>
+                    <span className="text-sm text-muted-foreground">Community</span>
                   </div>
                   <p className="text-2xl font-bold" data-testid="text-total-contacts">{report.summary.totalContacts}</p>
                 </Card>
@@ -422,13 +422,13 @@ export default function Reports() {
                 <Card className="p-5">
                   <h3 className="font-semibold mb-4 flex items-center gap-2">
                     <Users className="w-4 h-4 text-muted-foreground" />
-                    Per-Contact Breakdown
+                    Community Breakdown
                   </h3>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm" data-testid="table-contact-breakdown">
                       <thead>
                         <tr className="border-b border-border">
-                          <th className="text-left py-3 px-3 font-semibold text-muted-foreground">Contact</th>
+                          <th className="text-left py-3 px-3 font-semibold text-muted-foreground">Member</th>
                           <th className="text-left py-3 px-3 font-semibold text-muted-foreground">Role</th>
                           <th className="text-center py-3 px-3 font-semibold text-muted-foreground">Interactions</th>
                           <th className="text-center py-3 px-3 font-semibold text-muted-foreground">Meetings</th>
