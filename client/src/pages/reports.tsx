@@ -182,7 +182,7 @@ export default function Reports() {
                 </TabsTrigger>
                 <TabsTrigger value="adhoc" className="rounded-lg gap-2 data-[state=active]:bg-primary/10 data-[state=active]:text-primary" data-testid="tab-adhoc">
                   <BarChart3 className="w-4 h-4" />
-                  Ad Hoc
+                  Custom
                 </TabsTrigger>
               </TabsList>
 
