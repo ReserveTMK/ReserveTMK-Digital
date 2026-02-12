@@ -2,12 +2,13 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Button } from "@/components/ui/beautiful-button";
 import { Card } from "@/components/ui/card";
 import { useContacts } from "@/hooks/use-contacts";
+import { useImpactLogs } from "@/hooks/use-impact-logs";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   FileText,
@@ -26,6 +27,11 @@ import {
   Settings,
   DollarSign,
   Network,
+  Download,
+  CheckCircle,
+  Activity,
+  Tag,
+  Zap,
 } from "lucide-react";
 import {
   format,
@@ -110,8 +116,27 @@ function getQuarterOptions() {
   return options;
 }
 
+function getSentimentLabel(score: number): string {
+  if (score >= 0.75) return "Positive";
+  if (score >= 0.25) return "Mixed";
+  if (score >= -0.25) return "Neutral";
+  return "Negative";
+}
+
+function getSentimentValue(sentiment: string | null | undefined): number {
+  switch (sentiment?.toLowerCase()) {
+    case "positive": return 1;
+    case "mixed": return 0.5;
+    case "neutral": return 0;
+    case "negative": return -1;
+    default: return 0;
+  }
+}
+
 export default function Reports() {
   const { data: contacts } = useContacts();
+  const { data: impactLogsRaw } = useImpactLogs();
+  const { data: taxonomyData } = useQuery<any[]>({ queryKey: ['/api/taxonomy'] });
   const [activeTab, setActiveTab] = useState("monthly");
 
   const monthOptions = getMonthOptions();
@@ -167,6 +192,131 @@ export default function Reports() {
   const handleGenerate = () => {
     setGenerated(true);
     refetch();
+  };
+
+  const impactSummary = useMemo(() => {
+    if (!impactLogsRaw || !generated || !startDate || !endDate) return null;
+    const logs = (impactLogsRaw as any[]).filter((log: any) => {
+      if (!log.createdAt) return false;
+      const logDate = new Date(log.createdAt).toISOString().slice(0, 10);
+      return logDate >= startDate && logDate <= endDate;
+    });
+
+    const totalDebriefs = logs.length;
+    const confirmedDebriefs = logs.filter((l: any) => l.status === "confirmed").length;
+
+    const peopleSet = new Set<number>();
+    for (const log of logs) {
+      const extraction = log.status === "confirmed" && log.reviewedData
+        ? log.reviewedData
+        : log.rawExtraction;
+      if (extraction?.people) {
+        for (const p of extraction.people) {
+          if (p.contactId) peopleSet.add(p.contactId);
+        }
+      }
+    }
+
+    const sentimentValues = logs
+      .filter((l: any) => l.sentiment)
+      .map((l: any) => getSentimentValue(l.sentiment));
+    const avgSentiment = sentimentValues.length > 0
+      ? sentimentValues.reduce((a: number, b: number) => a + b, 0) / sentimentValues.length
+      : null;
+
+    const tagCounts: Record<string, number> = {};
+    let economicActivityCount = 0;
+    for (const log of logs) {
+      const extraction = log.status === "confirmed" && log.reviewedData
+        ? log.reviewedData
+        : log.rawExtraction;
+      if (extraction?.impactTags) {
+        for (const tag of extraction.impactTags) {
+          const category = tag.category || tag.name || "Uncategorized";
+          tagCounts[category] = (tagCounts[category] || 0) + 1;
+        }
+      }
+      if (extraction?.economicActivity?.mentioned) {
+        economicActivityCount++;
+      }
+    }
+
+    const sortedTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]);
+    const maxTagCount = sortedTags.length > 0 ? sortedTags[0][1] : 0;
+
+    return {
+      totalDebriefs,
+      confirmedDebriefs,
+      peopleMentioned: peopleSet.size,
+      avgSentiment,
+      tagDistribution: sortedTags,
+      maxTagCount,
+      economicActivityCount,
+    };
+  }, [impactLogsRaw, generated, startDate, endDate]);
+
+  const handleDownloadCSV = () => {
+    if (!report) return;
+    const rows: string[][] = [];
+
+    rows.push(["Report Period", getPeriodLabel()]);
+    rows.push([]);
+    rows.push(["Summary Metrics"]);
+    rows.push(["Total Contacts", String(report.summary.totalContacts)]);
+    rows.push(["Total Interactions", String(report.summary.totalInteractions)]);
+    rows.push(["Total Meetings", String(report.summary.totalMeetings)]);
+    rows.push(["Total Events", String(report.summary.totalEvents)]);
+    rows.push(["Total Connections", String(report.summary.totalAttendees)]);
+    rows.push(["Avg Mindset", report.summary.avgMindset !== null ? String(report.summary.avgMindset) : "-"]);
+    rows.push(["Avg Skill", report.summary.avgSkill !== null ? String(report.summary.avgSkill) : "-"]);
+    rows.push(["Avg Confidence", report.summary.avgConfidence !== null ? String(report.summary.avgConfidence) : "-"]);
+
+    if (impactSummary) {
+      rows.push([]);
+      rows.push(["Impact Summary"]);
+      rows.push(["Total Debriefs", String(impactSummary.totalDebriefs)]);
+      rows.push(["Confirmed Debriefs", String(impactSummary.confirmedDebriefs)]);
+      rows.push(["People Mentioned", String(impactSummary.peopleMentioned)]);
+      rows.push(["Avg Sentiment", impactSummary.avgSentiment !== null ? getSentimentLabel(impactSummary.avgSentiment) : "-"]);
+      rows.push(["Economic Activity Signals", String(impactSummary.economicActivityCount)]);
+      rows.push([]);
+      rows.push(["Impact Tag", "Count"]);
+      for (const [tag, count] of impactSummary.tagDistribution) {
+        rows.push([tag, String(count)]);
+      }
+    }
+
+    if (report.contactBreakdowns.length > 0) {
+      rows.push([]);
+      rows.push(["Member", "Role", "Revenue", "Interactions", "Mindset", "Skill", "Confidence", "Biz Conf.", "Systems", "Funding", "Network"]);
+      for (const cb of report.contactBreakdowns) {
+        rows.push([
+          cb.contactName,
+          cb.role,
+          cb.revenueBand || "-",
+          String(cb.interactionCount),
+          cb.avgMindset !== null ? String(cb.avgMindset) : "-",
+          cb.avgSkill !== null ? String(cb.avgSkill) : "-",
+          cb.avgConfidence !== null ? String(cb.avgConfidence) : "-",
+          cb.avgConfidenceScore !== null ? String(cb.avgConfidenceScore) : "-",
+          cb.avgSystemsInPlace !== null ? String(cb.avgSystemsInPlace) : "-",
+          cb.avgFundingReadiness !== null ? String(cb.avgFundingReadiness) : "-",
+          cb.avgNetworkStrength !== null ? String(cb.avgNetworkStrength) : "-",
+        ]);
+      }
+    }
+
+    const csvContent = rows.map(row =>
+      row.map(cell => `"${(cell || "").replace(/"/g, '""')}"`).join(",")
+    ).join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `report-${startDate}-to-${endDate}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const getPeriodLabel = () => {
@@ -310,11 +460,15 @@ export default function Reports() {
 
           {report && !isLoading && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500" data-testid="report-results">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
                 <div>
                   <h2 className="text-xl font-display font-bold">Report Results</h2>
                   <p className="text-sm text-muted-foreground" data-testid="text-report-period">{getPeriodLabel()}</p>
                 </div>
+                <Button variant="outline" onClick={handleDownloadCSV} data-testid="button-download-csv">
+                  <Download className="w-4 h-4 mr-2" />
+                  Download CSV
+                </Button>
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -459,6 +613,113 @@ export default function Reports() {
                   </p>
                 </Card>
               </div>
+
+              {impactSummary && impactSummary.totalDebriefs > 0 && (
+                <div className="space-y-4" data-testid="impact-signals-section">
+                  <h3 className="text-lg font-display font-semibold flex items-center gap-2">
+                    <Zap className="w-5 h-5 text-primary" />
+                    Impact Signals
+                  </h3>
+
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <Card className="p-4" data-testid="card-total-debriefs">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="w-9 h-9 rounded-lg bg-indigo-500/10 flex items-center justify-center">
+                          <FileText className="w-4 h-4 text-indigo-500" />
+                        </div>
+                        <span className="text-sm text-muted-foreground">Total Debriefs</span>
+                      </div>
+                      <p className="text-2xl font-bold" data-testid="text-total-debriefs">{impactSummary.totalDebriefs}</p>
+                    </Card>
+
+                    <Card className="p-4" data-testid="card-confirmed-debriefs">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                          <CheckCircle className="w-4 h-4 text-emerald-500" />
+                        </div>
+                        <span className="text-sm text-muted-foreground">Confirmed Debriefs</span>
+                      </div>
+                      <p className="text-2xl font-bold" data-testid="text-confirmed-debriefs">{impactSummary.confirmedDebriefs}</p>
+                    </Card>
+
+                    <Card className="p-4" data-testid="card-people-mentioned">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="w-9 h-9 rounded-lg bg-sky-500/10 flex items-center justify-center">
+                          <Users className="w-4 h-4 text-sky-500" />
+                        </div>
+                        <span className="text-sm text-muted-foreground">People Mentioned</span>
+                      </div>
+                      <p className="text-2xl font-bold" data-testid="text-people-mentioned">{impactSummary.peopleMentioned}</p>
+                    </Card>
+
+                    <Card className="p-4" data-testid="card-avg-sentiment">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                          <Activity className="w-4 h-4 text-amber-500" />
+                        </div>
+                        <span className="text-sm text-muted-foreground">Avg Sentiment</span>
+                      </div>
+                      <p className="text-2xl font-bold" data-testid="text-avg-sentiment">
+                        {impactSummary.avgSentiment !== null ? (
+                          <Badge
+                            variant={
+                              impactSummary.avgSentiment >= 0.75 ? "default" :
+                              impactSummary.avgSentiment <= -0.25 ? "destructive" : "secondary"
+                            }
+                          >
+                            {getSentimentLabel(impactSummary.avgSentiment)}
+                          </Badge>
+                        ) : "-"}
+                      </p>
+                    </Card>
+
+                    <Card className="p-4" data-testid="card-economic-activity">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="w-9 h-9 rounded-lg bg-teal-500/10 flex items-center justify-center">
+                          <DollarSign className="w-4 h-4 text-teal-500" />
+                        </div>
+                        <span className="text-sm text-muted-foreground">Economic Signals</span>
+                      </div>
+                      <p className="text-2xl font-bold" data-testid="text-economic-activity">{impactSummary.economicActivityCount}</p>
+                    </Card>
+
+                    <Card className="p-4" data-testid="card-tag-categories">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="w-9 h-9 rounded-lg bg-violet-500/10 flex items-center justify-center">
+                          <Tag className="w-4 h-4 text-violet-500" />
+                        </div>
+                        <span className="text-sm text-muted-foreground">Tag Categories</span>
+                      </div>
+                      <p className="text-2xl font-bold" data-testid="text-tag-categories">{impactSummary.tagDistribution.length}</p>
+                    </Card>
+                  </div>
+
+                  {impactSummary.tagDistribution.length > 0 && (
+                    <Card className="p-5" data-testid="card-tag-distribution">
+                      <h3 className="font-semibold mb-4 flex items-center gap-2">
+                        <Tag className="w-4 h-4 text-muted-foreground" />
+                        Impact Tags by Category
+                      </h3>
+                      <div className="space-y-3">
+                        {impactSummary.tagDistribution.map(([category, count]) => (
+                          <div key={category} className="space-y-1" data-testid={`tag-bar-${category}`}>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm font-medium truncate">{category}</span>
+                              <Badge variant="secondary" className="text-xs shrink-0">{count}</Badge>
+                            </div>
+                            <div className="w-full bg-muted/50 rounded-md h-2.5">
+                              <div
+                                className="bg-primary/70 h-2.5 rounded-md transition-all duration-500"
+                                style={{ width: `${impactSummary.maxTagCount > 0 ? (count / impactSummary.maxTagCount) * 100 : 0}%` }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  )}
+                </div>
+              )}
 
               {Object.keys(report.summary.interactionsByType).length > 0 && (
                 <Card className="p-5">

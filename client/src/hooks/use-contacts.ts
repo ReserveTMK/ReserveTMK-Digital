@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, buildUrl, type CreateContactRequest, type UpdateContactRequest } from "@shared/routes";
+import { api, buildUrl } from "@shared/routes";
 import { useToast } from "@/hooks/use-toast";
 
 // GET /api/contacts
@@ -35,7 +35,7 @@ export function useCreateContact() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (data: CreateContactRequest) => {
+    mutationFn: async (data: Record<string, any>) => {
       const res = await fetch(api.contacts.create.path, {
         method: api.contacts.create.method,
         headers: { "Content-Type": "application/json" },
@@ -65,7 +65,7 @@ export function useUpdateContact() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, ...updates }: { id: number } & UpdateContactRequest) => {
+    mutationFn: async ({ id, ...updates }: { id: number } & Record<string, any>) => {
       const url = buildUrl(api.contacts.update.path, { id });
       const res = await fetch(url, {
         method: api.contacts.update.method,

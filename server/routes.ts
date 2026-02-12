@@ -520,5 +520,550 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  // === Event Attendance API ===
+
+  app.get(api.eventAttendance.list.path, isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const eventId = parseInt(req.params.eventId);
+    const event = await storage.getEvent(eventId);
+    if (!event) return res.status(404).json({ message: "Event not found" });
+    if (event.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+    const attendance = await storage.getEventAttendance(eventId);
+    res.json(attendance);
+  });
+
+  app.post(api.eventAttendance.add.path, isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const input = api.eventAttendance.add.input.parse(req.body);
+      const event = await storage.getEvent(input.eventId);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+      if (event.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+      const contact = await storage.getContact(input.contactId);
+      if (contact && contact.consentStatus === 'withdrawn') {
+        return res.status(400).json({ message: "Cannot add attendee: consent has been withdrawn" });
+      }
+      const record = await storage.addEventAttendance(input);
+      res.status(201).json(record);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      throw err;
+    }
+  });
+
+  app.delete(api.eventAttendance.remove.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    await storage.removeEventAttendance(id);
+    res.status(204).send();
+  });
+
+  // === Impact Logs API ===
+
+  app.get(api.impactLogs.list.path, isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const logs = await storage.getImpactLogs(userId);
+    res.json(logs);
+  });
+
+  app.get(api.impactLogs.get.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const log = await storage.getImpactLog(id);
+    if (!log) return res.status(404).json({ message: "Impact log not found" });
+    if (log.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+    res.json(log);
+  });
+
+  app.post(api.impactLogs.create.path, isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const input = api.impactLogs.create.input.parse({
+        ...req.body,
+        userId,
+      });
+      const log = await storage.createImpactLog(input);
+      res.status(201).json(log);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      throw err;
+    }
+  });
+
+  app.patch(api.impactLogs.update.path, isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getImpactLog(id);
+      if (!existing) return res.status(404).json({ message: "Impact log not found" });
+      if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+      const input = api.impactLogs.update.input.parse(req.body);
+      if (input.status) {
+        const validTransitions: Record<string, string[]> = {
+          draft: ['pending_review'],
+          pending_review: ['draft', 'confirmed'],
+          confirmed: ['pending_review'],
+        };
+        const currentStatus = existing.status || 'draft';
+        const allowed = validTransitions[currentStatus] || [];
+        if (!allowed.includes(input.status)) {
+          return res.status(400).json({ message: `Cannot transition from '${currentStatus}' to '${input.status}'` });
+        }
+      }
+      const updated = await storage.updateImpactLog(id, input);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      throw err;
+    }
+  });
+
+  app.delete(api.impactLogs.delete.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const existing = await storage.getImpactLog(id);
+    if (!existing) return res.status(404).json({ message: "Impact log not found" });
+    if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+    await storage.deleteImpactLog(id);
+    res.status(204).send();
+  });
+
+  // Impact Log Contacts
+  app.get(api.impactLogs.contacts.list.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const log = await storage.getImpactLog(id);
+    if (!log) return res.status(404).json({ message: "Impact log not found" });
+    if (log.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+    const contacts = await storage.getImpactLogContacts(id);
+    res.json(contacts);
+  });
+
+  app.post(api.impactLogs.contacts.add.path, isAuthenticated, async (req, res) => {
+    try {
+      const impactLogId = parseInt(req.params.id);
+      const log = await storage.getImpactLog(impactLogId);
+      if (!log) return res.status(404).json({ message: "Impact log not found" });
+      if (log.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+      const input = api.impactLogs.contacts.add.input.parse({
+        ...req.body,
+        impactLogId,
+      });
+      const contact = await storage.getContact(input.contactId);
+      if (contact && contact.consentStatus === 'withdrawn') {
+        return res.status(400).json({ message: "Cannot link contact: consent has been withdrawn" });
+      }
+      const record = await storage.addImpactLogContact(input);
+      res.status(201).json(record);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      throw err;
+    }
+  });
+
+  app.delete(api.impactLogs.contacts.remove.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    await storage.removeImpactLogContact(id);
+    res.status(204).send();
+  });
+
+  // Impact Log Tags
+  app.get(api.impactLogs.tags.list.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const log = await storage.getImpactLog(id);
+    if (!log) return res.status(404).json({ message: "Impact log not found" });
+    if (log.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+    const tags = await storage.getImpactTags(id);
+    res.json(tags);
+  });
+
+  app.post(api.impactLogs.tags.add.path, isAuthenticated, async (req, res) => {
+    try {
+      const impactLogId = parseInt(req.params.id);
+      const log = await storage.getImpactLog(impactLogId);
+      if (!log) return res.status(404).json({ message: "Impact log not found" });
+      if (log.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+      const input = api.impactLogs.tags.add.input.parse({
+        ...req.body,
+        impactLogId,
+      });
+      const tag = await storage.addImpactTag(input);
+      res.status(201).json(tag);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      throw err;
+    }
+  });
+
+  app.delete(api.impactLogs.tags.remove.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    await storage.removeImpactTag(id);
+    res.status(204).send();
+  });
+
+  // === Taxonomy API ===
+
+  app.get(api.taxonomy.list.path, isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const items = await storage.getTaxonomy(userId);
+    res.json(items);
+  });
+
+  app.post(api.taxonomy.create.path, isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const input = api.taxonomy.create.input.parse({
+        ...req.body,
+        userId,
+      });
+      const item = await storage.createTaxonomyItem(input);
+      res.status(201).json(item);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      throw err;
+    }
+  });
+
+  app.patch(api.taxonomy.update.path, isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const input = api.taxonomy.update.input.parse(req.body);
+      const updated = await storage.updateTaxonomyItem(id, input);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      throw err;
+    }
+  });
+
+  app.delete(api.taxonomy.delete.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    await storage.deleteTaxonomyItem(id);
+    res.status(204).send();
+  });
+
+  // === Keywords API ===
+
+  app.get(api.keywords.list.path, isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const keywords = await storage.getKeywords(userId);
+    res.json(keywords);
+  });
+
+  app.post(api.keywords.create.path, isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const input = api.keywords.create.input.parse({
+        ...req.body,
+        userId,
+      });
+      const keyword = await storage.createKeyword(input);
+      res.status(201).json(keyword);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      throw err;
+    }
+  });
+
+  app.delete(api.keywords.delete.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    await storage.deleteKeyword(id);
+    res.status(204).send();
+  });
+
+  // === Action Items API ===
+
+  app.get(api.actionItems.list.path, isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const contactId = req.query.contactId ? parseInt(req.query.contactId as string) : undefined;
+    if (contactId) {
+      const items = await storage.getContactActionItems(contactId);
+      return res.json(items);
+    }
+    const items = await storage.getActionItems(userId);
+    res.json(items);
+  });
+
+  app.post(api.actionItems.create.path, isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const input = api.actionItems.create.input.parse({
+        ...req.body,
+        userId,
+      });
+      if (input.contactId) {
+        const contact = await storage.getContact(input.contactId);
+        if (contact && contact.consentStatus === 'withdrawn') {
+          return res.status(400).json({ message: "Cannot link action to contact: consent has been withdrawn" });
+        }
+      }
+      const item = await storage.createActionItem(input);
+      res.status(201).json(item);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      throw err;
+    }
+  });
+
+  app.patch(api.actionItems.update.path, isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const input = api.actionItems.update.input.parse(req.body);
+      const updated = await storage.updateActionItem(id, input);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      throw err;
+    }
+  });
+
+  app.delete(api.actionItems.delete.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    await storage.deleteActionItem(id);
+    res.status(204).send();
+  });
+
+  // === Consent API ===
+
+  app.get(api.consent.list.path, isAuthenticated, async (req, res) => {
+    const contactId = parseInt(req.params.id);
+    const contact = await storage.getContact(contactId);
+    if (!contact) return res.status(404).json({ message: "Contact not found" });
+    if (contact.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+    const records = await storage.getConsentRecords(contactId);
+    res.json(records);
+  });
+
+  app.post(api.consent.create.path, isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const contactId = parseInt(req.params.id);
+      const contact = await storage.getContact(contactId);
+      if (!contact) return res.status(404).json({ message: "Contact not found" });
+      if (contact.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+      const input = api.consent.create.input.parse({
+        ...req.body,
+        contactId,
+        userId,
+      });
+      const record = await storage.createConsentRecord(input);
+      await storage.updateContact(contactId, {
+        consentStatus: input.action,
+        consentDate: new Date(),
+      });
+      res.status(201).json(record);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      throw err;
+    }
+  });
+
+  // === Impact Extraction AI Pipeline ===
+
+  app.post("/api/impact-extract", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { transcript, title } = req.body;
+      if (!transcript) return res.status(400).json({ message: "Transcript text required" });
+
+      const taxonomy = await storage.getTaxonomy(userId);
+      const keywords = await storage.getKeywords(userId);
+      const contacts = await storage.getContacts(userId);
+
+      const taxonomyContext = taxonomy.filter(t => t.active).map(t =>
+        `- ${t.name}: ${t.description || 'No description'}`
+      ).join('\n');
+
+      const keywordContext = keywords.map(k => {
+        const tax = taxonomy.find(t => t.id === k.taxonomyId);
+        return `"${k.phrase}" → ${tax?.name || 'unknown'}`;
+      }).join('\n');
+
+      const peopleContext = contacts.map(c =>
+        `- ${c.name}${c.businessName ? ` (${c.businessName})` : ''} [ID: ${c.id}]`
+      ).join('\n');
+
+      const prompt = `You are an impact analysis system for a community development organisation. Analyze the following debrief transcript and extract structured impact data.
+
+IMPACT TAXONOMY (use these categories for tagging):
+${taxonomyContext || 'confidence, capability, connection, systems, opportunity access, economic activity, leadership shift, barriers'}
+
+KEYWORD DICTIONARY (phrases that indicate specific impact categories):
+${keywordContext || 'No keywords configured yet.'}
+
+KNOWN COMMUNITY MEMBERS:
+${peopleContext || 'No members in system yet.'}
+
+TRANSCRIPT:
+"""
+${transcript}
+"""
+
+Return a JSON object with EXACTLY this structure:
+{
+  "summary": "2-3 sentence summary of the debrief",
+  "sentiment": "positive" | "neutral" | "negative" | "mixed",
+  "impactTags": [
+    {
+      "category": "taxonomy category name",
+      "confidence": 0-100,
+      "evidence": "brief quote or paraphrase from transcript supporting this tag"
+    }
+  ],
+  "peopleIdentified": [
+    {
+      "name": "person name as mentioned",
+      "matchedContactId": null or number (ID from KNOWN COMMUNITY MEMBERS if matched),
+      "role": "subject" | "mentioned" | "participant",
+      "confidence": 0-100
+    }
+  ],
+  "milestones": ["list of specific achievements or stage movements mentioned"],
+  "keyQuotes": ["notable direct quotes from the transcript"],
+  "actionItems": [
+    {
+      "title": "action description",
+      "owner": "person responsible (if mentioned)",
+      "priority": "high" | "medium" | "low"
+    }
+  ],
+  "economicActivity": {
+    "mentioned": true/false,
+    "details": "description of any economic/revenue/funding activity mentioned",
+    "confidence": 0-100
+  },
+  "metrics": {
+    "mindset": 1-10,
+    "skill": 1-10,
+    "confidence": 1-10,
+    "confidenceScore": 1-10,
+    "systemsInPlace": 1-10,
+    "fundingReadiness": 1-10,
+    "networkStrength": 1-10
+  }
+}
+
+Be precise. Only tag impact categories where there is clear evidence in the transcript. Set confidence scores honestly — lower if the evidence is ambiguous.`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.3,
+      });
+
+      const extraction = JSON.parse(response.choices[0].message.content || "{}");
+
+      const impactLog = await storage.createImpactLog({
+        userId,
+        title: title || "Untitled Debrief",
+        transcript,
+        summary: extraction.summary || "",
+        rawExtraction: extraction,
+        status: "pending_review",
+        sentiment: extraction.sentiment || "neutral",
+        milestones: extraction.milestones || [],
+        keyQuotes: extraction.keyQuotes || [],
+      });
+
+      res.status(201).json({
+        impactLog,
+        extraction,
+      });
+    } catch (error) {
+      console.error("Impact extraction error:", error);
+      res.status(500).json({ message: "Failed to extract impact data" });
+    }
+  });
+
+  app.post("/api/impact-transcribe", isAuthenticated, async (req, res) => {
+    try {
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk: Buffer) => chunks.push(chunk));
+      req.on("end", async () => {
+        try {
+          const audioBuffer = Buffer.concat(chunks);
+          if (audioBuffer.length === 0) {
+            return res.status(400).json({ message: "No audio data received" });
+          }
+
+          const { ensureCompatibleFormat, speechToText } = await import("./replit_integrations/audio/client");
+          const { buffer, format } = await ensureCompatibleFormat(audioBuffer);
+          const transcript = await speechToText(buffer, format);
+
+          res.json({ transcript });
+        } catch (err) {
+          console.error("Transcription error:", err);
+          res.status(500).json({ message: "Failed to transcribe audio" });
+        }
+      });
+    } catch (error) {
+      console.error("Transcription route error:", error);
+      res.status(500).json({ message: "Failed to process audio" });
+    }
+  });
+
+  // === Audit Logs API ===
+
+  app.get(api.auditLogs.list.path, isAuthenticated, async (req, res) => {
+    const entityType = req.query.entityType as string;
+    const entityId = parseInt(req.query.entityId as string);
+    if (!entityType || !entityId) {
+      return res.status(400).json({ message: "entityType and entityId query params required" });
+    }
+    const logs = await storage.getAuditLogs(entityType, entityId);
+    res.json(logs);
+  });
+
   return httpServer;
 }

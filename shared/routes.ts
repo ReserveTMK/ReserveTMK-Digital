@@ -1,5 +1,13 @@
 import { z } from 'zod';
-import { insertContactSchema, insertInteractionSchema, insertMeetingSchema, insertEventSchema, contacts, interactions, meetings, events } from './schema';
+import {
+  insertContactSchema, insertInteractionSchema, insertMeetingSchema, insertEventSchema,
+  insertEventAttendanceSchema, insertImpactLogSchema, insertImpactLogContactSchema,
+  insertImpactTaxonomySchema, insertImpactTagSchema, insertKeywordDictionarySchema,
+  insertActionItemSchema, insertConsentRecordSchema, insertAuditLogSchema,
+  contacts, interactions, meetings, events,
+  eventAttendance, impactLogs, impactLogContacts, impactTaxonomy, impactTags,
+  keywordDictionary, actionItems, consentRecords, auditLog,
+} from './schema';
 
 // ============================================
 // SHARED ERROR SCHEMAS
@@ -69,7 +77,6 @@ export const api = {
     list: {
       method: 'GET' as const,
       path: '/api/interactions' as const,
-      // Query param: contactId
       input: z.object({
         contactId: z.coerce.number().optional(),
       }).optional(),
@@ -189,6 +196,249 @@ export const api = {
       responses: {
         204: z.void(),
         404: errorSchemas.notFound,
+      },
+    },
+  },
+  eventAttendance: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/event-attendance/:eventId' as const,
+      responses: {
+        200: z.array(z.custom<typeof eventAttendance.$inferSelect>()),
+      },
+    },
+    add: {
+      method: 'POST' as const,
+      path: '/api/event-attendance' as const,
+      input: insertEventAttendanceSchema,
+      responses: {
+        201: z.custom<typeof eventAttendance.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    remove: {
+      method: 'DELETE' as const,
+      path: '/api/event-attendance/:id' as const,
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
+  impactLogs: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/impact-logs' as const,
+      responses: {
+        200: z.array(z.custom<typeof impactLogs.$inferSelect>()),
+      },
+    },
+    get: {
+      method: 'GET' as const,
+      path: '/api/impact-logs/:id' as const,
+      responses: {
+        200: z.custom<typeof impactLogs.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/impact-logs' as const,
+      input: insertImpactLogSchema,
+      responses: {
+        201: z.custom<typeof impactLogs.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/impact-logs/:id' as const,
+      input: insertImpactLogSchema.partial(),
+      responses: {
+        200: z.custom<typeof impactLogs.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/impact-logs/:id' as const,
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+    contacts: {
+      list: {
+        method: 'GET' as const,
+        path: '/api/impact-logs/:id/contacts' as const,
+        responses: {
+          200: z.array(z.custom<typeof impactLogContacts.$inferSelect>()),
+        },
+      },
+      add: {
+        method: 'POST' as const,
+        path: '/api/impact-logs/:id/contacts' as const,
+        input: insertImpactLogContactSchema,
+        responses: {
+          201: z.custom<typeof impactLogContacts.$inferSelect>(),
+        },
+      },
+      remove: {
+        method: 'DELETE' as const,
+        path: '/api/impact-log-contacts/:id' as const,
+        responses: {
+          204: z.void(),
+        },
+      },
+    },
+    tags: {
+      list: {
+        method: 'GET' as const,
+        path: '/api/impact-logs/:id/tags' as const,
+        responses: {
+          200: z.array(z.custom<typeof impactTags.$inferSelect>()),
+        },
+      },
+      add: {
+        method: 'POST' as const,
+        path: '/api/impact-logs/:id/tags' as const,
+        input: insertImpactTagSchema,
+        responses: {
+          201: z.custom<typeof impactTags.$inferSelect>(),
+        },
+      },
+      remove: {
+        method: 'DELETE' as const,
+        path: '/api/impact-tags/:id' as const,
+        responses: {
+          204: z.void(),
+        },
+      },
+    },
+  },
+  taxonomy: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/taxonomy' as const,
+      responses: {
+        200: z.array(z.custom<typeof impactTaxonomy.$inferSelect>()),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/taxonomy' as const,
+      input: insertImpactTaxonomySchema,
+      responses: {
+        201: z.custom<typeof impactTaxonomy.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/taxonomy/:id' as const,
+      input: insertImpactTaxonomySchema.partial(),
+      responses: {
+        200: z.custom<typeof impactTaxonomy.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/taxonomy/:id' as const,
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
+  keywords: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/keywords' as const,
+      responses: {
+        200: z.array(z.custom<typeof keywordDictionary.$inferSelect>()),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/keywords' as const,
+      input: insertKeywordDictionarySchema,
+      responses: {
+        201: z.custom<typeof keywordDictionary.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/keywords/:id' as const,
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
+  actionItems: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/action-items' as const,
+      responses: {
+        200: z.array(z.custom<typeof actionItems.$inferSelect>()),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/action-items' as const,
+      input: insertActionItemSchema,
+      responses: {
+        201: z.custom<typeof actionItems.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/action-items/:id' as const,
+      input: insertActionItemSchema.partial(),
+      responses: {
+        200: z.custom<typeof actionItems.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/action-items/:id' as const,
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
+  consent: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/contacts/:id/consent' as const,
+      responses: {
+        200: z.array(z.custom<typeof consentRecords.$inferSelect>()),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/contacts/:id/consent' as const,
+      input: insertConsentRecordSchema,
+      responses: {
+        201: z.custom<typeof consentRecords.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+  },
+  auditLogs: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/audit-logs' as const,
+      responses: {
+        200: z.array(z.custom<typeof auditLog.$inferSelect>()),
       },
     },
   },

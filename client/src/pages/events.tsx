@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/beautiful-button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useEvents, useCreateEvent, useUpdateEvent, useDeleteEvent } from "@/hooks/use-events";
+import { useContacts } from "@/hooks/use-contacts";
+import { useEventAttendance, useAddAttendance, useRemoveAttendance } from "@/hooks/use-event-attendance";
 import {
   Plus,
   Search,
@@ -15,6 +17,9 @@ import {
   Trash2,
   PartyPopper,
   X,
+  UserPlus,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { useState } from "react";
 import {
@@ -49,12 +54,22 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   "Other": "bg-gray-500/15 text-gray-700 dark:text-gray-300",
 };
 
+const ATTENDEE_ROLES = ["attendee", "speaker", "organizer", "volunteer"];
+
+const ROLE_COLORS: Record<string, string> = {
+  attendee: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
+  speaker: "bg-violet-500/15 text-violet-700 dark:text-violet-300",
+  organizer: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+  volunteer: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+};
+
 export default function Events() {
   const { data: events, isLoading } = useEvents();
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [createOpen, setCreateOpen] = useState(false);
   const [editEvent, setEditEvent] = useState<Event | null>(null);
+  const [expandedEventId, setExpandedEventId] = useState<number | null>(null);
 
   const filteredEvents = events?.filter((event: Event) => {
     const matchesSearch =
@@ -149,6 +164,8 @@ export default function Events() {
                         key={event.id}
                         event={event}
                         onEdit={() => setEditEvent(event)}
+                        isExpanded={expandedEventId === event.id}
+                        onToggleExpand={() => setExpandedEventId(expandedEventId === event.id ? null : event.id)}
                       />
                     ))}
                   </div>
@@ -167,6 +184,8 @@ export default function Events() {
                         event={event}
                         onEdit={() => setEditEvent(event)}
                         isPast
+                        isExpanded={expandedEventId === event.id}
+                        onToggleExpand={() => setExpandedEventId(expandedEventId === event.id ? null : event.id)}
                       />
                     ))}
                   </div>
@@ -199,13 +218,49 @@ function EventCard({
   event,
   onEdit,
   isPast,
+  isExpanded,
+  onToggleExpand,
 }: {
   event: Event;
   onEdit: () => void;
   isPast?: boolean;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
 }) {
   const deleteMutation = useDeleteEvent();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const { data: attendance, isLoading: attendanceLoading } = useEventAttendance(isExpanded ? event.id : undefined);
+  const { data: contacts } = useContacts();
+  const addAttendance = useAddAttendance();
+  const removeAttendance = useRemoveAttendance();
+  const [addAttendeeOpen, setAddAttendeeOpen] = useState(false);
+  const [selectedContactId, setSelectedContactId] = useState<string>("");
+  const [selectedRole, setSelectedRole] = useState<string>("attendee");
+  const [contactSearch, setContactSearch] = useState("");
+
+  const attendeeCount = isExpanded && attendance ? (attendance as any[]).length : event.attendeeCount;
+
+  const handleAddAttendee = () => {
+    if (!selectedContactId) return;
+    addAttendance.mutate({
+      eventId: event.id,
+      contactId: parseInt(selectedContactId),
+      role: selectedRole,
+    }, {
+      onSuccess: () => {
+        setSelectedContactId("");
+        setSelectedRole("attendee");
+        setAddAttendeeOpen(false);
+      },
+    });
+  };
+
+  const filteredContacts = contacts?.filter((c: any) => {
+    if (!contactSearch) return true;
+    return c.name.toLowerCase().includes(contactSearch.toLowerCase());
+  });
+
+  const attendeeContactIds = new Set((attendance as any[] || []).map((a: any) => a.contactId));
 
   return (
     <Card
@@ -282,12 +337,12 @@ function EventCard({
             <span data-testid={`text-event-location-${event.id}`}>{event.location}</span>
           </div>
         )}
-        {event.attendeeCount !== null && event.attendeeCount !== undefined && (
-          <div className="flex items-center gap-2">
-            <Users className="w-4 h-4 shrink-0" />
-            <span data-testid={`text-event-attendees-${event.id}`}>{event.attendeeCount} attendees</span>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <Users className="w-4 h-4 shrink-0" />
+          <span data-testid={`text-event-attendees-${event.id}`}>
+            {attendeeCount != null ? `${attendeeCount} attendees` : "0 attendees"}
+          </span>
+        </div>
       </div>
 
       {event.description && (
@@ -306,6 +361,149 @@ function EventCard({
               #{tag}
             </span>
           ))}
+        </div>
+      )}
+
+      <div className="mt-3 border-t border-border pt-3">
+        <button
+          onClick={onToggleExpand}
+          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors w-full justify-center"
+          data-testid={`button-toggle-attendance-${event.id}`}
+        >
+          <Users className="w-3.5 h-3.5" />
+          <span>{isExpanded ? "Hide" : "View"} Attendance</span>
+          {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+        </button>
+      </div>
+
+      {isExpanded && (
+        <div className="mt-3 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center justify-between gap-2">
+            <h4 className="text-sm font-semibold">Attendees</h4>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setAddAttendeeOpen(true)}
+              data-testid={`button-add-attendee-${event.id}`}
+            >
+              <UserPlus className="w-3.5 h-3.5 mr-1" />
+              Add Attendee
+            </Button>
+          </div>
+
+          {attendanceLoading ? (
+            <div className="flex justify-center py-4">
+              <Loader2 className="w-5 h-5 animate-spin text-primary" />
+            </div>
+          ) : (attendance as any[])?.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">No attendees recorded yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {(attendance as any[])?.map((record: any) => {
+                const contact = contacts?.find((c: any) => c.id === record.contactId);
+                return (
+                  <div
+                    key={record.id}
+                    className="flex items-center justify-between gap-2 bg-muted/50 rounded-lg px-3 py-2"
+                    data-testid={`attendee-record-${record.id}`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0">
+                        {contact?.name?.[0] || "?"}
+                      </div>
+                      <span className="text-sm font-medium truncate">
+                        {contact?.name || `Contact #${record.contactId}`}
+                      </span>
+                      <Badge
+                        variant="secondary"
+                        className={`text-xs shrink-0 ${ROLE_COLORS[record.role] || ""}`}
+                      >
+                        {record.role}
+                      </Badge>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeAttendance.mutate(record.id)}
+                      data-testid={`button-remove-attendee-${record.id}`}
+                    >
+                      <X className="w-3.5 h-3.5 text-muted-foreground" />
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {addAttendeeOpen && (
+            <div className="bg-muted/30 rounded-lg p-3 border border-border space-y-3" data-testid={`form-add-attendee-${event.id}`}>
+              <div className="space-y-2">
+                <Label className="text-xs">Search Contact</Label>
+                <Input
+                  placeholder="Search contacts..."
+                  value={contactSearch}
+                  onChange={(e) => setContactSearch(e.target.value)}
+                  className="text-sm"
+                  data-testid={`input-search-contact-${event.id}`}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Select Contact</Label>
+                <Select value={selectedContactId} onValueChange={setSelectedContactId}>
+                  <SelectTrigger className="text-sm" data-testid={`select-contact-${event.id}`}>
+                    <SelectValue placeholder="Choose a contact..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredContacts
+                      ?.filter((c: any) => !attendeeContactIds.has(c.id))
+                      .map((c: any) => (
+                        <SelectItem key={c.id} value={c.id.toString()}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Role</Label>
+                <Select value={selectedRole} onValueChange={setSelectedRole}>
+                  <SelectTrigger className="text-sm" data-testid={`select-role-${event.id}`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ATTENDEE_ROLES.map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {r.charAt(0).toUpperCase() + r.slice(1)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  onClick={handleAddAttendee}
+                  disabled={!selectedContactId}
+                  isLoading={addAttendance.isPending}
+                  data-testid={`button-submit-attendee-${event.id}`}
+                >
+                  Add
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setAddAttendeeOpen(false);
+                    setSelectedContactId("");
+                    setContactSearch("");
+                  }}
+                  data-testid={`button-cancel-attendee-${event.id}`}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </Card>

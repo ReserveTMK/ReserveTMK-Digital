@@ -32,11 +32,12 @@ The project follows a monorepo pattern with three top-level code directories:
 - **API Pattern**: RESTful JSON API under `/api/` prefix. API contracts are defined in `shared/routes.ts` using Zod schemas, shared between client and server for type safety
 - **Authentication**: Replit Auth via OpenID Connect (passport.js strategy). Sessions stored in PostgreSQL via `connect-pg-simple`. The auth system lives in `server/replit_integrations/auth/`
 - **AI Integrations**: OpenAI API (via Replit AI Integrations proxy) for:
-  - Speech-to-text transcription
+  - Speech-to-text transcription (Whisper via gpt-4o-mini-transcribe)
   - Text-to-speech
   - Voice chat with streaming SSE responses
   - Image generation (gpt-image-1)
   - Interaction analysis (extracting mindset/skill/confidence scores)
+  - Impact debrief extraction (GPT-4o: taxonomy-aware structured extraction with confidence scoring)
 - **Audio Processing**: Server-side audio format detection and ffmpeg conversion. Client-side uses MediaRecorder API and AudioWorklet for recording and playback
 - **Batch Processing**: Utility module (`server/replit_integrations/batch/`) for rate-limited, retryable batch API calls using p-limit and p-retry
 
@@ -47,10 +48,19 @@ The project follows a monorepo pattern with three top-level code directories:
 - **Key tables**:
   - `users` — Replit Auth user records (mandatory, do not drop)
   - `sessions` — Express session storage (mandatory, do not drop)
-  - `contacts` — Mentee/contact records with metrics (mindset, skill, confidence as JSONB), demographics (age, ethnicity array, location)
+  - `contacts` — Mentee/contact records with metrics (mindset, skill, confidence as JSONB), demographics (age, ethnicity array, location), consent fields (consentStatus, consentDate)
   - `interactions` — Logged interactions with AI analysis results (JSONB), transcripts, keywords
   - `meetings` — Scheduled meetings between mentor and mentee (title, description, startTime, endTime, status, location)
-  - `events` — External networking events, workshops, activations (name, type, startTime, endTime, location, attendeeCount, description, tags). Not tied to specific contacts.
+  - `events` — External networking events, workshops, activations (name, type, startTime, endTime, location, attendeeCount, description, tags)
+  - `event_attendance` — Junction table linking contacts to events with role (attendee/speaker/organizer/volunteer)
+  - `impact_logs` — Core impact debrief records with transcript, summary, rawExtraction (JSONB), reviewedData (JSONB), status (draft/pending_review/confirmed), sentiment, milestones, keyQuotes
+  - `impact_log_contacts` — Junction table linking impact logs to contacts with role and confidence score
+  - `impact_taxonomy` — User-editable impact categories (name, description, color, parentId, active flag)
+  - `impact_tags` — Tags on impact logs with taxonomy category, confidence score (0-100), and evidence text
+  - `keyword_dictionary` — Maps natural language phrases to taxonomy categories for AI classification context
+  - `action_items` — Trackable action items with title, description, status, priority, due date, linked contact and impact log
+  - `consent_records` — Dated consent records per contact with status (given/withdrawn/pending) and notes
+  - `audit_log` — Tracks changes to entities with userId, action, entityType, entityId, changes JSONB
   - `conversations` / `messages` — Chat conversation storage for AI voice/text chat
 - **Migrations**: Use `npm run db:push` (drizzle-kit push) to sync schema to database
 

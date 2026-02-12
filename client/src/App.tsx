@@ -15,6 +15,9 @@ import Contacts from "@/pages/contacts";
 import ContactDetail from "@/pages/contact-detail";
 import Reports from "@/pages/reports";
 import Events from "@/pages/events";
+import Debriefs from "@/pages/debriefs";
+import Actions from "@/pages/actions";
+import Taxonomy from "@/pages/taxonomy";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -80,8 +83,22 @@ function Router() {
         <ProtectedRoute component={Events} />
       </Route>
 
+      <Route path="/debriefs">
+        <ProtectedRoute component={Debriefs} />
+      </Route>
+      <Route path="/debriefs/:id">
+        <ProtectedRoute component={Debriefs} />
+      </Route>
+      <Route path="/actions">
+        <ProtectedRoute component={Actions} />
+      </Route>
+
       <Route path="/reports">
         <ProtectedRoute component={Reports} />
+      </Route>
+
+      <Route path="/taxonomy">
+        <ProtectedRoute component={Taxonomy} />
       </Route>
 
       <Route component={NotFound} />

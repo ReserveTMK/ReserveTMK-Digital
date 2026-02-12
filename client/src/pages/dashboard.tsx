@@ -4,8 +4,9 @@ import { useContacts } from "@/hooks/use-contacts";
 import { useInteractions } from "@/hooks/use-interactions";
 import { useMeetings, useCreateMeeting, useUpdateMeeting, useDeleteMeeting } from "@/hooks/use-meetings";
 import { useEvents } from "@/hooks/use-events";
+import { useImpactLogs } from "@/hooks/use-impact-logs";
 import { useAuth } from "@/hooks/use-auth";
-import { Users, Activity, TrendingUp, Calendar as CalendarIcon, ArrowRight, Plus, Clock, MapPin, X, Check, Trash2, ChevronLeft, ChevronRight, Video, PartyPopper } from "lucide-react";
+import { Users, Activity, TrendingUp, Calendar as CalendarIcon, ArrowRight, Plus, Clock, MapPin, X, Check, Trash2, ChevronLeft, ChevronRight, Video, PartyPopper, Mic } from "lucide-react";
 import { Link } from "wouter";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, isBefore, startOfDay, addHours, setHours, setMinutes } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -37,6 +38,7 @@ export default function Dashboard() {
   const { data: interactions, isLoading: loadingInteractions } = useInteractions();
   const { data: meetings, isLoading: loadingMeetings } = useMeetings();
   const { data: events } = useEvents();
+  const { data: impactLogs } = useImpactLogs();
 
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -137,7 +139,7 @@ export default function Dashboard() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 md:gap-6">
             <MetricCard
               title="Community"
               value={loadingContacts ? "..." : totalContacts}
@@ -149,6 +151,12 @@ export default function Dashboard() {
               value={loadingInteractions ? "..." : totalInteractions}
               icon={<Activity className="w-5 h-5" />}
               color="secondary"
+            />
+            <MetricCard
+              title="Impact Debriefs"
+              value={(impactLogs as any[])?.length || 0}
+              icon={<Mic className="w-5 h-5" />}
+              color="green"
             />
             <MetricCard
               title="Avg Confidence"

@@ -35,6 +35,10 @@ export const contacts = pgTable("contacts", {
   active: boolean("active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  consentStatus: text("consent_status").default("pending"),
+  consentDate: timestamp("consent_date"),
+  consentNotes: text("consent_notes"),
+  stage: text("stage"),
 });
 
 export const interactions = pgTable("interactions", {
@@ -86,10 +90,108 @@ export const events = pgTable("events", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const eventAttendance = pgTable("event_attendance", {
+  id: serial("id").primaryKey(),
+  eventId: integer("event_id").notNull(),
+  contactId: integer("contact_id").notNull(),
+  role: text("role").default("attendee"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const impactLogs = pgTable("impact_logs", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  title: text("title").notNull(),
+  transcript: text("transcript"),
+  summary: text("summary"),
+  rawExtraction: jsonb("raw_extraction"),
+  reviewedData: jsonb("reviewed_data"),
+  status: text("status").notNull().default("draft"),
+  eventId: integer("event_id"),
+  sentiment: text("sentiment"),
+  milestones: text("milestones").array(),
+  keyQuotes: text("key_quotes").array(),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedBy: text("reviewed_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const impactLogContacts = pgTable("impact_log_contacts", {
+  id: serial("id").primaryKey(),
+  impactLogId: integer("impact_log_id").notNull(),
+  contactId: integer("contact_id").notNull(),
+  role: text("role"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const impactTaxonomy = pgTable("impact_taxonomy", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  color: text("color"),
+  active: boolean("active").default(true),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const impactTags = pgTable("impact_tags", {
+  id: serial("id").primaryKey(),
+  impactLogId: integer("impact_log_id").notNull(),
+  taxonomyId: integer("taxonomy_id").notNull(),
+  confidence: integer("confidence"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const keywordDictionary = pgTable("keyword_dictionary", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  phrase: text("phrase").notNull(),
+  taxonomyId: integer("taxonomy_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const actionItems = pgTable("action_items", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  contactId: integer("contact_id"),
+  impactLogId: integer("impact_log_id"),
+  title: text("title").notNull(),
+  description: text("description"),
+  status: text("status").notNull().default("pending"),
+  dueDate: timestamp("due_date"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const consentRecords = pgTable("consent_records", {
+  id: serial("id").primaryKey(),
+  contactId: integer("contact_id").notNull(),
+  userId: text("user_id").notNull(),
+  action: text("action").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const auditLog = pgTable("audit_log", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: integer("entity_id").notNull(),
+  action: text("action").notNull(),
+  changes: jsonb("changes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // === RELATIONS ===
 export const contactsRelations = relations(contacts, ({ many }) => ({
   interactions: many(interactions),
   meetings: many(meetings),
+  eventAttendance: many(eventAttendance),
+  impactLogContacts: many(impactLogContacts),
+  actionItems: many(actionItems),
 }));
 
 export const interactionsRelations = relations(interactions, ({ one }) => ({
@@ -102,6 +204,84 @@ export const interactionsRelations = relations(interactions, ({ one }) => ({
 export const meetingsRelations = relations(meetings, ({ one }) => ({
   contact: one(contacts, {
     fields: [meetings.contactId],
+    references: [contacts.id],
+  }),
+}));
+
+export const eventsRelations = relations(events, ({ many }) => ({
+  eventAttendance: many(eventAttendance),
+  impactLogs: many(impactLogs),
+}));
+
+export const eventAttendanceRelations = relations(eventAttendance, ({ one }) => ({
+  event: one(events, {
+    fields: [eventAttendance.eventId],
+    references: [events.id],
+  }),
+  contact: one(contacts, {
+    fields: [eventAttendance.contactId],
+    references: [contacts.id],
+  }),
+}));
+
+export const impactLogsRelations = relations(impactLogs, ({ one, many }) => ({
+  event: one(events, {
+    fields: [impactLogs.eventId],
+    references: [events.id],
+  }),
+  impactLogContacts: many(impactLogContacts),
+  impactTags: many(impactTags),
+  actionItems: many(actionItems),
+}));
+
+export const impactLogContactsRelations = relations(impactLogContacts, ({ one }) => ({
+  impactLog: one(impactLogs, {
+    fields: [impactLogContacts.impactLogId],
+    references: [impactLogs.id],
+  }),
+  contact: one(contacts, {
+    fields: [impactLogContacts.contactId],
+    references: [contacts.id],
+  }),
+}));
+
+export const impactTaxonomyRelations = relations(impactTaxonomy, ({ many }) => ({
+  impactTags: many(impactTags),
+  keywordDictionary: many(keywordDictionary),
+}));
+
+export const impactTagsRelations = relations(impactTags, ({ one }) => ({
+  impactLog: one(impactLogs, {
+    fields: [impactTags.impactLogId],
+    references: [impactLogs.id],
+  }),
+  taxonomy: one(impactTaxonomy, {
+    fields: [impactTags.taxonomyId],
+    references: [impactTaxonomy.id],
+  }),
+}));
+
+export const keywordDictionaryRelations = relations(keywordDictionary, ({ one }) => ({
+  taxonomy: one(impactTaxonomy, {
+    fields: [keywordDictionary.taxonomyId],
+    references: [impactTaxonomy.id],
+  }),
+}));
+
+export const actionItemsRelations = relations(actionItems, ({ one }) => ({
+  contact: one(contacts, {
+    fields: [actionItems.contactId],
+    references: [contacts.id],
+  }),
+  impactLog: one(impactLogs, {
+    fields: [actionItems.impactLogId],
+    references: [impactLogs.id],
+  }),
+}));
+
+export const consentRecordsRelations = relations(consentRecords, ({ one }) => ({
+  contact: one(contacts, {
+    fields: [consentRecords.contactId],
     references: [contacts.id],
   }),
 }));
@@ -123,6 +303,51 @@ export const insertEventSchema = createInsertSchema(events).omit({
   createdAt: true,
 });
 
+export const insertEventAttendanceSchema = createInsertSchema(eventAttendance).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertImpactLogSchema = createInsertSchema(impactLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertImpactLogContactSchema = createInsertSchema(impactLogContacts).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertImpactTaxonomySchema = createInsertSchema(impactTaxonomy).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertImpactTagSchema = createInsertSchema(impactTags).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertKeywordDictionarySchema = createInsertSchema(keywordDictionary).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertActionItemSchema = createInsertSchema(actionItems).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertConsentRecordSchema = createInsertSchema(consentRecords).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertAuditLogSchema = createInsertSchema(auditLog).omit({
+  id: true,
+  createdAt: true,
+});
+
 // === EXPLICIT API CONTRACT TYPES ===
 export type Contact = typeof contacts.$inferSelect;
 export type InsertContact = z.infer<typeof insertContactSchema>;
@@ -140,6 +365,33 @@ export type InsertMeeting = z.infer<typeof insertMeetingSchema>;
 
 export type Event = typeof events.$inferSelect;
 export type InsertEvent = z.infer<typeof insertEventSchema>;
+
+export type EventAttendance = typeof eventAttendance.$inferSelect;
+export type InsertEventAttendance = z.infer<typeof insertEventAttendanceSchema>;
+
+export type ImpactLog = typeof impactLogs.$inferSelect;
+export type InsertImpactLog = z.infer<typeof insertImpactLogSchema>;
+
+export type ImpactLogContact = typeof impactLogContacts.$inferSelect;
+export type InsertImpactLogContact = z.infer<typeof insertImpactLogContactSchema>;
+
+export type ImpactTaxonomy = typeof impactTaxonomy.$inferSelect;
+export type InsertImpactTaxonomy = z.infer<typeof insertImpactTaxonomySchema>;
+
+export type ImpactTag = typeof impactTags.$inferSelect;
+export type InsertImpactTag = z.infer<typeof insertImpactTagSchema>;
+
+export type KeywordDictionary = typeof keywordDictionary.$inferSelect;
+export type InsertKeywordDictionary = z.infer<typeof insertKeywordDictionarySchema>;
+
+export type ActionItem = typeof actionItems.$inferSelect;
+export type InsertActionItem = z.infer<typeof insertActionItemSchema>;
+
+export type ConsentRecord = typeof consentRecords.$inferSelect;
+export type InsertConsentRecord = z.infer<typeof insertConsentRecordSchema>;
+
+export type AuditLog = typeof auditLog.$inferSelect;
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
 
 // Request types
 export type CreateContactRequest = InsertContact;

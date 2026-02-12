@@ -6,9 +6,12 @@ import {
   LogOut,
   BrainCircuit,
   Settings,
+  Tags,
   Menu,
   FileText,
   PartyPopper,
+  Mic,
+  CheckSquare,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "../ui/beautiful-button";
@@ -23,8 +26,10 @@ const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Community", href: "/contacts", icon: Users },
   { name: "Events", href: "/events", icon: PartyPopper },
+  { name: "Debriefs", href: "/debriefs", icon: Mic },
   { name: "Reports", href: "/reports", icon: FileText },
-  { name: "Settings", href: "/settings", icon: Settings, disabled: true },
+  { name: "Actions", href: "/actions", icon: CheckSquare },
+  { name: "Taxonomy", href: "/taxonomy", icon: Tags },
 ];
 
 export function Sidebar() {
