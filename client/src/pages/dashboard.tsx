@@ -3,8 +3,9 @@ import { MetricCard } from "@/components/ui/metric-card";
 import { useContacts } from "@/hooks/use-contacts";
 import { useInteractions } from "@/hooks/use-interactions";
 import { useMeetings, useCreateMeeting, useUpdateMeeting, useDeleteMeeting } from "@/hooks/use-meetings";
+import { useEvents } from "@/hooks/use-events";
 import { useAuth } from "@/hooks/use-auth";
-import { Users, Activity, TrendingUp, Calendar as CalendarIcon, ArrowRight, Plus, Clock, MapPin, X, Check, Trash2, ChevronLeft, ChevronRight, Video } from "lucide-react";
+import { Users, Activity, TrendingUp, Calendar as CalendarIcon, ArrowRight, Plus, Clock, MapPin, X, Check, Trash2, ChevronLeft, ChevronRight, Video, PartyPopper } from "lucide-react";
 import { Link } from "wouter";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, isBefore, startOfDay, addHours, setHours, setMinutes } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -22,7 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useMemo } from "react";
-import type { Meeting, Contact } from "@shared/schema";
+import type { Meeting, Contact, Event } from "@shared/schema";
 
 const MEETING_STATUS_COLORS: Record<string, string> = {
   scheduled: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
@@ -35,6 +36,7 @@ export default function Dashboard() {
   const { data: contacts, isLoading: loadingContacts } = useContacts();
   const { data: interactions, isLoading: loadingInteractions } = useInteractions();
   const { data: meetings, isLoading: loadingMeetings } = useMeetings();
+  const { data: events } = useEvents();
 
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -99,10 +101,25 @@ export default function Dashboard() {
     return map;
   }, [meetings]);
 
+  const eventsByDate = useMemo(() => {
+    const map = new Map<string, Event[]>();
+    events?.forEach((ev: Event) => {
+      const key = format(new Date(ev.startTime), "yyyy-MM-dd");
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(ev);
+    });
+    return map;
+  }, [events]);
+
   const selectedDayMeetings = useMemo(() => {
     const key = format(selectedDate, "yyyy-MM-dd");
     return meetingsByDate.get(key) || [];
   }, [selectedDate, meetingsByDate]);
+
+  const selectedDayEvents = useMemo(() => {
+    const key = format(selectedDate, "yyyy-MM-dd");
+    return eventsByDate.get(key) || [];
+  }, [selectedDate, eventsByDate]);
 
   if (!user) return null;
 
@@ -181,6 +198,7 @@ export default function Dashboard() {
                   {calendarDays.map((day, idx) => {
                     const key = format(day, "yyyy-MM-dd");
                     const dayMeetings = meetingsByDate.get(key) || [];
+                    const dayEvents = eventsByDate.get(key) || [];
                     const isCurrentMonth = isSameMonth(day, currentMonth);
                     const isSelected = isSameDay(day, selectedDate);
                     const today = isToday(day);
@@ -203,15 +221,21 @@ export default function Dashboard() {
                         `}>
                           {format(day, "d")}
                         </span>
-                        {dayMeetings.length > 0 && (
+                        {(dayMeetings.length > 0 || dayEvents.length > 0) && (
                           <div className="flex flex-wrap gap-0.5 mt-0.5">
-                            {dayMeetings.slice(0, 3).map((m, i) => (
+                            {dayMeetings.slice(0, 2).map((m, i) => (
                               <div
-                                key={i}
+                                key={`m-${i}`}
                                 className={`w-full h-1 rounded-full ${
                                   m.status === "cancelled" ? "bg-red-400" :
                                   m.status === "completed" ? "bg-green-400" : "bg-blue-400"
                                 }`}
+                              />
+                            ))}
+                            {dayEvents.slice(0, 2).map((_, i) => (
+                              <div
+                                key={`e-${i}`}
+                                className="w-full h-1 rounded-full bg-violet-400"
                               />
                             ))}
                           </div>
@@ -241,7 +265,7 @@ export default function Dashboard() {
                   </Button>
                 </div>
 
-                {selectedDayMeetings.length > 0 ? (
+                {(selectedDayMeetings.length > 0 || selectedDayEvents.length > 0) ? (
                   <div className="space-y-3">
                     {selectedDayMeetings.map((meeting) => {
                       const contact = contacts?.find((c: Contact) => c.id === meeting.contactId);
@@ -279,11 +303,43 @@ export default function Dashboard() {
                         </button>
                       );
                     })}
+                    {selectedDayEvents.map((ev: Event) => (
+                      <Link key={ev.id} href="/events">
+                        <div
+                          data-testid={`button-calendar-event-${ev.id}`}
+                          className="w-full text-left p-3 rounded-lg border border-violet-300 dark:border-violet-700 bg-violet-50 dark:bg-violet-900/20 hover:bg-violet-100 dark:hover:bg-violet-900/30 transition-colors flex items-start gap-3 cursor-pointer"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-violet-500/15 text-violet-600 dark:text-violet-300 flex items-center justify-center shrink-0 mt-0.5">
+                            <PartyPopper className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium text-sm truncate">{ev.name}</span>
+                              <Badge variant="secondary" className="text-xs bg-violet-500/15 text-violet-700 dark:text-violet-300">
+                                {ev.type}
+                              </Badge>
+                            </div>
+                            <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {format(new Date(ev.startTime), "h:mm a")} - {format(new Date(ev.endTime), "h:mm a")}
+                              </span>
+                            </div>
+                            {ev.location && (
+                              <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+                                <MapPin className="w-3 h-3" />
+                                {ev.location}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </Link>
+                    ))}
                   </div>
                 ) : (
                   <div className="text-center py-8 text-muted-foreground text-sm">
                     <CalendarIcon className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                    <p>No meetings on this day.</p>
+                    <p>No meetings or events on this day.</p>
                     <Button
                       variant="ghost"
                       size="sm"

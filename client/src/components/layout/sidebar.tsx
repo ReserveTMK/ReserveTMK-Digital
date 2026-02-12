@@ -8,6 +8,7 @@ import {
   Settings,
   Menu,
   FileText,
+  PartyPopper,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "../ui/beautiful-button";
@@ -21,6 +22,7 @@ import { useState } from "react";
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Community", href: "/contacts", icon: Users },
+  { name: "Events", href: "/events", icon: PartyPopper },
   { name: "Reports", href: "/reports", icon: FileText },
   { name: "Settings", href: "/settings", icon: Settings, disabled: true },
 ];

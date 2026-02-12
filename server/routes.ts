@@ -223,6 +223,19 @@ export async function registerRoutes(
         return d >= start && d <= end && contactIds.includes(m.contactId);
       });
 
+      const allEvents = await storage.getEvents(userId);
+      const filteredEvents = allEvents.filter(ev => {
+        const d = new Date(ev.startTime);
+        return d >= start && d <= end;
+      });
+
+      const eventsByType: Record<string, number> = {};
+      let totalAttendees = 0;
+      filteredEvents.forEach(ev => {
+        eventsByType[ev.type] = (eventsByType[ev.type] || 0) + 1;
+        totalAttendees += ev.attendeeCount || 0;
+      });
+
       const interactionsByType: Record<string, number> = {};
       flatInteractions.forEach(i => {
         interactionsByType[i.type] = (interactionsByType[i.type] || 0) + 1;
@@ -280,8 +293,11 @@ export async function registerRoutes(
           totalInteractions: flatInteractions.length,
           totalMeetings: filteredMeetings.length,
           totalContacts: filteredContacts.length,
+          totalEvents: filteredEvents.length,
+          totalAttendees,
           interactionsByType,
           meetingsByStatus,
+          eventsByType,
           avgMindset: scoredCount > 0 ? Math.round((totalMindset / scoredCount) * 10) / 10 : null,
           avgSkill: scoredCount > 0 ? Math.round((totalSkill / scoredCount) * 10) / 10 : null,
           avgConfidence: scoredCount > 0 ? Math.round((totalConfidence / scoredCount) * 10) / 10 : null,

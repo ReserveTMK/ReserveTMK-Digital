@@ -21,6 +21,7 @@ import {
   BarChart3,
   CalendarDays,
   CalendarRange,
+  PartyPopper,
 } from "lucide-react";
 import {
   format,
@@ -37,8 +38,11 @@ type ReportData = {
     totalInteractions: number;
     totalMeetings: number;
     totalContacts: number;
+    totalEvents: number;
+    totalAttendees: number;
     interactionsByType: Record<string, number>;
     meetingsByStatus: Record<string, number>;
+    eventsByType: Record<string, number>;
     avgMindset: number | null;
     avgSkill: number | null;
     avgConfidence: number | null;
@@ -300,7 +304,7 @@ export default function Reports() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <Card className="p-4">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -341,6 +345,26 @@ export default function Reports() {
                   <p className="text-2xl font-bold" data-testid="text-avg-confidence">
                     {report.summary.avgConfidence !== null ? `${report.summary.avgConfidence}/10` : "-"}
                   </p>
+                </Card>
+
+                <Card className="p-4">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-9 h-9 rounded-lg bg-violet-500/10 flex items-center justify-center">
+                      <PartyPopper className="w-4 h-4 text-violet-500" />
+                    </div>
+                    <span className="text-sm text-muted-foreground">Events</span>
+                  </div>
+                  <p className="text-2xl font-bold" data-testid="text-total-events">{report.summary.totalEvents}</p>
+                </Card>
+
+                <Card className="p-4">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-9 h-9 rounded-lg bg-pink-500/10 flex items-center justify-center">
+                      <Users className="w-4 h-4 text-pink-500" />
+                    </div>
+                    <span className="text-sm text-muted-foreground">Total Connections</span>
+                  </div>
+                  <p className="text-2xl font-bold" data-testid="text-total-attendees">{report.summary.totalAttendees}</p>
                 </Card>
               </div>
 
@@ -415,6 +439,28 @@ export default function Reports() {
                       </div>
                     ))}
                   </div>
+                </Card>
+              )}
+
+              {report.summary.eventsByType && Object.keys(report.summary.eventsByType).length > 0 && (
+                <Card className="p-5">
+                  <h3 className="font-semibold mb-4 flex items-center gap-2">
+                    <PartyPopper className="w-4 h-4 text-muted-foreground" />
+                    Events by Type
+                  </h3>
+                  <div className="flex flex-wrap gap-3">
+                    {Object.entries(report.summary.eventsByType).map(([type, count]) => (
+                      <div key={type} className="flex items-center gap-2 bg-violet-500/5 rounded-lg px-4 py-2">
+                        <span className="text-sm font-medium">{type}</span>
+                        <Badge variant="secondary" className="text-xs bg-violet-500/15 text-violet-700 dark:text-violet-300">{count}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                  {report.summary.totalAttendees > 0 && (
+                    <p className="text-sm text-muted-foreground mt-3">
+                      Total connections made across events: <span className="font-semibold text-foreground">{report.summary.totalAttendees}</span>
+                    </p>
+                  )}
                 </Card>
               )}
 
