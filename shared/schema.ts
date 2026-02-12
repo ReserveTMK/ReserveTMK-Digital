@@ -64,6 +64,20 @@ export const meetings = pgTable("meetings", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const events = pgTable("events", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  type: text("type").notNull(), // 'Networking Event', 'Workshop', 'Activation', 'Conference', 'Community Event', 'Other'
+  startTime: timestamp("start_time").notNull(),
+  endTime: timestamp("end_time").notNull(),
+  location: text("location"),
+  attendeeCount: integer("attendee_count"),
+  description: text("description"),
+  tags: text("tags").array(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // === RELATIONS ===
 export const contactsRelations = relations(contacts, ({ many }) => ({
   interactions: many(interactions),
@@ -96,6 +110,11 @@ export const insertInteractionSchema = createInsertSchema(interactions).omit({
   createdAt: true 
 });
 
+export const insertEventSchema = createInsertSchema(events).omit({
+  id: true,
+  createdAt: true,
+});
+
 // === EXPLICIT API CONTRACT TYPES ===
 export type Contact = typeof contacts.$inferSelect;
 export type InsertContact = z.infer<typeof insertContactSchema>;
@@ -111,11 +130,17 @@ export const insertMeetingSchema = createInsertSchema(meetings).omit({
 export type Meeting = typeof meetings.$inferSelect;
 export type InsertMeeting = z.infer<typeof insertMeetingSchema>;
 
+export type Event = typeof events.$inferSelect;
+export type InsertEvent = z.infer<typeof insertEventSchema>;
+
 // Request types
 export type CreateContactRequest = InsertContact;
 export type UpdateContactRequest = Partial<InsertContact>;
 export type CreateMeetingRequest = InsertMeeting;
 export type UpdateMeetingRequest = Partial<InsertMeeting>;
+
+export type CreateEventRequest = InsertEvent;
+export type UpdateEventRequest = Partial<InsertEvent>;
 
 export type CreateInteractionRequest = InsertInteraction;
 export type AnalyzeInteractionRequest = {

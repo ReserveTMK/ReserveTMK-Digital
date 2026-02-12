@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { insertContactSchema, insertInteractionSchema, insertMeetingSchema, contacts, interactions, meetings } from './schema';
+import { insertContactSchema, insertInteractionSchema, insertMeetingSchema, insertEventSchema, contacts, interactions, meetings, events } from './schema';
 
 // ============================================
 // SHARED ERROR SCHEMAS
@@ -142,6 +142,50 @@ export const api = {
     delete: {
       method: 'DELETE' as const,
       path: '/api/meetings/:id' as const,
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
+  events: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/events' as const,
+      responses: {
+        200: z.array(z.custom<typeof events.$inferSelect>()),
+      },
+    },
+    get: {
+      method: 'GET' as const,
+      path: '/api/events/:id' as const,
+      responses: {
+        200: z.custom<typeof events.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/events' as const,
+      input: insertEventSchema,
+      responses: {
+        201: z.custom<typeof events.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/events/:id' as const,
+      input: insertEventSchema.partial(),
+      responses: {
+        200: z.custom<typeof events.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/events/:id' as const,
       responses: {
         204: z.void(),
         404: errorSchemas.notFound,

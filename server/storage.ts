@@ -3,6 +3,7 @@ import {
   contacts,
   interactions,
   meetings,
+  events,
   type Contact,
   type InsertContact,
   type Interaction,
@@ -11,6 +12,9 @@ import {
   type Meeting,
   type InsertMeeting,
   type UpdateMeetingRequest,
+  type Event,
+  type InsertEvent,
+  type UpdateEventRequest,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte } from "drizzle-orm";
 
@@ -36,6 +40,13 @@ export interface IStorage {
   updateMeeting(id: number, updates: UpdateMeetingRequest): Promise<Meeting>;
   deleteMeeting(id: number): Promise<void>;
   
+  // Events
+  getEvents(userId: string): Promise<Event[]>;
+  getEvent(id: number): Promise<Event | undefined>;
+  createEvent(event: InsertEvent): Promise<Event>;
+  updateEvent(id: number, updates: UpdateEventRequest): Promise<Event>;
+  deleteEvent(id: number): Promise<void>;
+
   // Auth (re-exported or separate)
   auth: IAuthStorage;
 }
@@ -134,6 +145,37 @@ export class DatabaseStorage implements IStorage {
 
   async deleteMeeting(id: number): Promise<void> {
     await db.delete(meetings).where(eq(meetings.id, id));
+  }
+
+  // Events
+  async getEvents(userId: string): Promise<Event[]> {
+    return await db.select()
+      .from(events)
+      .where(eq(events.userId, userId))
+      .orderBy(desc(events.startTime));
+  }
+
+  async getEvent(id: number): Promise<Event | undefined> {
+    const [event] = await db.select().from(events).where(eq(events.id, id));
+    return event;
+  }
+
+  async createEvent(insertEvent: InsertEvent): Promise<Event> {
+    const [event] = await db.insert(events).values(insertEvent).returning();
+    return event;
+  }
+
+  async updateEvent(id: number, updates: UpdateEventRequest): Promise<Event> {
+    const [event] = await db
+      .update(events)
+      .set(updates)
+      .where(eq(events.id, id))
+      .returning();
+    return event;
+  }
+
+  async deleteEvent(id: number): Promise<void> {
+    await db.delete(events).where(eq(events.id, id));
   }
 }
 
