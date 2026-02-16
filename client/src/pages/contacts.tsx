@@ -534,11 +534,30 @@ function BulkUploadDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
           <DialogTitle>Bulk Upload Contacts</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
-          <div className="text-sm text-muted-foreground">
-            Upload a CSV file with your contacts. The file should have headers like:
-            <span className="font-mono text-xs block mt-1 bg-muted p-2 rounded-md">
-              Name, Email, Phone, Role, Business Name, Age, Ethnicity, Location, Tags, Notes
-            </span>
+          <div className="text-sm text-muted-foreground space-y-2">
+            <p>Upload a CSV file with your contacts. Need a starting point?</p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const template = [
+                  "Name,Email,Phone,Role,Business Name,Age,Ethnicity,Location,Tags,Notes",
+                  "Jane Doe,jane@example.com,021 123 4567,Mentee,Doe Designs,28,Māori,Auckland Central,\"startup, design\",First session completed",
+                  "John Smith,john@example.com,022 987 6543,Business Owner,Smith & Co,35,\"European, Pacific Peoples\",Mount Wellington,leadership,Referred by Ra",
+                ].join("\n");
+                const blob = new Blob([template], { type: "text/csv" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "contacts_template.csv";
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              data-testid="button-download-template"
+            >
+              <FileUp className="w-3.5 h-3.5 mr-1.5" />
+              Download CSV Template
+            </Button>
           </div>
 
           <div
