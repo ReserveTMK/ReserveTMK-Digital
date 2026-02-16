@@ -28,7 +28,31 @@ import {
   ArrowLeft,
   Trash2,
   FileText,
+  Search,
+  UserPlus,
+  Link2,
+  Unlink,
 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import type { ImpactLog, Contact } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
 
@@ -697,53 +721,113 @@ function ReviewView({ id }: { id: number }) {
               </Card>
 
               <Card className="p-5">
-                <h3 className="font-bold font-display mb-3">People Identified</h3>
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <h3 className="font-bold font-display">Linked Community Members</h3>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPeople([...people, { name: "", role: "mentioned", contactId: null, confidence: null }])}
+                    data-testid="button-add-person"
+                  >
+                    <UserPlus className="w-3.5 h-3.5 mr-1" />
+                    Add Person
+                  </Button>
+                </div>
                 {people.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No people identified</p>
+                  <p className="text-sm text-muted-foreground">No community members linked to this debrief yet. Click "Add Person" to link one.</p>
                 ) : (
                   <div className="space-y-3">
-                    {people.map((person: any, i: number) => (
-                      <div key={i} className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border border-border">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{person.name}</p>
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            <Badge variant="secondary" className="text-xs">
-                              {person.role || "mentioned"}
-                            </Badge>
-                            {person.confidence && (
-                              <span className="text-xs text-muted-foreground">{person.confidence}% match</span>
-                            )}
-                          </div>
-                          {person.contactId && contacts ? (
-                            <p className="text-xs text-primary mt-1">
-                              Linked to: {contacts.find((c) => c.id === person.contactId)?.name || `Contact #${person.contactId}`}
-                            </p>
-                          ) : (
+                    {people.map((person: any, i: number) => {
+                      const linkedContact = person.contactId ? contacts?.find((c) => c.id === person.contactId) : null;
+                      return (
+                        <div key={i} className="p-3 bg-muted/30 rounded-lg border border-border space-y-2" data-testid={`person-entry-${i}`}>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0 space-y-2">
+                              {linkedContact ? (
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <Link2 className="w-3.5 h-3.5 text-primary shrink-0" />
+                                  <span className="text-sm font-medium text-primary">{linkedContact.name}</span>
+                                  {linkedContact.role && (
+                                    <Badge variant="secondary" className="text-xs">{linkedContact.role}</Badge>
+                                  )}
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-xs text-muted-foreground"
+                                    onClick={() => {
+                                      const updated = [...people];
+                                      updated[i] = { ...updated[i], contactId: null };
+                                      setPeople(updated);
+                                    }}
+                                    data-testid={`button-unlink-${i}`}
+                                  >
+                                    <Unlink className="w-3 h-3 mr-1" />
+                                    Unlink
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="space-y-2">
+                                  {person.name && (
+                                    <p className="text-sm text-muted-foreground">
+                                      AI identified: <span className="font-medium text-foreground">{person.name}</span>
+                                      {person.confidence && <span className="text-xs ml-1">({person.confidence}% match)</span>}
+                                    </p>
+                                  )}
+                                  <ContactSearchPicker
+                                    contacts={contacts || []}
+                                    onSelect={(contactId) => {
+                                      const contact = contacts?.find(c => c.id === contactId);
+                                      const updated = [...people];
+                                      updated[i] = {
+                                        ...updated[i],
+                                        contactId,
+                                        name: contact?.name || updated[i].name,
+                                      };
+                                      setPeople(updated);
+                                      if (contact) {
+                                        toast({ title: "Linked", description: `Linked to ${contact.name}` });
+                                      }
+                                    }}
+                                    testId={`search-link-contact-${i}`}
+                                  />
+                                </div>
+                              )}
+                            </div>
                             <Button
                               variant="ghost"
-                              size="sm"
-                              className="mt-1 text-xs"
-                              onClick={() => {
-                                const match = contacts?.find((c) =>
-                                  c.name.toLowerCase().includes(person.name?.toLowerCase() || "")
-                                );
-                                if (match) {
-                                  const updated = [...people];
-                                  updated[i] = { ...updated[i], contactId: match.id };
-                                  setPeople(updated);
-                                  toast({ title: "Linked", description: `Linked to ${match.name}` });
-                                } else {
-                                  toast({ title: "No match", description: "No matching contact found.", variant: "destructive" });
-                                }
-                              }}
-                              data-testid={`button-link-contact-${i}`}
+                              size="icon"
+                              className="shrink-0"
+                              onClick={() => setPeople(people.filter((_: any, j: number) => j !== i))}
+                              data-testid={`button-remove-person-${i}`}
                             >
-                              Link to Contact
+                              <X className="w-3.5 h-3.5" />
                             </Button>
-                          )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Label className="text-xs text-muted-foreground shrink-0">Role:</Label>
+                            <Select
+                              value={person.role || "mentioned"}
+                              onValueChange={(val) => {
+                                const updated = [...people];
+                                updated[i] = { ...updated[i], role: val };
+                                setPeople(updated);
+                              }}
+                            >
+                              <SelectTrigger className="h-7 text-xs w-auto" data-testid={`select-person-role-${i}`}>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="mentioned">Mentioned</SelectItem>
+                                <SelectItem value="primary">Primary</SelectItem>
+                                <SelectItem value="participant">Participant</SelectItem>
+                                <SelectItem value="mentor">Mentor</SelectItem>
+                                <SelectItem value="mentee">Mentee</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </Card>
@@ -925,5 +1009,63 @@ function ReviewView({ id }: { id: number }) {
         </div>
       </main>
     </div>
+  );
+}
+
+function ContactSearchPicker({
+  contacts,
+  onSelect,
+  testId,
+}: {
+  contacts: Contact[];
+  onSelect: (contactId: number) => void;
+  testId: string;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          className="w-full justify-start text-muted-foreground font-normal"
+          data-testid={testId}
+        >
+          <Search className="w-3.5 h-3.5 mr-2 shrink-0" />
+          Search and link a community member...
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[300px] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Type a name to search..." data-testid={`${testId}-input`} />
+          <CommandList>
+            <CommandEmpty>No contacts found.</CommandEmpty>
+            <CommandGroup>
+              {contacts.map((c) => (
+                <CommandItem
+                  key={c.id}
+                  value={c.name}
+                  onSelect={() => {
+                    onSelect(c.id);
+                    setOpen(false);
+                  }}
+                  data-testid={`${testId}-option-${c.id}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0">
+                      {c.name[0]}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{c.name}</p>
+                      {c.role && <p className="text-xs text-muted-foreground">{c.role}</p>}
+                    </div>
+                  </div>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }

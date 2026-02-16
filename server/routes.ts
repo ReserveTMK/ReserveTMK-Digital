@@ -96,6 +96,56 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  app.post("/api/contacts/bulk", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { contacts: rows } = req.body;
+      if (!Array.isArray(rows) || rows.length === 0) {
+        return res.status(400).json({ message: "No contacts provided" });
+      }
+      if (rows.length > 500) {
+        return res.status(400).json({ message: "Maximum 500 contacts per upload" });
+      }
+
+      const results: { created: number; errors: { row: number; message: string }[] } = {
+        created: 0,
+        errors: [],
+      };
+
+      for (let i = 0; i < rows.length; i++) {
+        try {
+          const row = rows[i];
+          const input = api.contacts.create.input.parse({
+            name: row.name?.trim(),
+            role: row.role?.trim() || "Mentee",
+            email: row.email?.trim() || undefined,
+            phone: row.phone?.trim() || undefined,
+            businessName: row.businessName?.trim() || undefined,
+            age: row.age ? parseInt(row.age) || undefined : undefined,
+            ethnicity: row.ethnicity
+              ? (typeof row.ethnicity === "string" ? row.ethnicity.split(",").map((s: string) => s.trim()).filter(Boolean) : row.ethnicity)
+              : undefined,
+            location: row.location?.trim() || undefined,
+            tags: row.tags
+              ? (typeof row.tags === "string" ? row.tags.split(",").map((s: string) => s.trim()).filter(Boolean) : row.tags)
+              : undefined,
+            notes: row.notes?.trim() || undefined,
+            userId,
+          });
+          await storage.createContact(input);
+          results.created++;
+        } catch (err) {
+          const msg = err instanceof z.ZodError ? err.errors[0].message : (err as Error).message;
+          results.errors.push({ row: i + 1, message: msg });
+        }
+      }
+
+      res.json(results);
+    } catch (err) {
+      res.status(500).json({ message: "Bulk upload failed" });
+    }
+  });
+
   // === Interactions API ===
 
   app.get(api.interactions.list.path, isAuthenticated, async (req, res) => {

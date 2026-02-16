@@ -1,8 +1,8 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { Button } from "@/components/ui/beautiful-button";
 import { useContacts, useCreateContact } from "@/hooks/use-contacts";
-import { Plus, Search, Filter, Loader2, User } from "lucide-react";
-import { useState } from "react";
+import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X } from "lucide-react";
+import { useState, useRef, useCallback } from "react";
 import { Link } from "wouter";
 import {
   Dialog,
@@ -19,6 +19,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertContactSchema } from "@shared/schema";
 import { z } from "zod";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 type ContactFormValues = Record<string, any>;
 
@@ -27,6 +32,7 @@ export default function Contacts() {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [open, setOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   const filteredContacts = contacts?.filter(contact => {
     const matchesSearch = contact.name.toLowerCase().includes(search.toLowerCase()) || 
@@ -48,16 +54,24 @@ export default function Contacts() {
               <p className="text-muted-foreground mt-1">Manage your mentees and network.</p>
             </div>
             
-            <Dialog open={open} onOpenChange={setOpen}>
-              <DialogTrigger asChild>
-                <Button className="shadow-lg">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Member
-                </Button>
-              </DialogTrigger>
-              <CreateContactDialogContent onSuccess={() => setOpen(false)} />
-            </Dialog>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button variant="outline" onClick={() => setBulkOpen(true)} data-testid="button-bulk-upload">
+                <Upload className="w-4 h-4 mr-2" />
+                Bulk Upload
+              </Button>
+              <Dialog open={open} onOpenChange={setOpen}>
+                <DialogTrigger asChild>
+                  <Button className="shadow-lg" data-testid="button-add-member">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Member
+                  </Button>
+                </DialogTrigger>
+                <CreateContactDialogContent onSuccess={() => setOpen(false)} />
+              </Dialog>
+            </div>
           </div>
+
+          <BulkUploadDialog open={bulkOpen} onOpenChange={setBulkOpen} />
 
           {/* Filters */}
           <div className="flex flex-col sm:flex-row gap-4">
@@ -68,11 +82,12 @@ export default function Contacts() {
                 className="pl-10 h-11 bg-card rounded-xl border-border/60"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                data-testid="input-search-contacts"
               />
             </div>
             <div className="w-full sm:w-48">
               <Select value={roleFilter} onValueChange={setRoleFilter}>
-                <SelectTrigger className="h-11 rounded-xl bg-card border-border/60">
+                <SelectTrigger className="h-11 rounded-xl bg-card border-border/60" data-testid="select-role-filter">
                   <div className="flex items-center gap-2">
                     <Filter className="w-4 h-4 text-muted-foreground" />
                     <SelectValue placeholder="Filter by Role" />
@@ -100,29 +115,29 @@ export default function Contacts() {
               </div>
               <h3 className="text-lg font-semibold mb-2">No community members found</h3>
               <p className="text-muted-foreground mb-6">Try adjusting your filters or add a new member.</p>
-              <Button onClick={() => setOpen(true)} variant="outline">Add Member</Button>
+              <Button onClick={() => setOpen(true)} variant="outline" data-testid="button-add-member-empty">Add Member</Button>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredContacts?.map((contact) => (
-                <Link key={contact.id} href={`/contacts/${contact.id}`}>
-                  <div className="group bg-card hover:bg-card/80 border border-border rounded-2xl p-6 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer h-full flex flex-col">
+                <Link key={contact.id} href={`/contacts/${contact.id}`} data-testid={`link-contact-${contact.id}`}>
+                  <div className="group bg-card hover:bg-card/80 border border-border rounded-2xl p-6 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer h-full flex flex-col" data-testid={`card-contact-${contact.id}`}>
                     <div className="flex items-start justify-between mb-4">
                       <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold text-xl group-hover:scale-110 transition-transform">
                         {contact.name[0]}
                       </div>
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-secondary text-secondary-foreground">
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-secondary text-secondary-foreground" data-testid={`text-role-${contact.id}`}>
                         {contact.role}
                       </span>
                     </div>
                     
-                    <h3 className="text-xl font-bold font-display text-foreground mb-1 group-hover:text-primary transition-colors">
+                    <h3 className="text-xl font-bold font-display text-foreground mb-1 group-hover:text-primary transition-colors" data-testid={`text-name-${contact.id}`}>
                       {contact.name}
                     </h3>
                     {contact.businessName && (
                       <p className="text-sm text-foreground/70 truncate" data-testid={`text-business-${contact.id}`}>{contact.businessName}</p>
                     )}
-                    <p className="text-sm text-muted-foreground mb-4 truncate">{contact.email || "No email"}</p>
+                    <p className="text-sm text-muted-foreground mb-4 truncate" data-testid={`text-email-${contact.id}`}>{contact.email || "No email"}</p>
                     
                     <div className="mt-auto pt-4 border-t border-border/50 flex flex-wrap gap-2">
                       {contact.tags && contact.tags.length > 0 ? (
@@ -387,6 +402,253 @@ function CreateContactDialogContent({ onSuccess }: { onSuccess: () => void }) {
         </DialogFooter>
       </form>
     </DialogContent>
+  );
+}
+
+function parseCSVFields(text: string): string[][] {
+  const rows: string[][] = [];
+  let current = "";
+  let inQuotes = false;
+  let fields: string[] = [];
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (i + 1 < text.length && text[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        current += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        fields.push(current.trim());
+        current = "";
+      } else if (ch === '\n' || ch === '\r') {
+        if (ch === '\r' && i + 1 < text.length && text[i + 1] === '\n') i++;
+        fields.push(current.trim());
+        if (fields.some(f => f !== "")) rows.push(fields);
+        fields = [];
+        current = "";
+      } else {
+        current += ch;
+      }
+    }
+  }
+  fields.push(current.trim());
+  if (fields.some(f => f !== "")) rows.push(fields);
+  return rows;
+}
+
+function parseCSV(text: string): Record<string, string>[] {
+  const allRows = parseCSVFields(text);
+  if (allRows.length < 2) return [];
+  const rawHeaders = allRows[0];
+  const headerMap: Record<number, string> = {};
+  for (let idx = 0; idx < rawHeaders.length; idx++) {
+    const h = rawHeaders[idx];
+    const lower = h.toLowerCase().replace(/[^a-z]/g, "");
+    if (lower.includes("name") && !lower.includes("business")) headerMap[idx] = "name";
+    else if (lower.includes("business") || lower.includes("brand") || lower.includes("company")) headerMap[idx] = "businessName";
+    else if (lower.includes("email")) headerMap[idx] = "email";
+    else if (lower.includes("phone") || lower.includes("mobile")) headerMap[idx] = "phone";
+    else if (lower.includes("role") || lower.includes("type")) headerMap[idx] = "role";
+    else if (lower.includes("age")) headerMap[idx] = "age";
+    else if (lower.includes("ethnic")) headerMap[idx] = "ethnicity";
+    else if (lower.includes("location") || lower.includes("city") || lower.includes("region")) headerMap[idx] = "location";
+    else if (lower.includes("tag")) headerMap[idx] = "tags";
+    else if (lower.includes("note")) headerMap[idx] = "notes";
+  }
+
+  return allRows.slice(1).map(fields => {
+    const row: Record<string, string> = {};
+    fields.forEach((val, i) => {
+      const key = headerMap[i] || rawHeaders[i];
+      if (val && key) row[key] = val;
+    });
+    return row;
+  }).filter(r => r.name);
+}
+
+function BulkUploadDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [parsedRows, setParsedRows] = useState<Record<string, string>[]>([]);
+  const [fileName, setFileName] = useState("");
+  const [uploadResult, setUploadResult] = useState<{ created: number; errors: { row: number; message: string }[] } | null>(null);
+
+  const bulkMutation = useMutation({
+    mutationFn: async (contacts: Record<string, string>[]) => {
+      const res = await apiRequest("POST", "/api/contacts/bulk", { contacts });
+      return res.json();
+    },
+    onSuccess: (result) => {
+      setUploadResult(result);
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      if (result.created > 0) {
+        toast({ title: `${result.created} contacts imported` });
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileName(file.name);
+    setUploadResult(null);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      const rows = parseCSV(text);
+      setParsedRows(rows);
+    };
+    reader.readAsText(file);
+  }, []);
+
+  const handleUpload = () => {
+    if (parsedRows.length === 0) return;
+    bulkMutation.mutate(parsedRows);
+  };
+
+  const handleClose = () => {
+    onOpenChange(false);
+    setParsedRows([]);
+    setFileName("");
+    setUploadResult(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-[600px]">
+        <DialogHeader>
+          <DialogTitle>Bulk Upload Contacts</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="text-sm text-muted-foreground">
+            Upload a CSV file with your contacts. The file should have headers like:
+            <span className="font-mono text-xs block mt-1 bg-muted p-2 rounded-md">
+              Name, Email, Phone, Role, Business Name, Age, Ethnicity, Location, Tags, Notes
+            </span>
+          </div>
+
+          <div
+            className="border-2 border-dashed border-border rounded-xl p-8 text-center cursor-pointer transition-colors hover:border-primary/50"
+            onClick={() => fileInputRef.current?.click()}
+            data-testid="dropzone-csv"
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              onChange={handleFileChange}
+              className="hidden"
+              data-testid="input-csv-file"
+            />
+            <FileUp className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
+            {fileName ? (
+              <p className="text-sm font-medium text-foreground">{fileName}</p>
+            ) : (
+              <p className="text-sm text-muted-foreground">Click to select a CSV file</p>
+            )}
+          </div>
+
+          {parsedRows.length > 0 && !uploadResult && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium" data-testid="text-preview-count">
+                  {parsedRows.length} contact{parsedRows.length !== 1 ? "s" : ""} found
+                </p>
+                <Badge variant="secondary">{fileName}</Badge>
+              </div>
+              <div className="max-h-48 overflow-auto border border-border rounded-lg">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 sticky top-0">
+                    <tr>
+                      <th className="text-left p-2 font-medium">#</th>
+                      <th className="text-left p-2 font-medium">Name</th>
+                      <th className="text-left p-2 font-medium">Role</th>
+                      <th className="text-left p-2 font-medium">Email</th>
+                      <th className="text-left p-2 font-medium">Location</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {parsedRows.slice(0, 20).map((row, i) => (
+                      <tr key={i} className="border-t border-border/50" data-testid={`row-preview-${i}`}>
+                        <td className="p-2 text-muted-foreground">{i + 1}</td>
+                        <td className="p-2">{row.name}</td>
+                        <td className="p-2">{row.role || "Mentee"}</td>
+                        <td className="p-2 text-muted-foreground">{row.email || "-"}</td>
+                        <td className="p-2 text-muted-foreground">{row.location || "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {parsedRows.length > 20 && (
+                  <p className="text-xs text-muted-foreground text-center py-2">
+                    ...and {parsedRows.length - 20} more
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {uploadResult && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 p-3 bg-green-500/10 rounded-lg border border-green-500/20">
+                <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />
+                <span className="text-sm font-medium text-green-700" data-testid="text-upload-success">
+                  {uploadResult.created} contact{uploadResult.created !== 1 ? "s" : ""} imported successfully
+                </span>
+              </div>
+              {uploadResult.errors.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm text-destructive">
+                    <AlertCircle className="w-4 h-4" />
+                    {uploadResult.errors.length} row{uploadResult.errors.length !== 1 ? "s" : ""} had errors
+                  </div>
+                  <div className="max-h-32 overflow-auto text-xs space-y-1">
+                    {uploadResult.errors.map((err, i) => (
+                      <p key={i} className="text-muted-foreground" data-testid={`text-upload-error-${i}`}>
+                        Row {err.row}: {err.message}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={handleClose} data-testid="button-cancel-bulk">
+            {uploadResult ? "Done" : "Cancel"}
+          </Button>
+          {!uploadResult && (
+            <Button
+              onClick={handleUpload}
+              disabled={parsedRows.length === 0 || bulkMutation.isPending}
+              data-testid="button-import-contacts"
+            >
+              {bulkMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Importing...</>
+              ) : (
+                <><Upload className="w-4 h-4 mr-2" /> Import {parsedRows.length} Contact{parsedRows.length !== 1 ? "s" : ""}</>
+              )}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
