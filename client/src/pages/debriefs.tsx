@@ -71,7 +71,7 @@ function ListView() {
   return (
     <div className="flex min-h-screen bg-background/50">
       <Sidebar />
-      <main className="flex-1 md:ml-72 p-4 md:p-8 overflow-y-auto">
+      <main className="flex-1 md:ml-72 p-4 md:p-8 pt-14 md:pt-0 pb-20 md:pb-0 overflow-y-auto">
         <div className="max-w-6xl mx-auto space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
@@ -512,7 +512,7 @@ function ReviewView({ id }: { id: number }) {
     return (
       <div className="flex min-h-screen bg-background/50">
         <Sidebar />
-        <main className="flex-1 md:ml-72 flex items-center justify-center">
+        <main className="flex-1 md:ml-72 flex items-center justify-center pt-14 md:pt-0 pb-20 md:pb-0">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </main>
       </div>
@@ -523,7 +523,7 @@ function ReviewView({ id }: { id: number }) {
     return (
       <div className="flex min-h-screen bg-background/50">
         <Sidebar />
-        <main className="flex-1 md:ml-72 p-4 md:p-8">
+        <main className="flex-1 md:ml-72 p-4 md:p-8 pt-14 md:pt-0 pb-20 md:pb-0">
           <div className="max-w-6xl mx-auto">
             <Card className="p-12 text-center">
               <h3 className="text-lg font-semibold mb-2">Debrief not found</h3>
@@ -584,7 +584,7 @@ function ReviewView({ id }: { id: number }) {
   return (
     <div className="flex min-h-screen bg-background/50">
       <Sidebar />
-      <main className="flex-1 md:ml-72 p-4 md:p-8 overflow-y-auto pb-24">
+      <main className="flex-1 md:ml-72 p-4 md:p-8 pt-14 md:pt-0 overflow-y-auto pb-20 md:pb-0">
         <div className="max-w-7xl mx-auto space-y-6">
           <div className="flex items-center gap-4 flex-wrap">
             <Button variant="ghost" size="icon" onClick={() => setLocation("/debriefs")} data-testid="button-back">

@@ -5,13 +5,14 @@ import {
   Users,
   LogOut,
   BrainCircuit,
-  Settings,
   Tags,
   Menu,
   FileText,
   PartyPopper,
   Mic,
   CheckSquare,
+  CalendarCheck,
+  MoreHorizontal,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "../ui/beautiful-button";
@@ -27,42 +28,45 @@ const navigation = [
   { name: "Community", href: "/contacts", icon: Users },
   { name: "Events", href: "/events", icon: PartyPopper },
   { name: "Debriefs", href: "/debriefs", icon: Mic },
+  { name: "Calendar", href: "/calendar", icon: CalendarCheck },
   { name: "Reports", href: "/reports", icon: FileText },
   { name: "Actions", href: "/actions", icon: CheckSquare },
   { name: "Taxonomy", href: "/taxonomy", icon: Tags },
 ];
+
+const bottomNavItems = navigation.slice(0, 4);
 
 export function Sidebar() {
   const [location] = useLocation();
   const { logout, user } = useAuth();
   const [open, setOpen] = useState(false);
 
-  const NavContent = () => (
+  const NavContent = ({ onNavigate }: { onNavigate?: () => void }) => (
     <div className="flex flex-col h-full">
       <div className="px-6 py-8">
-        <Link href="/" className="flex items-center gap-2 group">
+        <Link href="/" className="flex items-center gap-2 group" onClick={onNavigate}>
           <div className="bg-primary p-2 rounded-xl group-hover:bg-primary/90 transition-colors">
             <BrainCircuit className="w-6 h-6 text-white" />
           </div>
           <span className="font-display font-bold text-xl tracking-tight">
-            Mentorship<span className="text-primary">AI</span>
+            ReserveTMK
           </span>
         </Link>
       </div>
 
-      <nav className="flex-1 px-4 space-y-2">
+      <nav className="flex-1 px-4 space-y-1">
         {navigation.map((item) => {
           const isActive = location === item.href;
           return (
-            <Link key={item.name} href={item.disabled ? "#" : item.href}
+            <Link key={item.name} href={item.href}
               className={cn(
                 "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group font-medium",
                 isActive
                   ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                  : "text-muted-foreground hover:bg-secondary hover:text-foreground",
-                item.disabled && "opacity-50 cursor-not-allowed pointer-events-none"
+                  : "text-muted-foreground hover-elevate",
               )}
-              onClick={() => setOpen(false)}
+              onClick={onNavigate}
+              data-testid={`nav-${item.name.toLowerCase()}`}
             >
               <item.icon className={cn("w-5 h-5", isActive ? "text-white" : "text-muted-foreground group-hover:text-foreground")} />
               {item.name}
@@ -87,8 +91,9 @@ export function Sidebar() {
         </div>
         <Button
           variant="outline"
-          className="w-full justify-start text-muted-foreground hover:text-destructive hover:bg-destructive/10 hover:border-destructive/20"
+          className="w-full justify-start text-muted-foreground"
           onClick={() => logout()}
+          data-testid="button-sign-out"
         >
           <LogOut className="w-4 h-4 mr-2" />
           Sign Out
@@ -99,19 +104,53 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Mobile Trigger */}
-      <div className="md:hidden fixed top-4 left-4 z-50">
+      {/* Mobile hamburger trigger - top left */}
+      <div className="md:hidden fixed top-3 left-3 z-50">
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger asChild>
-            <Button variant="outline" size="icon" className="shadow-md bg-background">
+            <Button variant="outline" size="icon" className="shadow-md bg-background" data-testid="button-mobile-menu">
               <Menu className="w-5 h-5" />
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="p-0 w-80">
-            <NavContent />
+            <NavContent onNavigate={() => setOpen(false)} />
           </SheetContent>
         </Sheet>
       </div>
+
+      {/* Mobile bottom navigation bar */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border/50 shadow-lg shadow-black/10 safe-area-bottom" data-testid="nav-bottom-bar">
+        <div className="flex items-stretch justify-around gap-1">
+          {bottomNavItems.map((item) => {
+            const isActive = location === item.href;
+            return (
+              <Link
+                key={item.name}
+                href={item.href}
+                className={cn(
+                  "flex flex-col items-center justify-center py-2 px-3 flex-1 min-w-0 transition-colors",
+                  isActive ? "text-primary" : "text-muted-foreground",
+                )}
+                data-testid={`bottom-nav-${item.name.toLowerCase()}`}
+              >
+                <item.icon className={cn("w-5 h-5 mb-0.5", isActive && "text-primary")} />
+                <span className={cn("text-[10px] font-medium truncate", isActive && "text-primary")}>
+                  {item.name}
+                </span>
+              </Link>
+            );
+          })}
+          <Link
+            href="#"
+            onClick={(e) => { e.preventDefault(); setOpen(true); }}
+            className="flex flex-col items-center justify-center py-2 px-3 flex-1 min-w-0 transition-colors text-muted-foreground"
+            data-testid="bottom-nav-more"
+          >
+            <MoreHorizontal className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px] font-medium">More</span>
+          </Link>
+        </div>
+      </nav>
 
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-72 flex-col fixed inset-y-0 z-50 bg-card border-r border-border/50 shadow-xl shadow-black/5">

@@ -69,8 +69,9 @@ export interface IStorage {
   // Events
   getEvents(userId: string): Promise<Event[]>;
   getEvent(id: number): Promise<Event | undefined>;
+  getEventByGoogleCalendarId(googleCalendarEventId: string, userId: string): Promise<Event | undefined>;
   createEvent(event: InsertEvent): Promise<Event>;
-  updateEvent(id: number, updates: UpdateEventRequest): Promise<Event>;
+  updateEvent(id: number, updates: any): Promise<Event>;
   deleteEvent(id: number): Promise<void>;
 
   // Event Attendance
@@ -232,6 +233,12 @@ export class DatabaseStorage implements IStorage {
 
   async getEvent(id: number): Promise<Event | undefined> {
     const [event] = await db.select().from(events).where(eq(events.id, id));
+    return event;
+  }
+
+  async getEventByGoogleCalendarId(googleCalendarEventId: string, userId: string): Promise<Event | undefined> {
+    const [event] = await db.select().from(events)
+      .where(and(eq(events.googleCalendarEventId, googleCalendarEventId), eq(events.userId, userId)));
     return event;
   }
 

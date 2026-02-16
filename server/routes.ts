@@ -1065,5 +1065,102 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     res.json(logs);
   });
 
+  // === Google Calendar API ===
+
+  app.get("/api/google-calendar/events", isAuthenticated, async (req, res) => {
+    try {
+      const { getUncachableGoogleCalendarClient } = await import("./replit_integrations/google-calendar/client");
+      const calendar = await getUncachableGoogleCalendarClient();
+
+      const timeMin = (req.query.timeMin as string) || new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+      const timeMax = (req.query.timeMax as string) || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      const response = await calendar.events.list({
+        calendarId: "primary",
+        timeMin,
+        timeMax,
+        maxResults: 250,
+        singleEvents: true,
+        orderBy: "startTime",
+      });
+
+      const calEvents = (response.data.items || []).map((e: any) => ({
+        id: e.id,
+        summary: e.summary || "(No title)",
+        description: e.description || "",
+        location: e.location || "",
+        start: e.start?.dateTime || e.start?.date || "",
+        end: e.end?.dateTime || e.end?.date || "",
+        attendees: (e.attendees || []).map((a: any) => ({
+          email: a.email,
+          displayName: a.displayName || a.email,
+          responseStatus: a.responseStatus,
+        })),
+        htmlLink: e.htmlLink,
+        status: e.status,
+      }));
+
+      res.json(calEvents);
+    } catch (err: any) {
+      console.error("Google Calendar fetch error:", err.message);
+      res.status(500).json({ message: "Failed to fetch Google Calendar events: " + err.message });
+    }
+  });
+
+  app.post("/api/google-calendar/reconcile", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { googleCalendarEventId, summary, description, location, start, end, type } = req.body;
+
+      if (!googleCalendarEventId || !summary || !start || !end) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      const existing = await storage.getEventByGoogleCalendarId(googleCalendarEventId, userId);
+      if (existing) {
+        return res.status(409).json({ message: "This calendar event is already linked to an app event", event: existing });
+      }
+
+      const event = await storage.createEvent({
+        userId,
+        name: summary,
+        type: type || "Community Event",
+        startTime: new Date(start),
+        endTime: new Date(end),
+        location: location || null,
+        description: description || null,
+        googleCalendarEventId,
+        tags: [],
+        attendeeCount: null,
+      });
+
+      res.status(201).json(event);
+    } catch (err: any) {
+      console.error("Reconcile error:", err.message);
+      res.status(500).json({ message: "Failed to reconcile event" });
+    }
+  });
+
+  app.post("/api/google-calendar/link", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { eventId, googleCalendarEventId } = req.body;
+
+      if (!eventId || !googleCalendarEventId) {
+        return res.status(400).json({ message: "eventId and googleCalendarEventId required" });
+      }
+
+      const event = await storage.getEvent(eventId);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+      if (event.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      const updated = await storage.updateEvent(eventId, { googleCalendarEventId });
+      res.json(updated);
+    } catch (err: any) {
+      console.error("Link error:", err.message);
+      res.status(500).json({ message: "Failed to link event" });
+    }
+  });
+
   return httpServer;
 }

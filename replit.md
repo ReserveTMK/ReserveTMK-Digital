@@ -1,8 +1,16 @@
-# MentorshipAI
+# ReserveTMK
 
 ## Overview
 
-MentorshipAI is a full-stack web application for tracking mentorship relationships and measuring mentee growth over time. Users can manage contacts (mentees, business owners, innovators), log interactions (calls, meetings, voice notes), and leverage AI to analyze conversation transcripts for mindset, skill, and confidence metrics. The app features voice recording with AI-powered analysis, metric trend visualization via charts, report generation (monthly/quarterly/ad hoc), and a polished UI with a purple/indigo design theme.
+ReserveTMK is a full-stack web application for tracking mentorship relationships and measuring mentee growth over time. Users can manage contacts (mentees, business owners, innovators), log interactions (calls, meetings, voice notes), and leverage AI to analyze conversation transcripts for mindset, skill, and confidence metrics. The app features voice recording with AI-powered analysis, metric trend visualization via charts, report generation (monthly/quarterly/ad hoc), Google Calendar integration for event reconciliation, and a polished UI with a purple/indigo design theme. The app is a Progressive Web App (PWA) with mobile-friendly bottom navigation.
+
+## Recent Changes (Feb 2026)
+- Added Google Calendar integration via Replit connector with event reconciliation (import/link workflows)
+- Added Calendar Sync page (`/calendar`) with search, filter, match suggestions, import-as-new and link-to-existing
+- Converted to PWA: web manifest, service worker, Apple mobile web app meta tags
+- Added mobile bottom navigation bar with 4 key items + "More" for full nav access
+- Added proper mobile padding (top for hamburger button, bottom for nav bar) to all 9 pages
+- Responsive font sizing for contact detail page titles
 
 ## User Preferences
 

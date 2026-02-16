@@ -87,6 +87,7 @@ export const events = pgTable("events", {
   attendeeCount: integer("attendee_count"),
   description: text("description"),
   tags: text("tags").array(),
+  googleCalendarEventId: text("google_calendar_event_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

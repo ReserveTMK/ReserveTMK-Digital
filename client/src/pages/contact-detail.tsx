@@ -140,7 +140,7 @@ export default function ContactDetail() {
   return (
     <div className="flex min-h-screen bg-background/50">
       <Sidebar />
-      <main className="flex-1 md:ml-72 p-4 md:p-8 overflow-y-auto">
+      <main className="flex-1 md:ml-72 p-4 md:p-8 pt-14 md:pt-0 pb-20 md:pb-0 overflow-y-auto">
         <div className="max-w-6xl mx-auto space-y-8">
           
           {/* Header */}
@@ -155,7 +155,7 @@ export default function ContactDetail() {
                   {contact.name[0]}
                 </div>
                 <div>
-                  <h1 className="text-4xl font-display font-bold text-foreground">{contact.name}</h1>
+                  <h1 className="text-2xl sm:text-4xl font-display font-bold text-foreground">{contact.name}</h1>
                   {contact.businessName && (
                     <p className="text-muted-foreground/80 text-base" data-testid="text-business-name">{contact.businessName}</p>
                   )}

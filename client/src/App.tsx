@@ -18,6 +18,7 @@ import Events from "@/pages/events";
 import Debriefs from "@/pages/debriefs";
 import Actions from "@/pages/actions";
 import Taxonomy from "@/pages/taxonomy";
+import CalendarPage from "@/pages/calendar";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -99,6 +100,10 @@ function Router() {
 
       <Route path="/taxonomy">
         <ProtectedRoute component={Taxonomy} />
+      </Route>
+
+      <Route path="/calendar">
+        <ProtectedRoute component={CalendarPage} />
       </Route>
 
       <Route component={NotFound} />
