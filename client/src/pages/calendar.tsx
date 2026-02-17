@@ -170,7 +170,9 @@ function EventCard({
   onLogDebriefFromApp,
   onDeleteEvent,
   onDismissEvent,
+  onMarkNotPersonal,
   isDebriefPending,
+  isMarkedNotPersonal,
 }: {
   entry: CombinedEvent;
   appEvents: AppEvent[];
@@ -178,7 +180,9 @@ function EventCard({
   onLogDebriefFromApp: (app: AppEvent) => void;
   onDeleteEvent: (app: AppEvent) => void;
   onDismissEvent: (gcalId: string, eventName: string, suggestedReason?: string) => void;
+  onMarkNotPersonal: (gcalId: string) => void;
   isDebriefPending: boolean;
+  isMarkedNotPersonal: boolean;
 }) {
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
@@ -195,7 +199,7 @@ function EventCard({
         name: data.name,
         email: data.email || null,
         phone: data.phone || null,
-        type: "mentee",
+        role: "Entrepreneur",
       });
       return res.json();
     },
@@ -318,7 +322,7 @@ function EventCard({
   }, [contacts, contactSearch, attendance]);
 
   const badgeColor = EVENT_TYPE_BADGE_COLORS[eventType] || "";
-  const personalEvent = isGcal ? isPersonalEvent(entry.gcal!.summary, entry.gcal!.description) : false;
+  const personalEvent = isGcal && !isMarkedNotPersonal ? isPersonalEvent(entry.gcal!.summary, entry.gcal!.description) : false;
 
   return (
     <Card className={`p-4 ${personalEvent ? "border-amber-500/30 bg-amber-500/5" : ""}`} data-testid={`card-event-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}>
@@ -329,24 +333,39 @@ function EventCard({
               <AlertTriangle className="w-3.5 h-3.5" />
               <span className="text-xs font-medium">Looks like a personal event</span>
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-6 text-xs px-2"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDismissEvent(entry.gcal!.id, entry.gcal!.summary, "Personal event");
-              }}
-              data-testid={`button-quick-dismiss-${entry.gcal!.id}`}
-            >
-              <EyeOff className="w-3 h-3 mr-1" />
-              Dismiss
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 text-xs px-2"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMarkNotPersonal(entry.gcal!.id);
+                }}
+                data-testid={`button-not-personal-${entry.gcal!.id}`}
+              >
+                <X className="w-3 h-3 mr-1" />
+                Not personal
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 text-xs px-2"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDismissEvent(entry.gcal!.id, entry.gcal!.summary, "Personal event");
+                }}
+                data-testid={`button-quick-dismiss-${entry.gcal!.id}`}
+              >
+                <EyeOff className="w-3 h-3 mr-1" />
+                Dismiss
+              </Button>
+            </div>
           </div>
         )}
         <button
-          onClick={() => entry.isPast && setExpanded(!expanded)}
-          className={`w-full text-left ${entry.isPast ? "cursor-pointer" : ""}`}
+          onClick={() => setExpanded(!expanded)}
+          className="w-full text-left cursor-pointer"
           data-testid={`button-expand-event-${isGcal ? entry.gcal!.id : entry.app!.id}`}
         >
           <div className="flex items-start justify-between gap-2">
@@ -361,9 +380,7 @@ function EventCard({
                   GCal
                 </Badge>
               )}
-              {entry.isPast && (
-                expanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
-              )}
+              {expanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
             </div>
           </div>
         </button>
@@ -393,7 +410,7 @@ function EventCard({
           )}
         </div>
 
-        {expanded && entry.isPast && (
+        {expanded && (
           <div className="space-y-3 pt-2 border-t border-border/50 mt-2">
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Event Type</Label>
@@ -535,21 +552,23 @@ function EventCard({
             </Dialog>
 
             <div className="flex gap-2 pt-1">
-              <Button
-                size="sm"
-                variant="default"
-                className="flex-1"
-                onClick={() => isGcal ? onLogDebrief(entry.gcal!) : onLogDebriefFromApp(entry.app!)}
-                disabled={isDebriefPending}
-                data-testid={`button-debrief-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}
-              >
-                {isDebriefPending ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
-                ) : (
-                  <FileText className="w-3.5 h-3.5 mr-1" />
-                )}
-                Log Debrief
-              </Button>
+              {entry.isPast && (
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="flex-1"
+                  onClick={() => isGcal ? onLogDebrief(entry.gcal!) : onLogDebriefFromApp(entry.app!)}
+                  disabled={isDebriefPending}
+                  data-testid={`button-debrief-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}
+                >
+                  {isDebriefPending ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                  ) : (
+                    <FileText className="w-3.5 h-3.5 mr-1" />
+                  )}
+                  Log Debrief
+                </Button>
+              )}
               {isGcal && !personalEvent && (
                 <Button
                   size="icon"
@@ -574,8 +593,10 @@ function EventCard({
           </div>
         )}
 
-        {!expanded && entry.isPast && (
-          <p className="text-xs text-muted-foreground italic">Tap to edit type, tag members, or log debrief</p>
+        {!expanded && (
+          <p className="text-xs text-muted-foreground italic">
+            {entry.isPast ? "Tap to edit type, tag members, or log debrief" : "Tap to edit type or tag members"}
+          </p>
         )}
       </div>
     </Card>
@@ -624,7 +645,15 @@ export default function CalendarPage() {
     queryKey: ["/api/calendar-settings"],
   });
 
-  const dismissedIds = useMemo(() => new Set((dismissedEvents || []).map(d => d.gcalEventId)), [dismissedEvents]);
+  const NOT_PERSONAL_REASON = "__not_personal__";
+
+  const dismissedIds = useMemo(() => new Set(
+    (dismissedEvents || []).filter(d => d.reason !== NOT_PERSONAL_REASON).map(d => d.gcalEventId)
+  ), [dismissedEvents]);
+
+  const notPersonalIds = useMemo(() => new Set(
+    (dismissedEvents || []).filter(d => d.reason === NOT_PERSONAL_REASON).map(d => d.gcalEventId)
+  ), [dismissedEvents]);
 
   const dismissMutation = useMutation({
     mutationFn: async ({ gcalEventId, reason }: { gcalEventId: string; reason: string }) => {
@@ -639,6 +668,19 @@ export default function CalendarPage() {
     },
     onError: (err: any) => {
       toast({ title: "Failed to dismiss event", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const markNotPersonalMutation = useMutation({
+    mutationFn: async (gcalEventId: string) => {
+      await apiRequest("POST", "/api/dismissed-calendar-events", { gcalEventId, reason: NOT_PERSONAL_REASON });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dismissed-calendar-events"] });
+      toast({ title: "Marked as not personal" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to update", description: err.message, variant: "destructive" });
     },
   });
 
@@ -1092,7 +1134,9 @@ export default function CalendarPage() {
                         onLogDebriefFromApp={handleLogDebriefFromApp}
                         onDeleteEvent={handleDeleteEvent}
                         onDismissEvent={handleDismissEvent}
+                        onMarkNotPersonal={(gcalId) => markNotPersonalMutation.mutate(gcalId)}
                         isDebriefPending={createDebriefMutation.isPending}
+                        isMarkedNotPersonal={entry.gcal ? notPersonalIds.has(entry.gcal.id) : false}
                       />
                     </div>
                   ))}

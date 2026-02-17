@@ -536,6 +536,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async dismissCalendarEvent(data: InsertDismissedCalendarEvent): Promise<DismissedCalendarEvent> {
+    const [existing] = await db.select()
+      .from(dismissedCalendarEvents)
+      .where(
+        and(
+          eq(dismissedCalendarEvents.userId, data.userId),
+          eq(dismissedCalendarEvents.gcalEventId, data.gcalEventId),
+          eq(dismissedCalendarEvents.reason, data.reason),
+        )
+      );
+    if (existing) return existing;
     const [record] = await db.insert(dismissedCalendarEvents).values(data).returning();
     return record;
   }
