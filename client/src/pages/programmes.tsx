@@ -54,11 +54,11 @@ const CLASSIFICATION_COLORS: Record<string, string> = {
   "Networking": "bg-green-500/15 text-green-700 dark:text-green-300",
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  planned: "bg-gray-500/15 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-800",
-  active: "bg-green-500/15 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800",
-  completed: "bg-green-500/5 text-green-600/50 dark:text-green-400/50 border-green-100 dark:border-green-900/30",
-  cancelled: "bg-gray-500/5 text-gray-500/50 dark:text-gray-400/50 border-gray-100 dark:border-gray-900/30",
+const STATUS_CARD_COLORS: Record<string, string> = {
+  planned: "bg-gray-50/50 dark:bg-gray-900/20 border-gray-200 dark:border-gray-800",
+  active: "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800",
+  completed: "bg-green-50/30 dark:bg-green-900/10 border-green-100 dark:border-green-900/20 opacity-70",
+  cancelled: "bg-gray-100/30 dark:bg-gray-900/10 border-gray-100 dark:border-gray-900/20 opacity-70",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -234,13 +234,13 @@ export default function Programmes() {
                 return (
                   <Card 
                     key={programme.id} 
-                    className={`p-4 hover-elevate transition-opacity ${isCompleted || isCancelled ? "opacity-60" : ""}`} 
+                    className={`p-4 hover-elevate transition-all ${STATUS_CARD_COLORS[programme.status] || ""}`} 
                     data-testid={`card-programme-${programme.id}`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <h3 className={`font-semibold text-base truncate ${isCancelled ? "line-through" : ""}`} data-testid={`text-programme-name-${programme.id}`}>
+                          <h3 className={`font-semibold text-base truncate ${isCancelled ? "line-through opacity-70" : ""}`} data-testid={`text-programme-name-${programme.id}`}>
                             {programme.name}
                           </h3>
                           <Badge className={CLASSIFICATION_COLORS[programme.classification] || ""} data-testid={`badge-classification-${programme.id}`}>
@@ -248,7 +248,7 @@ export default function Programmes() {
                           </Badge>
                           <Badge 
                             variant="outline"
-                            className={`flex items-center gap-1 ${STATUS_COLORS[programme.status] || ""}`} 
+                            className="flex items-center gap-1 bg-background/50 backdrop-blur-sm" 
                             data-testid={`badge-status-${programme.id}`}
                           >
                             {isCompleted && <CheckCircle2 className="w-3 h-3 text-green-600" />}
