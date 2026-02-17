@@ -221,6 +221,7 @@ export const programmes = pgTable("programmes", {
   cateringCost: numeric("catering_cost", { precision: 10, scale: 2 }).default("0"),
   promoCost: numeric("promo_cost", { precision: 10, scale: 2 }).default("0"),
   facilitators: integer("facilitators").array(),
+  attendees: integer("attendees").array(),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

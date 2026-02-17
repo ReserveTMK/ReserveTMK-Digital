@@ -106,6 +106,13 @@ export default function Programmes() {
       .filter(Boolean) as string[];
   };
 
+  const getAttendeeNames = (p: Programme) => {
+    if (!p.attendees?.length || !contacts) return [];
+    return p.attendees
+      .map((id) => contacts.find((c) => c.id === id)?.name)
+      .filter(Boolean) as string[];
+  };
+
   const formatDateTime = (p: Programme) => {
     if (p.tbcMonth && p.tbcYear) {
       return { date: `TBC - ${p.tbcMonth} ${p.tbcYear}`, time: null };
@@ -142,6 +149,7 @@ export default function Programmes() {
         cateringCost: p.cateringCost || "0",
         promoCost: p.promoCost || "0",
         facilitators: p.facilitators || undefined,
+        attendees: p.attendees || undefined,
         notes: p.notes || undefined,
       });
       toast({ title: "Duplicated", description: `"${p.name}" has been duplicated` });
@@ -231,6 +239,7 @@ export default function Programmes() {
               {filtered.map((programme) => {
                 const dateTime = formatDateTime(programme);
                 const facNames = getFacilitatorNames(programme);
+                const attNames = getAttendeeNames(programme);
                 const isCompleted = programme.status === "completed";
                 const isCancelled = programme.status === "cancelled";
 
@@ -283,6 +292,17 @@ export default function Programmes() {
                             <span className="text-xs text-muted-foreground">Facilitators:</span>
                             {facNames.map((name, i) => (
                               <Badge key={i} variant="secondary" className="text-xs">
+                                {name}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                        {attNames.length > 0 && (
+                          <div className="flex items-center gap-1.5 mt-2 flex-wrap" data-testid={`text-attendees-${programme.id}`}>
+                            <Users className="w-3 h-3 text-muted-foreground" />
+                            <span className="text-xs text-muted-foreground">Attendees:</span>
+                            {attNames.map((name, i) => (
+                              <Badge key={i} variant="outline" className="text-xs bg-background/50">
                                 {name}
                               </Badge>
                             ))}
@@ -426,7 +446,9 @@ function ProgrammeFormDialog({
   const [promoCost, setPromoCost] = useState(programme?.promoCost || "0");
   const [notes, setNotes] = useState(programme?.notes || "");
   const [selectedFacilitators, setSelectedFacilitators] = useState<number[]>(programme?.facilitators || []);
+  const [selectedAttendees, setSelectedAttendees] = useState<number[]>(programme?.attendees || []);
   const [facilitatorSearch, setFacilitatorSearch] = useState("");
+  const [attendeeSearch, setAttendeeSearch] = useState("");
   const [showNewPersonDialog, setShowNewPersonDialog] = useState(false);
   const [newPersonName, setNewPersonName] = useState("");
   const [newPersonEmail, setNewPersonEmail] = useState("");
@@ -442,6 +464,14 @@ function ProgrammeFormDialog({
       .slice(0, 8);
   }, [contacts, facilitatorSearch, selectedFacilitators]);
 
+  const filteredAttendeeContacts = useMemo(() => {
+    if (!contacts || !attendeeSearch.trim()) return [];
+    const term = attendeeSearch.toLowerCase();
+    return contacts
+      .filter((c) => c.name.toLowerCase().includes(term) && !selectedAttendees.includes(c.id))
+      .slice(0, 8);
+  }, [contacts, attendeeSearch, selectedAttendees]);
+
   const handleAddFacilitator = (contact: Contact) => {
     setSelectedFacilitators((prev) => [...prev, contact.id]);
     setFacilitatorSearch("");
@@ -449,6 +479,15 @@ function ProgrammeFormDialog({
 
   const handleRemoveFacilitator = (contactId: number) => {
     setSelectedFacilitators((prev) => prev.filter((id) => id !== contactId));
+  };
+
+  const handleAddAttendee = (contact: Contact) => {
+    setSelectedAttendees((prev) => [...prev, contact.id]);
+    setAttendeeSearch("");
+  };
+
+  const handleRemoveAttendee = (contactId: number) => {
+    setSelectedAttendees((prev) => prev.filter((id) => id !== contactId));
   };
 
   const handleSubmit = () => {
@@ -473,6 +512,7 @@ function ProgrammeFormDialog({
       cateringCost: cateringCost || "0",
       promoCost: promoCost || "0",
       facilitators: selectedFacilitators.length > 0 ? selectedFacilitators : undefined,
+      attendees: selectedAttendees.length > 0 ? selectedAttendees : undefined,
       notes: notes.trim() || undefined,
     };
     onSubmit(data);
@@ -741,6 +781,70 @@ function ProgrammeFormDialog({
                   </button>
                 </div>
               )}
+            </div>
+
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-semibold">Community Members (Attendees)</Label>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-7 text-xs"
+                  onClick={() => setShowNewPersonDialog(true)}
+                  type="button"
+                >
+                  <UserPlus className="w-3 h-3 mr-1" />
+                  Add New
+                </Button>
+              </div>
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
+                <Input
+                  className="pl-7 h-8 text-xs"
+                  placeholder="Search community members..."
+                  value={attendeeSearch}
+                  onChange={(e) => setAttendeeSearch(e.target.value)}
+                />
+                {attendeeSearch.trim() && filteredAttendeeContacts.length > 0 && (
+                  <Card className="absolute z-50 w-full mt-1 p-1 shadow-xl border-primary/20 bg-background/95 backdrop-blur-sm">
+                    {filteredAttendeeContacts.map((contact) => (
+                      <div
+                        key={contact.id}
+                        className="flex items-center justify-between p-2 hover:bg-accent rounded-sm cursor-pointer transition-colors"
+                        onClick={() => handleAddAttendee(contact)}
+                      >
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium">{contact.name}</span>
+                          <span className="text-[10px] text-muted-foreground">{contact.role}</span>
+                        </div>
+                        <Plus className="w-3 h-3 text-primary" />
+                      </div>
+                    ))}
+                  </Card>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5 min-h-[2rem] p-2 bg-muted/30 rounded-md border border-dashed">
+                {selectedAttendees.length === 0 ? (
+                  <span className="text-[10px] text-muted-foreground italic">No members tagged yet</span>
+                ) : (
+                  selectedAttendees.map((id) => {
+                    const contact = contacts?.find((c) => c.id === id);
+                    if (!contact) return null;
+                    return (
+                      <Badge key={id} variant="secondary" className="flex items-center gap-1 pl-1.5 pr-1 py-0 h-6 text-[10px]">
+                        {contact.name}
+                        <button
+                          onClick={() => handleRemoveAttendee(id)}
+                          className="hover:bg-background/50 rounded-full p-0.5 transition-colors"
+                          type="button"
+                        >
+                          <X className="w-2 h-2" />
+                        </button>
+                      </Badge>
+                    );
+                  })
+                )}
+              </div>
             </div>
 
             <div className="space-y-3">
