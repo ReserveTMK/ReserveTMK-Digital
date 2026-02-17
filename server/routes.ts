@@ -983,13 +983,33 @@ export async function registerRoutes(
         `- ${c.name}${c.businessName ? ` (${c.businessName})` : ''} [ID: ${c.id}]`
       ).join('\n');
 
-      const prompt = `You are an impact analysis system for a community development organisation. Analyze the following debrief transcript and extract structured impact data.
+      const prompt = `You are an impact analysis system for a community development organisation in Aotearoa New Zealand. Analyze the following debrief transcript and extract structured impact data.
 
 IMPACT TAXONOMY (use these categories for tagging):
-${taxonomyContext || 'confidence, capability, connection, systems, opportunity access, economic activity, leadership shift, barriers'}
+${taxonomyContext || `- Hub Engagement: Track facility usage and programme participation metrics
+- Business Progress: Capture commercial development and revenue outcomes
+- Skills & Capability Growth: Measure competency development and confidence building
+- Network & Ecosystem Connection: Document relationship formation and ecosystem integration
+- Rangatahi Development: Track youth-specific engagement and outcomes`}
 
-KEYWORD DICTIONARY (phrases that indicate specific impact categories):
-${keywordContext || 'No keywords configured yet.'}
+SEMANTIC INDICATORS (phrases/meanings that map to categories):
+Hub Engagement: registered as member, attended workshop, came to event, used coworking space, participated in programme, joined session, turned up to, booked in for, regular user
+Business Progress: made first sale, got customer, launched business, registered company, earned revenue, hired someone, secured contract, still trading, business growing, sustainable income, wholesale client, repeat customer
+Skills & Capability Growth: learned how to, now understand, figured out how, gained confidence, feel capable, can now do, developed skill in, understand pricing, know how to market, improved at, making better decisions, ready to take next step
+Network & Ecosystem Connection: met someone who, introduced to, connected with, found mentor, got referral to, partnered with, collaborated with, supported by, linked to, now working with, relationships with
+Rangatahi Development: young entrepreneur, rangatahi participated, youth attended, first business idea, school leaver, starting out, early career, young person, student entrepreneur, developing mindset
+
+KEYWORD DICTIONARY (additional user-configured phrase mappings):
+${keywordContext || 'No additional keywords configured.'}
+
+CLASSIFICATION LOGIC:
+1. Multi-label output: Return ALL applicable categories for the transcript
+2. Semantic matching: Match on meaning and context, not just literal keyword presence
+3. Language handling: Support Te Reo Māori terms and New Zealand colloquialisms
+4. Contextual interpretation examples:
+   - "met first customer" → Business Progress + Network & Ecosystem Connection
+   - Confidence statements related to business tasks → Skills & Capability Growth + Business Progress
+5. Priority ordering: Return categories ranked by relevance strength in source text
 
 KNOWN COMMUNITY MEMBERS:
 ${peopleContext || 'No members in system yet.'}

@@ -340,11 +340,63 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Impact Taxonomy
+  private seedingUsers = new Set<string>();
+
   async getTaxonomy(userId: string): Promise<ImpactTaxonomy[]> {
-    return await db.select()
+    const existing = await db.select()
       .from(impactTaxonomy)
       .where(eq(impactTaxonomy.userId, userId))
-      .orderBy(desc(impactTaxonomy.createdAt));
+      .orderBy(impactTaxonomy.sortOrder);
+    if (existing.length === 0 && !this.seedingUsers.has(userId)) {
+      this.seedingUsers.add(userId);
+      try {
+        await this.seedDefaultTaxonomy(userId);
+      } finally {
+        this.seedingUsers.delete(userId);
+      }
+      return await db.select()
+        .from(impactTaxonomy)
+        .where(eq(impactTaxonomy.userId, userId))
+        .orderBy(impactTaxonomy.sortOrder);
+    }
+    return existing;
+  }
+
+  private static readonly DEFAULT_TAXONOMY = [
+    { name: 'Hub Engagement', description: 'Track facility usage and programme participation metrics. Physical participation and attendance at Reserve activities.', color: 'blue', sortOrder: 1 },
+    { name: 'Business Progress', description: 'Capture commercial development and revenue outcomes. Tangible business milestones and financial sustainability markers.', color: 'green', sortOrder: 2 },
+    { name: 'Skills & Capability Growth', description: 'Measure competency development and confidence building. Knowledge acquisition, self-efficacy changes, decision-making improvement.', color: 'purple', sortOrder: 3 },
+    { name: 'Network & Ecosystem Connection', description: 'Document relationship formation and ecosystem integration. Introductions, partnerships, mentorship, peer connections established.', color: 'orange', sortOrder: 4 },
+    { name: 'Rangatahi Development', description: 'Track youth-specific engagement and outcomes. Participants under 25, youth entrepreneurship development, early-stage ventures.', color: 'pink', sortOrder: 5 },
+  ];
+
+  private static readonly SEMANTIC_INDICATORS: Record<string, string[]> = {
+    'Hub Engagement': ['registered as member', 'attended workshop', 'came to event', 'used coworking space', 'participated in programme', 'joined session', 'turned up to', 'booked in for', 'regular user'],
+    'Business Progress': ['made first sale', 'got customer', 'launched business', 'registered company', 'earned revenue', 'hired someone', 'secured contract', 'still trading', 'business growing', 'sustainable income', 'wholesale client', 'repeat customer'],
+    'Skills & Capability Growth': ['learned how to', 'now understand', 'figured out how', 'gained confidence', 'feel capable', 'can now do', 'developed skill in', 'understand pricing', 'know how to market', 'improved at', 'making better decisions', 'ready to take next step'],
+    'Network & Ecosystem Connection': ['met someone who', 'introduced to', 'connected with', 'found mentor', 'got referral to', 'partnered with', 'collaborated with', 'supported by', 'linked to', 'now working with', 'relationships with'],
+    'Rangatahi Development': ['young entrepreneur', 'rangatahi participated', 'youth attended', 'first business idea', 'school leaver', 'starting out', 'early career', 'young person', 'student entrepreneur', 'developing mindset'],
+  };
+
+  private async seedDefaultTaxonomy(userId: string): Promise<void> {
+    const inserted = await db.insert(impactTaxonomy).values(
+      DatabaseStorage.DEFAULT_TAXONOMY.map(d => ({ userId, ...d, active: true }))
+    ).onConflictDoNothing().returning();
+
+    if (inserted.length === 0) return;
+
+    const keywordRows: { userId: string; phrase: string; taxonomyId: number }[] = [];
+    for (const cat of inserted) {
+      const phrases = DatabaseStorage.SEMANTIC_INDICATORS[cat.name];
+      if (phrases) {
+        for (const phrase of phrases) {
+          keywordRows.push({ userId, phrase, taxonomyId: cat.id });
+        }
+      }
+    }
+    if (keywordRows.length > 0) {
+      await db.insert(keywordDictionary).values(keywordRows).onConflictDoNothing();
+    }
   }
 
   async createTaxonomyItem(data: InsertImpactTaxonomy): Promise<ImpactTaxonomy> {
