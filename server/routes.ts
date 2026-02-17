@@ -1422,6 +1422,120 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     res.status(204).send();
   });
 
+  // === Memberships API ===
+
+  app.get(api.memberships.list.path, isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const list = await storage.getMemberships(userId);
+    res.json(list);
+  });
+
+  app.get(api.memberships.get.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const membership = await storage.getMembership(id);
+    if (!membership) return res.status(404).json({ message: "Membership not found" });
+    if (membership.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+    res.json(membership);
+  });
+
+  app.post(api.memberships.create.path, isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const body = { ...req.body, userId };
+      const input = api.memberships.create.input.parse(body);
+      const membership = await storage.createMembership(input);
+      res.status(201).json(membership);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+
+  app.patch(api.memberships.update.path, isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getMembership(id);
+      if (!existing) return res.status(404).json({ message: "Membership not found" });
+      if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+      const input = api.memberships.update.input.parse(req.body);
+      const updated = await storage.updateMembership(id, input);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+
+  app.delete(api.memberships.delete.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const existing = await storage.getMembership(id);
+    if (!existing) return res.status(404).json({ message: "Membership not found" });
+    if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+    await storage.deleteMembership(id);
+    res.status(204).send();
+  });
+
+  // === MOUs API ===
+
+  app.get(api.mous.list.path, isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const list = await storage.getMous(userId);
+    res.json(list);
+  });
+
+  app.get(api.mous.get.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const mou = await storage.getMou(id);
+    if (!mou) return res.status(404).json({ message: "MOU not found" });
+    if (mou.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+    res.json(mou);
+  });
+
+  app.post(api.mous.create.path, isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const body = { ...req.body, userId };
+      const input = api.mous.create.input.parse(body);
+      const mou = await storage.createMou(input);
+      res.status(201).json(mou);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+
+  app.patch(api.mous.update.path, isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getMou(id);
+      if (!existing) return res.status(404).json({ message: "MOU not found" });
+      if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+      const input = api.mous.update.input.parse(req.body);
+      const updated = await storage.updateMou(id, input);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+
+  app.delete(api.mous.delete.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const existing = await storage.getMou(id);
+    if (!existing) return res.status(404).json({ message: "MOU not found" });
+    if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+    await storage.deleteMou(id);
+    res.status(204).send();
+  });
+
   // === Venues API ===
 
   app.get(api.venues.list.path, isAuthenticated, async (req, res) => {

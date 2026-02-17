@@ -6,10 +6,11 @@ import {
   insertActionItemSchema, insertConsentRecordSchema, insertAuditLogSchema,
   insertProgrammeSchema, insertProgrammeEventSchema,
   insertVenueSchema, insertBookingSchema,
+  insertMembershipSchema, insertMouSchema,
   contacts, interactions, meetings, events,
   eventAttendance, impactLogs, impactLogContacts, impactTaxonomy, impactTags,
   keywordDictionary, actionItems, consentRecords, auditLog, programmes, programmeEvents,
-  venues, bookings,
+  venues, bookings, memberships, mous,
 } from './schema';
 
 // ============================================
@@ -595,6 +596,94 @@ export const api = {
     delete: {
       method: 'DELETE' as const,
       path: '/api/bookings/:id' as const,
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
+  memberships: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/memberships' as const,
+      responses: {
+        200: z.array(z.custom<typeof memberships.$inferSelect>()),
+      },
+    },
+    get: {
+      method: 'GET' as const,
+      path: '/api/memberships/:id' as const,
+      responses: {
+        200: z.custom<typeof memberships.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/memberships' as const,
+      input: insertMembershipSchema,
+      responses: {
+        201: z.custom<typeof memberships.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/memberships/:id' as const,
+      input: insertMembershipSchema.partial(),
+      responses: {
+        200: z.custom<typeof memberships.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/memberships/:id' as const,
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
+  mous: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/mous' as const,
+      responses: {
+        200: z.array(z.custom<typeof mous.$inferSelect>()),
+      },
+    },
+    get: {
+      method: 'GET' as const,
+      path: '/api/mous/:id' as const,
+      responses: {
+        200: z.custom<typeof mous.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/mous' as const,
+      input: insertMouSchema,
+      responses: {
+        201: z.custom<typeof mous.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/mous/:id' as const,
+      input: insertMouSchema.partial(),
+      responses: {
+        200: z.custom<typeof mous.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/mous/:id' as const,
       responses: {
         204: z.void(),
         404: errorSchemas.notFound,

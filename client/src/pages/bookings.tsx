@@ -26,6 +26,7 @@ import {
   useDeleteBooking,
 } from "@/hooks/use-bookings";
 import { useContacts } from "@/hooks/use-contacts";
+import { useMemberships, useMous } from "@/hooks/use-memberships";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useMemo } from "react";
 import {
@@ -90,6 +91,8 @@ export default function Bookings() {
   const { data: bookings, isLoading } = useBookings();
   const { data: venues } = useVenues();
   const { data: contacts } = useContacts();
+  const { data: allMemberships } = useMemberships();
+  const { data: allMous } = useMous();
   const createMutation = useCreateBooking();
   const updateMutation = useUpdateBooking();
   const deleteMutation = useDeleteBooking();
@@ -117,7 +120,7 @@ export default function Bookings() {
   }, [bookings, venues, search, classFilter, statusFilter]);
 
   const stats = useMemo(() => {
-    if (!bookings) return { total: 0, confirmed: 0, communityHours: 0, revenue: 0, inKind: 0 };
+    if (!bookings) return { total: 0, confirmed: 0, communityHours: 0, revenue: 0, inKind: 0, membershipBookings: 0, mouBookings: 0 };
     const nonCancelled = bookings.filter((b) => b.status !== "cancelled");
     const confirmed = bookings.filter((b) => b.status === "confirmed").length;
     const completed = bookings.filter((b) => b.status === "completed");
@@ -134,6 +137,8 @@ export default function Bookings() {
 
     let revenue = 0;
     let inKind = 0;
+    let membershipBookings = 0;
+    let mouBookings = 0;
     nonCancelled.forEach((b) => {
       const amt = parseFloat(b.amount || "0");
       if (b.pricingTier === "free_koha") {
@@ -141,9 +146,11 @@ export default function Bookings() {
       } else {
         revenue += amt;
       }
+      if (b.membershipId) membershipBookings++;
+      if (b.mouId) mouBookings++;
     });
 
-    return { total: nonCancelled.length, confirmed, communityHours, revenue, inKind };
+    return { total: nonCancelled.length, confirmed, communityHours, revenue, inKind, membershipBookings, mouBookings };
   }, [bookings]);
 
   const getVenueName = (venueId: number) => {
@@ -375,6 +382,16 @@ export default function Bookings() {
                             <DollarSign className="w-3 h-3 inline" />
                             {parseFloat(booking.amount || "0").toFixed(2)}
                           </span>
+                          {booking.membershipId && (
+                            <Badge variant="outline" className="text-xs bg-green-500/10 text-green-700 dark:text-green-300" data-testid={`badge-membership-${booking.id}`}>
+                              {allMemberships?.find(m => m.id === booking.membershipId)?.name || "Membership"}
+                            </Badge>
+                          )}
+                          {booking.mouId && (
+                            <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-700 dark:text-blue-300" data-testid={`badge-mou-${booking.id}`}>
+                              {allMous?.find(m => m.id === booking.mouId)?.title || "MOU"}
+                            </Badge>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-4 text-xs text-muted-foreground mt-2 flex-wrap">
@@ -715,6 +732,13 @@ function BookingFormDialog({
   const [selectedAttendees, setSelectedAttendees] = useState<number[]>(booking?.attendees || []);
   const [attendeeSearch, setAttendeeSearch] = useState("");
   const [attendeeCount, setAttendeeCount] = useState(booking?.attendeeCount?.toString() || (booking?.attendees?.length || 0).toString());
+  const [membershipId, setMembershipId] = useState<number | null>(booking?.membershipId || null);
+  const [mouId, setMouId] = useState<number | null>(booking?.mouId || null);
+
+  const { data: allMemberships } = useMemberships();
+  const { data: allMous } = useMous();
+  const activeMemberships = useMemo(() => (allMemberships || []).filter(m => m.status === "active"), [allMemberships]);
+  const activeMous = useMemo(() => (allMous || []).filter(m => m.status === "active"), [allMous]);
 
   const MONTHS = [
     "January", "February", "March", "April", "May", "June",
@@ -771,6 +795,8 @@ function BookingFormDialog({
       bookerId: bookerId || null,
       attendees: selectedAttendees.length > 0 ? selectedAttendees : null,
       attendeeCount: parseInt(attendeeCount) || selectedAttendees.length || null,
+      membershipId: membershipId || null,
+      mouId: mouId || null,
       notes: notes.trim() || undefined,
     };
     onSubmit(data);
@@ -963,6 +989,58 @@ function BookingFormDialog({
               </div>
             </div>
           </div>
+
+          {(activeMemberships.length > 0 || activeMous.length > 0) && (
+            <div className="space-y-3">
+              <Label className="text-sm font-semibold">Agreement</Label>
+              <div className="grid grid-cols-2 gap-3">
+                {activeMemberships.length > 0 && (
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Membership</Label>
+                    <Select
+                      value={membershipId?.toString() || "none"}
+                      onValueChange={(v) => {
+                        setMembershipId(v === "none" ? null : parseInt(v));
+                        if (v !== "none") setMouId(null);
+                      }}
+                    >
+                      <SelectTrigger data-testid="select-booking-membership">
+                        <SelectValue placeholder="None" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        {activeMemberships.map((m) => (
+                          <SelectItem key={m.id} value={m.id.toString()}>{m.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                {activeMous.length > 0 && (
+                  <div>
+                    <Label className="text-xs text-muted-foreground">MOU</Label>
+                    <Select
+                      value={mouId?.toString() || "none"}
+                      onValueChange={(v) => {
+                        setMouId(v === "none" ? null : parseInt(v));
+                        if (v !== "none") setMembershipId(null);
+                      }}
+                    >
+                      <SelectTrigger data-testid="select-booking-mou">
+                        <SelectValue placeholder="None" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        {activeMous.map((m) => (
+                          <SelectItem key={m.id} value={m.id.toString()}>{m.title}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label className="text-sm font-semibold">Booker</Label>

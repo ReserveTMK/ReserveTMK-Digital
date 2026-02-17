@@ -256,6 +256,47 @@ export const bookings = pgTable("bookings", {
   bookerId: integer("booker_id"),
   attendees: integer("attendees").array(),
   attendeeCount: integer("attendee_count"),
+  membershipId: integer("membership_id"),
+  mouId: integer("mou_id"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const MEMBERSHIP_STATUSES = ["active", "expired", "pending"] as const;
+export type MembershipStatus = typeof MEMBERSHIP_STATUSES[number];
+
+export const memberships = pgTable("memberships", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  contactId: integer("contact_id"),
+  name: text("name").notNull(),
+  annualFee: numeric("annual_fee", { precision: 10, scale: 2 }).default("0"),
+  venueHireHours: integer("venue_hire_hours").default(0),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  status: text("status").notNull().default("pending"),
+  paymentStatus: text("payment_status").default("unpaid"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const MOU_STATUSES = ["draft", "active", "expired", "terminated"] as const;
+export type MouStatus = typeof MOU_STATUSES[number];
+
+export const mous = pgTable("mous", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  contactId: integer("contact_id"),
+  title: text("title").notNull(),
+  partnerName: text("partner_name"),
+  providing: text("providing"),
+  receiving: text("receiving"),
+  inKindValue: numeric("in_kind_value", { precision: 10, scale: 2 }).default("0"),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  status: text("status").notNull().default("draft"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -282,6 +323,30 @@ export const bookingsRelations = relations(bookings, ({ one }) => ({
     fields: [bookings.bookerId],
     references: [contacts.id],
   }),
+  membership: one(memberships, {
+    fields: [bookings.membershipId],
+    references: [memberships.id],
+  }),
+  mou: one(mous, {
+    fields: [bookings.mouId],
+    references: [mous.id],
+  }),
+}));
+
+export const membershipsRelations = relations(memberships, ({ one, many }) => ({
+  contact: one(contacts, {
+    fields: [memberships.contactId],
+    references: [contacts.id],
+  }),
+  bookings: many(bookings),
+}));
+
+export const mousRelations = relations(mous, ({ one, many }) => ({
+  contact: one(contacts, {
+    fields: [mous.contactId],
+    references: [contacts.id],
+  }),
+  bookings: many(bookings),
 }));
 
 export const programmesRelations = relations(programmes, ({ many }) => ({
@@ -593,6 +658,32 @@ export type InsertVenue = z.infer<typeof insertVenueSchema>;
 
 export type Booking = typeof bookings.$inferSelect;
 export type InsertBooking = z.infer<typeof insertBookingSchema>;
+
+export const PAYMENT_STATUSES = ["unpaid", "paid", "partial", "refunded"] as const;
+export type PaymentStatus = typeof PAYMENT_STATUSES[number];
+
+export const insertMembershipSchema = createInsertSchema(memberships).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  status: z.enum(MEMBERSHIP_STATUSES).default("pending"),
+  paymentStatus: z.enum(PAYMENT_STATUSES).default("unpaid"),
+});
+
+export const insertMouSchema = createInsertSchema(mous).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  status: z.enum(MOU_STATUSES).default("draft"),
+});
+
+export type Membership = typeof memberships.$inferSelect;
+export type InsertMembership = z.infer<typeof insertMembershipSchema>;
+
+export type Mou = typeof mous.$inferSelect;
+export type InsertMou = z.infer<typeof insertMouSchema>;
 
 // Request types
 export type CreateContactRequest = InsertContact;

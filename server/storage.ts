@@ -56,10 +56,16 @@ import {
   type InsertProgrammeEvent,
   venues,
   bookings,
+  memberships,
+  mous,
   type Venue,
   type InsertVenue,
   type Booking,
   type InsertBooking,
+  type Membership,
+  type InsertMembership,
+  type Mou,
+  type InsertMou,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte } from "drizzle-orm";
 
@@ -178,6 +184,20 @@ export interface IStorage {
   createBooking(data: InsertBooking): Promise<Booking>;
   updateBooking(id: number, updates: Partial<InsertBooking>): Promise<Booking>;
   deleteBooking(id: number): Promise<void>;
+
+  // Memberships
+  getMemberships(userId: string): Promise<Membership[]>;
+  getMembership(id: number): Promise<Membership | undefined>;
+  createMembership(data: InsertMembership): Promise<Membership>;
+  updateMembership(id: number, updates: Partial<InsertMembership>): Promise<Membership>;
+  deleteMembership(id: number): Promise<void>;
+
+  // MOUs
+  getMous(userId: string): Promise<Mou[]>;
+  getMou(id: number): Promise<Mou | undefined>;
+  createMou(data: InsertMou): Promise<Mou>;
+  updateMou(id: number, updates: Partial<InsertMou>): Promise<Mou>;
+  deleteMou(id: number): Promise<void>;
 
   // Auth (re-exported or separate)
   auth: IAuthStorage;
@@ -723,6 +743,68 @@ export class DatabaseStorage implements IStorage {
 
   async deleteBooking(id: number): Promise<void> {
     await db.delete(bookings).where(eq(bookings.id, id));
+  }
+
+  // Memberships
+  async getMemberships(userId: string): Promise<Membership[]> {
+    return await db.select()
+      .from(memberships)
+      .where(eq(memberships.userId, userId))
+      .orderBy(desc(memberships.createdAt));
+  }
+
+  async getMembership(id: number): Promise<Membership | undefined> {
+    const [membership] = await db.select().from(memberships).where(eq(memberships.id, id));
+    return membership;
+  }
+
+  async createMembership(data: InsertMembership): Promise<Membership> {
+    const [membership] = await db.insert(memberships).values(data).returning();
+    return membership;
+  }
+
+  async updateMembership(id: number, updates: Partial<InsertMembership>): Promise<Membership> {
+    const [membership] = await db
+      .update(memberships)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(memberships.id, id))
+      .returning();
+    return membership;
+  }
+
+  async deleteMembership(id: number): Promise<void> {
+    await db.delete(memberships).where(eq(memberships.id, id));
+  }
+
+  // MOUs
+  async getMous(userId: string): Promise<Mou[]> {
+    return await db.select()
+      .from(mous)
+      .where(eq(mous.userId, userId))
+      .orderBy(desc(mous.createdAt));
+  }
+
+  async getMou(id: number): Promise<Mou | undefined> {
+    const [mou] = await db.select().from(mous).where(eq(mous.id, id));
+    return mou;
+  }
+
+  async createMou(data: InsertMou): Promise<Mou> {
+    const [mou] = await db.insert(mous).values(data).returning();
+    return mou;
+  }
+
+  async updateMou(id: number, updates: Partial<InsertMou>): Promise<Mou> {
+    const [mou] = await db
+      .update(mous)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(mous.id, id))
+      .returning();
+    return mou;
+  }
+
+  async deleteMou(id: number): Promise<void> {
+    await db.delete(mous).where(eq(mous.id, id));
   }
 }
 
