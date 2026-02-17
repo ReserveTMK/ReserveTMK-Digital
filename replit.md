@@ -22,6 +22,7 @@ ReserveTMK is a full-stack web application for tracking mentorship relationships
 - Calendar settings panel fetches available calendars via `calendarList.list()` API and shows color-coded list with toggle switches
 - Idempotency guard on dismissed calendar events to prevent duplicate rows
 - Log Debrief button gated to past events only (future events can still be classified and tagged)
+- Added Programmes section: manage internal events/activations with classification types (Community Workshop, Creative Workshop, Youth Workshop, Talks, Networking), budget tracking (facilitator/talent, catering, promo costs), status tracking (planned/active/completed/cancelled), and calendar integration as "Programme" event type with indigo color and keyword auto-classification
 
 ## User Preferences
 
@@ -80,6 +81,8 @@ The project follows a monorepo pattern with three top-level code directories:
   - `action_items` — Trackable action items with title, description, status, priority, due date, linked contact and impact log
   - `consent_records` — Dated consent records per contact with status (given/withdrawn/pending) and notes
   - `audit_log` — Tracks changes to entities with userId, action, entityType, entityId, changes JSONB
+  - `programmes` — Internal events/activations with classification (Community Workshop, Creative Workshop, Youth Workshop, Talks, Networking), budget fields (facilitatorCost, cateringCost, promoCost as numeric), status tracking (planned/active/completed/cancelled)
+  - `programme_events` — Junction table linking programmes to calendar events
   - `conversations` / `messages` — Chat conversation storage for AI voice/text chat
 - **Migrations**: Use `npm run db:push` (drizzle-kit push) to sync schema to database
 

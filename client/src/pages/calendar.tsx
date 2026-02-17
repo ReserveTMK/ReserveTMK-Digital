@@ -115,7 +115,7 @@ function formatTime(dateStr: string) {
   return d.toLocaleTimeString("en-NZ", { hour: "2-digit", minute: "2-digit" });
 }
 
-const EVENT_TYPES = ["Meeting", "Mentoring Session", "External Event", "Personal Development", "Planning"] as const;
+const EVENT_TYPES = ["Meeting", "Mentoring Session", "External Event", "Personal Development", "Planning", "Programme"] as const;
 
 const EVENT_TYPE_DOT_COLORS: Record<string, string> = {
   "Meeting": "bg-blue-400",
@@ -123,6 +123,7 @@ const EVENT_TYPE_DOT_COLORS: Record<string, string> = {
   "External Event": "bg-orange-400",
   "Personal Development": "bg-violet-400",
   "Planning": "bg-rose-400",
+  "Programme": "bg-indigo-400",
 };
 
 const EVENT_TYPE_BADGE_COLORS: Record<string, string> = {
@@ -131,13 +132,15 @@ const EVENT_TYPE_BADGE_COLORS: Record<string, string> = {
   "External Event": "bg-orange-500/10 text-orange-700 dark:text-orange-300",
   "Personal Development": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
   "Planning": "bg-rose-500/10 text-rose-700 dark:text-rose-300",
+  "Programme": "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
 };
 
 const GCAL_TYPE_KEYWORDS: { type: string; keywords: string[] }[] = [
+  { type: "Programme", keywords: ["programme", "program", "community workshop", "creative workshop", "youth workshop", "talks", "activation"] },
   { type: "Mentoring Session", keywords: ["mentor", "mentoring", "mentee", "coaching", "1:1", "one on one", "1-on-1"] },
   { type: "Planning", keywords: ["planning", "plan", "strategy", "budgeting", "budget", "roadmap", "prep", "preparation", "brainstorm"] },
   { type: "Meeting", keywords: ["meeting", "hui", "catch up", "catchup", "sync", "standup", "check-in", "collab", "collaboration"] },
-  { type: "External Event", keywords: ["event", "conference", "summit", "expo", "workshop", "activation", "networking", "ecosystem"] },
+  { type: "External Event", keywords: ["event", "conference", "summit", "expo", "workshop", "networking", "ecosystem"] },
   { type: "Personal Development", keywords: ["training", "development", "learning", "course", "study", "webinar", "professional development", "pd"] },
 ];
 

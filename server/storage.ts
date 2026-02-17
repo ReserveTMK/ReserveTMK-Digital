@@ -48,6 +48,12 @@ import {
   type InsertDismissedCalendarEvent,
   type CalendarSetting,
   type InsertCalendarSetting,
+  programmes,
+  programmeEvents,
+  type Programme,
+  type InsertProgramme,
+  type ProgrammeEvent,
+  type InsertProgrammeEvent,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte } from "drizzle-orm";
 
@@ -140,6 +146,18 @@ export interface IStorage {
   addCalendarSetting(data: InsertCalendarSetting): Promise<CalendarSetting>;
   updateCalendarSetting(id: number, updates: Partial<InsertCalendarSetting>): Promise<CalendarSetting>;
   deleteCalendarSetting(id: number): Promise<void>;
+
+  // Programmes
+  getProgrammes(userId: string): Promise<Programme[]>;
+  getProgramme(id: number): Promise<Programme | undefined>;
+  createProgramme(data: InsertProgramme): Promise<Programme>;
+  updateProgramme(id: number, updates: Partial<InsertProgramme>): Promise<Programme>;
+  deleteProgramme(id: number): Promise<void>;
+
+  // Programme Events
+  getProgrammeEvents(programmeId: number): Promise<ProgrammeEvent[]>;
+  addProgrammeEvent(data: InsertProgrammeEvent): Promise<ProgrammeEvent>;
+  removeProgrammeEvent(id: number): Promise<void>;
 
   // Auth (re-exported or separate)
   auth: IAuthStorage;
@@ -574,6 +592,55 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCalendarSetting(id: number): Promise<void> {
     await db.delete(calendarSettings).where(eq(calendarSettings.id, id));
+  }
+
+  // Programmes
+  async getProgrammes(userId: string): Promise<Programme[]> {
+    return await db.select()
+      .from(programmes)
+      .where(eq(programmes.userId, userId))
+      .orderBy(desc(programmes.createdAt));
+  }
+
+  async getProgramme(id: number): Promise<Programme | undefined> {
+    const [programme] = await db.select().from(programmes).where(eq(programmes.id, id));
+    return programme;
+  }
+
+  async createProgramme(data: InsertProgramme): Promise<Programme> {
+    const [programme] = await db.insert(programmes).values(data).returning();
+    return programme;
+  }
+
+  async updateProgramme(id: number, updates: Partial<InsertProgramme>): Promise<Programme> {
+    const [programme] = await db
+      .update(programmes)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(programmes.id, id))
+      .returning();
+    return programme;
+  }
+
+  async deleteProgramme(id: number): Promise<void> {
+    await db.delete(programmeEvents).where(eq(programmeEvents.programmeId, id));
+    await db.delete(programmes).where(eq(programmes.id, id));
+  }
+
+  // Programme Events
+  async getProgrammeEvents(programmeId: number): Promise<ProgrammeEvent[]> {
+    return await db.select()
+      .from(programmeEvents)
+      .where(eq(programmeEvents.programmeId, programmeId))
+      .orderBy(desc(programmeEvents.createdAt));
+  }
+
+  async addProgrammeEvent(data: InsertProgrammeEvent): Promise<ProgrammeEvent> {
+    const [record] = await db.insert(programmeEvents).values(data).returning();
+    return record;
+  }
+
+  async removeProgrammeEvent(id: number): Promise<void> {
+    await db.delete(programmeEvents).where(eq(programmeEvents.id, id));
   }
 }
 

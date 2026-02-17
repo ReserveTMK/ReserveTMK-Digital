@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, numeric } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -203,7 +203,47 @@ export const calendarSettings = pgTable("calendar_settings", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const programmes = pgTable("programmes", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  classification: text("classification").notNull(),
+  status: text("status").notNull().default("planned"),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  location: text("location"),
+  facilitatorCost: numeric("facilitator_cost", { precision: 10, scale: 2 }).default("0"),
+  cateringCost: numeric("catering_cost", { precision: 10, scale: 2 }).default("0"),
+  promoCost: numeric("promo_cost", { precision: 10, scale: 2 }).default("0"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const programmeEvents = pgTable("programme_events", {
+  id: serial("id").primaryKey(),
+  programmeId: integer("programme_id").notNull(),
+  eventId: integer("event_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // === RELATIONS ===
+export const programmesRelations = relations(programmes, ({ many }) => ({
+  programmeEvents: many(programmeEvents),
+}));
+
+export const programmeEventsRelations = relations(programmeEvents, ({ one }) => ({
+  programme: one(programmes, {
+    fields: [programmeEvents.programmeId],
+    references: [programmes.id],
+  }),
+  event: one(events, {
+    fields: [programmeEvents.eventId],
+    references: [events.id],
+  }),
+}));
+
 export const contactsRelations = relations(contacts, ({ many }) => ({
   interactions: many(interactions),
   meetings: many(meetings),
@@ -426,6 +466,39 @@ export type InsertDismissedCalendarEvent = z.infer<typeof insertDismissedCalenda
 
 export type CalendarSetting = typeof calendarSettings.$inferSelect;
 export type InsertCalendarSetting = z.infer<typeof insertCalendarSettingsSchema>;
+
+export const PROGRAMME_CLASSIFICATIONS = [
+  "Community Workshop",
+  "Creative Workshop",
+  "Youth Workshop",
+  "Talks",
+  "Networking",
+] as const;
+
+export type ProgrammeClassification = typeof PROGRAMME_CLASSIFICATIONS[number];
+
+export const PROGRAMME_STATUSES = ["planned", "active", "completed", "cancelled"] as const;
+export type ProgrammeStatus = typeof PROGRAMME_STATUSES[number];
+
+export const insertProgrammeSchema = createInsertSchema(programmes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  classification: z.enum(PROGRAMME_CLASSIFICATIONS),
+  status: z.enum(PROGRAMME_STATUSES).default("planned"),
+});
+
+export const insertProgrammeEventSchema = createInsertSchema(programmeEvents).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type Programme = typeof programmes.$inferSelect;
+export type InsertProgramme = z.infer<typeof insertProgrammeSchema>;
+
+export type ProgrammeEvent = typeof programmeEvents.$inferSelect;
+export type InsertProgrammeEvent = z.infer<typeof insertProgrammeEventSchema>;
 
 // Request types
 export type CreateContactRequest = InsertContact;

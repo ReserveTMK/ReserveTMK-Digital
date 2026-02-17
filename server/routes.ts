@@ -1317,6 +1317,105 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     res.json({ success: true });
   });
 
+  // === Programmes API ===
+
+  app.get(api.programmes.list.path, isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const programmesList = await storage.getProgrammes(userId);
+    res.json(programmesList);
+  });
+
+  app.get(api.programmes.get.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const programme = await storage.getProgramme(id);
+    if (!programme) return res.status(404).json({ message: "Programme not found" });
+    if (programme.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+    res.json(programme);
+  });
+
+  app.post(api.programmes.create.path, isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const input = api.programmes.create.input.parse({ ...req.body, userId });
+      const programme = await storage.createProgramme(input);
+      res.status(201).json(programme);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
+      }
+      throw err;
+    }
+  });
+
+  app.patch(api.programmes.update.path, isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getProgramme(id);
+      if (!existing) return res.status(404).json({ message: "Programme not found" });
+      if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+      const input = api.programmes.update.input.parse(req.body);
+      const updated = await storage.updateProgramme(id, input);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
+      }
+      throw err;
+    }
+  });
+
+  app.delete(api.programmes.delete.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const existing = await storage.getProgramme(id);
+    if (!existing) return res.status(404).json({ message: "Programme not found" });
+    if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+    await storage.deleteProgramme(id);
+    res.status(204).send();
+  });
+
+  app.get(api.programmes.events.list.path, isAuthenticated, async (req, res) => {
+    const programmeId = parseInt(req.params.id);
+    const programme = await storage.getProgramme(programmeId);
+    if (!programme) return res.status(404).json({ message: "Programme not found" });
+    if (programme.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+    const eventsList = await storage.getProgrammeEvents(programmeId);
+    res.json(eventsList);
+  });
+
+  app.post(api.programmes.events.add.path, isAuthenticated, async (req, res) => {
+    try {
+      const programmeId = parseInt(req.params.id);
+      const programme = await storage.getProgramme(programmeId);
+      if (!programme) return res.status(404).json({ message: "Programme not found" });
+      if (programme.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+      const input = api.programmes.events.add.input.parse({ ...req.body, programmeId });
+      const record = await storage.addProgrammeEvent(input);
+      res.status(201).json(record);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+
+  app.delete(api.programmes.events.remove.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const userId = (req.user as any).claims.sub;
+    const allProgrammes = await storage.getProgrammes(userId);
+    const programmeIds = new Set(allProgrammes.map(p => p.id));
+    const allProgrammeEvents = await Promise.all(
+      allProgrammes.map(p => storage.getProgrammeEvents(p.id))
+    );
+    const flatEvents = allProgrammeEvents.flat();
+    const targetEvent = flatEvents.find(pe => pe.id === id);
+    if (!targetEvent || !programmeIds.has(targetEvent.programmeId)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+    await storage.removeProgrammeEvent(id);
+    res.status(204).send();
+  });
+
   app.post("/api/google-calendar/link", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;

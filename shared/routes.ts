@@ -4,9 +4,10 @@ import {
   insertEventAttendanceSchema, insertImpactLogSchema, insertImpactLogContactSchema,
   insertImpactTaxonomySchema, insertImpactTagSchema, insertKeywordDictionarySchema,
   insertActionItemSchema, insertConsentRecordSchema, insertAuditLogSchema,
+  insertProgrammeSchema, insertProgrammeEventSchema,
   contacts, interactions, meetings, events,
   eventAttendance, impactLogs, impactLogContacts, impactTaxonomy, impactTags,
-  keywordDictionary, actionItems, consentRecords, auditLog,
+  keywordDictionary, actionItems, consentRecords, auditLog, programmes, programmeEvents,
 } from './schema';
 
 // ============================================
@@ -439,6 +440,74 @@ export const api = {
       path: '/api/audit-logs' as const,
       responses: {
         200: z.array(z.custom<typeof auditLog.$inferSelect>()),
+      },
+    },
+  },
+  programmes: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/programmes' as const,
+      responses: {
+        200: z.array(z.custom<typeof programmes.$inferSelect>()),
+      },
+    },
+    get: {
+      method: 'GET' as const,
+      path: '/api/programmes/:id' as const,
+      responses: {
+        200: z.custom<typeof programmes.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/programmes' as const,
+      input: insertProgrammeSchema,
+      responses: {
+        201: z.custom<typeof programmes.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/programmes/:id' as const,
+      input: insertProgrammeSchema.partial(),
+      responses: {
+        200: z.custom<typeof programmes.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/programmes/:id' as const,
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+    events: {
+      list: {
+        method: 'GET' as const,
+        path: '/api/programmes/:id/events' as const,
+        responses: {
+          200: z.array(z.custom<typeof programmeEvents.$inferSelect>()),
+        },
+      },
+      add: {
+        method: 'POST' as const,
+        path: '/api/programmes/:id/events' as const,
+        input: insertProgrammeEventSchema,
+        responses: {
+          201: z.custom<typeof programmeEvents.$inferSelect>(),
+        },
+      },
+      remove: {
+        method: 'DELETE' as const,
+        path: '/api/programme-events/:id' as const,
+        responses: {
+          204: z.void(),
+        },
       },
     },
   },

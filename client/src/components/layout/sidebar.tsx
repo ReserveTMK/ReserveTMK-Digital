@@ -12,6 +12,7 @@ import {
   CheckSquare,
   CalendarCheck,
   MoreHorizontal,
+  Layers,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "../ui/beautiful-button";
@@ -26,6 +27,7 @@ const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Community", href: "/contacts", icon: Users },
   { name: "Calendar", href: "/calendar", icon: CalendarCheck },
+  { name: "Programmes", href: "/programmes", icon: Layers },
   { name: "Debriefs", href: "/debriefs", icon: Mic },
   { name: "Reports", href: "/reports", icon: FileText },
   { name: "Actions", href: "/actions", icon: CheckSquare },
