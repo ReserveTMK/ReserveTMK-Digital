@@ -54,6 +54,12 @@ import {
   type InsertProgramme,
   type ProgrammeEvent,
   type InsertProgrammeEvent,
+  venues,
+  bookings,
+  type Venue,
+  type InsertVenue,
+  type Booking,
+  type InsertBooking,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte } from "drizzle-orm";
 
@@ -158,6 +164,20 @@ export interface IStorage {
   getProgrammeEvents(programmeId: number): Promise<ProgrammeEvent[]>;
   addProgrammeEvent(data: InsertProgrammeEvent): Promise<ProgrammeEvent>;
   removeProgrammeEvent(id: number): Promise<void>;
+
+  // Venues
+  getVenues(userId: string): Promise<Venue[]>;
+  getVenue(id: number): Promise<Venue | undefined>;
+  createVenue(data: InsertVenue): Promise<Venue>;
+  updateVenue(id: number, updates: Partial<InsertVenue>): Promise<Venue>;
+  deleteVenue(id: number): Promise<void>;
+
+  // Bookings
+  getBookings(userId: string): Promise<Booking[]>;
+  getBooking(id: number): Promise<Booking | undefined>;
+  createBooking(data: InsertBooking): Promise<Booking>;
+  updateBooking(id: number, updates: Partial<InsertBooking>): Promise<Booking>;
+  deleteBooking(id: number): Promise<void>;
 
   // Auth (re-exported or separate)
   auth: IAuthStorage;
@@ -641,6 +661,68 @@ export class DatabaseStorage implements IStorage {
 
   async removeProgrammeEvent(id: number): Promise<void> {
     await db.delete(programmeEvents).where(eq(programmeEvents.id, id));
+  }
+
+  // Venues
+  async getVenues(userId: string): Promise<Venue[]> {
+    return await db.select()
+      .from(venues)
+      .where(eq(venues.userId, userId))
+      .orderBy(desc(venues.createdAt));
+  }
+
+  async getVenue(id: number): Promise<Venue | undefined> {
+    const [venue] = await db.select().from(venues).where(eq(venues.id, id));
+    return venue;
+  }
+
+  async createVenue(data: InsertVenue): Promise<Venue> {
+    const [venue] = await db.insert(venues).values(data).returning();
+    return venue;
+  }
+
+  async updateVenue(id: number, updates: Partial<InsertVenue>): Promise<Venue> {
+    const [venue] = await db
+      .update(venues)
+      .set(updates)
+      .where(eq(venues.id, id))
+      .returning();
+    return venue;
+  }
+
+  async deleteVenue(id: number): Promise<void> {
+    await db.delete(venues).where(eq(venues.id, id));
+  }
+
+  // Bookings
+  async getBookings(userId: string): Promise<Booking[]> {
+    return await db.select()
+      .from(bookings)
+      .where(eq(bookings.userId, userId))
+      .orderBy(desc(bookings.createdAt));
+  }
+
+  async getBooking(id: number): Promise<Booking | undefined> {
+    const [booking] = await db.select().from(bookings).where(eq(bookings.id, id));
+    return booking;
+  }
+
+  async createBooking(data: InsertBooking): Promise<Booking> {
+    const [booking] = await db.insert(bookings).values(data).returning();
+    return booking;
+  }
+
+  async updateBooking(id: number, updates: Partial<InsertBooking>): Promise<Booking> {
+    const [booking] = await db
+      .update(bookings)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(bookings.id, id))
+      .returning();
+    return booking;
+  }
+
+  async deleteBooking(id: number): Promise<void> {
+    await db.delete(bookings).where(eq(bookings.id, id));
   }
 }
 

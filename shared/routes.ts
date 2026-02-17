@@ -5,9 +5,11 @@ import {
   insertImpactTaxonomySchema, insertImpactTagSchema, insertKeywordDictionarySchema,
   insertActionItemSchema, insertConsentRecordSchema, insertAuditLogSchema,
   insertProgrammeSchema, insertProgrammeEventSchema,
+  insertVenueSchema, insertBookingSchema,
   contacts, interactions, meetings, events,
   eventAttendance, impactLogs, impactLogContacts, impactTaxonomy, impactTags,
   keywordDictionary, actionItems, consentRecords, auditLog, programmes, programmeEvents,
+  venues, bookings,
 } from './schema';
 
 // ============================================
@@ -508,6 +510,94 @@ export const api = {
         responses: {
           204: z.void(),
         },
+      },
+    },
+  },
+  venues: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/venues' as const,
+      responses: {
+        200: z.array(z.custom<typeof venues.$inferSelect>()),
+      },
+    },
+    get: {
+      method: 'GET' as const,
+      path: '/api/venues/:id' as const,
+      responses: {
+        200: z.custom<typeof venues.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/venues' as const,
+      input: insertVenueSchema,
+      responses: {
+        201: z.custom<typeof venues.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/venues/:id' as const,
+      input: insertVenueSchema.partial(),
+      responses: {
+        200: z.custom<typeof venues.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/venues/:id' as const,
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
+  bookings: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/bookings' as const,
+      responses: {
+        200: z.array(z.custom<typeof bookings.$inferSelect>()),
+      },
+    },
+    get: {
+      method: 'GET' as const,
+      path: '/api/bookings/:id' as const,
+      responses: {
+        200: z.custom<typeof bookings.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/bookings' as const,
+      input: insertBookingSchema,
+      responses: {
+        201: z.custom<typeof bookings.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/bookings/:id' as const,
+      input: insertBookingSchema.partial(),
+      responses: {
+        200: z.custom<typeof bookings.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/bookings/:id' as const,
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
       },
     },
   },

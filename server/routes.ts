@@ -1422,6 +1422,120 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     res.status(204).send();
   });
 
+  // === Venues API ===
+
+  app.get(api.venues.list.path, isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const venuesList = await storage.getVenues(userId);
+    res.json(venuesList);
+  });
+
+  app.get(api.venues.get.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const venue = await storage.getVenue(id);
+    if (!venue) return res.status(404).json({ message: "Venue not found" });
+    if (venue.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+    res.json(venue);
+  });
+
+  app.post(api.venues.create.path, isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const body = { ...req.body, userId };
+      const input = api.venues.create.input.parse(body);
+      const venue = await storage.createVenue(input);
+      res.status(201).json(venue);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+
+  app.patch(api.venues.update.path, isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getVenue(id);
+      if (!existing) return res.status(404).json({ message: "Venue not found" });
+      if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+      const input = api.venues.update.input.parse(req.body);
+      const updated = await storage.updateVenue(id, input);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+
+  app.delete(api.venues.delete.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const existing = await storage.getVenue(id);
+    if (!existing) return res.status(404).json({ message: "Venue not found" });
+    if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+    await storage.deleteVenue(id);
+    res.status(204).send();
+  });
+
+  // === Bookings API ===
+
+  app.get(api.bookings.list.path, isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const bookingsList = await storage.getBookings(userId);
+    res.json(bookingsList);
+  });
+
+  app.get(api.bookings.get.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const booking = await storage.getBooking(id);
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+    if (booking.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+    res.json(booking);
+  });
+
+  app.post(api.bookings.create.path, isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const body = { ...req.body, userId };
+      const input = api.bookings.create.input.parse(body);
+      const booking = await storage.createBooking(input);
+      res.status(201).json(booking);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+
+  app.patch(api.bookings.update.path, isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getBooking(id);
+      if (!existing) return res.status(404).json({ message: "Booking not found" });
+      if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+      const input = api.bookings.update.input.parse(req.body);
+      const updated = await storage.updateBooking(id, input);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+
+  app.delete(api.bookings.delete.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const existing = await storage.getBooking(id);
+    if (!existing) return res.status(404).json({ message: "Booking not found" });
+    if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+    await storage.deleteBooking(id);
+    res.status(204).send();
+  });
+
   app.post("/api/google-calendar/link", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;

@@ -227,6 +227,40 @@ export const programmes = pgTable("programmes", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const venues = pgTable("venues", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  capacity: integer("capacity"),
+  active: boolean("active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const bookings = pgTable("bookings", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  venueId: integer("venue_id").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  classification: text("classification").notNull(),
+  status: text("status").notNull().default("enquiry"),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  startTime: text("start_time"),
+  endTime: text("end_time"),
+  tbcMonth: text("tbc_month"),
+  tbcYear: text("tbc_year"),
+  pricingTier: text("pricing_tier").notNull().default("full_price"),
+  amount: numeric("amount", { precision: 10, scale: 2 }).default("0"),
+  bookerId: integer("booker_id"),
+  attendees: integer("attendees").array(),
+  attendeeCount: integer("attendee_count"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const programmeEvents = pgTable("programme_events", {
   id: serial("id").primaryKey(),
   programmeId: integer("programme_id").notNull(),
@@ -235,6 +269,21 @@ export const programmeEvents = pgTable("programme_events", {
 });
 
 // === RELATIONS ===
+export const venuesRelations = relations(venues, ({ many }) => ({
+  bookings: many(bookings),
+}));
+
+export const bookingsRelations = relations(bookings, ({ one }) => ({
+  venue: one(venues, {
+    fields: [bookings.venueId],
+    references: [venues.id],
+  }),
+  booker: one(contacts, {
+    fields: [bookings.bookerId],
+    references: [contacts.id],
+  }),
+}));
+
 export const programmesRelations = relations(programmes, ({ many }) => ({
   programmeEvents: many(programmeEvents),
 }));
@@ -505,6 +554,45 @@ export type InsertProgramme = z.infer<typeof insertProgrammeSchema>;
 
 export type ProgrammeEvent = typeof programmeEvents.$inferSelect;
 export type InsertProgrammeEvent = z.infer<typeof insertProgrammeEventSchema>;
+
+export const BOOKING_CLASSIFICATIONS = [
+  "Workshop",
+  "Community Event",
+  "Private Hire",
+  "Rehearsal",
+  "Meeting",
+  "Pop-up",
+  "Other",
+] as const;
+
+export type BookingClassification = typeof BOOKING_CLASSIFICATIONS[number];
+
+export const BOOKING_STATUSES = ["enquiry", "confirmed", "completed", "cancelled"] as const;
+export type BookingStatus = typeof BOOKING_STATUSES[number];
+
+export const PRICING_TIERS = ["full_price", "discounted", "free_koha"] as const;
+export type PricingTier = typeof PRICING_TIERS[number];
+
+export const insertVenueSchema = createInsertSchema(venues).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertBookingSchema = createInsertSchema(bookings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  classification: z.enum(BOOKING_CLASSIFICATIONS),
+  status: z.enum(BOOKING_STATUSES).default("enquiry"),
+  pricingTier: z.enum(PRICING_TIERS).default("full_price"),
+});
+
+export type Venue = typeof venues.$inferSelect;
+export type InsertVenue = z.infer<typeof insertVenueSchema>;
+
+export type Booking = typeof bookings.$inferSelect;
+export type InsertBooking = z.infer<typeof insertBookingSchema>;
 
 // Request types
 export type CreateContactRequest = InsertContact;

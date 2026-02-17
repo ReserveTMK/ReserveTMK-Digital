@@ -13,6 +13,7 @@ import {
   CalendarCheck,
   MoreHorizontal,
   Layers,
+  Building2,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "../ui/beautiful-button";
@@ -28,6 +29,7 @@ const navigation = [
   { name: "Community", href: "/contacts", icon: Users },
   { name: "Calendar", href: "/calendar", icon: CalendarCheck },
   { name: "Programmes", href: "/programmes", icon: Layers },
+  { name: "Bookings", href: "/bookings", icon: Building2 },
   { name: "Debriefs", href: "/debriefs", icon: Mic },
   { name: "Reports", href: "/reports", icon: FileText },
   { name: "Actions", href: "/actions", icon: CheckSquare },
