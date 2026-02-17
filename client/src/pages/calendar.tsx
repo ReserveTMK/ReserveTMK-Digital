@@ -27,7 +27,6 @@ import {
   EyeOff,
   Eye,
   Settings,
-  Plus,
   AlertTriangle,
 } from "lucide-react";
 import {
@@ -53,6 +52,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -74,6 +74,16 @@ interface GoogleCalendarEvent {
   attendees: { email: string; displayName: string; responseStatus: string }[];
   htmlLink: string;
   status: string;
+}
+
+interface GoogleCalendarInfo {
+  id: string;
+  summary: string;
+  description: string;
+  backgroundColor: string;
+  foregroundColor: string;
+  primary: boolean;
+  accessRole: string;
 }
 
 interface AppEvent {
@@ -617,7 +627,6 @@ export default function CalendarPage() {
   const [dismissReason, setDismissReason] = useState("");
   const [showDismissed, setShowDismissed] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [newCalendarId, setNewCalendarId] = useState("");
 
   function toggleTypeFilter(type: string) {
     setActiveTypeFilters(prev => {
@@ -641,8 +650,13 @@ export default function CalendarPage() {
     queryKey: ["/api/dismissed-calendar-events"],
   });
 
-  const { data: calendarSettings } = useQuery<{ id: number; calendarId: string; label: string }[]>({
+  const { data: calendarSettings } = useQuery<{ id: number; calendarId: string; label: string; active: boolean }[]>({
     queryKey: ["/api/calendar-settings"],
+  });
+
+  const { data: availableCalendars, isLoading: calendarsListLoading } = useQuery<GoogleCalendarInfo[]>({
+    queryKey: ["/api/google-calendar/list"],
+    enabled: showSettings,
   });
 
   const NOT_PERSONAL_REASON = "__not_personal__";
@@ -694,27 +708,24 @@ export default function CalendarPage() {
     },
   });
 
-  const addCalendarMutation = useMutation({
-    mutationFn: async ({ calendarId, label }: { calendarId: string; label: string }) => {
-      await apiRequest("POST", "/api/calendar-settings", { calendarId, label });
+  const toggleCalendarMutation = useMutation({
+    mutationFn: async ({ calendarId, label, enabled }: { calendarId: string; label: string; enabled: boolean }) => {
+      if (enabled) {
+        await apiRequest("POST", "/api/calendar-settings", { calendarId, label });
+      } else {
+        const setting = (calendarSettings || []).find(s => s.calendarId === calendarId);
+        if (setting) {
+          await apiRequest("DELETE", `/api/calendar-settings/${setting.id}`);
+        }
+      }
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/calendar-settings"] });
-      setNewCalendarId("");
-      toast({ title: "Calendar added" });
+      queryClient.invalidateQueries({ queryKey: ["/api/google-calendar/events"] });
+      toast({ title: variables.enabled ? "Calendar enabled" : "Calendar disabled" });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to add calendar", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const removeCalendarMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/calendar-settings/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/calendar-settings"] });
-      toast({ title: "Calendar removed" });
+      toast({ title: "Failed to update calendar", description: err.message, variant: "destructive" });
     },
   });
 
@@ -940,55 +951,61 @@ export default function CalendarPage() {
           {showSettings && (
             <Card className="p-4 mb-6" data-testid="panel-calendar-settings">
               <div className="flex items-center justify-between mb-3 gap-2">
-                <h3 className="text-sm font-semibold">Additional Calendars</h3>
+                <h3 className="text-sm font-semibold">My Calendars</h3>
                 <Button size="icon" variant="ghost" onClick={() => setShowSettings(false)}>
                   <X className="w-4 h-4" />
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground mb-3">
-                Add team calendars (venue hires, space bookings) to see all events in one place. Shared events are automatically deduplicated.
+                Toggle which calendars to sync. Shared events across calendars are automatically deduplicated.
               </p>
-              <div className="flex gap-2 mb-3">
-                <Input
-                  value={newCalendarId}
-                  onChange={(e) => setNewCalendarId(e.target.value)}
-                  placeholder="Calendar ID (e.g. team@group.calendar.google.com)"
-                  className="flex-1 text-sm"
-                  data-testid="input-calendar-id"
-                />
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    if (newCalendarId.trim()) {
-                      addCalendarMutation.mutate({ calendarId: newCalendarId.trim(), label: newCalendarId.trim().split("@")[0] });
-                    }
-                  }}
-                  disabled={!newCalendarId.trim() || addCalendarMutation.isPending}
-                  data-testid="button-add-calendar"
-                >
-                  <Plus className="w-4 h-4 mr-1" />
-                  Add
-                </Button>
-              </div>
-              {(calendarSettings || []).length > 0 && (
-                <div className="space-y-2">
-                  {(calendarSettings || []).map(cal => (
-                    <div key={cal.id} className="flex items-center justify-between gap-2 p-2 bg-muted/30 rounded-md">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium truncate">{cal.label || cal.calendarId}</p>
-                        <p className="text-xs text-muted-foreground truncate">{cal.calendarId}</p>
-                      </div>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => removeCalendarMutation.mutate(cal.id)}
-                        data-testid={`button-remove-calendar-${cal.id}`}
-                      >
-                        <X className="w-4 h-4 text-muted-foreground" />
-                      </Button>
-                    </div>
-                  ))}
+              {calendarsListLoading ? (
+                <div className="flex items-center justify-center py-6 gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Loading calendars...
                 </div>
+              ) : availableCalendars && availableCalendars.length > 0 ? (
+                <div className="space-y-1">
+                  {availableCalendars.map(cal => {
+                    const isEnabled = cal.primary || (calendarSettings || []).some(s => s.calendarId === cal.id);
+                    return (
+                      <div
+                        key={cal.id}
+                        className="flex items-center gap-3 p-2 rounded-md"
+                        data-testid={`calendar-toggle-${cal.id}`}
+                      >
+                        <div
+                          className="w-3 h-3 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: cal.backgroundColor }}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">{cal.summary}</p>
+                          {cal.description && (
+                            <p className="text-xs text-muted-foreground truncate">{cal.description}</p>
+                          )}
+                        </div>
+                        <Switch
+                          checked={isEnabled}
+                          disabled={cal.primary || toggleCalendarMutation.isPending}
+                          onCheckedChange={(checked) => {
+                            if (!cal.primary) {
+                              toggleCalendarMutation.mutate({
+                                calendarId: cal.id,
+                                label: cal.summary,
+                                enabled: checked,
+                              });
+                            }
+                          }}
+                          data-testid={`switch-calendar-${cal.id}`}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground py-4 text-center">
+                  No calendars found. Make sure your Google Calendar is connected.
+                </p>
               )}
             </Card>
           )}
