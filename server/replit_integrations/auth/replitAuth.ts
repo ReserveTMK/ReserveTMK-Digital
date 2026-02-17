@@ -132,7 +132,7 @@ export async function setupAuth(app: Express) {
     try {
       await ensureStrategy(req.hostname);
       passport.authenticate(`replitauth:${req.hostname}`, {
-        prompt: "login consent",
+        prompt: "login",
         scope: ["openid", "email", "profile", "offline_access"],
       })(req, res, next);
     } catch (err) {
