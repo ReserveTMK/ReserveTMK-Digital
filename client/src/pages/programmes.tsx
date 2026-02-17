@@ -34,6 +34,8 @@ import {
   Users,
   X,
   Copy,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -53,10 +55,10 @@ const CLASSIFICATION_COLORS: Record<string, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  planned: "bg-gray-500/15 text-gray-700 dark:text-gray-300",
-  active: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
-  completed: "bg-green-500/15 text-green-700 dark:text-green-300",
-  cancelled: "bg-red-500/15 text-red-700 dark:text-red-300",
+  planned: "bg-gray-500/15 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-800",
+  active: "bg-green-500/15 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800",
+  completed: "bg-green-500/5 text-green-600/50 dark:text-green-400/50 border-green-100 dark:border-green-900/30",
+  cancelled: "bg-gray-500/5 text-gray-500/50 dark:text-gray-400/50 border-gray-100 dark:border-gray-900/30",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -226,18 +228,31 @@ export default function Programmes() {
               {filtered.map((programme) => {
                 const dateTime = formatDateTime(programme);
                 const facNames = getFacilitatorNames(programme);
+                const isCompleted = programme.status === "completed";
+                const isCancelled = programme.status === "cancelled";
+
                 return (
-                  <Card key={programme.id} className="p-4 hover-elevate" data-testid={`card-programme-${programme.id}`}>
+                  <Card 
+                    key={programme.id} 
+                    className={`p-4 hover-elevate transition-opacity ${isCompleted || isCancelled ? "opacity-60" : ""}`} 
+                    data-testid={`card-programme-${programme.id}`}
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <h3 className="font-semibold text-base truncate" data-testid={`text-programme-name-${programme.id}`}>
+                          <h3 className={`font-semibold text-base truncate ${isCancelled ? "line-through" : ""}`} data-testid={`text-programme-name-${programme.id}`}>
                             {programme.name}
                           </h3>
                           <Badge className={CLASSIFICATION_COLORS[programme.classification] || ""} data-testid={`badge-classification-${programme.id}`}>
                             {programme.classification}
                           </Badge>
-                          <Badge className={STATUS_COLORS[programme.status] || ""} data-testid={`badge-status-${programme.id}`}>
+                          <Badge 
+                            variant="outline"
+                            className={`flex items-center gap-1 ${STATUS_COLORS[programme.status] || ""}`} 
+                            data-testid={`badge-status-${programme.id}`}
+                          >
+                            {isCompleted && <CheckCircle2 className="w-3 h-3 text-green-600" />}
+                            {isCancelled && <AlertCircle className="w-3 h-3" />}
                             {STATUS_LABELS[programme.status] || programme.status}
                           </Badge>
                         </div>
