@@ -562,9 +562,22 @@ export async function registerRoutes(
 
   app.delete(api.events.delete.path, isAuthenticated, async (req, res) => {
     const id = parseInt(req.params.id);
+    const userId = (req.user as any).claims.sub;
     const existing = await storage.getEvent(id);
     if (!existing) return res.status(404).json({ message: "Event not found" });
-    if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+    if (existing.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+    const reason = req.body?.reason?.trim();
+    if (!reason) {
+      return res.status(400).json({ message: "A reason is required to delete an event" });
+    }
+    await storage.createAuditLog({
+      userId,
+      action: "delete",
+      entityType: "event",
+      entityId: String(id),
+      changes: { reason, deletedEvent: existing.name },
+    });
 
     await storage.deleteEvent(id);
     res.status(204).send();

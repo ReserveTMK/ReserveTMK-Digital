@@ -1,38 +1,37 @@
 import { Sidebar } from "@/components/layout/sidebar";
-import { Button } from "@/components/ui/beautiful-button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
-import { useLocation } from "wouter";
+import { useState, useMemo } from "react";
+import { useLocation, Link } from "wouter";
 import {
   Calendar,
-  CalendarCheck,
   CalendarX,
   MapPin,
   Clock,
   Users,
-  Link2,
-  Plus,
   Loader2,
   RefreshCw,
-  ExternalLink,
-  ChevronDown,
-  ChevronUp,
-  Search,
-  Filter,
+  ChevronLeft,
+  ChevronRight,
   FileText,
+  Trash2,
 } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  format,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  isSameMonth,
+  isSameDay,
+  addMonths,
+  subMonths,
+  isToday,
+  isBefore,
+} from "date-fns";
 import {
   Dialog,
   DialogContent,
@@ -40,6 +39,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 
 interface GoogleCalendarEvent {
   id: string;
@@ -66,16 +67,6 @@ interface AppEvent {
   attendeeCount: number | null;
 }
 
-const EVENT_TYPES = [
-  "Networking Event",
-  "Workshop",
-  "Activation",
-  "Conference",
-  "Community Event",
-  "Mentoring Session",
-  "Other",
-];
-
 function formatDate(dateStr: string) {
   if (!dateStr) return "";
   const d = new Date(dateStr);
@@ -83,7 +74,6 @@ function formatDate(dateStr: string) {
     weekday: "short",
     day: "numeric",
     month: "short",
-    year: "numeric",
   });
 }
 
@@ -93,59 +83,23 @@ function formatTime(dateStr: string) {
   return d.toLocaleTimeString("en-NZ", { hour: "2-digit", minute: "2-digit" });
 }
 
-function isTimeClose(a: string, b: string, thresholdMs = 3600000) {
-  return Math.abs(new Date(a).getTime() - new Date(b).getTime()) < thresholdMs;
-}
-
 export default function CalendarPage() {
   const { toast } = useToast();
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "unlinked" | "linked">("all");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
-  const [selectedGcalEvent, setSelectedGcalEvent] = useState<GoogleCalendarEvent | null>(null);
-  const [selectedEventType, setSelectedEventType] = useState("Community Event");
+  const [, navigate] = useLocation();
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ type: "gcal" | "app"; event: GoogleCalendarEvent | AppEvent } | null>(null);
+  const [deleteReason, setDeleteReason] = useState("");
 
   const { data: gcalEvents, isLoading: gcalLoading, error: gcalError, refetch: refetchGcal } = useQuery<GoogleCalendarEvent[]>({
     queryKey: ["/api/google-calendar/events"],
   });
 
-  const { data: appEvents, isLoading: appLoading } = useQuery<AppEvent[]>({
+  const { data: appEvents } = useQuery<AppEvent[]>({
     queryKey: ["/api/events"],
+    staleTime: 0,
   });
-
-  const reconcileMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const res = await apiRequest("POST", "/api/google-calendar/reconcile", data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/google-calendar/events"] });
-      toast({ title: "Event imported from calendar" });
-      setLinkDialogOpen(false);
-      setSelectedGcalEvent(null);
-    },
-    onError: (err: any) => {
-      toast({ title: "Failed to import", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const linkMutation = useMutation({
-    mutationFn: async (data: { eventId: number; googleCalendarEventId: string }) => {
-      const res = await apiRequest("POST", "/api/google-calendar/link", data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
-      toast({ title: "Calendar event linked" });
-    },
-    onError: (err: any) => {
-      toast({ title: "Failed to link", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const [, navigate] = useLocation();
 
   const createDebriefMutation = useMutation({
     mutationFn: async (data: { title: string; eventId?: number; summary?: string }) => {
@@ -167,6 +121,22 @@ export default function CalendarPage() {
     },
   });
 
+  const deleteEventMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: number; reason: string }) => {
+      await apiRequest("DELETE", `/api/events/${id}`, { reason });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      toast({ title: "Event removed" });
+      setDeleteDialogOpen(false);
+      setDeleteTarget(null);
+      setDeleteReason("");
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to delete event", description: err.message, variant: "destructive" });
+    },
+  });
+
   function handleLogDebrief(gcalEvent: GoogleCalendarEvent) {
     const linkedAppEvent = (appEvents || []).find(e => e.googleCalendarEventId === gcalEvent.id);
     const details: string[] = [];
@@ -184,341 +154,380 @@ export default function CalendarPage() {
     });
   }
 
-  const linkedGcalIds = new Set(
-    (appEvents || []).filter(e => e.googleCalendarEventId).map(e => e.googleCalendarEventId!)
-  );
+  function handleLogDebriefFromApp(appEvent: AppEvent) {
+    const details: string[] = [];
+    if (appEvent.startTime) details.push(`Date: ${formatDate(appEvent.startTime)} ${formatTime(appEvent.startTime)} - ${formatTime(appEvent.endTime)}`);
+    if (appEvent.location) details.push(`Location: ${appEvent.location}`);
+    if (appEvent.description) details.push(`Notes: ${appEvent.description}`);
 
-  const filteredEvents = (gcalEvents || []).filter(e => {
-    if (search && !e.summary.toLowerCase().includes(search.toLowerCase())) return false;
-    if (statusFilter === "linked" && !linkedGcalIds.has(e.id)) return false;
-    if (statusFilter === "unlinked" && linkedGcalIds.has(e.id)) return false;
-    return true;
-  });
-
-  function findSuggestedMatch(gcalEvent: GoogleCalendarEvent): AppEvent | null {
-    if (!appEvents) return null;
-    for (const app of appEvents) {
-      if (app.googleCalendarEventId === gcalEvent.id) return app;
-      if (
-        app.name.toLowerCase() === gcalEvent.summary.toLowerCase() &&
-        isTimeClose(app.startTime, gcalEvent.start)
-      ) {
-        return app;
-      }
-    }
-    return null;
-  }
-
-  function handleImportAsNew(gcalEvent: GoogleCalendarEvent) {
-    setSelectedGcalEvent(gcalEvent);
-    setSelectedEventType("Community Event");
-    setLinkDialogOpen(true);
-  }
-
-  function confirmImport() {
-    if (!selectedGcalEvent) return;
-    reconcileMutation.mutate({
-      googleCalendarEventId: selectedGcalEvent.id,
-      summary: selectedGcalEvent.summary,
-      description: selectedGcalEvent.description,
-      location: selectedGcalEvent.location,
-      start: selectedGcalEvent.start,
-      end: selectedGcalEvent.end,
-      type: selectedEventType,
-    });
-  }
-
-  function handleLinkToExisting(gcalEvent: GoogleCalendarEvent, appEvent: AppEvent) {
-    linkMutation.mutate({
+    createDebriefMutation.mutate({
+      title: appEvent.name,
       eventId: appEvent.id,
-      googleCalendarEventId: gcalEvent.id,
+      summary: details.length > 0 ? details.join("\n") : undefined,
     });
   }
 
-  const isLoading = gcalLoading || appLoading;
+  function handleDeleteEvent(event: AppEvent) {
+    setDeleteTarget({ type: "app", event });
+    setDeleteReason("");
+    setDeleteDialogOpen(true);
+  }
+
+  function confirmDelete() {
+    if (!deleteTarget || deleteTarget.type !== "app" || !deleteReason.trim()) return;
+    deleteEventMutation.mutate({ id: (deleteTarget.event as AppEvent).id, reason: deleteReason.trim() });
+  }
+
+  const allEvents = useMemo(() => {
+    const combined: { date: Date; type: "gcal" | "app"; gcal?: GoogleCalendarEvent; app?: AppEvent; isPast: boolean }[] = [];
+
+    (gcalEvents || []).forEach(e => {
+      const d = new Date(e.start);
+      combined.push({ date: d, type: "gcal", gcal: e, isPast: new Date(e.end) < new Date() });
+    });
+
+    (appEvents || []).filter(e => !e.googleCalendarEventId).forEach(e => {
+      const d = new Date(e.startTime);
+      combined.push({ date: d, type: "app", app: e, isPast: new Date(e.endTime) < new Date() });
+    });
+
+    return combined;
+  }, [gcalEvents, appEvents]);
+
+  const eventsByDate = useMemo(() => {
+    const map = new Map<string, typeof allEvents>();
+    allEvents.forEach(e => {
+      const key = format(e.date, "yyyy-MM-dd");
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(e);
+    });
+    return map;
+  }, [allEvents]);
+
+  const selectedDayEvents = useMemo(() => {
+    const key = format(selectedDate, "yyyy-MM-dd");
+    return (eventsByDate.get(key) || []).sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [selectedDate, eventsByDate]);
+
+  const calendarDays = useMemo(() => {
+    const start = startOfMonth(currentMonth);
+    const end = endOfMonth(currentMonth);
+    const days = eachDayOfInterval({ start, end });
+    const startDay = start.getDay();
+    const paddingBefore = Array.from({ length: startDay }, (_, i) => {
+      const d = new Date(start);
+      d.setDate(d.getDate() - (startDay - i));
+      return d;
+    });
+    const totalCells = paddingBefore.length + days.length;
+    const paddingAfter = Array.from({ length: (7 - (totalCells % 7)) % 7 }, (_, i) => {
+      const d = new Date(end);
+      d.setDate(d.getDate() + i + 1);
+      return d;
+    });
+    return [...paddingBefore, ...days, ...paddingAfter];
+  }, [currentMonth]);
+
+  const pastEventsNeedingDebrief = useMemo(() => {
+    return allEvents.filter(e => e.isPast).length;
+  }, [allEvents]);
 
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
       <main className="flex-1 md:ml-72 p-4 md:p-8 pt-14 md:pt-0 pb-20 md:pb-0">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-5xl mx-auto">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
               <h1 className="text-2xl font-display font-bold text-foreground" data-testid="text-calendar-title">
-                Calendar Sync
+                Calendar
               </h1>
               <p className="text-muted-foreground text-sm mt-1">
-                Reconcile your Google Calendar events with your tracked events
+                View events and log debriefs for past activities
               </p>
             </div>
-            <Button
-              variant="outline"
-              onClick={() => refetchGcal()}
-              disabled={gcalLoading}
-              data-testid="button-refresh-calendar"
-            >
-              <RefreshCw className={gcalLoading ? "animate-spin" : ""} />
-              Refresh
-            </Button>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-3 mb-6">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Search calendar events..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-10"
-                data-testid="input-calendar-search"
-              />
+            <div className="flex items-center gap-2">
+              {pastEventsNeedingDebrief > 0 && (
+                <Badge variant="secondary" data-testid="badge-events-count">
+                  {pastEventsNeedingDebrief} past events
+                </Badge>
+              )}
+              <Button
+                variant="outline"
+                onClick={() => refetchGcal()}
+                disabled={gcalLoading}
+                data-testid="button-refresh-calendar"
+              >
+                <RefreshCw className={`w-4 h-4 ${gcalLoading ? "animate-spin" : ""}`} />
+                Sync
+              </Button>
             </div>
-            <Select value={statusFilter} onValueChange={(v: any) => setStatusFilter(v)}>
-              <SelectTrigger className="w-full sm:w-[180px]" data-testid="select-calendar-filter">
-                <Filter className="w-4 h-4 mr-2" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Events</SelectItem>
-                <SelectItem value="unlinked">Unlinked Only</SelectItem>
-                <SelectItem value="linked">Linked Only</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
 
-          {gcalError ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <CalendarX className="w-12 h-12 text-destructive mb-4" />
-                <h3 className="text-lg font-semibold text-foreground mb-2">Unable to load calendar</h3>
-                <p className="text-muted-foreground text-sm text-center max-w-sm mb-4">
-                  There was a problem connecting to your Google Calendar. Make sure your account is connected.
-                </p>
-                <Button variant="outline" onClick={() => refetchGcal()} data-testid="button-retry-calendar">
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Try Again
+          {gcalError && (
+            <Card className="p-4 mb-6 border-amber-500/30 bg-amber-500/5">
+              <div className="flex items-center gap-3">
+                <CalendarX className="w-5 h-5 text-amber-600 shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-foreground">Google Calendar not connected</p>
+                  <p className="text-xs text-muted-foreground">Showing tracked events only. Connect your calendar to see all events.</p>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => refetchGcal()} data-testid="button-retry-calendar">
+                  Retry
                 </Button>
-              </CardContent>
+              </div>
             </Card>
-          ) : isLoading ? (
-            <div className="flex items-center justify-center py-20">
-              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <Card className="p-4 md:p-6">
+                <div className="flex items-center justify-between mb-4 gap-2">
+                  <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} data-testid="button-prev-month">
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <h3 className="text-lg font-semibold font-display" data-testid="text-current-month">
+                    {format(currentMonth, "MMMM yyyy")}
+                  </h3>
+                  <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} data-testid="button-next-month">
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-7 gap-0">
+                  {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+                    <div key={d} className="text-center text-xs font-medium text-muted-foreground py-2">
+                      {d}
+                    </div>
+                  ))}
+                  {calendarDays.map((day, idx) => {
+                    const key = format(day, "yyyy-MM-dd");
+                    const dayEvents = eventsByDate.get(key) || [];
+                    const isCurrentMonth = isSameMonth(day, currentMonth);
+                    const isSelected = isSameDay(day, selectedDate);
+                    const today = isToday(day);
+                    const isPast = isBefore(day, new Date()) && !today;
+
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => setSelectedDate(day)}
+                        data-testid={`button-calendar-day-${key}`}
+                        className={`
+                          relative p-1 min-h-[3rem] md:min-h-[4rem] text-sm border border-border/30 transition-colors
+                          ${!isCurrentMonth ? "text-muted-foreground/40" : "text-foreground"}
+                          ${isSelected ? "bg-primary/10 border-primary/50" : "hover:bg-muted/50"}
+                          ${today && !isSelected ? "bg-accent/30" : ""}
+                        `}
+                      >
+                        <span className={`
+                          inline-flex items-center justify-center w-6 h-6 text-xs rounded-full
+                          ${today ? "bg-primary text-primary-foreground font-bold" : ""}
+                        `}>
+                          {format(day, "d")}
+                        </span>
+                        {dayEvents.length > 0 && (
+                          <div className="flex flex-wrap gap-0.5 mt-0.5">
+                            {dayEvents.slice(0, 3).map((e, i) => (
+                              <div
+                                key={i}
+                                className={`w-full h-1 rounded-full ${
+                                  e.type === "gcal" ? "bg-blue-400" : "bg-violet-400"
+                                }`}
+                              />
+                            ))}
+                            {dayEvents.length > 3 && (
+                              <span className="text-[10px] text-muted-foreground">+{dayEvents.length - 3}</span>
+                            )}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Card>
             </div>
-          ) : filteredEvents.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <CalendarX className="w-12 h-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold text-foreground mb-2">No calendar events found</h3>
-                <p className="text-muted-foreground text-sm text-center max-w-sm">
-                  {search || statusFilter !== "all"
-                    ? "Try adjusting your search or filter"
-                    : "Your Google Calendar has no events in the past 90 days or next 30 days"}
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-3">
-              {filteredEvents.map((gcalEvent) => {
-                const isLinked = linkedGcalIds.has(gcalEvent.id);
-                const suggestedMatch = !isLinked ? findSuggestedMatch(gcalEvent) : null;
-                const isExpanded = expandedId === gcalEvent.id;
-                const linkedAppEvent = isLinked
-                  ? (appEvents || []).find(e => e.googleCalendarEventId === gcalEvent.id)
-                  : null;
 
-                return (
-                  <Card key={gcalEvent.id} className={isLinked ? "border-green-500/30 bg-green-500/5" : ""} data-testid={`card-gcal-event-${gcalEvent.id}`}>
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-semibold text-foreground truncate" data-testid={`text-gcal-summary-${gcalEvent.id}`}>
-                              {gcalEvent.summary}
-                            </h3>
-                            {isLinked ? (
-                              <Badge variant="secondary" className="bg-green-500/10 text-green-700 border-green-500/20">
-                                <Link2 className="w-3 h-3 mr-1" />
-                                Linked
-                              </Badge>
-                            ) : suggestedMatch ? (
-                              <Badge variant="secondary" className="bg-amber-500/10 text-amber-700 border-amber-500/20">
-                                Possible match
-                              </Badge>
-                            ) : null}
-                          </div>
-                          <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3.5 h-3.5" />
-                              {formatDate(gcalEvent.start)} {formatTime(gcalEvent.start)} - {formatTime(gcalEvent.end)}
-                            </span>
-                            {gcalEvent.location && (
-                              <span className="flex items-center gap-1">
-                                <MapPin className="w-3.5 h-3.5" />
-                                <span className="truncate max-w-[200px]">{gcalEvent.location}</span>
-                              </span>
-                            )}
-                            {gcalEvent.attendees.length > 0 && (
-                              <span className="flex items-center gap-1">
-                                <Users className="w-3.5 h-3.5" />
-                                {gcalEvent.attendees.length}
-                              </span>
-                            )}
-                          </div>
-                        </div>
+            <div className="space-y-4">
+              <h2 className="text-lg font-bold font-display" data-testid="text-selected-date">
+                {format(selectedDate, "EEEE, MMM d")}
+              </h2>
 
-                        <div className="flex items-center gap-2 shrink-0">
-                          {new Date(gcalEvent.end) < new Date() && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleLogDebrief(gcalEvent)}
-                              disabled={createDebriefMutation.isPending}
-                              data-testid={`button-log-debrief-${gcalEvent.id}`}
-                            >
-                              {createDebriefMutation.isPending ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              ) : (
-                                <FileText className="w-3.5 h-3.5" />
+              {gcalLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                </div>
+              ) : selectedDayEvents.length > 0 ? (
+                <div className="space-y-3">
+                  {selectedDayEvents.map((entry, idx) => {
+                    if (entry.type === "gcal" && entry.gcal) {
+                      const gcal = entry.gcal;
+                      return (
+                        <Card key={`gcal-${gcal.id}`} className="p-4" data-testid={`card-event-gcal-${gcal.id}`}>
+                          <div className="space-y-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <h4 className="font-medium text-sm text-foreground">{gcal.summary}</h4>
+                              <Badge variant="secondary" className="text-xs shrink-0">
+                                <Calendar className="w-3 h-3 mr-1" />
+                                GCal
+                              </Badge>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {formatTime(gcal.start)} - {formatTime(gcal.end)}
+                              </span>
+                              {gcal.location && (
+                                <span className="flex items-center gap-1">
+                                  <MapPin className="w-3 h-3" />
+                                  <span className="truncate max-w-[120px]">{gcal.location}</span>
+                                </span>
                               )}
-                              <span className="hidden sm:inline">Log Debrief</span>
-                            </Button>
-                          )}
-                          {!isLinked && (
-                            <Button
-                              size="sm"
-                              onClick={() => handleImportAsNew(gcalEvent)}
-                              data-testid={`button-import-${gcalEvent.id}`}
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline">Import</span>
-                            </Button>
-                          )}
-                          {isLinked && linkedAppEvent && (
-                            <a
-                              href={`/events`}
-                              className="text-xs text-primary hover:underline flex items-center gap-1"
-                            >
-                              View <ExternalLink className="w-3 h-3" />
-                            </a>
-                          )}
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => setExpandedId(isExpanded ? null : gcalEvent.id)}
-                            data-testid={`button-expand-${gcalEvent.id}`}
-                          >
-                            {isExpanded ? <ChevronUp /> : <ChevronDown />}
-                          </Button>
-                        </div>
-                      </div>
-
-                      {isExpanded && (
-                        <div className="mt-4 pt-4 border-t border-border space-y-3">
-                          {gcalEvent.description && (
-                            <div>
-                              <p className="text-xs font-medium text-muted-foreground mb-1">Description</p>
-                              <p className="text-sm text-foreground whitespace-pre-wrap">{gcalEvent.description}</p>
+                              {gcal.attendees?.length > 0 && (
+                                <span className="flex items-center gap-1">
+                                  <Users className="w-3 h-3" />
+                                  {gcal.attendees.length}
+                                </span>
+                              )}
                             </div>
-                          )}
-                          {gcalEvent.attendees.length > 0 && (
-                            <div>
-                              <p className="text-xs font-medium text-muted-foreground mb-1">Attendees</p>
-                              <div className="flex flex-wrap gap-2">
-                                {gcalEvent.attendees.map((a, i) => (
-                                  <Badge key={i} variant="outline" className="text-xs">
-                                    {a.displayName}
-                                  </Badge>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          {gcalEvent.htmlLink && (
-                            <a
-                              href={gcalEvent.htmlLink}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-primary hover:underline flex items-center gap-1"
-                            >
-                              Open in Google Calendar <ExternalLink className="w-3 h-3" />
-                            </a>
-                          )}
-                          {suggestedMatch && !isLinked && (
-                            <div className="bg-amber-500/5 border border-amber-500/20 rounded-md p-3">
-                              <p className="text-sm font-medium text-amber-700 mb-2">
-                                Possible match: "{suggestedMatch.name}"
-                              </p>
+                            {entry.isPast && (
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => handleLinkToExisting(gcalEvent, suggestedMatch)}
-                                disabled={linkMutation.isPending}
-                                data-testid={`button-link-match-${gcalEvent.id}`}
+                                className="w-full mt-2"
+                                onClick={() => handleLogDebrief(gcal)}
+                                disabled={createDebriefMutation.isPending}
+                                data-testid={`button-debrief-gcal-${gcal.id}`}
                               >
-                                <Link2 className="w-3.5 h-3.5" />
-                                Link to this event
+                                {createDebriefMutation.isPending ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                                ) : (
+                                  <FileText className="w-3.5 h-3.5 mr-1" />
+                                )}
+                                Log Debrief
+                              </Button>
+                            )}
+                          </div>
+                        </Card>
+                      );
+                    }
+
+                    if (entry.type === "app" && entry.app) {
+                      const app = entry.app;
+                      return (
+                        <Card key={`app-${app.id}`} className="p-4 border-violet-300/30" data-testid={`card-event-app-${app.id}`}>
+                          <div className="space-y-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <h4 className="font-medium text-sm text-foreground">{app.name}</h4>
+                              <Badge variant="secondary" className="text-xs bg-violet-500/10 text-violet-700 dark:text-violet-300 shrink-0">
+                                {app.type}
+                              </Badge>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {formatTime(app.startTime)} - {formatTime(app.endTime)}
+                              </span>
+                              {app.location && (
+                                <span className="flex items-center gap-1">
+                                  <MapPin className="w-3 h-3" />
+                                  <span className="truncate max-w-[120px]">{app.location}</span>
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex gap-2 mt-2">
+                              {entry.isPast && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="flex-1"
+                                  onClick={() => handleLogDebriefFromApp(app)}
+                                  disabled={createDebriefMutation.isPending}
+                                  data-testid={`button-debrief-app-${app.id}`}
+                                >
+                                  {createDebriefMutation.isPending ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                                  ) : (
+                                    <FileText className="w-3.5 h-3.5 mr-1" />
+                                  )}
+                                  Log Debrief
+                                </Button>
+                              )}
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => handleDeleteEvent(app)}
+                                data-testid={`button-delete-event-${app.id}`}
+                              >
+                                <Trash2 className="w-4 h-4 text-muted-foreground" />
                               </Button>
                             </div>
-                          )}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
+                          </div>
+                        </Card>
+                      );
+                    }
 
-          <div className="mt-6 text-center text-xs text-muted-foreground">
-            Showing {filteredEvents.length} calendar event{filteredEvents.length !== 1 ? "s" : ""} from the past 90 days and next 30 days
+                    return null;
+                  })}
+                </div>
+              ) : (
+                <Card className="p-6">
+                  <div className="text-center text-muted-foreground text-sm">
+                    <Calendar className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                    <p>No events on this day</p>
+                  </div>
+                </Card>
+              )}
+            </div>
           </div>
         </div>
 
-        <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
+        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
-              <DialogTitle>Import Calendar Event</DialogTitle>
+              <DialogTitle>Remove Event</DialogTitle>
             </DialogHeader>
-            {selectedGcalEvent && (
-              <div className="space-y-4 py-4">
-                <div>
-                  <p className="text-sm font-medium text-foreground">{selectedGcalEvent.summary}</p>
+            <div className="space-y-4 py-2">
+              {deleteTarget?.type === "app" && (
+                <div className="bg-muted/30 p-3 rounded-lg">
+                  <p className="text-sm font-medium">{(deleteTarget.event as AppEvent).name}</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {formatDate(selectedGcalEvent.start)} {formatTime(selectedGcalEvent.start)} - {formatTime(selectedGcalEvent.end)}
+                    {formatDate((deleteTarget.event as AppEvent).startTime)}
                   </p>
-                  {selectedGcalEvent.location && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                      <MapPin className="w-3 h-3" /> {selectedGcalEvent.location}
-                    </p>
-                  )}
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Event Type</label>
-                  <Select value={selectedEventType} onValueChange={setSelectedEventType}>
-                    <SelectTrigger data-testid="select-import-event-type">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {EVENT_TYPES.map(t => (
-                        <SelectItem key={t} value={t}>{t}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              )}
+              <div className="space-y-2">
+                <Label htmlFor="delete-reason">Why is this event being removed?</Label>
+                <Textarea
+                  id="delete-reason"
+                  value={deleteReason}
+                  onChange={(e) => setDeleteReason(e.target.value)}
+                  placeholder="e.g. Event was cancelled, duplicate entry, never happened..."
+                  className="resize-none"
+                  rows={3}
+                  data-testid="input-delete-reason"
+                />
+                <p className="text-xs text-muted-foreground">
+                  A reason is required so we can keep accurate records.
+                </p>
               </div>
-            )}
+            </div>
             <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setLinkDialogOpen(false)}
-              >
+              <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} data-testid="button-cancel-delete">
                 Cancel
               </Button>
               <Button
-                onClick={confirmImport}
-                isLoading={reconcileMutation.isPending}
-                data-testid="button-confirm-import"
+                variant="destructive"
+                onClick={confirmDelete}
+                disabled={!deleteReason.trim() || deleteEventMutation.isPending}
+                data-testid="button-confirm-delete"
               >
-                Import Event
+                {deleteEventMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                ) : (
+                  <Trash2 className="w-4 h-4 mr-1" />
+                )}
+                Remove Event
               </Button>
             </DialogFooter>
           </DialogContent>

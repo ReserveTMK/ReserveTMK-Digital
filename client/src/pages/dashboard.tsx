@@ -2,13 +2,13 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { MetricCard } from "@/components/ui/metric-card";
 import { useContacts } from "@/hooks/use-contacts";
 import { useInteractions } from "@/hooks/use-interactions";
-import { useMeetings, useCreateMeeting, useUpdateMeeting, useDeleteMeeting } from "@/hooks/use-meetings";
+import { useMeetings, useDeleteMeeting } from "@/hooks/use-meetings";
 import { useEvents } from "@/hooks/use-events";
 import { useImpactLogs } from "@/hooks/use-impact-logs";
 import { useAuth } from "@/hooks/use-auth";
-import { Users, Activity, TrendingUp, Calendar as CalendarIcon, ArrowRight, Plus, Clock, MapPin, X, Check, Trash2, ChevronLeft, ChevronRight, Video, PartyPopper, Mic } from "lucide-react";
+import { Users, Activity, TrendingUp, Calendar as CalendarIcon, ArrowRight, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, PartyPopper, Mic, FileText } from "lucide-react";
 import { Link } from "wouter";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, isBefore, startOfDay, addHours, setHours, setMinutes } from "date-fns";
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, isBefore } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -20,9 +20,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useMemo } from "react";
 import type { Meeting, Contact, Event } from "@shared/schema";
 
@@ -36,13 +33,12 @@ export default function Dashboard() {
   const { user } = useAuth();
   const { data: contacts, isLoading: loadingContacts } = useContacts();
   const { data: interactions, isLoading: loadingInteractions } = useInteractions();
-  const { data: meetings, isLoading: loadingMeetings } = useMeetings();
+  const { data: meetings } = useMeetings();
   const { data: events } = useEvents();
   const { data: impactLogs } = useImpactLogs();
 
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [bookDialogOpen, setBookDialogOpen] = useState(false);
   const [viewMeeting, setViewMeeting] = useState<Meeting | null>(null);
 
   const totalContacts = contacts?.length || 0;
@@ -56,23 +52,13 @@ export default function Dashboard() {
     ? (recentConfidence / Math.min(interactions.length, 10)).toFixed(1)
     : "N/A";
 
-  const upcomingMeetings = useMemo(() => {
-    if (!meetings) return [];
-    const now = new Date();
-    return meetings
-      .filter((m: Meeting) => new Date(m.startTime) >= now && m.status === "scheduled")
-      .sort((a: Meeting, b: Meeting) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
-  }, [meetings]);
-
-  const nextSessionLabel = useMemo(() => {
-    if (!upcomingMeetings.length) return "None";
-    const next = new Date(upcomingMeetings[0].startTime);
-    if (isToday(next)) return "Today";
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    if (isSameDay(next, tomorrow)) return "Tomorrow";
-    return format(next, "MMM d");
-  }, [upcomingMeetings]);
+  const recentDebriefs = useMemo(() => {
+    if (!impactLogs) return [];
+    return (impactLogs as any[])
+      .slice()
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 5);
+  }, [impactLogs]);
 
   const calendarDays = useMemo(() => {
     const start = startOfMonth(currentMonth);
@@ -135,7 +121,7 @@ export default function Dashboard() {
               Welcome back, {user.firstName}!
             </h1>
             <p className="text-muted-foreground text-lg">
-              Here's what's happening with your mentorship program.
+              Here's a snapshot of your community impact.
             </p>
           </div>
 
@@ -167,10 +153,11 @@ export default function Dashboard() {
               trendValue="Good"
             />
             <MetricCard
-              title="Next Session"
-              value={nextSessionLabel}
+              title="Total Events"
+              value={events?.length || 0}
               icon={<CalendarIcon className="w-5 h-5" />}
               color="blue"
+              data-testid="metric-total-events"
             />
           </div>
 
@@ -178,10 +165,6 @@ export default function Dashboard() {
             <div className="lg:col-span-2 space-y-4">
               <div className="flex items-center justify-between gap-4 flex-wrap">
                 <h2 className="text-xl font-bold font-display">Calendar</h2>
-                <Button onClick={() => setBookDialogOpen(true)} data-testid="button-book-meeting">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Book Meeting
-                </Button>
               </div>
 
               <Card className="p-4 md:p-6">
@@ -259,163 +242,167 @@ export default function Dashboard() {
                   <h3 className="font-semibold font-display" data-testid="text-selected-date">
                     {format(selectedDate, "EEEE, MMMM d, yyyy")}
                   </h3>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setSelectedDate(new Date());
-                      setBookDialogOpen(true);
-                    }}
-                    data-testid="button-quick-book"
-                  >
-                    <Plus className="w-3 h-3 mr-1" />
-                    Quick Book
-                  </Button>
                 </div>
 
                 {(selectedDayMeetings.length > 0 || selectedDayEvents.length > 0) ? (
                   <div className="space-y-3">
                     {selectedDayMeetings.map((meeting) => {
                       const contact = contacts?.find((c: Contact) => c.id === meeting.contactId);
+                      const isPast = isBefore(new Date(meeting.endTime), new Date());
                       return (
-                        <button
+                        <div
                           key={meeting.id}
-                          onClick={() => setViewMeeting(meeting)}
-                          data-testid={`button-meeting-${meeting.id}`}
-                          className="w-full text-left p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors flex items-start gap-3"
+                          className="w-full text-left p-3 rounded-lg border border-border flex items-start gap-3"
                         >
-                          <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-sm shrink-0 mt-0.5">
-                            {contact?.name?.[0] || "?"}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-medium text-sm truncate">{meeting.title}</span>
-                              <Badge variant="secondary" className={`text-xs ${MEETING_STATUS_COLORS[meeting.status] || ""}`}>
-                                {meeting.status}
-                              </Badge>
+                          <button
+                            onClick={() => setViewMeeting(meeting)}
+                            data-testid={`button-meeting-${meeting.id}`}
+                            className="flex items-start gap-3 flex-1 min-w-0 text-left hover:bg-muted/50 transition-colors rounded-lg -m-1 p-1"
+                          >
+                            <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-sm shrink-0 mt-0.5">
+                              {contact?.name?.[0] || "?"}
                             </div>
-                            <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                {format(new Date(meeting.startTime), "h:mm a")} - {format(new Date(meeting.endTime), "h:mm a")}
-                              </span>
-                              {contact && <span>with {contact.name}</span>}
-                            </div>
-                            {meeting.location && (
-                              <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
-                                <MapPin className="w-3 h-3" />
-                                {meeting.location}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-medium text-sm truncate">{meeting.title}</span>
+                                <Badge variant="secondary" className={`text-xs ${MEETING_STATUS_COLORS[meeting.status] || ""}`}>
+                                  {meeting.status}
+                                </Badge>
                               </div>
-                            )}
-                          </div>
-                        </button>
+                              <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  {format(new Date(meeting.startTime), "h:mm a")} - {format(new Date(meeting.endTime), "h:mm a")}
+                                </span>
+                                {contact && <span>with {contact.name}</span>}
+                              </div>
+                              {meeting.location && (
+                                <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+                                  <MapPin className="w-3 h-3" />
+                                  {meeting.location}
+                                </div>
+                              )}
+                            </div>
+                          </button>
+                          {isPast && meeting.status !== "cancelled" && (
+                            <Link href="/debriefs" data-testid={`link-log-debrief-${meeting.id}`}>
+                              <Button variant="outline" size="sm">
+                                <Mic className="w-3 h-3 mr-1" />
+                                Log Debrief
+                              </Button>
+                            </Link>
+                          )}
+                        </div>
                       );
                     })}
-                    {selectedDayEvents.map((ev: Event) => (
-                      <Link key={ev.id} href="/events">
+                    {selectedDayEvents.map((ev: Event) => {
+                      const isPast = isBefore(new Date(ev.endTime), new Date());
+                      return (
                         <div
-                          data-testid={`button-calendar-event-${ev.id}`}
-                          className="w-full text-left p-3 rounded-lg border border-violet-300 dark:border-violet-700 bg-violet-50 dark:bg-violet-900/20 hover:bg-violet-100 dark:hover:bg-violet-900/30 transition-colors flex items-start gap-3 cursor-pointer"
+                          key={ev.id}
+                          className="w-full text-left p-3 rounded-lg border border-violet-300 dark:border-violet-700 bg-violet-50 dark:bg-violet-900/20 flex items-start gap-3"
                         >
-                          <div className="w-8 h-8 rounded-full bg-violet-500/15 text-violet-600 dark:text-violet-300 flex items-center justify-center shrink-0 mt-0.5">
-                            <PartyPopper className="w-4 h-4" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-medium text-sm truncate">{ev.name}</span>
-                              <Badge variant="secondary" className="text-xs bg-violet-500/15 text-violet-700 dark:text-violet-300">
-                                {ev.type}
-                              </Badge>
-                            </div>
-                            <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                {format(new Date(ev.startTime), "h:mm a")} - {format(new Date(ev.endTime), "h:mm a")}
-                              </span>
-                            </div>
-                            {ev.location && (
-                              <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
-                                <MapPin className="w-3 h-3" />
-                                {ev.location}
+                          <Link href="/events" className="flex items-start gap-3 flex-1 min-w-0 cursor-pointer hover:bg-violet-100 dark:hover:bg-violet-900/30 transition-colors rounded-lg -m-1 p-1">
+                            <div
+                              data-testid={`button-calendar-event-${ev.id}`}
+                              className="flex items-start gap-3 flex-1 min-w-0"
+                            >
+                              <div className="w-8 h-8 rounded-full bg-violet-500/15 text-violet-600 dark:text-violet-300 flex items-center justify-center shrink-0 mt-0.5">
+                                <PartyPopper className="w-4 h-4" />
                               </div>
-                            )}
-                          </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-medium text-sm truncate">{ev.name}</span>
+                                  <Badge variant="secondary" className="text-xs bg-violet-500/15 text-violet-700 dark:text-violet-300">
+                                    {ev.type}
+                                  </Badge>
+                                </div>
+                                <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    {format(new Date(ev.startTime), "h:mm a")} - {format(new Date(ev.endTime), "h:mm a")}
+                                  </span>
+                                </div>
+                                {ev.location && (
+                                  <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+                                    <MapPin className="w-3 h-3" />
+                                    {ev.location}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </Link>
+                          {isPast && (
+                            <Link href="/debriefs" data-testid={`link-log-debrief-event-${ev.id}`}>
+                              <Button variant="outline" size="sm">
+                                <Mic className="w-3 h-3 mr-1" />
+                                Log Debrief
+                              </Button>
+                            </Link>
+                          )}
                         </div>
-                      </Link>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="text-center py-8 text-muted-foreground text-sm">
                     <CalendarIcon className="w-8 h-8 mx-auto mb-2 opacity-40" />
                     <p>No meetings or events on this day.</p>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="mt-1 text-primary"
-                      onClick={() => setBookDialogOpen(true)}
-                    >
-                      Book one now
-                    </Button>
                   </div>
                 )}
               </Card>
             </div>
 
             <div className="space-y-4">
-              <h2 className="text-xl font-bold font-display">Upcoming Meetings</h2>
+              <h2 className="text-xl font-bold font-display" data-testid="text-recent-debriefs-heading">Recent Debriefs</h2>
               <Card className="p-4 md:p-6">
-                {loadingMeetings ? (
+                {recentDebriefs.length > 0 ? (
                   <div className="space-y-4">
-                    {[1, 2, 3].map((i) => (
-                      <div key={i} className="flex gap-3">
-                        <Skeleton className="h-10 w-10 rounded-full" />
-                        <div className="space-y-2 flex-1">
-                          <Skeleton className="h-4 w-full" />
-                          <Skeleton className="h-3 w-3/4" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : upcomingMeetings.length > 0 ? (
-                  <div className="space-y-4">
-                    {upcomingMeetings.slice(0, 8).map((meeting: Meeting) => {
-                      const contact = contacts?.find((c: Contact) => c.id === meeting.contactId);
-                      return (
-                        <button
-                          key={meeting.id}
-                          onClick={() => {
-                            setSelectedDate(new Date(meeting.startTime));
-                            setViewMeeting(meeting);
-                          }}
-                          data-testid={`button-upcoming-meeting-${meeting.id}`}
-                          className="w-full text-left flex items-start gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors"
-                        >
+                    {recentDebriefs.map((debrief: any) => (
+                      <Link
+                        key={debrief.id}
+                        href={`/debriefs/${debrief.id}`}
+                        data-testid={`link-debrief-${debrief.id}`}
+                        className="block w-full text-left p-2 rounded-lg hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-start gap-3">
                           <div className="flex flex-col items-center bg-primary/10 rounded-lg px-2 py-1 shrink-0">
-                            <span className="text-xs font-medium text-primary">{format(new Date(meeting.startTime), "MMM")}</span>
-                            <span className="text-lg font-bold text-primary leading-tight">{format(new Date(meeting.startTime), "d")}</span>
+                            <span className="text-xs font-medium text-primary">{debrief.createdAt ? format(new Date(debrief.createdAt), "MMM") : ""}</span>
+                            <span className="text-lg font-bold text-primary leading-tight">{debrief.createdAt ? format(new Date(debrief.createdAt), "d") : ""}</span>
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="font-medium text-sm truncate">{meeting.title}</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              {format(new Date(meeting.startTime), "h:mm a")} {contact ? `with ${contact.name}` : ""}
-                            </p>
+                            <p className="font-medium text-sm truncate" data-testid={`text-debrief-title-${debrief.id}`}>{debrief.title}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <Badge variant="secondary" className={`text-xs ${
+                                debrief.status === "reviewed" ? "bg-green-500/15 text-green-700 dark:text-green-300" :
+                                debrief.status === "draft" ? "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300" :
+                                "bg-blue-500/15 text-blue-700 dark:text-blue-300"
+                              }`} data-testid={`badge-debrief-status-${debrief.id}`}>
+                                {debrief.status}
+                              </Badge>
+                              {debrief.createdAt && (
+                                <span className="text-xs text-muted-foreground">
+                                  {format(new Date(debrief.createdAt), "MMM d, yyyy")}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </button>
-                      );
-                    })}
+                        </div>
+                      </Link>
+                    ))}
+                    <Link href="/debriefs" className="text-primary hover:underline text-xs font-medium flex items-center justify-center pt-2" data-testid="link-view-all-debriefs">
+                      View all debriefs <ArrowRight className="w-3 h-3 ml-1" />
+                    </Link>
                   </div>
                 ) : (
                   <div className="text-center py-6 text-muted-foreground text-sm">
-                    <Video className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                    <p>No upcoming meetings.</p>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="mt-1 text-primary"
-                      onClick={() => setBookDialogOpen(true)}
-                    >
-                      Schedule one
-                    </Button>
+                    <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                    <p>No debriefs yet.</p>
+                    <Link href="/debriefs" data-testid="link-go-to-debriefs">
+                      <Button variant="ghost" size="sm" className="mt-1 text-primary">
+                        Go to Debriefs
+                      </Button>
+                    </Link>
                   </div>
                 )}
               </Card>
@@ -470,206 +457,12 @@ export default function Dashboard() {
         </div>
       </main>
 
-      <BookMeetingDialog
-        open={bookDialogOpen}
-        onOpenChange={setBookDialogOpen}
-        contacts={contacts || []}
-        defaultDate={selectedDate}
-      />
-
       <ViewMeetingDialog
         meeting={viewMeeting}
         onClose={() => setViewMeeting(null)}
         contacts={contacts || []}
       />
     </div>
-  );
-}
-
-function BookMeetingDialog({
-  open,
-  onOpenChange,
-  contacts,
-  defaultDate,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  contacts: Contact[];
-  defaultDate: Date;
-}) {
-  const { mutate, isPending } = useCreateMeeting();
-  const [title, setTitle] = useState("");
-  const [contactId, setContactId] = useState("");
-  const [date, setDate] = useState("");
-  const [startTime, setStartTime] = useState("09:00");
-  const [endTime, setEndTime] = useState("10:00");
-  const [location, setLocation] = useState("");
-  const [description, setDescription] = useState("");
-
-  const resetForm = () => {
-    setTitle("");
-    setContactId("");
-    setDate("");
-    setStartTime("09:00");
-    setEndTime("10:00");
-    setLocation("");
-    setDescription("");
-  };
-
-  const [formError, setFormError] = useState("");
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError("");
-
-    if (!title.trim()) {
-      setFormError("Please enter a meeting title.");
-      return;
-    }
-    if (!contactId) {
-      setFormError("Please select a community member.");
-      return;
-    }
-
-    const meetingDate = date || format(defaultDate, "yyyy-MM-dd");
-    const [sh, sm] = startTime.split(":").map(Number);
-    const [eh, em] = endTime.split(":").map(Number);
-    const startDt = setMinutes(setHours(new Date(meetingDate), sh), sm);
-    const endDt = setMinutes(setHours(new Date(meetingDate), eh), em);
-
-    if (endDt <= startDt) {
-      setFormError("End time must be after start time.");
-      return;
-    }
-
-    mutate(
-      {
-        title: title.trim(),
-        contactId: parseInt(contactId),
-        startTime: startDt,
-        endTime: endDt,
-        location: location || undefined,
-        description: description || undefined,
-        status: "scheduled",
-        userId: "temp",
-      },
-      {
-        onSuccess: () => {
-          resetForm();
-          setFormError("");
-          onOpenChange(false);
-        },
-      }
-    );
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
-        <DialogHeader>
-          <DialogTitle>Book a Meeting</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 py-2">
-          {formError && (
-            <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-lg" data-testid="text-form-error">
-              {formError}
-            </div>
-          )}
-          <div className="space-y-2">
-            <Label htmlFor="meeting-title">Meeting Title</Label>
-            <Input
-              id="meeting-title"
-              data-testid="input-meeting-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Weekly Check-in"
-              required
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="meeting-contact">Community Member</Label>
-            <Select value={contactId} onValueChange={setContactId} required>
-              <SelectTrigger data-testid="select-meeting-contact">
-                <SelectValue placeholder="Select a member" />
-              </SelectTrigger>
-              <SelectContent>
-                {contacts.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.name} ({c.role})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="meeting-date">Date</Label>
-            <Input
-              id="meeting-date"
-              data-testid="input-meeting-date"
-              type="date"
-              value={date || format(defaultDate, "yyyy-MM-dd")}
-              onChange={(e) => setDate(e.target.value)}
-              required
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="meeting-start">Start Time</Label>
-              <Input
-                id="meeting-start"
-                data-testid="input-meeting-start"
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="meeting-end">End Time</Label>
-              <Input
-                id="meeting-end"
-                data-testid="input-meeting-end"
-                type="time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="meeting-location">Location (optional)</Label>
-            <Input
-              id="meeting-location"
-              data-testid="input-meeting-location"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="e.g. Zoom, Office, Cafe"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="meeting-description">Notes (optional)</Label>
-            <Input
-              id="meeting-description"
-              data-testid="input-meeting-description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Any agenda or notes for this meeting"
-            />
-          </div>
-
-          <DialogFooter>
-            <Button type="submit" disabled={isPending || !title || !contactId} data-testid="button-submit-meeting">
-              {isPending ? "Booking..." : "Book Meeting"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -682,7 +475,6 @@ function ViewMeetingDialog({
   onClose: () => void;
   contacts: Contact[];
 }) {
-  const { mutate: updateMeeting, isPending: updating } = useUpdateMeeting();
   const { mutate: deleteMeeting, isPending: deleting } = useDeleteMeeting();
 
   if (!meeting) return null;
@@ -734,39 +526,13 @@ function ViewMeetingDialog({
         </div>
 
         <DialogFooter className="flex gap-2 flex-wrap">
-          {meeting.status === "scheduled" && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  updateMeeting(
-                    { id: meeting.id, status: "completed" },
-                    { onSuccess: onClose }
-                  );
-                }}
-                disabled={updating}
-                data-testid="button-complete-meeting"
-              >
-                <Check className="w-3 h-3 mr-1" />
-                Mark Complete
+          {isPast && meeting.status !== "cancelled" && (
+            <Link href="/debriefs" data-testid="link-dialog-log-debrief">
+              <Button variant="outline" size="sm">
+                <Mic className="w-3 h-3 mr-1" />
+                Log Debrief
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  updateMeeting(
-                    { id: meeting.id, status: "cancelled" },
-                    { onSuccess: onClose }
-                  );
-                }}
-                disabled={updating}
-                data-testid="button-cancel-meeting"
-              >
-                <X className="w-3 h-3 mr-1" />
-                Cancel
-              </Button>
-            </>
+            </Link>
           )}
           <Button
             variant="destructive"
