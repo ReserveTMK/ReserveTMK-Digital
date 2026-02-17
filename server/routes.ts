@@ -1152,38 +1152,59 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
   app.get("/api/google-calendar/events", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims.sub;
       const { getUncachableGoogleCalendarClient } = await import("./replit_integrations/google-calendar/client");
       const calendar = await getUncachableGoogleCalendarClient();
 
       const timeMin = (req.query.timeMin as string) || new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
       const timeMax = (req.query.timeMax as string) || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-      const response = await calendar.events.list({
-        calendarId: "primary",
-        timeMin,
-        timeMax,
-        maxResults: 250,
-        singleEvents: true,
-        orderBy: "startTime",
-      });
+      const additionalCalendars = await storage.getCalendarSettings(userId);
+      const calendarIds = ["primary", ...additionalCalendars.filter(c => c.active).map(c => c.calendarId)];
 
-      const calEvents = (response.data.items || []).map((e: any) => ({
-        id: e.id,
-        summary: e.summary || "(No title)",
-        description: e.description || "",
-        location: e.location || "",
-        start: e.start?.dateTime || e.start?.date || "",
-        end: e.end?.dateTime || e.end?.date || "",
-        attendees: (e.attendees || []).map((a: any) => ({
-          email: a.email,
-          displayName: a.displayName || a.email,
-          responseStatus: a.responseStatus,
-        })),
-        htmlLink: e.htmlLink,
-        status: e.status,
-      }));
+      const allEvents: any[] = [];
+      const seenKeys = new Set<string>();
 
-      res.json(calEvents);
+      for (const calId of calendarIds) {
+        try {
+          const response = await calendar.events.list({
+            calendarId: calId,
+            timeMin,
+            timeMax,
+            maxResults: 250,
+            singleEvents: true,
+            orderBy: "startTime",
+          });
+
+          for (const e of (response.data.items || [])) {
+            const dedupeKey = `${(e.summary || "").trim().toLowerCase()}|${e.start?.dateTime || e.start?.date || ""}|${e.end?.dateTime || e.end?.date || ""}`;
+            if (seenKeys.has(dedupeKey)) continue;
+            seenKeys.add(dedupeKey);
+
+            allEvents.push({
+              id: e.id,
+              summary: e.summary || "(No title)",
+              description: e.description || "",
+              location: e.location || "",
+              start: e.start?.dateTime || e.start?.date || "",
+              end: e.end?.dateTime || e.end?.date || "",
+              attendees: (e.attendees || []).map((a: any) => ({
+                email: a.email,
+                displayName: a.displayName || a.email,
+                responseStatus: a.responseStatus,
+              })),
+              htmlLink: e.htmlLink,
+              status: e.status,
+              calendarId: calId,
+            });
+          }
+        } catch (calErr: any) {
+          console.warn(`Failed to fetch calendar ${calId}:`, calErr.message);
+        }
+      }
+
+      allEvents.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+      res.json(allEvents);
     } catch (err: any) {
       console.error("Google Calendar fetch error:", err.message);
       res.status(500).json({ message: "Failed to fetch Google Calendar events: " + err.message });
@@ -1222,6 +1243,52 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       console.error("Reconcile error:", err.message);
       res.status(500).json({ message: "Failed to reconcile event" });
     }
+  });
+
+  // Dismissed Calendar Events
+  app.get("/api/dismissed-calendar-events", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const dismissed = await storage.getDismissedCalendarEvents(userId);
+    res.json(dismissed);
+  });
+
+  app.post("/api/dismissed-calendar-events", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const { gcalEventId, reason } = req.body;
+    if (!gcalEventId || !reason) {
+      return res.status(400).json({ message: "gcalEventId and reason are required" });
+    }
+    const record = await storage.dismissCalendarEvent({ userId, gcalEventId, reason });
+    res.status(201).json(record);
+  });
+
+  app.delete("/api/dismissed-calendar-events/:id", isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    await storage.restoreCalendarEvent(id);
+    res.json({ success: true });
+  });
+
+  // Calendar Settings (additional calendars)
+  app.get("/api/calendar-settings", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const settings = await storage.getCalendarSettings(userId);
+    res.json(settings);
+  });
+
+  app.post("/api/calendar-settings", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const { calendarId, label } = req.body;
+    if (!calendarId) {
+      return res.status(400).json({ message: "calendarId is required" });
+    }
+    const record = await storage.addCalendarSetting({ userId, calendarId, label: label || calendarId });
+    res.status(201).json(record);
+  });
+
+  app.delete("/api/calendar-settings/:id", isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    await storage.deleteCalendarSetting(id);
+    res.json({ success: true });
   });
 
   app.post("/api/google-calendar/link", isAuthenticated, async (req, res) => {

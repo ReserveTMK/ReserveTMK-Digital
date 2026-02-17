@@ -13,6 +13,8 @@ import {
   actionItems,
   consentRecords,
   auditLog,
+  dismissedCalendarEvents,
+  calendarSettings,
   type Contact,
   type InsertContact,
   type Interaction,
@@ -42,6 +44,10 @@ import {
   type InsertConsentRecord,
   type AuditLog as AuditLogType,
   type InsertAuditLog,
+  type DismissedCalendarEvent,
+  type InsertDismissedCalendarEvent,
+  type CalendarSetting,
+  type InsertCalendarSetting,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte } from "drizzle-orm";
 
@@ -123,6 +129,17 @@ export interface IStorage {
   // Audit Log
   getAuditLogs(entityType: string, entityId: number): Promise<AuditLogType[]>;
   createAuditLog(data: InsertAuditLog): Promise<AuditLogType>;
+
+  // Dismissed Calendar Events
+  getDismissedCalendarEvents(userId: string): Promise<DismissedCalendarEvent[]>;
+  dismissCalendarEvent(data: InsertDismissedCalendarEvent): Promise<DismissedCalendarEvent>;
+  restoreCalendarEvent(id: number): Promise<void>;
+
+  // Calendar Settings
+  getCalendarSettings(userId: string): Promise<CalendarSetting[]>;
+  addCalendarSetting(data: InsertCalendarSetting): Promise<CalendarSetting>;
+  updateCalendarSetting(id: number, updates: Partial<InsertCalendarSetting>): Promise<CalendarSetting>;
+  deleteCalendarSetting(id: number): Promise<void>;
 
   // Auth (re-exported or separate)
   auth: IAuthStorage;
@@ -508,6 +525,45 @@ export class DatabaseStorage implements IStorage {
   async createAuditLog(data: InsertAuditLog): Promise<AuditLogType> {
     const [record] = await db.insert(auditLog).values(data).returning();
     return record;
+  }
+
+  // Dismissed Calendar Events
+  async getDismissedCalendarEvents(userId: string): Promise<DismissedCalendarEvent[]> {
+    return await db.select()
+      .from(dismissedCalendarEvents)
+      .where(eq(dismissedCalendarEvents.userId, userId))
+      .orderBy(desc(dismissedCalendarEvents.createdAt));
+  }
+
+  async dismissCalendarEvent(data: InsertDismissedCalendarEvent): Promise<DismissedCalendarEvent> {
+    const [record] = await db.insert(dismissedCalendarEvents).values(data).returning();
+    return record;
+  }
+
+  async restoreCalendarEvent(id: number): Promise<void> {
+    await db.delete(dismissedCalendarEvents).where(eq(dismissedCalendarEvents.id, id));
+  }
+
+  // Calendar Settings
+  async getCalendarSettings(userId: string): Promise<CalendarSetting[]> {
+    return await db.select()
+      .from(calendarSettings)
+      .where(eq(calendarSettings.userId, userId))
+      .orderBy(desc(calendarSettings.createdAt));
+  }
+
+  async addCalendarSetting(data: InsertCalendarSetting): Promise<CalendarSetting> {
+    const [record] = await db.insert(calendarSettings).values(data).returning();
+    return record;
+  }
+
+  async updateCalendarSetting(id: number, updates: Partial<InsertCalendarSetting>): Promise<CalendarSetting> {
+    const [record] = await db.update(calendarSettings).set(updates).where(eq(calendarSettings.id, id)).returning();
+    return record;
+  }
+
+  async deleteCalendarSetting(id: number): Promise<void> {
+    await db.delete(calendarSettings).where(eq(calendarSettings.id, id));
   }
 }
 

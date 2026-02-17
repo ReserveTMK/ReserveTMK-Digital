@@ -24,6 +24,11 @@ import {
   UserPlus,
   X,
   Search,
+  EyeOff,
+  Eye,
+  Settings,
+  Plus,
+  AlertTriangle,
 } from "lucide-react";
 import {
   format,
@@ -126,6 +131,17 @@ const GCAL_TYPE_KEYWORDS: { type: string; keywords: string[] }[] = [
   { type: "Personal Development", keywords: ["training", "development", "learning", "course", "study", "webinar", "professional development", "pd"] },
 ];
 
+const PERSONAL_EVENT_KEYWORDS = [
+  "haircut", "barber", "dentist", "doctor", "gym", "workout", "physio",
+  "optometrist", "vet", "grooming", "massage", "therapy", "appointment",
+  "pickup", "drop off", "school run", "flight", "personal",
+];
+
+function isPersonalEvent(title: string, description?: string): boolean {
+  const text = `${title} ${description || ""}`.toLowerCase();
+  return PERSONAL_EVENT_KEYWORDS.some(kw => text.includes(kw));
+}
+
 function classifyGcalEvent(gcal: GoogleCalendarEvent): string {
   const text = `${gcal.summary || ""} ${gcal.description || ""}`.toLowerCase();
   for (const { type, keywords } of GCAL_TYPE_KEYWORDS) {
@@ -145,7 +161,7 @@ function getEventDotColor(e: { type: "gcal" | "app"; gcal?: GoogleCalendarEvent;
   return EVENT_TYPE_DOT_COLORS[eventType] || "bg-gray-400";
 }
 
-type CombinedEvent = { date: Date; type: "gcal" | "app"; gcal?: GoogleCalendarEvent; app?: AppEvent; isPast: boolean };
+type CombinedEvent = { date: Date; type: "gcal" | "app"; gcal?: GoogleCalendarEvent; app?: AppEvent; isPast: boolean; isDismissed?: boolean };
 
 function EventCard({
   entry,
@@ -153,6 +169,7 @@ function EventCard({
   onLogDebrief,
   onLogDebriefFromApp,
   onDeleteEvent,
+  onDismissEvent,
   isDebriefPending,
 }: {
   entry: CombinedEvent;
@@ -160,6 +177,7 @@ function EventCard({
   onLogDebrief: (gcal: GoogleCalendarEvent) => void;
   onLogDebriefFromApp: (app: AppEvent) => void;
   onDeleteEvent: (app: AppEvent) => void;
+  onDismissEvent: (gcalId: string, eventName: string, suggestedReason?: string) => void;
   isDebriefPending: boolean;
 }) {
   const { toast } = useToast();
@@ -300,10 +318,32 @@ function EventCard({
   }, [contacts, contactSearch, attendance]);
 
   const badgeColor = EVENT_TYPE_BADGE_COLORS[eventType] || "";
+  const personalEvent = isGcal ? isPersonalEvent(entry.gcal!.summary, entry.gcal!.description) : false;
 
   return (
-    <Card className="p-4" data-testid={`card-event-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}>
+    <Card className={`p-4 ${personalEvent ? "border-amber-500/30 bg-amber-500/5" : ""}`} data-testid={`card-event-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}>
       <div className="space-y-2">
+        {personalEvent && (
+          <div className="flex items-center justify-between gap-2 pb-1">
+            <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Looks like a personal event</span>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 text-xs px-2"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDismissEvent(entry.gcal!.id, entry.gcal!.summary, "Personal event");
+              }}
+              data-testid={`button-quick-dismiss-${entry.gcal!.id}`}
+            >
+              <EyeOff className="w-3 h-3 mr-1" />
+              Dismiss
+            </Button>
+          </div>
+        )}
         <button
           onClick={() => entry.isPast && setExpanded(!expanded)}
           className={`w-full text-left ${entry.isPast ? "cursor-pointer" : ""}`}
@@ -510,6 +550,16 @@ function EventCard({
                 )}
                 Log Debrief
               </Button>
+              {isGcal && !personalEvent && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => onDismissEvent(entry.gcal!.id, entry.gcal!.summary)}
+                  data-testid={`button-dismiss-event-${entry.gcal!.id}`}
+                >
+                  <EyeOff className="w-4 h-4 text-muted-foreground" />
+                </Button>
+              )}
               {isApp && (
                 <Button
                   size="icon"
@@ -541,6 +591,12 @@ export default function CalendarPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ type: "gcal" | "app"; event: GoogleCalendarEvent | AppEvent } | null>(null);
   const [deleteReason, setDeleteReason] = useState("");
   const [activeTypeFilters, setActiveTypeFilters] = useState<Set<string>>(new Set());
+  const [dismissDialogOpen, setDismissDialogOpen] = useState(false);
+  const [dismissTarget, setDismissTarget] = useState<{ gcalEventId: string; eventName: string } | null>(null);
+  const [dismissReason, setDismissReason] = useState("");
+  const [showDismissed, setShowDismissed] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [newCalendarId, setNewCalendarId] = useState("");
 
   function toggleTypeFilter(type: string) {
     setActiveTypeFilters(prev => {
@@ -559,6 +615,77 @@ export default function CalendarPage() {
     queryKey: ["/api/events"],
     staleTime: 0,
   });
+
+  const { data: dismissedEvents } = useQuery<{ id: number; gcalEventId: string; reason: string }[]>({
+    queryKey: ["/api/dismissed-calendar-events"],
+  });
+
+  const { data: calendarSettings } = useQuery<{ id: number; calendarId: string; label: string }[]>({
+    queryKey: ["/api/calendar-settings"],
+  });
+
+  const dismissedIds = useMemo(() => new Set((dismissedEvents || []).map(d => d.gcalEventId)), [dismissedEvents]);
+
+  const dismissMutation = useMutation({
+    mutationFn: async ({ gcalEventId, reason }: { gcalEventId: string; reason: string }) => {
+      await apiRequest("POST", "/api/dismissed-calendar-events", { gcalEventId, reason });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dismissed-calendar-events"] });
+      toast({ title: "Event dismissed" });
+      setDismissDialogOpen(false);
+      setDismissTarget(null);
+      setDismissReason("");
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to dismiss event", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/dismissed-calendar-events/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dismissed-calendar-events"] });
+      toast({ title: "Event restored" });
+    },
+  });
+
+  const addCalendarMutation = useMutation({
+    mutationFn: async ({ calendarId, label }: { calendarId: string; label: string }) => {
+      await apiRequest("POST", "/api/calendar-settings", { calendarId, label });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/calendar-settings"] });
+      setNewCalendarId("");
+      toast({ title: "Calendar added" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to add calendar", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const removeCalendarMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/calendar-settings/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/calendar-settings"] });
+      toast({ title: "Calendar removed" });
+    },
+  });
+
+  function handleDismissEvent(gcalEventId: string, eventName: string, suggestedReason?: string) {
+    setDismissTarget({ gcalEventId, eventName });
+    setDismissReason(suggestedReason || "");
+    setDismissDialogOpen(true);
+  }
+
+  function confirmDismiss() {
+    if (!dismissTarget || !dismissReason.trim()) return;
+    dismissMutation.mutate({ gcalEventId: dismissTarget.gcalEventId, reason: dismissReason.trim() });
+  }
 
   const createDebriefMutation = useMutation({
     mutationFn: async (data: { title: string; eventId?: number; summary?: string }) => {
@@ -642,7 +769,8 @@ export default function CalendarPage() {
 
     (gcalEvents || []).forEach(e => {
       const d = new Date(e.start);
-      combined.push({ date: d, type: "gcal", gcal: e, isPast: new Date(e.end) < new Date() });
+      const isDismissed = dismissedIds.has(e.id);
+      combined.push({ date: d, type: "gcal", gcal: e, isPast: new Date(e.end) < new Date(), isDismissed });
     });
 
     (appEvents || []).filter(e => !e.googleCalendarEventId).forEach(e => {
@@ -651,12 +779,18 @@ export default function CalendarPage() {
     });
 
     return combined;
-  }, [gcalEvents, appEvents]);
+  }, [gcalEvents, appEvents, dismissedIds]);
 
   const filteredEvents = useMemo(() => {
-    if (activeTypeFilters.size === 0) return allEvents;
-    return allEvents.filter(e => activeTypeFilters.has(getEventType(e)));
-  }, [allEvents, activeTypeFilters]);
+    let events = allEvents;
+    if (!showDismissed) {
+      events = events.filter(e => !e.isDismissed);
+    }
+    if (activeTypeFilters.size > 0) {
+      events = events.filter(e => activeTypeFilters.has(getEventType(e)));
+    }
+    return events;
+  }, [allEvents, activeTypeFilters, showDismissed]);
 
   const eventsByDate = useMemo(() => {
     const map = new Map<string, CombinedEvent[]>();
@@ -710,12 +844,30 @@ export default function CalendarPage() {
                 Review past events, classify them, tag members, and log debriefs
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {pastEventsNeedingDebrief > 0 && (
                 <Badge variant="secondary" data-testid="badge-events-count">
                   {pastEventsNeedingDebrief} past events
                 </Badge>
               )}
+              <Button
+                size="sm"
+                variant="outline"
+                className={`toggle-elevate ${showDismissed ? "toggle-elevated" : ""}`}
+                onClick={() => setShowDismissed(!showDismissed)}
+                data-testid="button-toggle-dismissed"
+              >
+                {showDismissed ? <Eye className="w-4 h-4 mr-1" /> : <EyeOff className="w-4 h-4 mr-1" />}
+                {showDismissed ? "Showing dismissed" : "Hidden"}
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setShowSettings(!showSettings)}
+                data-testid="button-calendar-settings"
+              >
+                <Settings className="w-4 h-4" />
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => refetchGcal()}
@@ -740,6 +892,62 @@ export default function CalendarPage() {
                   Retry
                 </Button>
               </div>
+            </Card>
+          )}
+
+          {showSettings && (
+            <Card className="p-4 mb-6" data-testid="panel-calendar-settings">
+              <div className="flex items-center justify-between mb-3 gap-2">
+                <h3 className="text-sm font-semibold">Additional Calendars</h3>
+                <Button size="icon" variant="ghost" onClick={() => setShowSettings(false)}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mb-3">
+                Add team calendars (venue hires, space bookings) to see all events in one place. Shared events are automatically deduplicated.
+              </p>
+              <div className="flex gap-2 mb-3">
+                <Input
+                  value={newCalendarId}
+                  onChange={(e) => setNewCalendarId(e.target.value)}
+                  placeholder="Calendar ID (e.g. team@group.calendar.google.com)"
+                  className="flex-1 text-sm"
+                  data-testid="input-calendar-id"
+                />
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (newCalendarId.trim()) {
+                      addCalendarMutation.mutate({ calendarId: newCalendarId.trim(), label: newCalendarId.trim().split("@")[0] });
+                    }
+                  }}
+                  disabled={!newCalendarId.trim() || addCalendarMutation.isPending}
+                  data-testid="button-add-calendar"
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add
+                </Button>
+              </div>
+              {(calendarSettings || []).length > 0 && (
+                <div className="space-y-2">
+                  {(calendarSettings || []).map(cal => (
+                    <div key={cal.id} className="flex items-center justify-between gap-2 p-2 bg-muted/30 rounded-md">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">{cal.label || cal.calendarId}</p>
+                        <p className="text-xs text-muted-foreground truncate">{cal.calendarId}</p>
+                      </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => removeCalendarMutation.mutate(cal.id)}
+                        data-testid={`button-remove-calendar-${cal.id}`}
+                      >
+                        <X className="w-4 h-4 text-muted-foreground" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </Card>
           )}
 
@@ -854,15 +1062,39 @@ export default function CalendarPage() {
               ) : selectedDayEvents.length > 0 ? (
                 <div className="space-y-3">
                   {selectedDayEvents.map((entry) => (
-                    <EventCard
-                      key={entry.type === "gcal" ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}
-                      entry={entry}
-                      appEvents={appEvents || []}
-                      onLogDebrief={handleLogDebrief}
-                      onLogDebriefFromApp={handleLogDebriefFromApp}
-                      onDeleteEvent={handleDeleteEvent}
-                      isDebriefPending={createDebriefMutation.isPending}
-                    />
+                    <div key={entry.type === "gcal" ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`} className="relative">
+                      {entry.isDismissed && (
+                        <div className="absolute inset-0 bg-background/60 z-10 flex items-center justify-center rounded-md">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary" className="text-xs">
+                              <EyeOff className="w-3 h-3 mr-1" />
+                              Dismissed
+                            </Badge>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                const dismissed = (dismissedEvents || []).find(d => d.gcalEventId === entry.gcal?.id);
+                                if (dismissed) restoreMutation.mutate(dismissed.id);
+                              }}
+                              data-testid={`button-restore-event-${entry.gcal?.id}`}
+                            >
+                              <Eye className="w-3 h-3 mr-1" />
+                              Restore
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                      <EventCard
+                        entry={entry}
+                        appEvents={appEvents || []}
+                        onLogDebrief={handleLogDebrief}
+                        onLogDebriefFromApp={handleLogDebriefFromApp}
+                        onDeleteEvent={handleDeleteEvent}
+                        onDismissEvent={handleDismissEvent}
+                        isDebriefPending={createDebriefMutation.isPending}
+                      />
+                    </div>
                   ))}
                 </div>
               ) : (
@@ -920,6 +1152,59 @@ export default function CalendarPage() {
               >
                 {deleteEventMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
                 Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={dismissDialogOpen} onOpenChange={setDismissDialogOpen}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Dismiss Event</DialogTitle>
+              <DialogDescription>This event will be hidden from your calendar view. You can restore it later.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              {dismissTarget && (
+                <div className="bg-muted/30 p-3 rounded-lg">
+                  <p className="text-sm font-medium">{dismissTarget.eventName}</p>
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label>Reason for dismissing</Label>
+                <div className="flex flex-col gap-2">
+                  {["Didn't happen", "Personal event", "Duplicate", "Not relevant"].map(reason => (
+                    <Button
+                      key={reason}
+                      variant="outline"
+                      size="sm"
+                      className={`justify-start toggle-elevate ${dismissReason === reason ? "toggle-elevated" : ""}`}
+                      onClick={() => setDismissReason(reason)}
+                      data-testid={`button-dismiss-reason-${reason.toLowerCase().replace(/\s+/g, "-")}`}
+                    >
+                      {reason}
+                    </Button>
+                  ))}
+                </div>
+                <Input
+                  value={!["Didn't happen", "Personal event", "Duplicate", "Not relevant"].includes(dismissReason) ? dismissReason : ""}
+                  onChange={(e) => setDismissReason(e.target.value)}
+                  placeholder="Or type a custom reason..."
+                  className="text-sm"
+                  data-testid="input-dismiss-reason-custom"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDismissDialogOpen(false)} data-testid="button-cancel-dismiss">
+                Cancel
+              </Button>
+              <Button
+                onClick={confirmDismiss}
+                disabled={!dismissReason.trim() || dismissMutation.isPending}
+                data-testid="button-confirm-dismiss"
+              >
+                {dismissMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <EyeOff className="w-4 h-4 mr-1" />}
+                Dismiss
               </Button>
             </DialogFooter>
           </DialogContent>

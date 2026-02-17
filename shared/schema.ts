@@ -186,6 +186,23 @@ export const auditLog = pgTable("audit_log", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const dismissedCalendarEvents = pgTable("dismissed_calendar_events", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  gcalEventId: text("gcal_event_id").notNull(),
+  reason: text("reason").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const calendarSettings = pgTable("calendar_settings", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  calendarId: text("calendar_id").notNull(),
+  label: text("label"),
+  active: boolean("active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // === RELATIONS ===
 export const contactsRelations = relations(contacts, ({ many }) => ({
   interactions: many(interactions),
@@ -393,6 +410,22 @@ export type InsertConsentRecord = z.infer<typeof insertConsentRecordSchema>;
 
 export type AuditLog = typeof auditLog.$inferSelect;
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+
+export const insertDismissedCalendarEventSchema = createInsertSchema(dismissedCalendarEvents).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertCalendarSettingsSchema = createInsertSchema(calendarSettings).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type DismissedCalendarEvent = typeof dismissedCalendarEvents.$inferSelect;
+export type InsertDismissedCalendarEvent = z.infer<typeof insertDismissedCalendarEventSchema>;
+
+export type CalendarSetting = typeof calendarSettings.$inferSelect;
+export type InsertCalendarSetting = z.infer<typeof insertCalendarSettingsSchema>;
 
 // Request types
 export type CreateContactRequest = InsertContact;
