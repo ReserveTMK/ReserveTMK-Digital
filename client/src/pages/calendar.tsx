@@ -83,6 +83,8 @@ function formatTime(dateStr: string) {
   return d.toLocaleTimeString("en-NZ", { hour: "2-digit", minute: "2-digit" });
 }
 
+const EVENT_TYPES = ["Meeting", "Mentoring Session", "External Event", "Personal Development"] as const;
+
 const EVENT_TYPE_DOT_COLORS: Record<string, string> = {
   "Meeting": "bg-blue-400",
   "Mentoring Session": "bg-emerald-400",
@@ -97,10 +99,30 @@ const EVENT_TYPE_BADGE_COLORS: Record<string, string> = {
   "Personal Development": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
 };
 
-function getEventDotColor(e: { type: "gcal" | "app"; app?: AppEvent }) {
-  if (e.type === "gcal") return "bg-gray-400";
-  const appType = e.app?.type || "";
-  return EVENT_TYPE_DOT_COLORS[appType] || "bg-gray-400";
+const GCAL_TYPE_KEYWORDS: { type: string; keywords: string[] }[] = [
+  { type: "Mentoring Session", keywords: ["mentor", "mentoring", "mentee", "coaching", "1:1", "one on one", "1-on-1"] },
+  { type: "Meeting", keywords: ["meeting", "hui", "catch up", "catchup", "sync", "standup", "check-in", "collab", "collaboration"] },
+  { type: "External Event", keywords: ["event", "conference", "summit", "expo", "workshop", "activation", "networking", "ecosystem"] },
+  { type: "Personal Development", keywords: ["training", "development", "learning", "course", "study", "webinar", "professional development", "pd"] },
+];
+
+function classifyGcalEvent(gcal: GoogleCalendarEvent): string {
+  const text = `${gcal.summary || ""} ${gcal.description || ""}`.toLowerCase();
+  for (const { type, keywords } of GCAL_TYPE_KEYWORDS) {
+    if (keywords.some(kw => text.includes(kw))) return type;
+  }
+  return "Meeting";
+}
+
+function getEventType(e: { type: "gcal" | "app"; gcal?: GoogleCalendarEvent; app?: AppEvent }): string {
+  if (e.type === "app" && e.app) return e.app.type;
+  if (e.type === "gcal" && e.gcal) return classifyGcalEvent(e.gcal);
+  return "Meeting";
+}
+
+function getEventDotColor(e: { type: "gcal" | "app"; gcal?: GoogleCalendarEvent; app?: AppEvent }) {
+  const eventType = getEventType(e);
+  return EVENT_TYPE_DOT_COLORS[eventType] || "bg-gray-400";
 }
 
 export default function CalendarPage() {
@@ -111,6 +133,16 @@ export default function CalendarPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ type: "gcal" | "app"; event: GoogleCalendarEvent | AppEvent } | null>(null);
   const [deleteReason, setDeleteReason] = useState("");
+  const [activeTypeFilters, setActiveTypeFilters] = useState<Set<string>>(new Set());
+
+  function toggleTypeFilter(type: string) {
+    setActiveTypeFilters(prev => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return next;
+    });
+  }
 
   const { data: gcalEvents, isLoading: gcalLoading, error: gcalError, refetch: refetchGcal } = useQuery<GoogleCalendarEvent[]>({
     queryKey: ["/api/google-calendar/events"],
@@ -214,15 +246,20 @@ export default function CalendarPage() {
     return combined;
   }, [gcalEvents, appEvents]);
 
+  const filteredEvents = useMemo(() => {
+    if (activeTypeFilters.size === 0) return allEvents;
+    return allEvents.filter(e => activeTypeFilters.has(getEventType(e)));
+  }, [allEvents, activeTypeFilters]);
+
   const eventsByDate = useMemo(() => {
-    const map = new Map<string, typeof allEvents>();
-    allEvents.forEach(e => {
+    const map = new Map<string, typeof filteredEvents>();
+    filteredEvents.forEach(e => {
       const key = format(e.date, "yyyy-MM-dd");
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(e);
     });
     return map;
-  }, [allEvents]);
+  }, [filteredEvents]);
 
   const selectedDayEvents = useMemo(() => {
     const key = format(selectedDate, "yyyy-MM-dd");
@@ -249,8 +286,8 @@ export default function CalendarPage() {
   }, [currentMonth]);
 
   const pastEventsNeedingDebrief = useMemo(() => {
-    return allEvents.filter(e => e.isPast).length;
-  }, [allEvents]);
+    return filteredEvents.filter(e => e.isPast).length;
+  }, [filteredEvents]);
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -314,17 +351,37 @@ export default function CalendarPage() {
                   </Button>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3 mb-3 text-xs text-muted-foreground" data-testid="legend-event-types">
-                  {Object.entries(EVENT_TYPE_DOT_COLORS).map(([label, color]) => (
-                    <span key={label} className="flex items-center gap-1.5">
-                      <span className={`w-2.5 h-2.5 rounded-full ${color}`} />
-                      {label}
-                    </span>
-                  ))}
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-gray-400" />
-                    Google Cal
-                  </span>
+                <div className="flex flex-wrap items-center gap-1.5 mb-3" data-testid="filter-event-types">
+                  {EVENT_TYPES.map(type => {
+                    const isActive = activeTypeFilters.has(type);
+                    const dotColor = EVENT_TYPE_DOT_COLORS[type];
+                    return (
+                      <button
+                        key={type}
+                        onClick={() => toggleTypeFilter(type)}
+                        data-testid={`button-filter-${type.toLowerCase().replace(/\s+/g, "-")}`}
+                        className={`
+                          inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors
+                          ${isActive
+                            ? "bg-primary/10 text-foreground font-medium border border-primary/30"
+                            : "text-muted-foreground hover:bg-muted/50 border border-transparent"
+                          }
+                        `}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${dotColor} ${!isActive && activeTypeFilters.size > 0 ? "opacity-40" : ""}`} />
+                        {type}
+                      </button>
+                    );
+                  })}
+                  {activeTypeFilters.size > 0 && (
+                    <button
+                      onClick={() => setActiveTypeFilters(new Set())}
+                      className="text-xs text-muted-foreground hover:text-foreground px-1.5 py-1 transition-colors"
+                      data-testid="button-clear-filters"
+                    >
+                      Clear
+                    </button>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-7 gap-0">
@@ -398,10 +455,15 @@ export default function CalendarPage() {
                           <div className="space-y-2">
                             <div className="flex items-start justify-between gap-2">
                               <h4 className="font-medium text-sm text-foreground">{gcal.summary}</h4>
-                              <Badge variant="secondary" className="text-xs shrink-0">
-                                <Calendar className="w-3 h-3 mr-1" />
-                                GCal
-                              </Badge>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <Badge variant="secondary" className={`text-xs ${EVENT_TYPE_BADGE_COLORS[classifyGcalEvent(gcal)] || ""}`}>
+                                  {classifyGcalEvent(gcal)}
+                                </Badge>
+                                <Badge variant="secondary" className="text-xs">
+                                  <Calendar className="w-3 h-3 mr-1" />
+                                  GCal
+                                </Badge>
+                              </div>
                             </div>
                             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                               <span className="flex items-center gap-1">
