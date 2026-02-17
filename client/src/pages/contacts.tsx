@@ -4,6 +4,7 @@ import { useContacts, useCreateContact } from "@/hooks/use-contacts";
 import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X } from "lucide-react";
 import { useState, useRef, useCallback } from "react";
 import { Link } from "wouter";
+import { format } from "date-fns";
 import {
   Dialog,
   DialogContent,
@@ -123,8 +124,8 @@ export default function Contacts() {
           ) : (
             <div className="space-y-3">
               {[...(filteredContacts || [])].sort((a, b) => {
-                const dateA = a.lastInteraction ? new Date(a.lastInteraction).getTime() : 0;
-                const dateB = b.lastInteraction ? new Date(b.lastInteraction).getTime() : 0;
+                const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
                 return dateB - dateA;
               }).map((contact) => (
                 <Link key={contact.id} href={`/contacts/${contact.id}`} data-testid={`link-contact-${contact.id}`}>
@@ -152,11 +153,9 @@ export default function Contacts() {
                         <p className="text-xs text-muted-foreground truncate" data-testid={`text-email-${contact.id}`}>
                           {contact.email || "No email"}
                         </p>
-                        {contact.lastInteraction && (
-                          <p className="text-xs text-primary/80 font-medium">
-                            Last interaction: {format(new Date(contact.lastInteraction), "MMM d, yyyy")}
-                          </p>
-                        )}
+                        <p className="text-xs text-primary/80 font-medium">
+                          Added: {format(new Date(contact.createdAt || Date.now()), "MMM d, yyyy")}
+                        </p>
                       </div>
                     </div>
 
