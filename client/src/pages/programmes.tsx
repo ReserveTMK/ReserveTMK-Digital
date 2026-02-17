@@ -33,6 +33,7 @@ import {
   UserPlus,
   Users,
   X,
+  Copy,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -118,6 +119,30 @@ export default function Programmes() {
       return { date: `${dateStr} - ${endDateStr}`, time: timeStr };
     }
     return { date: dateStr, time: timeStr };
+  };
+
+  const handleDuplicate = async (p: Programme) => {
+    try {
+      await createMutation.mutateAsync({
+        name: `${p.name} (Copy)`,
+        description: p.description || undefined,
+        classification: p.classification,
+        status: "planned",
+        startDate: p.startDate || undefined,
+        endDate: p.endDate || undefined,
+        startTime: p.startTime || undefined,
+        endTime: p.endTime || undefined,
+        location: p.location || undefined,
+        facilitatorCost: p.facilitatorCost || "0",
+        cateringCost: p.cateringCost || "0",
+        promoCost: p.promoCost || "0",
+        facilitators: p.facilitators || undefined,
+        notes: p.notes || undefined,
+      });
+      toast({ title: "Duplicated", description: `"${p.name}" has been duplicated` });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to duplicate", variant: "destructive" });
+    }
   };
 
   const handleDelete = async (id: number) => {
@@ -265,6 +290,10 @@ export default function Programmes() {
                           <DropdownMenuItem onClick={() => setEditProgramme(programme)} data-testid={`button-edit-programme-${programme.id}`}>
                             <Pencil className="w-4 h-4 mr-2" />
                             Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDuplicate(programme)} data-testid={`button-duplicate-programme-${programme.id}`}>
+                            <Copy className="w-4 h-4 mr-2" />
+                            Duplicate
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => handleDelete(programme.id)}
