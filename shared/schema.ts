@@ -80,7 +80,7 @@ export const events = pgTable("events", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
   name: text("name").notNull(),
-  type: text("type").notNull(), // 'Networking Event', 'Workshop', 'Activation', 'Conference', 'Community Event', 'Other'
+  type: text("type").notNull(), // 'Meeting', 'Mentoring Session', 'External Event', 'Personal Development'
   startTime: timestamp("start_time").notNull(),
   endTime: timestamp("end_time").notNull(),
   location: text("location"),

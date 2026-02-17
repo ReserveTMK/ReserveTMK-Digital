@@ -83,6 +83,26 @@ function formatTime(dateStr: string) {
   return d.toLocaleTimeString("en-NZ", { hour: "2-digit", minute: "2-digit" });
 }
 
+const EVENT_TYPE_DOT_COLORS: Record<string, string> = {
+  "Meeting": "bg-blue-400",
+  "Mentoring Session": "bg-emerald-400",
+  "External Event": "bg-orange-400",
+  "Personal Development": "bg-violet-400",
+};
+
+const EVENT_TYPE_BADGE_COLORS: Record<string, string> = {
+  "Meeting": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
+  "Mentoring Session": "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  "External Event": "bg-orange-500/10 text-orange-700 dark:text-orange-300",
+  "Personal Development": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
+};
+
+function getEventDotColor(e: { type: "gcal" | "app"; app?: AppEvent }) {
+  if (e.type === "gcal") return "bg-gray-400";
+  const appType = e.app?.type || "";
+  return EVENT_TYPE_DOT_COLORS[appType] || "bg-gray-400";
+}
+
 export default function CalendarPage() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
@@ -294,6 +314,19 @@ export default function CalendarPage() {
                   </Button>
                 </div>
 
+                <div className="flex flex-wrap items-center gap-3 mb-3 text-xs text-muted-foreground" data-testid="legend-event-types">
+                  {Object.entries(EVENT_TYPE_DOT_COLORS).map(([label, color]) => (
+                    <span key={label} className="flex items-center gap-1.5">
+                      <span className={`w-2.5 h-2.5 rounded-full ${color}`} />
+                      {label}
+                    </span>
+                  ))}
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-gray-400" />
+                    Google Cal
+                  </span>
+                </div>
+
                 <div className="grid grid-cols-7 gap-0">
                   {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
                     <div key={d} className="text-center text-xs font-medium text-muted-foreground py-2">
@@ -331,9 +364,7 @@ export default function CalendarPage() {
                             {dayEvents.slice(0, 3).map((e, i) => (
                               <div
                                 key={i}
-                                className={`w-full h-1 rounded-full ${
-                                  e.type === "gcal" ? "bg-blue-400" : "bg-violet-400"
-                                }`}
+                                className={`w-full h-1 rounded-full ${getEventDotColor(e)}`}
                               />
                             ))}
                             {dayEvents.length > 3 && (
@@ -419,7 +450,7 @@ export default function CalendarPage() {
                           <div className="space-y-2">
                             <div className="flex items-start justify-between gap-2">
                               <h4 className="font-medium text-sm text-foreground">{app.name}</h4>
-                              <Badge variant="secondary" className="text-xs bg-violet-500/10 text-violet-700 dark:text-violet-300 shrink-0">
+                              <Badge variant="secondary" className={`text-xs shrink-0 ${EVENT_TYPE_BADGE_COLORS[app.type] || ""}`}>
                                 {app.type}
                               </Badge>
                             </div>

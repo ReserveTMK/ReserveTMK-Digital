@@ -37,21 +37,17 @@ import { format, setHours, setMinutes } from "date-fns";
 import type { Event } from "@shared/schema";
 
 const EVENT_TYPES = [
-  "Networking Event",
-  "Workshop",
-  "Activation",
-  "Conference",
-  "Community Event",
-  "Other",
+  "Meeting",
+  "Mentoring Session",
+  "External Event",
+  "Personal Development",
 ];
 
 const EVENT_TYPE_COLORS: Record<string, string> = {
-  "Networking Event": "bg-violet-500/15 text-violet-700 dark:text-violet-300",
-  "Workshop": "bg-blue-500/15 text-blue-700 dark:text-blue-300",
-  "Activation": "bg-orange-500/15 text-orange-700 dark:text-orange-300",
-  "Conference": "bg-teal-500/15 text-teal-700 dark:text-teal-300",
-  "Community Event": "bg-pink-500/15 text-pink-700 dark:text-pink-300",
-  "Other": "bg-gray-500/15 text-gray-700 dark:text-gray-300",
+  "Meeting": "bg-blue-500/15 text-blue-700 dark:text-blue-300",
+  "Mentoring Session": "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+  "External Event": "bg-orange-500/15 text-orange-700 dark:text-orange-300",
+  "Personal Development": "bg-violet-500/15 text-violet-700 dark:text-violet-300",
 };
 
 const ATTENDEE_ROLES = ["attendee", "speaker", "organizer", "volunteer"];
@@ -96,7 +92,7 @@ export default function Events() {
             <div>
               <h1 className="text-3xl font-display font-bold" data-testid="text-events-title">Events</h1>
               <p className="text-muted-foreground mt-1">
-                Track external activations, workshops, and networking events.
+                Track meetings, mentoring sessions, external events, and personal development activities.
               </p>
             </div>
             <Button className="shadow-lg" onClick={() => setCreateOpen(true)} data-testid="button-add-event">
@@ -525,7 +521,7 @@ function EventFormDialog({
   const updateMutation = useUpdateEvent();
 
   const [name, setName] = useState(event?.name || "");
-  const [type, setType] = useState(event?.type || "Networking Event");
+  const [type, setType] = useState(event?.type || "Meeting");
   const [date, setDate] = useState(
     event ? format(new Date(event.startTime), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd")
   );
@@ -592,7 +588,7 @@ function EventFormDialog({
       createMutation.mutate(payload, {
         onSuccess: () => {
           setName("");
-          setType("Networking Event");
+          setType("Meeting");
           setDate(format(new Date(), "yyyy-MM-dd"));
           setStartTime("09:00");
           setEndTime("17:00");
