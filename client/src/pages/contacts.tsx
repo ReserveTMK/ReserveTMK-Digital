@@ -106,7 +106,7 @@ export default function Contacts() {
             </div>
           </div>
 
-          {/* Contacts Grid */}
+          {/* Contacts List */}
           {isLoading ? (
             <div className="flex justify-center items-center h-64">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -114,44 +114,60 @@ export default function Contacts() {
           ) : filteredContacts?.length === 0 ? (
             <div className="bg-card rounded-2xl border border-dashed border-border p-12 text-center">
               <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-                <UsersIcon className="w-8 h-8 text-muted-foreground" />
+                <Search className="w-8 h-8 text-muted-foreground" />
               </div>
               <h3 className="text-lg font-semibold mb-2">No community members found</h3>
               <p className="text-muted-foreground mb-6">Try adjusting your filters or add a new member.</p>
               <Button onClick={() => setOpen(true)} variant="outline" data-testid="button-add-member-empty">Add Member</Button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredContacts?.map((contact) => (
+            <div className="space-y-3">
+              {[...(filteredContacts || [])].sort((a, b) => {
+                const dateA = a.lastInteraction ? new Date(a.lastInteraction).getTime() : 0;
+                const dateB = b.lastInteraction ? new Date(b.lastInteraction).getTime() : 0;
+                return dateB - dateA;
+              }).map((contact) => (
                 <Link key={contact.id} href={`/contacts/${contact.id}`} data-testid={`link-contact-${contact.id}`}>
-                  <div className="group bg-card hover:bg-card/80 border border-border rounded-2xl p-6 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer h-full flex flex-col" data-testid={`card-contact-${contact.id}`}>
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold text-xl group-hover:scale-110 transition-transform">
-                        {contact.name[0]}
-                      </div>
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-secondary text-secondary-foreground" data-testid={`text-role-${contact.id}`}>
-                        {contact.role}
-                      </span>
+                  <div className="group bg-card hover:bg-card/80 border border-border rounded-xl p-4 transition-all duration-200 hover:shadow-md cursor-pointer flex items-center gap-4" data-testid={`card-contact-${contact.id}`}>
+                    <div className="w-12 h-12 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-lg shrink-0">
+                      {contact.name[0]}
                     </div>
                     
-                    <h3 className="text-xl font-bold font-display text-foreground mb-1 group-hover:text-primary transition-colors" data-testid={`text-name-${contact.id}`}>
-                      {contact.name}
-                    </h3>
-                    {contact.businessName && (
-                      <p className="text-sm text-foreground/70 truncate" data-testid={`text-business-${contact.id}`}>{contact.businessName}</p>
-                    )}
-                    <p className="text-sm text-muted-foreground mb-4 truncate" data-testid={`text-email-${contact.id}`}>{contact.email || "No email"}</p>
-                    
-                    <div className="mt-auto pt-4 border-t border-border/50 flex flex-wrap gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 mb-0.5">
+                        <h3 className="text-base font-bold font-display text-foreground truncate group-hover:text-primary transition-colors" data-testid={`text-name-${contact.id}`}>
+                          {contact.name}
+                        </h3>
+                        <Badge variant="secondary" className="text-[10px] h-5 px-2 font-medium shrink-0" data-testid={`text-role-${contact.id}`}>
+                          {contact.role}
+                        </Badge>
+                      </div>
+                      
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                        {contact.businessName && (
+                          <p className="text-xs text-foreground/70 truncate max-w-[200px]" data-testid={`text-business-${contact.id}`}>
+                            {contact.businessName}
+                          </p>
+                        )}
+                        <p className="text-xs text-muted-foreground truncate" data-testid={`text-email-${contact.id}`}>
+                          {contact.email || "No email"}
+                        </p>
+                        {contact.lastInteraction && (
+                          <p className="text-xs text-primary/80 font-medium">
+                            Last interaction: {format(new Date(contact.lastInteraction), "MMM d, yyyy")}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="hidden sm:flex flex-wrap gap-1 justify-end max-w-[200px] shrink-0">
                       {contact.tags && contact.tags.length > 0 ? (
-                        contact.tags.slice(0, 3).map((tag, i) => (
-                          <span key={i} className="text-xs px-2 py-1 bg-muted rounded-md text-muted-foreground">
+                        contact.tags.slice(0, 2).map((tag, i) => (
+                          <span key={i} className="text-[10px] px-1.5 py-0.5 bg-muted rounded text-muted-foreground border border-border/50">
                             #{tag}
                           </span>
                         ))
-                      ) : (
-                        <span className="text-xs text-muted-foreground italic">No tags</span>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 </Link>
