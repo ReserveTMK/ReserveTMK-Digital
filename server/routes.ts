@@ -1336,7 +1336,10 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.post(api.programmes.create.path, isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const input = api.programmes.create.input.parse({ ...req.body, userId });
+      const body = { ...req.body, userId };
+      if (body.startDate && typeof body.startDate === 'string') body.startDate = new Date(body.startDate);
+      if (body.endDate && typeof body.endDate === 'string') body.endDate = new Date(body.endDate);
+      const input = api.programmes.create.input.parse(body);
       const programme = await storage.createProgramme(input);
       res.status(201).json(programme);
     } catch (err) {
@@ -1353,7 +1356,10 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const existing = await storage.getProgramme(id);
       if (!existing) return res.status(404).json({ message: "Programme not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
-      const input = api.programmes.update.input.parse(req.body);
+      const body = { ...req.body };
+      if (body.startDate && typeof body.startDate === 'string') body.startDate = new Date(body.startDate);
+      if (body.endDate && typeof body.endDate === 'string') body.endDate = new Date(body.endDate);
+      const input = api.programmes.update.input.parse(body);
       const updated = await storage.updateProgramme(id, input);
       res.json(updated);
     } catch (err) {
