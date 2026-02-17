@@ -6,6 +6,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
+import { useLocation } from "wouter";
 import {
   Calendar,
   CalendarCheck,
@@ -22,6 +23,7 @@ import {
   ChevronUp,
   Search,
   Filter,
+  FileText,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -142,6 +144,45 @@ export default function CalendarPage() {
       toast({ title: "Failed to link", description: err.message, variant: "destructive" });
     },
   });
+
+  const [, navigate] = useLocation();
+
+  const createDebriefMutation = useMutation({
+    mutationFn: async (data: { title: string; eventId?: number; summary?: string }) => {
+      const res = await apiRequest("POST", "/api/impact-logs", {
+        title: data.title,
+        status: "draft",
+        eventId: data.eventId || null,
+        summary: data.summary || null,
+      });
+      return res.json();
+    },
+    onSuccess: (log: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/impact-logs"] });
+      toast({ title: "Debrief created", description: "You can now record or type your notes." });
+      navigate(`/debriefs/${log.id}`);
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to create debrief", description: err.message, variant: "destructive" });
+    },
+  });
+
+  function handleLogDebrief(gcalEvent: GoogleCalendarEvent) {
+    const linkedAppEvent = (appEvents || []).find(e => e.googleCalendarEventId === gcalEvent.id);
+    const details: string[] = [];
+    if (gcalEvent.start) details.push(`Date: ${formatDate(gcalEvent.start)} ${formatTime(gcalEvent.start)} - ${formatTime(gcalEvent.end)}`);
+    if (gcalEvent.location) details.push(`Location: ${gcalEvent.location}`);
+    if (gcalEvent.attendees?.length > 0) {
+      details.push(`Attendees: ${gcalEvent.attendees.map(a => a.displayName || a.email).join(", ")}`);
+    }
+    if (gcalEvent.description) details.push(`Notes: ${gcalEvent.description}`);
+
+    createDebriefMutation.mutate({
+      title: gcalEvent.summary || "Untitled Event",
+      eventId: linkedAppEvent?.id,
+      summary: details.length > 0 ? details.join("\n") : undefined,
+    });
+  }
 
   const linkedGcalIds = new Set(
     (appEvents || []).filter(e => e.googleCalendarEventId).map(e => e.googleCalendarEventId!)
@@ -326,6 +367,22 @@ export default function CalendarPage() {
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
+                          {new Date(gcalEvent.end) < new Date() && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleLogDebrief(gcalEvent)}
+                              disabled={createDebriefMutation.isPending}
+                              data-testid={`button-log-debrief-${gcalEvent.id}`}
+                            >
+                              {createDebriefMutation.isPending ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <FileText className="w-3.5 h-3.5" />
+                              )}
+                              <span className="hidden sm:inline">Log Debrief</span>
+                            </Button>
+                          )}
                           {!isLinked && (
                             <Button
                               size="sm"
