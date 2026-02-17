@@ -246,15 +246,6 @@ export default function Programmes() {
                           <Badge className={CLASSIFICATION_COLORS[programme.classification] || ""} data-testid={`badge-classification-${programme.id}`}>
                             {programme.classification}
                           </Badge>
-                          <Badge 
-                            variant="outline"
-                            className="flex items-center gap-1 bg-background/50 backdrop-blur-sm" 
-                            data-testid={`badge-status-${programme.id}`}
-                          >
-                            {isCompleted && <CheckCircle2 className="w-3 h-3 text-green-600" />}
-                            {isCancelled && <AlertCircle className="w-3 h-3" />}
-                            {STATUS_LABELS[programme.status] || programme.status}
-                          </Badge>
                         </div>
                         {programme.description && (
                           <p className="text-sm text-muted-foreground line-clamp-2 mb-2">{programme.description}</p>
