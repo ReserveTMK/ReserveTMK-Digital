@@ -18,6 +18,10 @@ ReserveTMK is a full-stack web application for tracking mentorship relationships
 - Added mobile bottom navigation bar with 4 key items + "More" for full nav access
 - Added proper mobile padding (top for hamburger button, bottom for nav bar) to all 9 pages
 - Responsive font sizing for contact detail page titles
+- Multi-calendar sync: browsable list of all available Google calendars (personal, shared, team) with toggle switches to enable/disable sync; primary calendar always on; events deduplicated across calendars
+- Calendar settings panel fetches available calendars via `calendarList.list()` API and shows color-coded list with toggle switches
+- Idempotency guard on dismissed calendar events to prevent duplicate rows
+- Log Debrief button gated to past events only (future events can still be classified and tagged)
 
 ## User Preferences
 
