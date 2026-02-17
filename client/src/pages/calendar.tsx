@@ -100,13 +100,14 @@ function formatTime(dateStr: string) {
   return d.toLocaleTimeString("en-NZ", { hour: "2-digit", minute: "2-digit" });
 }
 
-const EVENT_TYPES = ["Meeting", "Mentoring Session", "External Event", "Personal Development"] as const;
+const EVENT_TYPES = ["Meeting", "Mentoring Session", "External Event", "Personal Development", "Planning"] as const;
 
 const EVENT_TYPE_DOT_COLORS: Record<string, string> = {
   "Meeting": "bg-blue-400",
   "Mentoring Session": "bg-emerald-400",
   "External Event": "bg-orange-400",
   "Personal Development": "bg-violet-400",
+  "Planning": "bg-rose-400",
 };
 
 const EVENT_TYPE_BADGE_COLORS: Record<string, string> = {
@@ -114,10 +115,12 @@ const EVENT_TYPE_BADGE_COLORS: Record<string, string> = {
   "Mentoring Session": "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
   "External Event": "bg-orange-500/10 text-orange-700 dark:text-orange-300",
   "Personal Development": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
+  "Planning": "bg-rose-500/10 text-rose-700 dark:text-rose-300",
 };
 
 const GCAL_TYPE_KEYWORDS: { type: string; keywords: string[] }[] = [
   { type: "Mentoring Session", keywords: ["mentor", "mentoring", "mentee", "coaching", "1:1", "one on one", "1-on-1"] },
+  { type: "Planning", keywords: ["planning", "plan", "strategy", "budgeting", "budget", "roadmap", "prep", "preparation", "brainstorm"] },
   { type: "Meeting", keywords: ["meeting", "hui", "catch up", "catchup", "sync", "standup", "check-in", "collab", "collaboration"] },
   { type: "External Event", keywords: ["event", "conference", "summit", "expo", "workshop", "activation", "networking", "ecosystem"] },
   { type: "Personal Development", keywords: ["training", "development", "learning", "course", "study", "webinar", "professional development", "pd"] },
@@ -162,7 +165,35 @@ function EventCard({
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
   const [contactSearch, setContactSearch] = useState("");
+  const [showNewPersonDialog, setShowNewPersonDialog] = useState(false);
+  const [newPersonName, setNewPersonName] = useState("");
+  const [newPersonEmail, setNewPersonEmail] = useState("");
+  const [newPersonPhone, setNewPersonPhone] = useState("");
   const { data: contacts } = useContacts();
+
+  const createContactMutation = useMutation({
+    mutationFn: async (data: { name: string; email?: string; phone?: string }) => {
+      const res = await apiRequest("POST", "/api/contacts", {
+        name: data.name,
+        email: data.email || null,
+        phone: data.phone || null,
+        type: "mentee",
+      });
+      return res.json();
+    },
+    onSuccess: async (newContact: Contact) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      setShowNewPersonDialog(false);
+      setNewPersonName("");
+      setNewPersonEmail("");
+      setNewPersonPhone("");
+      toast({ title: "Person added", description: `${newContact.name} has been created.` });
+      await handleAddContact(newContact);
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to add person", description: err.message, variant: "destructive" });
+    },
+  });
 
   const isGcal = entry.type === "gcal" && entry.gcal;
   const isApp = entry.type === "app" && entry.app;
@@ -378,8 +409,8 @@ function EventCard({
                   data-testid={`input-search-members-${isGcal ? entry.gcal!.id : entry.app!.id}`}
                 />
               </div>
-              {filteredContacts.length > 0 && (
-                <div className="border border-border rounded-md divide-y divide-border/50 max-h-[120px] overflow-y-auto">
+              {contactSearch.trim() && (
+                <div className="border border-border rounded-md divide-y divide-border/50 max-h-[150px] overflow-y-auto">
                   {filteredContacts.map((c: Contact) => (
                     <button
                       key={c.id}
@@ -391,9 +422,77 @@ function EventCard({
                       <UserPlus className="w-3 h-3 text-muted-foreground" />
                     </button>
                   ))}
+                  <button
+                    onClick={() => {
+                      setNewPersonName(contactSearch.trim());
+                      setShowNewPersonDialog(true);
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between text-primary"
+                    data-testid="button-create-new-person"
+                  >
+                    <span>Add "{contactSearch.trim()}" as new person</span>
+                    <UserPlus className="w-3 h-3" />
+                  </button>
                 </div>
               )}
             </div>
+
+            <Dialog open={showNewPersonDialog} onOpenChange={setShowNewPersonDialog}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add New Person</DialogTitle>
+                  <DialogDescription>Create a new community member to tag on this event.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3 py-2">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Name</Label>
+                    <Input
+                      value={newPersonName}
+                      onChange={(e) => setNewPersonName(e.target.value)}
+                      placeholder="Full name"
+                      data-testid="input-new-person-name"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Email (optional)</Label>
+                    <Input
+                      value={newPersonEmail}
+                      onChange={(e) => setNewPersonEmail(e.target.value)}
+                      placeholder="email@example.com"
+                      type="email"
+                      data-testid="input-new-person-email"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Phone (optional)</Label>
+                    <Input
+                      value={newPersonPhone}
+                      onChange={(e) => setNewPersonPhone(e.target.value)}
+                      placeholder="Phone number"
+                      type="tel"
+                      data-testid="input-new-person-phone"
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setShowNewPersonDialog(false)} data-testid="button-cancel-new-person">
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() => createContactMutation.mutate({
+                      name: newPersonName.trim(),
+                      email: newPersonEmail.trim() || undefined,
+                      phone: newPersonPhone.trim() || undefined,
+                    })}
+                    disabled={!newPersonName.trim() || createContactMutation.isPending}
+                    data-testid="button-save-new-person"
+                  >
+                    {createContactMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+                    Add Person
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             <div className="flex gap-2 pt-1">
               <Button
