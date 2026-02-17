@@ -1,0 +1,35 @@
+TAXONOMY DEFINITIONS:
+
+Category: "Hub Engagement"
+Purpose: Track facility usage and programme participation metrics
+Semantic indicators: [registered as member, attended workshop, came to event, used coworking space, participated in programme, joined session, turned up to, booked in for, regular user]
+Context: Physical participation and attendance at Reserve activities
+
+Category: "Business Progress" 
+Purpose: Capture commercial development and revenue outcomes
+Semantic indicators: [made first sale, got customer, launched business, registered company, earned revenue, hired someone, secured contract, still trading, business growing, sustainable income, wholesale client, repeat customer]
+Context: Tangible business milestones and financial sustainability markers
+
+Category: "Skills & Capability Growth"
+Purpose: Measure competency development and confidence building
+Semantic indicators: [learned how to, now understand, figured out how, gained confidence, feel capable, can now do, developed skill in, understand pricing, know how to market, improved at, making better decisions, ready to take next step]
+Context: Knowledge acquisition, self-efficacy changes, decision-making improvement
+
+Category: "Network & Ecosystem Connection"
+Purpose: Document relationship formation and ecosystem integration
+Semantic indicators: [met someone who, introduced to, connected with, found mentor, got referral to, partnered with, collaborated with, supported by, linked to, now working with, relationships with]
+Context: Introductions, partnerships, mentorship, peer connections established
+
+Category: "Rangatahi Development"
+Purpose: Track youth-specific engagement and outcomes
+Semantic indicators: [young entrepreneur, rangatahi participated, youth attended, first business idea, school leaver, starting out, early career, young person, student entrepreneur, developing mindset]
+Context: Participants under 25, youth entrepreneurship development, early-stage ventures
+
+CLASSIFICATION LOGIC:
+1. Multi-label output: Return all applicable categories
+2. Semantic matching: Match on meaning and context, not just literal keyword presence
+3. Language handling: Support Te Reo Māori terms and New Zealand colloquialisms
+4. Contextual interpretation: 
+   - "met first customer" → Business Progress + Network Connection
+   - Confidence statements related to business tasks → Skills & Capability + Business Progress
+5. Priority ordering: Return categories ranked by relevance strength in source text
