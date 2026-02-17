@@ -24,6 +24,7 @@ ReserveTMK is a full-stack web application for tracking mentorship relationships
 - Log Debrief button gated to past events only (future events can still be classified and tagged)
 - Added Programmes section: manage internal events/activations with classification types (Community Workshop, Creative Workshop, Youth Workshop, Talks, Networking), budget tracking (facilitator/talent, catering, promo costs), status tracking (planned/active/completed/cancelled), and calendar integration as "Programme" event type with indigo color and keyword auto-classification
 - Added Bookings/Venue Hire section: manage venue spaces with capacity tracking, bookings with classification (Workshop, Community Event, Private Hire, Rehearsal, Meeting, Pop-up, Other), status tracking (enquiry/confirmed/completed/cancelled), pricing tiers (full price/discounted/free-koha), TBC scheduling support, booker and attendee contact linking, revenue/in-kind value summary stats, community hours calculation
+- Added Agreements page (Memberships & MOUs): Memberships track annual fees, venue hire hour allocations, member contacts, payment status (paid/unpaid/partial/refunded), and usage against bookings; MOUs track partner trade agreements (providing/receiving), in-kind value, linked bookings; Bookings can be linked to a membership or MOU; summary stats break down bookings by payment source (direct/membership/MOU)
 
 ## User Preferences
 
