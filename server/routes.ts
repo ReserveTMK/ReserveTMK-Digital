@@ -117,7 +117,7 @@ export async function registerRoutes(
           const row = rows[i];
           const input = api.contacts.create.input.parse({
             name: row.name?.trim(),
-            role: row.role?.trim() || "Mentee",
+            role: row.role?.trim() || "Entrepreneur",
             email: row.email?.trim() || undefined,
             phone: row.phone?.trim() || undefined,
             businessName: row.businessName?.trim() || undefined,

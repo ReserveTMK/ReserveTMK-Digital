@@ -14,7 +14,7 @@ export const contacts = pgTable("contacts", {
   userId: text("user_id").notNull(), // Links to users.id from auth
   name: text("name").notNull(),
   businessName: text("business_name"),
-  role: text("role").notNull(), // 'Business Owner', 'Innovator', 'Mentee'
+  role: text("role").notNull(), // 'Entrepreneur', 'Professional', 'Innovator', 'Want-trepreneur', 'Rangatahi', 'Business Owner'
   email: text("email"),
   phone: text("phone"),
   age: integer("age"),

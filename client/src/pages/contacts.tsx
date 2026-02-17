@@ -95,9 +95,12 @@ export default function Contacts() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Roles</SelectItem>
-                  <SelectItem value="Mentee">Mentee</SelectItem>
-                  <SelectItem value="Business Owner">Business Owner</SelectItem>
+                  <SelectItem value="Entrepreneur">Entrepreneur</SelectItem>
+                  <SelectItem value="Professional">Professional</SelectItem>
                   <SelectItem value="Innovator">Innovator</SelectItem>
+                  <SelectItem value="Want-trepreneur">Want-trepreneur</SelectItem>
+                  <SelectItem value="Rangatahi">Rangatahi</SelectItem>
+                  <SelectItem value="Business Owner">Business Owner</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -203,7 +206,7 @@ function CreateContactDialogContent({ onSuccess }: { onSuccess: () => void }) {
       age: undefined,
       ethnicity: [],
       location: "",
-      role: "Mentee",
+      role: "Entrepreneur",
       revenueBand: "",
       tags: [],
     },
@@ -296,9 +299,12 @@ function CreateContactDialogContent({ onSuccess }: { onSuccess: () => void }) {
             {...form.register("role")}
             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <option value="Mentee">Mentee</option>
-            <option value="Business Owner">Business Owner</option>
+            <option value="Entrepreneur">Entrepreneur</option>
+            <option value="Professional">Professional</option>
             <option value="Innovator">Innovator</option>
+            <option value="Want-trepreneur">Want-trepreneur</option>
+            <option value="Rangatahi">Rangatahi</option>
+            <option value="Business Owner">Business Owner</option>
           </select>
         </div>
 
@@ -542,7 +548,7 @@ function BulkUploadDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
               onClick={() => {
                 const template = [
                   "Name,Email,Phone,Role,Business Name,Age,Ethnicity,Location,Tags,Notes",
-                  "Jane Doe,jane@example.com,021 123 4567,Mentee,Doe Designs,28,Māori,Auckland Central,\"startup, design\",First session completed",
+                  "Jane Doe,jane@example.com,021 123 4567,Entrepreneur,Doe Designs,28,Māori,Auckland Central,\"startup, design\",First session completed",
                   "John Smith,john@example.com,022 987 6543,Business Owner,Smith & Co,35,\"European, Pacific Peoples\",Mount Wellington,leadership,Referred by Ra",
                 ].join("\n");
                 const blob = new Blob([template], { type: "text/csv" });
@@ -605,7 +611,7 @@ function BulkUploadDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
                       <tr key={i} className="border-t border-border/50" data-testid={`row-preview-${i}`}>
                         <td className="p-2 text-muted-foreground">{i + 1}</td>
                         <td className="p-2">{row.name}</td>
-                        <td className="p-2">{row.role || "Mentee"}</td>
+                        <td className="p-2">{row.role || "Entrepreneur"}</td>
                         <td className="p-2 text-muted-foreground">{row.email || "-"}</td>
                         <td className="p-2 text-muted-foreground">{row.location || "-"}</td>
                       </tr>

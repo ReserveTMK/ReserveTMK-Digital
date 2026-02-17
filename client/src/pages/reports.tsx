@@ -417,9 +417,12 @@ export default function Reports() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Roles</SelectItem>
-                      <SelectItem value="Mentee">Mentee</SelectItem>
-                      <SelectItem value="Business Owner">Business Owner</SelectItem>
+                      <SelectItem value="Entrepreneur">Entrepreneur</SelectItem>
+                      <SelectItem value="Professional">Professional</SelectItem>
                       <SelectItem value="Innovator">Innovator</SelectItem>
+                      <SelectItem value="Want-trepreneur">Want-trepreneur</SelectItem>
+                      <SelectItem value="Rangatahi">Rangatahi</SelectItem>
+                      <SelectItem value="Business Owner">Business Owner</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
