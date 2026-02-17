@@ -1211,6 +1211,32 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     }
   });
 
+  app.get("/api/google-calendar/list", isAuthenticated, async (req, res) => {
+    try {
+      const { getUncachableGoogleCalendarClient } = await import("./replit_integrations/google-calendar/client");
+      const calendar = await getUncachableGoogleCalendarClient();
+
+      const response = await calendar.calendarList.list({
+        minAccessRole: "reader",
+      });
+
+      const calendars = (response.data.items || []).map((cal: any) => ({
+        id: cal.id,
+        summary: cal.summary || cal.id,
+        description: cal.description || "",
+        backgroundColor: cal.backgroundColor || "#4285f4",
+        foregroundColor: cal.foregroundColor || "#ffffff",
+        primary: cal.primary || false,
+        accessRole: cal.accessRole,
+      }));
+
+      res.json(calendars);
+    } catch (err: any) {
+      console.error("Google Calendar list error:", err.message);
+      res.status(500).json({ message: "Failed to list calendars: " + err.message });
+    }
+  });
+
   app.post("/api/google-calendar/reconcile", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
