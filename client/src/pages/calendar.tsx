@@ -62,7 +62,8 @@ import {
 } from "@/components/ui/select";
 import { useContacts } from "@/hooks/use-contacts";
 import { useEventAttendance, useAddAttendance, useRemoveAttendance } from "@/hooks/use-event-attendance";
-import type { Contact } from "@shared/schema";
+import { useProgrammes } from "@/hooks/use-programmes";
+import type { Contact, Programme } from "@shared/schema";
 
 interface GoogleCalendarEvent {
   id: string;
@@ -133,6 +134,21 @@ const EVENT_TYPE_BADGE_COLORS: Record<string, string> = {
   "Personal Development": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
   "Planning": "bg-rose-500/10 text-rose-700 dark:text-rose-300",
   "Programme": "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
+};
+
+const PROG_CLASSIFICATION_COLORS: Record<string, string> = {
+  "Community Workshop": "bg-blue-500/15 text-blue-700 dark:text-blue-300",
+  "Creative Workshop": "bg-purple-500/15 text-purple-700 dark:text-purple-300",
+  "Youth Workshop": "bg-pink-500/15 text-pink-700 dark:text-pink-300",
+  "Talks": "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+  "Networking": "bg-green-500/15 text-green-700 dark:text-green-300",
+};
+
+const PROG_STATUS_COLORS: Record<string, string> = {
+  planned: "bg-gray-50/50 dark:bg-gray-900/20 border-gray-200 dark:border-gray-800",
+  active: "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800",
+  completed: "bg-green-50/30 dark:bg-green-900/10 border-green-100 dark:border-green-900/20 opacity-70",
+  cancelled: "bg-gray-100/30 dark:bg-gray-900/10 border-gray-100 dark:border-gray-900/20 opacity-70",
 };
 
 const GCAL_TYPE_KEYWORDS: { type: string; keywords: string[] }[] = [
@@ -662,6 +678,32 @@ export default function CalendarPage() {
     enabled: showSettings,
   });
 
+  const { data: programmes } = useProgrammes();
+
+  const monthProgrammes = useMemo(() => {
+    if (!programmes) return [];
+    const viewMonth = currentMonth.getMonth();
+    const viewYear = currentMonth.getFullYear();
+    const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    return programmes.filter((p: Programme) => {
+      if (p.tbcMonth && p.tbcYear) {
+        const tbcMonthIdx = MONTH_NAMES.indexOf(p.tbcMonth);
+        return tbcMonthIdx === viewMonth && parseInt(p.tbcYear) === viewYear;
+      }
+      if (p.startDate) {
+        const start = new Date(p.startDate);
+        if (start.getMonth() === viewMonth && start.getFullYear() === viewYear) return true;
+        if (p.endDate) {
+          const end = new Date(p.endDate);
+          const monthStart = new Date(viewYear, viewMonth, 1);
+          const monthEnd = new Date(viewYear, viewMonth + 1, 0);
+          return start <= monthEnd && end >= monthStart;
+        }
+      }
+      return false;
+    });
+  }, [programmes, currentMonth]);
+
   const NOT_PERSONAL_REASON = "__not_personal__";
 
   const dismissedIds = useMemo(() => new Set(
@@ -1171,6 +1213,101 @@ export default function CalendarPage() {
               )}
             </div>
           </div>
+
+          {monthProgrammes.length > 0 && (
+            <div className="mt-6" data-testid="section-month-programmes">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-display font-bold text-foreground" data-testid="text-programmes-heading">
+                  Programmes this month
+                </h2>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate("/programmes")}
+                  data-testid="button-view-all-programmes"
+                >
+                  View all
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {monthProgrammes.map((p: Programme) => {
+                  const dateDisplay = (() => {
+                    if (p.tbcMonth && p.tbcYear) return `TBC - ${p.tbcMonth} ${p.tbcYear}`;
+                    if (!p.startDate) return null;
+                    const start = format(new Date(p.startDate), "d MMM");
+                    if (p.endDate && format(new Date(p.endDate), "yyyy-MM-dd") !== format(new Date(p.startDate), "yyyy-MM-dd")) {
+                      return `${start} - ${format(new Date(p.endDate), "d MMM")}`;
+                    }
+                    return start;
+                  })();
+
+                  const timeDisplay = p.startTime
+                    ? p.endTime ? `${p.startTime} - ${p.endTime}` : p.startTime
+                    : null;
+
+                  const totalBudget = parseFloat(p.facilitatorCost || "0") + parseFloat(p.cateringCost || "0") + parseFloat(p.promoCost || "0");
+
+                  const facCount = (p.facilitators || []).length;
+                  const attCount = (p.attendees || []).length;
+
+                  return (
+                    <Card
+                      key={p.id}
+                      className={`p-3 hover-elevate cursor-pointer transition-all ${PROG_STATUS_COLORS[p.status] || ""}`}
+                      onClick={() => navigate("/programmes")}
+                      data-testid={`card-cal-programme-${p.id}`}
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-1.5">
+                        <h4 className={`font-medium text-sm truncate ${p.status === "cancelled" ? "line-through opacity-70" : ""}`}>
+                          {p.name}
+                        </h4>
+                        <Badge className={`text-xs shrink-0 ${PROG_CLASSIFICATION_COLORS[p.classification] || ""}`}>
+                          {p.classification}
+                        </Badge>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        {dateDisplay && (
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {dateDisplay}
+                          </span>
+                        )}
+                        {timeDisplay && (
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {timeDisplay}
+                          </span>
+                        )}
+                        {p.location && (
+                          <span className="flex items-center gap-1">
+                            <MapPin className="w-3 h-3" />
+                            <span className="truncate max-w-[100px]">{p.location}</span>
+                          </span>
+                        )}
+                        {totalBudget > 0 && (
+                          <span className="flex items-center gap-1">
+                            ${totalBudget.toLocaleString()}
+                          </span>
+                        )}
+                        {facCount > 0 && (
+                          <span className="flex items-center gap-1">
+                            <Users className="w-3 h-3" />
+                            {facCount} facilitator{facCount !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                        {attCount > 0 && (
+                          <span className="flex items-center gap-1">
+                            <UserPlus className="w-3 h-3" />
+                            {attCount} attendee{attCount !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
