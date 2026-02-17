@@ -14,7 +14,7 @@ import Dashboard from "@/pages/dashboard";
 import Contacts from "@/pages/contacts";
 import ContactDetail from "@/pages/contact-detail";
 import Reports from "@/pages/reports";
-import Events from "@/pages/events";
+
 import Debriefs from "@/pages/debriefs";
 import Actions from "@/pages/actions";
 import Taxonomy from "@/pages/taxonomy";
@@ -78,10 +78,6 @@ function Router() {
       
       <Route path="/contacts/:id">
         <ProtectedRoute component={ContactDetail} />
-      </Route>
-
-      <Route path="/events">
-        <ProtectedRoute component={Events} />
       </Route>
 
       <Route path="/debriefs">

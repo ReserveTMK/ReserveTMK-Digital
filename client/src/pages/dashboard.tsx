@@ -302,7 +302,7 @@ export default function Dashboard() {
                           key={ev.id}
                           className="w-full text-left p-3 rounded-lg border border-violet-300 dark:border-violet-700 bg-violet-50 dark:bg-violet-900/20 flex items-start gap-3"
                         >
-                          <Link href="/events" className="flex items-start gap-3 flex-1 min-w-0 cursor-pointer hover:bg-violet-100 dark:hover:bg-violet-900/30 transition-colors rounded-lg -m-1 p-1">
+                          <Link href="/calendar" className="flex items-start gap-3 flex-1 min-w-0 cursor-pointer hover:bg-violet-100 dark:hover:bg-violet-900/30 transition-colors rounded-lg -m-1 p-1">
                             <div
                               data-testid={`button-calendar-event-${ev.id}`}
                               className="flex items-start gap-3 flex-1 min-w-0"

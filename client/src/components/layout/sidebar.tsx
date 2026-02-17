@@ -8,7 +8,6 @@ import {
   Tags,
   Menu,
   FileText,
-  PartyPopper,
   Mic,
   CheckSquare,
   CalendarCheck,
@@ -26,9 +25,8 @@ import { useState } from "react";
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Community", href: "/contacts", icon: Users },
-  { name: "Events", href: "/events", icon: PartyPopper },
-  { name: "Debriefs", href: "/debriefs", icon: Mic },
   { name: "Calendar", href: "/calendar", icon: CalendarCheck },
+  { name: "Debriefs", href: "/debriefs", icon: Mic },
   { name: "Reports", href: "/reports", icon: FileText },
   { name: "Actions", href: "/actions", icon: CheckSquare },
   { name: "Taxonomy", href: "/taxonomy", icon: Tags },

@@ -9,7 +9,11 @@ ReserveTMK is a full-stack web application for tracking mentorship relationships
 - Enhanced debrief contact linking: searchable Command/Popover picker (type-to-search), Add Person button, role assignment (mentioned/primary/participant/mentor/mentee), unlink functionality
 - Made OIDC auth setup non-blocking: server starts even during Replit OIDC outages, auth retries lazily on first login
 - Added Google Calendar integration via Replit connector with event reconciliation (import/link workflows)
-- Added Calendar Sync page (`/calendar`) with search, filter, match suggestions, import-as-new and link-to-existing
+- Calendar is now the primary event hub — Events tab removed from navigation; all event management happens inline on the Calendar page
+- Calendar event cards expand to show editable type selector, community member tagging via searchable contact picker, and Log Debrief button
+- GCal events auto-import as app events on first edit to persist user customizations (type, tagged members)
+- Event type filter toggles on calendar grid (Meeting, Mentoring Session, External Event, Personal Development)
+- Auto-classification of GCal events by keyword matching in title/description
 - Converted to PWA: web manifest, service worker, Apple mobile web app meta tags
 - Added mobile bottom navigation bar with 4 key items + "More" for full nav access
 - Added proper mobile padding (top for hamburger button, bottom for nav bar) to all 9 pages

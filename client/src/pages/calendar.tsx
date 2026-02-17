@@ -6,7 +6,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useMemo } from "react";
-import { useLocation, Link } from "wouter";
+import { useLocation } from "wouter";
 import {
   Calendar,
   CalendarX,
@@ -19,6 +19,11 @@ import {
   ChevronRight,
   FileText,
   Trash2,
+  ChevronDown,
+  ChevronUp,
+  UserPlus,
+  X,
+  Search,
 } from "lucide-react";
 import {
   format,
@@ -38,9 +43,21 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useContacts } from "@/hooks/use-contacts";
+import { useEventAttendance, useAddAttendance, useRemoveAttendance } from "@/hooks/use-event-attendance";
+import type { Contact } from "@shared/schema";
 
 interface GoogleCalendarEvent {
   id: string;
@@ -123,6 +140,297 @@ function getEventType(e: { type: "gcal" | "app"; gcal?: GoogleCalendarEvent; app
 function getEventDotColor(e: { type: "gcal" | "app"; gcal?: GoogleCalendarEvent; app?: AppEvent }) {
   const eventType = getEventType(e);
   return EVENT_TYPE_DOT_COLORS[eventType] || "bg-gray-400";
+}
+
+type CombinedEvent = { date: Date; type: "gcal" | "app"; gcal?: GoogleCalendarEvent; app?: AppEvent; isPast: boolean };
+
+function EventCard({
+  entry,
+  appEvents,
+  onLogDebrief,
+  onLogDebriefFromApp,
+  onDeleteEvent,
+  isDebriefPending,
+}: {
+  entry: CombinedEvent;
+  appEvents: AppEvent[];
+  onLogDebrief: (gcal: GoogleCalendarEvent) => void;
+  onLogDebriefFromApp: (app: AppEvent) => void;
+  onDeleteEvent: (app: AppEvent) => void;
+  isDebriefPending: boolean;
+}) {
+  const { toast } = useToast();
+  const [expanded, setExpanded] = useState(false);
+  const [contactSearch, setContactSearch] = useState("");
+  const { data: contacts } = useContacts();
+
+  const isGcal = entry.type === "gcal" && entry.gcal;
+  const isApp = entry.type === "app" && entry.app;
+
+  const linkedAppEvent = isGcal
+    ? appEvents.find(e => e.googleCalendarEventId === entry.gcal!.id)
+    : entry.app;
+
+  const appEventId = linkedAppEvent?.id;
+  const eventName = isGcal ? entry.gcal!.summary : entry.app!.name;
+  const eventType = linkedAppEvent?.type || (isGcal ? classifyGcalEvent(entry.gcal!) : entry.app!.type);
+  const startStr = isGcal ? entry.gcal!.start : entry.app!.startTime;
+  const endStr = isGcal ? entry.gcal!.end : entry.app!.endTime;
+  const location = isGcal ? entry.gcal!.location : entry.app!.location;
+
+  const { data: attendance } = useEventAttendance(appEventId);
+  const addAttendance = useAddAttendance();
+  const removeAttendance = useRemoveAttendance(appEventId);
+
+  const importGcalMutation = useMutation({
+    mutationFn: async (data: { gcalId: string; name: string; type: string; start: string; end: string; location?: string; description?: string }) => {
+      const res = await apiRequest("POST", "/api/events", {
+        name: data.name,
+        type: data.type,
+        startTime: data.start,
+        endTime: data.end,
+        location: data.location || null,
+        description: data.description || null,
+        googleCalendarEventId: data.gcalId,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to import event", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const updateTypeMutation = useMutation({
+    mutationFn: async ({ id, type }: { id: number; type: string }) => {
+      await apiRequest("PATCH", `/api/events/${id}`, { type });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to update type", description: err.message, variant: "destructive" });
+    },
+  });
+
+  async function ensureAppEvent(): Promise<number | undefined> {
+    if (appEventId) return appEventId;
+    if (!isGcal || !entry.gcal) return undefined;
+    try {
+      const result = await importGcalMutation.mutateAsync({
+        gcalId: entry.gcal.id,
+        name: entry.gcal.summary || "Untitled Event",
+        type: classifyGcalEvent(entry.gcal),
+        start: entry.gcal.start,
+        end: entry.gcal.end,
+        location: entry.gcal.location,
+        description: entry.gcal.description,
+      });
+      return result.id;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async function handleTypeChange(newType: string) {
+    if (appEventId) {
+      updateTypeMutation.mutate({ id: appEventId, type: newType });
+    } else {
+      const id = await ensureAppEvent();
+      if (id) {
+        updateTypeMutation.mutate({ id, type: newType });
+      }
+    }
+  }
+
+  async function handleAddContact(contact: Contact) {
+    let eventId = appEventId;
+    if (!eventId) {
+      eventId = await ensureAppEvent();
+    }
+    if (!eventId) return;
+    addAttendance.mutate({ eventId, contactId: contact.id, role: "attendee" });
+    setContactSearch("");
+  }
+
+  const filteredContacts = useMemo(() => {
+    if (!contacts || !contactSearch.trim()) return [];
+    const term = contactSearch.toLowerCase();
+    const existingIds = new Set((attendance || []).map((a: any) => a.contactId));
+    return contacts
+      .filter((c: Contact) => !existingIds.has(c.id))
+      .filter((c: Contact) =>
+        c.name.toLowerCase().includes(term) ||
+        (c.email && c.email.toLowerCase().includes(term))
+      )
+      .slice(0, 5);
+  }, [contacts, contactSearch, attendance]);
+
+  const badgeColor = EVENT_TYPE_BADGE_COLORS[eventType] || "";
+
+  return (
+    <Card className="p-4" data-testid={`card-event-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}>
+      <div className="space-y-2">
+        <button
+          onClick={() => entry.isPast && setExpanded(!expanded)}
+          className={`w-full text-left ${entry.isPast ? "cursor-pointer" : ""}`}
+          data-testid={`button-expand-event-${isGcal ? entry.gcal!.id : entry.app!.id}`}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <h4 className="font-medium text-sm text-foreground">{eventName}</h4>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Badge variant="secondary" className={`text-xs ${badgeColor}`}>
+                {eventType}
+              </Badge>
+              {isGcal && (
+                <Badge variant="secondary" className="text-xs">
+                  <Calendar className="w-3 h-3 mr-1" />
+                  GCal
+                </Badge>
+              )}
+              {entry.isPast && (
+                expanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+              )}
+            </div>
+          </div>
+        </button>
+
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <Clock className="w-3 h-3" />
+            {formatTime(startStr)} - {formatTime(endStr)}
+          </span>
+          {location && (
+            <span className="flex items-center gap-1">
+              <MapPin className="w-3 h-3" />
+              <span className="truncate max-w-[120px]">{location}</span>
+            </span>
+          )}
+          {isGcal && entry.gcal!.attendees?.length > 0 && (
+            <span className="flex items-center gap-1">
+              <Users className="w-3 h-3" />
+              {entry.gcal!.attendees.length}
+            </span>
+          )}
+          {attendance && attendance.length > 0 && (
+            <span className="flex items-center gap-1">
+              <UserPlus className="w-3 h-3" />
+              {attendance.length} tagged
+            </span>
+          )}
+        </div>
+
+        {expanded && entry.isPast && (
+          <div className="space-y-3 pt-2 border-t border-border/50 mt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Event Type</Label>
+              <Select
+                value={eventType}
+                onValueChange={handleTypeChange}
+                data-testid={`select-event-type-${isGcal ? entry.gcal!.id : entry.app!.id}`}
+              >
+                <SelectTrigger className="h-8 text-xs" data-testid={`trigger-event-type-${isGcal ? entry.gcal!.id : entry.app!.id}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {EVENT_TYPES.map(t => (
+                    <SelectItem key={t} value={t} data-testid={`option-type-${t.toLowerCase().replace(/\s+/g, "-")}`}>
+                      <span className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${EVENT_TYPE_DOT_COLORS[t]}`} />
+                        {t}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Community Members</Label>
+              {attendance && attendance.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-1.5">
+                  {attendance.map((a: any) => {
+                    const contact = (contacts || []).find((c: Contact) => c.id === a.contactId);
+                    return (
+                      <Badge key={a.id} variant="secondary" className="text-xs gap-1 pr-1">
+                        {contact?.name || "Unknown"}
+                        <button
+                          onClick={() => removeAttendance.mutate(a.id)}
+                          className="ml-0.5 hover:text-destructive transition-colors"
+                          data-testid={`button-remove-member-${a.id}`}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </Badge>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                <Input
+                  value={contactSearch}
+                  onChange={(e) => setContactSearch(e.target.value)}
+                  placeholder="Search community members..."
+                  className="h-8 text-xs pl-7"
+                  data-testid={`input-search-members-${isGcal ? entry.gcal!.id : entry.app!.id}`}
+                />
+              </div>
+              {filteredContacts.length > 0 && (
+                <div className="border border-border rounded-md divide-y divide-border/50 max-h-[120px] overflow-y-auto">
+                  {filteredContacts.map((c: Contact) => (
+                    <button
+                      key={c.id}
+                      onClick={() => handleAddContact(c)}
+                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between"
+                      data-testid={`button-add-member-${c.id}`}
+                    >
+                      <span>{c.name}</span>
+                      <UserPlus className="w-3 h-3 text-muted-foreground" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <Button
+                size="sm"
+                variant="default"
+                className="flex-1"
+                onClick={() => isGcal ? onLogDebrief(entry.gcal!) : onLogDebriefFromApp(entry.app!)}
+                disabled={isDebriefPending}
+                data-testid={`button-debrief-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}
+              >
+                {isDebriefPending ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                ) : (
+                  <FileText className="w-3.5 h-3.5 mr-1" />
+                )}
+                Log Debrief
+              </Button>
+              {isApp && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => onDeleteEvent(entry.app!)}
+                  data-testid={`button-delete-event-${entry.app!.id}`}
+                >
+                  <Trash2 className="w-4 h-4 text-muted-foreground" />
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {!expanded && entry.isPast && (
+          <p className="text-xs text-muted-foreground italic">Tap to edit type, tag members, or log debrief</p>
+        )}
+      </div>
+    </Card>
+  );
 }
 
 export default function CalendarPage() {
@@ -231,7 +539,7 @@ export default function CalendarPage() {
   }
 
   const allEvents = useMemo(() => {
-    const combined: { date: Date; type: "gcal" | "app"; gcal?: GoogleCalendarEvent; app?: AppEvent; isPast: boolean }[] = [];
+    const combined: CombinedEvent[] = [];
 
     (gcalEvents || []).forEach(e => {
       const d = new Date(e.start);
@@ -252,7 +560,7 @@ export default function CalendarPage() {
   }, [allEvents, activeTypeFilters]);
 
   const eventsByDate = useMemo(() => {
-    const map = new Map<string, typeof filteredEvents>();
+    const map = new Map<string, CombinedEvent[]>();
     filteredEvents.forEach(e => {
       const key = format(e.date, "yyyy-MM-dd");
       if (!map.has(key)) map.set(key, []);
@@ -300,7 +608,7 @@ export default function CalendarPage() {
                 Calendar
               </h1>
               <p className="text-muted-foreground text-sm mt-1">
-                View events and log debriefs for past activities
+                Review past events, classify them, tag members, and log debriefs
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -396,7 +704,6 @@ export default function CalendarPage() {
                     const isCurrentMonth = isSameMonth(day, currentMonth);
                     const isSelected = isSameDay(day, selectedDate);
                     const today = isToday(day);
-                    const isPast = isBefore(day, new Date()) && !today;
 
                     return (
                       <button
@@ -447,121 +754,17 @@ export default function CalendarPage() {
                 </div>
               ) : selectedDayEvents.length > 0 ? (
                 <div className="space-y-3">
-                  {selectedDayEvents.map((entry, idx) => {
-                    if (entry.type === "gcal" && entry.gcal) {
-                      const gcal = entry.gcal;
-                      return (
-                        <Card key={`gcal-${gcal.id}`} className="p-4" data-testid={`card-event-gcal-${gcal.id}`}>
-                          <div className="space-y-2">
-                            <div className="flex items-start justify-between gap-2">
-                              <h4 className="font-medium text-sm text-foreground">{gcal.summary}</h4>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <Badge variant="secondary" className={`text-xs ${EVENT_TYPE_BADGE_COLORS[classifyGcalEvent(gcal)] || ""}`}>
-                                  {classifyGcalEvent(gcal)}
-                                </Badge>
-                                <Badge variant="secondary" className="text-xs">
-                                  <Calendar className="w-3 h-3 mr-1" />
-                                  GCal
-                                </Badge>
-                              </div>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                {formatTime(gcal.start)} - {formatTime(gcal.end)}
-                              </span>
-                              {gcal.location && (
-                                <span className="flex items-center gap-1">
-                                  <MapPin className="w-3 h-3" />
-                                  <span className="truncate max-w-[120px]">{gcal.location}</span>
-                                </span>
-                              )}
-                              {gcal.attendees?.length > 0 && (
-                                <span className="flex items-center gap-1">
-                                  <Users className="w-3 h-3" />
-                                  {gcal.attendees.length}
-                                </span>
-                              )}
-                            </div>
-                            {entry.isPast && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="w-full mt-2"
-                                onClick={() => handleLogDebrief(gcal)}
-                                disabled={createDebriefMutation.isPending}
-                                data-testid={`button-debrief-gcal-${gcal.id}`}
-                              >
-                                {createDebriefMutation.isPending ? (
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
-                                ) : (
-                                  <FileText className="w-3.5 h-3.5 mr-1" />
-                                )}
-                                Log Debrief
-                              </Button>
-                            )}
-                          </div>
-                        </Card>
-                      );
-                    }
-
-                    if (entry.type === "app" && entry.app) {
-                      const app = entry.app;
-                      return (
-                        <Card key={`app-${app.id}`} className="p-4 border-violet-300/30" data-testid={`card-event-app-${app.id}`}>
-                          <div className="space-y-2">
-                            <div className="flex items-start justify-between gap-2">
-                              <h4 className="font-medium text-sm text-foreground">{app.name}</h4>
-                              <Badge variant="secondary" className={`text-xs shrink-0 ${EVENT_TYPE_BADGE_COLORS[app.type] || ""}`}>
-                                {app.type}
-                              </Badge>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                {formatTime(app.startTime)} - {formatTime(app.endTime)}
-                              </span>
-                              {app.location && (
-                                <span className="flex items-center gap-1">
-                                  <MapPin className="w-3 h-3" />
-                                  <span className="truncate max-w-[120px]">{app.location}</span>
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex gap-2 mt-2">
-                              {entry.isPast && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="flex-1"
-                                  onClick={() => handleLogDebriefFromApp(app)}
-                                  disabled={createDebriefMutation.isPending}
-                                  data-testid={`button-debrief-app-${app.id}`}
-                                >
-                                  {createDebriefMutation.isPending ? (
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
-                                  ) : (
-                                    <FileText className="w-3.5 h-3.5 mr-1" />
-                                  )}
-                                  Log Debrief
-                                </Button>
-                              )}
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => handleDeleteEvent(app)}
-                                data-testid={`button-delete-event-${app.id}`}
-                              >
-                                <Trash2 className="w-4 h-4 text-muted-foreground" />
-                              </Button>
-                            </div>
-                          </div>
-                        </Card>
-                      );
-                    }
-
-                    return null;
-                  })}
+                  {selectedDayEvents.map((entry) => (
+                    <EventCard
+                      key={entry.type === "gcal" ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}
+                      entry={entry}
+                      appEvents={appEvents || []}
+                      onLogDebrief={handleLogDebrief}
+                      onLogDebriefFromApp={handleLogDebriefFromApp}
+                      onDeleteEvent={handleDeleteEvent}
+                      isDebriefPending={createDebriefMutation.isPending}
+                    />
+                  ))}
                 </div>
               ) : (
                 <Card className="p-6">
@@ -579,6 +782,7 @@ export default function CalendarPage() {
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
               <DialogTitle>Remove Event</DialogTitle>
+              <DialogDescription>This action cannot be undone. Please provide a reason.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-2">
               {deleteTarget?.type === "app" && (
@@ -615,12 +819,8 @@ export default function CalendarPage() {
                 disabled={!deleteReason.trim() || deleteEventMutation.isPending}
                 data-testid="button-confirm-delete"
               >
-                {deleteEventMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 animate-spin mr-1" />
-                ) : (
-                  <Trash2 className="w-4 h-4 mr-1" />
-                )}
-                Remove Event
+                {deleteEventMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+                Delete
               </Button>
             </DialogFooter>
           </DialogContent>
