@@ -214,6 +214,8 @@ export const programmes = pgTable("programmes", {
   endDate: timestamp("end_date"),
   startTime: text("start_time"),
   endTime: text("end_time"),
+  tbcMonth: text("tbc_month"),
+  tbcYear: text("tbc_year"),
   location: text("location"),
   facilitatorCost: numeric("facilitator_cost", { precision: 10, scale: 2 }).default("0"),
   cateringCost: numeric("catering_cost", { precision: 10, scale: 2 }).default("0"),

@@ -107,6 +107,9 @@ export default function Programmes() {
   };
 
   const formatDateTime = (p: Programme) => {
+    if (p.tbcMonth && p.tbcYear) {
+      return { date: `TBC - ${p.tbcMonth} ${p.tbcYear}`, time: null };
+    }
     if (!p.startDate) return null;
     const dateStr = format(new Date(p.startDate), "d MMM yyyy");
     const hasEndDate = p.endDate && format(new Date(p.endDate), "yyyy-MM-dd") !== format(new Date(p.startDate), "yyyy-MM-dd");
@@ -407,7 +410,17 @@ function ProgrammeFormDialog({
   );
   const [startTime, setStartTime] = useState(programme?.startTime || "");
   const [endTime, setEndTime] = useState(programme?.endTime || "");
+  const [tbcMonth, setTbcMonth] = useState(programme?.tbcMonth || "");
+  const [tbcYear, setTbcYear] = useState(programme?.tbcYear || new Date().getFullYear().toString());
+  const [isTBC, setIsTBC] = useState(!!(programme?.tbcMonth || programme?.tbcYear));
   const [location, setLocation] = useState(programme?.location || "");
+
+  const MONTHS = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+
+  const YEARS = Array.from({ length: 5 }, (_, i) => (new Date().getFullYear() + i).toString());
   const [facilitatorCost, setFacilitatorCost] = useState(programme?.facilitatorCost || "0");
   const [cateringCost, setCateringCost] = useState(programme?.cateringCost || "0");
   const [promoCost, setPromoCost] = useState(programme?.promoCost || "0");
@@ -447,12 +460,14 @@ function ProgrammeFormDialog({
       description: description.trim() || undefined,
       classification,
       status,
-      startDate: startDate ? new Date(startDate).toISOString() : undefined,
-      endDate: isSingleDay
-        ? (startDate ? new Date(startDate).toISOString() : undefined)
-        : (endDate ? new Date(endDate).toISOString() : undefined),
-      startTime: startTime || undefined,
-      endTime: endTime || undefined,
+      startDate: !isTBC && startDate ? new Date(startDate).toISOString() : null,
+      endDate: !isTBC && (isSingleDay
+        ? (startDate ? new Date(startDate).toISOString() : null)
+        : (endDate ? new Date(endDate).toISOString() : null)) || null,
+      startTime: !isTBC && startTime ? startTime : null,
+      endTime: !isTBC && endTime ? endTime : null,
+      tbcMonth: isTBC ? tbcMonth : null,
+      tbcYear: isTBC ? tbcYear : null,
       location: location.trim() || undefined,
       facilitatorCost: facilitatorCost || "0",
       cateringCost: cateringCost || "0",
@@ -528,18 +543,60 @@ function ProgrammeFormDialog({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label className="text-sm font-semibold">Date & Time</Label>
-                <div className="flex items-center gap-2">
-                  <Label className="text-xs text-muted-foreground cursor-pointer" htmlFor="single-day-toggle">Single day</Label>
-                  <Switch
-                    id="single-day-toggle"
-                    checked={isSingleDay}
-                    onCheckedChange={setIsSingleDay}
-                    data-testid="switch-single-day"
-                  />
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs text-muted-foreground cursor-pointer" htmlFor="tbc-toggle">TBC (Month Only)</Label>
+                    <Switch
+                      id="tbc-toggle"
+                      checked={isTBC}
+                      onCheckedChange={setIsTBC}
+                      data-testid="switch-tbc"
+                    />
+                  </div>
+                  {!isTBC && (
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs text-muted-foreground cursor-pointer" htmlFor="single-day-toggle">Single day</Label>
+                      <Switch
+                        id="single-day-toggle"
+                        checked={isSingleDay}
+                        onCheckedChange={setIsSingleDay}
+                        data-testid="switch-single-day"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {isSingleDay ? (
+              {isTBC ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Month</Label>
+                    <Select value={tbcMonth} onValueChange={setTbcMonth}>
+                      <SelectTrigger data-testid="select-tbc-month">
+                        <SelectValue placeholder="Select month" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MONTHS.map((m) => (
+                          <SelectItem key={m} value={m}>{m}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Year</Label>
+                    <Select value={tbcYear} onValueChange={setTbcYear}>
+                      <SelectTrigger data-testid="select-tbc-year">
+                        <SelectValue placeholder="Select year" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {YEARS.map((y) => (
+                          <SelectItem key={y} value={y}>{y}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              ) : isSingleDay ? (
                 <div className="space-y-3">
                   <div>
                     <Label className="text-xs text-muted-foreground">Date</Label>
