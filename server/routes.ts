@@ -7,6 +7,43 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { openai } from "./replit_integrations/audio/client"; // Use standard client
 
+function parseTimeToMinutes(timeStr: string): number {
+  const parts = timeStr.split(":");
+  return parseInt(parts[0]) * 60 + parseInt(parts[1] || "0");
+}
+
+function timesOverlap(
+  startA: string | null | undefined,
+  endA: string | null | undefined,
+  startB: string | null | undefined,
+  endB: string | null | undefined
+): boolean {
+  if (!startA || !endA || !startB || !endB) return true;
+  const a0 = parseTimeToMinutes(startA);
+  const a1 = parseTimeToMinutes(endA);
+  const b0 = parseTimeToMinutes(startB);
+  const b1 = parseTimeToMinutes(endB);
+  return a0 < b1 && b0 < a1;
+}
+
+function datesOverlap(
+  startA: Date | string | null | undefined,
+  endA: Date | string | null | undefined,
+  startB: Date | string | null | undefined,
+  endB: Date | string | null | undefined
+): boolean {
+  if (!startA || !startB) return false;
+  const a0 = new Date(startA);
+  const a1 = endA ? new Date(endA) : a0;
+  const b0 = new Date(startB);
+  const b1 = endB ? new Date(endB) : b0;
+  const dayA0 = a0.toISOString().slice(0, 10);
+  const dayA1 = a1.toISOString().slice(0, 10);
+  const dayB0 = b0.toISOString().slice(0, 10);
+  const dayB1 = b1.toISOString().slice(0, 10);
+  return dayA0 <= dayB1 && dayB0 <= dayA1;
+}
+
 function coerceDateFields(body: Record<string, any>): Record<string, any> {
   const result = { ...body };
   for (const [key, value] of Object.entries(result)) {
@@ -1658,11 +1695,126 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     res.json(booking);
   });
 
+  app.get("/api/bookings/:id/allowance", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const booking = await storage.getBooking(id);
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+      if (booking.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+
+      let allowanceInfo = null;
+      const linkedId = booking.membershipId || booking.mouId;
+      const linkedType = booking.membershipId ? "membership" : booking.mouId ? "mou" : null;
+
+      if (linkedId && linkedType) {
+        const agreement = linkedType === "membership"
+          ? await storage.getMembership(linkedId)
+          : await storage.getMou(linkedId);
+
+        if (agreement) {
+          const allowance = (agreement as any).bookingAllowance || 0;
+          const period = (agreement as any).allowancePeriod || "quarterly";
+          if (allowance > 0) {
+            const allBookings = await storage.getBookings(booking.userId);
+            const now = new Date();
+            let periodStart: Date;
+            if (period === "monthly") {
+              periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+            } else {
+              const q = Math.floor(now.getMonth() / 3) * 3;
+              periodStart = new Date(now.getFullYear(), q, 1);
+            }
+            const usedCount = allBookings.filter(b => {
+              const matchesAgreement = linkedType === "membership"
+                ? b.membershipId === linkedId
+                : b.mouId === linkedId;
+              if (!matchesAgreement) return false;
+              if (b.status === "cancelled") return false;
+              const bDate = b.startDate ? new Date(b.startDate) : b.createdAt ? new Date(b.createdAt) : null;
+              return bDate && bDate >= periodStart;
+            }).length;
+            allowanceInfo = { allowance, period, used: usedCount, remaining: Math.max(0, allowance - usedCount) };
+          }
+        }
+      }
+      res.json({ allowanceInfo });
+    } catch (err) {
+      throw err;
+    }
+  });
+
+  app.get("/api/venue-conflicts", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { venueId, startDate, endDate, startTime, endTime, excludeBookingId } = req.query;
+      if (!venueId || !startDate) return res.json({ conflicts: [] });
+
+      const allBookings = await storage.getBookings(userId);
+      const programmes = await storage.getProgrammes(userId);
+      const conflicts: { type: string; id: number; title: string; date: string; time: string }[] = [];
+
+      for (const b of allBookings) {
+        if (excludeBookingId && b.id === parseInt(excludeBookingId as string)) continue;
+        if (b.status === "cancelled") continue;
+        if (b.venueId !== parseInt(venueId as string)) continue;
+        if (!datesOverlap(startDate as string, (endDate || startDate) as string, b.startDate, b.endDate || b.startDate)) continue;
+        if (!timesOverlap(startTime as string, endTime as string, b.startTime, b.endTime)) continue;
+        conflicts.push({
+          type: "booking",
+          id: b.id,
+          title: b.title,
+          date: b.startDate ? new Date(b.startDate).toISOString().slice(0, 10) : "",
+          time: b.startTime && b.endTime ? `${b.startTime} - ${b.endTime}` : "All day",
+        });
+      }
+
+      for (const p of programmes) {
+        if (p.status === "cancelled") continue;
+        if (!datesOverlap(startDate as string, (endDate || startDate) as string, p.startDate, p.endDate || p.startDate)) continue;
+        if (!timesOverlap(startTime as string, endTime as string, p.startTime, p.endTime)) continue;
+        conflicts.push({
+          type: "programme",
+          id: p.id,
+          title: p.name,
+          date: p.startDate ? new Date(p.startDate).toISOString().slice(0, 10) : "",
+          time: p.startTime && p.endTime ? `${p.startTime} - ${p.endTime}` : "All day",
+        });
+      }
+
+      res.json({ conflicts });
+    } catch (err) {
+      throw err;
+    }
+  });
+
   app.post(api.bookings.create.path, isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
       const body = coerceDateFields({ ...req.body, userId });
       const input = api.bookings.create.input.parse(body);
+
+      if (input.startDate && input.venueId) {
+        const allBookings = await storage.getBookings(userId);
+        const programmes = await storage.getProgrammes(userId);
+        for (const b of allBookings) {
+          if (b.status === "cancelled") continue;
+          if (b.venueId !== input.venueId) continue;
+          if (!datesOverlap(input.startDate, input.endDate || input.startDate, b.startDate, b.endDate || b.startDate)) continue;
+          if (!timesOverlap(input.startTime, input.endTime, b.startTime, b.endTime)) continue;
+          return res.status(409).json({
+            message: `Conflict: "${b.title}" is already booked for ${b.startTime || "all day"} on ${b.startDate ? new Date(b.startDate).toLocaleDateString() : "that date"}`,
+          });
+        }
+        for (const p of programmes) {
+          if (p.status === "cancelled") continue;
+          if (!datesOverlap(input.startDate, input.endDate || input.startDate, p.startDate, p.endDate || p.startDate)) continue;
+          if (!timesOverlap(input.startTime, input.endTime, p.startTime, p.endTime)) continue;
+          return res.status(409).json({
+            message: `Conflict: Programme "${p.name}" is scheduled for ${p.startTime || "all day"} on ${p.startDate ? new Date(p.startDate).toLocaleDateString() : "that date"}`,
+          });
+        }
+      }
+
       const booking = await storage.createBooking(input);
       res.status(201).json(booking);
     } catch (err) {
@@ -1680,6 +1832,32 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       if (!existing) return res.status(404).json({ message: "Booking not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
       const input = api.bookings.update.input.parse(coerceDateFields(req.body));
+
+      const merged = { ...existing, ...input };
+      if (merged.startDate && merged.venueId) {
+        const userId = (req.user as any).claims.sub;
+        const allBookings = await storage.getBookings(userId);
+        const programmes = await storage.getProgrammes(userId);
+        for (const b of allBookings) {
+          if (b.id === id) continue;
+          if (b.status === "cancelled") continue;
+          if (b.venueId !== merged.venueId) continue;
+          if (!datesOverlap(merged.startDate, merged.endDate || merged.startDate, b.startDate, b.endDate || b.startDate)) continue;
+          if (!timesOverlap(merged.startTime, merged.endTime, b.startTime, b.endTime)) continue;
+          return res.status(409).json({
+            message: `Conflict: "${b.title}" is already booked for ${b.startTime || "all day"} on that date`,
+          });
+        }
+        for (const p of programmes) {
+          if (p.status === "cancelled") continue;
+          if (!datesOverlap(merged.startDate, merged.endDate || merged.startDate, p.startDate, p.endDate || p.startDate)) continue;
+          if (!timesOverlap(merged.startTime, merged.endTime, p.startTime, p.endTime)) continue;
+          return res.status(409).json({
+            message: `Conflict: Programme "${p.name}" is scheduled for ${p.startTime || "all day"} on that date`,
+          });
+        }
+      }
+
       const updated = await storage.updateBooking(id, input);
       res.json(updated);
     } catch (err) {

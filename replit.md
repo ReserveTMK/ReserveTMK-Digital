@@ -25,6 +25,11 @@ ReserveTMK is a full-stack web application for tracking mentorship relationships
 - Added Programmes section: manage internal events/activations with classification types (Community Workshop, Creative Workshop, Youth Workshop, Talks, Networking), budget tracking (facilitator/talent, catering, promo costs), status tracking (planned/active/completed/cancelled), and calendar integration as "Programme" event type with indigo color and keyword auto-classification
 - Added Bookings/Venue Hire section: manage venue spaces with capacity tracking, bookings with classification (Workshop, Community Event, Private Hire, Rehearsal, Meeting, Pop-up, Other), status tracking (enquiry/confirmed/completed/cancelled), pricing tiers (full price/discounted/free-koha), TBC scheduling support, booker and attendee contact linking, revenue/in-kind value summary stats, community hours calculation
 - Added Agreements page (Memberships & MOUs): Memberships track annual fees, venue hire hour allocations, member contacts, payment status (paid/unpaid/partial/refunded), and usage against bookings; MOUs track partner trade agreements (providing/receiving), in-kind value, linked bookings; Bookings can be linked to a membership or MOU; summary stats break down bookings by payment source (direct/membership/MOU)
+- Backend double-booking prevention: date+time overlap validation across bookings and programmes, 409 conflict response, /api/venue-conflicts endpoint
+- Booking allowance on memberships/MOUs: bookingAllowance (number) and allowancePeriod (monthly/quarterly) fields, /api/bookings/:id/allowance usage tracking endpoint
+- Calendar page: dual-view tabs — "My Schedule" (personal events/meetings/GCal) and "Space" (venue occupancy from bookings + programmes with conflict highlighting)
+- Space Calendar shows bookings (orange) and programmes (indigo) with red ring + alert icon for time conflicts on same venue
+- Dashboard calendar now shows programmes (indigo) and bookings (orange) alongside meetings (blue) and events (violet) with color legend
 
 ## User Preferences
 

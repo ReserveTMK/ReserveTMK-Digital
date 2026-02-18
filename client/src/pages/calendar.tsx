@@ -28,6 +28,8 @@ import {
   Eye,
   Settings,
   AlertTriangle,
+  Building2,
+  CalendarDays,
 } from "lucide-react";
 import {
   format,
@@ -63,7 +65,8 @@ import {
 import { useContacts } from "@/hooks/use-contacts";
 import { useEventAttendance, useAddAttendance, useRemoveAttendance } from "@/hooks/use-event-attendance";
 import { useProgrammes } from "@/hooks/use-programmes";
-import type { Contact, Programme } from "@shared/schema";
+import { useBookings, useVenues } from "@/hooks/use-bookings";
+import type { Contact, Programme, Booking, Venue } from "@shared/schema";
 
 interface GoogleCalendarEvent {
   id: string;
@@ -646,6 +649,7 @@ export default function CalendarPage() {
   const [dismissReason, setDismissReason] = useState("");
   const [showDismissed, setShowDismissed] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [calendarView, setCalendarView] = useState<"schedule" | "space">("schedule");
 
   function toggleTypeFilter(type: string) {
     setActiveTypeFilters(prev => {
@@ -679,6 +683,8 @@ export default function CalendarPage() {
   });
 
   const { data: programmes } = useProgrammes();
+  const { data: allBookings } = useBookings();
+  const { data: venues } = useVenues();
 
   const monthProgrammes = useMemo(() => {
     if (!programmes) return [];
@@ -928,6 +934,128 @@ export default function CalendarPage() {
     return filteredEvents.filter(e => e.isPast).length;
   }, [filteredEvents]);
 
+  type SpaceOccupancyItem = {
+    kind: "booking" | "programme";
+    id: number;
+    title: string;
+    date: Date;
+    startDate: Date | null;
+    endDate: Date | null;
+    startTime: string | null;
+    endTime: string | null;
+    venue: string | null;
+    venueId: number | null;
+    status: string;
+    classification: string;
+  };
+
+  const BOOKING_DOT_COLORS: Record<string, string> = {
+    "Workshop": "bg-blue-400",
+    "Community Event": "bg-emerald-400",
+    "Private Hire": "bg-orange-400",
+    "Rehearsal": "bg-violet-400",
+    "Meeting": "bg-cyan-400",
+    "Pop-up": "bg-pink-400",
+    "Other": "bg-gray-400",
+  };
+
+  const BOOKING_BADGE_COLORS: Record<string, string> = {
+    "Workshop": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
+    "Community Event": "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+    "Private Hire": "bg-orange-500/10 text-orange-700 dark:text-orange-300",
+    "Rehearsal": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
+    "Meeting": "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
+    "Pop-up": "bg-pink-500/10 text-pink-700 dark:text-pink-300",
+    "Other": "bg-gray-500/10 text-gray-700 dark:text-gray-300",
+    "Community Workshop": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
+    "Creative Workshop": "bg-purple-500/10 text-purple-700 dark:text-purple-300",
+    "Youth Workshop": "bg-pink-500/10 text-pink-700 dark:text-pink-300",
+    "Talks": "bg-amber-500/10 text-amber-700 dark:text-amber-300",
+    "Networking": "bg-green-500/10 text-green-700 dark:text-green-300",
+  };
+
+  const SPACE_STATUS_COLORS: Record<string, string> = {
+    enquiry: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300",
+    confirmed: "bg-green-500/15 text-green-700 dark:text-green-300",
+    completed: "bg-gray-500/15 text-gray-700 dark:text-gray-300",
+    cancelled: "bg-red-500/15 text-red-700 dark:text-red-300 line-through",
+    planned: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
+    active: "bg-green-500/15 text-green-700 dark:text-green-300",
+  };
+
+  const venueMap = useMemo(() => {
+    const map: Record<number, string> = {};
+    (venues || []).forEach((v: Venue) => { map[v.id] = v.name; });
+    return map;
+  }, [venues]);
+
+  const spaceItems = useMemo<SpaceOccupancyItem[]>(() => {
+    const items: SpaceOccupancyItem[] = [];
+    (allBookings || []).forEach((b: Booking) => {
+      if (b.status === "cancelled") return;
+      const sDate = b.startDate ? new Date(b.startDate) : null;
+      items.push({
+        kind: "booking",
+        id: b.id,
+        title: b.title,
+        date: sDate || new Date(b.createdAt || Date.now()),
+        startDate: sDate,
+        endDate: b.endDate ? new Date(b.endDate) : sDate,
+        startTime: b.startTime || null,
+        endTime: b.endTime || null,
+        venue: venueMap[b.venueId] || null,
+        venueId: b.venueId,
+        status: b.status,
+        classification: b.classification,
+      });
+    });
+    (programmes || []).forEach((p: Programme) => {
+      if (p.status === "cancelled") return;
+      const sDate = p.startDate ? new Date(p.startDate) : null;
+      items.push({
+        kind: "programme",
+        id: p.id,
+        title: p.name,
+        date: sDate || new Date(p.createdAt || Date.now()),
+        startDate: sDate,
+        endDate: p.endDate ? new Date(p.endDate) : sDate,
+        startTime: p.startTime || null,
+        endTime: p.endTime || null,
+        venue: p.location || null,
+        venueId: null,
+        status: p.status,
+        classification: p.classification,
+      });
+    });
+    return items;
+  }, [allBookings, programmes, venueMap]);
+
+  const spaceByDate = useMemo(() => {
+    const map = new Map<string, SpaceOccupancyItem[]>();
+    spaceItems.forEach(item => {
+      if (!item.startDate) return;
+      const start = new Date(item.startDate);
+      const end = item.endDate ? new Date(item.endDate) : start;
+      let d = new Date(start);
+      while (d <= end) {
+        const key = format(d, "yyyy-MM-dd");
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push(item);
+        d = new Date(d);
+        d.setDate(d.getDate() + 1);
+      }
+    });
+    return map;
+  }, [spaceItems]);
+
+  const selectedDaySpace = useMemo(() => {
+    const key = format(selectedDate, "yyyy-MM-dd");
+    return (spaceByDate.get(key) || []).sort((a, b) => {
+      if (a.startTime && b.startTime) return a.startTime.localeCompare(b.startTime);
+      return a.date.getTime() - b.date.getTime();
+    });
+  }, [selectedDate, spaceByDate]);
+
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
@@ -938,46 +1066,71 @@ export default function CalendarPage() {
               <h1 className="text-2xl font-display font-bold text-foreground" data-testid="text-calendar-title">
                 Calendar
               </h1>
-              <p className="text-muted-foreground text-sm mt-1">
-                Review past events, classify them, tag members, and log debriefs
-              </p>
+              <div className="flex items-center gap-1 mt-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className={`toggle-elevate ${calendarView === "schedule" ? "toggle-elevated" : ""}`}
+                  onClick={() => setCalendarView("schedule")}
+                  data-testid="button-view-schedule"
+                >
+                  <CalendarDays className="w-4 h-4 mr-1.5" />
+                  My Schedule
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className={`toggle-elevate ${calendarView === "space" ? "toggle-elevated" : ""}`}
+                  onClick={() => setCalendarView("space")}
+                  data-testid="button-view-space"
+                >
+                  <Building2 className="w-4 h-4 mr-1.5" />
+                  Space
+                </Button>
+              </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              {pastEventsNeedingDebrief > 0 && (
-                <Badge variant="secondary" data-testid="badge-events-count">
-                  {pastEventsNeedingDebrief} past events
-                </Badge>
+              {calendarView === "schedule" && (
+                <>
+                  {pastEventsNeedingDebrief > 0 && (
+                    <Badge variant="secondary" data-testid="badge-events-count">
+                      {pastEventsNeedingDebrief} past events
+                    </Badge>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className={`toggle-elevate ${showDismissed ? "toggle-elevated" : ""}`}
+                    onClick={() => setShowDismissed(!showDismissed)}
+                    data-testid="button-toggle-dismissed"
+                  >
+                    {showDismissed ? <Eye className="w-4 h-4 mr-1" /> : <EyeOff className="w-4 h-4 mr-1" />}
+                    {showDismissed ? "Showing dismissed" : "Hidden"}
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setShowSettings(!showSettings)}
+                    data-testid="button-calendar-settings"
+                  >
+                    <Settings className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => refetchGcal()}
+                    disabled={gcalLoading}
+                    data-testid="button-refresh-calendar"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${gcalLoading ? "animate-spin" : ""}`} />
+                    Sync
+                  </Button>
+                </>
               )}
-              <Button
-                size="sm"
-                variant="outline"
-                className={`toggle-elevate ${showDismissed ? "toggle-elevated" : ""}`}
-                onClick={() => setShowDismissed(!showDismissed)}
-                data-testid="button-toggle-dismissed"
-              >
-                {showDismissed ? <Eye className="w-4 h-4 mr-1" /> : <EyeOff className="w-4 h-4 mr-1" />}
-                {showDismissed ? "Showing dismissed" : "Hidden"}
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => setShowSettings(!showSettings)}
-                data-testid="button-calendar-settings"
-              >
-                <Settings className="w-4 h-4" />
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => refetchGcal()}
-                disabled={gcalLoading}
-                data-testid="button-refresh-calendar"
-              >
-                <RefreshCw className={`w-4 h-4 ${gcalLoading ? "animate-spin" : ""}`} />
-                Sync
-              </Button>
             </div>
           </div>
 
+          {calendarView === "schedule" && (
+          <>
           {gcalError && (
             <Card className="p-4 mb-6 border-amber-500/30 bg-amber-500/5">
               <div className="flex items-center gap-3">
@@ -1308,6 +1461,162 @@ export default function CalendarPage() {
               </div>
             </div>
           )}
+          </>
+          )}
+
+          {calendarView === "space" && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
+                <Card className="p-4 md:p-6">
+                  <div className="flex items-center justify-between mb-4 gap-2">
+                    <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} data-testid="button-space-prev-month">
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <h3 className="text-lg font-semibold font-display" data-testid="text-space-current-month">
+                      {format(currentMonth, "MMMM yyyy")}
+                    </h3>
+                    <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} data-testid="button-space-next-month">
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 mb-3 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-orange-400" />
+                      Bookings
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-indigo-400" />
+                      Programmes
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-0">
+                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+                      <div key={d} className="text-center text-xs font-medium text-muted-foreground py-2">
+                        {d}
+                      </div>
+                    ))}
+                    {calendarDays.map((day, idx) => {
+                      const key = format(day, "yyyy-MM-dd");
+                      const daySpaceItems = spaceByDate.get(key) || [];
+                      const isCurrentMonth = isSameMonth(day, currentMonth);
+                      const isSelected = isSameDay(day, selectedDate);
+                      const today = isToday(day);
+                      const hasConflict = daySpaceItems.length > 1 && daySpaceItems.some((a, i) =>
+                        daySpaceItems.some((b, j) => {
+                          if (i >= j) return false;
+                          if (!a.startTime || !a.endTime || !b.startTime || !b.endTime) return true;
+                          const aStart = parseInt(a.startTime.replace(":", ""));
+                          const aEnd = parseInt(a.endTime.replace(":", ""));
+                          const bStart = parseInt(b.startTime.replace(":", ""));
+                          const bEnd = parseInt(b.endTime.replace(":", ""));
+                          return aStart < bEnd && bStart < aEnd;
+                        })
+                      );
+
+                      return (
+                        <button
+                          key={idx}
+                          onClick={() => setSelectedDate(day)}
+                          data-testid={`button-space-day-${key}`}
+                          className={`
+                            relative p-1 min-h-[3rem] md:min-h-[4rem] text-sm border border-border/30 transition-colors
+                            ${!isCurrentMonth ? "text-muted-foreground/40" : "text-foreground"}
+                            ${isSelected ? "bg-primary/10 border-primary/50" : "hover:bg-muted/50"}
+                            ${today && !isSelected ? "bg-accent/30" : ""}
+                            ${hasConflict ? "ring-1 ring-red-400/50 bg-red-50/20 dark:bg-red-900/10" : ""}
+                          `}
+                        >
+                          <span className={`
+                            inline-flex items-center justify-center w-6 h-6 text-xs rounded-full
+                            ${today ? "bg-primary text-primary-foreground font-bold" : ""}
+                          `}>
+                            {format(day, "d")}
+                          </span>
+                          {daySpaceItems.length > 0 && (
+                            <div className="flex flex-wrap gap-0.5 mt-0.5">
+                              {daySpaceItems.slice(0, 3).map((item, i) => (
+                                <div
+                                  key={i}
+                                  className={`w-full h-1 rounded-full ${item.kind === "programme" ? "bg-indigo-400" : "bg-orange-400"}`}
+                                />
+                              ))}
+                              {daySpaceItems.length > 3 && (
+                                <span className="text-[10px] text-muted-foreground">+{daySpaceItems.length - 3}</span>
+                              )}
+                            </div>
+                          )}
+                          {hasConflict && (
+                            <div className="absolute top-0.5 right-0.5">
+                              <AlertTriangle className="w-3 h-3 text-red-500" />
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Card>
+              </div>
+
+              <div className="space-y-4">
+                <h2 className="text-lg font-bold font-display" data-testid="text-space-selected-date">
+                  {format(selectedDate, "EEEE, MMM d")}
+                </h2>
+
+                {selectedDaySpace.length > 0 ? (
+                  <div className="space-y-3">
+                    {selectedDaySpace.map((item) => (
+                      <Card
+                        key={`${item.kind}-${item.id}`}
+                        className="p-4 hover-elevate cursor-pointer"
+                        onClick={() => navigate(item.kind === "booking" ? "/bookings" : "/programmes")}
+                        data-testid={`card-space-${item.kind}-${item.id}`}
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <h4 className="font-medium text-sm">{item.title}</h4>
+                            <Badge className={`text-xs shrink-0 ${BOOKING_BADGE_COLORS[item.classification] || ""}`}>
+                              {item.classification}
+                            </Badge>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                            {item.startTime && (
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {item.startTime}{item.endTime ? ` - ${item.endTime}` : ""}
+                              </span>
+                            )}
+                            {item.venue && (
+                              <span className="flex items-center gap-1">
+                                <Building2 className="w-3 h-3" />
+                                {item.venue}
+                              </span>
+                            )}
+                            <Badge className={`text-[10px] ${item.kind === "programme" ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300" : "bg-orange-500/10 text-orange-700 dark:text-orange-300"}`}>
+                              {item.kind === "programme" ? "Programme" : "Booking"}
+                            </Badge>
+                            <Badge className={`text-[10px] ${SPACE_STATUS_COLORS[item.status] || ""}`}>
+                              {item.status}
+                            </Badge>
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <Card className="p-6">
+                    <div className="text-center text-muted-foreground text-sm">
+                      <Building2 className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                      <p>No bookings or programmes on this day</p>
+                      <p className="text-xs mt-1">Space is available</p>
+                    </div>
+                  </Card>
+                )}
+              </div>
+            </div>
+          )}
+
         </div>
 
         <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

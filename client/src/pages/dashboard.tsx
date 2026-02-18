@@ -6,8 +6,10 @@ import { useMeetings, useDeleteMeeting } from "@/hooks/use-meetings";
 import { useEvents } from "@/hooks/use-events";
 import { useImpactLogs } from "@/hooks/use-impact-logs";
 import { useAuth } from "@/hooks/use-auth";
-import { Users, Activity, TrendingUp, Calendar as CalendarIcon, ArrowRight, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, PartyPopper, Mic, FileText } from "lucide-react";
-import { Link } from "wouter";
+import { useProgrammes } from "@/hooks/use-programmes";
+import { useBookings, useVenues } from "@/hooks/use-bookings";
+import { Users, Activity, TrendingUp, Calendar as CalendarIcon, ArrowRight, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, PartyPopper, Mic, FileText, Building2, Layers } from "lucide-react";
+import { Link, useLocation } from "wouter";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, isBefore } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -21,7 +23,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useState, useMemo } from "react";
-import type { Meeting, Contact, Event } from "@shared/schema";
+import type { Meeting, Contact, Event, Programme, Booking } from "@shared/schema";
 
 const MEETING_STATUS_COLORS: Record<string, string> = {
   scheduled: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
@@ -36,6 +38,10 @@ export default function Dashboard() {
   const { data: meetings } = useMeetings();
   const { data: events } = useEvents();
   const { data: impactLogs } = useImpactLogs();
+  const { data: programmes } = useProgrammes();
+  const { data: bookings } = useBookings();
+  const { data: venues } = useVenues();
+  const [, navigate] = useLocation();
 
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -99,6 +105,30 @@ export default function Dashboard() {
     return map;
   }, [events]);
 
+  const programmesByDate = useMemo(() => {
+    const map = new Map<string, Programme[]>();
+    (programmes as Programme[] | undefined)?.forEach((p) => {
+      if (p.status === "cancelled") return;
+      if (!p.startDate) return;
+      const key = format(new Date(p.startDate), "yyyy-MM-dd");
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(p);
+    });
+    return map;
+  }, [programmes]);
+
+  const bookingsByDate = useMemo(() => {
+    const map = new Map<string, Booking[]>();
+    (bookings as Booking[] | undefined)?.forEach((b) => {
+      if (b.status === "cancelled") return;
+      if (!b.startDate) return;
+      const key = format(new Date(b.startDate), "yyyy-MM-dd");
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(b);
+    });
+    return map;
+  }, [bookings]);
+
   const selectedDayMeetings = useMemo(() => {
     const key = format(selectedDate, "yyyy-MM-dd");
     return meetingsByDate.get(key) || [];
@@ -108,6 +138,16 @@ export default function Dashboard() {
     const key = format(selectedDate, "yyyy-MM-dd");
     return eventsByDate.get(key) || [];
   }, [selectedDate, eventsByDate]);
+
+  const selectedDayProgrammes = useMemo(() => {
+    const key = format(selectedDate, "yyyy-MM-dd");
+    return programmesByDate.get(key) || [];
+  }, [selectedDate, programmesByDate]);
+
+  const selectedDayBookings = useMemo(() => {
+    const key = format(selectedDate, "yyyy-MM-dd");
+    return bookingsByDate.get(key) || [];
+  }, [selectedDate, bookingsByDate]);
 
   if (!user) return null;
 
@@ -190,9 +230,12 @@ export default function Dashboard() {
                     const key = format(day, "yyyy-MM-dd");
                     const dayMeetings = meetingsByDate.get(key) || [];
                     const dayEvents = eventsByDate.get(key) || [];
+                    const dayProgrammes = programmesByDate.get(key) || [];
+                    const dayBookings = bookingsByDate.get(key) || [];
                     const isCurrentMonth = isSameMonth(day, currentMonth);
                     const isSelected = isSameDay(day, selectedDate);
                     const today = isToday(day);
+                    const hasItems = dayMeetings.length + dayEvents.length + dayProgrammes.length + dayBookings.length > 0;
 
                     return (
                       <button
@@ -212,7 +255,7 @@ export default function Dashboard() {
                         `}>
                           {format(day, "d")}
                         </span>
-                        {(dayMeetings.length > 0 || dayEvents.length > 0) && (
+                        {hasItems && (
                           <div className="flex flex-wrap gap-0.5 mt-0.5">
                             {dayMeetings.slice(0, 2).map((m, i) => (
                               <div
@@ -223,10 +266,22 @@ export default function Dashboard() {
                                 }`}
                               />
                             ))}
-                            {dayEvents.slice(0, 2).map((_, i) => (
+                            {dayEvents.slice(0, 1).map((_, i) => (
                               <div
                                 key={`e-${i}`}
                                 className="w-full h-1 rounded-full bg-violet-400"
+                              />
+                            ))}
+                            {dayProgrammes.slice(0, 1).map((_, i) => (
+                              <div
+                                key={`p-${i}`}
+                                className="w-full h-1 rounded-full bg-indigo-400"
+                              />
+                            ))}
+                            {dayBookings.slice(0, 1).map((_, i) => (
+                              <div
+                                key={`b-${i}`}
+                                className="w-full h-1 rounded-full bg-orange-400"
                               />
                             ))}
                           </div>
@@ -237,6 +292,13 @@ export default function Dashboard() {
                 </div>
               </Card>
 
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-400" /> Meetings</span>
+                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-violet-400" /> Events</span>
+                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-indigo-400" /> Programmes</span>
+                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-orange-400" /> Bookings</span>
+              </div>
+
               <Card className="p-4 md:p-6">
                 <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
                   <h3 className="font-semibold font-display" data-testid="text-selected-date">
@@ -244,7 +306,7 @@ export default function Dashboard() {
                   </h3>
                 </div>
 
-                {(selectedDayMeetings.length > 0 || selectedDayEvents.length > 0) ? (
+                {(selectedDayMeetings.length > 0 || selectedDayEvents.length > 0 || selectedDayProgrammes.length > 0 || selectedDayBookings.length > 0) ? (
                   <div className="space-y-3">
                     {selectedDayMeetings.map((meeting) => {
                       const contact = contacts?.find((c: Contact) => c.id === meeting.contactId);
@@ -340,6 +402,81 @@ export default function Dashboard() {
                               </Button>
                             </Link>
                           )}
+                        </div>
+                      );
+                    })}
+                    {selectedDayProgrammes.map((prog: Programme) => (
+                      <div
+                        key={`prog-${prog.id}`}
+                        className="w-full text-left p-3 rounded-lg border border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-900/20 cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-colors"
+                        onClick={() => navigate("/programmes")}
+                        data-testid={`card-dashboard-programme-${prog.id}`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="w-8 h-8 rounded-full bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 flex items-center justify-center shrink-0 mt-0.5">
+                            <Layers className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium text-sm truncate">{prog.name}</span>
+                              <Badge variant="secondary" className="text-xs bg-indigo-500/15 text-indigo-700 dark:text-indigo-300">
+                                {prog.classification}
+                              </Badge>
+                            </div>
+                            <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                              {prog.startTime && (
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  {prog.startTime}{prog.endTime ? ` - ${prog.endTime}` : ""}
+                                </span>
+                              )}
+                              {prog.location && (
+                                <span className="flex items-center gap-1">
+                                  <MapPin className="w-3 h-3" />
+                                  {prog.location}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {selectedDayBookings.map((bk: Booking) => {
+                      const venueName = venues?.find((v: any) => v.id === bk.venueId)?.name;
+                      return (
+                        <div
+                          key={`bk-${bk.id}`}
+                          className="w-full text-left p-3 rounded-lg border border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20 cursor-pointer hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors"
+                          onClick={() => navigate("/bookings")}
+                          data-testid={`card-dashboard-booking-${bk.id}`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="w-8 h-8 rounded-full bg-orange-500/15 text-orange-600 dark:text-orange-300 flex items-center justify-center shrink-0 mt-0.5">
+                              <Building2 className="w-4 h-4" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-medium text-sm truncate">{bk.title}</span>
+                                <Badge variant="secondary" className="text-xs bg-orange-500/15 text-orange-700 dark:text-orange-300">
+                                  {bk.classification}
+                                </Badge>
+                              </div>
+                              <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                                {bk.startTime && (
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    {bk.startTime}{bk.endTime ? ` - ${bk.endTime}` : ""}
+                                  </span>
+                                )}
+                                {venueName && (
+                                  <span className="flex items-center gap-1">
+                                    <Building2 className="w-3 h-3" />
+                                    {venueName}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       );
                     })}

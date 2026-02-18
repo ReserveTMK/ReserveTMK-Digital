@@ -319,6 +319,12 @@ export default function Agreements() {
                                 <Clock className="w-3 h-3" />
                                 {membership.venueHireHours || 0} hrs included
                               </span>
+                              {(membership.bookingAllowance || 0) > 0 && (
+                                <span className="flex items-center gap-1" data-testid={`text-membership-allowance-${membership.id}`}>
+                                  <Calendar className="w-3 h-3" />
+                                  {membership.bookingAllowance} bookings/{membership.allowancePeriod === "monthly" ? "mo" : "qtr"}
+                                </span>
+                              )}
                             </div>
                             <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap mt-1">
                               <span className="flex items-center gap-1" data-testid={`text-membership-hours-used-${membership.id}`}>
@@ -472,6 +478,12 @@ export default function Agreements() {
                                 <ArrowRightLeft className="w-3 h-3" />
                                 {linkedBookings} booking{linkedBookings !== 1 ? "s" : ""}
                               </span>
+                              {(mou.bookingAllowance || 0) > 0 && (
+                                <span className="flex items-center gap-1" data-testid={`text-mou-allowance-${mou.id}`}>
+                                  <Clock className="w-3 h-3" />
+                                  {mou.bookingAllowance}/{mou.allowancePeriod === "monthly" ? "mo" : "qtr"}
+                                </span>
+                              )}
                             </div>
                             {mou.notes && (
                               <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{mou.notes}</p>
@@ -598,6 +610,8 @@ function MembershipFormDialog({
   const [contactSearch, setContactSearch] = useState("");
   const [annualFee, setAnnualFee] = useState(membership?.annualFee || "0");
   const [venueHireHours, setVenueHireHours] = useState((membership?.venueHireHours || 0).toString());
+  const [bookingAllowance, setBookingAllowance] = useState((membership?.bookingAllowance || 0).toString());
+  const [allowancePeriod, setAllowancePeriod] = useState(membership?.allowancePeriod || "quarterly");
   const [startDate, setStartDate] = useState(
     membership?.startDate ? format(new Date(membership.startDate), "yyyy-MM-dd") : ""
   );
@@ -626,6 +640,8 @@ function MembershipFormDialog({
       contactId: contactId || undefined,
       annualFee: annualFee || "0",
       venueHireHours: parseInt(venueHireHours) || 0,
+      bookingAllowance: parseInt(bookingAllowance) || 0,
+      allowancePeriod,
       startDate: startDate ? new Date(startDate).toISOString() : null,
       endDate: endDate ? new Date(endDate).toISOString() : null,
       status,
@@ -731,6 +747,32 @@ function MembershipFormDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
+              <Label>Booking Allowance</Label>
+              <Input
+                type="number"
+                min="0"
+                value={bookingAllowance}
+                onChange={(e) => setBookingAllowance(e.target.value)}
+                placeholder="Free bookings per period"
+                data-testid="input-membership-booking-allowance"
+              />
+            </div>
+            <div>
+              <Label>Allowance Period</Label>
+              <Select value={allowancePeriod} onValueChange={setAllowancePeriod}>
+                <SelectTrigger data-testid="select-membership-allowance-period">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="monthly">Monthly</SelectItem>
+                  <SelectItem value="quarterly">Quarterly</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
               <Label>Start Date</Label>
               <Input
                 type="date"
@@ -830,6 +872,8 @@ function MouFormDialog({
   const [providing, setProviding] = useState(mou?.providing || "");
   const [receiving, setReceiving] = useState(mou?.receiving || "");
   const [inKindValue, setInKindValue] = useState(mou?.inKindValue || "0");
+  const [bookingAllowance, setBookingAllowance] = useState((mou?.bookingAllowance || 0).toString());
+  const [allowancePeriod, setAllowancePeriod] = useState(mou?.allowancePeriod || "quarterly");
   const [startDate, setStartDate] = useState(
     mou?.startDate ? format(new Date(mou.startDate), "yyyy-MM-dd") : ""
   );
@@ -859,6 +903,8 @@ function MouFormDialog({
       providing: providing.trim() || undefined,
       receiving: receiving.trim() || undefined,
       inKindValue: inKindValue || "0",
+      bookingAllowance: parseInt(bookingAllowance) || 0,
+      allowancePeriod,
       startDate: startDate ? new Date(startDate).toISOString() : null,
       endDate: endDate ? new Date(endDate).toISOString() : null,
       status,
@@ -977,6 +1023,32 @@ function MouFormDialog({
                 placeholder="Estimated annual value"
                 data-testid="input-mou-inkind-value"
               />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Booking Allowance</Label>
+              <Input
+                type="number"
+                min="0"
+                value={bookingAllowance}
+                onChange={(e) => setBookingAllowance(e.target.value)}
+                placeholder="Free bookings per period"
+                data-testid="input-mou-booking-allowance"
+              />
+            </div>
+            <div>
+              <Label>Allowance Period</Label>
+              <Select value={allowancePeriod} onValueChange={setAllowancePeriod}>
+                <SelectTrigger data-testid="select-mou-allowance-period">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="monthly">Monthly</SelectItem>
+                  <SelectItem value="quarterly">Quarterly</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
