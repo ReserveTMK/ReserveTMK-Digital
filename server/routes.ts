@@ -7,6 +7,23 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { openai } from "./replit_integrations/audio/client"; // Use standard client
 
+function coerceDateFields(body: Record<string, any>): Record<string, any> {
+  const result = { ...body };
+  for (const [key, value] of Object.entries(result)) {
+    if (value === null || value === undefined) continue;
+    if (
+      typeof value === 'string' &&
+      (key.endsWith('Date') || key.endsWith('At') || key === 'startTime' || key === 'endTime' || key === 'date')
+    ) {
+      const parsed = new Date(value);
+      if (!isNaN(parsed.getTime())) {
+        result[key] = parsed;
+      }
+    }
+  }
+  return result;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -667,17 +684,7 @@ export async function registerRoutes(
       const existing = await storage.getImpactLog(id);
       if (!existing) return res.status(404).json({ message: "Impact log not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
-      const body = { ...req.body };
-      for (const dateField of ['reviewedAt', 'createdAt']) {
-        if (body[dateField] !== undefined) {
-          if (body[dateField] === null || body[dateField] === '') {
-            delete body[dateField];
-          } else if (typeof body[dateField] === 'string') {
-            body[dateField] = new Date(body[dateField]);
-          }
-        }
-      }
-      const input = api.impactLogs.update.input.parse(body);
+      const input = api.impactLogs.update.input.parse(coerceDateFields(req.body));
       if (input.status) {
         const validTransitions: Record<string, string[]> = {
           draft: ['pending_review', 'confirmed'],
@@ -1359,9 +1366,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.post(api.programmes.create.path, isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const body = { ...req.body, userId };
-      if (body.startDate && typeof body.startDate === 'string') body.startDate = new Date(body.startDate);
-      if (body.endDate && typeof body.endDate === 'string') body.endDate = new Date(body.endDate);
+      const body = coerceDateFields({ ...req.body, userId });
       const input = api.programmes.create.input.parse(body);
       const programme = await storage.createProgramme(input);
       res.status(201).json(programme);
@@ -1379,10 +1384,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const existing = await storage.getProgramme(id);
       if (!existing) return res.status(404).json({ message: "Programme not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
-      const body = { ...req.body };
-      if (body.startDate && typeof body.startDate === 'string') body.startDate = new Date(body.startDate);
-      if (body.endDate && typeof body.endDate === 'string') body.endDate = new Date(body.endDate);
-      const input = api.programmes.update.input.parse(body);
+      const input = api.programmes.update.input.parse(coerceDateFields(req.body));
       const updated = await storage.updateProgramme(id, input);
       res.json(updated);
     } catch (err) {
@@ -1464,7 +1466,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.post(api.memberships.create.path, isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const body = { ...req.body, userId };
+      const body = coerceDateFields({ ...req.body, userId });
       const input = api.memberships.create.input.parse(body);
       const membership = await storage.createMembership(input);
       res.status(201).json(membership);
@@ -1482,7 +1484,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const existing = await storage.getMembership(id);
       if (!existing) return res.status(404).json({ message: "Membership not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
-      const input = api.memberships.update.input.parse(req.body);
+      const input = api.memberships.update.input.parse(coerceDateFields(req.body));
       const updated = await storage.updateMembership(id, input);
       res.json(updated);
     } catch (err) {
@@ -1521,7 +1523,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.post(api.mous.create.path, isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const body = { ...req.body, userId };
+      const body = coerceDateFields({ ...req.body, userId });
       const input = api.mous.create.input.parse(body);
       const mou = await storage.createMou(input);
       res.status(201).json(mou);
@@ -1539,7 +1541,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const existing = await storage.getMou(id);
       if (!existing) return res.status(404).json({ message: "MOU not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
-      const input = api.mous.update.input.parse(req.body);
+      const input = api.mous.update.input.parse(coerceDateFields(req.body));
       const updated = await storage.updateMou(id, input);
       res.json(updated);
     } catch (err) {
@@ -1635,7 +1637,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.post(api.bookings.create.path, isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const body = { ...req.body, userId };
+      const body = coerceDateFields({ ...req.body, userId });
       const input = api.bookings.create.input.parse(body);
       const booking = await storage.createBooking(input);
       res.status(201).json(booking);
@@ -1653,7 +1655,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const existing = await storage.getBooking(id);
       if (!existing) return res.status(404).json({ message: "Booking not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
-      const input = api.bookings.update.input.parse(req.body);
+      const input = api.bookings.update.input.parse(coerceDateFields(req.body));
       const updated = await storage.updateBooking(id, input);
       res.json(updated);
     } catch (err) {
