@@ -1,8 +1,8 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { Button } from "@/components/ui/beautiful-button";
 import { useContacts, useCreateContact } from "@/hooks/use-contacts";
-import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, MessageSquare, FileText } from "lucide-react";
-import { useState, useRef, useCallback } from "react";
+import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX } from "lucide-react";
+import { useState, useRef, useCallback, useMemo } from "react";
 import { Link } from "wouter";
 import { format } from "date-fns";
 import {
@@ -43,6 +43,37 @@ export default function Contacts() {
     return matchesSearch && matchesRole;
   });
 
+  const analytics = useMemo(() => {
+    if (!contacts || contacts.length === 0) return null;
+    const now = Date.now();
+    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+    const ninetyDaysAgo = now - 90 * 24 * 60 * 60 * 1000;
+
+    let active30 = 0;
+    let active90 = 0;
+    let totalInteractions = 0;
+    let totalDebriefs = 0;
+    const roleCounts: Record<string, number> = {};
+
+    for (const c of contacts as any[]) {
+      const parsed = c.lastInteractionDate ? new Date(c.lastInteractionDate).getTime() : 0;
+      const lastDate = Number.isFinite(parsed) ? parsed : 0;
+      if (lastDate >= thirtyDaysAgo) active30++;
+      if (lastDate >= ninetyDaysAgo) active90++;
+      totalInteractions += (c.interactionCount || 0) + (c.eventCount || 0);
+      totalDebriefs += c.debriefCount || 0;
+      const role = c.role || "Unknown";
+      roleCounts[role] = (roleCounts[role] || 0) + 1;
+    }
+
+    const inactive = contacts.length - active90;
+    const topRoles = Object.entries(roleCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4);
+
+    return { total: contacts.length, active30, active90, inactive, totalInteractions, totalDebriefs, topRoles };
+  }, [contacts]);
+
   return (
     <div className="flex min-h-screen bg-background/50">
       <Sidebar />
@@ -73,6 +104,67 @@ export default function Contacts() {
           </div>
 
           <BulkUploadDialog open={bulkOpen} onOpenChange={setBulkOpen} />
+
+          {analytics && (
+            <div className="space-y-3" data-testid="community-analytics">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <Card className="p-4" data-testid="stat-total-members">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <Users className="w-4 h-4 text-primary" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-2xl font-bold font-display leading-none">{analytics.total}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Total Members</p>
+                    </div>
+                  </div>
+                </Card>
+                <Card className="p-4" data-testid="stat-active-30">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
+                      <UserCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-2xl font-bold font-display leading-none">{analytics.active30}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Active (30d)</p>
+                    </div>
+                  </div>
+                </Card>
+                <Card className="p-4" data-testid="stat-inactive">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-orange-500/10 flex items-center justify-center shrink-0">
+                      <UserX className="w-4 h-4 text-orange-600 dark:text-orange-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-2xl font-bold font-display leading-none">{analytics.inactive}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Inactive (90d+)</p>
+                    </div>
+                  </div>
+                </Card>
+                <Card className="p-4" data-testid="stat-total-interactions">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
+                      <TrendingUp className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-2xl font-bold font-display leading-none">{analytics.totalInteractions}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Interactions</p>
+                    </div>
+                  </div>
+                </Card>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {analytics.topRoles.map(([role, count]) => (
+                  <Badge key={role} variant="secondary" className="text-xs" data-testid={`stat-role-${role.toLowerCase().replace(/\s+/g, '-')}`}>
+                    {role}: {count}
+                  </Badge>
+                ))}
+                <span className="text-xs text-muted-foreground ml-1" data-testid="stat-total-debriefs">
+                  {analytics.totalDebriefs} debrief{analytics.totalDebriefs !== 1 ? 's' : ''} logged
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Filters */}
           <div className="flex flex-col sm:flex-row gap-4">
