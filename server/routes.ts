@@ -667,7 +667,17 @@ export async function registerRoutes(
       const existing = await storage.getImpactLog(id);
       if (!existing) return res.status(404).json({ message: "Impact log not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
-      const input = api.impactLogs.update.input.parse(req.body);
+      const body = { ...req.body };
+      for (const dateField of ['reviewedAt', 'createdAt']) {
+        if (body[dateField] !== undefined) {
+          if (body[dateField] === null || body[dateField] === '') {
+            delete body[dateField];
+          } else if (typeof body[dateField] === 'string') {
+            body[dateField] = new Date(body[dateField]);
+          }
+        }
+      }
+      const input = api.impactLogs.update.input.parse(body);
       if (input.status) {
         const validTransitions: Record<string, string[]> = {
           draft: ['pending_review'],
