@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -54,7 +55,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import type { ImpactLog, Contact } from "@shared/schema";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-gray-500/15 text-gray-700 dark:text-gray-300",
@@ -90,7 +91,23 @@ export default function Debriefs() {
 function ListView() {
   const { data: logs, isLoading } = useImpactLogs() as { data: ImpactLog[] | undefined; isLoading: boolean };
   const [createOpen, setCreateOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<ImpactLog | null>(null);
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/impact-logs/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/impact-logs"] });
+      toast({ title: "Debrief deleted", description: "The debrief has been removed." });
+      setDeleteTarget(null);
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to delete", variant: "destructive" });
+    },
+  });
 
   return (
     <div className="flex min-h-screen bg-background/50">
@@ -145,6 +162,15 @@ function ListView() {
                           {log.sentiment}
                         </Badge>
                       )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="shrink-0"
+                        onClick={(e) => { e.stopPropagation(); setDeleteTarget(log); }}
+                        data-testid={`button-delete-debrief-${log.id}`}
+                      >
+                        <Trash2 className="w-4 h-4 text-muted-foreground" />
+                      </Button>
                     </div>
                   </div>
                   {log.summary && (
@@ -163,6 +189,31 @@ function ListView() {
       </main>
 
       <NewDebriefDialog open={createOpen} onOpenChange={setCreateOpen} />
+
+      <Dialog open={!!deleteTarget} onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Debrief</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{deleteTarget?.title}"? This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} data-testid="button-cancel-delete">
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+              disabled={deleteMutation.isPending}
+              data-testid="button-confirm-delete"
+            >
+              {deleteMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -455,6 +506,118 @@ function ReviewView({ id }: { id: number }) {
   const [metrics, setMetrics] = useState<Record<string, number>>({});
   const [initialized, setInitialized] = useState(false);
 
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [recordingTranscript, setRecordingTranscript] = useState("");
+  const [recordingTab, setRecordingTab] = useState("record");
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", `/api/impact-logs/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/impact-logs"] });
+      toast({ title: "Debrief deleted", description: "The debrief has been removed." });
+      setLocation("/debriefs");
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to delete", variant: "destructive" });
+    },
+  });
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      chunksRef.current = [];
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        setAudioBlob(blob);
+        setAudioUrl(URL.createObjectURL(blob));
+        stream.getTracks().forEach((t) => t.stop());
+      };
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+      timerRef.current = setInterval(() => setRecordingTime((t) => t + 1), 1000);
+    } catch {
+      toast({ title: "Microphone Error", description: "Could not access microphone. Please grant permission.", variant: "destructive" });
+    }
+  };
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop();
+    setIsRecording(false);
+    if (timerRef.current) clearInterval(timerRef.current);
+  };
+
+  const transcribeAudio = async () => {
+    if (!audioBlob) return;
+    setIsTranscribing(true);
+    try {
+      const res = await fetch("/api/impact-transcribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: audioBlob,
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Transcription failed");
+      const data = await res.json();
+      setRecordingTranscript(data.transcript || data.text || "");
+      toast({ title: "Transcribed", description: "Audio transcription complete." });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Transcription failed", variant: "destructive" });
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  const handleAnalyzeRecording = async () => {
+    if (!recordingTranscript.trim()) {
+      toast({ title: "Missing transcript", description: "Please record or paste a transcript first.", variant: "destructive" });
+      return;
+    }
+    setIsAnalyzing(true);
+    try {
+      const res = await fetch("/api/impact-extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: recordingTranscript, title: impactLog?.title || "Debrief", existingLogId: id }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Extraction failed");
+
+      queryClient.invalidateQueries({ queryKey: ["/api/impact-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/impact-logs", id] });
+      setInitialized(false);
+      toast({ title: "Analysis complete", description: "Review the extracted impact data." });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Analysis failed", variant: "destructive" });
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const formatRecTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  };
+
+  const needsRecording = impactLog && impactLog.status === "draft" && !impactLog.transcript && !extraction;
+
   useEffect(() => {
     if (impactLog && extraction && !initialized) {
       setSummary(extraction.summary || impactLog.summary || "");
@@ -627,26 +790,157 @@ function ReviewView({ id }: { id: number }) {
                 )}
               </div>
             </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setDeleteConfirmOpen(true)}
+              data-testid="button-delete-debrief-detail"
+            >
+              <Trash2 className="w-4 h-4 text-muted-foreground" />
+            </Button>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
             <div className="lg:col-span-3 space-y-4">
-              <Card className="p-5">
-                <h2 className="font-bold text-lg font-display mb-3" data-testid="text-transcript-heading">Transcript</h2>
-                <div className="prose prose-sm max-w-none text-foreground/90 whitespace-pre-wrap max-h-[60vh] overflow-y-auto" data-testid="text-transcript-content">
-                  {Array.isArray(transcriptParts) ? (
-                    transcriptParts.map((part, i) => (
-                      part.highlighted ? (
-                        <mark key={i} className="bg-primary/20 text-foreground px-0.5 rounded">{part.text}</mark>
-                      ) : (
-                        <span key={i}>{part.text}</span>
-                      )
-                    ))
-                  ) : (
-                    transcriptParts || <span className="text-muted-foreground italic">No transcript available</span>
-                  )}
-                </div>
-              </Card>
+              {needsRecording ? (
+                <Card className="p-5">
+                  <h2 className="font-bold text-lg font-display mb-3" data-testid="text-record-heading">Record Your Debrief</h2>
+                  <p className="text-sm text-muted-foreground mb-4">Record audio or paste text to capture your debrief, then analyse it for impact data.</p>
+
+                  <Tabs value={recordingTab} onValueChange={setRecordingTab}>
+                    <TabsList className="w-full">
+                      <TabsTrigger value="record" className="flex-1" data-testid="tab-record-audio-review">Record Audio</TabsTrigger>
+                      <TabsTrigger value="text" className="flex-1" data-testid="tab-paste-text-review">Paste Text</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="record" className="space-y-4 mt-4">
+                      {!audioBlob && !isRecording && (
+                        <div className="flex flex-col items-center gap-4 py-8">
+                          <Button
+                            onClick={startRecording}
+                            className="rounded-full w-20 h-20 flex items-center justify-center"
+                            data-testid="button-start-recording-review"
+                          >
+                            <Mic className="w-8 h-8" />
+                          </Button>
+                          <p className="text-sm text-muted-foreground">Tap to start recording</p>
+                        </div>
+                      )}
+
+                      {isRecording && (
+                        <div className="flex flex-col items-center gap-4 py-8">
+                          <div className="w-20 h-20 rounded-full bg-destructive/20 animate-pulse flex items-center justify-center">
+                            <div className="w-4 h-4 rounded-full bg-destructive" />
+                          </div>
+                          <p className="text-lg font-mono font-bold" data-testid="text-recording-timer-review">{formatRecTime(recordingTime)}</p>
+                          <Button
+                            variant="destructive"
+                            onClick={stopRecording}
+                            data-testid="button-stop-recording-review"
+                          >
+                            <Square className="w-4 h-4 mr-2" />
+                            Stop Recording
+                          </Button>
+                        </div>
+                      )}
+
+                      {audioBlob && !isRecording && (
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-3 p-4 bg-muted/30 rounded-lg border border-border">
+                            <Play className="w-5 h-5 text-muted-foreground shrink-0" />
+                            <audio controls src={audioUrl || undefined} className="flex-1 h-10" data-testid="audio-playback-review" />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => { setAudioBlob(null); setAudioUrl(null); }}
+                              data-testid="button-discard-recording-review"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                          {!recordingTranscript && (
+                            <Button
+                              onClick={transcribeAudio}
+                              disabled={isTranscribing}
+                              className="w-full"
+                              data-testid="button-transcribe-review"
+                            >
+                              {isTranscribing ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                  Transcribing...
+                                </>
+                              ) : (
+                                <>
+                                  <FileText className="w-4 h-4 mr-2" />
+                                  Transcribe
+                                </>
+                              )}
+                            </Button>
+                          )}
+                          {recordingTranscript && (
+                            <div className="space-y-2">
+                              <Label>Transcript</Label>
+                              <Textarea
+                                value={recordingTranscript}
+                                onChange={(e) => setRecordingTranscript(e.target.value)}
+                                className="min-h-[120px] resize-none"
+                                data-testid="textarea-transcript-result-review"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </TabsContent>
+
+                    <TabsContent value="text" className="space-y-4 mt-4">
+                      <div className="space-y-2">
+                        <Label>Transcript Text</Label>
+                        <Textarea
+                          value={recordingTranscript}
+                          onChange={(e) => setRecordingTranscript(e.target.value)}
+                          placeholder="Paste or type your debrief transcript here..."
+                          className="min-h-[200px] resize-none"
+                          data-testid="textarea-transcript-review"
+                        />
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+
+                  <Button
+                    onClick={handleAnalyzeRecording}
+                    disabled={isAnalyzing || !recordingTranscript.trim()}
+                    className="w-full mt-4"
+                    data-testid="button-analyze-review"
+                  >
+                    {isAnalyzing ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Analyzing impact...
+                      </>
+                    ) : (
+                      "Analyze & Extract"
+                    )}
+                  </Button>
+                </Card>
+              ) : (
+                <Card className="p-5">
+                  <h2 className="font-bold text-lg font-display mb-3" data-testid="text-transcript-heading">Transcript</h2>
+                  <div className="prose prose-sm max-w-none text-foreground/90 whitespace-pre-wrap max-h-[60vh] overflow-y-auto" data-testid="text-transcript-content">
+                    {Array.isArray(transcriptParts) ? (
+                      transcriptParts.map((part, i) => (
+                        part.highlighted ? (
+                          <mark key={i} className="bg-primary/20 text-foreground px-0.5 rounded">{part.text}</mark>
+                        ) : (
+                          <span key={i}>{part.text}</span>
+                        )
+                      ))
+                    ) : (
+                      transcriptParts || <span className="text-muted-foreground italic">No transcript available</span>
+                    )}
+                  </div>
+                </Card>
+              )}
             </div>
 
             <div className="lg:col-span-2 space-y-4">
@@ -1007,6 +1301,31 @@ function ReviewView({ id }: { id: number }) {
             </Button>
           </div>
         </div>
+
+        <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Delete Debrief</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete "{impactLog.title}"? This cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)} data-testid="button-cancel-delete-detail">
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => deleteMutation.mutate()}
+                disabled={deleteMutation.isPending}
+                data-testid="button-confirm-delete-detail"
+              >
+                {deleteMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );

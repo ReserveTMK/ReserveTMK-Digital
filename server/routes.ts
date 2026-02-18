@@ -976,7 +976,7 @@ export async function registerRoutes(
   app.post("/api/impact-extract", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { transcript, title } = req.body;
+      const { transcript, title, existingLogId } = req.body;
       if (!transcript) return res.status(400).json({ message: "Transcript text required" });
 
       const taxonomy = await storage.getTaxonomy(userId);
@@ -1087,22 +1087,35 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
       const extraction = JSON.parse(response.choices[0].message.content || "{}");
 
-      const impactLog = await storage.createImpactLog({
-        userId,
-        title: title || "Untitled Debrief",
-        transcript,
-        summary: extraction.summary || "",
-        rawExtraction: extraction,
-        status: "pending_review",
-        sentiment: extraction.sentiment || "neutral",
-        milestones: extraction.milestones || [],
-        keyQuotes: extraction.keyQuotes || [],
-      });
-
-      res.status(201).json({
-        impactLog,
-        extraction,
-      });
+      if (existingLogId) {
+        const existing = await storage.getImpactLog(existingLogId);
+        if (!existing || existing.userId !== userId) {
+          return res.status(404).json({ message: "Impact log not found" });
+        }
+        const updated = await storage.updateImpactLog(existingLogId, {
+          transcript,
+          summary: extraction.summary || "",
+          rawExtraction: extraction,
+          status: "pending_review",
+          sentiment: extraction.sentiment || "neutral",
+          milestones: extraction.milestones || [],
+          keyQuotes: extraction.keyQuotes || [],
+        });
+        res.status(200).json({ impactLog: updated, extraction });
+      } else {
+        const impactLog = await storage.createImpactLog({
+          userId,
+          title: title || "Untitled Debrief",
+          transcript,
+          summary: extraction.summary || "",
+          rawExtraction: extraction,
+          status: "pending_review",
+          sentiment: extraction.sentiment || "neutral",
+          milestones: extraction.milestones || [],
+          keyQuotes: extraction.keyQuotes || [],
+        });
+        res.status(201).json({ impactLog, extraction });
+      }
     } catch (error) {
       console.error("Impact extraction error:", error);
       res.status(500).json({ message: "Failed to extract impact data" });
