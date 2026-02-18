@@ -64,6 +64,10 @@ export function Sidebar() {
   const [location] = useLocation();
   const { logout, user } = useAuth();
   const [open, setOpen] = useState(false);
+  const [communityExpanded, setCommunityExpanded] = useState(() => {
+    const isChildActive = navigation.find(n => n.name === "Community")?.children?.some(c => location === c.href);
+    return isChildActive ?? false;
+  });
 
   const NavContent = ({ onNavigate }: { onNavigate?: () => void }) => (
     <div className="flex flex-col h-full">
@@ -82,26 +86,31 @@ export function Sidebar() {
         {navigation.map((item) => {
           if (item.children) {
             const isChildActive = item.children.some(c => location === c.href);
+            const isExpanded = item.name === "Community" ? communityExpanded : isChildActive;
+
             return (
               <div key={item.name}>
-                <Link
-                  href={item.href}
+                <button
+                  onClick={(e) => {
+                    if (item.name === "Community") {
+                      setCommunityExpanded(!communityExpanded);
+                    }
+                  }}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group font-medium w-full",
+                    "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group font-medium w-full text-left",
                     isChildActive
                       ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
                       : "text-muted-foreground hover-elevate",
                   )}
-                  onClick={onNavigate}
                   data-testid={`nav-${item.name.toLowerCase()}`}
                 >
                   <item.icon className={cn("w-5 h-5", isChildActive ? "text-white" : "text-muted-foreground group-hover:text-foreground")} />
                   <span className="flex-1">{item.name}</span>
-                  <ChevronDown className={cn("w-4 h-4 transition-transform", isChildActive ? "text-white" : "text-muted-foreground")} />
-                </Link>
+                  <ChevronDown className={cn("w-4 h-4 transition-transform", isExpanded ? "rotate-180" : "")} />
+                </button>
                 <div className={cn(
-                  "ml-4 mt-1 space-y-0.5 overflow-hidden transition-all",
-                  isChildActive ? "max-h-40" : "max-h-0"
+                  "ml-4 mt-1 space-y-0.5 overflow-hidden transition-all duration-300 ease-in-out",
+                  isExpanded ? "max-h-40 opacity-100" : "max-h-0 opacity-0"
                 )}>
                   {item.children.map((child) => {
                     const isSubActive = location === child.href;
