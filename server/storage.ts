@@ -67,7 +67,7 @@ import {
   type Mou,
   type InsertMou,
 } from "@shared/schema";
-import { eq, desc, and, gte, lte, sql, max } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, max, count } from "drizzle-orm";
 
 import { authStorage, type IAuthStorage } from "./replit_integrations/auth/storage";
 
@@ -208,28 +208,55 @@ export class DatabaseStorage implements IStorage {
 
   // Contacts
   async getContacts(userId: string): Promise<any[]> {
-    const lastInteractionSub = db
+    const interactionStats = db
       .select({
         contactId: interactions.contactId,
         lastInteractionDate: max(interactions.date).as('last_interaction_date'),
+        interactionCount: count(interactions.id).as('interaction_count'),
       })
       .from(interactions)
       .groupBy(interactions.contactId)
-      .as('last_int');
+      .as('int_stats');
+
+    const attendanceStats = db
+      .select({
+        contactId: eventAttendance.contactId,
+        eventCount: count(eventAttendance.id).as('event_count'),
+      })
+      .from(eventAttendance)
+      .groupBy(eventAttendance.contactId)
+      .as('att_stats');
+
+    const debriefStats = db
+      .select({
+        contactId: impactLogContacts.contactId,
+        debriefCount: count(impactLogContacts.id).as('debrief_count'),
+      })
+      .from(impactLogContacts)
+      .groupBy(impactLogContacts.contactId)
+      .as('deb_stats');
 
     const rows = await db
       .select({
         contact: contacts,
-        lastInteractionDate: lastInteractionSub.lastInteractionDate,
+        lastInteractionDate: interactionStats.lastInteractionDate,
+        interactionCount: interactionStats.interactionCount,
+        eventCount: attendanceStats.eventCount,
+        debriefCount: debriefStats.debriefCount,
       })
       .from(contacts)
-      .leftJoin(lastInteractionSub, eq(contacts.id, lastInteractionSub.contactId))
+      .leftJoin(interactionStats, eq(contacts.id, interactionStats.contactId))
+      .leftJoin(attendanceStats, eq(contacts.id, attendanceStats.contactId))
+      .leftJoin(debriefStats, eq(contacts.id, debriefStats.contactId))
       .where(eq(contacts.userId, userId))
-      .orderBy(desc(sql`COALESCE(${lastInteractionSub.lastInteractionDate}, ${contacts.createdAt})`));
+      .orderBy(desc(sql`COALESCE(${interactionStats.lastInteractionDate}, ${contacts.createdAt})`));
 
     return rows.map(r => ({
       ...r.contact,
       lastInteractionDate: r.lastInteractionDate || null,
+      interactionCount: Number(r.interactionCount) || 0,
+      eventCount: Number(r.eventCount) || 0,
+      debriefCount: Number(r.debriefCount) || 0,
     }));
   }
 

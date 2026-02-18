@@ -1,7 +1,7 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { Button } from "@/components/ui/beautiful-button";
 import { useContacts, useCreateContact } from "@/hooks/use-contacts";
-import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X } from "lucide-react";
+import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, MessageSquare, CalendarCheck, FileText } from "lucide-react";
 import { useState, useRef, useCallback } from "react";
 import { Link } from "wouter";
 import { format } from "date-fns";
@@ -154,6 +154,20 @@ export default function Contacts() {
                             ? `Last active: ${format(new Date(contact.lastInteractionDate), "MMM d, yyyy")}`
                             : `Added: ${format(new Date(contact.createdAt || Date.now()), "MMM d, yyyy")}`}
                         </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3 mt-1.5">
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground" data-testid={`stat-interactions-${contact.id}`}>
+                          <MessageSquare className="w-3 h-3" />
+                          {contact.interactionCount || 0} interaction{contact.interactionCount !== 1 ? 's' : ''}
+                        </span>
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground" data-testid={`stat-events-${contact.id}`}>
+                          <CalendarCheck className="w-3 h-3" />
+                          {contact.eventCount || 0} event{contact.eventCount !== 1 ? 's' : ''}
+                        </span>
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground" data-testid={`stat-debriefs-${contact.id}`}>
+                          <FileText className="w-3 h-3" />
+                          {contact.debriefCount || 0} debrief{contact.debriefCount !== 1 ? 's' : ''}
+                        </span>
                       </div>
                     </div>
 
