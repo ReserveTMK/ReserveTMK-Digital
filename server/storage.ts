@@ -67,7 +67,7 @@ import {
   type Mou,
   type InsertMou,
 } from "@shared/schema";
-import { eq, desc, and, gte, lte } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, max } from "drizzle-orm";
 
 import { authStorage, type IAuthStorage } from "./replit_integrations/auth/storage";
 
@@ -207,11 +207,30 @@ export class DatabaseStorage implements IStorage {
   public auth = authStorage;
 
   // Contacts
-  async getContacts(userId: string): Promise<Contact[]> {
-    return await db.select()
+  async getContacts(userId: string): Promise<any[]> {
+    const lastInteractionSub = db
+      .select({
+        contactId: interactions.contactId,
+        lastInteractionDate: max(interactions.date).as('last_interaction_date'),
+      })
+      .from(interactions)
+      .groupBy(interactions.contactId)
+      .as('last_int');
+
+    const rows = await db
+      .select({
+        contact: contacts,
+        lastInteractionDate: lastInteractionSub.lastInteractionDate,
+      })
       .from(contacts)
+      .leftJoin(lastInteractionSub, eq(contacts.id, lastInteractionSub.contactId))
       .where(eq(contacts.userId, userId))
-      .orderBy(desc(contacts.updatedAt));
+      .orderBy(desc(sql`COALESCE(${lastInteractionSub.lastInteractionDate}, ${contacts.createdAt})`));
+
+    return rows.map(r => ({
+      ...r.contact,
+      lastInteractionDate: r.lastInteractionDate || null,
+    }));
   }
 
   async getContact(id: number): Promise<Contact | undefined> {

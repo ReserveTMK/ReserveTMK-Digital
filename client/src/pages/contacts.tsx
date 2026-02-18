@@ -123,11 +123,7 @@ export default function Contacts() {
             </div>
           ) : (
             <div className="space-y-3">
-              {[...(filteredContacts || [])].sort((a, b) => {
-                const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-                const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-                return dateB - dateA;
-              }).map((contact) => (
+              {(filteredContacts || []).map((contact: any) => (
                 <Link key={contact.id} href={`/contacts/${contact.id}`} data-testid={`link-contact-${contact.id}`}>
                   <div className="group bg-card hover:bg-card/80 border border-border rounded-xl p-4 transition-all duration-200 hover:shadow-md cursor-pointer flex items-center gap-4" data-testid={`card-contact-${contact.id}`}>
                     <div className="w-12 h-12 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-lg shrink-0">
@@ -154,14 +150,16 @@ export default function Contacts() {
                           {contact.email || "No email"}
                         </p>
                         <p className="text-xs text-primary/80 font-medium">
-                          Added: {format(new Date(contact.createdAt || Date.now()), "MMM d, yyyy")}
+                          {contact.lastInteractionDate
+                            ? `Last active: ${format(new Date(contact.lastInteractionDate), "MMM d, yyyy")}`
+                            : `Added: ${format(new Date(contact.createdAt || Date.now()), "MMM d, yyyy")}`}
                         </p>
                       </div>
                     </div>
 
                     <div className="hidden sm:flex flex-wrap gap-1 justify-end max-w-[200px] shrink-0">
                       {contact.tags && contact.tags.length > 0 ? (
-                        contact.tags.slice(0, 2).map((tag, i) => (
+                        contact.tags.slice(0, 2).map((tag: string, i: number) => (
                           <span key={i} className="text-[10px] px-1.5 py-0.5 bg-muted rounded text-muted-foreground border border-border/50">
                             #{tag}
                           </span>
