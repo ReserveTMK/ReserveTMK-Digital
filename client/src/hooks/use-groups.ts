@@ -173,6 +173,38 @@ export function useEnrichGroup() {
   });
 }
 
+export function useGroupTaxonomyLinks(groupId: number) {
+  return useQuery({
+    queryKey: ["/api/groups/:id/taxonomy-links", groupId],
+    queryFn: async () => {
+      const res = await fetch(`/api/groups/${groupId}/taxonomy-links`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch taxonomy links");
+      return res.json();
+    },
+    enabled: !!groupId,
+  });
+}
+
+export function useSaveGroupTaxonomyLinks() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ groupId, links }: { groupId: number; links: { taxonomyId: number; confidence: number | null; reasoning: string | null }[] }) => {
+      const res = await fetch(`/api/groups/${groupId}/taxonomy-links`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ links }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to save taxonomy links");
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups/:id/taxonomy-links", variables.groupId] });
+    },
+  });
+}
+
 export function useRemoveGroupMember() {
   const queryClient = useQueryClient();
 

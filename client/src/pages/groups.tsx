@@ -1,8 +1,9 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { Button } from "@/components/ui/beautiful-button";
-import { useGroups, useCreateGroup, useUpdateGroup, useDeleteGroup, useGroupMembers, useAddGroupMember, useRemoveGroupMember, useEnrichGroup } from "@/hooks/use-groups";
+import { useGroups, useCreateGroup, useUpdateGroup, useDeleteGroup, useGroupMembers, useAddGroupMember, useRemoveGroupMember, useEnrichGroup, useGroupTaxonomyLinks, useSaveGroupTaxonomyLinks } from "@/hooks/use-groups";
 import { useContacts } from "@/hooks/use-contacts";
-import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe } from "lucide-react";
+import { useTaxonomy } from "@/hooks/use-taxonomy";
+import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe, Target } from "lucide-react";
 import { useState, useMemo } from "react";
 import {
   Dialog,
@@ -411,11 +412,15 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit }: {
   const removeMember = useRemoveGroupMember();
   const enrichGroup = useEnrichGroup();
   const updateGroup = useUpdateGroup();
+  const saveTaxonomyLinks = useSaveGroupTaxonomyLinks();
+  const { data: taxonomyLinks } = useGroupTaxonomyLinks(group.id);
+  const { data: taxonomyCategories } = useTaxonomy();
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [memberSearch, setMemberSearch] = useState("");
   const [selectedRole, setSelectedRole] = useState("Member");
   const [enrichData, setEnrichData] = useState<Record<string, any> | null>(null);
   const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set());
+  const [selectedKaupapa, setSelectedKaupapa] = useState<Set<number>>(new Set());
   const { toast } = useToast();
 
   const existingContactIds = new Set((members || []).map((m: GroupMember) => m.contactId));
@@ -448,13 +453,17 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit }: {
   const handleEnrich = () => {
     enrichGroup.mutate(group.id, {
       onSuccess: (data) => {
-        const nonNullFields = Object.entries(data).filter(([_, v]) => v != null);
-        if (nonNullFields.length === 0) {
+        const nonNullFields = Object.entries(data).filter(([k, v]) => k !== "kaupapa" && v != null);
+        const hasKaupapa = Array.isArray(data.kaupapa) && data.kaupapa.length > 0;
+        if (nonNullFields.length === 0 && !hasKaupapa) {
           toast({ title: "No suggestions found", description: "AI couldn't find public information for this organisation" });
           return;
         }
         setEnrichData(data);
         setSelectedFields(new Set(nonNullFields.map(([k]) => k)));
+        if (hasKaupapa) {
+          setSelectedKaupapa(new Set(data.kaupapa.map((_: any, i: number) => i)));
+        }
       },
       onError: (err) => {
         toast({ title: "Enrichment failed", description: err.message, variant: "destructive" });
@@ -470,17 +479,42 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit }: {
         updates[field] = enrichData[field];
       }
     });
-    if (Object.keys(updates).length === 0) {
-      toast({ title: "No fields selected", description: "Select at least one field to apply" });
+
+    const kaupapa = enrichData.kaupapa || [];
+    const selectedKaupLinks = kaupapa
+      .filter((_: any, i: number) => selectedKaupapa.has(i))
+      .map((k: any) => ({
+        taxonomyId: k.taxonomyId,
+        confidence: k.confidence,
+        reasoning: k.reasoning,
+      }));
+
+    const hasFieldUpdates = Object.keys(updates).length > 0;
+    const hasKaupUpdates = selectedKaupLinks.length > 0;
+
+    if (!hasFieldUpdates && !hasKaupUpdates) {
+      toast({ title: "No items selected", description: "Select at least one field or kaupapa match to apply" });
       return;
     }
-    updateGroup.mutate({ id: group.id, data: updates }, {
-      onSuccess: () => {
-        toast({ title: "Group updated", description: "AI suggestions applied successfully" });
-        setEnrichData(null);
-        setSelectedFields(new Set());
-      },
-    });
+
+    const onDone = () => {
+      toast({ title: "Group updated", description: "AI suggestions applied successfully" });
+      setEnrichData(null);
+      setSelectedFields(new Set());
+      setSelectedKaupapa(new Set());
+    };
+
+    if (hasFieldUpdates && hasKaupUpdates) {
+      updateGroup.mutate({ id: group.id, data: updates }, {
+        onSuccess: () => {
+          saveTaxonomyLinks.mutate({ groupId: group.id, links: selectedKaupLinks }, { onSuccess: onDone });
+        },
+      });
+    } else if (hasFieldUpdates) {
+      updateGroup.mutate({ id: group.id, data: updates }, { onSuccess: onDone });
+    } else {
+      saveTaxonomyLinks.mutate({ groupId: group.id, links: selectedKaupLinks }, { onSuccess: onDone });
+    }
   };
 
   const toggleField = (field: string) => {
@@ -502,7 +536,7 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit }: {
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) { setEnrichData(null); } }}>
+    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) { setEnrichData(null); setSelectedKaupapa(new Set()); } }}>
       <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -544,7 +578,7 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit }: {
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => { setEnrichData(null); setSelectedFields(new Set()); }}
+                  onClick={() => { setEnrichData(null); setSelectedFields(new Set()); setSelectedKaupapa(new Set()); }}
                   data-testid="button-dismiss-enrich"
                 >
                   Dismiss
@@ -552,7 +586,7 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit }: {
                 <Button
                   size="sm"
                   onClick={handleAcceptEnrichment}
-                  disabled={selectedFields.size === 0 || updateGroup.isPending}
+                  disabled={(selectedFields.size === 0 && selectedKaupapa.size === 0) || updateGroup.isPending || saveTaxonomyLinks.isPending}
                   data-testid="button-accept-enrich"
                 >
                   {updateGroup.isPending ? (
@@ -565,7 +599,7 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit }: {
               </div>
             </div>
             <div className="space-y-2">
-              {Object.entries(enrichData).filter(([_, v]) => v != null).map(([field, value]) => {
+              {Object.entries(enrichData).filter(([k, v]) => k !== "kaupapa" && v != null).map(([field, value]) => {
                 const meta = ENRICH_FIELD_LABELS[field];
                 if (!meta) return null;
                 const IconComp = meta.icon;
@@ -605,6 +639,64 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit }: {
                 );
               })}
             </div>
+
+            {Array.isArray(enrichData.kaupapa) && enrichData.kaupapa.length > 0 && (
+              <div className="space-y-2">
+                <h5 className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                  <Target className="w-3.5 h-3.5" />
+                  Kaupapa Alignment
+                </h5>
+                {enrichData.kaupapa.map((match: any, idx: number) => {
+                  const isSelected = selectedKaupapa.has(idx);
+                  const TAXONOMY_COLORS: Record<string, string> = {
+                    green: "bg-green-500/15 text-green-700 dark:text-green-300 border-green-500/30",
+                    blue: "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30",
+                    purple: "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30",
+                    orange: "bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-500/30",
+                    pink: "bg-pink-500/15 text-pink-700 dark:text-pink-300 border-pink-500/30",
+                    red: "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30",
+                    yellow: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 border-yellow-500/30",
+                  };
+                  const colorClass = TAXONOMY_COLORS[match.color] || TAXONOMY_COLORS.blue;
+                  return (
+                    <div
+                      key={idx}
+                      className={`rounded-md border p-2.5 cursor-pointer transition-colors ${
+                        isSelected ? `${colorClass}` : "border-border bg-background"
+                      }`}
+                      onClick={() => {
+                        setSelectedKaupapa(prev => {
+                          const next = new Set(prev);
+                          if (next.has(idx)) next.delete(idx);
+                          else next.add(idx);
+                          return next;
+                        });
+                      }}
+                      data-testid={`enrich-kaupapa-${idx}`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                          isSelected ? "bg-primary border-primary" : "border-muted-foreground/40"
+                        }`}>
+                          {isSelected && <Check className="w-3 h-3 text-primary-foreground" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                            <span className="text-sm font-medium">{match.category}</span>
+                            <Badge variant="secondary" className="text-[10px]">
+                              {match.confidence}% match
+                            </Badge>
+                          </div>
+                          {match.reasoning && (
+                            <p className="text-xs text-muted-foreground">{match.reasoning}</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -636,6 +728,42 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit }: {
               </span>
             )}
           </div>
+
+          {taxonomyLinks && taxonomyLinks.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                <Target className="w-3.5 h-3.5" />
+                Kaupapa Alignment
+              </h4>
+              <div className="flex flex-wrap gap-1.5">
+                {taxonomyLinks.map((link: any) => {
+                  const cat = (taxonomyCategories || []).find((c: any) => c.id === link.taxonomyId);
+                  const TAXONOMY_BADGE_COLORS: Record<string, string> = {
+                    green: "bg-green-500/15 text-green-700 dark:text-green-300",
+                    blue: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
+                    purple: "bg-purple-500/15 text-purple-700 dark:text-purple-300",
+                    orange: "bg-orange-500/15 text-orange-700 dark:text-orange-300",
+                    pink: "bg-pink-500/15 text-pink-700 dark:text-pink-300",
+                    red: "bg-red-500/15 text-red-700 dark:text-red-300",
+                    yellow: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300",
+                  };
+                  const color = cat?.color || "blue";
+                  const badgeColor = TAXONOMY_BADGE_COLORS[color] || TAXONOMY_BADGE_COLORS.blue;
+                  return (
+                    <Badge
+                      key={link.id}
+                      className={`text-xs ${badgeColor}`}
+                      title={link.reasoning || undefined}
+                      data-testid={`badge-kaupapa-${link.taxonomyId}`}
+                    >
+                      {cat?.name || `Category #${link.taxonomyId}`}
+                      {link.confidence && <span className="ml-1 opacity-60">{link.confidence}%</span>}
+                    </Badge>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="border-t pt-4">
             <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">

@@ -60,6 +60,7 @@ import {
   mous,
   groups,
   groupMembers,
+  groupTaxonomyLinks,
   type Venue,
   type InsertVenue,
   type Booking,
@@ -72,6 +73,8 @@ import {
   type InsertGroup,
   type GroupMember,
   type InsertGroupMember,
+  type GroupTaxonomyLink,
+  type InsertGroupTaxonomyLink,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, sql, max, count } from "drizzle-orm";
 
@@ -217,6 +220,11 @@ export interface IStorage {
   getContactGroups(contactId: number): Promise<GroupMember[]>;
   addGroupMember(data: InsertGroupMember): Promise<GroupMember>;
   removeGroupMember(id: number): Promise<void>;
+
+  // Group Taxonomy Links
+  getGroupTaxonomyLinks(groupId: number): Promise<GroupTaxonomyLink[]>;
+  setGroupTaxonomyLinks(groupId: number, links: InsertGroupTaxonomyLink[]): Promise<GroupTaxonomyLink[]>;
+  deleteGroupTaxonomyLinks(groupId: number): Promise<void>;
 
   // Auth (re-exported or separate)
   auth: IAuthStorage;
@@ -934,6 +942,21 @@ export class DatabaseStorage implements IStorage {
 
   async removeGroupMember(id: number): Promise<void> {
     await db.delete(groupMembers).where(eq(groupMembers.id, id));
+  }
+
+  async getGroupTaxonomyLinks(groupId: number): Promise<GroupTaxonomyLink[]> {
+    return db.select().from(groupTaxonomyLinks).where(eq(groupTaxonomyLinks.groupId, groupId));
+  }
+
+  async setGroupTaxonomyLinks(groupId: number, links: InsertGroupTaxonomyLink[]): Promise<GroupTaxonomyLink[]> {
+    await db.delete(groupTaxonomyLinks).where(eq(groupTaxonomyLinks.groupId, groupId));
+    if (links.length === 0) return [];
+    const rows = await db.insert(groupTaxonomyLinks).values(links).returning();
+    return rows;
+  }
+
+  async deleteGroupTaxonomyLinks(groupId: number): Promise<void> {
+    await db.delete(groupTaxonomyLinks).where(eq(groupTaxonomyLinks.groupId, groupId));
   }
 }
 

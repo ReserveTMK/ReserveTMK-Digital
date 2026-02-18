@@ -31,6 +31,7 @@ ReserveTMK is a full-stack web application for tracking mentorship relationships
 - Space items (bookings in orange, programmes in indigo) show alongside schedule events with red ring + alert icon for time conflicts on same venue
 - Dashboard calendar now shows programmes (indigo) and bookings (orange) alongside meetings (blue) and events (violet) with color legend
 - Two-layer CRM: added `groups` and `group_members` tables for organisations, collectives, whānau groups, businesses, community groups, government entities; groups page with list view, create/edit dialog, searchable member management with roles (Lead Contact, Representative, Member, Coordinator, Director, Trustee)
+- Kaupapa Matching: AI-powered enrichment now matches organisations to impact taxonomy categories during group data enrichment; `group_taxonomy_links` table stores matches with confidence scores and reasoning; enrichment preview shows selectable kaupapa alignment section; accepted matches display as color-coded badges on group detail view; fallback to "Business Progress" (economic development) when no social outcome is found
 - Groups linked to Agreements: Memberships and MOUs can now be linked to a group/organisation via searchable picker alongside individual contacts
 - Groups linked to Bookings: bookings can be associated with a group/organisation as the booking entity
 - Contact detail page shows group memberships as badges with role info

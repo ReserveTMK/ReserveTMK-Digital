@@ -238,6 +238,15 @@ export const groupMembers = pgTable("group_members", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const groupTaxonomyLinks = pgTable("group_taxonomy_links", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id").notNull(),
+  taxonomyId: integer("taxonomy_id").notNull(),
+  confidence: integer("confidence"),
+  reasoning: text("reasoning"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const programmes = pgTable("programmes", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
@@ -551,6 +560,11 @@ export const insertGroupMemberSchema = createInsertSchema(groupMembers).omit({
   createdAt: true,
 });
 
+export const insertGroupTaxonomyLinkSchema = createInsertSchema(groupTaxonomyLinks).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertContactSchema = createInsertSchema(contacts).omit({ 
   id: true, 
   createdAt: true, 
@@ -618,6 +632,9 @@ export type InsertGroup = z.infer<typeof insertGroupSchema>;
 
 export type GroupMember = typeof groupMembers.$inferSelect;
 export type InsertGroupMember = z.infer<typeof insertGroupMemberSchema>;
+
+export type GroupTaxonomyLink = typeof groupTaxonomyLinks.$inferSelect;
+export type InsertGroupTaxonomyLink = z.infer<typeof insertGroupTaxonomyLinkSchema>;
 
 export type Contact = typeof contacts.$inferSelect;
 export type InsertContact = z.infer<typeof insertContactSchema>;

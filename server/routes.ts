@@ -1964,6 +1964,45 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     res.json(memberships);
   });
 
+  // === Group Taxonomy Links ===
+  app.get("/api/groups/:id/taxonomy-links", isAuthenticated, async (req, res) => {
+    try {
+      const group = await storage.getGroup(parseInt(req.params.id));
+      if (!group) return res.status(404).json({ message: "Group not found" });
+      if (group.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+      const links = await storage.getGroupTaxonomyLinks(group.id);
+      res.json(links);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/groups/:id/taxonomy-links", isAuthenticated, async (req, res) => {
+    try {
+      const groupId = parseInt(req.params.id);
+      const group = await storage.getGroup(groupId);
+      if (!group) return res.status(404).json({ message: "Group not found" });
+      const userId = (req.user as any).claims.sub;
+      if (group.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      const userTaxonomy = await storage.getTaxonomyCategories(userId);
+      const validTaxIds = new Set(userTaxonomy.map((t: any) => t.id));
+
+      const links = (req.body.links || [])
+        .filter((l: any) => typeof l.taxonomyId === "number" && validTaxIds.has(l.taxonomyId))
+        .map((l: any) => ({
+          groupId,
+          taxonomyId: l.taxonomyId,
+          confidence: typeof l.confidence === "number" ? Math.min(100, Math.max(0, l.confidence)) : null,
+          reasoning: typeof l.reasoning === "string" ? l.reasoning.trim() : null,
+        }));
+      const saved = await storage.setGroupTaxonomyLinks(groupId, links);
+      res.json(saved);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // === Group Data Enrichment ===
   app.post("/api/groups/:id/enrich", isAuthenticated, async (req, res) => {
     try {
@@ -1972,21 +2011,50 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       if (!group) return res.status(404).json({ message: "Group not found" });
       if (group.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
 
-      const prompt = `You are a research assistant for a community development organisation in Aotearoa New Zealand. Given the following organisation/group name and type, look up what you know about them and return structured information.
+      const userId = (req.user as any).claims.sub;
+      const taxonomyCategories = await storage.getTaxonomyCategories(userId);
+      const activeCategories = taxonomyCategories.filter((c: any) => c.active);
+
+      const taxonomyList = activeCategories.map((c: any) => `- ${c.name}: ${c.description || "No description"}`).join("\n");
+
+      const prompt = `You are a research assistant for a community development organisation in Aotearoa New Zealand called The Reserve. Given the following organisation/group name and type, look up what you know about them and return structured information.
 
 Organisation Name: "${group.name}"
 Type: "${group.type}"
 ${group.address ? `Known Address: "${group.address}"` : ""}
 ${group.description ? `Existing Description: "${group.description}"` : ""}
 
-Return a JSON object with these fields (use null for any field you cannot confidently determine):
+PART 1 - Organisation Info:
+Return basic information about this organisation. Use null for any field you cannot confidently determine.
+
+PART 2 - Kaupapa Matching:
+The Reserve tracks impact across these taxonomy categories:
+${taxonomyList}
+
+Analyse what this organisation does and match it to the relevant impact categories above. For each match, provide:
+- The exact category name
+- A confidence score (0-100) reflecting how strongly their work aligns
+- A brief reasoning explaining the connection (1-2 sentences)
+
+If the organisation has no clear social outcome or community impact, match them to "Business Progress" as we are simply supporting their economic development/growth.
+
+An organisation can match multiple categories. Only include categories with genuine relevance (confidence >= 40).
+
+Return a JSON object with this structure:
 {
   "description": "A concise 2-3 sentence description of what this organisation does, their mission, and key activities",
   "contactEmail": "their publicly listed email address or null",
   "contactPhone": "their publicly listed phone number or null",
   "address": "their physical address or null",
   "website": "their website URL or null",
-  "notes": "Any additional useful context: founding year, key people, partnerships, sector focus, community they serve. Keep to 2-3 bullet points."
+  "notes": "Any additional useful context: founding year, key people, partnerships, sector focus, community they serve. Keep to 2-3 bullet points.",
+  "kaupapa": [
+    {
+      "category": "exact category name from the list above",
+      "confidence": 85,
+      "reasoning": "Why this organisation's work aligns with this impact area"
+    }
+  ]
 }
 
 Important:
@@ -1994,7 +2062,8 @@ Important:
 - For NZ organisations, consider checking known databases like Charities Register, Companies Register, community directories
 - If you are unsure about the organisation, still provide what you can and note uncertainty in the notes field
 - Format phone numbers in NZ format (+64...)
-- Keep the description factual and professional`;
+- Keep the description factual and professional
+- Every organisation should have at least one kaupapa match — if nothing else fits, use "Business Progress"`;
 
       const response = await openai.chat.completions.create({
         model: "gpt-4o",
@@ -2005,10 +2074,43 @@ Important:
 
       const raw = JSON.parse(response.choices[0].message.content || "{}");
       const ALLOWED_FIELDS = ["description", "contactEmail", "contactPhone", "address", "website", "notes"];
-      const enrichment: Record<string, string | null> = {};
+      const enrichment: Record<string, any> = {};
       for (const field of ALLOWED_FIELDS) {
         enrichment[field] = typeof raw[field] === "string" && raw[field].trim() ? raw[field].trim() : null;
       }
+
+      const categoryMap = new Map(activeCategories.map((c: any) => [c.name.toLowerCase(), c]));
+      const kaupapa: any[] = [];
+      if (Array.isArray(raw.kaupapa)) {
+        for (const match of raw.kaupapa) {
+          if (!match.category) continue;
+          const cat = categoryMap.get(match.category.toLowerCase());
+          if (!cat) continue;
+          const confidence = typeof match.confidence === "number" ? Math.min(100, Math.max(0, match.confidence)) : 50;
+          if (confidence < 40) continue;
+          kaupapa.push({
+            taxonomyId: cat.id,
+            category: cat.name,
+            color: cat.color,
+            confidence,
+            reasoning: typeof match.reasoning === "string" ? match.reasoning.trim() : null,
+          });
+        }
+      }
+      if (kaupapa.length === 0) {
+        const fallback = activeCategories.find((c: any) => c.name === "Business Progress");
+        if (fallback) {
+          kaupapa.push({
+            taxonomyId: fallback.id,
+            category: fallback.name,
+            color: fallback.color,
+            confidence: 60,
+            reasoning: "Supporting economic development and business growth",
+          });
+        }
+      }
+      enrichment.kaupapa = kaupapa;
+
       res.json(enrichment);
     } catch (err: any) {
       console.error("Group enrichment error:", err);
