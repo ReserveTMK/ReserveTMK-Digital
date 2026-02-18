@@ -16,6 +16,7 @@ import {
   Building2,
   Handshake,
   Network,
+  ChevronDown,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "../ui/beautiful-button";
@@ -26,10 +27,22 @@ import {
 } from "@/components/ui/sheet";
 import { useState } from "react";
 
-const navigation = [
+type NavItem = {
+  name: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  children?: NavItem[];
+};
+
+const navigation: NavItem[] = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
-  { name: "Community", href: "/contacts", icon: Users },
-  { name: "Groups", href: "/groups", icon: Network },
+  {
+    name: "Community", href: "/contacts", icon: Users,
+    children: [
+      { name: "People", href: "/contacts", icon: Users },
+      { name: "Groups", href: "/groups", icon: Network },
+    ],
+  },
   { name: "Calendar", href: "/calendar", icon: CalendarCheck },
   { name: "Programmes", href: "/programmes", icon: Layers },
   { name: "Bookings", href: "/bookings", icon: Building2 },
@@ -40,7 +53,12 @@ const navigation = [
   { name: "Taxonomy", href: "/taxonomy", icon: Tags },
 ];
 
-const bottomNavItems = navigation.slice(0, 4);
+const bottomNavItems: NavItem[] = [
+  { name: "Dashboard", href: "/", icon: LayoutDashboard },
+  { name: "Community", href: "/contacts", icon: Users },
+  { name: "Calendar", href: "/calendar", icon: CalendarCheck },
+  { name: "Bookings", href: "/bookings", icon: Building2 },
+];
 
 export function Sidebar() {
   const [location] = useLocation();
@@ -62,6 +80,53 @@ export function Sidebar() {
 
       <nav className="flex-1 px-4 space-y-1">
         {navigation.map((item) => {
+          if (item.children) {
+            const isChildActive = item.children.some(c => location === c.href);
+            return (
+              <div key={item.name}>
+                <Link
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group font-medium w-full",
+                    isChildActive
+                      ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                      : "text-muted-foreground hover-elevate",
+                  )}
+                  onClick={onNavigate}
+                  data-testid={`nav-${item.name.toLowerCase()}`}
+                >
+                  <item.icon className={cn("w-5 h-5", isChildActive ? "text-white" : "text-muted-foreground group-hover:text-foreground")} />
+                  <span className="flex-1">{item.name}</span>
+                  <ChevronDown className={cn("w-4 h-4 transition-transform", isChildActive ? "text-white" : "text-muted-foreground")} />
+                </Link>
+                <div className={cn(
+                  "ml-4 mt-1 space-y-0.5 overflow-hidden transition-all",
+                  isChildActive ? "max-h-40" : "max-h-0"
+                )}>
+                  {item.children.map((child) => {
+                    const isSubActive = location === child.href;
+                    return (
+                      <Link
+                        key={child.name}
+                        href={child.href}
+                        className={cn(
+                          "flex items-center gap-3 px-4 py-2 rounded-lg transition-all duration-200 group font-medium text-sm",
+                          isSubActive
+                            ? "bg-primary/10 text-primary font-semibold"
+                            : "text-muted-foreground hover-elevate",
+                        )}
+                        onClick={onNavigate}
+                        data-testid={`nav-${child.name.toLowerCase()}`}
+                      >
+                        <child.icon className={cn("w-4 h-4", isSubActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground")} />
+                        {child.name}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          }
           const isActive = location === item.href;
           return (
             <Link key={item.name} href={item.href}
