@@ -1068,22 +1068,26 @@ export default function CalendarPage() {
                 Calendar
               </h1>
               <div className="flex items-center gap-1.5 mt-2">
-                <button
+                <Button
+                  size="sm"
+                  variant="outline"
                   onClick={() => setShowSchedule(!showSchedule)}
                   data-testid="button-toggle-schedule"
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showSchedule ? "bg-primary/10 text-foreground font-medium border border-primary/30" : "text-muted-foreground hover:bg-muted/50 border border-transparent"}`}
+                  className={`toggle-elevate ${showSchedule ? "toggle-elevated" : ""}`}
                 >
-                  <CalendarDays className="w-3.5 h-3.5" />
+                  <CalendarDays className="w-3.5 h-3.5 mr-1.5" />
                   Schedule
-                </button>
-                <button
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
                   onClick={() => setShowSpace(!showSpace)}
                   data-testid="button-toggle-space"
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showSpace ? "bg-primary/10 text-foreground font-medium border border-primary/30" : "text-muted-foreground hover:bg-muted/50 border border-transparent"}`}
+                  className={`toggle-elevate ${showSpace ? "toggle-elevated" : ""}`}
                 >
-                  <Building2 className="w-3.5 h-3.5" />
+                  <Building2 className="w-3.5 h-3.5 mr-1.5" />
                   Space
-                </button>
+                </Button>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -1222,31 +1226,28 @@ export default function CalendarPage() {
                       const isActive = activeTypeFilters.has(type);
                       const dotColor = EVENT_TYPE_DOT_COLORS[type];
                       return (
-                        <button
+                        <Button
                           key={type}
+                          size="sm"
+                          variant="outline"
                           onClick={() => toggleTypeFilter(type)}
                           data-testid={`button-filter-${type.toLowerCase().replace(/\s+/g, "-")}`}
-                          className={`
-                            inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors
-                            ${isActive
-                              ? "bg-primary/10 text-foreground font-medium border border-primary/30"
-                              : "text-muted-foreground hover:bg-muted/50 border border-transparent"
-                            }
-                          `}
+                          className={`toggle-elevate ${isActive ? "toggle-elevated" : ""}`}
                         >
                           <span className={`w-2 h-2 rounded-full ${dotColor} ${!isActive && activeTypeFilters.size > 0 ? "opacity-40" : ""}`} />
                           {type}
-                        </button>
+                        </Button>
                       );
                     })}
                     {activeTypeFilters.size > 0 && (
-                      <button
+                      <Button
+                        size="sm"
+                        variant="ghost"
                         onClick={() => setActiveTypeFilters(new Set())}
-                        className="text-xs text-muted-foreground hover:text-foreground px-1.5 py-1 transition-colors"
                         data-testid="button-clear-filters"
                       >
                         Clear
-                      </button>
+                      </Button>
                     )}
                   </div>
                 )}
@@ -1387,18 +1388,29 @@ export default function CalendarPage() {
                   {showSpace && selectedDaySpace.map((item) => (
                     <Card
                       key={`${item.kind}-${item.id}`}
-                      className="p-4 hover-elevate cursor-pointer"
-                      onClick={() => navigate(item.kind === "booking" ? "/bookings" : "/programmes")}
+                      className="p-4 overflow-visible hover-elevate"
                       data-testid={`card-space-${item.kind}-${item.id}`}
                     >
                       <div className="space-y-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <h4 className="font-medium text-sm">{item.title}</h4>
-                          <Badge className={`text-xs shrink-0 ${BOOKING_BADGE_COLORS[item.classification] || ""}`}>
-                            {item.classification}
-                          </Badge>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        <button
+                          type="button"
+                          onClick={() => navigate(item.kind === "booking" ? "/bookings" : "/programmes")}
+                          className="w-full text-left cursor-pointer"
+                          data-testid={`button-space-navigate-${item.kind}-${item.id}`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <h4 className="font-medium text-sm text-foreground">{item.title}</h4>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <Badge variant="secondary" className={`text-xs ${BOOKING_BADGE_COLORS[item.classification] || ""}`}>
+                                {item.classification}
+                              </Badge>
+                              <Badge variant="secondary" className={`text-xs ${item.kind === "programme" ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300" : "bg-orange-500/10 text-orange-700 dark:text-orange-300"}`}>
+                                {item.kind === "programme" ? "Programme" : "Booking"}
+                              </Badge>
+                            </div>
+                          </div>
+                        </button>
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                           {item.startTime && (
                             <span className="flex items-center gap-1">
                               <Clock className="w-3 h-3" />
@@ -1411,10 +1423,7 @@ export default function CalendarPage() {
                               {item.venue}
                             </span>
                           )}
-                          <Badge className={`text-[10px] ${item.kind === "programme" ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300" : "bg-orange-500/10 text-orange-700 dark:text-orange-300"}`}>
-                            {item.kind === "programme" ? "Programme" : "Booking"}
-                          </Badge>
-                          <Badge className={`text-[10px] ${SPACE_STATUS_COLORS[item.status] || ""}`}>
+                          <Badge variant="secondary" className={`text-xs ${SPACE_STATUS_COLORS[item.status] || ""}`}>
                             {item.status}
                           </Badge>
                         </div>

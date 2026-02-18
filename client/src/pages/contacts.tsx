@@ -368,8 +368,13 @@ function CreateContactDialogContent({ onSuccess }: { onSuccess: () => void }) {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="businessName">Business / Brand Name</Label>
-          <Input id="businessName" data-testid="input-contact-business" {...form.register("businessName")} placeholder="e.g. Acme Ltd (leave blank if N/A)" />
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor="businessName">Group</Label>
+            <Link href="/groups" className="text-xs text-primary/80 hover:text-primary transition-colors" data-testid="link-manage-groups">
+              Manage Groups
+            </Link>
+          </div>
+          <Input id="businessName" data-testid="input-contact-business" {...form.register("businessName")} placeholder="e.g. organisation, collective, brand" />
         </div>
         
         <div className="grid grid-cols-2 gap-4">
