@@ -27,8 +27,8 @@ ReserveTMK is a full-stack web application for tracking mentorship relationships
 - Added Agreements page (Memberships & MOUs): Memberships track annual fees, venue hire hour allocations, member contacts, payment status (paid/unpaid/partial/refunded), and usage against bookings; MOUs track partner trade agreements (providing/receiving), in-kind value, linked bookings; Bookings can be linked to a membership or MOU; summary stats break down bookings by payment source (direct/membership/MOU)
 - Backend double-booking prevention: date+time overlap validation across bookings and programmes, 409 conflict response, /api/venue-conflicts endpoint
 - Booking allowance on memberships/MOUs: bookingAllowance (number) and allowancePeriod (monthly/quarterly) fields, /api/bookings/:id/allowance usage tracking endpoint
-- Calendar page: dual-view tabs — "My Schedule" (personal events/meetings/GCal) and "Space" (venue occupancy from bookings + programmes with conflict highlighting)
-- Space Calendar shows bookings (orange) and programmes (indigo) with red ring + alert icon for time conflicts on same venue
+- Calendar page: unified view with Schedule and Space toggle buttons to show/hide personal events and venue occupancy; all items (meetings, events, programmes, bookings) rendered on a single calendar grid with color-coded dots and conflict detection
+- Space items (bookings in orange, programmes in indigo) show alongside schedule events with red ring + alert icon for time conflicts on same venue
 - Dashboard calendar now shows programmes (indigo) and bookings (orange) alongside meetings (blue) and events (violet) with color legend
 
 ## User Preferences

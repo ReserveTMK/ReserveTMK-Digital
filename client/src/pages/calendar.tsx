@@ -649,7 +649,8 @@ export default function CalendarPage() {
   const [dismissReason, setDismissReason] = useState("");
   const [showDismissed, setShowDismissed] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [calendarView, setCalendarView] = useState<"schedule" | "space">("schedule");
+  const [showSchedule, setShowSchedule] = useState(true);
+  const [showSpace, setShowSpace] = useState(true);
 
   function toggleTypeFilter(type: string) {
     setActiveTypeFilters(prev => {
@@ -1066,72 +1067,64 @@ export default function CalendarPage() {
               <h1 className="text-2xl font-display font-bold text-foreground" data-testid="text-calendar-title">
                 Calendar
               </h1>
-              <div className="flex items-center gap-1 mt-2">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className={`toggle-elevate ${calendarView === "schedule" ? "toggle-elevated" : ""}`}
-                  onClick={() => setCalendarView("schedule")}
-                  data-testid="button-view-schedule"
+              <div className="flex items-center gap-1.5 mt-2">
+                <button
+                  onClick={() => setShowSchedule(!showSchedule)}
+                  data-testid="button-toggle-schedule"
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showSchedule ? "bg-primary/10 text-foreground font-medium border border-primary/30" : "text-muted-foreground hover:bg-muted/50 border border-transparent"}`}
                 >
-                  <CalendarDays className="w-4 h-4 mr-1.5" />
-                  My Schedule
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className={`toggle-elevate ${calendarView === "space" ? "toggle-elevated" : ""}`}
-                  onClick={() => setCalendarView("space")}
-                  data-testid="button-view-space"
+                  <CalendarDays className="w-3.5 h-3.5" />
+                  Schedule
+                </button>
+                <button
+                  onClick={() => setShowSpace(!showSpace)}
+                  data-testid="button-toggle-space"
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showSpace ? "bg-primary/10 text-foreground font-medium border border-primary/30" : "text-muted-foreground hover:bg-muted/50 border border-transparent"}`}
                 >
-                  <Building2 className="w-4 h-4 mr-1.5" />
+                  <Building2 className="w-3.5 h-3.5" />
                   Space
-                </Button>
+                </button>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              {calendarView === "schedule" && (
-                <>
-                  {pastEventsNeedingDebrief > 0 && (
-                    <Badge variant="secondary" data-testid="badge-events-count">
-                      {pastEventsNeedingDebrief} past events
-                    </Badge>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className={`toggle-elevate ${showDismissed ? "toggle-elevated" : ""}`}
-                    onClick={() => setShowDismissed(!showDismissed)}
-                    data-testid="button-toggle-dismissed"
-                  >
-                    {showDismissed ? <Eye className="w-4 h-4 mr-1" /> : <EyeOff className="w-4 h-4 mr-1" />}
-                    {showDismissed ? "Showing dismissed" : "Hidden"}
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => setShowSettings(!showSettings)}
-                    data-testid="button-calendar-settings"
-                  >
-                    <Settings className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => refetchGcal()}
-                    disabled={gcalLoading}
-                    data-testid="button-refresh-calendar"
-                  >
-                    <RefreshCw className={`w-4 h-4 ${gcalLoading ? "animate-spin" : ""}`} />
-                    Sync
-                  </Button>
-                </>
+              {showSchedule && pastEventsNeedingDebrief > 0 && (
+                <Badge variant="secondary" data-testid="badge-events-count">
+                  {pastEventsNeedingDebrief} past events
+                </Badge>
               )}
+              {showSchedule && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={`toggle-elevate ${showDismissed ? "toggle-elevated" : ""}`}
+                  onClick={() => setShowDismissed(!showDismissed)}
+                  data-testid="button-toggle-dismissed"
+                >
+                  {showDismissed ? <Eye className="w-4 h-4 mr-1" /> : <EyeOff className="w-4 h-4 mr-1" />}
+                  {showDismissed ? "Showing dismissed" : "Hidden"}
+                </Button>
+              )}
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setShowSettings(!showSettings)}
+                data-testid="button-calendar-settings"
+              >
+                <Settings className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => refetchGcal()}
+                disabled={gcalLoading}
+                data-testid="button-refresh-calendar"
+              >
+                <RefreshCw className={`w-4 h-4 ${gcalLoading ? "animate-spin" : ""}`} />
+                Sync
+              </Button>
             </div>
           </div>
 
-          {calendarView === "schedule" && (
-          <>
-          {gcalError && (
+          {gcalError && showSchedule && (
             <Card className="p-4 mb-6 border-amber-500/30 bg-amber-500/5">
               <div className="flex items-center gap-3">
                 <CalendarX className="w-5 h-5 text-amber-600 shrink-0" />
@@ -1223,38 +1216,53 @@ export default function CalendarPage() {
                   </Button>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-1.5 mb-3" data-testid="filter-event-types">
-                  {EVENT_TYPES.map(type => {
-                    const isActive = activeTypeFilters.has(type);
-                    const dotColor = EVENT_TYPE_DOT_COLORS[type];
-                    return (
+                {showSchedule && (
+                  <div className="flex flex-wrap items-center gap-1.5 mb-3" data-testid="filter-event-types">
+                    {EVENT_TYPES.map(type => {
+                      const isActive = activeTypeFilters.has(type);
+                      const dotColor = EVENT_TYPE_DOT_COLORS[type];
+                      return (
+                        <button
+                          key={type}
+                          onClick={() => toggleTypeFilter(type)}
+                          data-testid={`button-filter-${type.toLowerCase().replace(/\s+/g, "-")}`}
+                          className={`
+                            inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors
+                            ${isActive
+                              ? "bg-primary/10 text-foreground font-medium border border-primary/30"
+                              : "text-muted-foreground hover:bg-muted/50 border border-transparent"
+                            }
+                          `}
+                        >
+                          <span className={`w-2 h-2 rounded-full ${dotColor} ${!isActive && activeTypeFilters.size > 0 ? "opacity-40" : ""}`} />
+                          {type}
+                        </button>
+                      );
+                    })}
+                    {activeTypeFilters.size > 0 && (
                       <button
-                        key={type}
-                        onClick={() => toggleTypeFilter(type)}
-                        data-testid={`button-filter-${type.toLowerCase().replace(/\s+/g, "-")}`}
-                        className={`
-                          inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors
-                          ${isActive
-                            ? "bg-primary/10 text-foreground font-medium border border-primary/30"
-                            : "text-muted-foreground hover:bg-muted/50 border border-transparent"
-                          }
-                        `}
+                        onClick={() => setActiveTypeFilters(new Set())}
+                        className="text-xs text-muted-foreground hover:text-foreground px-1.5 py-1 transition-colors"
+                        data-testid="button-clear-filters"
                       >
-                        <span className={`w-2 h-2 rounded-full ${dotColor} ${!isActive && activeTypeFilters.size > 0 ? "opacity-40" : ""}`} />
-                        {type}
+                        Clear
                       </button>
-                    );
-                  })}
-                  {activeTypeFilters.size > 0 && (
-                    <button
-                      onClick={() => setActiveTypeFilters(new Set())}
-                      className="text-xs text-muted-foreground hover:text-foreground px-1.5 py-1 transition-colors"
-                      data-testid="button-clear-filters"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
+
+                {showSpace && (
+                  <div className="flex flex-wrap items-center gap-2 mb-3 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-orange-400" />
+                      Bookings
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-indigo-400" />
+                      Programmes
+                    </span>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-7 gap-0">
                   {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
@@ -1264,10 +1272,25 @@ export default function CalendarPage() {
                   ))}
                   {calendarDays.map((day, idx) => {
                     const key = format(day, "yyyy-MM-dd");
-                    const dayEvents = eventsByDate.get(key) || [];
+                    const dayEvents = showSchedule ? (eventsByDate.get(key) || []) : [];
+                    const daySpaceItems = showSpace ? (spaceByDate.get(key) || []) : [];
                     const isCurrentMonth = isSameMonth(day, currentMonth);
                     const isSelected = isSameDay(day, selectedDate);
                     const today = isToday(day);
+                    const hasConflict = showSpace && daySpaceItems.length > 1 && daySpaceItems.some((a, i) =>
+                      daySpaceItems.some((b, j) => {
+                        if (i >= j) return false;
+                        if (!a.startTime || !a.endTime || !b.startTime || !b.endTime) return true;
+                        const aStart = parseInt(a.startTime.replace(":", ""));
+                        const aEnd = parseInt(a.endTime.replace(":", ""));
+                        const bStart = parseInt(b.startTime.replace(":", ""));
+                        const bEnd = parseInt(b.endTime.replace(":", ""));
+                        return aStart < bEnd && bStart < aEnd;
+                      })
+                    );
+                    const allDots: { color: string; key: string }[] = [];
+                    dayEvents.forEach((e, i) => allDots.push({ color: getEventDotColor(e), key: `ev-${i}` }));
+                    daySpaceItems.forEach((item, i) => allDots.push({ color: item.kind === "programme" ? "bg-indigo-400" : "bg-orange-400", key: `sp-${i}` }));
 
                     return (
                       <button
@@ -1279,6 +1302,7 @@ export default function CalendarPage() {
                           ${!isCurrentMonth ? "text-muted-foreground/40" : "text-foreground"}
                           ${isSelected ? "bg-primary/10 border-primary/50" : "hover:bg-muted/50"}
                           ${today && !isSelected ? "bg-accent/30" : ""}
+                          ${hasConflict ? "ring-1 ring-red-400/50 bg-red-50/20 dark:bg-red-900/10" : ""}
                         `}
                       >
                         <span className={`
@@ -1287,17 +1311,22 @@ export default function CalendarPage() {
                         `}>
                           {format(day, "d")}
                         </span>
-                        {dayEvents.length > 0 && (
+                        {allDots.length > 0 && (
                           <div className="flex flex-wrap gap-0.5 mt-0.5">
-                            {dayEvents.slice(0, 3).map((e, i) => (
+                            {allDots.slice(0, 4).map((dot) => (
                               <div
-                                key={i}
-                                className={`w-full h-1 rounded-full ${getEventDotColor(e)}`}
+                                key={dot.key}
+                                className={`w-full h-1 rounded-full ${dot.color}`}
                               />
                             ))}
-                            {dayEvents.length > 3 && (
-                              <span className="text-[10px] text-muted-foreground">+{dayEvents.length - 3}</span>
+                            {allDots.length > 4 && (
+                              <span className="text-[10px] text-muted-foreground">+{allDots.length - 4}</span>
                             )}
+                          </div>
+                        )}
+                        {hasConflict && (
+                          <div className="absolute top-0.5 right-0.5">
+                            <AlertTriangle className="w-3 h-3 text-red-500" />
                           </div>
                         )}
                       </button>
@@ -1312,13 +1341,13 @@ export default function CalendarPage() {
                 {format(selectedDate, "EEEE, MMM d")}
               </h2>
 
-              {gcalLoading ? (
+              {showSchedule && gcalLoading ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-6 h-6 animate-spin text-primary" />
                 </div>
-              ) : selectedDayEvents.length > 0 ? (
+              ) : (showSchedule && selectedDayEvents.length > 0) || (showSpace && selectedDaySpace.length > 0) ? (
                 <div className="space-y-3">
-                  {selectedDayEvents.map((entry) => (
+                  {showSchedule && selectedDayEvents.map((entry) => (
                     <div key={entry.type === "gcal" ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`} className="relative">
                       {entry.isDismissed && (
                         <div className="absolute inset-0 bg-background/60 z-10 flex items-center justify-center rounded-md">
@@ -1355,19 +1384,56 @@ export default function CalendarPage() {
                       />
                     </div>
                   ))}
+                  {showSpace && selectedDaySpace.map((item) => (
+                    <Card
+                      key={`${item.kind}-${item.id}`}
+                      className="p-4 hover-elevate cursor-pointer"
+                      onClick={() => navigate(item.kind === "booking" ? "/bookings" : "/programmes")}
+                      data-testid={`card-space-${item.kind}-${item.id}`}
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-medium text-sm">{item.title}</h4>
+                          <Badge className={`text-xs shrink-0 ${BOOKING_BADGE_COLORS[item.classification] || ""}`}>
+                            {item.classification}
+                          </Badge>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                          {item.startTime && (
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {item.startTime}{item.endTime ? ` - ${item.endTime}` : ""}
+                            </span>
+                          )}
+                          {item.venue && (
+                            <span className="flex items-center gap-1">
+                              <Building2 className="w-3 h-3" />
+                              {item.venue}
+                            </span>
+                          )}
+                          <Badge className={`text-[10px] ${item.kind === "programme" ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300" : "bg-orange-500/10 text-orange-700 dark:text-orange-300"}`}>
+                            {item.kind === "programme" ? "Programme" : "Booking"}
+                          </Badge>
+                          <Badge className={`text-[10px] ${SPACE_STATUS_COLORS[item.status] || ""}`}>
+                            {item.status}
+                          </Badge>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
                 </div>
               ) : (
                 <Card className="p-6">
                   <div className="text-center text-muted-foreground text-sm">
                     <Calendar className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                    <p>No events on this day</p>
+                    <p>No items on this day</p>
                   </div>
                 </Card>
               )}
             </div>
           </div>
 
-          {monthProgrammes.length > 0 && (
+          {showSchedule && monthProgrammes.length > 0 && (
             <div className="mt-6" data-testid="section-month-programmes">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-lg font-display font-bold text-foreground" data-testid="text-programmes-heading">
@@ -1461,161 +1527,7 @@ export default function CalendarPage() {
               </div>
             </div>
           )}
-          </>
-          )}
 
-          {calendarView === "space" && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
-                <Card className="p-4 md:p-6">
-                  <div className="flex items-center justify-between mb-4 gap-2">
-                    <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} data-testid="button-space-prev-month">
-                      <ChevronLeft className="w-4 h-4" />
-                    </Button>
-                    <h3 className="text-lg font-semibold font-display" data-testid="text-space-current-month">
-                      {format(currentMonth, "MMMM yyyy")}
-                    </h3>
-                    <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} data-testid="button-space-next-month">
-                      <ChevronRight className="w-4 h-4" />
-                    </Button>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2 mb-3 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-orange-400" />
-                      Bookings
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-indigo-400" />
-                      Programmes
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-7 gap-0">
-                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-                      <div key={d} className="text-center text-xs font-medium text-muted-foreground py-2">
-                        {d}
-                      </div>
-                    ))}
-                    {calendarDays.map((day, idx) => {
-                      const key = format(day, "yyyy-MM-dd");
-                      const daySpaceItems = spaceByDate.get(key) || [];
-                      const isCurrentMonth = isSameMonth(day, currentMonth);
-                      const isSelected = isSameDay(day, selectedDate);
-                      const today = isToday(day);
-                      const hasConflict = daySpaceItems.length > 1 && daySpaceItems.some((a, i) =>
-                        daySpaceItems.some((b, j) => {
-                          if (i >= j) return false;
-                          if (!a.startTime || !a.endTime || !b.startTime || !b.endTime) return true;
-                          const aStart = parseInt(a.startTime.replace(":", ""));
-                          const aEnd = parseInt(a.endTime.replace(":", ""));
-                          const bStart = parseInt(b.startTime.replace(":", ""));
-                          const bEnd = parseInt(b.endTime.replace(":", ""));
-                          return aStart < bEnd && bStart < aEnd;
-                        })
-                      );
-
-                      return (
-                        <button
-                          key={idx}
-                          onClick={() => setSelectedDate(day)}
-                          data-testid={`button-space-day-${key}`}
-                          className={`
-                            relative p-1 min-h-[3rem] md:min-h-[4rem] text-sm border border-border/30 transition-colors
-                            ${!isCurrentMonth ? "text-muted-foreground/40" : "text-foreground"}
-                            ${isSelected ? "bg-primary/10 border-primary/50" : "hover:bg-muted/50"}
-                            ${today && !isSelected ? "bg-accent/30" : ""}
-                            ${hasConflict ? "ring-1 ring-red-400/50 bg-red-50/20 dark:bg-red-900/10" : ""}
-                          `}
-                        >
-                          <span className={`
-                            inline-flex items-center justify-center w-6 h-6 text-xs rounded-full
-                            ${today ? "bg-primary text-primary-foreground font-bold" : ""}
-                          `}>
-                            {format(day, "d")}
-                          </span>
-                          {daySpaceItems.length > 0 && (
-                            <div className="flex flex-wrap gap-0.5 mt-0.5">
-                              {daySpaceItems.slice(0, 3).map((item, i) => (
-                                <div
-                                  key={i}
-                                  className={`w-full h-1 rounded-full ${item.kind === "programme" ? "bg-indigo-400" : "bg-orange-400"}`}
-                                />
-                              ))}
-                              {daySpaceItems.length > 3 && (
-                                <span className="text-[10px] text-muted-foreground">+{daySpaceItems.length - 3}</span>
-                              )}
-                            </div>
-                          )}
-                          {hasConflict && (
-                            <div className="absolute top-0.5 right-0.5">
-                              <AlertTriangle className="w-3 h-3 text-red-500" />
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </Card>
-              </div>
-
-              <div className="space-y-4">
-                <h2 className="text-lg font-bold font-display" data-testid="text-space-selected-date">
-                  {format(selectedDate, "EEEE, MMM d")}
-                </h2>
-
-                {selectedDaySpace.length > 0 ? (
-                  <div className="space-y-3">
-                    {selectedDaySpace.map((item) => (
-                      <Card
-                        key={`${item.kind}-${item.id}`}
-                        className="p-4 hover-elevate cursor-pointer"
-                        onClick={() => navigate(item.kind === "booking" ? "/bookings" : "/programmes")}
-                        data-testid={`card-space-${item.kind}-${item.id}`}
-                      >
-                        <div className="space-y-2">
-                          <div className="flex items-start justify-between gap-2">
-                            <h4 className="font-medium text-sm">{item.title}</h4>
-                            <Badge className={`text-xs shrink-0 ${BOOKING_BADGE_COLORS[item.classification] || ""}`}>
-                              {item.classification}
-                            </Badge>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                            {item.startTime && (
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                {item.startTime}{item.endTime ? ` - ${item.endTime}` : ""}
-                              </span>
-                            )}
-                            {item.venue && (
-                              <span className="flex items-center gap-1">
-                                <Building2 className="w-3 h-3" />
-                                {item.venue}
-                              </span>
-                            )}
-                            <Badge className={`text-[10px] ${item.kind === "programme" ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300" : "bg-orange-500/10 text-orange-700 dark:text-orange-300"}`}>
-                              {item.kind === "programme" ? "Programme" : "Booking"}
-                            </Badge>
-                            <Badge className={`text-[10px] ${SPACE_STATUS_COLORS[item.status] || ""}`}>
-                              {item.status}
-                            </Badge>
-                          </div>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-                ) : (
-                  <Card className="p-6">
-                    <div className="text-center text-muted-foreground text-sm">
-                      <Building2 className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                      <p>No bookings or programmes on this day</p>
-                      <p className="text-xs mt-1">Space is available</p>
-                    </div>
-                  </Card>
-                )}
-              </div>
-            </div>
-          )}
 
         </div>
 
