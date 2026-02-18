@@ -36,6 +36,9 @@ import {
   Copy,
   CheckCircle2,
   AlertCircle,
+  Ban,
+  CircleDashed,
+  Zap,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -250,9 +253,21 @@ export default function Programmes() {
                     data-testid={`card-programme-${programme.id}`}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
+                      <div className="flex items-start gap-3 flex-1 min-w-0">
+                        <div className="shrink-0 mt-0.5" data-testid={`status-icon-${programme.id}`}>
+                          {isCancelled ? (
+                            <Ban className="w-5 h-5 text-muted-foreground/60" />
+                          ) : isCompleted ? (
+                            <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
+                          ) : programme.status === "active" ? (
+                            <Zap className="w-5 h-5 text-amber-500 dark:text-amber-400" />
+                          ) : (
+                            <CircleDashed className="w-5 h-5 text-muted-foreground/50 animate-[spin_8s_linear_infinite]" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <h3 className={`font-semibold text-base truncate ${isCancelled ? "line-through opacity-70" : ""}`} data-testid={`text-programme-name-${programme.id}`}>
+                          <h3 className={`font-semibold text-base truncate ${isCancelled ? "line-through text-muted-foreground" : ""}`} data-testid={`text-programme-name-${programme.id}`}>
                             {programme.name}
                           </h3>
                           <Badge className={CLASSIFICATION_COLORS[programme.classification] || ""} data-testid={`badge-classification-${programme.id}`}>
@@ -260,9 +275,9 @@ export default function Programmes() {
                           </Badge>
                         </div>
                         {programme.description && (
-                          <p className="text-sm text-muted-foreground line-clamp-2 mb-2">{programme.description}</p>
+                          <p className={`text-sm text-muted-foreground line-clamp-2 mb-2 ${isCancelled ? "line-through" : ""}`}>{programme.description}</p>
                         )}
-                        <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                        <div className={`flex items-center gap-4 text-xs text-muted-foreground flex-wrap ${isCancelled ? "line-through" : ""}`}>
                           {dateTime && (
                             <span className="flex items-center gap-1" data-testid={`text-date-${programme.id}`}>
                               <Calendar className="w-3 h-3" />
@@ -308,6 +323,7 @@ export default function Programmes() {
                             ))}
                           </div>
                         )}
+                      </div>
                       </div>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
