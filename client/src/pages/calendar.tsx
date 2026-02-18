@@ -1216,53 +1216,6 @@ export default function CalendarPage() {
                   </Button>
                 </div>
 
-                {showSchedule && (
-                  <div className="flex flex-wrap items-center gap-1.5 mb-3" data-testid="filter-event-types">
-                    {EVENT_TYPES.map(type => {
-                      const isActive = activeTypeFilters.has(type);
-                      const dotColor = EVENT_TYPE_DOT_COLORS[type];
-                      return (
-                        <button
-                          key={type}
-                          onClick={() => toggleTypeFilter(type)}
-                          data-testid={`button-filter-${type.toLowerCase().replace(/\s+/g, "-")}`}
-                          className={`
-                            inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors
-                            ${isActive
-                              ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-medium border border-emerald-500/30"
-                              : "text-muted-foreground hover:bg-muted/50 border border-transparent"
-                            }
-                          `}
-                        >
-                          <span className={`w-2 h-2 rounded-full ${dotColor} ${!isActive && activeTypeFilters.size > 0 ? "opacity-40" : ""}`} />
-                          {type}
-                        </button>
-                      );
-                    })}
-                    {activeTypeFilters.size > 0 && (
-                      <button
-                        onClick={() => setActiveTypeFilters(new Set())}
-                        className="text-xs text-muted-foreground hover:text-foreground px-1.5 py-1 transition-colors"
-                        data-testid="button-clear-filters"
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {showSpace && (
-                  <div className="flex flex-wrap items-center gap-2 mb-3 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-orange-400" />
-                      Bookings
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-indigo-400" />
-                      Programmes
-                    </span>
-                  </div>
-                )}
 
                 <div className="grid grid-cols-7 gap-0">
                   {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
