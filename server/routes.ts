@@ -680,9 +680,9 @@ export async function registerRoutes(
       const input = api.impactLogs.update.input.parse(body);
       if (input.status) {
         const validTransitions: Record<string, string[]> = {
-          draft: ['pending_review'],
+          draft: ['pending_review', 'confirmed'],
           pending_review: ['draft', 'confirmed'],
-          confirmed: ['pending_review'],
+          confirmed: ['pending_review', 'draft'],
         };
         const currentStatus = existing.status || 'draft';
         const allowed = validTransitions[currentStatus] || [];
