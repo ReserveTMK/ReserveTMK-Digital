@@ -15,6 +15,7 @@ import {
   Layers,
   Building2,
   Handshake,
+  Network,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "../ui/beautiful-button";
@@ -28,6 +29,7 @@ import { useState } from "react";
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Community", href: "/contacts", icon: Users },
+  { name: "Groups", href: "/groups", icon: Network },
   { name: "Calendar", href: "/calendar", icon: CalendarCheck },
   { name: "Programmes", href: "/programmes", icon: Layers },
   { name: "Bookings", href: "/bookings", icon: Building2 },

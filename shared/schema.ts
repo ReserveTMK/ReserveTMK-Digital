@@ -203,6 +203,40 @@ export const calendarSettings = pgTable("calendar_settings", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const GROUP_TYPES = [
+  "Organisation",
+  "Collective",
+  "Whānau Group",
+  "Business",
+  "Community Group",
+  "Government",
+  "Other",
+] as const;
+export type GroupType = typeof GROUP_TYPES[number];
+
+export const groups = pgTable("groups", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  type: text("type").notNull().default("Organisation"),
+  description: text("description"),
+  contactEmail: text("contact_email"),
+  contactPhone: text("contact_phone"),
+  address: text("address"),
+  notes: text("notes"),
+  active: boolean("active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const groupMembers = pgTable("group_members", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id").notNull(),
+  contactId: integer("contact_id").notNull(),
+  role: text("role").default("member"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const programmes = pgTable("programmes", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
@@ -254,6 +288,7 @@ export const bookings = pgTable("bookings", {
   pricingTier: text("pricing_tier").notNull().default("full_price"),
   amount: numeric("amount", { precision: 10, scale: 2 }).default("0"),
   bookerId: integer("booker_id"),
+  bookerGroupId: integer("booker_group_id"),
   attendees: integer("attendees").array(),
   attendeeCount: integer("attendee_count"),
   membershipId: integer("membership_id"),
@@ -270,6 +305,7 @@ export const memberships = pgTable("memberships", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
   contactId: integer("contact_id"),
+  groupId: integer("group_id"),
   name: text("name").notNull(),
   annualFee: numeric("annual_fee", { precision: 10, scale: 2 }).default("0"),
   venueHireHours: integer("venue_hire_hours").default(0),
@@ -291,6 +327,7 @@ export const mous = pgTable("mous", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
   contactId: integer("contact_id"),
+  groupId: integer("group_id"),
   title: text("title").notNull(),
   partnerName: text("partner_name"),
   providing: text("providing"),
@@ -314,6 +351,24 @@ export const programmeEvents = pgTable("programme_events", {
 });
 
 // === RELATIONS ===
+export const groupsRelations = relations(groups, ({ many }) => ({
+  members: many(groupMembers),
+  memberships: many(memberships),
+  mous: many(mous),
+  bookings: many(bookings),
+}));
+
+export const groupMembersRelations = relations(groupMembers, ({ one }) => ({
+  group: one(groups, {
+    fields: [groupMembers.groupId],
+    references: [groups.id],
+  }),
+  contact: one(contacts, {
+    fields: [groupMembers.contactId],
+    references: [contacts.id],
+  }),
+}));
+
 export const venuesRelations = relations(venues, ({ many }) => ({
   bookings: many(bookings),
 }));
@@ -326,6 +381,10 @@ export const bookingsRelations = relations(bookings, ({ one }) => ({
   booker: one(contacts, {
     fields: [bookings.bookerId],
     references: [contacts.id],
+  }),
+  bookerGroup: one(groups, {
+    fields: [bookings.bookerGroupId],
+    references: [groups.id],
   }),
   membership: one(memberships, {
     fields: [bookings.membershipId],
@@ -342,6 +401,10 @@ export const membershipsRelations = relations(memberships, ({ one, many }) => ({
     fields: [memberships.contactId],
     references: [contacts.id],
   }),
+  group: one(groups, {
+    fields: [memberships.groupId],
+    references: [groups.id],
+  }),
   bookings: many(bookings),
 }));
 
@@ -349,6 +412,10 @@ export const mousRelations = relations(mous, ({ one, many }) => ({
   contact: one(contacts, {
     fields: [mous.contactId],
     references: [contacts.id],
+  }),
+  group: one(groups, {
+    fields: [mous.groupId],
+    references: [groups.id],
   }),
   bookings: many(bookings),
 }));
@@ -374,6 +441,7 @@ export const contactsRelations = relations(contacts, ({ many }) => ({
   eventAttendance: many(eventAttendance),
   impactLogContacts: many(impactLogContacts),
   actionItems: many(actionItems),
+  groupMemberships: many(groupMembers),
 }));
 
 export const interactionsRelations = relations(interactions, ({ one }) => ({
@@ -469,6 +537,19 @@ export const consentRecordsRelations = relations(consentRecords, ({ one }) => ({
 }));
 
 // === BASE SCHEMAS ===
+export const insertGroupSchema = createInsertSchema(groups).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  type: z.enum(GROUP_TYPES).default("Organisation"),
+});
+
+export const insertGroupMemberSchema = createInsertSchema(groupMembers).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertContactSchema = createInsertSchema(contacts).omit({ 
   id: true, 
   createdAt: true, 
@@ -531,6 +612,12 @@ export const insertAuditLogSchema = createInsertSchema(auditLog).omit({
 });
 
 // === EXPLICIT API CONTRACT TYPES ===
+export type Group = typeof groups.$inferSelect;
+export type InsertGroup = z.infer<typeof insertGroupSchema>;
+
+export type GroupMember = typeof groupMembers.$inferSelect;
+export type InsertGroupMember = z.infer<typeof insertGroupMemberSchema>;
+
 export type Contact = typeof contacts.$inferSelect;
 export type InsertContact = z.infer<typeof insertContactSchema>;
 

@@ -2,6 +2,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { useContact } from "@/hooks/use-contacts";
 import { useInteractions, useCreateInteraction, useAnalyzeInteraction } from "@/hooks/use-interactions";
 import { useActionItems } from "@/hooks/use-action-items";
+import { useContactGroups } from "@/hooks/use-groups";
 import { Button } from "@/components/ui/beautiful-button";
 import { MetricCard } from "@/components/ui/metric-card";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +57,7 @@ export default function ContactDetail() {
     enabled: !!id,
   });
 
+  const { data: contactGroups } = useContactGroups(id);
   const [consentDialogOpen, setConsentDialogOpen] = useState(false);
 
   if (contactLoading) {
@@ -258,6 +260,26 @@ export default function ContactDetail() {
               color="primary"
             />
           </div>
+
+          {/* Group Memberships */}
+          {contactGroups && contactGroups.length > 0 && (
+            <div className="bg-card rounded-2xl p-4 border border-border shadow-sm">
+              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2 text-muted-foreground">
+                <Network className="w-4 h-4" />
+                Group Memberships
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {contactGroups.map((gm: any) => (
+                  <Link key={gm.id} href="/groups">
+                    <Badge className="cursor-pointer" data-testid={`badge-group-membership-${gm.id}`}>
+                      {gm.groupName || `Group #${gm.groupId}`}
+                      {gm.role && <span className="ml-1 opacity-70">({gm.role})</span>}
+                    </Badge>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Tabs Content */}
           <Tabs defaultValue="overview" className="space-y-6">

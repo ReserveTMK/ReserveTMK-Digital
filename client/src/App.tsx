@@ -22,6 +22,7 @@ import CalendarPage from "@/pages/calendar";
 import Programmes from "@/pages/programmes";
 import Bookings from "@/pages/bookings";
 import Agreements from "@/pages/agreements";
+import GroupsPage from "@/pages/groups";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -115,6 +116,10 @@ function Router() {
 
       <Route path="/agreements">
         <ProtectedRoute component={Agreements} />
+      </Route>
+
+      <Route path="/groups">
+        <ProtectedRoute component={GroupsPage} />
       </Route>
 
       <Route component={NotFound} />

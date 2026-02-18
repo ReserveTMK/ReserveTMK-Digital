@@ -1877,6 +1877,88 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     res.status(204).send();
   });
 
+  // === Groups API ===
+  app.get(api.groups.list.path, isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const groupsList = await storage.getGroups(userId);
+    res.json(groupsList);
+  });
+
+  app.get(api.groups.get.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const group = await storage.getGroup(id);
+    if (!group) return res.status(404).json({ message: "Group not found" });
+    if (group.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+    res.json(group);
+  });
+
+  app.post(api.groups.create.path, isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const body = { ...req.body, userId };
+      const input = api.groups.create.input.parse(body);
+      const group = await storage.createGroup(input);
+      res.status(201).json(group);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch(api.groups.update.path, isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getGroup(id);
+      if (!existing) return res.status(404).json({ message: "Group not found" });
+      if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+      const updates = api.groups.update.input.parse(req.body);
+      const group = await storage.updateGroup(id, updates);
+      res.json(group);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete(api.groups.delete.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const existing = await storage.getGroup(id);
+    if (!existing) return res.status(404).json({ message: "Group not found" });
+    if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+    await storage.deleteGroup(id);
+    res.status(204).send();
+  });
+
+  // Group Members
+  app.get(api.groups.members.list.path, isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const members = await storage.getGroupMembers(groupId);
+    res.json(members);
+  });
+
+  app.post(api.groups.members.add.path, isAuthenticated, async (req, res) => {
+    try {
+      const groupId = parseInt(req.params.id);
+      const body = { ...req.body, groupId };
+      const input = api.groups.members.add.input.parse(body);
+      const member = await storage.addGroupMember(input);
+      res.status(201).json(member);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete(api.groups.members.remove.path, isAuthenticated, async (req, res) => {
+    const memberId = parseInt(req.params.memberId);
+    await storage.removeGroupMember(memberId);
+    res.status(204).send();
+  });
+
+  // Contact's group memberships
+  app.get("/api/contacts/:id/groups", isAuthenticated, async (req, res) => {
+    const contactId = parseInt(req.params.id);
+    const memberships = await storage.getContactGroups(contactId);
+    res.json(memberships);
+  });
+
   app.post("/api/google-calendar/link", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;

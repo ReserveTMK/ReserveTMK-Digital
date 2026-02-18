@@ -26,6 +26,7 @@ import {
   useDeleteBooking,
 } from "@/hooks/use-bookings";
 import { useContacts } from "@/hooks/use-contacts";
+import { useGroups } from "@/hooks/use-groups";
 import { useMemberships, useMous } from "@/hooks/use-memberships";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useMemo } from "react";
@@ -46,6 +47,7 @@ import {
   CheckCircle2,
   BarChart3,
   UserPlus,
+  Network,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -91,6 +93,7 @@ export default function Bookings() {
   const { data: bookings, isLoading } = useBookings();
   const { data: venues } = useVenues();
   const { data: contacts } = useContacts();
+  const { data: allGroups } = useGroups();
   const { data: allMemberships } = useMemberships();
   const { data: allMous } = useMous();
   const createMutation = useCreateBooking();
@@ -160,6 +163,11 @@ export default function Bookings() {
   const getBookerName = (bookerId: number | null) => {
     if (!bookerId || !contacts) return null;
     return contacts.find((c) => c.id === bookerId)?.name || null;
+  };
+
+  const getBookingGroupName = (gId: number | null | undefined) => {
+    if (!gId || !allGroups) return null;
+    return (allGroups as any[]).find((g: any) => g.id === gId)?.name || null;
   };
 
   const formatDateTime = (b: Booking) => {
@@ -327,6 +335,7 @@ export default function Bookings() {
               {filtered.map((booking) => {
                 const dateTime = formatDateTime(booking);
                 const bookerName = getBookerName(booking.bookerId);
+                const bookingGroupName = getBookingGroupName(booking.bookerGroupId);
                 const isCancelled = booking.status === "cancelled";
 
                 return (
@@ -395,6 +404,12 @@ export default function Bookings() {
                         </div>
 
                         <div className="flex items-center gap-4 text-xs text-muted-foreground mt-2 flex-wrap">
+                          {bookingGroupName && (
+                            <span className="flex items-center gap-1" data-testid={`text-booking-group-${booking.id}`}>
+                              <Network className="w-3 h-3" />
+                              {bookingGroupName}
+                            </span>
+                          )}
                           {bookerName && (
                             <span className="flex items-center gap-1" data-testid={`text-booker-${booking.id}`}>
                               <Users className="w-3 h-3" />
@@ -729,6 +744,8 @@ function BookingFormDialog({
 
   const [bookerId, setBookerId] = useState<number | null>(booking?.bookerId || null);
   const [bookerSearch, setBookerSearch] = useState("");
+  const [groupId, setGroupId] = useState<number | null>(booking?.bookerGroupId || null);
+  const [groupSearch, setGroupSearch] = useState("");
   const [selectedAttendees, setSelectedAttendees] = useState<number[]>(booking?.attendees || []);
   const [attendeeSearch, setAttendeeSearch] = useState("");
   const [attendeeCount, setAttendeeCount] = useState(booking?.attendeeCount?.toString() || (booking?.attendees?.length || 0).toString());
@@ -737,6 +754,7 @@ function BookingFormDialog({
 
   const { data: allMemberships } = useMemberships();
   const { data: allMous } = useMous();
+  const { data: allGroups } = useGroups();
   const activeMemberships = useMemo(() => (allMemberships || []).filter(m => m.status === "active"), [allMemberships]);
   const activeMous = useMemo(() => (allMous || []).filter(m => m.status === "active"), [allMous]);
 
@@ -754,6 +772,12 @@ function BookingFormDialog({
       .filter((c) => c.name.toLowerCase().includes(term))
       .slice(0, 8);
   }, [contacts, bookerSearch]);
+
+  const filteredBookerGroups = useMemo(() => {
+    if (!allGroups || !groupSearch.trim()) return [];
+    const term = groupSearch.toLowerCase();
+    return (allGroups as any[]).filter((g: any) => g.name.toLowerCase().includes(term)).slice(0, 8);
+  }, [allGroups, groupSearch]);
 
   const filteredAttendeeContacts = useMemo(() => {
     if (!contacts || !attendeeSearch.trim()) return [];
@@ -793,6 +817,7 @@ function BookingFormDialog({
       pricingTier,
       amount: amount || "0",
       bookerId: bookerId || null,
+      bookerGroupId: groupId || null,
       attendees: selectedAttendees.length > 0 ? selectedAttendees : null,
       attendeeCount: parseInt(attendeeCount) || selectedAttendees.length || null,
       membershipId: membershipId || null,
@@ -1082,6 +1107,53 @@ function BookingFormDialog({
                   >
                     <span>{c.name}</span>
                     <UserPlus className="w-3 h-3 text-muted-foreground" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Booking Group / Organisation</Label>
+            {groupId && (
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="text-xs gap-1 pr-1" data-testid="badge-selected-booking-group">
+                  <Network className="w-3 h-3 mr-0.5" />
+                  {(allGroups as any[])?.find((g: any) => g.id === groupId)?.name || `Group #${groupId}`}
+                  <button
+                    onClick={() => setGroupId(null)}
+                    className="ml-0.5 transition-colors"
+                    data-testid="button-remove-booking-group"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              </div>
+            )}
+            <div className="relative">
+              <Network className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <Input
+                value={groupSearch}
+                onChange={(e) => setGroupSearch(e.target.value)}
+                placeholder="Search groups..."
+                className="h-8 text-xs pl-7"
+                data-testid="input-search-booking-group"
+              />
+            </div>
+            {groupSearch.trim() && filteredBookerGroups.length > 0 && (
+              <div className="border border-border rounded-md divide-y divide-border/50 max-h-[150px] overflow-y-auto">
+                {filteredBookerGroups.map((g: any) => (
+                  <button
+                    key={g.id}
+                    onClick={() => { setGroupId(g.id); setGroupSearch(""); }}
+                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between"
+                    data-testid={`button-select-booking-group-${g.id}`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Network className="w-3 h-3 text-muted-foreground" />
+                      {g.name}
+                    </span>
+                    <Badge variant="outline" className="text-[10px]">{g.type}</Badge>
                   </button>
                 ))}
               </div>

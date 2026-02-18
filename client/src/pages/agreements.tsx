@@ -25,6 +25,7 @@ import {
   useDeleteMou,
 } from "@/hooks/use-memberships";
 import { useContacts } from "@/hooks/use-contacts";
+import { useGroups } from "@/hooks/use-groups";
 import { useBookings } from "@/hooks/use-bookings";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useMemo } from "react";
@@ -44,6 +45,7 @@ import {
   FileText,
   Handshake,
   ArrowRightLeft,
+  Network,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -60,6 +62,7 @@ import {
   type Mou,
   type Contact,
   type Booking,
+  type Group,
 } from "@shared/schema";
 
 const MEMBERSHIP_STATUS_COLORS: Record<string, string> = {
@@ -86,6 +89,7 @@ export default function Agreements() {
   const { data: memberships, isLoading: membershipsLoading } = useMemberships();
   const { data: mous, isLoading: mousLoading } = useMous();
   const { data: contacts } = useContacts();
+  const { data: allGroups } = useGroups();
   const { data: bookings } = useBookings();
   const createMembershipMutation = useCreateMembership();
   const updateMembershipMutation = useUpdateMembership();
@@ -176,6 +180,11 @@ export default function Agreements() {
   const getContactName = (contactId: number | null) => {
     if (!contactId || !contacts) return null;
     return contacts.find((c) => c.id === contactId)?.name || null;
+  };
+
+  const getGroupName = (groupId: number | null | undefined) => {
+    if (!groupId || !allGroups) return null;
+    return (allGroups as Group[]).find((g) => g.id === groupId)?.name || null;
   };
 
   const handleDeleteMembership = async (id: number) => {
@@ -289,6 +298,7 @@ export default function Agreements() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {filteredMemberships.map((membership) => {
                     const contactName = getContactName(membership.contactId);
+                    const groupName = getGroupName((membership as any).groupId);
                     const hoursUsed = getMembershipHoursUsed(membership.id);
 
                     return (
@@ -301,8 +311,11 @@ export default function Agreements() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap mb-1">
                               <h3 className="font-semibold text-base truncate" data-testid={`text-membership-contact-${membership.id}`}>
-                                {contactName || "No contact assigned"}
+                                {groupName || contactName || "No contact assigned"}
                               </h3>
+                              {groupName && contactName && (
+                                <Badge variant="outline" className="text-[10px]">{contactName}</Badge>
+                              )}
                               <Badge className={PAYMENT_STATUS_BADGE[membership.paymentStatus || "unpaid"] || ""} data-testid={`badge-payment-${membership.id}`}>
                                 {membership.paymentStatus || "unpaid"}
                               </Badge>
@@ -427,6 +440,7 @@ export default function Agreements() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {filteredMous.map((mou) => {
                     const contactName = getContactName(mou.contactId);
+                    const groupName = getGroupName((mou as any).groupId);
                     const linkedBookings = getMouBookingsCount(mou.id);
 
                     return (
@@ -445,9 +459,18 @@ export default function Agreements() {
                                 {mou.status}
                               </Badge>
                             </div>
-                            {(mou.partnerName || contactName) && (
-                              <p className="text-sm text-muted-foreground mb-2" data-testid={`text-mou-partner-${mou.id}`}>
-                                {mou.partnerName || contactName}
+                            {(groupName || mou.partnerName || contactName) && (
+                              <p className="text-sm text-muted-foreground mb-2 flex items-center gap-1.5 flex-wrap" data-testid={`text-mou-partner-${mou.id}`}>
+                                {groupName && (
+                                  <span className="flex items-center gap-1">
+                                    <Network className="w-3 h-3" />
+                                    {groupName}
+                                  </span>
+                                )}
+                                {!groupName && (mou.partnerName || contactName)}
+                                {groupName && contactName && (
+                                  <span className="text-xs opacity-70">({contactName})</span>
+                                )}
                               </p>
                             )}
                             {mou.providing && (
@@ -604,10 +627,13 @@ function MembershipFormDialog({
   isPending: boolean;
 }) {
   const { data: contacts } = useContacts();
+  const { data: allGroups } = useGroups();
 
   const [name, setName] = useState(membership?.name || "");
   const [contactId, setContactId] = useState<number | null>(membership?.contactId || null);
   const [contactSearch, setContactSearch] = useState("");
+  const [groupId, setGroupId] = useState<number | null>((membership as any)?.groupId || null);
+  const [groupSearch, setGroupSearch] = useState("");
   const [annualFee, setAnnualFee] = useState(membership?.annualFee || "0");
   const [venueHireHours, setVenueHireHours] = useState((membership?.venueHireHours || 0).toString());
   const [bookingAllowance, setBookingAllowance] = useState((membership?.bookingAllowance || 0).toString());
@@ -628,6 +654,12 @@ function MembershipFormDialog({
     return contacts.filter((c) => c.name.toLowerCase().includes(term)).slice(0, 8);
   }, [contacts, contactSearch]);
 
+  const filteredGroups = useMemo(() => {
+    if (!allGroups || !groupSearch.trim()) return [];
+    const term = groupSearch.toLowerCase();
+    return (allGroups as Group[]).filter((g) => g.name.toLowerCase().includes(term)).slice(0, 8);
+  }, [allGroups, groupSearch]);
+
   const handleSelectContact = (contact: Contact) => {
     setContactId(contact.id);
     setContactSearch("");
@@ -638,6 +670,7 @@ function MembershipFormDialog({
     const data: any = {
       name: name.trim(),
       contactId: contactId || undefined,
+      groupId: groupId || undefined,
       annualFee: annualFee || "0",
       venueHireHours: parseInt(venueHireHours) || 0,
       bookingAllowance: parseInt(bookingAllowance) || 0,
@@ -711,6 +744,53 @@ function MembershipFormDialog({
                   >
                     <span>{c.name}</span>
                     <UserPlus className="w-3 h-3 text-muted-foreground" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Group / Organisation</Label>
+            {groupId && (
+              <div className="flex flex-wrap gap-1.5">
+                <Badge variant="secondary" className="text-xs gap-1 pr-1" data-testid={`badge-membership-group-${groupId}`}>
+                  <Network className="w-3 h-3 mr-0.5" />
+                  {(allGroups as Group[])?.find((g) => g.id === groupId)?.name || `Group #${groupId}`}
+                  <button
+                    onClick={() => setGroupId(null)}
+                    className="ml-0.5 transition-colors"
+                    data-testid="button-remove-membership-group"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              </div>
+            )}
+            <div className="relative">
+              <Network className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <Input
+                value={groupSearch}
+                onChange={(e) => setGroupSearch(e.target.value)}
+                placeholder="Search groups..."
+                className="h-8 text-xs pl-7"
+                data-testid="input-search-membership-group"
+              />
+            </div>
+            {groupSearch.trim() && (
+              <div className="border border-border rounded-md divide-y divide-border/50 max-h-[150px] overflow-y-auto">
+                {filteredGroups.map((g) => (
+                  <button
+                    key={g.id}
+                    onClick={() => { setGroupId(g.id); setGroupSearch(""); }}
+                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between"
+                    data-testid={`button-select-membership-group-${g.id}`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Network className="w-3 h-3 text-muted-foreground" />
+                      {g.name}
+                    </span>
+                    <Badge variant="outline" className="text-[10px]">{g.type}</Badge>
                   </button>
                 ))}
               </div>
@@ -864,11 +944,14 @@ function MouFormDialog({
   isPending: boolean;
 }) {
   const { data: contacts } = useContacts();
+  const { data: allGroups } = useGroups();
 
   const [title, setTitle] = useState(mou?.title || "");
   const [partnerName, setPartnerName] = useState(mou?.partnerName || "");
   const [contactId, setContactId] = useState<number | null>(mou?.contactId || null);
   const [contactSearch, setContactSearch] = useState("");
+  const [groupId, setGroupId] = useState<number | null>((mou as any)?.groupId || null);
+  const [groupSearch, setGroupSearch] = useState("");
   const [providing, setProviding] = useState(mou?.providing || "");
   const [receiving, setReceiving] = useState(mou?.receiving || "");
   const [inKindValue, setInKindValue] = useState(mou?.inKindValue || "0");
@@ -889,6 +972,12 @@ function MouFormDialog({
     return contacts.filter((c) => c.name.toLowerCase().includes(term)).slice(0, 8);
   }, [contacts, contactSearch]);
 
+  const filteredMouGroups = useMemo(() => {
+    if (!allGroups || !groupSearch.trim()) return [];
+    const term = groupSearch.toLowerCase();
+    return (allGroups as Group[]).filter((g) => g.name.toLowerCase().includes(term)).slice(0, 8);
+  }, [allGroups, groupSearch]);
+
   const handleSelectContact = (contact: Contact) => {
     setContactId(contact.id);
     setContactSearch("");
@@ -900,6 +989,7 @@ function MouFormDialog({
       title: title.trim(),
       partnerName: partnerName.trim() || undefined,
       contactId: contactId || undefined,
+      groupId: groupId || undefined,
       providing: providing.trim() || undefined,
       receiving: receiving.trim() || undefined,
       inKindValue: inKindValue || "0",
@@ -983,6 +1073,53 @@ function MouFormDialog({
                   >
                     <span>{c.name}</span>
                     <UserPlus className="w-3 h-3 text-muted-foreground" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Group / Organisation</Label>
+            {groupId && (
+              <div className="flex flex-wrap gap-1.5">
+                <Badge variant="secondary" className="text-xs gap-1 pr-1" data-testid={`badge-mou-group-${groupId}`}>
+                  <Network className="w-3 h-3 mr-0.5" />
+                  {(allGroups as Group[])?.find((g) => g.id === groupId)?.name || `Group #${groupId}`}
+                  <button
+                    onClick={() => setGroupId(null)}
+                    className="ml-0.5 transition-colors"
+                    data-testid="button-remove-mou-group"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              </div>
+            )}
+            <div className="relative">
+              <Network className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <Input
+                value={groupSearch}
+                onChange={(e) => setGroupSearch(e.target.value)}
+                placeholder="Search groups..."
+                className="h-8 text-xs pl-7"
+                data-testid="input-search-mou-group"
+              />
+            </div>
+            {groupSearch.trim() && (
+              <div className="border border-border rounded-md divide-y divide-border/50 max-h-[150px] overflow-y-auto">
+                {filteredMouGroups.map((g) => (
+                  <button
+                    key={g.id}
+                    onClick={() => { setGroupId(g.id); setGroupSearch(""); }}
+                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between"
+                    data-testid={`button-select-mou-group-${g.id}`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Network className="w-3 h-3 text-muted-foreground" />
+                      {g.name}
+                    </span>
+                    <Badge variant="outline" className="text-[10px]">{g.type}</Badge>
                   </button>
                 ))}
               </div>

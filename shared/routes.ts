@@ -7,10 +7,11 @@ import {
   insertProgrammeSchema, insertProgrammeEventSchema,
   insertVenueSchema, insertBookingSchema,
   insertMembershipSchema, insertMouSchema,
+  insertGroupSchema, insertGroupMemberSchema,
   contacts, interactions, meetings, events,
   eventAttendance, impactLogs, impactLogContacts, impactTaxonomy, impactTags,
   keywordDictionary, actionItems, consentRecords, auditLog, programmes, programmeEvents,
-  venues, bookings, memberships, mous,
+  venues, bookings, memberships, mous, groups, groupMembers,
 } from './schema';
 
 // ============================================
@@ -687,6 +688,76 @@ export const api = {
       responses: {
         204: z.void(),
         404: errorSchemas.notFound,
+      },
+    },
+  },
+  groups: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/groups' as const,
+      responses: {
+        200: z.array(z.custom<typeof groups.$inferSelect>()),
+      },
+    },
+    get: {
+      method: 'GET' as const,
+      path: '/api/groups/:id' as const,
+      responses: {
+        200: z.custom<typeof groups.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/groups' as const,
+      input: insertGroupSchema,
+      responses: {
+        201: z.custom<typeof groups.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/groups/:id' as const,
+      input: insertGroupSchema.partial(),
+      responses: {
+        200: z.custom<typeof groups.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/groups/:id' as const,
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+    members: {
+      list: {
+        method: 'GET' as const,
+        path: '/api/groups/:id/members' as const,
+        responses: {
+          200: z.array(z.custom<typeof groupMembers.$inferSelect>()),
+        },
+      },
+      add: {
+        method: 'POST' as const,
+        path: '/api/groups/:id/members' as const,
+        input: insertGroupMemberSchema,
+        responses: {
+          201: z.custom<typeof groupMembers.$inferSelect>(),
+          400: errorSchemas.validation,
+        },
+      },
+      remove: {
+        method: 'DELETE' as const,
+        path: '/api/groups/:id/members/:memberId' as const,
+        responses: {
+          204: z.void(),
+          404: errorSchemas.notFound,
+        },
       },
     },
   },
