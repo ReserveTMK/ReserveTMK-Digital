@@ -113,6 +113,30 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  app.get("/api/contacts/:id/debriefs", isAuthenticated, async (req, res) => {
+    try {
+      const contactId = parseInt(req.params.id);
+      const contact = await storage.getContact(contactId);
+      if (!contact) return res.status(404).json({ message: "Contact not found" });
+      if (contact.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+      const links = await storage.getContactImpactLogs(contactId);
+      const debriefs = [];
+      for (const link of links) {
+        const log = await storage.getImpactLog(link.impactLogId);
+        if (log) {
+          debriefs.push({
+            ...log,
+            linkRole: link.role,
+            linkId: link.id,
+          });
+        }
+      }
+      res.json(debriefs);
+    } catch (err) {
+      throw err;
+    }
+  });
+
   app.post("/api/contacts/bulk", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;

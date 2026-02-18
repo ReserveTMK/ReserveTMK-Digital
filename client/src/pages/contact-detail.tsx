@@ -1,7 +1,6 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { useContact } from "@/hooks/use-contacts";
 import { useInteractions, useCreateInteraction, useAnalyzeInteraction } from "@/hooks/use-interactions";
-import { useImpactLogs } from "@/hooks/use-impact-logs";
 import { useActionItems } from "@/hooks/use-action-items";
 import { Button } from "@/components/ui/beautiful-button";
 import { MetricCard } from "@/components/ui/metric-card";
@@ -45,7 +44,11 @@ export default function ContactDetail() {
   const id = parseInt(params?.id || "0");
   const { data: contact, isLoading: contactLoading } = useContact(id);
   const { data: interactions, isLoading: interactionsLoading } = useInteractions(id);
-  const { data: impactLogs } = useImpactLogs();
+  const { data: contactDebriefs } = useQuery({
+    queryKey: ['/api/contacts', id, 'debriefs'],
+    queryFn: () => fetch(`/api/contacts/${id}/debriefs`, { credentials: 'include' }).then(r => r.json()),
+    enabled: !!id,
+  });
   const { data: actionItems } = useActionItems();
   const { data: consentRecords } = useQuery({
     queryKey: ['/api/contacts', id, 'consent'],
@@ -72,13 +75,7 @@ export default function ContactDetail() {
     );
   }
 
-  const contactImpactLogs = (impactLogs as any[])?.filter((log: any) => {
-    const people = log.rawExtraction?.peopleIdentified;
-    if (Array.isArray(people)) {
-      return people.some((p: any) => p.matchedContactId === id);
-    }
-    return false;
-  }) || [];
+  const contactImpactLogs = (contactDebriefs as any[]) || [];
 
   const contactActionItems = (actionItems as any[])?.filter((item: any) => item.contactId === id) || [];
 
@@ -433,12 +430,17 @@ function TimelineCard({ item }: { item: { date: Date; type: string; data: any } 
           </p>
 
           {item.type === 'impact_log' && (
-            <div>
+            <Link href={`/debriefs?id=${item.data.id}`} className="block hover-elevate rounded-md -m-1 p-1" data-testid={`link-debrief-${item.data.id}`}>
               <div className="flex items-center gap-2 flex-wrap mb-1">
                 <span className="font-semibold text-sm">{item.data.title}</span>
                 <Badge variant="secondary" className="text-xs">
                   {item.data.status}
                 </Badge>
+                {item.data.linkRole && (
+                  <Badge variant="outline" className="text-xs capitalize">
+                    {item.data.linkRole}
+                  </Badge>
+                )}
                 {item.data.sentiment && (
                   <Badge variant="outline" className="text-xs">
                     {item.data.sentiment}
@@ -448,7 +450,7 @@ function TimelineCard({ item }: { item: { date: Date; type: string; data: any } 
               {item.data.summary && (
                 <p className="text-sm text-muted-foreground line-clamp-2">{item.data.summary}</p>
               )}
-            </div>
+            </Link>
           )}
 
           {item.type === 'action_item' && (
