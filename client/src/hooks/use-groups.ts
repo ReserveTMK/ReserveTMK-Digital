@@ -157,6 +157,22 @@ export function useAddGroupMember() {
   });
 }
 
+export function useEnrichGroup() {
+  return useMutation({
+    mutationFn: async (groupId: number) => {
+      const res = await fetch(`/api/groups/${groupId}/enrich`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to enrich group");
+      }
+      return res.json();
+    },
+  });
+}
+
 export function useRemoveGroupMember() {
   const queryClient = useQueryClient();
 

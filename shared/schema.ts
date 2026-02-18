@@ -223,6 +223,7 @@ export const groups = pgTable("groups", {
   contactEmail: text("contact_email"),
   contactPhone: text("contact_phone"),
   address: text("address"),
+  website: text("website"),
   notes: text("notes"),
   active: boolean("active").default(true),
   createdAt: timestamp("created_at").defaultNow(),

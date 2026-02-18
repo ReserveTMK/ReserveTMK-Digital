@@ -1,8 +1,8 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { Button } from "@/components/ui/beautiful-button";
-import { useGroups, useCreateGroup, useUpdateGroup, useDeleteGroup, useGroupMembers, useAddGroupMember, useRemoveGroupMember } from "@/hooks/use-groups";
+import { useGroups, useCreateGroup, useUpdateGroup, useDeleteGroup, useGroupMembers, useAddGroupMember, useRemoveGroupMember, useEnrichGroup } from "@/hooks/use-groups";
 import { useContacts } from "@/hooks/use-contacts";
-import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin } from "lucide-react";
+import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe } from "lucide-react";
 import { useState, useMemo } from "react";
 import {
   Dialog,
@@ -289,6 +289,7 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [address, setAddress] = useState("");
+  const [website, setWebsite] = useState("");
   const [notes, setNotes] = useState("");
 
   const resetForm = () => {
@@ -298,6 +299,7 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
     setContactEmail(group?.contactEmail || "");
     setContactPhone(group?.contactPhone || "");
     setAddress(group?.address || "");
+    setWebsite(group?.website || "");
     setNotes(group?.notes || "");
   };
 
@@ -315,6 +317,7 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
       contactEmail: contactEmail.trim() || undefined,
       contactPhone: contactPhone.trim() || undefined,
       address: address.trim() || undefined,
+      website: website.trim() || undefined,
       notes: notes.trim() || undefined,
     };
 
@@ -369,9 +372,15 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
               <Input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="+64..." data-testid="input-group-phone" />
             </div>
           </div>
-          <div className="space-y-2">
-            <Label>Address</Label>
-            <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street, City" data-testid="input-group-address" />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Address</Label>
+              <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street, City" data-testid="input-group-address" />
+            </div>
+            <div className="space-y-2">
+              <Label>Website</Label>
+              <Input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="www.org.co.nz" data-testid="input-group-website" />
+            </div>
           </div>
           <div className="space-y-2">
             <Label>Notes</Label>
@@ -400,9 +409,13 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit }: {
   const { data: members, isLoading: membersLoading } = useGroupMembers(group.id);
   const addMember = useAddGroupMember();
   const removeMember = useRemoveGroupMember();
+  const enrichGroup = useEnrichGroup();
+  const updateGroup = useUpdateGroup();
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [memberSearch, setMemberSearch] = useState("");
   const [selectedRole, setSelectedRole] = useState("Member");
+  const [enrichData, setEnrichData] = useState<Record<string, any> | null>(null);
+  const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set());
   const { toast } = useToast();
 
   const existingContactIds = new Set((members || []).map((m: GroupMember) => m.contactId));
@@ -432,8 +445,64 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit }: {
     removeMember.mutate({ groupId: group.id, memberId: member.id, contactId: member.contactId });
   };
 
+  const handleEnrich = () => {
+    enrichGroup.mutate(group.id, {
+      onSuccess: (data) => {
+        const nonNullFields = Object.entries(data).filter(([_, v]) => v != null);
+        if (nonNullFields.length === 0) {
+          toast({ title: "No suggestions found", description: "AI couldn't find public information for this organisation" });
+          return;
+        }
+        setEnrichData(data);
+        setSelectedFields(new Set(nonNullFields.map(([k]) => k)));
+      },
+      onError: (err) => {
+        toast({ title: "Enrichment failed", description: err.message, variant: "destructive" });
+      },
+    });
+  };
+
+  const handleAcceptEnrichment = () => {
+    if (!enrichData) return;
+    const updates: Record<string, any> = {};
+    selectedFields.forEach((field) => {
+      if (enrichData[field] != null) {
+        updates[field] = enrichData[field];
+      }
+    });
+    if (Object.keys(updates).length === 0) {
+      toast({ title: "No fields selected", description: "Select at least one field to apply" });
+      return;
+    }
+    updateGroup.mutate({ id: group.id, data: updates }, {
+      onSuccess: () => {
+        toast({ title: "Group updated", description: "AI suggestions applied successfully" });
+        setEnrichData(null);
+        setSelectedFields(new Set());
+      },
+    });
+  };
+
+  const toggleField = (field: string) => {
+    setSelectedFields((prev) => {
+      const next = new Set(prev);
+      if (next.has(field)) next.delete(field);
+      else next.add(field);
+      return next;
+    });
+  };
+
+  const ENRICH_FIELD_LABELS: Record<string, { label: string; icon: any }> = {
+    description: { label: "Description", icon: Building2 },
+    contactEmail: { label: "Email", icon: Mail },
+    contactPhone: { label: "Phone", icon: Phone },
+    address: { label: "Address", icon: MapPin },
+    website: { label: "Website", icon: Globe },
+    notes: { label: "Notes", icon: Building2 },
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) { setEnrichData(null); } }}>
       <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -443,12 +512,101 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit }: {
             </DialogTitle>
             <div className="flex items-center gap-2">
               <Badge className={GROUP_TYPE_COLORS[group.type] || ""}>{group.type}</Badge>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleEnrich}
+                disabled={enrichGroup.isPending}
+                data-testid="button-enrich-group"
+              >
+                {enrichGroup.isPending ? (
+                  <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                ) : (
+                  <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                )}
+                {enrichGroup.isPending ? "Researching..." : "Enrich"}
+              </Button>
               <Button size="sm" variant="outline" onClick={onEdit} data-testid="button-edit-from-detail">
                 Edit
               </Button>
             </div>
           </div>
         </DialogHeader>
+
+        {enrichData && (
+          <div className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <h4 className="text-sm font-semibold flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-primary" />
+                AI Suggestions
+              </h4>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => { setEnrichData(null); setSelectedFields(new Set()); }}
+                  data-testid="button-dismiss-enrich"
+                >
+                  Dismiss
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleAcceptEnrichment}
+                  disabled={selectedFields.size === 0 || updateGroup.isPending}
+                  data-testid="button-accept-enrich"
+                >
+                  {updateGroup.isPending ? (
+                    <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                  ) : (
+                    <Check className="w-3.5 h-3.5 mr-1.5" />
+                  )}
+                  Apply Selected
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {Object.entries(enrichData).filter(([_, v]) => v != null).map(([field, value]) => {
+                const meta = ENRICH_FIELD_LABELS[field];
+                if (!meta) return null;
+                const IconComp = meta.icon;
+                const isSelected = selectedFields.has(field);
+                const existingValue = (group as any)[field];
+                const isOverwrite = !!existingValue && existingValue !== value;
+                return (
+                  <div
+                    key={field}
+                    className={`rounded-md border p-2.5 cursor-pointer transition-colors ${
+                      isSelected ? "border-primary/50 bg-primary/10" : "border-border bg-background"
+                    }`}
+                    onClick={() => toggleField(field)}
+                    data-testid={`enrich-field-${field}`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <div className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                        isSelected ? "bg-primary border-primary" : "border-muted-foreground/40"
+                      }`}>
+                        {isSelected && <Check className="w-3 h-3 text-primary-foreground" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <IconComp className="w-3.5 h-3.5 text-muted-foreground" />
+                          <span className="text-xs font-medium text-muted-foreground">{meta.label}</span>
+                          {isOverwrite && (
+                            <Badge variant="secondary" className="text-[9px]">overwrites existing</Badge>
+                          )}
+                        </div>
+                        <p className="text-sm whitespace-pre-wrap break-words">{String(value)}</p>
+                        {isOverwrite && (
+                          <p className="text-xs text-muted-foreground mt-1 line-through">{String(existingValue)}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="space-y-4">
           {group.description && (
@@ -469,6 +627,12 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit }: {
             {group.address && (
               <span className="flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5" /> {group.address}
+              </span>
+            )}
+            {group.website && (
+              <span className="flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5" />
+                <a href={String(group.website).startsWith("http") ? String(group.website) : `https://${group.website}`} target="_blank" rel="noopener noreferrer" className="underline">{group.website}</a>
               </span>
             )}
           </div>

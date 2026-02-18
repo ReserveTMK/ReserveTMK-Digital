@@ -1964,6 +1964,58 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     res.json(memberships);
   });
 
+  // === Group Data Enrichment ===
+  app.post("/api/groups/:id/enrich", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const group = await storage.getGroup(id);
+      if (!group) return res.status(404).json({ message: "Group not found" });
+      if (group.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+
+      const prompt = `You are a research assistant for a community development organisation in Aotearoa New Zealand. Given the following organisation/group name and type, look up what you know about them and return structured information.
+
+Organisation Name: "${group.name}"
+Type: "${group.type}"
+${group.address ? `Known Address: "${group.address}"` : ""}
+${group.description ? `Existing Description: "${group.description}"` : ""}
+
+Return a JSON object with these fields (use null for any field you cannot confidently determine):
+{
+  "description": "A concise 2-3 sentence description of what this organisation does, their mission, and key activities",
+  "contactEmail": "their publicly listed email address or null",
+  "contactPhone": "their publicly listed phone number or null",
+  "address": "their physical address or null",
+  "website": "their website URL or null",
+  "notes": "Any additional useful context: founding year, key people, partnerships, sector focus, community they serve. Keep to 2-3 bullet points."
+}
+
+Important:
+- Only include information you are reasonably confident about
+- For NZ organisations, consider checking known databases like Charities Register, Companies Register, community directories
+- If you are unsure about the organisation, still provide what you can and note uncertainty in the notes field
+- Format phone numbers in NZ format (+64...)
+- Keep the description factual and professional`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.3,
+      });
+
+      const raw = JSON.parse(response.choices[0].message.content || "{}");
+      const ALLOWED_FIELDS = ["description", "contactEmail", "contactPhone", "address", "website", "notes"];
+      const enrichment: Record<string, string | null> = {};
+      for (const field of ALLOWED_FIELDS) {
+        enrichment[field] = typeof raw[field] === "string" && raw[field].trim() ? raw[field].trim() : null;
+      }
+      res.json(enrichment);
+    } catch (err: any) {
+      console.error("Group enrichment error:", err);
+      res.status(500).json({ message: "Failed to enrich group data" });
+    }
+  });
+
   app.post("/api/google-calendar/link", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
