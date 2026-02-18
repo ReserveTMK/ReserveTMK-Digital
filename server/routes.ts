@@ -1894,12 +1894,17 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
   app.post(api.groups.create.path, isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const user = req.user as any;
+      if (!user || !user.claims || !user.claims.sub) {
+        return res.status(401).json({ message: "Unauthorized: Missing user claims" });
+      }
+      const userId = user.claims.sub;
       const body = { ...req.body, userId };
       const input = api.groups.create.input.parse(body);
       const group = await storage.createGroup(input);
       res.status(201).json(group);
     } catch (err: any) {
+      console.error("Group creation error:", err);
       res.status(400).json({ message: err.message });
     }
   });
