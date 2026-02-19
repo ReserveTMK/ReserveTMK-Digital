@@ -1985,7 +1985,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const userId = (req.user as any).claims.sub;
       if (group.userId !== userId) return res.status(403).json({ message: "Forbidden" });
 
-      const userTaxonomy = await storage.getTaxonomyCategories(userId);
+      const userTaxonomy = await storage.getTaxonomy(userId);
       const validTaxIds = new Set(userTaxonomy.map((t: any) => t.id));
 
       const links = (req.body.links || [])
@@ -2012,7 +2012,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       if (group.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
 
       const userId = (req.user as any).claims.sub;
-      const taxonomyCategories = await storage.getTaxonomyCategories(userId);
+      const taxonomyCategories = await storage.getTaxonomy(userId);
       const activeCategories = taxonomyCategories.filter((c: any) => c.active);
 
       const taxonomyList = activeCategories.map((c: any) => `- ${c.name}: ${c.description || "No description"}`).join("\n");
