@@ -33,6 +33,10 @@ import {
   UserPlus,
   Link2,
   Unlink,
+  MessageCirclePlus,
+  ChevronDown,
+  ChevronUp,
+  RefreshCw,
 } from "lucide-react";
 import {
   Select,
@@ -518,6 +522,18 @@ function ReviewView({ id }: { id: number }) {
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [showFollowUp, setShowFollowUp] = useState(false);
+  const [followUpText, setFollowUpText] = useState("");
+  const [followUpAudioBlob, setFollowUpAudioBlob] = useState<Blob | null>(null);
+  const [followUpAudioUrl, setFollowUpAudioUrl] = useState<string | null>(null);
+  const [isFollowUpRecording, setIsFollowUpRecording] = useState(false);
+  const [followUpRecordingTime, setFollowUpRecordingTime] = useState(0);
+  const [isFollowUpTranscribing, setIsFollowUpTranscribing] = useState(false);
+  const [isAppending, setIsAppending] = useState(false);
+  const [followUpTab, setFollowUpTab] = useState("record");
+  const followUpMediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const followUpChunksRef = useRef<Blob[]>([]);
+  const followUpTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
@@ -614,6 +630,101 @@ function ReviewView({ id }: { id: number }) {
     const m = Math.floor(s / 60);
     const sec = s % 60;
     return `${m}:${sec.toString().padStart(2, "0")}`;
+  };
+
+  const startFollowUpRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      followUpMediaRecorderRef.current = mediaRecorder;
+      followUpChunksRef.current = [];
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) followUpChunksRef.current.push(e.data);
+      };
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(followUpChunksRef.current, { type: "audio/webm" });
+        setFollowUpAudioBlob(blob);
+        setFollowUpAudioUrl(URL.createObjectURL(blob));
+        stream.getTracks().forEach((t) => t.stop());
+      };
+      mediaRecorder.start();
+      setIsFollowUpRecording(true);
+      setFollowUpRecordingTime(0);
+      followUpTimerRef.current = setInterval(() => setFollowUpRecordingTime((t) => t + 1), 1000);
+    } catch {
+      toast({ title: "Microphone Error", description: "Could not access microphone.", variant: "destructive" });
+    }
+  };
+
+  const stopFollowUpRecording = () => {
+    followUpMediaRecorderRef.current?.stop();
+    setIsFollowUpRecording(false);
+    if (followUpTimerRef.current) clearInterval(followUpTimerRef.current);
+  };
+
+  const transcribeFollowUpAudio = async () => {
+    if (!followUpAudioBlob) return;
+    setIsFollowUpTranscribing(true);
+    try {
+      const res = await fetch("/api/impact-transcribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: followUpAudioBlob,
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Transcription failed");
+      const data = await res.json();
+      setFollowUpText(data.transcript || data.text || "");
+      toast({ title: "Transcribed", description: "Follow-up audio transcribed." });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Transcription failed", variant: "destructive" });
+    } finally {
+      setIsFollowUpTranscribing(false);
+    }
+  };
+
+  const handleAppendFollowUp = async () => {
+    if (!followUpText.trim()) return;
+    setIsAppending(true);
+    try {
+      const now = new Date().toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+      const appendedTranscript = (impactLog?.transcript || "") + `\n\n--- Follow-up (${now}) ---\n${followUpText.trim()}`;
+      await apiRequest("PATCH", `/api/impact-logs/${id}`, { transcript: appendedTranscript });
+      queryClient.invalidateQueries({ queryKey: ["/api/impact-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/impact-logs", id] });
+      setFollowUpText("");
+      setFollowUpAudioBlob(null);
+      setFollowUpAudioUrl(null);
+      setShowFollowUp(false);
+      setFollowUpTab("record");
+      toast({ title: "Follow-up added", description: "Your additional notes have been appended to the transcript." });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to add follow-up", variant: "destructive" });
+    } finally {
+      setIsAppending(false);
+    }
+  };
+
+  const handleReanalyze = async () => {
+    if (!impactLog?.transcript) return;
+    setIsAnalyzing(true);
+    try {
+      const res = await fetch("/api/impact-extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: impactLog.transcript, title: impactLog.title, existingLogId: id }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Re-analysis failed");
+      queryClient.invalidateQueries({ queryKey: ["/api/impact-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/impact-logs", id] });
+      setInitialized(false);
+      toast({ title: "Re-analysis complete", description: "Tags and insights updated from the full transcript." });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Re-analysis failed", variant: "destructive" });
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const needsRecording = impactLog && impactLog.status === "draft" && !impactLog.transcript && !extraction;
@@ -924,8 +1035,37 @@ function ReviewView({ id }: { id: number }) {
                   </Button>
                 </Card>
               ) : (
+                <>
                 <Card className="p-5">
-                  <h2 className="font-bold text-lg font-display mb-3" data-testid="text-transcript-heading">Transcript</h2>
+                  <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                    <h2 className="font-bold text-lg font-display" data-testid="text-transcript-heading">Transcript</h2>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowFollowUp(!showFollowUp)}
+                        data-testid="button-toggle-followup"
+                      >
+                        <MessageCirclePlus className="w-4 h-4 mr-1.5" />
+                        Add Follow-up
+                        {showFollowUp ? <ChevronUp className="w-3.5 h-3.5 ml-1" /> : <ChevronDown className="w-3.5 h-3.5 ml-1" />}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleReanalyze}
+                        disabled={isAnalyzing || !impactLog?.transcript}
+                        data-testid="button-reanalyze"
+                      >
+                        {isAnalyzing ? (
+                          <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="w-4 h-4 mr-1.5" />
+                        )}
+                        Re-analyse
+                      </Button>
+                    </div>
+                  </div>
                   <div className="prose prose-sm max-w-none text-foreground/90 whitespace-pre-wrap max-h-[60vh] overflow-y-auto" data-testid="text-transcript-content">
                     {Array.isArray(transcriptParts) ? (
                       transcriptParts.map((part, i) => (
@@ -940,6 +1080,140 @@ function ReviewView({ id }: { id: number }) {
                     )}
                   </div>
                 </Card>
+
+                {showFollowUp && (
+                  <Card className="p-5">
+                    <h3 className="font-bold font-display mb-3" data-testid="text-followup-heading">Add Follow-up Notes</h3>
+                    <p className="text-sm text-muted-foreground mb-4">Record or type anything you forgot to mention. It will be appended to the transcript above.</p>
+
+                    <Tabs value={followUpTab} onValueChange={setFollowUpTab}>
+                      <TabsList className="w-full">
+                        <TabsTrigger value="record" className="flex-1" data-testid="tab-followup-record">Record Audio</TabsTrigger>
+                        <TabsTrigger value="text" className="flex-1" data-testid="tab-followup-text">Type Text</TabsTrigger>
+                      </TabsList>
+
+                      <TabsContent value="record" className="space-y-4 mt-4">
+                        {!followUpAudioBlob && !isFollowUpRecording && (
+                          <div className="flex flex-col items-center gap-4 py-6">
+                            <Button
+                              onClick={startFollowUpRecording}
+                              className="rounded-full w-16 h-16 flex items-center justify-center"
+                              data-testid="button-followup-start-recording"
+                            >
+                              <Mic className="w-6 h-6" />
+                            </Button>
+                            <p className="text-sm text-muted-foreground">Tap to record follow-up</p>
+                          </div>
+                        )}
+
+                        {isFollowUpRecording && (
+                          <div className="flex flex-col items-center gap-4 py-6">
+                            <div className="w-16 h-16 rounded-full bg-destructive/20 animate-pulse flex items-center justify-center">
+                              <div className="w-3.5 h-3.5 rounded-full bg-destructive" />
+                            </div>
+                            <p className="text-lg font-mono font-bold" data-testid="text-followup-timer">{formatRecTime(followUpRecordingTime)}</p>
+                            <Button
+                              variant="destructive"
+                              onClick={stopFollowUpRecording}
+                              data-testid="button-followup-stop-recording"
+                            >
+                              <Square className="w-4 h-4 mr-2" />
+                              Stop Recording
+                            </Button>
+                          </div>
+                        )}
+
+                        {followUpAudioBlob && !isFollowUpRecording && (
+                          <div className="space-y-4">
+                            <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border border-border">
+                              <Play className="w-5 h-5 text-muted-foreground shrink-0" />
+                              <audio controls src={followUpAudioUrl || undefined} className="flex-1 h-10" data-testid="audio-followup-playback" />
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => { setFollowUpAudioBlob(null); setFollowUpAudioUrl(null); setFollowUpText(""); }}
+                                data-testid="button-followup-discard"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                            {!followUpText && (
+                              <Button
+                                onClick={transcribeFollowUpAudio}
+                                disabled={isFollowUpTranscribing}
+                                className="w-full"
+                                data-testid="button-followup-transcribe"
+                              >
+                                {isFollowUpTranscribing ? (
+                                  <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Transcribing...
+                                  </>
+                                ) : (
+                                  <>
+                                    <FileText className="w-4 h-4 mr-2" />
+                                    Transcribe
+                                  </>
+                                )}
+                              </Button>
+                            )}
+                            {followUpText && (
+                              <div className="space-y-2">
+                                <Label>Transcribed follow-up</Label>
+                                <Textarea
+                                  value={followUpText}
+                                  onChange={(e) => setFollowUpText(e.target.value)}
+                                  className="min-h-[100px] resize-none"
+                                  data-testid="textarea-followup-transcript"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </TabsContent>
+
+                      <TabsContent value="text" className="space-y-4 mt-4">
+                        <Textarea
+                          value={followUpText}
+                          onChange={(e) => setFollowUpText(e.target.value)}
+                          placeholder="Type what you forgot to mention..."
+                          className="min-h-[120px] resize-none"
+                          data-testid="textarea-followup-text"
+                        />
+                      </TabsContent>
+                    </Tabs>
+
+                    <div className="flex items-center gap-2 mt-4">
+                      <Button
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => { setShowFollowUp(false); setFollowUpText(""); setFollowUpAudioBlob(null); setFollowUpAudioUrl(null); }}
+                        data-testid="button-followup-cancel"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        className="flex-1"
+                        onClick={handleAppendFollowUp}
+                        disabled={isAppending || !followUpText.trim()}
+                        data-testid="button-followup-append"
+                      >
+                        {isAppending ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Appending...
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="w-4 h-4 mr-2" />
+                            Append to Transcript
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </Card>
+                )}
+                </>
               )}
             </div>
 
