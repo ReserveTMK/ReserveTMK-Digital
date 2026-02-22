@@ -500,7 +500,8 @@ export default function LegacyReportsPage() {
 
     const report = legacyReports?.find(r => r.id === reportId);
     const existingSnapshot = report?.snapshot || { ...emptySnapshot };
-    const mergedSnapshot = { ...existingSnapshot, ...snapshotUpdate };
+    const { id: _sid, legacyReportId: _lrid, createdAt: _ca, ...cleanSnapshot } = existingSnapshot as any;
+    const mergedSnapshot = { ...cleanSnapshot, ...snapshotUpdate };
 
     const hasHighlightEdits = Object.keys(editedHighlightTypes).length > 0;
     const hasPeopleEdits = Object.keys(editedPeopleRoles).length > 0;

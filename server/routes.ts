@@ -2678,13 +2678,14 @@ Important:
 
       let snapshotRecord = null;
       if (snapshot) {
+        const { id: _sid, legacyReportId: _lrid, createdAt: _ca, ...cleanSnapshot } = snapshot;
         const existingSnapshot = await storage.getLegacyReportSnapshot(id);
         if (existingSnapshot) {
-          snapshotRecord = await storage.updateLegacyReportSnapshot(existingSnapshot.id, snapshot);
+          snapshotRecord = await storage.updateLegacyReportSnapshot(existingSnapshot.id, cleanSnapshot);
         } else {
           snapshotRecord = await storage.createLegacyReportSnapshot({
             legacyReportId: id,
-            ...snapshot,
+            ...cleanSnapshot,
           });
         }
       }
