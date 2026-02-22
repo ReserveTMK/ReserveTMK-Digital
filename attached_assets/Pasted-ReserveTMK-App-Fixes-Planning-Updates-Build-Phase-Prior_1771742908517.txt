@@ -1,0 +1,115 @@
+ReserveTMK App – Fixes + Planning Updates (Build Phase)
+
+Priority: High (core navigation + core CRUD + planning targets)
+
+1) BUG: Community → Person profile shows “Community member not found”
+Expected behaviour:
+- When I click a person in Community, it should open that person’s profile page and load their data.
+
+Current behaviour:
+- Clicking a person route loads a page that displays “community member not found”.
+
+Likely causes to check:
+- Frontend route param mismatch (e.g. /community/:id vs /community/:contactId).
+- API endpoint expects different param name or type (UUID vs numeric).
+- Query uses wrong table or wrong key (contacts vs community_members).
+- SSR/loader not passing id correctly.
+- Permission/auth filtering returning 404 incorrectly.
+
+Acceptance criteria:
+- Clicking any person in Community always loads the correct profile.
+- Profile shows: name, demographics, consent, groups, debrief links, metric scores/history.
+- If record truly missing, show a helpful “This person no longer exists” state, not generic.
+
+Dev tasks:
+- Confirm URL structure + route param names.
+- Confirm backend handler uses the same param.
+- Add logging for failed lookups (id received + query executed).
+- Add a simple “exists check” query.
+- Add unit test for GET /contacts/:id (or equivalent).
+
+
+2) BUG: Groups – Creating a group is not working
+Expected behaviour:
+- Creating a group should persist to PostgreSQL and appear immediately in Group list.
+
+Current behaviour:
+- Create group flow fails (not saving / not returning / not showing).
+
+Likely causes to check:
+- Frontend form submission not firing or prevented.
+- API returns error but UI not displaying it.
+- Backend validation failing (required fields, unique constraints).
+- DB schema mismatch (columns missing, wrong types).
+- Transaction rollback or missing commit.
+- Server route not wired / wrong method.
+
+Acceptance criteria:
+- I can create a group with minimum fields: group_name, group_type.
+- On save success: toast confirmation + redirect to group detail page.
+- Group list updates without refresh.
+- Error states show clearly (validation vs server error).
+
+Dev tasks:
+- Confirm POST /groups route exists and is used by UI.
+- Ensure backend returns created record (id).
+- Add server-side validation and readable error messages.
+- Add logging around group creation request and DB insert.
+- Add integration test for create group and fetch group list.
+
+
+3) CALENDAR FEATURE: Add “Programme Targets” – 2 programmes per month goal
+Goal:
+- On the Calendar “View of Calendars” page, show progress against a monthly programme target.
+- Default target is 2 programmes per month (configurable later).
+
+Current behaviour:
+- Calendar shows what programmes exist in that month, but no target/progress context.
+
+Expected behaviour (MVP):
+- For each month shown:
+  - Display “Programmes this month: X / 2 target”
+  - A simple progress indicator (e.g. 0/2, 1/2, 2/2, 3/2)
+  - If under target, show “Need Y more to hit target”
+  - If at or above, show “Target met”
+
+Rules:
+- Count only Programmes with status in: planned, active, completed (exclude cancelled).
+- Programme month is based on programme start_date (or first event date if start_date null).
+- Target applies per calendar month (NZ timezone).
+
+Data changes required:
+- Add organisation/settings table OR simple config constant for target (start with constant = 2).
+- Store monthly targets per programme type in future, but not required for MVP.
+
+Backend requirement:
+- Create an endpoint or query that returns for a given month range:
+  - month_key (YYYY-MM)
+  - programme_count
+  - target_value (2)
+  - delta_to_target (target - count)
+
+Frontend requirement:
+- Update Calendar month view header to include the target summary for that month.
+- Optional: highlight months under target.
+
+Acceptance criteria:
+- When browsing months, I can instantly see whether we are meeting the 2 programmes per month goal.
+- Counts are accurate and match programme records in DB.
+- Cancelled programmes do not count.
+- Works for past and future months.
+
+Nice-to-have (if quick):
+- Add a small “Target settings” field in Admin settings to adjust the target number.
+- Add programme type targets (e.g. youth vs community) later.
+
+Please tackle in this order:
+1) Community person profile not found (core navigation)
+2) Group creation (core CRUD)
+3) Programme targets on Calendar month view (planning feature)
+
+When fixing, please document:
+- Root cause
+- Fix implemented
+- Any schema changes
+- Tests added
