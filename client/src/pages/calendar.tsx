@@ -1384,557 +1384,555 @@ export default function CalendarPage() {
 
   return (
     <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
-        <div className="max-w-5xl mx-auto">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-            <div>
-              <h1 className="text-2xl font-display font-bold text-foreground" data-testid="text-calendar-title">
-                Calendar
-              </h1>
-              <div className="flex items-center gap-1.5 mt-2">
-                <button
-                  onClick={() => setShowSchedule(!showSchedule)}
-                  data-testid="button-toggle-schedule"
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showSchedule ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-medium border border-emerald-500/30" : "text-muted-foreground hover:bg-muted/50 border border-transparent"}`}
-                >
-                  <CalendarDays className="w-3.5 h-3.5" />
-                  Schedule
-                </button>
-                <button
-                  onClick={() => setShowSpace(!showSpace)}
-                  data-testid="button-toggle-space"
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showSpace ? "bg-orange-500/15 text-orange-700 dark:text-orange-300 font-medium border border-orange-500/30" : "text-muted-foreground hover:bg-muted/50 border border-transparent"}`}
-                >
-                  <Building2 className="w-3.5 h-3.5" />
-                  Space
-                </button>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              {showSchedule && pastEventsNeedingDebrief > 0 && (
-                <Badge variant="secondary" data-testid="badge-events-count">
-                  {pastEventsNeedingDebrief} past events
-                </Badge>
-              )}
-              {showSchedule && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className={`toggle-elevate ${showDismissed ? "toggle-elevated" : ""}`}
-                  onClick={() => setShowDismissed(!showDismissed)}
-                  data-testid="button-toggle-dismissed"
-                >
-                  {showDismissed ? <Eye className="w-4 h-4 mr-1" /> : <EyeOff className="w-4 h-4 mr-1" />}
-                  {showDismissed ? "Showing dismissed" : "Hidden"}
-                </Button>
-              )}
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => setShowSettings(!showSettings)}
-                data-testid="button-calendar-settings"
+      <div className="max-w-5xl mx-auto">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <div>
+            <h1 className="text-2xl font-display font-bold text-foreground" data-testid="text-calendar-title">
+              Calendar
+            </h1>
+            <div className="flex items-center gap-1.5 mt-2">
+              <button
+                onClick={() => setShowSchedule(!showSchedule)}
+                data-testid="button-toggle-schedule"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors dark:text-emerald-300 font-medium border border-emerald-500/30 bg-[#ffffff] text-[#000000]"
               >
-                <Settings className="w-4 h-4" />
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => refetchGcal()}
-                disabled={gcalLoading}
-                data-testid="button-refresh-calendar"
+                <CalendarDays className="w-3.5 h-3.5" />
+                Schedule
+              </button>
+              <button
+                onClick={() => setShowSpace(!showSpace)}
+                data-testid="button-toggle-space"
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showSpace ? "bg-orange-500/15 text-orange-700 dark:text-orange-300 font-medium border border-orange-500/30" : "text-muted-foreground hover:bg-muted/50 border border-transparent"}`}
               >
-                <RefreshCw className={`w-4 h-4 ${gcalLoading ? "animate-spin" : ""}`} />
-                Sync
-              </Button>
+                <Building2 className="w-3.5 h-3.5" />
+                Space
+              </button>
             </div>
           </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {showSchedule && pastEventsNeedingDebrief > 0 && (
+              <Badge variant="secondary" data-testid="badge-events-count">
+                {pastEventsNeedingDebrief} past events
+              </Badge>
+            )}
+            {showSchedule && (
+              <Button
+                size="sm"
+                variant="outline"
+                className={`toggle-elevate ${showDismissed ? "toggle-elevated" : ""}`}
+                onClick={() => setShowDismissed(!showDismissed)}
+                data-testid="button-toggle-dismissed"
+              >
+                {showDismissed ? <Eye className="w-4 h-4 mr-1" /> : <EyeOff className="w-4 h-4 mr-1" />}
+                {showDismissed ? "Showing dismissed" : "Hidden"}
+              </Button>
+            )}
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setShowSettings(!showSettings)}
+              data-testid="button-calendar-settings"
+            >
+              <Settings className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => refetchGcal()}
+              disabled={gcalLoading}
+              data-testid="button-refresh-calendar"
+            >
+              <RefreshCw className={`w-4 h-4 ${gcalLoading ? "animate-spin" : ""}`} />
+              Sync
+            </Button>
+          </div>
+        </div>
 
-          {gcalError && showSchedule && (
-            <Card className="p-4 mb-6 border-amber-500/30 bg-amber-500/5">
-              <div className="flex items-center gap-3">
-                <CalendarX className="w-5 h-5 text-amber-600 shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-foreground">Google Calendar not connected</p>
-                  <p className="text-xs text-muted-foreground">Showing tracked events only. Connect your calendar to see all events.</p>
-                </div>
-                <Button variant="outline" size="sm" onClick={() => refetchGcal()} data-testid="button-retry-calendar">
-                  Retry
-                </Button>
+        {gcalError && showSchedule && (
+          <Card className="p-4 mb-6 border-amber-500/30 bg-amber-500/5">
+            <div className="flex items-center gap-3">
+              <CalendarX className="w-5 h-5 text-amber-600 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-foreground">Google Calendar not connected</p>
+                <p className="text-xs text-muted-foreground">Showing tracked events only. Connect your calendar to see all events.</p>
               </div>
-            </Card>
-          )}
-
-          {showSettings && (
-            <Card className="p-4 mb-6" data-testid="panel-calendar-settings">
-              <div className="flex items-center justify-between mb-3 gap-2">
-                <h3 className="text-sm font-semibold">My Calendars</h3>
-                <Button size="icon" variant="ghost" onClick={() => setShowSettings(false)}>
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground mb-3">
-                Toggle which calendars to sync. Shared events across calendars are automatically deduplicated.
-              </p>
-              {calendarsListLoading ? (
-                <div className="flex items-center justify-center py-6 gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Loading calendars...
-                </div>
-              ) : availableCalendars && availableCalendars.length > 0 ? (
-                <div className="space-y-1">
-                  {availableCalendars.map(cal => {
-                    const isEnabled = cal.primary || (calendarSettings || []).some(s => s.calendarId === cal.id);
-                    return (
-                      <div
-                        key={cal.id}
-                        className="flex items-center gap-3 p-2 rounded-md"
-                        data-testid={`calendar-toggle-${cal.id}`}
-                      >
-                        <div
-                          className="w-3 h-3 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: cal.backgroundColor }}
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium truncate">{cal.summary}</p>
-                          {cal.description && (
-                            <p className="text-xs text-muted-foreground truncate">{cal.description}</p>
-                          )}
-                        </div>
-                        <Switch
-                          checked={isEnabled}
-                          disabled={cal.primary || toggleCalendarMutation.isPending}
-                          onCheckedChange={(checked) => {
-                            if (!cal.primary) {
-                              toggleCalendarMutation.mutate({
-                                calendarId: cal.id,
-                                label: cal.summary,
-                                enabled: checked,
-                              });
-                            }
-                          }}
-                          data-testid={`switch-calendar-${cal.id}`}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground py-4 text-center">
-                  No calendars found. Make sure your Google Calendar is connected.
-                </p>
-              )}
-            </Card>
-          )}
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <Card className="p-4 md:p-6">
-                <div className="flex items-center justify-between mb-4 gap-2">
-                  <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} data-testid="button-prev-month">
-                    <ChevronLeft className="w-4 h-4" />
-                  </Button>
-                  <h3 className="text-lg font-semibold font-display" data-testid="text-current-month">
-                    {format(currentMonth, "MMMM yyyy")}
-                  </h3>
-                  <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} data-testid="button-next-month">
-                    <ChevronRight className="w-4 h-4" />
-                  </Button>
-                </div>
-
-                <div className="grid grid-cols-7 gap-0">
-                  {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
-                    <div key={d} className="text-center text-xs font-medium text-muted-foreground py-2">
-                      {d}
-                    </div>
-                  ))}
-                  {calendarDays.map((day, idx) => {
-                    const key = format(day, "yyyy-MM-dd");
-                    const dayEvents = showSchedule ? (eventsByDate.get(key) || []) : [];
-                    const daySpaceItems = showSpace ? (spaceByDate.get(key) || []) : [];
-                    const isCurrentMonth = isSameMonth(day, currentMonth);
-                    const isSelected = isSameDay(day, selectedDate);
-                    const today = isToday(day);
-                    const hasConflict = showSpace && daySpaceItems.length > 1 && daySpaceItems.some((a, i) =>
-                      daySpaceItems.some((b, j) => {
-                        if (i >= j) return false;
-                        if (!a.startTime || !a.endTime || !b.startTime || !b.endTime) return true;
-                        const aStart = parseInt(a.startTime.replace(":", ""));
-                        const aEnd = parseInt(a.endTime.replace(":", ""));
-                        const bStart = parseInt(b.startTime.replace(":", ""));
-                        const bEnd = parseInt(b.endTime.replace(":", ""));
-                        return aStart < bEnd && bStart < aEnd;
-                      })
-                    );
-                    const allDots: { color: string; key: string; reconciled?: boolean }[] = [];
-                    dayEvents.forEach((e, i) => {
-                      const info = getDebriefInfo(e);
-                      allDots.push({ color: getEventDotColor(e), key: `ev-${i}`, reconciled: e.isPast ? !!info : undefined });
-                    });
-                    daySpaceItems.forEach((item, i) => allDots.push({ color: item.kind === "programme" ? "bg-indigo-400" : "bg-orange-400", key: `sp-${i}` }));
-
-                    return (
-                      <button
-                        key={idx}
-                        onClick={() => setSelectedDate(day)}
-                        data-testid={`button-calendar-day-${key}`}
-                        className={`
-                          relative p-1 min-h-[3rem] md:min-h-[4rem] text-sm border border-border/30 transition-colors
-                          ${!isCurrentMonth ? "text-muted-foreground/40" : "text-foreground"}
-                          ${isSelected ? "bg-primary/10 border-primary/50" : "hover:bg-muted/50"}
-                          ${today && !isSelected ? "bg-accent/30" : ""}
-                          ${hasConflict ? "ring-1 ring-red-400/50 bg-red-50/20 dark:bg-red-900/10" : ""}
-                        `}
-                      >
-                        <span className={`
-                          inline-flex items-center justify-center w-6 h-6 text-xs rounded-full
-                          ${today ? "bg-primary text-primary-foreground font-bold" : ""}
-                        `}>
-                          {format(day, "d")}
-                        </span>
-                        {allDots.length > 0 && (
-                          <div className="flex flex-wrap gap-0.5 mt-0.5">
-                            {allDots.slice(0, 4).map((dot) => (
-                              <div
-                                key={dot.key}
-                                className={`w-full h-1 rounded-full ${dot.color} ${dot.reconciled === false ? "opacity-100 ring-1 ring-amber-400/60" : ""} ${dot.reconciled === true ? "opacity-50" : ""}`}
-                              />
-                            ))}
-                            {allDots.length > 4 && (
-                              <span className="text-[10px] text-muted-foreground">+{allDots.length - 4}</span>
-                            )}
-                          </div>
-                        )}
-                        {hasConflict && (
-                          <div className="absolute top-0.5 right-0.5">
-                            <AlertTriangle className="w-3 h-3 text-red-500" />
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </Card>
+              <Button variant="outline" size="sm" onClick={() => refetchGcal()} data-testid="button-retry-calendar">
+                Retry
+              </Button>
             </div>
+          </Card>
+        )}
 
-            <div className="space-y-4">
-              <h2 className="text-lg font-bold font-display" data-testid="text-selected-date">
-                {format(selectedDate, "EEEE, MMM d")}
-              </h2>
-
-              {showSchedule && gcalLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="w-6 h-6 animate-spin text-primary" />
-                </div>
-              ) : (showSchedule && selectedDayEvents.length > 0) || (showSpace && selectedDaySpace.length > 0) ? (
-                <div className="space-y-3">
-                  {showSchedule && selectedDayEvents.map((entry) => (
-                    <div key={entry.type === "gcal" ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`} className="relative">
-                      {entry.isDismissed && (
-                        <div className="absolute inset-0 bg-background/60 z-10 flex items-center justify-center rounded-md">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="secondary" className="text-xs">
-                              <EyeOff className="w-3 h-3 mr-1" />
-                              Dismissed
-                            </Badge>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                const dismissed = (dismissedEvents || []).find(d => d.gcalEventId === entry.gcal?.id);
-                                if (dismissed) restoreMutation.mutate(dismissed.id);
-                              }}
-                              data-testid={`button-restore-event-${entry.gcal?.id}`}
-                            >
-                              <Eye className="w-3 h-3 mr-1" />
-                              Restore
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                      <EventCard
-                        entry={entry}
-                        appEvents={appEvents || []}
-                        programmes={programmes || []}
-                        onLogDebrief={handleLogDebrief}
-                        onLogDebriefFromApp={handleLogDebriefFromApp}
-                        onDeleteEvent={handleDeleteEvent}
-                        onDismissEvent={handleDismissEvent}
-                        onMarkNotPersonal={(gcalId) => markNotPersonalMutation.mutate(gcalId)}
-                        isDebriefPending={createDebriefMutation.isPending}
-                        isMarkedNotPersonal={entry.gcal ? notPersonalIds.has(entry.gcal.id) : false}
-                        debriefInfo={getDebriefInfo(entry)}
-                        onViewDebrief={(debriefId) => navigate(`/debriefs/${debriefId}`)}
+        {showSettings && (
+          <Card className="p-4 mb-6" data-testid="panel-calendar-settings">
+            <div className="flex items-center justify-between mb-3 gap-2">
+              <h3 className="text-sm font-semibold">My Calendars</h3>
+              <Button size="icon" variant="ghost" onClick={() => setShowSettings(false)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">
+              Toggle which calendars to sync. Shared events across calendars are automatically deduplicated.
+            </p>
+            {calendarsListLoading ? (
+              <div className="flex items-center justify-center py-6 gap-2 text-sm text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Loading calendars...
+              </div>
+            ) : availableCalendars && availableCalendars.length > 0 ? (
+              <div className="space-y-1">
+                {availableCalendars.map(cal => {
+                  const isEnabled = cal.primary || (calendarSettings || []).some(s => s.calendarId === cal.id);
+                  return (
+                    <div
+                      key={cal.id}
+                      className="flex items-center gap-3 p-2 rounded-md"
+                      data-testid={`calendar-toggle-${cal.id}`}
+                    >
+                      <div
+                        className="w-3 h-3 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: cal.backgroundColor }}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">{cal.summary}</p>
+                        {cal.description && (
+                          <p className="text-xs text-muted-foreground truncate">{cal.description}</p>
+                        )}
+                      </div>
+                      <Switch
+                        checked={isEnabled}
+                        disabled={cal.primary || toggleCalendarMutation.isPending}
+                        onCheckedChange={(checked) => {
+                          if (!cal.primary) {
+                            toggleCalendarMutation.mutate({
+                              calendarId: cal.id,
+                              label: cal.summary,
+                              enabled: checked,
+                            });
+                          }
+                        }}
+                        data-testid={`switch-calendar-${cal.id}`}
                       />
                     </div>
-                  ))}
-                  {showSpace && selectedDaySpace.map((item) => (
-                    <Card
-                      key={`${item.kind}-${item.id}`}
-                      className="p-4 border-orange-500/20 bg-orange-500/5 dark:bg-orange-500/5 cursor-pointer overflow-visible hover-elevate"
-                      onClick={() => navigate(item.kind === "booking" ? "/bookings" : "/programmes")}
-                      data-testid={`card-space-${item.kind}-${item.id}`}
-                    >
-                      <div className="space-y-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <h4 className="font-medium text-sm">{item.title}</h4>
-                          <Badge className={`text-xs shrink-0 ${BOOKING_BADGE_COLORS[item.classification] || ""}`}>
-                            {item.classification}
-                          </Badge>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                          {item.startTime && (
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              {item.startTime}{item.endTime ? ` - ${item.endTime}` : ""}
-                            </span>
-                          )}
-                          {item.venue && (
-                            <span className="flex items-center gap-1">
-                              <Building2 className="w-3 h-3" />
-                              {item.venue}
-                            </span>
-                          )}
-                          <Badge className={`text-[10px] ${item.kind === "programme" ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300" : "bg-orange-500/10 text-orange-700 dark:text-orange-300"}`}>
-                            {item.kind === "programme" ? "Programme" : "Booking"}
-                          </Badge>
-                          <Badge className={`text-[10px] ${SPACE_STATUS_COLORS[item.status] || ""}`}>
-                            {item.status}
-                          </Badge>
-                        </div>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <Card className="p-6">
-                  <div className="text-center text-muted-foreground text-sm">
-                    <Calendar className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                    <p>No items on this day</p>
-                  </div>
-                </Card>
-              )}
-            </div>
-          </div>
-
-          {showSchedule && (
-            <div className="mt-6" data-testid="section-month-programmes">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-lg font-display font-bold text-foreground" data-testid="text-programmes-heading">
-                  Programmes this month
-                </h2>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => navigate("/programmes")}
-                  data-testid="button-view-all-programmes"
-                >
-                  View all
-                </Button>
-              </div>
-              <div className={`flex items-center justify-between px-3 py-2 mb-3 rounded-lg text-sm ${
-                programmeTargetCount >= PROGRAMME_MONTHLY_TARGET
-                  ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                  : programmeTargetCount > 0
-                    ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                    : "bg-muted text-muted-foreground"
-              }`} data-testid="programme-target-indicator">
-                <div className="flex items-center gap-2">
-                  <CalendarDays className="w-4 h-4" />
-                  <span className="font-medium">
-                    {programmeTargetCount} / {PROGRAMME_MONTHLY_TARGET} target
-                  </span>
-                </div>
-                <span className="text-xs">
-                  {programmeTargetCount >= PROGRAMME_MONTHLY_TARGET
-                    ? "Target met"
-                    : `Need ${PROGRAMME_MONTHLY_TARGET - programmeTargetCount} more to hit target`}
-                </span>
-              </div>
-              {monthProgrammes.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {monthProgrammes.map((p: Programme) => {
-                  const dateDisplay = (() => {
-                    if (p.tbcMonth && p.tbcYear) return `TBC - ${p.tbcMonth} ${p.tbcYear}`;
-                    if (!p.startDate) return null;
-                    const start = format(new Date(p.startDate), "d MMM");
-                    if (p.endDate && format(new Date(p.endDate), "yyyy-MM-dd") !== format(new Date(p.startDate), "yyyy-MM-dd")) {
-                      return `${start} - ${format(new Date(p.endDate), "d MMM")}`;
-                    }
-                    return start;
-                  })();
-
-                  const timeDisplay = p.startTime
-                    ? p.endTime ? `${p.startTime} - ${p.endTime}` : p.startTime
-                    : null;
-
-                  const totalBudget = parseFloat(p.facilitatorCost || "0") + parseFloat(p.cateringCost || "0") + parseFloat(p.promoCost || "0");
-
-                  const facCount = (p.facilitators || []).length;
-                  const attCount = (p.attendees || []).length;
-
-                  return (
-                    <Card
-                      key={p.id}
-                      className={`p-3 hover-elevate cursor-pointer transition-all ${PROG_STATUS_COLORS[p.status] || ""}`}
-                      onClick={() => navigate("/programmes")}
-                      data-testid={`card-cal-programme-${p.id}`}
-                    >
-                      <div className="flex items-start justify-between gap-2 mb-1.5">
-                        <h4 className={`font-medium text-sm truncate ${p.status === "cancelled" ? "line-through opacity-70" : ""}`}>
-                          {p.name}
-                        </h4>
-                        <Badge className={`text-xs shrink-0 ${PROG_CLASSIFICATION_COLORS[p.classification] || ""}`}>
-                          {p.classification}
-                        </Badge>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                        {dateDisplay && (
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            {dateDisplay}
-                          </span>
-                        )}
-                        {timeDisplay && (
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            {timeDisplay}
-                          </span>
-                        )}
-                        {p.location && (
-                          <span className="flex items-center gap-1">
-                            <MapPin className="w-3 h-3" />
-                            <span className="truncate max-w-[100px]">{p.location}</span>
-                          </span>
-                        )}
-                        {totalBudget > 0 && (
-                          <span className="flex items-center gap-1">
-                            ${totalBudget.toLocaleString()}
-                          </span>
-                        )}
-                        {facCount > 0 && (
-                          <span className="flex items-center gap-1">
-                            <Users className="w-3 h-3" />
-                            {facCount} facilitator{facCount !== 1 ? "s" : ""}
-                          </span>
-                        )}
-                        {attCount > 0 && (
-                          <span className="flex items-center gap-1">
-                            <UserPlus className="w-3 h-3" />
-                            {attCount} attendee{attCount !== 1 ? "s" : ""}
-                          </span>
-                        )}
-                      </div>
-                    </Card>
                   );
                 })}
               </div>
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">No programmes scheduled this month</p>
-              )}
-            </div>
-          )}
+            ) : (
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                No calendars found. Make sure your Google Calendar is connected.
+              </p>
+            )}
+          </Card>
+        )}
 
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            <Card className="p-4 md:p-6">
+              <div className="flex items-center justify-between mb-4 gap-2">
+                <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} data-testid="button-prev-month">
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <h3 className="text-lg font-semibold font-display" data-testid="text-current-month">
+                  {format(currentMonth, "MMMM yyyy")}
+                </h3>
+                <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} data-testid="button-next-month">
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
 
+              <div className="grid grid-cols-7 gap-0">
+                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
+                  <div key={d} className="text-center text-xs font-medium text-muted-foreground py-2">
+                    {d}
+                  </div>
+                ))}
+                {calendarDays.map((day, idx) => {
+                  const key = format(day, "yyyy-MM-dd");
+                  const dayEvents = showSchedule ? (eventsByDate.get(key) || []) : [];
+                  const daySpaceItems = showSpace ? (spaceByDate.get(key) || []) : [];
+                  const isCurrentMonth = isSameMonth(day, currentMonth);
+                  const isSelected = isSameDay(day, selectedDate);
+                  const today = isToday(day);
+                  const hasConflict = showSpace && daySpaceItems.length > 1 && daySpaceItems.some((a, i) =>
+                    daySpaceItems.some((b, j) => {
+                      if (i >= j) return false;
+                      if (!a.startTime || !a.endTime || !b.startTime || !b.endTime) return true;
+                      const aStart = parseInt(a.startTime.replace(":", ""));
+                      const aEnd = parseInt(a.endTime.replace(":", ""));
+                      const bStart = parseInt(b.startTime.replace(":", ""));
+                      const bEnd = parseInt(b.endTime.replace(":", ""));
+                      return aStart < bEnd && bStart < aEnd;
+                    })
+                  );
+                  const allDots: { color: string; key: string; reconciled?: boolean }[] = [];
+                  dayEvents.forEach((e, i) => {
+                    const info = getDebriefInfo(e);
+                    allDots.push({ color: getEventDotColor(e), key: `ev-${i}`, reconciled: e.isPast ? !!info : undefined });
+                  });
+                  daySpaceItems.forEach((item, i) => allDots.push({ color: item.kind === "programme" ? "bg-indigo-400" : "bg-orange-400", key: `sp-${i}` }));
+
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => setSelectedDate(day)}
+                      data-testid={`button-calendar-day-${key}`}
+                      className={`
+                        relative p-1 min-h-[3rem] md:min-h-[4rem] text-sm border border-border/30 transition-colors
+                        ${!isCurrentMonth ? "text-muted-foreground/40" : "text-foreground"}
+                        ${isSelected ? "bg-primary/10 border-primary/50" : "hover:bg-muted/50"}
+                        ${today && !isSelected ? "bg-accent/30" : ""}
+                        ${hasConflict ? "ring-1 ring-red-400/50 bg-red-50/20 dark:bg-red-900/10" : ""}
+                      `}
+                    >
+                      <span className={`
+                        inline-flex items-center justify-center w-6 h-6 text-xs rounded-full
+                        ${today ? "bg-primary text-primary-foreground font-bold" : ""}
+                      `}>
+                        {format(day, "d")}
+                      </span>
+                      {allDots.length > 0 && (
+                        <div className="flex flex-wrap gap-0.5 mt-0.5">
+                          {allDots.slice(0, 4).map((dot) => (
+                            <div
+                              key={dot.key}
+                              className={`w-full h-1 rounded-full ${dot.color} ${dot.reconciled === false ? "opacity-100 ring-1 ring-amber-400/60" : ""} ${dot.reconciled === true ? "opacity-50" : ""}`}
+                            />
+                          ))}
+                          {allDots.length > 4 && (
+                            <span className="text-[10px] text-muted-foreground">+{allDots.length - 4}</span>
+                          )}
+                        </div>
+                      )}
+                      {hasConflict && (
+                        <div className="absolute top-0.5 right-0.5">
+                          <AlertTriangle className="w-3 h-3 text-red-500" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </Card>
+          </div>
+
+          <div className="space-y-4">
+            <h2 className="text-lg font-bold font-display" data-testid="text-selected-date">
+              {format(selectedDate, "EEEE, MMM d")}
+            </h2>
+
+            {showSchedule && gcalLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              </div>
+            ) : (showSchedule && selectedDayEvents.length > 0) || (showSpace && selectedDaySpace.length > 0) ? (
+              <div className="space-y-3">
+                {showSchedule && selectedDayEvents.map((entry) => (
+                  <div key={entry.type === "gcal" ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`} className="relative">
+                    {entry.isDismissed && (
+                      <div className="absolute inset-0 bg-background/60 z-10 flex items-center justify-center rounded-md">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="secondary" className="text-xs">
+                            <EyeOff className="w-3 h-3 mr-1" />
+                            Dismissed
+                          </Badge>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const dismissed = (dismissedEvents || []).find(d => d.gcalEventId === entry.gcal?.id);
+                              if (dismissed) restoreMutation.mutate(dismissed.id);
+                            }}
+                            data-testid={`button-restore-event-${entry.gcal?.id}`}
+                          >
+                            <Eye className="w-3 h-3 mr-1" />
+                            Restore
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    <EventCard
+                      entry={entry}
+                      appEvents={appEvents || []}
+                      programmes={programmes || []}
+                      onLogDebrief={handleLogDebrief}
+                      onLogDebriefFromApp={handleLogDebriefFromApp}
+                      onDeleteEvent={handleDeleteEvent}
+                      onDismissEvent={handleDismissEvent}
+                      onMarkNotPersonal={(gcalId) => markNotPersonalMutation.mutate(gcalId)}
+                      isDebriefPending={createDebriefMutation.isPending}
+                      isMarkedNotPersonal={entry.gcal ? notPersonalIds.has(entry.gcal.id) : false}
+                      debriefInfo={getDebriefInfo(entry)}
+                      onViewDebrief={(debriefId) => navigate(`/debriefs/${debriefId}`)}
+                    />
+                  </div>
+                ))}
+                {showSpace && selectedDaySpace.map((item) => (
+                  <Card
+                    key={`${item.kind}-${item.id}`}
+                    className="p-4 border-orange-500/20 bg-orange-500/5 dark:bg-orange-500/5 cursor-pointer overflow-visible hover-elevate"
+                    onClick={() => navigate(item.kind === "booking" ? "/bookings" : "/programmes")}
+                    data-testid={`card-space-${item.kind}-${item.id}`}
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <h4 className="font-medium text-sm">{item.title}</h4>
+                        <Badge className={`text-xs shrink-0 ${BOOKING_BADGE_COLORS[item.classification] || ""}`}>
+                          {item.classification}
+                        </Badge>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        {item.startTime && (
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {item.startTime}{item.endTime ? ` - ${item.endTime}` : ""}
+                          </span>
+                        )}
+                        {item.venue && (
+                          <span className="flex items-center gap-1">
+                            <Building2 className="w-3 h-3" />
+                            {item.venue}
+                          </span>
+                        )}
+                        <Badge className={`text-[10px] ${item.kind === "programme" ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300" : "bg-orange-500/10 text-orange-700 dark:text-orange-300"}`}>
+                          {item.kind === "programme" ? "Programme" : "Booking"}
+                        </Badge>
+                        <Badge className={`text-[10px] ${SPACE_STATUS_COLORS[item.status] || ""}`}>
+                          {item.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <Card className="p-6">
+                <div className="text-center text-muted-foreground text-sm">
+                  <Calendar className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                  <p>No items on this day</p>
+                </div>
+              </Card>
+            )}
+          </div>
         </div>
 
-        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>Remove Event</DialogTitle>
-              <DialogDescription>This action cannot be undone. Please provide a reason.</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-2">
-              {deleteTarget?.type === "app" && (
-                <div className="bg-muted/30 p-3 rounded-lg">
-                  <p className="text-sm font-medium">{(deleteTarget.event as AppEvent).name}</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {formatDate((deleteTarget.event as AppEvent).startTime)}
-                  </p>
-                </div>
-              )}
-              <div className="space-y-2">
-                <Label htmlFor="delete-reason">Why is this event being removed?</Label>
-                <Textarea
-                  id="delete-reason"
-                  value={deleteReason}
-                  onChange={(e) => setDeleteReason(e.target.value)}
-                  placeholder="e.g. Event was cancelled, duplicate entry, never happened..."
-                  className="resize-none"
-                  rows={3}
-                  data-testid="input-delete-reason"
-                />
-                <p className="text-xs text-muted-foreground">
-                  A reason is required so we can keep accurate records.
+        {showSchedule && (
+          <div className="mt-6" data-testid="section-month-programmes">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-display font-bold text-foreground" data-testid="text-programmes-heading">
+                Programmes this month
+              </h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate("/programmes")}
+                data-testid="button-view-all-programmes"
+              >
+                View all
+              </Button>
+            </div>
+            <div className={`flex items-center justify-between px-3 py-2 mb-3 rounded-lg text-sm ${
+              programmeTargetCount >= PROGRAMME_MONTHLY_TARGET
+                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                : programmeTargetCount > 0
+                  ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                  : "bg-muted text-muted-foreground"
+            }`} data-testid="programme-target-indicator">
+              <div className="flex items-center gap-2">
+                <CalendarDays className="w-4 h-4" />
+                <span className="font-medium">
+                  {programmeTargetCount} / {PROGRAMME_MONTHLY_TARGET} target
+                </span>
+              </div>
+              <span className="text-xs">
+                {programmeTargetCount >= PROGRAMME_MONTHLY_TARGET
+                  ? "Target met"
+                  : `Need ${PROGRAMME_MONTHLY_TARGET - programmeTargetCount} more to hit target`}
+              </span>
+            </div>
+            {monthProgrammes.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {monthProgrammes.map((p: Programme) => {
+                const dateDisplay = (() => {
+                  if (p.tbcMonth && p.tbcYear) return `TBC - ${p.tbcMonth} ${p.tbcYear}`;
+                  if (!p.startDate) return null;
+                  const start = format(new Date(p.startDate), "d MMM");
+                  if (p.endDate && format(new Date(p.endDate), "yyyy-MM-dd") !== format(new Date(p.startDate), "yyyy-MM-dd")) {
+                    return `${start} - ${format(new Date(p.endDate), "d MMM")}`;
+                  }
+                  return start;
+                })();
+
+                const timeDisplay = p.startTime
+                  ? p.endTime ? `${p.startTime} - ${p.endTime}` : p.startTime
+                  : null;
+
+                const totalBudget = parseFloat(p.facilitatorCost || "0") + parseFloat(p.cateringCost || "0") + parseFloat(p.promoCost || "0");
+
+                const facCount = (p.facilitators || []).length;
+                const attCount = (p.attendees || []).length;
+
+                return (
+                  <Card
+                    key={p.id}
+                    className={`p-3 hover-elevate cursor-pointer transition-all ${PROG_STATUS_COLORS[p.status] || ""}`}
+                    onClick={() => navigate("/programmes")}
+                    data-testid={`card-cal-programme-${p.id}`}
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-1.5">
+                      <h4 className={`font-medium text-sm truncate ${p.status === "cancelled" ? "line-through opacity-70" : ""}`}>
+                        {p.name}
+                      </h4>
+                      <Badge className={`text-xs shrink-0 ${PROG_CLASSIFICATION_COLORS[p.classification] || ""}`}>
+                        {p.classification}
+                      </Badge>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      {dateDisplay && (
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          {dateDisplay}
+                        </span>
+                      )}
+                      {timeDisplay && (
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {timeDisplay}
+                        </span>
+                      )}
+                      {p.location && (
+                        <span className="flex items-center gap-1">
+                          <MapPin className="w-3 h-3" />
+                          <span className="truncate max-w-[100px]">{p.location}</span>
+                        </span>
+                      )}
+                      {totalBudget > 0 && (
+                        <span className="flex items-center gap-1">
+                          ${totalBudget.toLocaleString()}
+                        </span>
+                      )}
+                      {facCount > 0 && (
+                        <span className="flex items-center gap-1">
+                          <Users className="w-3 h-3" />
+                          {facCount} facilitator{facCount !== 1 ? "s" : ""}
+                        </span>
+                      )}
+                      {attCount > 0 && (
+                        <span className="flex items-center gap-1">
+                          <UserPlus className="w-3 h-3" />
+                          {attCount} attendee{attCount !== 1 ? "s" : ""}
+                        </span>
+                      )}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">No programmes scheduled this month</p>
+            )}
+          </div>
+        )}
+
+
+      </div>
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Remove Event</DialogTitle>
+            <DialogDescription>This action cannot be undone. Please provide a reason.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {deleteTarget?.type === "app" && (
+              <div className="bg-muted/30 p-3 rounded-lg">
+                <p className="text-sm font-medium">{(deleteTarget.event as AppEvent).name}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {formatDate((deleteTarget.event as AppEvent).startTime)}
                 </p>
               </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="delete-reason">Why is this event being removed?</Label>
+              <Textarea
+                id="delete-reason"
+                value={deleteReason}
+                onChange={(e) => setDeleteReason(e.target.value)}
+                placeholder="e.g. Event was cancelled, duplicate entry, never happened..."
+                className="resize-none"
+                rows={3}
+                data-testid="input-delete-reason"
+              />
+              <p className="text-xs text-muted-foreground">
+                A reason is required so we can keep accurate records.
+              </p>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} data-testid="button-cancel-delete">
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={confirmDelete}
-                disabled={!deleteReason.trim() || deleteEventMutation.isPending}
-                data-testid="button-confirm-delete"
-              >
-                {deleteEventMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
-                Delete
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog open={dismissDialogOpen} onOpenChange={setDismissDialogOpen}>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>Dismiss Event</DialogTitle>
-              <DialogDescription>This event will be hidden from your calendar view. You can restore it later.</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-2">
-              {dismissTarget && (
-                <div className="bg-muted/30 p-3 rounded-lg">
-                  <p className="text-sm font-medium">{dismissTarget.eventName}</p>
-                </div>
-              )}
-              <div className="space-y-2">
-                <Label>Reason for dismissing</Label>
-                <div className="flex flex-col gap-2">
-                  {["Didn't happen", "Personal event", "Duplicate", "Not relevant"].map(reason => (
-                    <Button
-                      key={reason}
-                      variant="outline"
-                      size="sm"
-                      className={`justify-start toggle-elevate ${dismissReason === reason ? "toggle-elevated" : ""}`}
-                      onClick={() => setDismissReason(reason)}
-                      data-testid={`button-dismiss-reason-${reason.toLowerCase().replace(/\s+/g, "-")}`}
-                    >
-                      {reason}
-                    </Button>
-                  ))}
-                </div>
-                <Input
-                  value={!["Didn't happen", "Personal event", "Duplicate", "Not relevant"].includes(dismissReason) ? dismissReason : ""}
-                  onChange={(e) => setDismissReason(e.target.value)}
-                  placeholder="Or type a custom reason..."
-                  className="text-sm"
-                  data-testid="input-dismiss-reason-custom"
-                />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} data-testid="button-cancel-delete">
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={!deleteReason.trim() || deleteEventMutation.isPending}
+              data-testid="button-confirm-delete"
+            >
+              {deleteEventMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={dismissDialogOpen} onOpenChange={setDismissDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Dismiss Event</DialogTitle>
+            <DialogDescription>This event will be hidden from your calendar view. You can restore it later.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {dismissTarget && (
+              <div className="bg-muted/30 p-3 rounded-lg">
+                <p className="text-sm font-medium">{dismissTarget.eventName}</p>
               </div>
+            )}
+            <div className="space-y-2">
+              <Label>Reason for dismissing</Label>
+              <div className="flex flex-col gap-2">
+                {["Didn't happen", "Personal event", "Duplicate", "Not relevant"].map(reason => (
+                  <Button
+                    key={reason}
+                    variant="outline"
+                    size="sm"
+                    className={`justify-start toggle-elevate ${dismissReason === reason ? "toggle-elevated" : ""}`}
+                    onClick={() => setDismissReason(reason)}
+                    data-testid={`button-dismiss-reason-${reason.toLowerCase().replace(/\s+/g, "-")}`}
+                  >
+                    {reason}
+                  </Button>
+                ))}
+              </div>
+              <Input
+                value={!["Didn't happen", "Personal event", "Duplicate", "Not relevant"].includes(dismissReason) ? dismissReason : ""}
+                onChange={(e) => setDismissReason(e.target.value)}
+                placeholder="Or type a custom reason..."
+                className="text-sm"
+                data-testid="input-dismiss-reason-custom"
+              />
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setDismissDialogOpen(false)} data-testid="button-cancel-dismiss">
-                Cancel
-              </Button>
-              <Button
-                onClick={confirmDismiss}
-                disabled={!dismissReason.trim() || dismissMutation.isPending}
-                data-testid="button-confirm-dismiss"
-              >
-                {dismissMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <EyeOff className="w-4 h-4 mr-1" />}
-                Dismiss
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </main>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDismissDialogOpen(false)} data-testid="button-cancel-dismiss">
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmDismiss}
+              disabled={!dismissReason.trim() || dismissMutation.isPending}
+              data-testid="button-confirm-dismiss"
+            >
+              {dismissMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <EyeOff className="w-4 h-4 mr-1" />}
+              Dismiss
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </main>
   );
 }
