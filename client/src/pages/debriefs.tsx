@@ -501,6 +501,8 @@ function ReviewView({ id }: { id: number }) {
   const [sentiment, setSentiment] = useState("neutral");
   const [milestones, setMilestones] = useState<string[]>([]);
   const [newMilestone, setNewMilestone] = useState("");
+  const [funderTags, setFunderTags] = useState<string[]>(impactLog?.funderTags || []);
+  const [funderTagInput, setFunderTagInput] = useState("");
   const [actionItemsList, setActionItemsList] = useState<any[]>([]);
   const [newAction, setNewAction] = useState({ title: "", owner: "", priority: "medium" });
   const [impactTags, setImpactTags] = useState<any[]>([]);
@@ -757,6 +759,7 @@ function ReviewView({ id }: { id: number }) {
         summary,
         sentiment,
         milestones,
+        funderTags,
         reviewedData,
         reviewedAt: status === "confirmed" ? new Date().toISOString() : undefined,
       });
@@ -1433,6 +1436,58 @@ function ReviewView({ id }: { id: number }) {
                       }
                     }}
                     data-testid="button-add-milestone"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+              </Card>
+
+              <Card className="p-5">
+                <h3 className="font-bold font-display mb-3">Funder Tags</h3>
+                {funderTags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {funderTags.map((tag, i) => (
+                      <Badge key={i} variant="secondary" className="text-xs gap-1 pr-1" data-testid={`badge-funder-tag-${i}`}>
+                        {tag}
+                        <button
+                          onClick={() => setFunderTags(funderTags.filter(t => t !== tag))}
+                          className="ml-0.5 transition-colors"
+                          type="button"
+                          data-testid={`button-remove-funder-tag-${i}`}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={funderTagInput}
+                    onChange={(e) => setFunderTagInput(e.target.value)}
+                    placeholder="Add funder tag..."
+                    className="flex-1"
+                    data-testid="input-funder-tag"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        if (funderTagInput.trim() && !funderTags.includes(funderTagInput.trim())) {
+                          setFunderTags([...funderTags, funderTagInput.trim()]);
+                          setFunderTagInput("");
+                        }
+                      }
+                    }}
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      if (funderTagInput.trim() && !funderTags.includes(funderTagInput.trim())) {
+                        setFunderTags([...funderTags, funderTagInput.trim()]);
+                        setFunderTagInput("");
+                      }
+                    }}
+                    data-testid="button-add-funder-tag"
                   >
                     <Plus className="w-4 h-4" />
                   </Button>

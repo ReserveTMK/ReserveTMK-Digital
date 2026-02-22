@@ -22,6 +22,7 @@ import {
   X,
   Shield,
   Calendar,
+  Trophy,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useRef, useEffect } from "react";
@@ -62,6 +63,8 @@ const navGroups: NavGroup[] = [
       { name: "Debriefs", href: "/debriefs", icon: Mic, description: "Log impact debriefs" },
       { name: "Debrief Queue", href: "/debrief-queue", icon: ClipboardList, description: "Reconcile pending debriefs" },
       { name: "Action Items", href: "/actions", icon: CheckSquare, description: "Track follow-ups" },
+      { name: "Milestones", href: "/milestones", icon: Trophy, description: "Achievements & outcomes" },
+      { name: "Programme Effectiveness", href: "/programme-effectiveness", icon: BarChart3, description: "Programme quality metrics" },
     ],
   },
   {

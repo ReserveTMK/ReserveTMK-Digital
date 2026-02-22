@@ -2655,5 +2655,227 @@ Keep responses concise and actionable. Format as structured sections.`;
     }
   });
 
+  // ── Milestones ──
+  app.get("/api/milestones", isAuthenticated, async (req, res) => {
+    const milestoneList = await storage.getMilestones(req.user!.id);
+    res.json(milestoneList);
+  });
+
+  app.get("/api/milestones/:id", isAuthenticated, async (req, res) => {
+    const milestone = await storage.getMilestone(Number(req.params.id));
+    if (!milestone) return res.status(404).json({ message: "Milestone not found" });
+    res.json(milestone);
+  });
+
+  app.post("/api/milestones", isAuthenticated, async (req, res) => {
+    try {
+      const milestone = await storage.createMilestone({ ...req.body, userId: req.user!.id, createdBy: req.user!.id });
+      res.status(201).json(milestone);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/milestones/:id", isAuthenticated, async (req, res) => {
+    try {
+      const milestone = await storage.updateMilestone(Number(req.params.id), req.body);
+      res.json(milestone);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/milestones/:id", isAuthenticated, async (req, res) => {
+    await storage.deleteMilestone(Number(req.params.id));
+    res.json({ success: true });
+  });
+
+  // ── Relationship Stage Updates ──
+  app.patch("/api/contacts/:id/relationship-stage", isAuthenticated, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { stage } = req.body;
+      const contact = await storage.getContact(id);
+      if (!contact) return res.status(404).json({ message: "Contact not found" });
+      const previousStage = contact.relationshipStage || null;
+      if (previousStage !== stage) {
+        await storage.createRelationshipStageHistory({
+          entityType: "contact",
+          entityId: id,
+          previousStage,
+          newStage: stage,
+          changedBy: req.user!.id,
+        });
+      }
+      const updated = await storage.updateContact(id, { relationshipStage: stage });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/groups/:id/relationship-stage", isAuthenticated, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { stage } = req.body;
+      const group = await storage.getGroup(id);
+      if (!group) return res.status(404).json({ message: "Group not found" });
+      const previousStage = group.relationshipStage || null;
+      if (previousStage !== stage) {
+        await storage.createRelationshipStageHistory({
+          entityType: "group",
+          entityId: id,
+          previousStage,
+          newStage: stage,
+          changedBy: req.user!.id,
+        });
+      }
+      const updated = await storage.updateGroup(id, { relationshipStage: stage });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/relationship-stage-history/:entityType/:entityId", isAuthenticated, async (req, res) => {
+    const history = await storage.getRelationshipStageHistory(req.params.entityType, Number(req.params.entityId));
+    res.json(history);
+  });
+
+  // ── Relationship Stage Dashboard Stats ──
+  app.get("/api/dashboard/relationship-stages", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const contactsList = await storage.getContacts(userId);
+      const groupsList = await storage.getGroups(userId);
+      const stages = ["new", "engaged", "active", "deepening", "partner", "alumni"];
+      const contactCounts: Record<string, number> = {};
+      const groupCounts: Record<string, number> = {};
+      stages.forEach(s => { contactCounts[s] = 0; groupCounts[s] = 0; });
+      contactsList.forEach((c: any) => {
+        const s = c.relationshipStage || "new";
+        contactCounts[s] = (contactCounts[s] || 0) + 1;
+      });
+      groupsList.forEach((g: any) => {
+        const s = g.relationshipStage || "new";
+        groupCounts[s] = (groupCounts[s] || 0) + 1;
+      });
+      res.json({ contactCounts, groupCounts });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ── Milestone Dashboard Stats ──
+  app.get("/api/dashboard/milestone-stats", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const allMilestones = await storage.getMilestones(userId);
+      const startDate = req.query.startDate ? new Date(req.query.startDate as string) : null;
+      const endDate = req.query.endDate ? new Date(req.query.endDate as string) : null;
+      const filtered = allMilestones.filter(m => {
+        if (startDate && m.createdAt && new Date(m.createdAt) < startDate) return false;
+        if (endDate && m.createdAt && new Date(m.createdAt) > endDate) return false;
+        return true;
+      });
+      const byType: Record<string, number> = {};
+      let totalValue = 0;
+      filtered.forEach(m => {
+        byType[m.milestoneType] = (byType[m.milestoneType] || 0) + 1;
+        if (m.valueAmount) totalValue += parseFloat(String(m.valueAmount));
+      });
+      res.json({ total: filtered.length, byType, totalValue });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ── Programme Effectiveness ──
+  app.get("/api/programme-effectiveness", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const programmeList = await storage.getProgrammes(userId);
+      const allMilestones = await storage.getMilestones(userId);
+      const allImpactLogs = await storage.getImpactLogs(userId);
+      const allEvents = await storage.getEvents(userId);
+
+      const effectiveness = await Promise.all(programmeList.map(async (prog) => {
+        const progEvents = await storage.getProgrammeEvents(prog.id);
+        const eventIds = progEvents.map(pe => pe.eventId);
+
+        let totalAttendance = 0;
+        const attendeeSet = new Set<number>();
+        for (const eid of eventIds) {
+          const att = await storage.getEventAttendance(eid);
+          totalAttendance += att.length;
+          att.forEach(a => attendeeSet.add(a.contactId));
+        }
+
+        const linkedDebriefs = allImpactLogs.filter(il => il.programmeId === prog.id && il.status === "confirmed");
+        const sentiments = linkedDebriefs
+          .map(d => d.sentiment)
+          .filter(Boolean);
+        const sentimentMap: Record<string, number> = { positive: 3, neutral: 2, negative: 1 };
+        const sentimentAvg = sentiments.length > 0
+          ? sentiments.reduce((sum, s) => sum + (sentimentMap[s!] || 2), 0) / sentiments.length
+          : null;
+
+        const linkedMilestones = allMilestones.filter(m => m.linkedProgrammeId === prog.id);
+
+        const totalBudget = parseFloat(String(prog.facilitatorCost || 0))
+          + parseFloat(String(prog.cateringCost || 0))
+          + parseFloat(String(prog.promoCost || 0));
+        const uniqueCount = attendeeSet.size;
+        const costPerParticipant = uniqueCount > 0 && totalBudget > 0
+          ? totalBudget / uniqueCount
+          : null;
+
+        const repeatRate = eventIds.length > 1 && uniqueCount > 0
+          ? Math.round(((totalAttendance - uniqueCount) / totalAttendance) * 100)
+          : null;
+
+        return {
+          id: prog.id,
+          name: prog.name,
+          classification: prog.classification,
+          status: prog.status,
+          eventCount: eventIds.length,
+          totalAttendance,
+          uniqueAttendees: uniqueCount,
+          repeatParticipationRate: repeatRate,
+          confirmedDebriefs: linkedDebriefs.length,
+          sentimentAverage: sentimentAvg,
+          milestoneCount: linkedMilestones.length,
+          totalBudget: totalBudget > 0 ? totalBudget : null,
+          costPerParticipant,
+        };
+      }));
+
+      res.json(effectiveness);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ── Funder Tags List (distinct values across all entities) ──
+  app.get("/api/funder-tags", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const progs = await storage.getProgrammes(userId);
+      const debriefs = await storage.getImpactLogs(userId);
+      const bookingList = await storage.getBookings(userId);
+      const milestoneList = await storage.getMilestones(userId);
+      const tagSet = new Set<string>();
+      [...progs, ...debriefs, ...bookingList, ...milestoneList].forEach((item: any) => {
+        if (item.funderTags && Array.isArray(item.funderTags)) {
+          item.funderTags.forEach((t: string) => tagSet.add(t));
+        }
+      });
+      res.json([...tagSet].sort());
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }

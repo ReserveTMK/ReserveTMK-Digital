@@ -7,7 +7,7 @@ import { useImpactLogs } from "@/hooks/use-impact-logs";
 import { useAuth } from "@/hooks/use-auth";
 import { useProgrammes } from "@/hooks/use-programmes";
 import { useBookings, useVenues } from "@/hooks/use-bookings";
-import { Users, Activity, TrendingUp, Calendar as CalendarIcon, ArrowRight, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, PartyPopper, Mic, FileText, Building2, Layers, BookOpen, AlertTriangle, ClipboardCheck, SkipForward } from "lucide-react";
+import { Users, Activity, TrendingUp, Calendar as CalendarIcon, ArrowRight, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, PartyPopper, Mic, FileText, Building2, Layers, BookOpen, AlertTriangle, ClipboardCheck, SkipForward, Trophy, DollarSign } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, isBefore } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -52,6 +52,21 @@ export default function Dashboard() {
 
   const { data: debriefQueue } = useQuery<any[]>({
     queryKey: ["/api/events/needs-debrief"],
+  });
+
+  const { data: milestoneStats } = useQuery<{
+    total: number;
+    byType: Record<string, number>;
+    totalValue: number;
+  }>({
+    queryKey: ["/api/dashboard/milestone-stats"],
+  });
+
+  const { data: relationshipStages } = useQuery<{
+    contactCounts: Record<string, number>;
+    groupCounts: Record<string, number>;
+  }>({
+    queryKey: ["/api/dashboard/relationship-stages"],
   });
 
   const { data: trendData } = useQuery<{
@@ -221,6 +236,80 @@ export default function Dashboard() {
               color="blue"
               data-testid="metric-total-events"
             />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            <Card className="p-4 md:p-6" data-testid="card-milestone-stats">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <Trophy className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-display font-semibold" data-testid="text-milestones-heading">Milestones This Period</h3>
+                  <p className="text-xs text-muted-foreground">Achievements & outcomes tracked</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground">Total Count</p>
+                  <p className="text-2xl font-bold font-display" data-testid="text-milestone-count">
+                    {milestoneStats?.total ?? 0}
+                  </p>
+                </div>
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <DollarSign className="w-3 h-3" /> Economic Value
+                  </p>
+                  <p className="text-2xl font-bold font-display" data-testid="text-milestone-value">
+                    ${(milestoneStats?.totalValue ?? 0).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+              <Link href="/milestones" className="text-primary hover:underline text-xs font-medium flex items-center justify-center pt-4" data-testid="link-view-milestones">
+                View all milestones <ArrowRight className="w-3 h-3 ml-1" />
+              </Link>
+            </Card>
+
+            <Card className="p-4 md:p-6" data-testid="card-relationship-stages">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 rounded-lg bg-blue-500/10">
+                  <Users className="w-5 h-5 text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="font-display font-semibold" data-testid="text-stages-heading">Relationship Stages</h3>
+                  <p className="text-xs text-muted-foreground">Contacts by engagement level</p>
+                </div>
+              </div>
+              {relationshipStages ? (
+                <div className="space-y-2">
+                  {["new", "engaged", "active", "deepening", "partner", "alumni"].map((stage) => {
+                    const count = relationshipStages.contactCounts[stage] || 0;
+                    const totalContacts = Object.values(relationshipStages.contactCounts).reduce((a, b) => a + b, 0);
+                    const pct = totalContacts > 0 ? (count / totalContacts) * 100 : 0;
+                    return (
+                      <div key={stage} className="flex items-center gap-3" data-testid={`row-stage-${stage}`}>
+                        <span className="text-xs text-muted-foreground w-20 capitalize">{stage}</span>
+                        <div className="flex-1 bg-muted rounded-full h-2 overflow-hidden">
+                          <div
+                            className="bg-primary h-full rounded-full transition-all"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <span className="text-xs font-medium w-8 text-right" data-testid={`text-stage-count-${stage}`}>
+                          {count}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-4 w-full" />
+                  ))}
+                </div>
+              )}
+            </Card>
           </div>
 
           {debriefQueue && debriefQueue.length > 0 && (

@@ -749,6 +749,8 @@ function BookingFormDialog({
   const [attendeeCount, setAttendeeCount] = useState(booking?.attendeeCount?.toString() || (booking?.attendees?.length || 0).toString());
   const [membershipId, setMembershipId] = useState<number | null>(booking?.membershipId || null);
   const [mouId, setMouId] = useState<number | null>(booking?.mouId || null);
+  const [funderTags, setFunderTags] = useState<string[]>(booking?.funderTags || []);
+  const [funderTagInput, setFunderTagInput] = useState("");
 
   const { data: allMemberships } = useMemberships();
   const { data: allMous } = useMous();
@@ -821,6 +823,7 @@ function BookingFormDialog({
       membershipId: membershipId || null,
       mouId: mouId || null,
       notes: notes.trim() || undefined,
+      funderTags: funderTags.length > 0 ? funderTags : [],
     };
     onSubmit(data);
   };
@@ -1225,6 +1228,59 @@ function BookingFormDialog({
               placeholder="Number of attendees"
               data-testid="input-booking-attendee-count"
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Funder Tags</Label>
+            {funderTags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {funderTags.map((tag, i) => (
+                  <Badge key={i} variant="secondary" className="text-xs gap-1 pr-1" data-testid={`badge-funder-tag-${i}`}>
+                    {tag}
+                    <button
+                      onClick={() => setFunderTags(funderTags.filter(t => t !== tag))}
+                      className="ml-0.5 transition-colors"
+                      type="button"
+                      data-testid={`button-remove-funder-tag-${i}`}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <Input
+                value={funderTagInput}
+                onChange={(e) => setFunderTagInput(e.target.value)}
+                placeholder="Add funder tag..."
+                className="flex-1"
+                data-testid="input-funder-tag"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (funderTagInput.trim() && !funderTags.includes(funderTagInput.trim())) {
+                      setFunderTags([...funderTags, funderTagInput.trim()]);
+                      setFunderTagInput("");
+                    }
+                  }
+                }}
+              />
+              <Button
+                variant="outline"
+                size="icon"
+                type="button"
+                onClick={() => {
+                  if (funderTagInput.trim() && !funderTags.includes(funderTagInput.trim())) {
+                    setFunderTags([...funderTags, funderTagInput.trim()]);
+                    setFunderTagInput("");
+                  }
+                }}
+                data-testid="button-add-funder-tag"
+              >
+                <Plus className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
 
           <div>

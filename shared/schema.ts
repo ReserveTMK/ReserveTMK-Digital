@@ -7,6 +7,27 @@ import { z } from "zod";
 export * from "./models/auth";
 export * from "./models/chat";
 
+export const RELATIONSHIP_STAGES = [
+  "new",
+  "engaged",
+  "active",
+  "deepening",
+  "partner",
+  "alumni",
+] as const;
+export type RelationshipStage = typeof RELATIONSHIP_STAGES[number];
+
+export const MILESTONE_TYPES = [
+  "funding_secured",
+  "business_launched",
+  "collaboration_formed",
+  "job_created",
+  "prototype_completed",
+  "revenue_milestone",
+  "other",
+] as const;
+export type MilestoneType = typeof MILESTONE_TYPES[number];
+
 // === TABLE DEFINITIONS ===
 
 export const contacts = pgTable("contacts", {
@@ -39,6 +60,7 @@ export const contacts = pgTable("contacts", {
   consentDate: timestamp("consent_date"),
   consentNotes: text("consent_notes"),
   stage: text("stage"),
+  relationshipStage: text("relationship_stage").default("new"),
 });
 
 export const interactions = pgTable("interactions", {
@@ -120,6 +142,7 @@ export const impactLogs = pgTable("impact_logs", {
   sentiment: text("sentiment"),
   milestones: text("milestones").array(),
   keyQuotes: text("key_quotes").array(),
+  funderTags: text("funder_tags").array(),
   reviewedAt: timestamp("reviewed_at"),
   reviewedBy: text("reviewed_by"),
   confirmedAt: timestamp("confirmed_at"),
@@ -235,6 +258,7 @@ export const groups = pgTable("groups", {
   address: text("address"),
   website: text("website"),
   notes: text("notes"),
+  relationshipStage: text("relationship_stage").default("new"),
   active: boolean("active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -276,6 +300,7 @@ export const programmes = pgTable("programmes", {
   promoCost: numeric("promo_cost", { precision: 10, scale: 2 }).default("0"),
   facilitators: integer("facilitators").array(),
   attendees: integer("attendees").array(),
+  funderTags: text("funder_tags").array(),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -313,6 +338,7 @@ export const bookings = pgTable("bookings", {
   attendeeCount: integer("attendee_count"),
   membershipId: integer("membership_id"),
   mouId: integer("mou_id"),
+  funderTags: text("funder_tags").array(),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -374,6 +400,33 @@ export const impactLogGroups = pgTable("impact_log_groups", {
   id: serial("id").primaryKey(),
   impactLogId: integer("impact_log_id").notNull(),
   groupId: integer("group_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const relationshipStageHistory = pgTable("relationship_stage_history", {
+  id: serial("id").primaryKey(),
+  entityType: text("entity_type").notNull(),
+  entityId: integer("entity_id").notNull(),
+  previousStage: text("previous_stage"),
+  newStage: text("new_stage").notNull(),
+  changedBy: text("changed_by"),
+  changedAt: timestamp("changed_at").defaultNow(),
+});
+
+export const milestones = pgTable("milestones", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  title: text("title").notNull(),
+  milestoneType: text("milestone_type").notNull().default("other"),
+  description: text("description"),
+  linkedContactId: integer("linked_contact_id"),
+  linkedGroupId: integer("linked_group_id"),
+  linkedProgrammeId: integer("linked_programme_id"),
+  linkedImpactLogId: integer("linked_impact_log_id"),
+  valueAmount: numeric("value_amount", { precision: 12, scale: 2 }),
+  valueCurrency: text("value_currency").default("NZD"),
+  funderTags: text("funder_tags").array(),
+  createdBy: text("created_by"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -465,6 +518,24 @@ export type InsertLegacyReportSnapshot = z.infer<typeof insertLegacyReportSnapsh
 
 export type ReportingSettings = typeof reportingSettings.$inferSelect;
 export type InsertReportingSettings = z.infer<typeof insertReportingSettingsSchema>;
+
+export const insertRelationshipStageHistorySchema = createInsertSchema(relationshipStageHistory).omit({
+  id: true,
+  changedAt: true,
+});
+
+export const insertMilestoneSchema = createInsertSchema(milestones).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  milestoneType: z.enum(MILESTONE_TYPES).default("other"),
+});
+
+export type RelationshipStageHistoryRecord = typeof relationshipStageHistory.$inferSelect;
+export type InsertRelationshipStageHistory = z.infer<typeof insertRelationshipStageHistorySchema>;
+
+export type Milestone = typeof milestones.$inferSelect;
+export type InsertMilestone = z.infer<typeof insertMilestoneSchema>;
 
 // === RELATIONS ===
 export const groupsRelations = relations(groups, ({ many }) => ({
@@ -624,6 +695,25 @@ export const impactLogContactsRelations = relations(impactLogContacts, ({ one })
   contact: one(contacts, {
     fields: [impactLogContacts.contactId],
     references: [contacts.id],
+  }),
+}));
+
+export const milestonesRelations = relations(milestones, ({ one }) => ({
+  contact: one(contacts, {
+    fields: [milestones.linkedContactId],
+    references: [contacts.id],
+  }),
+  group: one(groups, {
+    fields: [milestones.linkedGroupId],
+    references: [groups.id],
+  }),
+  programme: one(programmes, {
+    fields: [milestones.linkedProgrammeId],
+    references: [programmes.id],
+  }),
+  impactLog: one(impactLogs, {
+    fields: [milestones.linkedImpactLogId],
+    references: [impactLogs.id],
   }),
 }));
 

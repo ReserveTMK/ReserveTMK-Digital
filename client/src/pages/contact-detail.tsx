@@ -9,7 +9,9 @@ import { Card } from "@/components/ui/card";
 import { useRoute } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Loader2, Mic, StopCircle, ArrowLeft, Brain, TrendingUp, Sparkles, AlertCircle, DollarSign, Settings, Rocket, Network, Shield, FileText, CheckSquare, Calendar, Clock } from "lucide-react";
+import { Loader2, Mic, StopCircle, ArrowLeft, Brain, TrendingUp, Sparkles, AlertCircle, DollarSign, Settings, Rocket, Network, Shield, FileText, CheckSquare, Calendar, Clock, ChevronDown, History } from "lucide-react";
+import { RelationshipStageSelector } from "@/components/relationship-stage-selector";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Link } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
@@ -19,6 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend 
 } from "recharts";
@@ -58,6 +61,28 @@ export default function ContactDetail() {
 
   const { data: contactGroups } = useContactGroups(id);
   const [consentDialogOpen, setConsentDialogOpen] = useState(false);
+  const [stageHistoryOpen, setStageHistoryOpen] = useState(false);
+
+  const { data: stageHistory } = useQuery({
+    queryKey: ['/api/relationship-stage-history', 'contact', id],
+    queryFn: async () => {
+      const res = await fetch(`/api/relationship-stage-history/contact/${id}`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!id,
+  });
+
+  const stageMutation = useMutation({
+    mutationFn: (stage: string) =>
+      apiRequest('PATCH', `/api/contacts/${id}/relationship-stage`, { stage }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts', id] });
+      queryClient.invalidateQueries({ queryKey: ['/api/relationship-stage-history', 'contact', id] });
+      queryClient.invalidateQueries({ queryKey: ['/api/dashboard/relationship-stages'] });
+    },
+  });
 
   if (contactLoading) {
     return (
@@ -199,6 +224,13 @@ export default function ContactDetail() {
                       Record Consent
                     </Button>
                   </div>
+                  <div className="mt-4">
+                    <RelationshipStageSelector
+                      currentStage={contact.relationshipStage || "new"}
+                      onStageChange={(stage) => stageMutation.mutate(stage)}
+                      disabled={stageMutation.isPending}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -277,6 +309,52 @@ export default function ContactDetail() {
                 ))}
               </div>
             </div>
+          )}
+
+          {stageHistory && stageHistory.length > 0 && (
+            <Collapsible open={stageHistoryOpen} onOpenChange={setStageHistoryOpen}>
+              <Card className="p-4" data-testid="stage-history-section">
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex items-center justify-between w-full text-left focus:outline-none"
+                    data-testid="button-toggle-stage-history"
+                  >
+                    <h3 className="text-sm font-semibold flex items-center gap-2 text-muted-foreground">
+                      <History className="w-4 h-4" />
+                      Stage History
+                    </h3>
+                    <ChevronDown className={cn("w-4 h-4 text-muted-foreground transition-transform", stageHistoryOpen && "rotate-180")} />
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="mt-4 space-y-3">
+                    {(stageHistory as any[]).map((entry: any, idx: number) => (
+                      <div key={entry.id || idx} className="flex items-start gap-3" data-testid={`stage-history-entry-${entry.id || idx}`}>
+                        <div className="flex flex-col items-center shrink-0">
+                          <div className="w-2 h-2 rounded-full bg-primary mt-1.5" />
+                          {idx < stageHistory.length - 1 && <div className="w-px flex-1 bg-border min-h-[16px]" />}
+                        </div>
+                        <div className="flex-1 min-w-0 pb-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {entry.previousStage && (
+                              <>
+                                <Badge variant="secondary" className="text-xs capitalize">{entry.previousStage}</Badge>
+                                <span className="text-muted-foreground text-xs">&rarr;</span>
+                              </>
+                            )}
+                            <Badge variant="secondary" className="text-xs capitalize bg-primary/10">{entry.newStage}</Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {format(new Date(entry.changedAt), 'MMM d, yyyy · h:mm a')}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
           )}
 
           {/* Tabs Content */}

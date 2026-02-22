@@ -2,7 +2,12 @@ import { Button } from "@/components/ui/beautiful-button";
 import { useGroups, useCreateGroup, useUpdateGroup, useDeleteGroup, useGroupMembers, useAddGroupMember, useRemoveGroupMember, useEnrichGroup, useGroupTaxonomyLinks, useSaveGroupTaxonomyLinks } from "@/hooks/use-groups";
 import { useContacts } from "@/hooks/use-contacts";
 import { useTaxonomy } from "@/hooks/use-taxonomy";
-import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe, Target } from "lucide-react";
+import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe, Target, History, ChevronDown } from "lucide-react";
+import { RelationshipStageSelector } from "@/components/relationship-stage-selector";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { format } from "date-fns";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useState, useMemo } from "react";
 import {
   Dialog,
@@ -417,7 +422,28 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit }: {
   const [enrichData, setEnrichData] = useState<Record<string, any> | null>(null);
   const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set());
   const [selectedKaupapa, setSelectedKaupapa] = useState<Set<number>>(new Set());
+  const [stageHistoryOpen, setStageHistoryOpen] = useState(false);
   const { toast } = useToast();
+
+  const stageUpdateMutation = useMutation({
+    mutationFn: (stage: string) => apiRequest('PATCH', `/api/groups/${group.id}/relationship-stage`, { stage }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/relationship-stage-history', 'group', group.id] });
+      queryClient.invalidateQueries({ queryKey: ['/api/dashboard/relationship-stages'] });
+      toast({ title: "Stage updated" });
+    },
+  });
+
+  const { data: stageHistory } = useQuery({
+    queryKey: ['/api/relationship-stage-history', 'group', group.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/relationship-stage-history/group/${group.id}`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: open,
+  });
 
   const existingContactIds = new Set((members || []).map((m: GroupMember) => m.contactId));
   const availableContacts = contacts.filter((c) => !existingContactIds.has(c.id));
@@ -562,6 +588,38 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit }: {
             </div>
           </div>
         </DialogHeader>
+
+        <div className="space-y-2">
+          <h4 className="text-sm font-medium text-muted-foreground">Relationship Stage</h4>
+          <RelationshipStageSelector
+            currentStage={group.relationshipStage || "new"}
+            onStageChange={(stage) => stageUpdateMutation.mutate(stage)}
+            disabled={stageUpdateMutation.isPending}
+          />
+          <Collapsible open={stageHistoryOpen} onOpenChange={setStageHistoryOpen}>
+            <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="toggle-group-stage-history">
+              <History className="w-3 h-3" />
+              Stage History
+              <ChevronDown className={`w-3 h-3 transition-transform ${stageHistoryOpen ? "rotate-180" : ""}`} />
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              {Array.isArray(stageHistory) && stageHistory.length > 0 ? (
+                <div className="mt-2 space-y-1.5">
+                  {stageHistory.map((h: any) => (
+                    <div key={h.id} className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>{h.previousStage || "—"}</span>
+                      <span>→</span>
+                      <Badge variant="secondary" className="text-[10px]">{h.newStage}</Badge>
+                      <span className="ml-auto">{h.changedAt ? format(new Date(h.changedAt), "dd MMM yyyy") : ""}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-muted-foreground">No stage changes recorded yet.</p>
+              )}
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
 
         {enrichData && (
           <div className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-3">

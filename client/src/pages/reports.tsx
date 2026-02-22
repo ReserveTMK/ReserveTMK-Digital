@@ -138,7 +138,12 @@ export default function Reports() {
 
   const [programmeFilter, setProgrammeFilter] = useState("all");
   const [taxonomyFilter, setTaxonomyFilter] = useState("all");
+  const [funderFilter, setFunderFilter] = useState("all");
   const [benchmarkData, setBenchmarkData] = useState<any>(null);
+
+  const { data: funderTags } = useQuery<string[]>({
+    queryKey: ['/api/funder-tags'],
+  });
 
   const getDateRange = () => {
     if (activeTab === "monthly") {
@@ -163,6 +168,7 @@ export default function Reports() {
       const filters: any = { startDate, endDate };
       if (programmeFilter !== "all") filters.programmeIds = [parseInt(programmeFilter)];
       if (taxonomyFilter !== "all") filters.taxonomyIds = [parseInt(taxonomyFilter)];
+      if (funderFilter !== "all") filters.funder = funderFilter;
 
       const reportRes = await apiRequest("POST", "/api/reports/generate", filters);
       const data = await reportRes.json();
@@ -188,6 +194,7 @@ export default function Reports() {
     const filters: any = { startDate, endDate };
     if (programmeFilter !== "all") filters.programmeIds = [parseInt(programmeFilter)];
     if (taxonomyFilter !== "all") filters.taxonomyIds = [parseInt(taxonomyFilter)];
+    if (funderFilter !== "all") filters.funder = funderFilter;
 
     try {
       const res = await apiRequest("POST", "/api/reports/narrative", filters);
@@ -210,6 +217,7 @@ export default function Reports() {
         filters: {
           programmeIds: programmeFilter !== "all" ? [parseInt(programmeFilter)] : undefined,
           taxonomyIds: taxonomyFilter !== "all" ? [parseInt(taxonomyFilter)] : undefined,
+          funder: funderFilter !== "all" ? funderFilter : undefined,
         },
         snapshotData: reportData,
         narrative: narrativeData,
@@ -336,7 +344,7 @@ export default function Reports() {
                 </TabsTrigger>
               </TabsList>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
                 <TabsContent value="monthly" className="mt-0 col-span-1">
                   <div className="space-y-2">
                     <Label>Month</Label>
@@ -399,6 +407,19 @@ export default function Reports() {
                       <SelectItem value="all">All Categories</SelectItem>
                       {taxonomy?.map((t: any) => (
                         <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Funder</Label>
+                  <Select value={funderFilter} onValueChange={setFunderFilter}>
+                    <SelectTrigger data-testid="select-funder-filter"><SelectValue placeholder="All funders" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Funders</SelectItem>
+                      {funderTags?.map((tag: string) => (
+                        <SelectItem key={tag} value={tag}>{tag}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

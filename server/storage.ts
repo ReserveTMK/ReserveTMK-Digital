@@ -87,6 +87,13 @@ import {
   type InsertLegacyReportSnapshot,
   type ReportingSettings,
   type InsertReportingSettings,
+  milestones,
+  relationshipStageHistory,
+  type Milestone,
+  type InsertMilestone,
+  type RelationshipStageHistoryRecord,
+  type InsertRelationshipStageHistory,
+  impactLogGroups,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, sql, max, count } from "drizzle-orm";
 
@@ -260,6 +267,17 @@ export interface IStorage {
   // Reporting Settings
   getReportingSettings(userId: string): Promise<ReportingSettings | undefined>;
   upsertReportingSettings(userId: string, updates: Partial<InsertReportingSettings>): Promise<ReportingSettings>;
+
+  // Milestones
+  getMilestones(userId: string): Promise<Milestone[]>;
+  getMilestone(id: number): Promise<Milestone | undefined>;
+  createMilestone(data: InsertMilestone): Promise<Milestone>;
+  updateMilestone(id: number, updates: Partial<InsertMilestone>): Promise<Milestone>;
+  deleteMilestone(id: number): Promise<void>;
+
+  // Relationship Stage History
+  getRelationshipStageHistory(entityType: string, entityId: number): Promise<RelationshipStageHistoryRecord[]>;
+  createRelationshipStageHistory(data: InsertRelationshipStageHistory): Promise<RelationshipStageHistoryRecord>;
 
   // Auth (re-exported or separate)
   auth: IAuthStorage;
@@ -1088,6 +1106,50 @@ export class DatabaseStorage implements IStorage {
     }
     const [created] = await db.insert(reportingSettings).values({ userId, ...updates }).returning();
     return created;
+  }
+
+  // Milestones
+  async getMilestones(userId: string): Promise<Milestone[]> {
+    return await db.select()
+      .from(milestones)
+      .where(eq(milestones.userId, userId))
+      .orderBy(desc(milestones.createdAt));
+  }
+
+  async getMilestone(id: number): Promise<Milestone | undefined> {
+    const [milestone] = await db.select().from(milestones).where(eq(milestones.id, id));
+    return milestone;
+  }
+
+  async createMilestone(data: InsertMilestone): Promise<Milestone> {
+    const [milestone] = await db.insert(milestones).values(data).returning();
+    return milestone;
+  }
+
+  async updateMilestone(id: number, updates: Partial<InsertMilestone>): Promise<Milestone> {
+    const [milestone] = await db
+      .update(milestones)
+      .set(updates)
+      .where(eq(milestones.id, id))
+      .returning();
+    return milestone;
+  }
+
+  async deleteMilestone(id: number): Promise<void> {
+    await db.delete(milestones).where(eq(milestones.id, id));
+  }
+
+  // Relationship Stage History
+  async getRelationshipStageHistory(entityType: string, entityId: number): Promise<RelationshipStageHistoryRecord[]> {
+    return await db.select()
+      .from(relationshipStageHistory)
+      .where(and(eq(relationshipStageHistory.entityType, entityType), eq(relationshipStageHistory.entityId, entityId)))
+      .orderBy(desc(relationshipStageHistory.changedAt));
+  }
+
+  async createRelationshipStageHistory(data: InsertRelationshipStageHistory): Promise<RelationshipStageHistoryRecord> {
+    const [record] = await db.insert(relationshipStageHistory).values(data).returning();
+    return record;
   }
 }
 
