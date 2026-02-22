@@ -2518,7 +2518,8 @@ Important:
           const pdfBuffer = Buffer.from(pdfData, "base64");
           const parser = new PDFParse({ data: pdfBuffer });
           await parser.load();
-          const pdfText = await parser.getText();
+          const pdfResult = await parser.getText();
+          const pdfText = pdfResult.text || "";
 
           const prompt = buildExtractionPrompt(pdfText);
           const response = await openai.chat.completions.create({
@@ -2661,7 +2662,8 @@ Important:
           const buffer = Buffer.from(report.pdfData, "base64");
           const parser = new PdfParser({ data: buffer });
           await parser.load();
-          pdfText = (await parser.getText()) || "";
+          const pdfResult = await parser.getText();
+          pdfText = pdfResult.text || "";
         } catch (e) {
           pdfText = "";
         }
@@ -2922,70 +2924,6 @@ Return a JSON object with this exact structure:
     }
   });
 
-  // === Legacy Metrics Review Tool (AI-powered) ===
-
-  app.post("/api/legacy-reports/:id/ai-review", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      const reportId = parseInt(req.params.id);
-      const report = await storage.getLegacyReport(reportId);
-      if (!report || report.userId !== userId) {
-        return res.status(404).json({ message: "Report not found" });
-      }
-
-      const snapshot = await storage.getLegacyReportSnapshot(reportId);
-      const taxonomy = await storage.getTaxonomy(userId);
-
-      const taxonomyNames = taxonomy.map(t => t.name).join(", ");
-      const snapshotSummary = snapshot
-        ? `Activations: ${snapshot.activationsTotal} (Workshops: ${snapshot.activationsWorkshops}, Mentoring: ${snapshot.activationsMentoring}, Events: ${snapshot.activationsEvents}, Partner Meetings: ${snapshot.activationsPartnerMeetings}), People: ${snapshot.peopleUnique || "N/A"}, Engagements: ${snapshot.engagementsTotal || "N/A"}, Groups: ${snapshot.groupsUnique || "N/A"}, Bookings: ${snapshot.bookingsTotal || "N/A"}, Hours: ${snapshot.hoursTotal || "N/A"}`
-        : "No snapshot metrics entered.";
-
-      const pdfContext = report.pdfData
-        ? "A PDF report was uploaded for this period (content available but not extractable as text in this context)."
-        : "No PDF was uploaded.";
-
-      const prompt = `You are an impact measurement specialist reviewing a legacy quarterly report from a community organization.
-
-Report: "${report.quarterLabel}" (${report.periodStart?.toISOString?.() || report.periodStart} to ${report.periodEnd?.toISOString?.() || report.periodEnd})
-Notes: ${report.notes || "None"}
-${pdfContext}
-
-Current snapshot metrics: ${snapshotSummary}
-
-Current taxonomy categories in system: ${taxonomyNames || "None defined"}
-
-Please provide:
-1. **Metric Completeness**: Are there metrics that seem missing or could be derived from this data? (e.g., average per event, cost per activation, engagement rate)
-2. **Taxonomy Gap Analysis**: Based on these metrics, suggest 3-5 impact taxonomy categories that would help categorize this work better. Note which ones already exist.
-3. **Trend Indicators**: What questions should be asked when comparing this quarter to others?
-4. **Dashboard Suggestions**: What additional dashboard metrics or charts would help visualize this data alongside live system data?
-5. **Data Quality Notes**: Any concerns about the snapshot data (e.g., missing fields, unusual values, potential double-counting risks)
-
-Keep responses concise and actionable. Format as structured sections.`;
-
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 1000,
-        temperature: 0.7,
-      });
-
-      const analysis = response.choices[0]?.message?.content || "Unable to generate analysis.";
-
-      res.json({
-        reportId,
-        quarterLabel: report.quarterLabel,
-        analysis,
-        snapshotSummary,
-        taxonomyCount: taxonomy.length,
-      });
-    } catch (err: any) {
-      console.error("AI review error:", err);
-      res.status(500).json({ message: "Failed to generate AI review" });
-    }
-  });
-
   // ── Milestones ──
   app.get("/api/milestones", isAuthenticated, async (req, res) => {
     const milestoneList = await storage.getMilestones(req.user!.id);
@@ -3221,7 +3159,8 @@ Keep responses concise and actionable. Format as structured sections.`;
       const pdfBuffer = Buffer.from(report.pdfData, "base64");
       const parser = new PdfParser2({ data: pdfBuffer });
       await parser.load();
-      const pdfText = await parser.getText();
+      const pdfResult = await parser.getText();
+      const pdfText = pdfResult.text || "";
 
       const prompt = buildExtractionPrompt(pdfText);
 
@@ -3258,16 +3197,6 @@ Keep responses concise and actionable. Format as structured sections.`;
     } catch (err: any) {
       console.error("PDF extraction error:", err);
       res.status(500).json({ message: "Failed to extract metrics from PDF" });
-    }
-  });
-
-  app.get("/api/legacy-reports/:id/extraction", isAuthenticated, async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const extraction = await storage.getLegacyReportExtraction(id);
-      res.json(extraction || null);
-    } catch (err: any) {
-      res.status(500).json({ message: "Failed to fetch extraction" });
     }
   });
 
@@ -3474,7 +3403,8 @@ Keep responses concise and actionable. Format as structured sections.`;
           const buffer = Buffer.from(report.pdfData, "base64");
           const parser = new PdfParser({ data: buffer });
           await parser.load();
-          pdfText = (await parser.getText()) || "";
+          const pdfResult = await parser.getText();
+          pdfText = pdfResult.text || "";
         } catch (e) {
           pdfText = "";
         }

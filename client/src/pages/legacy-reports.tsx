@@ -162,9 +162,6 @@ export default function LegacyReportsPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [expandedTrend, setExpandedTrend] = useState(true);
 
-  const [aiReview, setAiReview] = useState<{ reportId: number; analysis: string; quarterLabel: string } | null>(null);
-  const [reviewingId, setReviewingId] = useState<number | null>(null);
-
   const [selectedYear, setSelectedYear] = useState<string>("");
   const [selectedQuarter, setSelectedQuarter] = useState<string>("");
 
@@ -277,22 +274,6 @@ export default function LegacyReportsPage() {
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const aiReviewMutation = useMutation({
-    mutationFn: async (id: number) => {
-      setReviewingId(id);
-      const res = await apiRequest("POST", `/api/legacy-reports/${id}/ai-review`);
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      setAiReview(data);
-      setReviewingId(null);
-    },
-    onError: (err: any) => {
-      setReviewingId(null);
-      toast({ title: "Error", description: err.message || "Failed to generate AI review", variant: "destructive" });
     },
   });
 
@@ -444,23 +425,6 @@ export default function LegacyReportsPage() {
         [field]: value === "" ? null : (field === "hoursTotal" || field === "revenueTotal" || field === "inKindTotal" ? value : parseInt(value) || 0),
       },
     }));
-  }
-
-  async function fetchExtraction(reportId: number) {
-    try {
-      const res = await fetch(`/api/legacy-reports/${reportId}/extraction`, { credentials: "include" });
-      if (res.ok) {
-        const data: Extraction = await res.json();
-        if (data && data.suggestedMetrics && data.suggestedMetrics.length > 0) {
-          const values: Record<string, string> = {};
-          data.suggestedMetrics.forEach((m) => {
-            values[m.metricKey] = m.metricValue !== null ? String(m.metricValue) : "";
-          });
-          setEditedMetricValues(values);
-          setExtractionData({ reportId, metrics: data.suggestedMetrics });
-        }
-      }
-    } catch {}
   }
 
   function applyExtractionToSnapshot(reportId: number) {
@@ -678,15 +642,6 @@ export default function LegacyReportsPage() {
                             )}
                             Extract
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => fetchExtraction(report.id)}
-                            data-testid={`button-view-extraction-${report.id}`}
-                          >
-                            <FileText className="w-3 h-3 mr-1" />
-                            View
-                          </Button>
                         </>
                       )}
                       {report.status === "draft" || !report.status ? (
@@ -711,20 +666,6 @@ export default function LegacyReportsPage() {
                           Unconfirm
                         </Button>
                       )}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => aiReviewMutation.mutate(report.id)}
-                        disabled={reviewingId === report.id}
-                        data-testid={`button-ai-review-${report.id}`}
-                      >
-                        {reviewingId === report.id ? (
-                          <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                        ) : (
-                          <Sparkles className="w-3 h-3 mr-1" />
-                        )}
-                        Review
-                      </Button>
                       {report.status === "confirmed" && (
                         <Button
                           size="sm"
@@ -889,29 +830,6 @@ export default function LegacyReportsPage() {
             </Card>
           )}
 
-          {aiReview && (
-            <Card className="p-5 border-primary/20 bg-primary/5" data-testid="card-ai-review">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-primary" />
-                  <h3 className="font-display font-semibold">AI Metrics Review: {aiReview.quarterLabel}</h3>
-                </div>
-                <Button size="icon" variant="ghost" onClick={() => setAiReview(null)} data-testid="button-close-review">
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-              <div className="prose prose-sm dark:prose-invert max-w-none text-sm text-muted-foreground">
-                {aiReview.analysis.split("\n").map((line, i) => {
-                  if (line.startsWith("##") || line.match(/^\d+\.\s*\*\*/)) {
-                    return <p key={i} className="font-semibold text-foreground mt-3 mb-1">{line.replace(/^#+\s*/, "").replace(/\*\*/g, "")}</p>;
-                  }
-                  if (line.startsWith("- ")) return <p key={i} className="ml-3 mb-1">{line}</p>;
-                  if (line.trim()) return <p key={i} className="mb-1">{line}</p>;
-                  return null;
-                })}
-              </div>
-            </Card>
-          )}
         </div>
 
         <Dialog open={showForm} onOpenChange={(open) => { if (!open) { setShowForm(false); setEditingId(null); } }}>
