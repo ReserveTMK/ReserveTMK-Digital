@@ -1,0 +1,334 @@
+ReserveTMK Reporting Engine – Development Plan
+
+Objective
+
+Design a structured monthly and quarterly reporting system that:
+	•	Pulls from live operational data
+	•	Uses taxonomy-driven impact tagging
+	•	Extracts meaning primarily from Debriefs
+	•	Produces reproducible, filterable reports
+	•	Generates narrative summaries grounded in evidence
+
+The system must be deterministic. All report outputs must be reproducible from stored data.
+
+⸻
+
+1. Core Reporting Philosophy
+
+All reports must answer:
+	1.	Who did we engage?
+	2.	What did we deliver?
+	3.	What changed?
+	4.	What value was created?
+	5.	What is emerging?
+
+Primary data source: Debriefs
+Supporting sources: Contacts, Groups, Programmes, Events, Bookings, Agreements, Taxonomy
+
+Debriefs are the central relational object.
+
+⸻
+
+2. Required Data Relationships
+
+Contact
+	•	id
+	•	demographics
+	•	consent status
+	•	metric history (mindset, skill, confidence)
+	•	relationship_stage
+	•	created_at
+	•	updated_at
+
+Relationships:
+	•	many-to-many Groups
+	•	many-to-many Debriefs
+	•	many-to-many Events
+	•	metric history entries (timestamped)
+
+⸻
+
+Group
+	•	id
+	•	type
+	•	kaupapa matches
+	•	created_at
+
+Relationships:
+	•	many Contacts
+	•	many Debriefs
+	•	many Bookings
+	•	many Agreements
+
+⸻
+
+Debrief (Core Object)
+	•	id
+	•	transcript
+	•	AI_structured_output
+	•	sentiment_score
+	•	milestones
+	•	quotes
+	•	taxonomy_matches (category_id + confidence_score + evidence_text)
+	•	status (draft, pending_review, confirmed)
+	•	linked_event_id (optional)
+	•	linked_programme_id (optional)
+	•	created_at
+	•	confirmed_at
+
+Relationships:
+	•	many Contacts (with role metadata)
+	•	many Groups
+	•	many Taxonomy categories
+
+Only confirmed debriefs are included in reporting.
+
+⸻
+
+Programme
+	•	id
+	•	type
+	•	status
+	•	start_date
+	•	end_date
+	•	budget_line_items
+	•	target_outcomes (taxonomy references)
+
+Relationships:
+	•	many Events
+	•	many Debriefs
+	•	many Contacts
+
+⸻
+
+Event
+	•	id
+	•	type
+	•	classification
+	•	date
+	•	duration
+	•	linked_programme_id
+	•	dismissed_flag
+
+Relationships:
+	•	many Contacts
+	•	optional Debrief
+
+⸻
+
+Booking
+	•	id
+	•	group_id
+	•	classification
+	•	pricing_tier
+	•	duration
+	•	revenue_amount
+	•	in_kind_value
+	•	linked_agreement_id
+	•	created_at
+
+⸻
+
+Agreement (Membership or MOU)
+	•	id
+	•	group_id
+	•	type
+	•	allocated_hours
+	•	used_hours
+	•	value_provided
+	•	value_received
+	•	start_date
+	•	end_date
+
+⸻
+
+Taxonomy
+	•	id
+	•	parent_id
+	•	category_name
+	•	keyword_dictionary
+
+Relationships:
+	•	many Debriefs
+
+⸻
+
+3. Monthly Report – Functional Requirements
+
+Section 1: Engagement
+
+Metrics:
+	•	Unique contacts engaged (distinct contacts linked to confirmed debriefs within date range)
+	•	Total engagement instances (count of confirmed debrief-contact links)
+	•	New contacts created in period
+	•	Active groups engaged
+	•	Repeat engagement rate (contacts with 2+ debrief links in period)
+	•	Demographic breakdown (where consented)
+
+Filters:
+	•	Date range
+	•	Programme
+	•	Taxonomy
+	•	Demographic segment
+
+⸻
+
+Section 2: Delivery
+
+Metrics:
+	•	Count of mentoring sessions
+	•	Count of workshops by type
+	•	Count of external meetings
+	•	Venue bookings count
+	•	Community hours delivered (sum of booking duration)
+	•	Programme completion count
+
+Event classification drives aggregation.
+
+⸻
+
+Section 3: Impact by Taxonomy
+
+Source:
+Confirmed debriefs in date range.
+
+Output:
+For each taxonomy category:
+	•	Number of linked debriefs
+	•	Weighted impact score (sum of confidence scores)
+	•	Unique contacts affected
+	•	Representative quotes (highest confidence)
+	•	Evidence snippets
+
+Only confirmed taxonomy matches included.
+
+⸻
+
+Section 4: Outcome Movement
+
+Source:
+Contact metric history.
+
+Logic:
+	•	Compare earliest metric value in period vs latest in period.
+	•	Calculate average change.
+	•	% of contacts with positive movement.
+	•	Milestone count from debrief metadata.
+
+Exclude contacts with single metric entry.
+
+⸻
+
+Section 5: Value & Contribution
+
+Source:
+Bookings + Agreements.
+
+Metrics:
+	•	Revenue generated
+	•	In-kind value delivered
+	•	Membership usage vs allocation
+	•	MOU value exchange summary
+	•	Cost per programme (if budget exists)
+
+⸻
+
+Section 6: Narrative Generator
+
+Input:
+	•	Top taxonomy categories
+	•	Sentiment averages
+	•	Milestones
+	•	Engagement counts
+	•	Quotes
+
+Constraints:
+	•	Must reference stored evidence IDs.
+	•	No inference outside stored data.
+	•	Generate structured summary paragraph blocks.
+
+⸻
+
+4. Quarterly Report – Additional Requirements
+
+Quarterly builds from monthly data.
+
+Additional components:
+
+Trend Analysis
+	•	Engagement trend (month over month)
+	•	Taxonomy category frequency shift
+	•	Repeat engagement growth
+	•	Metric progression over 3 months
+
+Relationship Depth
+	•	Movement in relationship_stage field
+	•	New partnerships
+	•	Cross-group collaborations (co-linked debriefs)
+
+Programme Evaluation
+
+Per programme:
+	•	Attendance
+	•	Completion rate
+	•	Taxonomy heat map
+	•	Budget vs impact summary
+	•	Outcome summary block
+
+Equity Review
+	•	Demographic representation %
+	•	Youth engagement %
+	•	Māori / Pasifika %
+	•	Gender balance
+	•	Consent coverage %
+
+System Health
+	•	Debriefs pending review
+	•	% events without debrief
+	•	Missing demographic %
+	•	Duplicate detection count
+
+⸻
+
+5. Reporting Engine Technical Requirements
+	1.	All core tables must have:
+	•	created_at
+	•	updated_at
+	•	optional confirmed_at
+	2.	All AI outputs must:
+	•	Be versioned
+	•	Be manually editable
+	•	Store original output
+	3.	Reports must support filtering by:
+	•	Date range
+	•	Programme
+	•	Taxonomy
+	•	Funder
+	•	Demographic segment
+	4.	All metrics must be reproducible from database queries.
+	5.	Reporting layer must separate:
+	•	Data aggregation
+	•	Narrative generation
+	•	Visual formatting
+
+⸻
+
+6. Output Formats Required
+	•	Dashboard view
+	•	PDF export
+	•	CSV export
+	•	One-page board summary
+	•	Funder filtered report
+
+⸻
+
+7. Architecture Principle
+
+Events represent activity.
+Debriefs represent meaning.
+Taxonomy structures impact.
+Metrics show movement.
+Agreements track value.
+Reports synthesise everything.
+
+The reporting engine must treat Debriefs as the primary impact object and aggregate outward from there.
