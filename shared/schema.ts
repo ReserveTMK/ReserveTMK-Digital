@@ -511,6 +511,22 @@ export const legacyReportExtractions = pgTable("legacy_report_extractions", {
     confidence: number;
     evidenceSnippet: string | null;
   }>>().default([]),
+  extractedOrganisations: jsonb("extracted_organisations").$type<Array<{
+    name: string;
+    type: string;
+    description: string | null;
+    relationship: string | null;
+  }>>().default([]),
+  extractedHighlights: jsonb("extracted_highlights").$type<Array<{
+    theme: string;
+    summary: string;
+    activityType: string | null;
+  }>>().default([]),
+  extractedPeople: jsonb("extracted_people").$type<Array<{
+    name: string;
+    role: string | null;
+    context: string | null;
+  }>>().default([]),
   rawText: text("raw_text"),
   createdAt: timestamp("created_at").defaultNow(),
 });

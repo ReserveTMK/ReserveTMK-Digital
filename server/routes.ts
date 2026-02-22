@@ -94,30 +94,62 @@ const METRIC_KEY_TO_SNAPSHOT_FIELD: Record<string, string> = {
 };
 
 function buildExtractionPrompt(pdfText: string): string {
-  return `You are an impact data analyst. Extract quantitative metrics from this community organisation quarterly report text.
+  return `You are an impact data analyst extracting information from a community organisation quarterly report.
 
-For each metric below, find the value in the text. If a metric is not mentioned, set value to null with confidence 0.
+CRITICAL: These reports often contain YEAR-TO-DATE (YTD) cumulative tallies alongside quarterly numbers. You MUST:
+- Look for column headers or labels indicating "YTD", "Year to Date", "Total", "Cumulative"
+- Extract ONLY the QUARTERLY figures, NOT the YTD/cumulative totals
+- If only YTD figures are available and no quarterly breakdown exists, set the value to null rather than guessing
+- Monthly figures within a quarter should be summed to get the quarterly total
+- If there are columns for each month (e.g. Jul, Aug, Sep) and a total column, use the total column ONLY if it represents the quarter, not the full year
 
-Metrics to extract:
+Extract THREE types of information:
+
+1. QUANTITATIVE METRICS - For each metric below, find the quarterly value:
 ${LEGACY_METRIC_KEYS.map(m => `- ${m.key} (${m.label}, unit: ${m.unit})`).join("\n")}
+
+2. ORGANISATIONS & PARTNERS - Extract names of organisations, businesses, community groups, partners mentioned in the report. Include:
+- Partner organisations
+- Businesses mentored or supported
+- Community groups engaged
+- Resident companies
+- Any named collective, trust, or entity
+
+3. NARRATIVE HIGHLIGHTS - Extract key themes, achievements, and activities described in the report. Capture:
+- Major accomplishments or milestones
+- Key programmes or events described
+- Community outcomes or stories
+- Challenges or growth areas mentioned
+
+4. PEOPLE - Extract names of specific individuals mentioned (facilitators, mentees, community leaders, partners). Do NOT include generic titles without names.
 
 Report text:
 """
-${pdfText.substring(0, 8000)}
+${pdfText.substring(0, 12000)}
 """
 
 Respond in JSON format only:
 {
   "metrics": [
-    { "metricKey": "activations_total", "metricValue": 42, "metricUnit": "count", "confidence": 85, "evidenceSnippet": "The exact text snippet where you found this number" },
-    ...
+    { "metricKey": "activations_total", "metricValue": 42, "metricUnit": "count", "confidence": 85, "evidenceSnippet": "exact text snippet (max 200 chars)" }
+  ],
+  "organisations": [
+    { "name": "Org Name", "type": "partner|business|community_group|resident_company|other", "description": "brief context about this org from the report", "relationship": "mentored|partnered|engaged|supported|hosted|other" }
+  ],
+  "highlights": [
+    { "theme": "short theme label", "summary": "2-3 sentence description of this highlight from the report", "activityType": "workshop|mentoring|event|community|partnership|programme|other" }
+  ],
+  "people": [
+    { "name": "Person Name", "role": "facilitator|mentee|partner|leader|other", "context": "brief context about their mention" }
   ]
 }
 
 Rules:
-- confidence is 0-100 (how sure you are)
-- evidenceSnippet is the relevant text snippet (max 200 chars)
-- If not found, set metricValue to null, confidence to 0, evidenceSnippet to null
+- For metrics: confidence 0-100. If not found, set metricValue to null, confidence to 0
+- Be conservative: do NOT fabricate numbers. If uncertain between YTD and quarterly, set to null
+- For organisations: only include named entities explicitly mentioned in the text
+- For highlights: stick to what the report actually says, do not infer or embellish
+- For people: only include people mentioned by name, not generic roles
 - Only return the JSON, no other text`;
 }
 
@@ -2545,9 +2577,31 @@ Important:
             evidenceSnippet: m.evidenceSnippet || null,
           }));
 
+          const extractedOrganisations = (parsed.organisations || []).map((o: any) => ({
+            name: o.name || "",
+            type: o.type || "other",
+            description: o.description || null,
+            relationship: o.relationship || null,
+          })).filter((o: any) => o.name);
+
+          const extractedHighlights = (parsed.highlights || []).map((h: any) => ({
+            theme: h.theme || "",
+            summary: h.summary || "",
+            activityType: h.activityType || null,
+          })).filter((h: any) => h.theme && h.summary);
+
+          const extractedPeople = (parsed.people || []).map((p: any) => ({
+            name: p.name || "",
+            role: p.role || null,
+            context: p.context || null,
+          })).filter((p: any) => p.name);
+
           await storage.createLegacyReportExtraction({
             legacyReportId: report.id,
             suggestedMetrics,
+            extractedOrganisations,
+            extractedHighlights,
+            extractedPeople,
             rawText: pdfText.substring(0, 20000),
           });
 
@@ -2579,7 +2633,7 @@ Important:
             ...report,
             snapshot: snapshotRecord,
             autoExtracted: true,
-            extraction: { suggestedMetrics, autoAppliedCount, reviewNeededCount },
+            extraction: { suggestedMetrics, autoAppliedCount, reviewNeededCount, extractedOrganisations, extractedHighlights, extractedPeople },
           });
         } catch (extractErr: any) {
           console.error("Auto-extraction error (non-fatal):", extractErr);
@@ -2637,7 +2691,41 @@ Important:
 
       const finalSnapshot = snapshotRecord || (await storage.getLegacyReportSnapshot(id));
       const taxonomySuggestionsAvailable = status === "confirmed" && existing.status !== "confirmed";
-      res.json({ ...updated, snapshot: finalSnapshot, taxonomySuggestionsAvailable });
+
+      let createdGroups: string[] = [];
+      if (status === "confirmed" && existing.status !== "confirmed") {
+        try {
+          const extraction = await storage.getLegacyReportExtraction(id);
+          if (extraction?.extractedOrganisations && Array.isArray(extraction.extractedOrganisations)) {
+            const existingGroups = await storage.getGroups(userId);
+            const existingNames = new Set(existingGroups.map(g => g.name.toLowerCase().trim()));
+
+            for (const org of extraction.extractedOrganisations as any[]) {
+              if (!org.name || existingNames.has(org.name.toLowerCase().trim())) continue;
+              try {
+                await storage.createGroup({
+                  userId,
+                  name: org.name,
+                  type: org.type === "community_group" ? "Community Group" :
+                        org.type === "resident_company" ? "Resident Company" :
+                        org.type === "business" ? "Business" : "Organisation",
+                  description: org.description || null,
+                  notes: org.relationship ? `Relationship: ${org.relationship}. Imported from legacy report Q${existing.quarter} ${existing.year}.` : `Imported from legacy report Q${existing.quarter} ${existing.year}.`,
+                  active: true,
+                });
+                existingNames.add(org.name.toLowerCase().trim());
+                createdGroups.push(org.name);
+              } catch (groupErr) {
+                console.error(`Failed to create group "${org.name}":`, groupErr);
+              }
+            }
+          }
+        } catch (extractErr) {
+          console.error("Failed to auto-create groups from extraction:", extractErr);
+        }
+      }
+
+      res.json({ ...updated, snapshot: finalSnapshot, taxonomySuggestionsAvailable, createdGroups });
     } catch (err: any) {
       console.error("Update legacy report error:", err);
       res.status(500).json({ message: "Failed to update legacy report" });
@@ -3187,9 +3275,31 @@ Return a JSON object with this exact structure:
         evidenceSnippet: m.evidenceSnippet || null,
       }));
 
+      const extractedOrganisations = (parsed.organisations || []).map((o: any) => ({
+        name: o.name || "",
+        type: o.type || "other",
+        description: o.description || null,
+        relationship: o.relationship || null,
+      })).filter((o: any) => o.name);
+
+      const extractedHighlights = (parsed.highlights || []).map((h: any) => ({
+        theme: h.theme || "",
+        summary: h.summary || "",
+        activityType: h.activityType || null,
+      })).filter((h: any) => h.theme && h.summary);
+
+      const extractedPeople = (parsed.people || []).map((p: any) => ({
+        name: p.name || "",
+        role: p.role || null,
+        context: p.context || null,
+      })).filter((p: any) => p.name);
+
       const extraction = await storage.createLegacyReportExtraction({
         legacyReportId: id,
         suggestedMetrics,
+        extractedOrganisations,
+        extractedHighlights,
+        extractedPeople,
         rawText: pdfText.substring(0, 20000),
       });
 

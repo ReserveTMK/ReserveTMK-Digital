@@ -109,10 +109,32 @@ interface ExtractionMetric {
   evidenceSnippet: string | null;
 }
 
+interface ExtractedOrganisation {
+  name: string;
+  type: string;
+  description: string | null;
+  relationship: string | null;
+}
+
+interface ExtractedHighlight {
+  theme: string;
+  summary: string;
+  activityType: string | null;
+}
+
+interface ExtractedPerson {
+  name: string;
+  role: string | null;
+  context: string | null;
+}
+
 interface Extraction {
   id: number;
   legacyReportId: number;
   suggestedMetrics: ExtractionMetric[];
+  extractedOrganisations?: ExtractedOrganisation[];
+  extractedHighlights?: ExtractedHighlight[];
+  extractedPeople?: ExtractedPerson[];
   rawText: string | null;
 }
 
@@ -175,7 +197,13 @@ export default function LegacyReportsPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
 
   const [extractingId, setExtractingId] = useState<number | null>(null);
-  const [extractionData, setExtractionData] = useState<{ reportId: number; metrics: ExtractionMetric[] } | null>(null);
+  const [extractionData, setExtractionData] = useState<{
+    reportId: number;
+    metrics: ExtractionMetric[];
+    organisations?: ExtractedOrganisation[];
+    highlights?: ExtractedHighlight[];
+    people?: ExtractedPerson[];
+  } | null>(null);
   const [editedMetricValues, setEditedMetricValues] = useState<Record<string, string>>({});
   const [suggestingTaxonomyId, setSuggestingTaxonomyId] = useState<number | null>(null);
   const [taxonomySuggestions, setTaxonomySuggestions] = useState<{
@@ -222,14 +250,18 @@ export default function LegacyReportsPage() {
           title: "Report Created & Metrics Extracted",
           description: `${autoAppliedCount} metrics auto-applied, ${reviewNeededCount} need review`,
         });
-        if (reviewNeededCount > 0) {
-          const values: Record<string, string> = {};
-          suggestedMetrics.forEach((m: ExtractionMetric) => {
-            values[m.metricKey] = m.metricValue !== null ? String(m.metricValue) : "";
-          });
-          setEditedMetricValues(values);
-          setExtractionData({ reportId: result.id, metrics: suggestedMetrics });
-        }
+        const values: Record<string, string> = {};
+        suggestedMetrics.forEach((m: ExtractionMetric) => {
+          values[m.metricKey] = m.metricValue !== null ? String(m.metricValue) : "";
+        });
+        setEditedMetricValues(values);
+        setExtractionData({
+          reportId: result.id,
+          metrics: suggestedMetrics,
+          organisations: result.extraction.extractedOrganisations,
+          highlights: result.extraction.extractedHighlights,
+          people: result.extraction.extractedPeople,
+        });
       } else if (result.autoExtracted === false && result.extractionError) {
         toast({
           title: "Report Created",
@@ -285,14 +317,18 @@ export default function LegacyReportsPage() {
     onSuccess: (result: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/legacy-reports"] });
       queryClient.invalidateQueries({ queryKey: ["/api/legacy-trend-data"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      const parts: string[] = [];
       if (result.taxonomySuggestionsAvailable) {
-        toast({
-          title: "Report Confirmed",
-          description: "Taxonomy suggestions are available — click 'Taxonomy' to view them.",
-        });
-      } else {
-        toast({ title: "Updated", description: "Report status updated" });
+        parts.push("Taxonomy suggestions available — click 'Taxonomy' to view.");
       }
+      if (result.createdGroups && result.createdGroups.length > 0) {
+        parts.push(`${result.createdGroups.length} organisation(s) added to Groups: ${result.createdGroups.join(", ")}`);
+      }
+      toast({
+        title: result.status === "confirmed" ? "Report Confirmed" : "Status Updated",
+        description: parts.length > 0 ? parts.join(" ") : "Report status updated.",
+      });
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -312,7 +348,13 @@ export default function LegacyReportsPage() {
         values[m.metricKey] = m.metricValue !== null ? String(m.metricValue) : "";
       });
       setEditedMetricValues(values);
-      setExtractionData({ reportId: id, metrics: data.suggestedMetrics });
+      setExtractionData({
+        reportId: id,
+        metrics: data.suggestedMetrics,
+        organisations: data.extractedOrganisations,
+        highlights: data.extractedHighlights,
+        people: data.extractedPeople,
+      });
     },
     onError: (err: any) => {
       setExtractingId(null);
@@ -711,7 +753,7 @@ export default function LegacyReportsPage() {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <Eye className="w-5 h-5 text-primary" />
-                  <h3 className="font-display font-semibold">Extracted Metrics Review</h3>
+                  <h3 className="font-display font-semibold">Extracted Data Review</h3>
                 </div>
                 <Button
                   size="icon"
@@ -722,7 +764,9 @@ export default function LegacyReportsPage() {
                   <X className="w-4 h-4" />
                 </Button>
               </div>
-              <div className="space-y-3">
+
+              <h4 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wide">Metrics</h4>
+              <div className="space-y-2 mb-4">
                 {extractionData.metrics.map((metric) => (
                   <div
                     key={metric.metricKey}
@@ -741,21 +785,63 @@ export default function LegacyReportsPage() {
                       placeholder=""
                       data-testid={`input-extraction-${metric.metricKey}`}
                     />
-                    <Badge
-                      variant="secondary"
-                      className={`text-[10px] shrink-0 no-default-hover-elevate no-default-active-elevate ${confidenceBadgeVariant(metric.confidence)}`}
-                      data-testid={`badge-confidence-${metric.metricKey}`}
-                    >
-                      {metric.confidence}%
-                    </Badge>
                     {metric.evidenceSnippet && (
                       <span className="text-xs text-muted-foreground italic flex-1 min-w-0 truncate" data-testid={`text-evidence-${metric.metricKey}`}>
-                        {metric.evidenceSnippet}
+                        "{metric.evidenceSnippet}"
                       </span>
                     )}
                   </div>
                 ))}
               </div>
+
+              {extractionData.organisations && extractionData.organisations.length > 0 && (
+                <>
+                  <h4 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wide">Organisations Found</h4>
+                  <p className="text-xs text-muted-foreground mb-2">These will be added to your Groups when you confirm the report.</p>
+                  <div className="flex flex-wrap gap-2 mb-4" data-testid="section-extracted-orgs">
+                    {extractionData.organisations.map((org, i) => (
+                      <Badge key={i} variant="secondary" className="text-xs py-1 px-2" data-testid={`badge-org-${i}`}>
+                        <span className="font-medium">{org.name}</span>
+                        {org.type && org.type !== "other" && (
+                          <span className="text-muted-foreground ml-1">({org.type.replace(/_/g, " ")})</span>
+                        )}
+                      </Badge>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {extractionData.highlights && extractionData.highlights.length > 0 && (
+                <>
+                  <h4 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wide">Key Highlights</h4>
+                  <div className="space-y-2 mb-4" data-testid="section-extracted-highlights">
+                    {extractionData.highlights.map((h, i) => (
+                      <div key={i} className="text-sm border-l-2 border-primary/30 pl-3" data-testid={`highlight-${i}`}>
+                        <span className="font-medium">{h.theme}</span>
+                        {h.activityType && (
+                          <Badge variant="outline" className="text-[10px] ml-2 no-default-hover-elevate no-default-active-elevate">{h.activityType}</Badge>
+                        )}
+                        <p className="text-muted-foreground text-xs mt-0.5">{h.summary}</p>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {extractionData.people && extractionData.people.length > 0 && (
+                <>
+                  <h4 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wide">People Mentioned</h4>
+                  <div className="flex flex-wrap gap-2 mb-4" data-testid="section-extracted-people">
+                    {extractionData.people.map((p, i) => (
+                      <Badge key={i} variant="secondary" className="text-xs py-1 px-2" data-testid={`badge-person-${i}`}>
+                        {p.name}
+                        {p.role && <span className="text-muted-foreground ml-1">({p.role})</span>}
+                      </Badge>
+                    ))}
+                  </div>
+                </>
+              )}
+
               <div className="flex gap-2 mt-4">
                 <Button
                   size="sm"
