@@ -1,0 +1,188 @@
+JOB: Date Standardisation + Legacy Report Intelligence + Weekly Hub Debrief
+
+Priority: High
+Objective:
+Standardise time logic, implement structured legacy quarter uploads with metric extraction (human verified), and introduce Weekly Hub Debrief reporting.
+
+No breaking existing reporting logic.
+
+------------------------------------------------------------
+PART 1: APP-WIDE WEEK START = MONDAY (Pacific/Auckland)
+------------------------------------------------------------
+
+All week logic must start Monday and end Sunday.
+
+Apply to:
+- Calendar week view
+- Weekly Hub Debrief
+- Any “this week” / “last week” filters
+- Weekly dashboard groupings
+- Any week-based reporting
+
+Rules:
+- WeekStart = Monday 00:00 Pacific/Auckland
+- WeekEnd = Sunday 23:59:59 Pacific/Auckland
+- Never use UTC week boundaries
+- Consistent across entire app
+
+Acceptance:
+- “This week” always means Monday–Sunday NZ.
+- Weekly summaries align to that structure.
+
+------------------------------------------------------------
+PART 2: LEGACY QUARTER SELECTOR (2023 → CURRENT ONLY)
+------------------------------------------------------------
+
+When uploading legacy quarterly reports:
+
+Replace manual date entry with:
+
+Year dropdown:
+- 2023 → current year only
+- No future years
+
+Quarter dropdown:
+- Q1 (Jan–Mar)
+- Q2 (Apr–Jun)
+- Q3 (Jul–Sep)
+- Q4 (Oct–Dec)
+
+Auto-derive:
+- period_start
+- period_end
+- label = “YYYY Qx”
+
+Validation:
+- Prevent duplicate year+quarter
+- No future quarters selectable
+
+Only show:
+- Current year
+- Historical years from 2023 onward
+
+------------------------------------------------------------
+PART 3: LEGACY REPORT PDF UPLOAD + METRIC EXTRACTION
+------------------------------------------------------------
+
+Workflow:
+
+1) Select Year + Quarter
+2) Upload PDF
+3) System extracts text
+4) System suggests metrics + themes
+5) Human review required
+6) Only confirmed snapshot updates dashboards
+
+NO automatic publishing.
+
+Data Model:
+
+legacy_reports
+- year
+- quarter
+- period_start
+- period_end
+- pdf_file_url
+- status ENUM('draft','confirmed')
+- confirmed_at
+- confirmed_by
+
+legacy_report_extractions
+- suggested_metrics_json
+- confidence score per metric
+- evidence snippet per metric
+
+legacy_report_snapshots
+- metric_key
+- metric_value
+- metric_unit
+- evidence_snippet
+
+------------------------------------------------------------
+METRICS TO ATTEMPT EXTRACTION
+------------------------------------------------------------
+
+Primary:
+- activations_total
+
+Secondary (if present):
+- activations_workshops
+- activations_mentoring
+- activations_events
+- activations_partner_meetings
+- people_unique
+- engagements_total
+- groups_unique
+- bookings_total
+- hours_total
+- revenue_total
+- in_kind_total
+
+Rules:
+- If not found → leave blank (not zero)
+- Always show confidence + evidence snippet
+- All values editable before confirmation
+
+Dashboards only update when:
+status = confirmed
+
+------------------------------------------------------------
+PART 4: WEEKLY HUB DEBRIEF
+------------------------------------------------------------
+
+Create module: Reporting → Weekly Debriefs
+
+Each week = Monday–Sunday (NZ timezone)
+
+System generates draft summary using:
+- Confirmed Debriefs
+- Completed Programmes
+- Completed Bookings
+- Milestones created
+- Top taxonomy themes
+- Sentiment average + sample size
+- Outstanding “To Be Debriefed” count
+- Upcoming next-week events
+
+Table: weekly_hub_debriefs
+- week_start_date
+- week_end_date
+- status ENUM('draft','confirmed')
+- generated_summary_text
+- final_summary_text
+- metrics_json
+- themes_json
+- sentiment_json
+- created_at
+- confirmed_at
+
+Rules:
+- Only confirmed debriefs included
+- Always show sentiment sample size (n)
+- No invented data
+- Missing data = “not tracked” not zero
+
+Optional automation:
+- Auto-generate draft every Monday for previous week
+- Notify admin for review
+
+------------------------------------------------------------
+GLOBAL RULES
+------------------------------------------------------------
+
+- No dashboards update from draft legacy data.
+- No week logic inconsistent with Monday start.
+- All new tables include created_at + audit logs.
+- No future reporting periods selectable.
+- NZ timezone enforced across all date logic.
+
+------------------------------------------------------------
+SUCCESS STATE
+------------------------------------------------------------
+
+- Weeks are consistent across entire system.
+- Legacy quarterly uploads are structured and clean.
+- Metrics extracted from PDFs are human verified.
+- Dashboards reflect real historical data from 2023 onward.
+- Weekly Hub Debrief becomes an internal rhythm tool.
+- Reporting moves from manual reconstruction to structured intelligence.
