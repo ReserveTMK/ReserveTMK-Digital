@@ -1,0 +1,153 @@
+JOB: Legacy Reporting Layer + Benchmark Engine + Legacy Metrics & Taxonomy Review
+
+Objective:
+1) Add a Legacy Reporting layer that allows quarterly PDF uploads with structured snapshots.
+2) Backfill dashboards using legacy data so historical trends appear correctly.
+3) Generate automatic benchmark insights in new reports.
+4) Analyse legacy quarterly reports and suggest improvements to:
+   - Impact taxonomy
+   - Dashboard metrics
+   - Tracking framework going forward.
+
+-----------------------------------------
+PART 1: LEGACY REPORTING LAYER
+-----------------------------------------
+
+Goal:
+Allow uploading existing quarterly PDF reports and attaching structured snapshot data that feeds dashboards.
+
+Requirements:
+
+Create new Reporting tab: “Legacy Reports”
+
+For each quarterly report:
+- Upload PDF
+- Enter:
+  - Quarter label (e.g. 2025 Q2)
+  - Period start + end
+  - Snapshot metrics (activations-focused)
+
+Snapshot fields (MVP):
+- activations_total
+- activations_workshops
+- activations_mentoring
+- activations_events
+- activations_partner_meetings
+- people_unique (optional)
+- engagements_total (optional)
+- groups_unique (optional)
+- bookings_total (optional)
+- hours_total (optional)
+
+Data model:
+- legacy_reports table
+- legacy_report_snapshots table
+
+Add reporting_boundary_date setting:
+- Periods before boundary use legacy snapshots
+- Periods after boundary use live system data
+- No double counting allowed
+
+Acceptance:
+- Uploading a quarterly PDF + snapshot immediately updates dashboard trend lines.
+- Charts now show historical data before go-live date.
+
+-----------------------------------------
+PART 2: BENCHMARK INSIGHTS ENGINE
+-----------------------------------------
+
+Goal:
+Automatically generate historical comparison insights in new quarterly reports.
+
+Benchmarks to compute (based on legacy + live where valid):
+- Historical average (activations_total)
+- Highest quarter since inception
+- Rank of current quarter
+- Quarter-over-quarter change
+- % above/below historic average
+
+Constraints:
+- Exclude quarters missing the metric.
+- Never fabricate impact metrics if not historically tracked.
+- Clearly label when impact tracking began (boundary date).
+
+Output:
+Add “Benchmark Insights” panel to quarterly reports with 2–4 bullet insights.
+
+Acceptance:
+- New quarterly reports automatically include historical comparisons.
+- Insights are reproducible from stored data.
+- No manual writing required.
+
+-----------------------------------------
+PART 3: LEGACY METRICS + TAXONOMY REVIEW TOOL
+-----------------------------------------
+
+Goal:
+Use uploaded legacy quarterly PDFs to:
+
+1) Identify metrics historically tracked.
+2) Compare them to current tracking schema.
+3) Suggest improvements to:
+   - Impact taxonomy
+   - Dashboards
+   - Reporting metrics
+   - Tracking structure
+
+Implementation:
+
+Add “Legacy Metrics Review” tool inside Reporting.
+
+Workflow:
+- System extracts text from uploaded quarterly PDFs.
+- Detect recurring metrics (keyword + pattern recognition).
+- List candidate metrics:
+   - metric_label
+   - occurrence_count
+   - example_snippet
+   - mapped_to_current_field (if exists)
+   - recommended_to_track (yes/no)
+
+Additionally:
+- Analyse recurring language/themes across reports.
+- Compare recurring themes to current taxonomy categories.
+- Suggest:
+   - Missing taxonomy categories
+   - Overlapping categories
+   - Taxonomy gaps
+   - Dashboard metrics that should exist but currently do not
+
+Output:
+1) “Legacy Metric Candidates” table.
+2) “Taxonomy Improvement Suggestions” section:
+   - Suggested new categories
+   - Suggested merges or restructures
+   - Categories frequently referenced historically but not tracked structurally.
+3) “Dashboard Gap Suggestions”:
+   - Metrics previously reported but not currently tracked.
+   - Metrics tracked currently but not reflected in dashboards.
+
+Acceptance:
+- System produces a clear list of recommended tracking improvements.
+- No automatic schema changes occur — recommendations only.
+- Admin can choose which suggestions to implement.
+
+-----------------------------------------
+NON-NEGOTIABLE RULES
+-----------------------------------------
+
+- No rewriting historical impact data.
+- No artificial backfilling of outcome change metrics.
+- Legacy layer = activity backbone.
+- Live layer = structured impact + change tracking.
+- Clear reporting boundary date enforced.
+
+-----------------------------------------
+SUCCESS STATE
+-----------------------------------------
+
+- Historical quarters appear in dashboards.
+- New reports reference past performance automatically.
+- The system highlights where our old reporting was weak.
+- The system suggests how to improve taxonomy and tracking based on real legacy language.
+- Reporting feels continuous, not like it started this month.
