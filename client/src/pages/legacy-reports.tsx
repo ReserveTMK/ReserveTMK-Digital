@@ -275,7 +275,7 @@ export default function LegacyReportsPage() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <main className="flex-1 p-4 md:p-8 pb-24 md:pb-8 overflow-y-auto">
+      <main className="flex-1 md:ml-64 p-4 md:p-8 pt-14 md:pt-0 pb-24 md:pb-8 overflow-y-auto">
         <div className="max-w-5xl mx-auto space-y-6">
           <div className="flex items-center justify-between">
             <div>

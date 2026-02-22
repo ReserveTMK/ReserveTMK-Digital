@@ -1286,7 +1286,7 @@ export default function CalendarPage() {
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
-      <main className="flex-1 md:ml-72 p-4 md:p-8 pt-14 md:pt-0 pb-20 md:pb-0">
+      <main className="flex-1 md:ml-64 p-4 md:p-8 pt-14 md:pt-0 pb-20 md:pb-0">
         <div className="max-w-5xl mx-auto">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>

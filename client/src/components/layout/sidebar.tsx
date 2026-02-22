@@ -103,19 +103,19 @@ export function Sidebar() {
   };
 
   const NavContent = ({ onNavigate }: { onNavigate?: () => void }) => (
-    <div className="flex flex-col h-full">
-      <div className="px-6 py-8">
-        <Link href="/" className="flex items-center gap-2 group" onClick={onNavigate}>
-          <div className="bg-primary p-2 rounded-xl group-hover:bg-primary/90 transition-colors">
-            <BrainCircuit className="w-6 h-6 text-white" />
+    <div className="sidebar-dark flex flex-col h-full bg-[hsl(var(--sidebar-bg))]">
+      <div className="px-5 py-5 border-b border-[hsl(var(--sidebar-border))]">
+        <Link href="/" className="flex items-center gap-3 group" onClick={onNavigate}>
+          <div className="bg-[hsl(var(--sidebar-accent))] p-1.5 rounded-lg">
+            <BrainCircuit className="w-5 h-5 text-white" />
           </div>
-          <span className="font-display font-bold text-xl tracking-tight">
+          <span className="font-display font-bold text-lg tracking-tight text-white">
             ReserveTMK
           </span>
         </Link>
       </div>
 
-      <nav className="flex-1 px-4 space-y-1 overflow-y-auto">
+      <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
         {navigation.map((item) => {
           if (item.children) {
             const isChildActive = item.children.some(c => location === c.href);
@@ -126,20 +126,20 @@ export function Sidebar() {
                 <button
                   onClick={() => toggleGroup(item.name)}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group font-medium w-full text-left",
+                    "flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 w-full text-left text-[13px] font-medium",
                     isChildActive
-                      ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                      : "text-muted-foreground hover-elevate",
+                      ? "bg-[hsl(var(--sidebar-active))] text-white"
+                      : "text-[hsl(var(--sidebar-text))] hover:bg-[hsl(var(--sidebar-hover))] hover:text-white",
                   )}
                   data-testid={`nav-${item.name.toLowerCase().replace(/\s+/g, "-")}`}
                 >
-                  <item.icon className={cn("w-5 h-5", isChildActive ? "text-white" : "text-muted-foreground group-hover:text-foreground")} />
+                  <item.icon className="w-[18px] h-[18px] flex-shrink-0" />
                   <span className="flex-1">{item.name}</span>
-                  <ChevronDown className={cn("w-4 h-4 transition-transform", isExpanded ? "rotate-180" : "")} />
+                  <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-200 opacity-60", isExpanded ? "rotate-180" : "")} />
                 </button>
                 <div className={cn(
-                  "ml-4 mt-1 space-y-0.5 overflow-hidden transition-all duration-300 ease-in-out",
-                  isExpanded ? "max-h-60 opacity-100" : "max-h-0 opacity-0"
+                  "overflow-hidden transition-all duration-200 ease-in-out",
+                  isExpanded ? "max-h-60 opacity-100 mt-0.5" : "max-h-0 opacity-0"
                 )}>
                   {item.children.map((child) => {
                     const isSubActive = location === child.href;
@@ -148,15 +148,15 @@ export function Sidebar() {
                         key={child.name}
                         href={child.href}
                         className={cn(
-                          "flex items-center gap-3 px-4 py-2 rounded-lg transition-all duration-200 group font-medium text-sm",
+                          "flex items-center gap-3 pl-9 pr-3 py-2 rounded-md transition-colors duration-150 text-[13px]",
                           isSubActive
-                            ? "bg-primary/10 text-primary font-semibold"
-                            : "text-muted-foreground hover-elevate",
+                            ? "text-white bg-[hsl(var(--sidebar-active))] font-medium"
+                            : "text-[hsl(var(--sidebar-text))] hover:bg-[hsl(var(--sidebar-hover))] hover:text-white",
                         )}
                         onClick={onNavigate}
                         data-testid={`nav-${child.name.toLowerCase().replace(/\s+/g, "-")}`}
                       >
-                        <child.icon className={cn("w-4 h-4", isSubActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground")} />
+                        <child.icon className="w-4 h-4 flex-shrink-0" />
                         {child.name}
                       </Link>
                     );
@@ -169,44 +169,43 @@ export function Sidebar() {
           return (
             <Link key={item.name} href={item.href}
               className={cn(
-                "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group font-medium",
+                "flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 text-[13px] font-medium",
                 isActive
-                  ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                  : "text-muted-foreground hover-elevate",
+                  ? "bg-[hsl(var(--sidebar-active))] text-white"
+                  : "text-[hsl(var(--sidebar-text))] hover:bg-[hsl(var(--sidebar-hover))] hover:text-white",
               )}
               onClick={onNavigate}
               data-testid={`nav-${item.name.toLowerCase().replace(/\s+/g, "-")}`}
             >
-              <item.icon className={cn("w-5 h-5", isActive ? "text-white" : "text-muted-foreground group-hover:text-foreground")} />
+              <item.icon className="w-[18px] h-[18px] flex-shrink-0" />
               {item.name}
             </Link>
           );
         })}
       </nav>
 
-      <div className="p-4 border-t border-border mt-auto">
-        <div className="flex items-center gap-3 mb-4 px-2">
-          <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold border border-indigo-200">
+      <div className="p-3 border-t border-[hsl(var(--sidebar-border))] mt-auto">
+        <div className="flex items-center gap-3 mb-3 px-2">
+          <div className="w-8 h-8 rounded-full bg-[hsl(var(--sidebar-accent))] flex items-center justify-center text-white text-sm font-semibold">
             {user?.firstName?.[0] || "U"}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate text-foreground">
+            <p className="text-[13px] font-medium truncate text-white">
               {user?.firstName} {user?.lastName}
             </p>
-            <p className="text-xs text-muted-foreground truncate">
+            <p className="text-[11px] truncate text-[hsl(var(--sidebar-text))]">
               {user?.email}
             </p>
           </div>
         </div>
-        <Button
-          variant="outline"
-          className="w-full justify-start text-muted-foreground"
+        <button
+          className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-[13px] text-[hsl(var(--sidebar-text))] hover:bg-[hsl(var(--sidebar-hover))] hover:text-white transition-colors duration-150"
           onClick={() => logout()}
           data-testid="button-sign-out"
         >
-          <LogOut className="w-4 h-4 mr-2" />
+          <LogOut className="w-4 h-4" />
           Sign Out
-        </Button>
+        </button>
       </div>
     </div>
   );
@@ -221,15 +220,15 @@ export function Sidebar() {
               <Menu className="w-5 h-5" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-80">
+          <SheetContent side="left" className="p-0 w-64 border-0">
             <NavContent onNavigate={() => setOpen(false)} />
           </SheetContent>
         </Sheet>
       </div>
 
       {/* Mobile bottom navigation bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border/50 shadow-lg shadow-black/10 safe-area-bottom" data-testid="nav-bottom-bar">
-        <div className="flex items-stretch justify-around gap-1">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[hsl(220,26%,14%)] border-t border-[hsl(220,20%,22%)] safe-area-bottom" data-testid="nav-bottom-bar">
+        <div className="flex items-stretch justify-around">
           {bottomNavItems.map((item) => {
             const isActive = location === item.href;
             return (
@@ -238,12 +237,12 @@ export function Sidebar() {
                 href={item.href}
                 className={cn(
                   "flex flex-col items-center justify-center py-2 px-3 flex-1 min-w-0 transition-colors",
-                  isActive ? "text-primary" : "text-muted-foreground",
+                  isActive ? "text-white" : "text-[hsl(210,20%,55%)]",
                 )}
                 data-testid={`bottom-nav-${item.name.toLowerCase().replace(/\s+/g, "-")}`}
               >
-                <item.icon className={cn("w-5 h-5 mb-0.5", isActive && "text-primary")} />
-                <span className={cn("text-[10px] font-medium truncate", isActive && "text-primary")}>
+                <item.icon className={cn("w-5 h-5 mb-0.5", isActive && "text-white")} />
+                <span className={cn("text-[10px] font-medium truncate", isActive && "text-white")}>
                   {item.name}
                 </span>
               </Link>
@@ -252,7 +251,7 @@ export function Sidebar() {
           <Link
             href="#"
             onClick={(e) => { e.preventDefault(); setOpen(true); }}
-            className="flex flex-col items-center justify-center py-2 px-3 flex-1 min-w-0 transition-colors text-muted-foreground"
+            className="flex flex-col items-center justify-center py-2 px-3 flex-1 min-w-0 transition-colors text-[hsl(210,20%,55%)]"
             data-testid="bottom-nav-more"
           >
             <MoreHorizontal className="w-5 h-5 mb-0.5" />
@@ -262,7 +261,7 @@ export function Sidebar() {
       </nav>
 
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex w-72 flex-col fixed inset-y-0 z-50 bg-card border-r border-border/50 shadow-xl shadow-black/5">
+      <aside className="hidden md:flex w-64 flex-col fixed inset-y-0 z-50">
         <NavContent />
       </aside>
     </>

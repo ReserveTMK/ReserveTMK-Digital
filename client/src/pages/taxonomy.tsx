@@ -180,7 +180,7 @@ export default function Taxonomy() {
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
-      <main className="flex-1 md:ml-72 p-4 md:p-8 pt-14 md:pt-0 pb-20 md:pb-0 overflow-y-auto">
+      <main className="flex-1 md:ml-64 p-4 md:p-8 pt-14 md:pt-0 pb-20 md:pb-0 overflow-y-auto">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-foreground" data-testid="text-page-title">
             Taxonomy Management

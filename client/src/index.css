@@ -97,6 +97,17 @@
   }
 }
 
+/* Xero-style dark sidebar */
+.sidebar-dark {
+  --sidebar-bg: 220 26% 14%;
+  --sidebar-hover: 220 20% 20%;
+  --sidebar-active: 220 20% 24%;
+  --sidebar-text: 210 20% 70%;
+  --sidebar-text-active: 0 0% 100%;
+  --sidebar-border: 220 20% 22%;
+  --sidebar-accent: 262 83% 65%;
+}
+
 /* Mobile safe area for bottom nav */
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
