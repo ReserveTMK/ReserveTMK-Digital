@@ -1,0 +1,178 @@
+JOB: Branding + Top Nav Strip + “Debrief Reconciliation” Dashboard Upgrade (Xero-style)
+
+Priority: High
+Objective:
+1) Apply ReserveTMK branding to the app UI.
+2) Replace current nav with a top, fixed navigation strip with dropdown menus (Xero feel).
+3) Introduce a Xero-style “reconciling” concept for Debriefs, centred on a “To Be Debriefed” queue on the Dashboard.
+
+-----------------------------------------
+PART 1: BRANDING INTEGRATION
+-----------------------------------------
+
+Goal:
+Update the UI to match the attached brand guidelines (colours, logo, typography and tone).
+
+Implementation:
+- Add brand tokens in one place (theme config):
+  - primary colour
+  - secondary colour
+  - neutrals (backgrounds, borders)
+  - semantic colours (info, warning, success)
+- Apply tokens across:
+  - top navigation strip
+  - buttons (primary/secondary/tertiary)
+  - badges (programme/booking/debrief)
+  - headings + body text styles
+- Add logo in top nav (left aligned) and favicon if possible.
+- Update key labels in UI for tone:
+  - “Debriefs” stays as core term
+  - Use “Reconcile” language for debrief completion states where relevant
+  - Avoid generic SaaS wording where possible (keep it simple)
+
+Acceptance Criteria:
+- App colours and typography match the attached brand.
+- No pages look “unstyled” or inconsistent.
+- Dark mode remains readable (if supported).
+
+-----------------------------------------
+PART 2: TOP FIXED NAV STRIP (XERO-STYLE)
+-----------------------------------------
+
+Goal:
+Move to a desktop-first top strip navigation that is fixed at the top, with dropdowns for nested pages.
+
+Requirements:
+- Sticky top navigation bar across the entire app.
+- Primary menu items:
+  - Dashboard
+  - Community
+  - Delivery
+  - Space
+  - Reporting
+  - Settings
+- Dropdown behaviour:
+  - Clicking a menu item opens a dropdown list of sub-pages (if nested)
+  - Clicking elsewhere closes dropdown
+  - Keyboard accessible if possible (nice-to-have)
+
+Proposed dropdown structure (adjust to actual routes):
+Dashboard:
+- Overview
+- To Be Debriefed
+- Insights
+- Benchmarks
+
+Community:
+- People
+- Groups
+- Consent
+
+Delivery:
+- Calendar
+- Programmes
+- Debriefs
+- Action Items
+
+Space:
+- Bookings
+- Agreements
+- Group Portal (if enabled)
+
+Reporting:
+- Monthly
+- Quarterly
+- Legacy Reports
+- Metrics Review
+
+Settings:
+- Taxonomy
+- Integrations
+- Roles & Permissions
+- Reporting Boundary Date
+
+Mobile:
+- Collapse to hamburger menu with same structure.
+
+Acceptance Criteria:
+- Top nav is fixed and consistent.
+- Dropdowns work smoothly and feel like Xero’s UI pattern.
+- Navigation reduces clicks and clarifies hierarchy.
+
+-----------------------------------------
+PART 3: “DEBRIEF RECONCILIATION” (XERO-LIKE WORKFLOW)
+-----------------------------------------
+
+Goal:
+Reframe debrief completion as “reconciling” delivery, similar to how Xero reconciles transactions.
+Create a prominent “To Be Debriefed” queue on the dashboard.
+
+Core Concept:
+- Events / Programme sessions that require debriefing should enter a queue until reconciled.
+- “Reconcile” is the primary action, not “Add Debrief”.
+
+Data Requirements:
+Ensure these fields exist and are used:
+- calendar_event.requires_debrief (boolean)
+- debrief.status (draft → pending_review → confirmed)
+- link between event/programme and debrief (event_id or programme_session_id)
+
+Queue Logic (“To Be Debriefed”):
+Show items where:
+- requires_debrief = true
+AND
+- event_date < now()
+AND
+- no confirmed debrief linked
+
+Each row shows:
+- date
+- type (programme / mentoring / meeting)
+- title
+- linked contacts count (if any)
+- status badge (overdue / due / pending)
+
+Primary CTA:
+- “Reconcile” button
+
+Reconcile Flow (single screen):
+When clicked:
+1) Record or attach debrief (voice or text)
+2) Confirm linked contacts/groups
+3) Review taxonomy matches (accept/edit/reject)
+4) Confirm and mark debrief status = confirmed
+5) Mark item as reconciled (removed from queue)
+
+Optional:
+- “No Debrief Required” action with required reason (stored)
+
+Dashboard Changes:
+Add a prominent card near the top:
+- “To Be Debriefed” with a count badge
+- Clicking opens full queue view
+
+Acceptance Criteria:
+- Dashboard clearly shows the count of items needing debrief.
+- Reconcile flow is fast (max ~1 minute per item).
+- Once confirmed, the item disappears from the queue.
+- No manual hunting through calendar required.
+
+-----------------------------------------
+DELIVERABLES
+-----------------------------------------
+1) Brand theme tokens applied across UI
+2) Sticky top navigation strip + dropdown menus
+3) Dashboard “To Be Debriefed” card + full queue view
+4) Reconcile flow screen + status transitions
+5) Brief documentation:
+   - reconciliation rules
+   - queue rules
+   - updated navigation map
+
+-----------------------------------------
+SUCCESS STATE
+-----------------------------------------
+- App looks and feels like ReserveTMK (brand aligned).
+- Navigation feels structured and mature (Xero-style).
+- Debriefing becomes a daily/weekly reconciliation habit.
+- Dashboard becomes a control centre, not a stats page.
