@@ -1402,7 +1402,7 @@ export default function CalendarPage() {
               <button
                 onClick={() => setShowSpace(!showSpace)}
                 data-testid="button-toggle-space"
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showSpace ? "bg-orange-500/15 text-orange-700 dark:text-orange-300 font-medium border border-orange-500/30" : "text-muted-foreground hover:bg-muted/50 border border-transparent"}`}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors dark:text-orange-300 font-medium border border-orange-500/30 bg-[#ffffff26] text-[#000000]"
               >
                 <Building2 className="w-3.5 h-3.5" />
                 Space
