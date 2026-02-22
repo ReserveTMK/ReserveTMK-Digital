@@ -11,7 +11,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-primary text-primary-foreground border border-primary-border",
+          "bg-[hsl(var(--brand-coral))] text-white border border-[hsl(var(--brand-coral))]",
         destructive:
           "bg-destructive text-destructive-foreground border border-destructive-border",
         outline:
