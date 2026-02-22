@@ -36,6 +36,8 @@ import {
   ChevronDown,
   ChevronUp,
   RefreshCw,
+  HandHeart,
+  HeartHandshake,
 } from "lucide-react";
 import {
   Select,
@@ -94,6 +96,7 @@ export default function Debriefs() {
 function ListView() {
   const { data: logs, isLoading } = useImpactLogs() as { data: ImpactLog[] | undefined; isLoading: boolean };
   const [createOpen, setCreateOpen] = useState(false);
+  const [manualUpdateOpen, setManualUpdateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ImpactLog | null>(null);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -121,10 +124,16 @@ function ListView() {
               <h1 className="text-3xl font-display font-bold" data-testid="text-debriefs-title">Debriefs</h1>
               <p className="text-muted-foreground mt-1">Record and review impact debriefs</p>
             </div>
-            <Button className="shadow-lg" onClick={() => setCreateOpen(true)} data-testid="button-new-debrief">
-              <Plus className="w-4 h-4 mr-2" />
-              New Debrief
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => setManualUpdateOpen(true)} data-testid="button-new-manual-update">
+                <HeartHandshake className="w-4 h-4 mr-2" />
+                Manual Update
+              </Button>
+              <Button className="shadow-lg" onClick={() => setCreateOpen(true)} data-testid="button-new-debrief">
+                <Plus className="w-4 h-4 mr-2" />
+                New Debrief
+              </Button>
+            </div>
           </div>
 
           {isLoading ? (
@@ -152,10 +161,20 @@ function ListView() {
                   data-testid={`card-debrief-${log.id}`}
                 >
                   <div className="flex items-start justify-between gap-3 mb-3">
-                    <h3 className="font-bold text-lg font-display truncate flex-1" data-testid={`text-debrief-title-${log.id}`}>
-                      {log.title}
-                    </h3>
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      {log.type === "manual_update" && (
+                        <HeartHandshake className="w-4 h-4 text-pink-500 shrink-0" />
+                      )}
+                      <h3 className="font-bold text-lg font-display truncate" data-testid={`text-debrief-title-${log.id}`}>
+                        {log.title}
+                      </h3>
+                    </div>
                     <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                      {log.type === "manual_update" && (
+                        <Badge variant="secondary" className="text-xs bg-pink-500/15 text-pink-700 dark:text-pink-300" data-testid={`badge-type-${log.id}`}>
+                          Manual Update
+                        </Badge>
+                      )}
                       <Badge variant="secondary" className={`text-xs ${STATUS_COLORS[log.status] || ""}`} data-testid={`badge-status-${log.id}`}>
                         {STATUS_LABELS[log.status] || log.status}
                       </Badge>
@@ -191,6 +210,7 @@ function ListView() {
       </main>
 
       <NewDebriefDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <ManualUpdateDialog open={manualUpdateOpen} onOpenChange={setManualUpdateOpen} />
 
       <Dialog open={!!deleteTarget} onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}>
         <DialogContent className="sm:max-w-md">
@@ -882,8 +902,16 @@ function ReviewView({ id }: { id: number }) {
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <div className="flex-1 min-w-0">
-              <h1 className="text-2xl font-display font-bold truncate" data-testid="text-review-title">{impactLog.title}</h1>
+              <div className="flex items-center gap-2">
+                {impactLog.type === "manual_update" && <HeartHandshake className="w-5 h-5 text-pink-500 shrink-0" />}
+                <h1 className="text-2xl font-display font-bold truncate" data-testid="text-review-title">{impactLog.title}</h1>
+              </div>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
+                {impactLog.type === "manual_update" && (
+                  <Badge variant="secondary" className="text-xs bg-pink-500/15 text-pink-700 dark:text-pink-300">
+                    Manual Update
+                  </Badge>
+                )}
                 <Badge variant="secondary" className={`text-xs ${STATUS_COLORS[impactLog.status] || ""}`}>
                   {STATUS_LABELS[impactLog.status] || impactLog.status}
                 </Badge>
@@ -1646,6 +1674,162 @@ function ReviewView({ id }: { id: number }) {
           </DialogContent>
         </Dialog>
       </main>
+  );
+}
+
+function ManualUpdateDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const [title, setTitle] = useState("");
+  const [notes, setNotes] = useState("");
+  const [selectedContacts, setSelectedContacts] = useState<number[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const { data: contacts } = useQuery<Contact[]>({ queryKey: ['/api/contacts'] });
+
+  const resetState = () => {
+    setTitle("");
+    setNotes("");
+    setSelectedContacts([]);
+    setIsSaving(false);
+  };
+
+  const handleSave = async () => {
+    if (!title.trim()) {
+      toast({ title: "Missing title", description: "Please give this update a title.", variant: "destructive" });
+      return;
+    }
+    if (!notes.trim()) {
+      toast({ title: "Missing notes", description: "Please describe what happened.", variant: "destructive" });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const res = await apiRequest("POST", "/api/impact-logs", {
+        title: title.trim(),
+        type: "manual_update",
+        transcript: notes.trim(),
+        summary: notes.trim(),
+        status: "draft",
+      });
+      const data = await res.json();
+
+      for (const contactId of selectedContacts) {
+        await apiRequest("POST", `/api/impact-logs/${data.id}/contacts`, {
+          contactId,
+          role: "participant",
+        });
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['/api/impact-logs'] });
+      resetState();
+      onOpenChange(false);
+      setLocation(`/debriefs/${data.id}`);
+      toast({ title: "Manual update created", description: "You can add more details or confirm it." });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to save", variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const removeContact = (id: number) => {
+    setSelectedContacts(prev => prev.filter(c => c !== id));
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) resetState(); onOpenChange(v); }}>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <HeartHandshake className="w-5 h-5 text-pink-500" />
+            Manual Update
+          </DialogTitle>
+          <DialogDescription>
+            Log an informal conversation or connection that created change in a community member.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2 max-h-[65vh] overflow-y-auto px-1">
+          <div className="space-y-2">
+            <Label htmlFor="manual-update-title">Title</Label>
+            <Input
+              id="manual-update-title"
+              data-testid="input-manual-update-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Catch-up with Rangi about next steps"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Community members involved</Label>
+            {selectedContacts.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {selectedContacts.map((cId) => {
+                  const contact = contacts?.find(c => c.id === cId);
+                  if (!contact) return null;
+                  return (
+                    <Badge key={cId} variant="secondary" className="flex items-center gap-1 pr-1" data-testid={`badge-contact-${cId}`}>
+                      <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">
+                        {contact.name[0]}
+                      </span>
+                      {contact.name}
+                      <button
+                        className="ml-1 text-muted-foreground hover:text-foreground"
+                        onClick={() => removeContact(cId)}
+                        data-testid={`button-remove-contact-${cId}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </Badge>
+                  );
+                })}
+              </div>
+            )}
+            {contacts && contacts.length > 0 && (
+              <ContactSearchPicker
+                contacts={contacts.filter(c => !selectedContacts.includes(c.id))}
+                onSelect={(id) => setSelectedContacts(prev => [...prev, id])}
+                testId="search-manual-update-contacts"
+              />
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="manual-update-notes">What happened?</Label>
+            <Textarea
+              id="manual-update-notes"
+              data-testid="textarea-manual-update-notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Describe the conversation, what shifted, and any outcomes or next steps..."
+              className="min-h-[150px] resize-none"
+            />
+          </div>
+        </div>
+
+        <DialogFooter className="mt-4">
+          <Button
+            onClick={handleSave}
+            disabled={isSaving || !title.trim() || !notes.trim()}
+            className="w-full"
+            data-testid="button-save-manual-update"
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <HeartHandshake className="w-4 h-4 mr-2" />
+                Save Update
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

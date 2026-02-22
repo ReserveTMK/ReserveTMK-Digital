@@ -132,6 +132,7 @@ export const impactLogs = pgTable("impact_logs", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
   title: text("title").notNull(),
+  type: text("type").notNull().default("debrief"),
   transcript: text("transcript"),
   summary: text("summary"),
   rawExtraction: jsonb("raw_extraction"),
