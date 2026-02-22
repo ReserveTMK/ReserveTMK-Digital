@@ -32,6 +32,8 @@ import {
   Link2,
   ArrowRightLeft,
   User,
+  CheckCircle2,
+  CircleDashed,
 } from "lucide-react";
 import {
   format,
@@ -130,8 +132,8 @@ function formatTime(dateStr: string) {
 const EVENT_TYPES = ["Meeting", "Mentoring Session", "External Event", "Personal Development", "Planning", "Programme"] as const;
 
 const EVENT_TYPE_DOT_COLORS: Record<string, string> = {
-  "Meeting": "bg-blue-400",
-  "Mentoring Session": "bg-emerald-400",
+  "Meeting": "bg-teal-400",
+  "Mentoring Session": "bg-blue-400",
   "External Event": "bg-orange-400",
   "Personal Development": "bg-violet-400",
   "Planning": "bg-rose-400",
@@ -139,12 +141,21 @@ const EVENT_TYPE_DOT_COLORS: Record<string, string> = {
 };
 
 const EVENT_TYPE_BADGE_COLORS: Record<string, string> = {
-  "Meeting": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
-  "Mentoring Session": "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  "Meeting": "bg-teal-500/10 text-teal-700 dark:text-teal-300",
+  "Mentoring Session": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
   "External Event": "bg-orange-500/10 text-orange-700 dark:text-orange-300",
   "Personal Development": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
   "Planning": "bg-rose-500/10 text-rose-700 dark:text-rose-300",
   "Programme": "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
+};
+
+const EVENT_TYPE_CARD_TINTS: Record<string, string> = {
+  "Meeting": "border-teal-500/20 bg-teal-500/5 dark:bg-teal-500/5",
+  "Mentoring Session": "border-blue-500/20 bg-blue-500/5 dark:bg-blue-500/5",
+  "External Event": "border-orange-500/20 bg-orange-500/5 dark:bg-orange-500/5",
+  "Personal Development": "border-violet-500/20 bg-violet-500/5 dark:bg-violet-500/5",
+  "Planning": "border-rose-500/20 bg-rose-500/5 dark:bg-rose-500/5",
+  "Programme": "border-indigo-500/20 bg-indigo-500/5 dark:bg-indigo-500/5",
 };
 
 const PROG_CLASSIFICATION_COLORS: Record<string, string> = {
@@ -203,6 +214,8 @@ function getEventDotColor(e: { type: "gcal" | "app"; gcal?: GoogleCalendarEvent;
 
 type CombinedEvent = { date: Date; type: "gcal" | "app"; gcal?: GoogleCalendarEvent; app?: AppEvent; isPast: boolean; isDismissed?: boolean };
 
+type DebriefInfo = { debriefId: number; status: string } | null;
+
 function EventCard({
   entry,
   appEvents,
@@ -214,6 +227,8 @@ function EventCard({
   onMarkNotPersonal,
   isDebriefPending,
   isMarkedNotPersonal,
+  debriefInfo,
+  onViewDebrief,
 }: {
   entry: CombinedEvent;
   appEvents: AppEvent[];
@@ -225,6 +240,8 @@ function EventCard({
   onMarkNotPersonal: (gcalId: string) => void;
   isDebriefPending: boolean;
   isMarkedNotPersonal: boolean;
+  debriefInfo: DebriefInfo;
+  onViewDebrief: (debriefId: number) => void;
 }) {
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
@@ -459,10 +476,11 @@ function EventCard({
   }, [contacts, contactSearch, attendance]);
 
   const badgeColor = EVENT_TYPE_BADGE_COLORS[eventType] || "";
+  const cardTint = EVENT_TYPE_CARD_TINTS[eventType] || "border-gray-500/20 bg-gray-500/5 dark:bg-gray-500/5";
   const personalEvent = isGcal && !isMarkedNotPersonal ? isPersonalEvent(entry.gcal!.summary, entry.gcal!.description) : false;
 
   return (
-    <Card className={`p-4 ${personalEvent ? "border-amber-500/30 bg-amber-500/5" : "border-emerald-500/20 bg-emerald-500/5 dark:bg-emerald-500/5"}`} data-testid={`card-event-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}>
+    <Card className={`p-4 ${personalEvent ? "border-amber-500/30 bg-amber-500/5" : cardTint}`} data-testid={`card-event-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}>
       <div className="space-y-2">
         {personalEvent && (
           <div className="flex items-center justify-between gap-2 pb-1">
@@ -794,8 +812,47 @@ function EventCard({
               </div>
             )}
 
+            {entry.isPast && (
+              <div className="flex items-center gap-2 pt-1 mb-1">
+                {debriefInfo ? (
+                  <Badge
+                    variant="secondary"
+                    className={`text-[10px] no-default-hover-elevate no-default-active-elevate ${
+                      debriefInfo.status === "confirmed"
+                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400"
+                        : "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
+                    }`}
+                    data-testid={`badge-debrief-status-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}
+                  >
+                    <CheckCircle2 className="w-3 h-3 mr-0.5" />
+                    {debriefInfo.status === "confirmed" ? "Debriefed" : "Debrief in progress"}
+                  </Badge>
+                ) : (
+                  <Badge
+                    variant="secondary"
+                    className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 no-default-hover-elevate no-default-active-elevate"
+                    data-testid={`badge-needs-reconciliation-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}
+                  >
+                    <CircleDashed className="w-3 h-3 mr-0.5" />
+                    Needs reconciliation
+                  </Badge>
+                )}
+              </div>
+            )}
+
             <div className="flex gap-2 pt-1">
-              {entry.isPast && (
+              {entry.isPast && debriefInfo ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => onViewDebrief(debriefInfo.debriefId)}
+                  data-testid={`button-view-debrief-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}
+                >
+                  <Eye className="w-3.5 h-3.5 mr-1" />
+                  View Debrief
+                </Button>
+              ) : entry.isPast ? (
                 <Button
                   size="sm"
                   variant="default"
@@ -811,7 +868,7 @@ function EventCard({
                   )}
                   Log Debrief
                 </Button>
-              )}
+              ) : null}
               {isGcal && !personalEvent && (
                 <Button
                   size="icon"
@@ -838,7 +895,11 @@ function EventCard({
 
         {!expanded && (
           <p className="text-xs text-muted-foreground italic">
-            {entry.isPast ? "Tap to edit type, tag members, or log debrief" : "Tap to edit type or tag members"}
+            {entry.isPast
+              ? debriefInfo
+                ? "Tap to edit type, tag members, or view debrief"
+                : "Tap to edit type, tag members, or log debrief"
+              : "Tap to edit type or tag members"}
           </p>
         )}
       </div>
@@ -897,6 +958,44 @@ export default function CalendarPage() {
   const { data: programmes } = useProgrammes();
   const { data: allBookings } = useBookings();
   const { data: venues } = useVenues();
+
+  const { data: impactLogs } = useQuery<{ id: number; eventId: number | null; status: string }[]>({
+    queryKey: ["/api/impact-logs"],
+  });
+
+  const debriefByEventId = useMemo(() => {
+    const map = new Map<number, DebriefInfo>();
+    if (!impactLogs) return map;
+    for (const log of impactLogs) {
+      if (!log.eventId) continue;
+      const existing = map.get(log.eventId);
+      if (!existing || log.status === "confirmed" || (log.status === "draft" && existing.status !== "confirmed")) {
+        map.set(log.eventId, { debriefId: log.id, status: log.status });
+      }
+    }
+    return map;
+  }, [impactLogs]);
+
+  const debriefByGcalId = useMemo(() => {
+    const map = new Map<string, DebriefInfo>();
+    if (!appEvents || !debriefByEventId.size) return map;
+    for (const event of appEvents) {
+      if (event.googleCalendarEventId && debriefByEventId.has(event.id)) {
+        map.set(event.googleCalendarEventId, debriefByEventId.get(event.id)!);
+      }
+    }
+    return map;
+  }, [appEvents, debriefByEventId]);
+
+  function getDebriefInfo(entry: CombinedEvent): DebriefInfo {
+    if (entry.type === "app" && entry.app) {
+      return debriefByEventId.get(entry.app.id) || null;
+    }
+    if (entry.type === "gcal" && entry.gcal) {
+      return debriefByGcalId.get(entry.gcal.id) || null;
+    }
+    return null;
+  }
 
   const PROGRAMME_MONTHLY_TARGET = 2;
 
@@ -1440,26 +1539,6 @@ export default function CalendarPage() {
                   </Button>
                 </div>
 
-                <div className={`flex items-center justify-between px-3 py-2 mb-3 rounded-lg text-sm ${
-                  programmeTargetCount >= PROGRAMME_MONTHLY_TARGET
-                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                    : programmeTargetCount > 0
-                      ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                      : "bg-muted text-muted-foreground"
-                }`} data-testid="programme-target-indicator">
-                  <div className="flex items-center gap-2">
-                    <CalendarDays className="w-4 h-4" />
-                    <span className="font-medium">
-                      Programmes: {programmeTargetCount} / {PROGRAMME_MONTHLY_TARGET} target
-                    </span>
-                  </div>
-                  <span className="text-xs">
-                    {programmeTargetCount >= PROGRAMME_MONTHLY_TARGET
-                      ? "Target met"
-                      : `Need ${PROGRAMME_MONTHLY_TARGET - programmeTargetCount} more to hit target`}
-                  </span>
-                </div>
-
                 <div className="grid grid-cols-7 gap-0">
                   {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
                     <div key={d} className="text-center text-xs font-medium text-muted-foreground py-2">
@@ -1484,8 +1563,11 @@ export default function CalendarPage() {
                         return aStart < bEnd && bStart < aEnd;
                       })
                     );
-                    const allDots: { color: string; key: string }[] = [];
-                    dayEvents.forEach((e, i) => allDots.push({ color: getEventDotColor(e), key: `ev-${i}` }));
+                    const allDots: { color: string; key: string; reconciled?: boolean }[] = [];
+                    dayEvents.forEach((e, i) => {
+                      const info = getDebriefInfo(e);
+                      allDots.push({ color: getEventDotColor(e), key: `ev-${i}`, reconciled: e.isPast ? !!info : undefined });
+                    });
                     daySpaceItems.forEach((item, i) => allDots.push({ color: item.kind === "programme" ? "bg-indigo-400" : "bg-orange-400", key: `sp-${i}` }));
 
                     return (
@@ -1512,7 +1594,7 @@ export default function CalendarPage() {
                             {allDots.slice(0, 4).map((dot) => (
                               <div
                                 key={dot.key}
-                                className={`w-full h-1 rounded-full ${dot.color}`}
+                                className={`w-full h-1 rounded-full ${dot.color} ${dot.reconciled === false ? "opacity-100 ring-1 ring-amber-400/60" : ""} ${dot.reconciled === true ? "opacity-50" : ""}`}
                               />
                             ))}
                             {allDots.length > 4 && (
@@ -1578,6 +1660,8 @@ export default function CalendarPage() {
                         onMarkNotPersonal={(gcalId) => markNotPersonalMutation.mutate(gcalId)}
                         isDebriefPending={createDebriefMutation.isPending}
                         isMarkedNotPersonal={entry.gcal ? notPersonalIds.has(entry.gcal.id) : false}
+                        debriefInfo={getDebriefInfo(entry)}
+                        onViewDebrief={(debriefId) => navigate(`/debriefs/${debriefId}`)}
                       />
                     </div>
                   ))}
@@ -1630,7 +1714,7 @@ export default function CalendarPage() {
             </div>
           </div>
 
-          {showSchedule && monthProgrammes.length > 0 && (
+          {showSchedule && (
             <div className="mt-6" data-testid="section-month-programmes">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-lg font-display font-bold text-foreground" data-testid="text-programmes-heading">
@@ -1645,6 +1729,26 @@ export default function CalendarPage() {
                   View all
                 </Button>
               </div>
+              <div className={`flex items-center justify-between px-3 py-2 mb-3 rounded-lg text-sm ${
+                programmeTargetCount >= PROGRAMME_MONTHLY_TARGET
+                  ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                  : programmeTargetCount > 0
+                    ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                    : "bg-muted text-muted-foreground"
+              }`} data-testid="programme-target-indicator">
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="w-4 h-4" />
+                  <span className="font-medium">
+                    {programmeTargetCount} / {PROGRAMME_MONTHLY_TARGET} target
+                  </span>
+                </div>
+                <span className="text-xs">
+                  {programmeTargetCount >= PROGRAMME_MONTHLY_TARGET
+                    ? "Target met"
+                    : `Need ${PROGRAMME_MONTHLY_TARGET - programmeTargetCount} more to hit target`}
+                </span>
+              </div>
+              {monthProgrammes.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {monthProgrammes.map((p: Programme) => {
                   const dateDisplay = (() => {
@@ -1722,6 +1826,9 @@ export default function CalendarPage() {
                   );
                 })}
               </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">No programmes scheduled this month</p>
+              )}
             </div>
           )}
 
