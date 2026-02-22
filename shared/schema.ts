@@ -80,7 +80,7 @@ export const events = pgTable("events", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
   name: text("name").notNull(),
-  type: text("type").notNull(), // 'Meeting', 'Mentoring Session', 'External Event', 'Personal Development'
+  type: text("type").notNull(), // 'Meeting', 'Mentoring Session', 'External Event', 'Personal Development', 'Programme Session', 'Booking', 'Personal', 'Other'
   startTime: timestamp("start_time").notNull(),
   endTime: timestamp("end_time").notNull(),
   location: text("location"),
@@ -88,6 +88,12 @@ export const events = pgTable("events", {
   description: text("description"),
   tags: text("tags").array(),
   googleCalendarEventId: text("google_calendar_event_id"),
+  linkedProgrammeId: integer("linked_programme_id"),
+  linkedBookingId: integer("linked_booking_id"),
+  source: text("source").default("internal"), // 'google', 'internal'
+  requiresDebrief: boolean("requires_debrief").default(false),
+  eventStatus: text("event_status").default("active"), // 'active', 'cancelled'
+  debriefSkippedReason: text("debrief_skipped_reason"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

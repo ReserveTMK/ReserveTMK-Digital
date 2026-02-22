@@ -30,6 +30,9 @@ import {
   AlertTriangle,
   Building2,
   CalendarDays,
+  Link2,
+  ArrowRightLeft,
+  User,
 } from "lucide-react";
 import {
   format,
@@ -101,6 +104,12 @@ interface AppEvent {
   googleCalendarEventId: string | null;
   tags: string[] | null;
   attendeeCount: number | null;
+  linkedProgrammeId: number | null;
+  linkedBookingId: number | null;
+  source: string | null;
+  requiresDebrief: boolean | null;
+  eventStatus: string | null;
+  debriefSkippedReason: string | null;
 }
 
 function formatDate(dateStr: string) {
@@ -198,6 +207,7 @@ type CombinedEvent = { date: Date; type: "gcal" | "app"; gcal?: GoogleCalendarEv
 function EventCard({
   entry,
   appEvents,
+  programmes,
   onLogDebrief,
   onLogDebriefFromApp,
   onDeleteEvent,
@@ -208,6 +218,7 @@ function EventCard({
 }: {
   entry: CombinedEvent;
   appEvents: AppEvent[];
+  programmes: Programme[];
   onLogDebrief: (gcal: GoogleCalendarEvent) => void;
   onLogDebriefFromApp: (app: AppEvent) => void;
   onDeleteEvent: (app: AppEvent) => void;
@@ -219,6 +230,9 @@ function EventCard({
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
   const [contactSearch, setContactSearch] = useState("");
+  const [showLinkProgramme, setShowLinkProgramme] = useState(false);
+  const [showConvertProgramme, setShowConvertProgramme] = useState(false);
+  const [selectedClassification, setSelectedClassification] = useState("Community Workshop");
   const [showNewPersonDialog, setShowNewPersonDialog] = useState(false);
   const [newPersonName, setNewPersonName] = useState("");
   const [newPersonEmail, setNewPersonEmail] = useState("");
@@ -317,6 +331,98 @@ function EventCard({
     } catch {
       return undefined;
     }
+  }
+
+  const linkProgrammeMutation = useMutation({
+    mutationFn: async ({ eventId, programmeId }: { eventId: number; programmeId: number }) => {
+      const res = await apiRequest("POST", `/api/events/${eventId}/link-programme`, { programmeId });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      setShowLinkProgramme(false);
+      toast({ title: "Linked", description: "Event linked to programme" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to link", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const convertToProgrammeMutation = useMutation({
+    mutationFn: async ({ eventId, classification }: { eventId: number; classification: string }) => {
+      const res = await apiRequest("POST", `/api/events/${eventId}/convert-to-programme`, { classification });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/programmes"] });
+      setShowConvertProgramme(false);
+      toast({ title: "Converted", description: "Event converted to programme" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to convert", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const markPersonalMutation = useMutation({
+    mutationFn: async (eventId: number) => {
+      const res = await apiRequest("POST", `/api/events/${eventId}/mark-personal`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      toast({ title: "Marked personal", description: "Event excluded from reporting" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const unlinkMutation = useMutation({
+    mutationFn: async (eventId: number) => {
+      const res = await apiRequest("POST", `/api/events/${eventId}/unlink`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/programmes"] });
+      toast({ title: "Unlinked", description: "Programme link removed" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to unlink", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const isLinkedToProgramme = !!(linkedAppEvent?.linkedProgrammeId);
+  const isLinkedToBooking = !!(linkedAppEvent?.linkedBookingId);
+  const isPersonalType = linkedAppEvent?.type === "Personal";
+  const linkedProgramme = isLinkedToProgramme ? programmes.find(p => p.id === linkedAppEvent!.linkedProgrammeId) : null;
+
+  async function handleLinkProgramme(programmeId: number) {
+    let eventId = appEventId;
+    if (!eventId) {
+      eventId = await ensureAppEvent();
+    }
+    if (!eventId) return;
+    linkProgrammeMutation.mutate({ eventId, programmeId });
+  }
+
+  async function handleConvertToProgramme() {
+    let eventId = appEventId;
+    if (!eventId) {
+      eventId = await ensureAppEvent();
+    }
+    if (!eventId) return;
+    convertToProgrammeMutation.mutate({ eventId, classification: selectedClassification });
+  }
+
+  async function handleMarkPersonal() {
+    let eventId = appEventId;
+    if (!eventId) {
+      eventId = await ensureAppEvent();
+    }
+    if (!eventId) return;
+    markPersonalMutation.mutate(eventId);
   }
 
   async function handleTypeChange(newType: string) {
@@ -583,6 +689,112 @@ function EventCard({
               </DialogContent>
             </Dialog>
 
+            {isGcal && !isLinkedToProgramme && !isLinkedToBooking && !isPersonalType && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Programme Linking</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    onClick={() => setShowLinkProgramme(!showLinkProgramme)}
+                    data-testid={`button-link-programme-${entry.gcal!.id}`}
+                  >
+                    <Link2 className="w-3 h-3 mr-1" />
+                    Link to Programme
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    onClick={() => setShowConvertProgramme(!showConvertProgramme)}
+                    data-testid={`button-convert-programme-${entry.gcal!.id}`}
+                  >
+                    <ArrowRightLeft className="w-3 h-3 mr-1" />
+                    Convert to Programme
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    onClick={handleMarkPersonal}
+                    disabled={markPersonalMutation.isPending}
+                    data-testid={`button-mark-personal-${entry.gcal!.id}`}
+                  >
+                    {markPersonalMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <User className="w-3 h-3 mr-1" />}
+                    Mark Personal
+                  </Button>
+                </div>
+
+                {showLinkProgramme && programmes.length > 0 && (
+                  <div className="border border-border rounded-md divide-y divide-border/50 max-h-[150px] overflow-y-auto mt-1">
+                    {programmes.map((p: Programme) => (
+                      <button
+                        key={p.id}
+                        onClick={() => handleLinkProgramme(p.id)}
+                        className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between"
+                        data-testid={`button-select-programme-${p.id}`}
+                      >
+                        <span className="truncate">{p.name}</span>
+                        <Badge variant="secondary" className="text-[10px] ml-1 shrink-0">{p.classification}</Badge>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {showLinkProgramme && programmes.length === 0 && (
+                  <p className="text-xs text-muted-foreground italic mt-1">No programmes yet. Use "Convert to Programme" to create one.</p>
+                )}
+
+                {showConvertProgramme && (
+                  <div className="space-y-2 mt-1 p-2 border border-border rounded-md bg-muted/20">
+                    <Select value={selectedClassification} onValueChange={setSelectedClassification}>
+                      <SelectTrigger className="h-7 text-xs" data-testid="trigger-convert-classification">
+                        <SelectValue placeholder="Classification" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {["Community Workshop", "Youth Programme", "Cultural Event", "Training Session", "Community Gathering", "Partnership Event", "Other"].map(c => (
+                          <SelectItem key={c} value={c}>{c}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      size="sm"
+                      className="w-full h-7 text-xs"
+                      onClick={handleConvertToProgramme}
+                      disabled={convertToProgrammeMutation.isPending}
+                      data-testid="button-confirm-convert"
+                    >
+                      {convertToProgrammeMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                      Create Programme
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {isLinkedToProgramme && linkedProgramme && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Linked Programme</Label>
+                <div className="flex items-center justify-between gap-2 p-2 border border-indigo-500/20 rounded-md bg-indigo-500/5">
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <Link2 className="w-3 h-3 text-indigo-500" />
+                    <span className="font-medium">{linkedProgramme.name}</span>
+                    <Badge variant="secondary" className="text-[10px]">{linkedProgramme.classification}</Badge>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 text-xs px-2 text-muted-foreground hover:text-destructive"
+                    onClick={() => appEventId && unlinkMutation.mutate(appEventId)}
+                    disabled={unlinkMutation.isPending}
+                    data-testid={`button-unlink-programme-${appEventId}`}
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-2 pt-1">
               {entry.isPast && (
                 <Button
@@ -687,6 +899,8 @@ export default function CalendarPage() {
   const { data: allBookings } = useBookings();
   const { data: venues } = useVenues();
 
+  const PROGRAMME_MONTHLY_TARGET = 2;
+
   const monthProgrammes = useMemo(() => {
     if (!programmes) return [];
     const viewMonth = currentMonth.getMonth();
@@ -710,6 +924,10 @@ export default function CalendarPage() {
       return false;
     });
   }, [programmes, currentMonth]);
+
+  const programmeTargetCount = useMemo(() => {
+    return monthProgrammes.filter((p: Programme) => p.status !== "cancelled").length;
+  }, [monthProgrammes]);
 
   const NOT_PERSONAL_REASON = "__not_personal__";
 
@@ -872,13 +1090,21 @@ export default function CalendarPage() {
   const allEvents = useMemo(() => {
     const combined: CombinedEvent[] = [];
 
+    const linkedGcalIds = new Set(
+      (appEvents || [])
+        .filter(e => e.googleCalendarEventId && (e.linkedProgrammeId || e.linkedBookingId))
+        .map(e => e.googleCalendarEventId)
+    );
+
     (gcalEvents || []).forEach(e => {
+      if (linkedGcalIds.has(e.id)) return;
       const d = new Date(e.start);
       const isDismissed = dismissedIds.has(e.id);
       combined.push({ date: d, type: "gcal", gcal: e, isPast: new Date(e.end) < new Date(), isDismissed });
     });
 
-    (appEvents || []).filter(e => !e.googleCalendarEventId).forEach(e => {
+    (appEvents || []).forEach(e => {
+      if (e.googleCalendarEventId && !e.linkedProgrammeId && !e.linkedBookingId) return;
       const d = new Date(e.startTime);
       combined.push({ date: d, type: "app", app: e, isPast: new Date(e.endTime) < new Date() });
     });
@@ -1216,6 +1442,25 @@ export default function CalendarPage() {
                   </Button>
                 </div>
 
+                <div className={`flex items-center justify-between px-3 py-2 mb-3 rounded-lg text-sm ${
+                  programmeTargetCount >= PROGRAMME_MONTHLY_TARGET
+                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                    : programmeTargetCount > 0
+                      ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                      : "bg-muted text-muted-foreground"
+                }`} data-testid="programme-target-indicator">
+                  <div className="flex items-center gap-2">
+                    <CalendarDays className="w-4 h-4" />
+                    <span className="font-medium">
+                      Programmes: {programmeTargetCount} / {PROGRAMME_MONTHLY_TARGET} target
+                    </span>
+                  </div>
+                  <span className="text-xs">
+                    {programmeTargetCount >= PROGRAMME_MONTHLY_TARGET
+                      ? "Target met"
+                      : `Need ${PROGRAMME_MONTHLY_TARGET - programmeTargetCount} more to hit target`}
+                  </span>
+                </div>
 
                 <div className="grid grid-cols-7 gap-0">
                   {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
@@ -1327,6 +1572,7 @@ export default function CalendarPage() {
                       <EventCard
                         entry={entry}
                         appEvents={appEvents || []}
+                        programmes={programmes || []}
                         onLogDebrief={handleLogDebrief}
                         onLogDebriefFromApp={handleLogDebriefFromApp}
                         onDeleteEvent={handleDeleteEvent}

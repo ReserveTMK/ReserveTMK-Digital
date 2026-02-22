@@ -485,6 +485,153 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  // === Event → Programme Linking ===
+
+  app.post("/api/events/:id/link-programme", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const id = parseInt(req.params.id);
+      const event = await storage.getEvent(id);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+      if (event.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      const { programmeId } = req.body;
+      if (!programmeId) return res.status(400).json({ message: "programmeId is required" });
+
+      const programme = await storage.getProgramme(programmeId);
+      if (!programme || programme.userId !== userId) return res.status(404).json({ message: "Programme not found" });
+
+      const updated = await storage.updateEvent(id, {
+        linkedProgrammeId: programmeId,
+        requiresDebrief: true,
+        type: "Programme Session",
+      });
+      res.json(updated);
+    } catch (err: any) {
+      console.error("Link programme error:", err);
+      res.status(500).json({ message: "Failed to link programme" });
+    }
+  });
+
+  app.post("/api/events/:id/convert-to-programme", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const id = parseInt(req.params.id);
+      const event = await storage.getEvent(id);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+      if (event.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      if (event.linkedProgrammeId) {
+        return res.status(400).json({ message: "Event is already linked to a programme" });
+      }
+
+      const { classification } = req.body;
+
+      const programme = await storage.createProgramme({
+        userId,
+        name: event.name,
+        description: event.description || undefined,
+        classification: classification || "Community Workshop",
+        status: new Date(event.startTime) < new Date() ? "completed" : "planned",
+        startDate: event.startTime,
+        endDate: event.endTime,
+        location: event.location || undefined,
+      });
+
+      const updated = await storage.updateEvent(id, {
+        linkedProgrammeId: programme.id,
+        requiresDebrief: true,
+        type: "Programme Session",
+      });
+
+      res.json({ event: updated, programme });
+    } catch (err: any) {
+      console.error("Convert to programme error:", err);
+      res.status(500).json({ message: "Failed to convert to programme" });
+    }
+  });
+
+  app.post("/api/events/:id/mark-personal", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const id = parseInt(req.params.id);
+      const event = await storage.getEvent(id);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+      if (event.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      const updated = await storage.updateEvent(id, {
+        type: "Personal",
+        requiresDebrief: false,
+        linkedProgrammeId: null,
+        linkedBookingId: null,
+      });
+      res.json(updated);
+    } catch (err: any) {
+      console.error("Mark personal error:", err);
+      res.status(500).json({ message: "Failed to mark as personal" });
+    }
+  });
+
+  app.post("/api/events/:id/unlink", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const id = parseInt(req.params.id);
+      const event = await storage.getEvent(id);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+      if (event.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      const updated = await storage.updateEvent(id, {
+        linkedProgrammeId: null,
+        linkedBookingId: null,
+        requiresDebrief: false,
+      });
+      res.json(updated);
+    } catch (err: any) {
+      console.error("Unlink error:", err);
+      res.status(500).json({ message: "Failed to unlink" });
+    }
+  });
+
+  // === Debrief Queue API ===
+  app.get("/api/events/needs-debrief", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const userEvents = await storage.getEvents(userId);
+      const now = new Date();
+      const needsDebrief = userEvents.filter(e => {
+        if (!e.requiresDebrief) return false;
+        if (e.eventStatus === "cancelled") return false;
+        if (e.debriefSkippedReason) return false;
+        const eventEnd = new Date(e.endTime || e.startTime);
+        if (eventEnd > now) return false;
+        return true;
+      });
+      needsDebrief.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+      res.json(needsDebrief);
+    } catch (err) {
+      console.error("Debrief queue error:", err);
+      res.status(500).json({ message: "Failed to fetch debrief queue" });
+    }
+  });
+
+  app.post("/api/events/:id/skip-debrief", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const eventId = parseInt(req.params.id);
+      const event = await storage.getEvent(eventId);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+      if (event.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+      const { reason } = req.body;
+      const updated = await storage.updateEvent(eventId, {
+        debriefSkippedReason: reason || "Skipped by user",
+      });
+      res.json(updated);
+    } catch (err) {
+      console.error("Skip debrief error:", err);
+      res.status(500).json({ message: "Failed to skip debrief" });
+    }
+  });
+
   // === Event Attendance API ===
 
   app.get(api.eventAttendance.list.path, isAuthenticated, async (req, res) => {

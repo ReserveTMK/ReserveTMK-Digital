@@ -17,6 +17,7 @@ import {
   Handshake,
   Network,
   ChevronDown,
+  ClipboardList,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "../ui/beautiful-button";
@@ -48,6 +49,7 @@ const navigation: NavItem[] = [
   { name: "Bookings", href: "/bookings", icon: Building2 },
   { name: "Agreements", href: "/agreements", icon: Handshake },
   { name: "Debriefs", href: "/debriefs", icon: Mic },
+  { name: "Debrief Queue", href: "/debrief-queue", icon: ClipboardList },
   { name: "Reports", href: "/reports", icon: FileText },
   { name: "Actions", href: "/actions", icon: CheckSquare },
   { name: "Taxonomy", href: "/taxonomy", icon: Tags },
