@@ -25,6 +25,8 @@ type WeeklyDebrief = {
     milestonesCreated?: number | null;
     outstandingDebriefs?: number | null;
     upcomingEventsNextWeek?: number | null;
+    actionsCreated?: number | null;
+    actionsCompleted?: number | null;
   } | null;
   themesJson: string[] | null;
   sentimentJson: {
@@ -216,6 +218,8 @@ function DebriefCard({ debrief }: { debrief: WeeklyDebrief }) {
               <MetricItem label="Milestones Created" value={formatMetric(metrics.milestonesCreated)} id={`metric-milestones-${debrief.id}`} />
               <MetricItem label="Outstanding Debriefs" value={formatMetric(metrics.outstandingDebriefs)} id={`metric-outstanding-${debrief.id}`} />
               <MetricItem label="Upcoming Events" value={formatMetric(metrics.upcomingEventsNextWeek)} id={`metric-upcoming-${debrief.id}`} />
+              <MetricItem label="Actions Created" value={formatMetric(metrics.actionsCreated)} id={`metric-actions-created-${debrief.id}`} />
+              <MetricItem label="Actions Completed" value={formatMetric(metrics.actionsCompleted)} id={`metric-actions-completed-${debrief.id}`} />
             </div>
           </div>
         )}

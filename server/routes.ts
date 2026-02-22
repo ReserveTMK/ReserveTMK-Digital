@@ -3114,6 +3114,14 @@ Rules:
         return d >= nextWeekStart && d <= nextWeekEnd;
       });
 
+      const allActionItems = await storage.getActionItems(userId);
+      const weekActions = allActionItems.filter(a => {
+        const created = a.createdAt ? new Date(a.createdAt) : null;
+        return created && created >= weekStart && created <= weekEnd;
+      });
+      const actionsCreated = weekActions.length;
+      const actionsCompleted = weekActions.filter(a => a.status === "completed").length;
+
       const metrics: Record<string, any> = {
         confirmedDebriefs: confirmedDebriefs.length,
         completedProgrammes: completedProgrammes.length,
@@ -3121,6 +3129,8 @@ Rules:
         milestonesCreated: weekMilestones.length,
         outstandingDebriefs,
         upcomingEventsNextWeek: upcomingEvents.length,
+        actionsCreated,
+        actionsCompleted,
       };
 
       const summaryParts: string[] = [];
@@ -3129,6 +3139,7 @@ Rules:
       if (completedProgrammes.length > 0) summaryParts.push(`${completedProgrammes.length} programme${completedProgrammes.length > 1 ? "s" : ""} completed`);
       if (completedBookings.length > 0) summaryParts.push(`${completedBookings.length} booking${completedBookings.length > 1 ? "s" : ""} completed`);
       if (weekMilestones.length > 0) summaryParts.push(`${weekMilestones.length} milestone${weekMilestones.length > 1 ? "s" : ""} created`);
+      if (actionsCreated > 0) summaryParts.push(`${actionsCreated} action${actionsCreated > 1 ? "s" : ""} created, ${actionsCompleted} completed`);
       if (topThemes.length > 0) summaryParts.push(`Top themes: ${topThemes.join(", ")}`);
       if (sentimentAvg !== null) {
         const label = sentimentAvg >= 2.5 ? "positive" : sentimentAvg >= 1.5 ? "neutral" : "negative";
@@ -3192,6 +3203,162 @@ Rules:
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
+    }
+  });
+
+  // === Taxonomy Suggestion for Legacy Reports ===
+  app.post("/api/legacy-reports/:id/suggest-taxonomy", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const reportId = parseInt(req.params.id);
+      const report = await storage.getLegacyReport(reportId);
+      if (!report) return res.status(404).json({ message: "Legacy report not found" });
+      if (report.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      const taxonomy = await storage.getTaxonomy(userId);
+      const snapshot = await storage.getLegacyReportSnapshot(reportId);
+
+      let pdfText = "";
+      if (report.pdfData) {
+        try {
+          const pdfParse = (await import("pdf-parse")).default;
+          const buffer = Buffer.from(report.pdfData, "base64");
+          const parsed = await pdfParse(buffer);
+          pdfText = parsed.text || "";
+        } catch (e) {
+          pdfText = "";
+        }
+      }
+
+      const existingCategories = taxonomy.map(t => ({
+        id: t.id,
+        category: t.name,
+        description: t.description,
+      }));
+
+      const snapshotInfo = snapshot ? {
+        activationsTotal: snapshot.activationsTotal,
+        peopleUnique: snapshot.peopleUnique,
+        engagementsTotal: snapshot.engagementsTotal,
+        bookingsTotal: snapshot.bookingsTotal,
+        hoursTotal: snapshot.hoursTotal,
+        revenueTotal: snapshot.revenueTotal,
+        inKindTotal: snapshot.inKindTotal,
+      } : {};
+
+      const prompt = `You are analyzing a legacy report to suggest taxonomy categories for impact classification.
+
+Report Period: ${report.quarterLabel} (${report.periodStart} to ${report.periodEnd})
+Report Metrics: ${JSON.stringify(snapshotInfo)}
+${pdfText ? `Report Text Content:\n${pdfText.slice(0, 3000)}` : "No PDF text available."}
+
+Existing taxonomy categories:
+${JSON.stringify(existingCategories, null, 2)}
+
+Analyze the report data and suggest taxonomy categories. For each suggestion:
+- If it matches an existing category, reference it
+- If it's a new category, explain why it should be added
+- Include a confidence score (0-100)
+
+Return a JSON object with this exact structure:
+{
+  "suggestions": [
+    { "category": "category name", "description": "why this category fits the report data", "matchesExisting": "existing category name or null", "confidence": 85 }
+  ]
+}`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        temperature: 0.3,
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+      });
+
+      const result = JSON.parse(response.choices[0].message.content || '{"suggestions":[]}');
+      res.json(result.suggestions || []);
+    } catch (err: any) {
+      console.error("Taxonomy suggestion error:", err);
+      res.status(500).json({ message: "Failed to generate taxonomy suggestions" });
+    }
+  });
+
+  // === Dashboard Blended Stats ===
+  app.get("/api/dashboard/blended-stats", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const settings = await storage.getReportingSettings(userId);
+      const allLegacyReports = await storage.getLegacyReports(userId);
+      const confirmedReports = allLegacyReports.filter(r => r.status === "confirmed");
+
+      const legacyTotals = {
+        totalActivations: 0,
+        totalPeople: 0,
+        totalEngagements: 0,
+        totalBookings: 0,
+        totalHours: 0,
+        totalRevenue: 0,
+        totalInKind: 0,
+        reportCount: confirmedReports.length,
+      };
+
+      for (const report of confirmedReports) {
+        const snapshot = await storage.getLegacyReportSnapshot(report.id);
+        if (snapshot) {
+          legacyTotals.totalActivations += snapshot.activationsTotal || 0;
+          legacyTotals.totalPeople += snapshot.peopleUnique || 0;
+          legacyTotals.totalEngagements += snapshot.engagementsTotal || 0;
+          legacyTotals.totalBookings += snapshot.bookingsTotal || 0;
+          legacyTotals.totalHours += parseFloat(String(snapshot.hoursTotal || 0));
+          legacyTotals.totalRevenue += parseFloat(String(snapshot.revenueTotal || 0));
+          legacyTotals.totalInKind += parseFloat(String(snapshot.inKindTotal || 0));
+        }
+      }
+
+      const allProgrammes = await storage.getProgrammes(userId);
+      const completedProgrammes = allProgrammes.filter(p => p.status === "completed").length;
+
+      const allBookings = await storage.getBookings(userId);
+      const completedBookings = allBookings.filter(b => b.status === "completed").length;
+
+      const allDebriefs = await storage.getImpactLogs(userId);
+      const confirmedDebriefs = allDebriefs.filter(d => d.status === "confirmed").length;
+
+      res.json({
+        legacy: legacyTotals,
+        live: {
+          completedProgrammes,
+          completedBookings,
+          confirmedDebriefs,
+        },
+        boundaryDate: settings?.boundaryDate || null,
+      });
+    } catch (err: any) {
+      console.error("Blended stats error:", err);
+      res.status(500).json({ message: "Failed to fetch blended stats" });
+    }
+  });
+
+  // === Dashboard Outstanding Actions ===
+  app.get("/api/dashboard/outstanding-actions", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const allActions = await storage.getActionItems(userId);
+      const outstanding = allActions
+        .filter(a => a.status !== "completed")
+        .sort((a, b) => {
+          const aDue = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
+          const bDue = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
+          if (aDue !== bDue) return aDue - bDue;
+          const aCreated = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const bCreated = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return bCreated - aCreated;
+        })
+        .slice(0, 10);
+
+      res.json(outstanding);
+    } catch (err: any) {
+      console.error("Outstanding actions error:", err);
+      res.status(500).json({ message: "Failed to fetch outstanding actions" });
     }
   });
 

@@ -180,6 +180,11 @@ export default function LegacyReportsPage() {
   const [extractingId, setExtractingId] = useState<number | null>(null);
   const [extractionData, setExtractionData] = useState<{ reportId: number; metrics: ExtractionMetric[] } | null>(null);
   const [editedMetricValues, setEditedMetricValues] = useState<Record<string, string>>({});
+  const [suggestingTaxonomyId, setSuggestingTaxonomyId] = useState<number | null>(null);
+  const [taxonomySuggestions, setTaxonomySuggestions] = useState<{
+    reportId: number;
+    suggestions: Array<{ category: string; description: string; matchesExisting: string | null; confidence: number }>;
+  } | null>(null);
 
   const { data: legacyReports, isLoading } = useQuery<LegacyReportWithSnapshot[]>({
     queryKey: ["/api/legacy-reports"],
@@ -305,6 +310,22 @@ export default function LegacyReportsPage() {
     },
   });
 
+  const taxonomyMutation = useMutation({
+    mutationFn: async (id: number) => {
+      setSuggestingTaxonomyId(id);
+      const res = await apiRequest("POST", `/api/legacy-reports/${id}/suggest-taxonomy`);
+      return res.json();
+    },
+    onSuccess: (data: any, id: number) => {
+      setSuggestingTaxonomyId(null);
+      setTaxonomySuggestions({ reportId: id, suggestions: data.suggestions || [] });
+    },
+    onError: (err: any) => {
+      setSuggestingTaxonomyId(null);
+      toast({ title: "Error", description: err.message || "Failed to generate taxonomy suggestions", variant: "destructive" });
+    },
+  });
+
   const settingsMutation = useMutation({
     mutationFn: async (boundaryDate: string | null) => {
       const res = await apiRequest("PUT", "/api/reporting-settings", { boundaryDate });
@@ -381,7 +402,6 @@ export default function LegacyReportsPage() {
         pdfFileName: formData.pdfFileName || null,
         pdfData: formData.pdfData || null,
         notes: formData.notes || null,
-        snapshot: formData.snapshot,
       };
       createMutation.mutate(payload);
     }
@@ -676,6 +696,22 @@ export default function LegacyReportsPage() {
                         )}
                         Review
                       </Button>
+                      {report.status === "confirmed" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => taxonomyMutation.mutate(report.id)}
+                          disabled={suggestingTaxonomyId === report.id}
+                          data-testid={`button-suggest-taxonomy-${report.id}`}
+                        >
+                          {suggestingTaxonomyId === report.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                          ) : (
+                            <Sparkles className="w-3 h-3 mr-1" />
+                          )}
+                          Taxonomy
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="ghost"
@@ -765,6 +801,58 @@ export default function LegacyReportsPage() {
                   variant="outline"
                   onClick={() => { setExtractionData(null); setEditedMetricValues({}); }}
                   data-testid="button-dismiss-extraction-footer"
+                >
+                  Dismiss
+                </Button>
+              </div>
+            </Card>
+          )}
+
+          {taxonomySuggestions && taxonomySuggestions.suggestions.length > 0 && (
+            <Card className="p-5 border-primary/20 bg-primary/5" data-testid="card-taxonomy-suggestions">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-primary" />
+                  <h3 className="font-display font-semibold">Taxonomy Suggestions</h3>
+                </div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setTaxonomySuggestions(null)}
+                  data-testid="button-dismiss-taxonomy"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="space-y-3">
+                {taxonomySuggestions.suggestions.map((s, i) => (
+                  <div key={i} className="flex items-start gap-3 p-3 bg-background rounded-lg border" data-testid={`taxonomy-suggestion-${i}`}>
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm">{s.category}</span>
+                        <Badge
+                          variant="secondary"
+                          className={`text-[10px] no-default-hover-elevate no-default-active-elevate ${confidenceBadgeVariant(s.confidence)}`}
+                        >
+                          {s.confidence}%
+                        </Badge>
+                        {s.matchesExisting && (
+                          <Badge variant="outline" className="text-[10px]">
+                            Matches: {s.matchesExisting}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{s.description}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2 mt-4">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setTaxonomySuggestions(null)}
+                  data-testid="button-dismiss-taxonomy-footer"
                 >
                   Dismiss
                 </Button>
@@ -865,137 +953,11 @@ export default function LegacyReportsPage() {
                       </Badge>
                     )}
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    Upload a PDF and use "Extract Metrics" after saving to automatically populate snapshot data.
+                  </p>
                 </div>
               )}
-
-              <div className="border-t pt-3">
-                <h4 className="text-sm font-medium mb-3">Snapshot Metrics</h4>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs">Total Activations</Label>
-                    <Input
-                      type="number"
-                      value={formData.snapshot.activationsTotal || ""}
-                      onChange={(e) => updateSnapshot("activationsTotal", e.target.value)}
-                      placeholder="0"
-                      data-testid="input-activations-total"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Workshops</Label>
-                    <Input
-                      type="number"
-                      value={formData.snapshot.activationsWorkshops || ""}
-                      onChange={(e) => updateSnapshot("activationsWorkshops", e.target.value)}
-                      placeholder="0"
-                      data-testid="input-activations-workshops"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Mentoring</Label>
-                    <Input
-                      type="number"
-                      value={formData.snapshot.activationsMentoring || ""}
-                      onChange={(e) => updateSnapshot("activationsMentoring", e.target.value)}
-                      placeholder="0"
-                      data-testid="input-activations-mentoring"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Events</Label>
-                    <Input
-                      type="number"
-                      value={formData.snapshot.activationsEvents || ""}
-                      onChange={(e) => updateSnapshot("activationsEvents", e.target.value)}
-                      placeholder="0"
-                      data-testid="input-activations-events"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Partner Meetings</Label>
-                    <Input
-                      type="number"
-                      value={formData.snapshot.activationsPartnerMeetings || ""}
-                      onChange={(e) => updateSnapshot("activationsPartnerMeetings", e.target.value)}
-                      placeholder="0"
-                      data-testid="input-activations-partner"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Unique People</Label>
-                    <Input
-                      type="number"
-                      value={formData.snapshot.peopleUnique ?? ""}
-                      onChange={(e) => updateSnapshot("peopleUnique", e.target.value)}
-                      placeholder="Optional"
-                      data-testid="input-people-unique"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Total Engagements</Label>
-                    <Input
-                      type="number"
-                      value={formData.snapshot.engagementsTotal ?? ""}
-                      onChange={(e) => updateSnapshot("engagementsTotal", e.target.value)}
-                      placeholder="Optional"
-                      data-testid="input-engagements-total"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Unique Groups</Label>
-                    <Input
-                      type="number"
-                      value={formData.snapshot.groupsUnique ?? ""}
-                      onChange={(e) => updateSnapshot("groupsUnique", e.target.value)}
-                      placeholder="Optional"
-                      data-testid="input-groups-unique"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Total Bookings</Label>
-                    <Input
-                      type="number"
-                      value={formData.snapshot.bookingsTotal ?? ""}
-                      onChange={(e) => updateSnapshot("bookingsTotal", e.target.value)}
-                      placeholder="Optional"
-                      data-testid="input-bookings-total"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Total Hours</Label>
-                    <Input
-                      type="number"
-                      step="0.5"
-                      value={formData.snapshot.hoursTotal ?? ""}
-                      onChange={(e) => updateSnapshot("hoursTotal", e.target.value)}
-                      placeholder="Optional"
-                      data-testid="input-hours-total"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Total Revenue</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={formData.snapshot.revenueTotal ?? ""}
-                      onChange={(e) => updateSnapshot("revenueTotal", e.target.value)}
-                      placeholder="Optional"
-                      data-testid="input-revenue-total"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">In-Kind Value</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={formData.snapshot.inKindTotal ?? ""}
-                      onChange={(e) => updateSnapshot("inKindTotal", e.target.value)}
-                      placeholder="Optional"
-                      data-testid="input-in-kind-total"
-                    />
-                  </div>
-                </div>
-              </div>
 
               <div className="space-y-2">
                 <Label>Notes (optional)</Label>

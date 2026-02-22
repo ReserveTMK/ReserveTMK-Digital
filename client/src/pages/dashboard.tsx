@@ -7,7 +7,7 @@ import { useImpactLogs } from "@/hooks/use-impact-logs";
 import { useAuth } from "@/hooks/use-auth";
 import { useProgrammes } from "@/hooks/use-programmes";
 import { useBookings, useVenues } from "@/hooks/use-bookings";
-import { Users, Activity, TrendingUp, Calendar as CalendarIcon, ArrowRight, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, PartyPopper, Mic, FileText, Building2, Layers, BookOpen, AlertTriangle, ClipboardCheck, SkipForward, Trophy, DollarSign } from "lucide-react";
+import { Users, Activity, TrendingUp, Calendar as CalendarIcon, ArrowRight, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, PartyPopper, Mic, FileText, Building2, Layers, BookOpen, AlertTriangle, ClipboardCheck, SkipForward, ListChecks, Info } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, isBefore } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -54,13 +54,17 @@ export default function Dashboard() {
     queryKey: ["/api/events/needs-debrief"],
   });
 
-  const { data: milestoneStats } = useQuery<{
-    total: number;
-    byType: Record<string, number>;
-    totalValue: number;
-  }>({
-    queryKey: ["/api/dashboard/milestone-stats"],
+  const { data: outstandingActions } = useQuery<{
+    id: number; title: string; status: string; dueDate: string | null; contactId: number | null; impactLogId: number | null; createdAt: string;
+  }[]>({
+    queryKey: ["/api/dashboard/outstanding-actions"],
   });
+
+  const { data: blendedStats } = useQuery<{
+    legacy: { totalActivations: number; totalPeople: number; totalEngagements: number; totalBookings: number; totalHours: number; totalRevenue: number; totalInKind: number; reportCount: number };
+    live: { completedProgrammes: number; completedBookings: number; confirmedDebriefs: number };
+    boundaryDate: string | null;
+  }>({ queryKey: ["/api/dashboard/blended-stats"] });
 
   const { data: relationshipStages } = useQuery<{
     contactCounts: Record<string, number>;
@@ -239,38 +243,23 @@ export default function Dashboard() {
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-            <Card className="p-4 md:p-6" data-testid="card-milestone-stats">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <Trophy className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-display font-semibold" data-testid="text-milestones-heading">Milestones This Period</h3>
-                  <p className="text-xs text-muted-foreground">Achievements & outcomes tracked</p>
-                </div>
+          {blendedStats && blendedStats.legacy.reportCount > 0 && (
+            <Card className="p-3 md:p-4 flex items-center gap-3" data-testid="card-legacy-info">
+              <div className="p-2 rounded-lg bg-blue-500/10 shrink-0">
+                <Info className="w-4 h-4 text-blue-600" />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-muted/50 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground">Total Count</p>
-                  <p className="text-2xl font-bold font-display" data-testid="text-milestone-count">
-                    {milestoneStats?.total ?? 0}
-                  </p>
-                </div>
-                <div className="bg-muted/50 rounded-lg p-3">
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <DollarSign className="w-3 h-3" /> Economic Value
-                  </p>
-                  <p className="text-2xl font-bold font-display" data-testid="text-milestone-value">
-                    ${(milestoneStats?.totalValue ?? 0).toLocaleString()}
-                  </p>
-                </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-muted-foreground" data-testid="text-legacy-info">
+                  Historical data from <span className="font-semibold text-foreground">{blendedStats.legacy.reportCount}</span> legacy reports included
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5" data-testid="text-legacy-totals">
+                  {blendedStats.legacy.totalActivations.toLocaleString()} activations · {blendedStats.legacy.totalPeople.toLocaleString()} people · {blendedStats.legacy.totalEngagements.toLocaleString()} engagements
+                </p>
               </div>
-              <Link href="/milestones" className="text-primary hover:underline text-xs font-medium flex items-center justify-center pt-4" data-testid="link-view-milestones">
-                View all milestones <ArrowRight className="w-3 h-3 ml-1" />
-              </Link>
             </Card>
+          )}
 
+          <div className="grid grid-cols-1 gap-4 md:gap-6">
             <Card className="p-4 md:p-6" data-testid="card-relationship-stages">
               <div className="flex items-center gap-3 mb-4">
                 <div className="p-2 rounded-lg bg-blue-500/10">
@@ -364,6 +353,78 @@ export default function Dashboard() {
                     </Link>
                   </div>
                 ))}
+              </div>
+              {(() => {
+                const unconfirmedCount = (impactLogs as any[])?.filter((l: any) => l.status !== "confirmed").length || 0;
+                if (unconfirmedCount === 0) return null;
+                return (
+                  <div className="mt-3 pt-3 border-t border-border" data-testid="text-unconfirmed-debriefs">
+                    <Link href="/debriefs" className="text-sm text-muted-foreground hover:text-foreground transition-colors" data-testid="link-unconfirmed-debriefs">
+                      <span className="font-medium text-foreground">{unconfirmedCount}</span> debrief{unconfirmedCount !== 1 ? "s" : ""} awaiting confirmation <ArrowRight className="w-3 h-3 inline ml-1" />
+                    </Link>
+                  </div>
+                );
+              })()}
+            </Card>
+          )}
+
+          {outstandingActions && outstandingActions.length > 0 && (
+            <Card className="border-l-4 border-l-orange-500 p-4 md:p-6" data-testid="card-outstanding-actions">
+              <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-orange-500/10">
+                    <ListChecks className="w-5 h-5 text-orange-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold font-display" data-testid="text-outstanding-actions-title">Outstanding Actions</h2>
+                    <p className="text-sm text-muted-foreground" data-testid="text-outstanding-actions-subtitle">
+                      {outstandingActions.length} action{outstandingActions.length !== 1 ? "s" : ""} needing follow-up
+                    </p>
+                  </div>
+                </div>
+                <Link href="/actions" data-testid="link-view-all-actions">
+                  <Button variant="outline" size="sm" className="gap-1">
+                    View All <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </Link>
+              </div>
+              <div className="space-y-2">
+                {outstandingActions.slice(0, 5).map((action) => {
+                  const contact = contacts?.find((c: Contact) => c.id === action.contactId);
+                  const isOverdue = action.dueDate ? isBefore(new Date(action.dueDate), new Date()) : false;
+                  return (
+                    <div
+                      key={action.id}
+                      className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                      data-testid={`action-item-${action.id}`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <Badge
+                          variant="secondary"
+                          className={`shrink-0 text-xs ${
+                            action.status === "pending" ? "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300" : "bg-blue-500/15 text-blue-700 dark:text-blue-300"
+                          }`}
+                          data-testid={`badge-action-status-${action.id}`}
+                        >
+                          {action.status === "in_progress" ? "In Progress" : "Pending"}
+                        </Badge>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-sm truncate" data-testid={`text-action-title-${action.id}`}>{action.title}</p>
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                            {contact && (
+                              <span className="text-xs text-muted-foreground" data-testid={`text-action-contact-${action.id}`}>{contact.name}</span>
+                            )}
+                            {action.dueDate && (
+                              <span className={`text-xs ${isOverdue ? "text-red-600 dark:text-red-400 font-medium" : "text-muted-foreground"}`} data-testid={`text-action-due-${action.id}`}>
+                                Due {format(new Date(action.dueDate), "d MMM yyyy")}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </Card>
           )}
