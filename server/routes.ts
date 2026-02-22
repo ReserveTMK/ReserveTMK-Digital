@@ -2514,11 +2514,11 @@ Important:
 
       if (pdfData) {
         try {
-          const mod = await import("pdf-parse");
-          const pdfParse = mod.default || mod;
+          const { PDFParse } = await import("pdf-parse");
           const pdfBuffer = Buffer.from(pdfData, "base64");
-          const pdfResult = await pdfParse(pdfBuffer);
-          const pdfText = pdfResult.text;
+          const parser = new PDFParse({ data: pdfBuffer });
+          await parser.load();
+          const pdfText = await parser.getText();
 
           const prompt = buildExtractionPrompt(pdfText);
           const response = await openai.chat.completions.create({
@@ -2657,11 +2657,11 @@ Important:
       let pdfText = "";
       if (report.pdfData) {
         try {
-          const pdfParseModule = await import("pdf-parse");
-          const pdfParse = pdfParseModule.default || pdfParseModule;
+          const { PDFParse: PdfParser } = await import("pdf-parse");
           const buffer = Buffer.from(report.pdfData, "base64");
-          const parsed = await pdfParse(buffer);
-          pdfText = parsed.text || "";
+          const parser = new PdfParser({ data: buffer });
+          await parser.load();
+          pdfText = (await parser.getText()) || "";
         } catch (e) {
           pdfText = "";
         }
@@ -3217,11 +3217,11 @@ Keep responses concise and actionable. Format as structured sections.`;
       if (!report || report.userId !== userId) return res.status(404).json({ message: "Not found" });
       if (!report.pdfData) return res.status(400).json({ message: "No PDF data attached to this report" });
 
-      const pdfParseModule = await import("pdf-parse");
-      const pdfParse = pdfParseModule.default || pdfParseModule;
+      const { PDFParse: PdfParser2 } = await import("pdf-parse");
       const pdfBuffer = Buffer.from(report.pdfData, "base64");
-      const pdfResult = await pdfParse(pdfBuffer);
-      const pdfText = pdfResult.text;
+      const parser = new PdfParser2({ data: pdfBuffer });
+      await parser.load();
+      const pdfText = await parser.getText();
 
       const prompt = buildExtractionPrompt(pdfText);
 
@@ -3470,11 +3470,11 @@ Keep responses concise and actionable. Format as structured sections.`;
       let pdfText = "";
       if (report.pdfData) {
         try {
-          const pdfParseModule = await import("pdf-parse");
-          const pdfParse = pdfParseModule.default || pdfParseModule;
+          const { PDFParse: PdfParser } = await import("pdf-parse");
           const buffer = Buffer.from(report.pdfData, "base64");
-          const parsed = await pdfParse(buffer);
-          pdfText = parsed.text || "";
+          const parser = new PdfParser({ data: buffer });
+          await parser.load();
+          pdfText = (await parser.getText()) || "";
         } catch (e) {
           pdfText = "";
         }
