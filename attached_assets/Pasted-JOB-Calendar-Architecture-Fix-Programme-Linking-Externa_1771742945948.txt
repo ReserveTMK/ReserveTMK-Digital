@@ -1,0 +1,264 @@
+JOB: Calendar Architecture Fix + Programme Linking + External Group Booking Portal
+
+Priority: High  
+Objective: 
+1) Eliminate duplicate calendar entries and formalise Google Calendar as the time source of truth.
+2) Implement clean Programme linking and debrief workflow.
+3) Build a vetted external Group Booking Portal to reduce admin.
+
+-----------------------------------------
+PART 1: CALENDAR ARCHITECTURE (SOURCE OF TRUTH)
+-----------------------------------------
+
+Decision:
+- Google Calendar = Source of truth for TIME (scheduling, invites, reschedules).
+- Internal App = Source of truth for CLASSIFICATION, DELIVERY, IMPACT, REPORTING.
+- No manual deletion of duplicate items.
+
+-----------------------------------------
+PHASE 1A: DUPLICATE SUPPRESSION (MVP)
+-----------------------------------------
+
+Problem:
+Calendar view currently shows duplicate entries when:
+- A Programme exists internally
+- The same event exists via Google Calendar sync
+
+Goal:
+If a Google event is linked to a Programme or Booking, only render ONE object.
+
+Database Updates:
+Add to calendar_events:
+- linked_programme_id (nullable FK)
+- linked_booking_id (nullable FK)
+- source ENUM ('google', 'internal')
+- type ENUM ('mentoring', 'meeting', 'programme_session', 'booking', 'personal', 'other')
+- requires_debrief BOOLEAN (default false)
+- status ENUM ('active', 'cancelled')
+
+Rendering Logic:
+
+IF calendar_event.linked_programme_id IS NOT NULL
+  → Render Programme object only
+  → Suppress raw Google event
+
+IF calendar_event.linked_booking_id IS NOT NULL
+  → Render Booking object only
+  → Suppress raw Google event
+
+ELSE
+  → Render calendar_event standalone
+
+Acceptance Criteria:
+- No visible duplicates in any calendar view.
+- Linking/unlinking instantly updates UI.
+- No data is deleted to suppress duplicates.
+- Programme count logic uses Programme records only.
+
+-----------------------------------------
+PHASE 1B: EVENT → PROGRAMME LINKING
+-----------------------------------------
+
+Goal:
+Allow synced Google events to become internal Programmes cleanly.
+
+UI Requirements (when viewing a Google event):
+
+Buttons:
+- “Convert to Programme”
+- “Link to Existing Programme”
+- “Mark Personal / Ignore for Reporting”
+
+Convert to Programme:
+- Create Programme record
+- Auto-set start_date from event date
+- Link linked_programme_id
+- Set requires_debrief = true
+
+Link to Existing:
+- Attach linked_programme_id
+- Do not create new Programme
+
+Mark Personal:
+- Set type = personal
+- Set requires_debrief = false
+- Exclude from reporting
+
+Acceptance Criteria:
+- Conversion takes max 2 clicks.
+- No duplicate Programmes created.
+- Only Programmes count toward monthly target.
+- Google-only events do not.
+
+-----------------------------------------
+PHASE 1C: DEBRIEF EXPECTATION QUEUE
+-----------------------------------------
+
+Goal:
+Only internal delivery objects trigger debrief expectations.
+
+Rules:
+- Programmes require debrief.
+- Mentoring events may require debrief (based on type).
+- Personal events never require debrief.
+
+Implementation:
+Create “Needs Debrief” view:
+Show all past items where:
+- requires_debrief = true
+AND
+- no confirmed debrief exists
+AND
+- event_date < now()
+
+Allow:
+- Record debrief
+- Mark “No Debrief Required” (store reason)
+
+Acceptance Criteria:
+- Clear single list of outstanding debriefs.
+- Reporting excludes unconfirmed debrief items.
+
+-----------------------------------------
+PART 2: EXTERNAL GROUP BOOKING PORTAL (VETTED GROUPS ONLY)
+-----------------------------------------
+
+Objective:
+Reduce admin by allowing approved groups to:
+- View availability
+- Book/request space
+- See their allowance usage
+- Manage their own bookings
+
+This portal is ONLY for vetted groups.
+
+-----------------------------------------
+PHASE 2A: GROUP AUTH + PERMISSIONS
+-----------------------------------------
+
+Create group user system:
+
+Roles:
+- Group Admin (book, edit, cancel, view allowance, invite group users)
+- Group Booker (book, edit, cancel)
+- Group Viewer (view only)
+
+Permissions:
+- Can only see their own Group profile.
+- Can only see their own bookings.
+- In calendar, other bookings appear as “Unavailable” only (no details).
+
+-----------------------------------------
+PHASE 2B: AVAILABILITY CALENDAR
+-----------------------------------------
+
+Build filtered availability view:
+
+Must:
+- Show Free / Unavailable slots.
+- Hide other group booking details.
+- Enforce conflict detection on save.
+
+Unavailable includes:
+- Confirmed bookings
+- Internal blocks
+- Programmes (if space not available)
+
+Acceptance Criteria:
+- No double bookings possible.
+- Real-time validation before save.
+
+-----------------------------------------
+PHASE 2C: BOOKING FLOW
+-----------------------------------------
+
+Initial model: Request + Approval (safer MVP)
+
+Flow:
+1) Group selects time.
+2) Submits booking request.
+3) Status = pending.
+4) Admin approves or declines.
+5) If approved → becomes confirmed booking.
+
+Future (Phase 3 optional):
+Instant booking for trusted groups with rule engine.
+
+-----------------------------------------
+PHASE 2D: ALLOWANCE DASHBOARD
+-----------------------------------------
+
+Each group dashboard shows:
+
+- Plan type (Membership / MOU / Casual)
+- Period type (monthly / quarterly / annual)
+- Total allowance hours
+- Used hours
+- Remaining hours
+- Upcoming bookings that will consume allowance
+
+Allowance Model (MVP):
+Hours-based only.
+
+Rules:
+- Booking consumes duration hours.
+- Allowance period resets per agreement.
+- No rollover initially.
+
+Booking must link to:
+- Group
+- Agreement (if exists)
+
+Acceptance Criteria:
+- Usage updates automatically when booking confirmed.
+- Clear remaining hours display.
+- Cannot exceed allowance without warning (soft block initially).
+
+-----------------------------------------
+NON-NEGOTIABLE RULES
+-----------------------------------------
+
+- Google Calendar remains scheduling layer.
+- App remains impact + reporting layer.
+- No manual deletion of duplicates.
+- Programme count = count of Programme records.
+- Booking count = count of Booking records.
+- All changes logged in audit trail.
+- All logic reproducible from DB queries.
+
+-----------------------------------------
+DELIVERABLES
+-----------------------------------------
+
+1) Updated schema (calendar + group users + booking rules).
+2) Duplicate suppression logic implemented.
+3) Event → Programme linking UI.
+4) Debrief queue page.
+5) External Group Portal:
+   - Auth
+   - Availability calendar
+   - Booking request flow
+   - Allowance dashboard
+6) Documentation:
+   - Data flow diagram
+   - Conflict detection logic
+   - Allowance consumption logic
+
+-----------------------------------------
+SUCCESS STATE
+-----------------------------------------
+
+- I create all time in Google Calendar.
+- The app syncs it and enriches it.
+- Only one object shows on calendar.
+- Programmes are clean strategic objects.
+- Debriefing is structured and visible.
+- Vetted groups self-serve bookings.
+- Admin load decreases.
+- Reporting remains clean and deterministic.
+
+Execute in this order:
+1) Calendar duplicate suppression
+2) Programme linking + debrief queue
+3) Group portal viewer
+4) Booking requests + allowance dashboard
