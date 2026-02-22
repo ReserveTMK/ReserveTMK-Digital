@@ -1,0 +1,93 @@
+JOB: Refine Colour System Using Official Brand Guide Tokens
+
+Objective:
+Align app colour system exactly to ReserveTMK brand guide. Do NOT approximate colours. Use only hex/RGB values defined in the official brand guide.
+
+No layout changes. Colour system only.
+
+-----------------------------------------
+MANDATORY RULE
+-----------------------------------------
+
+- Extract exact colour values from the ReserveTMK brand guide.
+- Define them as central theme tokens.
+- All UI colours must reference those tokens.
+- No hard-coded colours allowed in components.
+
+-----------------------------------------
+COLOUR HIERARCHY (BASED ON WEBSITE + BRAND GUIDE)
+-----------------------------------------
+
+Primary Identity:
+- Forest Green (from brand guide) → Navigation + structural anchors
+
+Base:
+- Warm Beige / Off-White (from brand guide) → Page backgrounds + cards
+
+Primary Action:
+- Coral / Orange (from brand guide) → Buttons, reconcile actions, active highlights
+
+Secondary Accents:
+- Soft Pink (brand guide value) → Subtle panels, light highlights only
+- Soft Blue (brand guide value) → Informational blocks
+- Muted Green (brand guide value) → Success states
+- Amber (brand guide value) → Warning states
+
+-----------------------------------------
+IMPLEMENTATION REQUIREMENTS
+-----------------------------------------
+
+1) Create Central Theme File
+Define tokens such as:
+- color-primary-green
+- color-primary-coral
+- color-background-base
+- color-accent-pink
+- color-accent-blue
+- color-success
+- color-warning
+- color-text-primary
+- color-text-muted
+
+All components must consume these tokens.
+
+2) Navigation
+- Background = brand green token
+- Text = brand off-white token
+- Active underline/accent = coral token
+
+3) Buttons
+Primary:
+- Background = coral token
+- Text = off-white token
+
+Secondary:
+- Outline = coral token
+- Background = transparent/beige
+
+4) Dashboard & Cards
+- Background = beige token
+- No pure white
+- “To Be Debriefed” badge + Reconcile button = coral token
+
+5) Charts
+- Default data = neutral brand greys
+- Current period highlight = coral token
+- Programme highlight = brand green token
+- Booking highlight = brand blue token
+
+6) Global Audit
+- Remove all legacy purple/blue/pink approximations
+- Replace any raw hex codes with theme tokens
+- Ensure dark mode (if supported) references brand palette, not generic inversion
+
+-----------------------------------------
+ACCEPTANCE CRITERIA
+-----------------------------------------
+
+- All colours match exact brand guide values.
+- No unofficial hex codes remain.
+- Coral is primary action colour.
+- Forest green anchors identity.
+- Pink and blue are used sparingly and intentionally.
+- App visually feels identical in tone to reservetmk.co.nz.
