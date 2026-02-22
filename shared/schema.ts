@@ -458,12 +458,17 @@ export const reports = pgTable("reports", {
 export const legacyReports = pgTable("legacy_reports", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
+  year: integer("year"),
+  quarter: integer("quarter"),
   quarterLabel: text("quarter_label").notNull(),
   periodStart: timestamp("period_start").notNull(),
   periodEnd: timestamp("period_end").notNull(),
   pdfFileName: text("pdf_file_name"),
   pdfData: text("pdf_data"),
   notes: text("notes"),
+  status: text("status").default("draft"),
+  confirmedAt: timestamp("confirmed_at"),
+  confirmedBy: text("confirmed_by"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -481,6 +486,8 @@ export const legacyReportSnapshots = pgTable("legacy_report_snapshots", {
   groupsUnique: integer("groups_unique"),
   bookingsTotal: integer("bookings_total"),
   hoursTotal: numeric("hours_total"),
+  revenueTotal: numeric("revenue_total"),
+  inKindTotal: numeric("in_kind_total"),
   extraMetrics: jsonb("extra_metrics").$type<Record<string, number>>().default({}),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -492,6 +499,52 @@ export const reportingSettings = pgTable("reporting_settings", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+export const legacyReportExtractions = pgTable("legacy_report_extractions", {
+  id: serial("id").primaryKey(),
+  legacyReportId: integer("legacy_report_id").notNull(),
+  suggestedMetrics: jsonb("suggested_metrics").$type<Array<{
+    metricKey: string;
+    metricValue: number | null;
+    metricUnit: string | null;
+    confidence: number;
+    evidenceSnippet: string | null;
+  }>>().default([]),
+  rawText: text("raw_text"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const weeklyHubDebriefs = pgTable("weekly_hub_debriefs", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  weekStartDate: timestamp("week_start_date").notNull(),
+  weekEndDate: timestamp("week_end_date").notNull(),
+  status: text("status").default("draft"),
+  generatedSummaryText: text("generated_summary_text"),
+  finalSummaryText: text("final_summary_text"),
+  metricsJson: jsonb("metrics_json").$type<Record<string, any>>().default({}),
+  themesJson: jsonb("themes_json").$type<string[]>().default([]),
+  sentimentJson: jsonb("sentiment_json").$type<{ average: number | null; sampleSize: number; breakdown: Record<string, number> }>(),
+  createdAt: timestamp("created_at").defaultNow(),
+  confirmedAt: timestamp("confirmed_at"),
+});
+
+export const insertLegacyReportExtractionSchema = createInsertSchema(legacyReportExtractions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertWeeklyHubDebriefSchema = createInsertSchema(weeklyHubDebriefs).omit({
+  id: true,
+  createdAt: true,
+  confirmedAt: true,
+});
+
+export type LegacyReportExtraction = typeof legacyReportExtractions.$inferSelect;
+export type InsertLegacyReportExtraction = z.infer<typeof insertLegacyReportExtractionSchema>;
+
+export type WeeklyHubDebrief = typeof weeklyHubDebriefs.$inferSelect;
+export type InsertWeeklyHubDebrief = z.infer<typeof insertWeeklyHubDebriefSchema>;
 
 export const insertLegacyReportSchema = createInsertSchema(legacyReports).omit({
   id: true,

@@ -94,6 +94,12 @@ import {
   type RelationshipStageHistoryRecord,
   type InsertRelationshipStageHistory,
   impactLogGroups,
+  legacyReportExtractions,
+  weeklyHubDebriefs,
+  type LegacyReportExtraction,
+  type InsertLegacyReportExtraction,
+  type WeeklyHubDebrief,
+  type InsertWeeklyHubDebrief,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, sql, max, count } from "drizzle-orm";
 
@@ -263,6 +269,18 @@ export interface IStorage {
   getLegacyReportSnapshot(legacyReportId: number): Promise<LegacyReportSnapshot | undefined>;
   createLegacyReportSnapshot(data: InsertLegacyReportSnapshot): Promise<LegacyReportSnapshot>;
   updateLegacyReportSnapshot(id: number, updates: Partial<InsertLegacyReportSnapshot>): Promise<LegacyReportSnapshot>;
+
+  // Legacy Report Extractions
+  getLegacyReportExtraction(legacyReportId: number): Promise<LegacyReportExtraction | undefined>;
+  createLegacyReportExtraction(data: InsertLegacyReportExtraction): Promise<LegacyReportExtraction>;
+
+  // Weekly Hub Debriefs
+  getWeeklyHubDebriefs(userId: string): Promise<WeeklyHubDebrief[]>;
+  getWeeklyHubDebrief(id: number): Promise<WeeklyHubDebrief | undefined>;
+  getWeeklyHubDebriefByWeek(userId: string, weekStartDate: Date): Promise<WeeklyHubDebrief | undefined>;
+  createWeeklyHubDebrief(data: InsertWeeklyHubDebrief): Promise<WeeklyHubDebrief>;
+  updateWeeklyHubDebrief(id: number, updates: Partial<InsertWeeklyHubDebrief>): Promise<WeeklyHubDebrief>;
+  deleteWeeklyHubDebrief(id: number): Promise<void>;
 
   // Reporting Settings
   getReportingSettings(userId: string): Promise<ReportingSettings | undefined>;
@@ -1150,6 +1168,45 @@ export class DatabaseStorage implements IStorage {
   async createRelationshipStageHistory(data: InsertRelationshipStageHistory): Promise<RelationshipStageHistoryRecord> {
     const [record] = await db.insert(relationshipStageHistory).values(data).returning();
     return record;
+  }
+
+  async getLegacyReportExtraction(legacyReportId: number): Promise<LegacyReportExtraction | undefined> {
+    const [extraction] = await db.select().from(legacyReportExtractions).where(eq(legacyReportExtractions.legacyReportId, legacyReportId));
+    return extraction;
+  }
+
+  async createLegacyReportExtraction(data: InsertLegacyReportExtraction): Promise<LegacyReportExtraction> {
+    const [extraction] = await db.insert(legacyReportExtractions).values(data).returning();
+    return extraction;
+  }
+
+  async getWeeklyHubDebriefs(userId: string): Promise<WeeklyHubDebrief[]> {
+    return await db.select().from(weeklyHubDebriefs).where(eq(weeklyHubDebriefs.userId, userId)).orderBy(desc(weeklyHubDebriefs.weekStartDate));
+  }
+
+  async getWeeklyHubDebrief(id: number): Promise<WeeklyHubDebrief | undefined> {
+    const [debrief] = await db.select().from(weeklyHubDebriefs).where(eq(weeklyHubDebriefs.id, id));
+    return debrief;
+  }
+
+  async getWeeklyHubDebriefByWeek(userId: string, weekStartDate: Date): Promise<WeeklyHubDebrief | undefined> {
+    const [debrief] = await db.select().from(weeklyHubDebriefs)
+      .where(and(eq(weeklyHubDebriefs.userId, userId), eq(weeklyHubDebriefs.weekStartDate, weekStartDate)));
+    return debrief;
+  }
+
+  async createWeeklyHubDebrief(data: InsertWeeklyHubDebrief): Promise<WeeklyHubDebrief> {
+    const [debrief] = await db.insert(weeklyHubDebriefs).values(data).returning();
+    return debrief;
+  }
+
+  async updateWeeklyHubDebrief(id: number, updates: Partial<InsertWeeklyHubDebrief>): Promise<WeeklyHubDebrief> {
+    const [debrief] = await db.update(weeklyHubDebriefs).set(updates).where(eq(weeklyHubDebriefs.id, id)).returning();
+    return debrief;
+  }
+
+  async deleteWeeklyHubDebrief(id: number): Promise<void> {
+    await db.delete(weeklyHubDebriefs).where(eq(weeklyHubDebriefs.id, id));
   }
 }
 

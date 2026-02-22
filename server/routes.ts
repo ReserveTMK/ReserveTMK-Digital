@@ -7,6 +7,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { openai } from "./replit_integrations/audio/client";
 import { getFullMonthlyReport, generateNarrative, type ReportFilters } from "./reporting";
+import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
 
 function parseTimeToMinutes(timeStr: string): number {
   const parts = timeStr.split(":");
@@ -2318,32 +2319,66 @@ Important:
   app.post("/api/legacy-reports", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { quarterLabel, periodStart, periodEnd, pdfFileName, pdfData, notes, snapshot } = req.body;
+      const { year, quarter, pdfFileName, pdfData, notes, snapshot } = req.body;
+
+      if (!year || !quarter) {
+        return res.status(400).json({ message: "Year and quarter are required" });
+      }
+
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      if (year < 2023 || year > currentYear) {
+        return res.status(400).json({ message: "Year must be between 2023 and current year" });
+      }
+      if (quarter < 1 || quarter > 4) {
+        return res.status(400).json({ message: "Quarter must be between 1 and 4" });
+      }
+
+      const quarterEndMonth = quarter * 3;
+      const quarterEndDate = new Date(year, quarterEndMonth, 0);
+      if (quarterEndDate > now) {
+        return res.status(400).json({ message: "Cannot create reports for future quarters" });
+      }
+
+      const existing = await storage.getLegacyReports(userId);
+      const duplicate = existing.find(r => r.year === year && r.quarter === quarter);
+      if (duplicate) {
+        return res.status(409).json({ message: `A report for ${year} Q${quarter} already exists` });
+      }
+
+      const periodStart = new Date(year, (quarter - 1) * 3, 1);
+      const periodEnd = quarterEndDate;
+      const quarterLabel = `${year} Q${quarter}`;
 
       const report = await storage.createLegacyReport({
         userId,
+        year,
+        quarter,
         quarterLabel,
-        periodStart: new Date(periodStart),
-        periodEnd: new Date(periodEnd),
+        periodStart,
+        periodEnd,
         pdfFileName: pdfFileName || null,
         pdfData: pdfData || null,
         notes: notes || null,
+        status: "draft",
       });
 
       let snapshotRecord = null;
       if (snapshot) {
         snapshotRecord = await storage.createLegacyReportSnapshot({
           legacyReportId: report.id,
-          activationsTotal: snapshot.activationsTotal || 0,
-          activationsWorkshops: snapshot.activationsWorkshops || 0,
-          activationsMentoring: snapshot.activationsMentoring || 0,
-          activationsEvents: snapshot.activationsEvents || 0,
-          activationsPartnerMeetings: snapshot.activationsPartnerMeetings || 0,
-          peopleUnique: snapshot.peopleUnique || null,
-          engagementsTotal: snapshot.engagementsTotal || null,
-          groupsUnique: snapshot.groupsUnique || null,
-          bookingsTotal: snapshot.bookingsTotal || null,
-          hoursTotal: snapshot.hoursTotal || null,
+          activationsTotal: snapshot.activationsTotal ?? null,
+          activationsWorkshops: snapshot.activationsWorkshops ?? null,
+          activationsMentoring: snapshot.activationsMentoring ?? null,
+          activationsEvents: snapshot.activationsEvents ?? null,
+          activationsPartnerMeetings: snapshot.activationsPartnerMeetings ?? null,
+          peopleUnique: snapshot.peopleUnique ?? null,
+          engagementsTotal: snapshot.engagementsTotal ?? null,
+          groupsUnique: snapshot.groupsUnique ?? null,
+          bookingsTotal: snapshot.bookingsTotal ?? null,
+          hoursTotal: snapshot.hoursTotal ?? null,
+          revenueTotal: snapshot.revenueTotal ?? null,
+          inKindTotal: snapshot.inKindTotal ?? null,
         });
       }
 
@@ -2361,14 +2396,21 @@ Important:
       const existing = await storage.getLegacyReport(id);
       if (!existing || existing.userId !== userId) return res.status(404).json({ message: "Not found" });
 
-      const { quarterLabel, periodStart, periodEnd, notes, snapshot } = req.body;
+      const { notes, snapshot, status } = req.body;
 
-      const updated = await storage.updateLegacyReport(id, {
-        ...(quarterLabel && { quarterLabel }),
-        ...(periodStart && { periodStart: new Date(periodStart) }),
-        ...(periodEnd && { periodEnd: new Date(periodEnd) }),
-        ...(notes !== undefined && { notes }),
-      });
+      const updateData: any = {};
+      if (notes !== undefined) updateData.notes = notes;
+      if (status === "confirmed" && existing.status !== "confirmed") {
+        updateData.status = "confirmed";
+        updateData.confirmedAt = new Date();
+        updateData.confirmedBy = userId;
+      } else if (status === "draft") {
+        updateData.status = "draft";
+        updateData.confirmedAt = null;
+        updateData.confirmedBy = null;
+      }
+
+      const updated = await storage.updateLegacyReport(id, updateData);
 
       let snapshotRecord = null;
       if (snapshot) {
@@ -2440,8 +2482,9 @@ Important:
       if (!startDate || !endDate) return res.status(400).json({ message: "startDate and endDate required" });
 
       const legacyReportsData = await storage.getLegacyReports(userId);
+      const confirmedReports = legacyReportsData.filter(r => r.status === "confirmed");
       const snapshots = await Promise.all(
-        legacyReportsData.map(async (r) => {
+        confirmedReports.map(async (r) => {
           const snapshot = await storage.getLegacyReportSnapshot(r.id);
           return { report: r, snapshot };
         })
@@ -2556,10 +2599,11 @@ Important:
     try {
       const userId = (req.user as any).claims.sub;
       const legacyReportsData = await storage.getLegacyReports(userId);
+      const confirmedReports = legacyReportsData.filter(r => r.status === "confirmed");
       const settings = await storage.getReportingSettings(userId);
 
       const trendData = await Promise.all(
-        legacyReportsData.map(async (r) => {
+        confirmedReports.map(async (r) => {
           const snapshot = await storage.getLegacyReportSnapshot(r.id);
           return {
             quarterLabel: r.quarterLabel,
@@ -2872,6 +2916,280 @@ Keep responses concise and actionable. Format as structured sections.`;
         }
       });
       res.json([...tagSet].sort());
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ── Legacy Report PDF Extraction ──
+  app.post("/api/legacy-reports/:id/extract-metrics", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const id = parseInt(req.params.id);
+      const report = await storage.getLegacyReport(id);
+      if (!report || report.userId !== userId) return res.status(404).json({ message: "Not found" });
+      if (!report.pdfData) return res.status(400).json({ message: "No PDF data attached to this report" });
+
+      const pdfParse = (await import("pdf-parse")).default;
+      const pdfBuffer = Buffer.from(report.pdfData, "base64");
+      const pdfResult = await pdfParse(pdfBuffer);
+      const pdfText = pdfResult.text;
+
+      const metricKeys = [
+        { key: "activations_total", label: "Total Activations", unit: "count" },
+        { key: "activations_workshops", label: "Workshops", unit: "count" },
+        { key: "activations_mentoring", label: "Mentoring Sessions", unit: "count" },
+        { key: "activations_events", label: "Events", unit: "count" },
+        { key: "activations_partner_meetings", label: "Partner Meetings", unit: "count" },
+        { key: "people_unique", label: "Unique People", unit: "count" },
+        { key: "engagements_total", label: "Total Engagements", unit: "count" },
+        { key: "groups_unique", label: "Unique Groups", unit: "count" },
+        { key: "bookings_total", label: "Total Bookings", unit: "count" },
+        { key: "hours_total", label: "Total Hours", unit: "hours" },
+        { key: "revenue_total", label: "Total Revenue", unit: "NZD" },
+        { key: "in_kind_total", label: "In-Kind Value", unit: "NZD" },
+      ];
+
+      const prompt = `You are an impact data analyst. Extract quantitative metrics from this community organisation quarterly report text.
+
+For each metric below, find the value in the text. If a metric is not mentioned, set value to null with confidence 0.
+
+Metrics to extract:
+${metricKeys.map(m => `- ${m.key} (${m.label}, unit: ${m.unit})`).join("\n")}
+
+Report text:
+"""
+${pdfText.substring(0, 8000)}
+"""
+
+Respond in JSON format only:
+{
+  "metrics": [
+    { "metricKey": "activations_total", "metricValue": 42, "metricUnit": "count", "confidence": 85, "evidenceSnippet": "The exact text snippet where you found this number" },
+    ...
+  ]
+}
+
+Rules:
+- confidence is 0-100 (how sure you are)
+- evidenceSnippet is the relevant text snippet (max 200 chars)
+- If not found, set metricValue to null, confidence to 0, evidenceSnippet to null
+- Only return the JSON, no other text`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.2,
+        response_format: { type: "json_object" },
+      });
+
+      const content = response.choices[0]?.message?.content || "{}";
+      let parsed: any;
+      try {
+        parsed = JSON.parse(content);
+      } catch {
+        parsed = { metrics: [] };
+      }
+
+      const suggestedMetrics = (parsed.metrics || []).map((m: any) => ({
+        metricKey: m.metricKey,
+        metricValue: m.metricValue,
+        metricUnit: m.metricUnit || null,
+        confidence: m.confidence || 0,
+        evidenceSnippet: m.evidenceSnippet || null,
+      }));
+
+      const extraction = await storage.createLegacyReportExtraction({
+        legacyReportId: id,
+        suggestedMetrics,
+        rawText: pdfText.substring(0, 20000),
+      });
+
+      res.json(extraction);
+    } catch (err: any) {
+      console.error("PDF extraction error:", err);
+      res.status(500).json({ message: "Failed to extract metrics from PDF" });
+    }
+  });
+
+  app.get("/api/legacy-reports/:id/extraction", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const extraction = await storage.getLegacyReportExtraction(id);
+      res.json(extraction || null);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch extraction" });
+    }
+  });
+
+  // ── Weekly Hub Debriefs ──
+  app.get("/api/weekly-hub-debriefs", isAuthenticated, async (req, res) => {
+    try {
+      const debriefs = await storage.getWeeklyHubDebriefs((req.user as any).claims.sub);
+      res.json(debriefs);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/weekly-hub-debriefs/:id", isAuthenticated, async (req, res) => {
+    try {
+      const debrief = await storage.getWeeklyHubDebrief(Number(req.params.id));
+      if (!debrief) return res.status(404).json({ message: "Not found" });
+      res.json(debrief);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/weekly-hub-debriefs/generate", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { weekStartDate } = req.body;
+      if (!weekStartDate) return res.status(400).json({ message: "weekStartDate required" });
+
+      const weekStart = getNZWeekStart(new Date(weekStartDate));
+      const weekEnd = getNZWeekEnd(new Date(weekStartDate));
+
+      const existing = await storage.getWeeklyHubDebriefByWeek(userId, weekStart);
+      if (existing) return res.status(409).json({ message: "A debrief for this week already exists", existing });
+
+      const allDebriefs = await storage.getImpactLogs(userId);
+      const confirmedDebriefs = (allDebriefs as any[]).filter((d: any) => {
+        if (d.status !== "confirmed") return false;
+        const created = new Date(d.createdAt);
+        return created >= weekStart && created <= weekEnd;
+      });
+
+      const allProgrammes = await storage.getProgrammes(userId);
+      const completedProgrammes = allProgrammes.filter((p: any) => {
+        if (p.status !== "completed") return false;
+        const end = p.endDate ? new Date(p.endDate) : null;
+        return end && end >= weekStart && end <= weekEnd;
+      });
+
+      const allBookings = await storage.getBookings(userId);
+      const completedBookings = allBookings.filter((b: any) => {
+        if (b.status !== "completed") return false;
+        const d = b.bookingDate ? new Date(b.bookingDate) : null;
+        return d && d >= weekStart && d <= weekEnd;
+      });
+
+      const allMilestones = await storage.getMilestones(userId);
+      const weekMilestones = allMilestones.filter(m => {
+        const created = m.createdAt ? new Date(m.createdAt) : null;
+        return created && created >= weekStart && created <= weekEnd;
+      });
+
+      const allTaxonomy = await storage.getTaxonomy(userId);
+      const taxonomyCounts: Record<string, number> = {};
+      confirmedDebriefs.forEach((d: any) => {
+        const tags = d.taxonomyTags || [];
+        tags.forEach((tag: string) => {
+          taxonomyCounts[tag] = (taxonomyCounts[tag] || 0) + 1;
+        });
+      });
+      const topThemes = Object.entries(taxonomyCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([theme]) => theme);
+
+      const sentimentMap: Record<string, number> = { positive: 3, neutral: 2, negative: 1 };
+      const sentiments = confirmedDebriefs.map((d: any) => d.sentiment).filter(Boolean);
+      const sentimentBreakdown: Record<string, number> = { positive: 0, neutral: 0, negative: 0 };
+      sentiments.forEach((s: string) => { sentimentBreakdown[s] = (sentimentBreakdown[s] || 0) + 1; });
+      const sentimentAvg = sentiments.length > 0
+        ? sentiments.reduce((sum: number, s: string) => sum + (sentimentMap[s] || 2), 0) / sentiments.length
+        : null;
+
+      const outstandingDebriefs = (allDebriefs as any[]).filter((d: any) => d.status === "pending" || d.status === "draft").length;
+
+      const allEvents = await storage.getEvents(userId);
+      const nextWeekDate = new Date(weekEnd);
+      nextWeekDate.setDate(nextWeekDate.getDate() + 1);
+      const nextWeekStart = getNZWeekStart(nextWeekDate);
+      const nextWeekEnd = getNZWeekEnd(nextWeekDate);
+      const upcomingEvents = allEvents.filter(e => {
+        const d = new Date(e.startTime);
+        return d >= nextWeekStart && d <= nextWeekEnd;
+      });
+
+      const metrics: Record<string, any> = {
+        confirmedDebriefs: confirmedDebriefs.length,
+        completedProgrammes: completedProgrammes.length,
+        completedBookings: completedBookings.length,
+        milestonesCreated: weekMilestones.length,
+        outstandingDebriefs,
+        upcomingEventsNextWeek: upcomingEvents.length,
+      };
+
+      const summaryParts: string[] = [];
+      if (confirmedDebriefs.length > 0) summaryParts.push(`${confirmedDebriefs.length} debrief${confirmedDebriefs.length > 1 ? "s" : ""} confirmed`);
+      else summaryParts.push("No debriefs confirmed this week");
+      if (completedProgrammes.length > 0) summaryParts.push(`${completedProgrammes.length} programme${completedProgrammes.length > 1 ? "s" : ""} completed`);
+      if (completedBookings.length > 0) summaryParts.push(`${completedBookings.length} booking${completedBookings.length > 1 ? "s" : ""} completed`);
+      if (weekMilestones.length > 0) summaryParts.push(`${weekMilestones.length} milestone${weekMilestones.length > 1 ? "s" : ""} created`);
+      if (topThemes.length > 0) summaryParts.push(`Top themes: ${topThemes.join(", ")}`);
+      if (sentimentAvg !== null) {
+        const label = sentimentAvg >= 2.5 ? "positive" : sentimentAvg >= 1.5 ? "neutral" : "negative";
+        summaryParts.push(`Overall sentiment: ${label} (n=${sentiments.length})`);
+      }
+      if (outstandingDebriefs > 0) summaryParts.push(`${outstandingDebriefs} event${outstandingDebriefs > 1 ? "s" : ""} still to be debriefed`);
+      if (upcomingEvents.length > 0) summaryParts.push(`${upcomingEvents.length} event${upcomingEvents.length > 1 ? "s" : ""} upcoming next week`);
+
+      const generatedSummary = summaryParts.join(". ") + ".";
+
+      const debrief = await storage.createWeeklyHubDebrief({
+        userId,
+        weekStartDate: weekStart,
+        weekEndDate: weekEnd,
+        status: "draft",
+        generatedSummaryText: generatedSummary,
+        finalSummaryText: null,
+        metricsJson: metrics,
+        themesJson: topThemes,
+        sentimentJson: {
+          average: sentimentAvg,
+          sampleSize: sentiments.length,
+          breakdown: sentimentBreakdown,
+        },
+      });
+
+      res.status(201).json(debrief);
+    } catch (err: any) {
+      console.error("Generate weekly debrief error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/weekly-hub-debriefs/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const existing = await storage.getWeeklyHubDebrief(id);
+      if (!existing) return res.status(404).json({ message: "Not found" });
+
+      const { finalSummaryText, status } = req.body;
+      const updates: any = {};
+      if (finalSummaryText !== undefined) updates.finalSummaryText = finalSummaryText;
+      if (status === "confirmed" && existing.status !== "confirmed") {
+        updates.status = "confirmed";
+        updates.confirmedAt = new Date();
+      } else if (status === "draft") {
+        updates.status = "draft";
+        updates.confirmedAt = null;
+      }
+
+      const updated = await storage.updateWeeklyHubDebrief(id, updates);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/weekly-hub-debriefs/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteWeeklyHubDebrief(Number(req.params.id));
+      res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

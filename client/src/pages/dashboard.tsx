@@ -108,7 +108,8 @@ export default function Dashboard() {
     const start = startOfMonth(currentMonth);
     const end = endOfMonth(currentMonth);
     const days = eachDayOfInterval({ start, end });
-    const startDay = start.getDay();
+    const rawDay = start.getDay();
+    const startDay = rawDay === 0 ? 6 : rawDay - 1;
     const paddingBefore = Array.from({ length: startDay }, (_, i) => {
       const d = new Date(start);
       d.setDate(d.getDate() - (startDay - i));
@@ -387,7 +388,7 @@ export default function Dashboard() {
                 </div>
 
                 <div className="grid grid-cols-7 gap-0">
-                  {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+                  {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
                     <div key={d} className="text-center text-xs font-medium text-muted-foreground py-2">
                       {d}
                     </div>

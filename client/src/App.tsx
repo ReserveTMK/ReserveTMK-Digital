@@ -26,6 +26,7 @@ import DebriefQueuePage from "@/pages/debrief-queue";
 import LegacyReportsPage from "@/pages/legacy-reports";
 import MilestonesPage from "@/pages/milestones";
 import ProgrammeEffectivenessPage from "@/pages/programme-effectiveness";
+import WeeklyDebriefs from "@/pages/weekly-debriefs";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -146,6 +147,10 @@ function Router() {
 
         <Route path="/programme-effectiveness">
           <ProtectedRoute component={ProgrammeEffectivenessPage} />
+        </Route>
+
+        <Route path="/weekly-debriefs">
+          <ProtectedRoute component={WeeklyDebriefs} />
         </Route>
 
         <Route component={NotFound} />

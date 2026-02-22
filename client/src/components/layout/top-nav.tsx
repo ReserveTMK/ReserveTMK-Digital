@@ -9,6 +9,7 @@ import {
   Mic,
   CheckSquare,
   CalendarCheck,
+  CalendarDays,
   Layers,
   Building2,
   Handshake,
@@ -81,6 +82,7 @@ const navGroups: NavGroup[] = [
     children: [
       { name: "Reports", href: "/reports", icon: FileText, description: "Monthly & quarterly reports" },
       { name: "Legacy Reports", href: "/legacy-reports", icon: BookOpen, description: "Historical PDF uploads" },
+      { name: "Weekly Debriefs", href: "/weekly-debriefs", icon: CalendarDays, description: "Weekly hub summaries" },
     ],
   },
   {
