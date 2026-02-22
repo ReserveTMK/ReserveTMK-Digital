@@ -1,0 +1,168 @@
+JOB: Execution Group 1 – Depth, Milestones, Funder Mode, Programme Effectiveness
+
+Priority: High  
+Objective: Strengthen strategic intelligence without adding unnecessary complexity.
+
+This phase builds on existing data structures (Contacts, Groups, Debriefs, Programmes, Bookings).
+
+-----------------------------------------
+PART 1: RELATIONSHIP STAGE TRACKING
+-----------------------------------------
+
+Goal:
+Track depth of engagement for both Contacts and Groups.
+
+Add new field:
+relationship_stage ENUM:
+- new
+- engaged
+- active
+- deepening
+- partner
+- alumni
+
+Requirements:
+- Field exists on both Contacts and Groups.
+- Track stage change history (new table: relationship_stage_history).
+- Log:
+   - previous_stage
+   - new_stage
+   - changed_at
+   - changed_by
+- Display current stage prominently on profile pages.
+- Show simple progression timeline on profile.
+
+Optional (MVP+):
+- Suggest stage upgrades based on:
+   - number of debriefs
+   - programme participation
+   - repeat bookings
+   - mentoring sessions
+
+Reporting:
+- Add dashboard widget:
+   - Count by relationship_stage
+   - Stage movement in current period
+- Allow stage filter in reports.
+
+-----------------------------------------
+PART 2: MILESTONES OBJECT
+-----------------------------------------
+
+Goal:
+Capture tangible outcomes beyond attendance.
+
+Create new table: milestones
+
+Fields:
+- id
+- title
+- milestone_type ENUM:
+   - funding_secured
+   - business_launched
+   - collaboration_formed
+   - job_created
+   - prototype_completed
+   - revenue_milestone
+   - other
+- description (optional)
+- linked_contact_id (nullable)
+- linked_group_id (nullable)
+- linked_programme_id (nullable)
+- created_at
+- created_by
+- value_amount (optional numeric)
+- value_currency (optional)
+
+Requirements:
+- Milestones can be created manually.
+- Milestones can be extracted from debriefs (manual confirmation required).
+- Show milestones on Contact + Group profile pages.
+- Add milestone summary section in Quarterly Reports.
+
+Dashboard:
+- “Milestones This Period”
+- Breakdown by milestone_type
+- Optional total economic value (sum of value_amount)
+
+-----------------------------------------
+PART 3: FUNDER FILTER MODE
+-----------------------------------------
+
+Goal:
+Generate clean reports filtered by funder.
+
+Data:
+- Add funder_tags to:
+   - Programmes
+   - Debriefs
+   - Bookings
+   - Milestones (optional)
+
+Implementation:
+- Multi-select funder tag field.
+- Allow reporting filter by:
+   - single funder
+   - multiple funders
+- Funder-filtered reports must:
+   - Only include linked data
+   - Recalculate totals correctly
+   - Maintain benchmark logic
+
+Acceptance:
+- Can generate quarterly report for specific funder in 1 click.
+- No manual slicing required.
+
+-----------------------------------------
+PART 4: PROGRAMME EFFECTIVENESS DASHBOARD
+-----------------------------------------
+
+Goal:
+Measure programme quality, not just quantity.
+
+For each Programme, calculate:
+
+1) Attendance count
+2) Attendance rate (if capacity exists)
+3) Repeat participation rate
+4) Milestones generated (linked to programme)
+5) Number of confirmed debriefs
+6) Sentiment average (from linked debriefs)
+7) Cost per participant (if budget exists)
+
+Create new view:
+Programme Effectiveness
+
+Display:
+- List view of Programmes
+- Sortable by:
+   - attendance
+   - milestone count
+   - sentiment
+   - cost efficiency
+- Simple composite internal score (optional MVP+)
+
+Requirements:
+- Must use existing data (no duplication).
+- Must not fabricate data.
+- Missing data should display clearly (not zero unless true zero).
+
+-----------------------------------------
+NON-NEGOTIABLE RULES
+-----------------------------------------
+
+- No breaking of existing reporting.
+- All new fields must be filterable in reporting.
+- All new data must have created_at timestamps.
+- No auto stage changes without logging.
+- No milestone auto-creation without manual confirmation.
+
+-----------------------------------------
+SUCCESS STATE
+-----------------------------------------
+
+- We can see depth of engagement, not just attendance.
+- We can track real outcomes (milestones).
+- We can generate funder-specific reports instantly.
+- We know which programmes create the most impact.
+- Reporting shifts from “activity summary” to “strategic intelligence”.
