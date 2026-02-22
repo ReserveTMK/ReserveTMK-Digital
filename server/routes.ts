@@ -3310,6 +3310,29 @@ Return a JSON object with this exact structure:
     }
   });
 
+  app.patch("/api/legacy-report-extractions/:reportId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const reportId = parseInt(req.params.reportId);
+      const report = await storage.getLegacyReport(reportId);
+      if (!report || report.userId !== userId) return res.status(404).json({ message: "Not found" });
+
+      const extraction = await storage.getLegacyReportExtraction(reportId);
+      if (!extraction) return res.status(404).json({ message: "No extraction found" });
+
+      const { extractedHighlights, extractedPeople } = req.body;
+      const updates: any = {};
+      if (extractedHighlights) updates.extractedHighlights = extractedHighlights;
+      if (extractedPeople) updates.extractedPeople = extractedPeople;
+
+      const updated = await storage.updateLegacyReportExtraction(extraction.id, updates);
+      res.json(updated);
+    } catch (err: any) {
+      console.error("Update extraction error:", err);
+      res.status(500).json({ message: "Failed to update extraction" });
+    }
+  });
+
   // ── Weekly Hub Debriefs ──
   app.get("/api/weekly-hub-debriefs", isAuthenticated, async (req, res) => {
     try {

@@ -38,6 +38,16 @@ const CHART_COLORS = [
   "hsl(14, 88%, 68%)", "hsl(161, 100%, 12%)", "hsl(199, 85%, 83%)", "hsl(335, 82%, 76%)", "hsl(161, 40%, 35%)",
 ];
 
+const ACTIVITY_TYPE_OPTIONS = [
+  "workshop", "mentoring", "event", "meeting", "activation", "programme",
+  "booking", "partnership", "community", "training", "presentation", "other",
+];
+
+const PEOPLE_ROLE_OPTIONS = [
+  "mentee", "mentor", "facilitator", "partner", "speaker", "coordinator",
+  "volunteer", "board member", "staff", "community leader", "participant", "other",
+];
+
 const METRIC_KEY_TO_LABEL: Record<string, string> = {
   activations_total: "Total Activations",
   activations_workshops: "Workshops",
@@ -205,6 +215,9 @@ export default function LegacyReportsPage() {
     people?: ExtractedPerson[];
   } | null>(null);
   const [editedMetricValues, setEditedMetricValues] = useState<Record<string, string>>({});
+  const [editedHighlightTypes, setEditedHighlightTypes] = useState<Record<number, string>>({});
+  const [editedPeopleRoles, setEditedPeopleRoles] = useState<Record<number, string>>({});
+  const [addingMetric, setAddingMetric] = useState(false);
   const [suggestingTaxonomyId, setSuggestingTaxonomyId] = useState<number | null>(null);
   const [taxonomySuggestions, setTaxonomySuggestions] = useState<{
     reportId: number;
@@ -469,7 +482,7 @@ export default function LegacyReportsPage() {
     }));
   }
 
-  function applyExtractionToSnapshot(reportId: number) {
+  async function applyExtractionToSnapshot(reportId: number) {
     if (!extractionData) return;
     const snapshotUpdate: Record<string, any> = {};
     for (const [metricKey, value] of Object.entries(editedMetricValues)) {
@@ -489,9 +502,36 @@ export default function LegacyReportsPage() {
     const existingSnapshot = report?.snapshot || { ...emptySnapshot };
     const mergedSnapshot = { ...existingSnapshot, ...snapshotUpdate };
 
+    const hasHighlightEdits = Object.keys(editedHighlightTypes).length > 0;
+    const hasPeopleEdits = Object.keys(editedPeopleRoles).length > 0;
+
+    if (hasHighlightEdits || hasPeopleEdits) {
+      const extractionUpdate: any = {};
+      if (hasHighlightEdits && extractionData.highlights) {
+        extractionUpdate.extractedHighlights = extractionData.highlights.map((h, i) => ({
+          ...h,
+          activityType: editedHighlightTypes[i] ?? h.activityType,
+        }));
+      }
+      if (hasPeopleEdits && extractionData.people) {
+        extractionUpdate.extractedPeople = extractionData.people.map((p, i) => ({
+          ...p,
+          role: editedPeopleRoles[i] ?? p.role,
+        }));
+      }
+      try {
+        await apiRequest("PATCH", `/api/legacy-report-extractions/${reportId}`, extractionUpdate);
+      } catch (err) {
+        console.error("Failed to save extraction edits:", err);
+      }
+    }
+
     updateMutation.mutate({ id: reportId, data: { snapshot: mergedSnapshot } });
     setExtractionData(null);
     setEditedMetricValues({});
+    setEditedHighlightTypes({});
+    setEditedPeopleRoles({});
+    setAddingMetric(false);
   }
 
   function confidenceBadgeVariant(confidence: number): string {
@@ -758,7 +798,7 @@ export default function LegacyReportsPage() {
                 <Button
                   size="icon"
                   variant="ghost"
-                  onClick={() => { setExtractionData(null); setEditedMetricValues({}); }}
+                  onClick={() => { setExtractionData(null); setEditedMetricValues({}); setEditedHighlightTypes({}); setEditedPeopleRoles({}); setAddingMetric(false); }}
                   data-testid="button-dismiss-extraction"
                 >
                   <X className="w-4 h-4" />
@@ -767,7 +807,9 @@ export default function LegacyReportsPage() {
 
               <h4 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wide">Metrics</h4>
               <div className="space-y-2 mb-4">
-                {extractionData.metrics.map((metric) => (
+                {extractionData.metrics
+                  .filter((metric) => metric.metricValue !== null && metric.metricValue !== undefined)
+                  .map((metric) => (
                   <div
                     key={metric.metricKey}
                     className="flex items-center gap-3 flex-wrap"
@@ -785,6 +827,23 @@ export default function LegacyReportsPage() {
                       placeholder=""
                       data-testid={`input-extraction-${metric.metricKey}`}
                     />
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="w-6 h-6"
+                      onClick={() => {
+                        const updated = { ...editedMetricValues };
+                        delete updated[metric.metricKey];
+                        setEditedMetricValues(updated);
+                        setExtractionData(prev => prev ? {
+                          ...prev,
+                          metrics: prev.metrics.filter(m => m.metricKey !== metric.metricKey),
+                        } : null);
+                      }}
+                      data-testid={`button-remove-metric-${metric.metricKey}`}
+                    >
+                      <X className="w-3 h-3 text-muted-foreground" />
+                    </Button>
                     {metric.evidenceSnippet && (
                       <span className="text-xs text-muted-foreground italic flex-1 min-w-0 truncate" data-testid={`text-evidence-${metric.metricKey}`}>
                         "{metric.evidenceSnippet}"
@@ -792,6 +851,72 @@ export default function LegacyReportsPage() {
                     )}
                   </div>
                 ))}
+                {Object.keys(editedMetricValues).filter(k =>
+                  !extractionData.metrics.some(m => m.metricKey === k && m.metricValue !== null && m.metricValue !== undefined) &&
+                  editedMetricValues[k] !== undefined
+                ).map((key) => (
+                  <div key={key} className="flex items-center gap-3 flex-wrap" data-testid={`row-extraction-metric-${key}`}>
+                    <span className="text-sm font-medium w-40 shrink-0">
+                      {METRIC_KEY_TO_LABEL[key] || key}
+                    </span>
+                    <Input
+                      type="number"
+                      step="any"
+                      className="w-28"
+                      value={editedMetricValues[key] ?? ""}
+                      onChange={(e) => setEditedMetricValues(prev => ({ ...prev, [key]: e.target.value }))}
+                      placeholder=""
+                      data-testid={`input-extraction-${key}`}
+                    />
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="w-6 h-6"
+                      onClick={() => {
+                        const updated = { ...editedMetricValues };
+                        delete updated[key];
+                        setEditedMetricValues(updated);
+                      }}
+                      data-testid={`button-remove-metric-${key}`}
+                    >
+                      <X className="w-3 h-3 text-muted-foreground" />
+                    </Button>
+                    <span className="text-xs text-muted-foreground italic">manually added</span>
+                  </div>
+                ))}
+                {addingMetric ? (
+                  <div className="flex items-center gap-2" data-testid="row-add-metric-select">
+                    <Select onValueChange={(val) => {
+                      setEditedMetricValues(prev => ({ ...prev, [val]: "" }));
+                      setAddingMetric(false);
+                    }}>
+                      <SelectTrigger className="w-48" data-testid="select-add-metric">
+                        <SelectValue placeholder="Choose metric..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(METRIC_KEY_TO_LABEL)
+                          .filter(([key]) => !(editedMetricValues[key] !== undefined || extractionData.metrics.some(m => m.metricKey === key && m.metricValue !== null)))
+                          .map(([key, label]) => (
+                            <SelectItem key={key} value={key}>{label}</SelectItem>
+                          ))
+                        }
+                      </SelectContent>
+                    </Select>
+                    <Button size="sm" variant="ghost" onClick={() => setAddingMetric(false)} data-testid="button-cancel-add-metric">
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-1"
+                    onClick={() => setAddingMetric(true)}
+                    data-testid="button-add-metric"
+                  >
+                    <Plus className="w-3 h-3 mr-1" /> Add Metric
+                  </Button>
+                )}
               </div>
 
               {extractionData.organisations && extractionData.organisations.length > 0 && (
@@ -817,10 +942,22 @@ export default function LegacyReportsPage() {
                   <div className="space-y-2 mb-4" data-testid="section-extracted-highlights">
                     {extractionData.highlights.map((h, i) => (
                       <div key={i} className="text-sm border-l-2 border-primary/30 pl-3" data-testid={`highlight-${i}`}>
-                        <span className="font-medium">{h.theme}</span>
-                        {h.activityType && (
-                          <Badge variant="outline" className="text-[10px] ml-2 no-default-hover-elevate no-default-active-elevate">{h.activityType}</Badge>
-                        )}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium">{h.theme}</span>
+                          <Select
+                            value={editedHighlightTypes[i] ?? h.activityType ?? ""}
+                            onValueChange={(val) => setEditedHighlightTypes(prev => ({ ...prev, [i]: val }))}
+                          >
+                            <SelectTrigger className="h-6 w-auto min-w-[100px] text-[10px] px-2 py-0" data-testid={`select-highlight-type-${i}`}>
+                              <SelectValue placeholder="Type..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ACTIVITY_TYPE_OPTIONS.map(opt => (
+                                <SelectItem key={opt} value={opt} className="text-xs">{opt}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                         <p className="text-muted-foreground text-xs mt-0.5">{h.summary}</p>
                       </div>
                     ))}
@@ -831,12 +968,27 @@ export default function LegacyReportsPage() {
               {extractionData.people && extractionData.people.length > 0 && (
                 <>
                   <h4 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wide">People Mentioned</h4>
-                  <div className="flex flex-wrap gap-2 mb-4" data-testid="section-extracted-people">
+                  <div className="space-y-2 mb-4" data-testid="section-extracted-people">
                     {extractionData.people.map((p, i) => (
-                      <Badge key={i} variant="secondary" className="text-xs py-1 px-2" data-testid={`badge-person-${i}`}>
-                        {p.name}
-                        {p.role && <span className="text-muted-foreground ml-1">({p.role})</span>}
-                      </Badge>
+                      <div key={i} className="flex items-center gap-2 flex-wrap" data-testid={`person-row-${i}`}>
+                        <span className="text-sm font-medium">{p.name}</span>
+                        <Select
+                          value={editedPeopleRoles[i] ?? p.role ?? ""}
+                          onValueChange={(val) => setEditedPeopleRoles(prev => ({ ...prev, [i]: val }))}
+                        >
+                          <SelectTrigger className="h-6 w-auto min-w-[100px] text-[10px] px-2 py-0" data-testid={`select-person-role-${i}`}>
+                            <SelectValue placeholder="Role..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {PEOPLE_ROLE_OPTIONS.map(opt => (
+                              <SelectItem key={opt} value={opt} className="text-xs">{opt}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {p.context && (
+                          <span className="text-xs text-muted-foreground italic">{p.context}</span>
+                        )}
+                      </div>
                     ))}
                   </div>
                 </>
@@ -855,7 +1007,7 @@ export default function LegacyReportsPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => { setExtractionData(null); setEditedMetricValues({}); }}
+                  onClick={() => { setExtractionData(null); setEditedMetricValues({}); setEditedHighlightTypes({}); setEditedPeopleRoles({}); setAddingMetric(false); }}
                   data-testid="button-dismiss-extraction-footer"
                 >
                   Dismiss

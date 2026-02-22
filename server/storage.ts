@@ -273,6 +273,7 @@ export interface IStorage {
   // Legacy Report Extractions
   getLegacyReportExtraction(legacyReportId: number): Promise<LegacyReportExtraction | undefined>;
   createLegacyReportExtraction(data: InsertLegacyReportExtraction): Promise<LegacyReportExtraction>;
+  updateLegacyReportExtraction(id: number, updates: Partial<InsertLegacyReportExtraction>): Promise<LegacyReportExtraction>;
 
   // Weekly Hub Debriefs
   getWeeklyHubDebriefs(userId: string): Promise<WeeklyHubDebrief[]>;
@@ -1177,6 +1178,11 @@ export class DatabaseStorage implements IStorage {
 
   async createLegacyReportExtraction(data: InsertLegacyReportExtraction): Promise<LegacyReportExtraction> {
     const [extraction] = await db.insert(legacyReportExtractions).values(data).returning();
+    return extraction;
+  }
+
+  async updateLegacyReportExtraction(id: number, updates: Partial<InsertLegacyReportExtraction>): Promise<LegacyReportExtraction> {
+    const [extraction] = await db.update(legacyReportExtractions).set(updates).where(eq(legacyReportExtractions.id, id)).returning();
     return extraction;
   }
 
