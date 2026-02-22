@@ -19,22 +19,22 @@
   --brand-dark-green: 153 30% 18%; /* #2A4C35  Dark Green – inputs */
 
   /* ─── Theme Tokens ─── */
-  --background: 11 90% 96%;
+  --background: 0 0% 100%;
   --foreground: 161 100% 12%;
 
-  --card: 11 90% 96%;
+  --card: 0 0% 100%;
   --card-foreground: 161 100% 12%;
 
-  --popover: 11 85% 97%;
+  --popover: 0 0% 100%;
   --popover-foreground: 161 100% 12%;
 
   --primary: 161 100% 12%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 11 60% 93%;
+  --secondary: 0 0% 96%;
   --secondary-foreground: 161 100% 12%;
 
-  --muted: 11 30% 92%;
+  --muted: 0 0% 96%;
   --muted-foreground: 161 20% 40%;
 
   --accent: 14 88% 68%;
@@ -43,8 +43,8 @@
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
 
-  --border: 11 20% 88%;
-  --input: 11 20% 88%;
+  --border: 0 0% 90%;
+  --input: 0 0% 90%;
   --ring: 161 100% 12%;
 
   --radius: 0.5rem;
