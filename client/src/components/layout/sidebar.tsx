@@ -18,6 +18,7 @@ import {
   Network,
   ChevronDown,
   ClipboardList,
+  BookOpen,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "../ui/beautiful-button";
@@ -51,6 +52,7 @@ const navigation: NavItem[] = [
   { name: "Debriefs", href: "/debriefs", icon: Mic },
   { name: "Debrief Queue", href: "/debrief-queue", icon: ClipboardList },
   { name: "Reports", href: "/reports", icon: FileText },
+  { name: "Legacy Reports", href: "/legacy-reports", icon: BookOpen },
   { name: "Actions", href: "/actions", icon: CheckSquare },
   { name: "Taxonomy", href: "/taxonomy", icon: Tags },
 ];

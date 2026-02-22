@@ -2245,5 +2245,378 @@ Important:
     }
   });
 
+  // === Legacy Reports API ===
+
+  app.get("/api/legacy-reports", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const reports = await storage.getLegacyReports(userId);
+      const reportsWithSnapshots = await Promise.all(
+        reports.map(async (r) => {
+          const snapshot = await storage.getLegacyReportSnapshot(r.id);
+          return { ...r, snapshot };
+        })
+      );
+      res.json(reportsWithSnapshots);
+    } catch (err: any) {
+      console.error("Legacy reports error:", err);
+      res.status(500).json({ message: "Failed to fetch legacy reports" });
+    }
+  });
+
+  app.get("/api/legacy-reports/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const id = parseInt(req.params.id);
+      const report = await storage.getLegacyReport(id);
+      if (!report || report.userId !== userId) return res.status(404).json({ message: "Not found" });
+      const snapshot = await storage.getLegacyReportSnapshot(id);
+      res.json({ ...report, snapshot });
+    } catch (err: any) {
+      console.error("Legacy report error:", err);
+      res.status(500).json({ message: "Failed to fetch legacy report" });
+    }
+  });
+
+  app.post("/api/legacy-reports", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { quarterLabel, periodStart, periodEnd, pdfFileName, pdfData, notes, snapshot } = req.body;
+
+      const report = await storage.createLegacyReport({
+        userId,
+        quarterLabel,
+        periodStart: new Date(periodStart),
+        periodEnd: new Date(periodEnd),
+        pdfFileName: pdfFileName || null,
+        pdfData: pdfData || null,
+        notes: notes || null,
+      });
+
+      let snapshotRecord = null;
+      if (snapshot) {
+        snapshotRecord = await storage.createLegacyReportSnapshot({
+          legacyReportId: report.id,
+          activationsTotal: snapshot.activationsTotal || 0,
+          activationsWorkshops: snapshot.activationsWorkshops || 0,
+          activationsMentoring: snapshot.activationsMentoring || 0,
+          activationsEvents: snapshot.activationsEvents || 0,
+          activationsPartnerMeetings: snapshot.activationsPartnerMeetings || 0,
+          peopleUnique: snapshot.peopleUnique || null,
+          engagementsTotal: snapshot.engagementsTotal || null,
+          groupsUnique: snapshot.groupsUnique || null,
+          bookingsTotal: snapshot.bookingsTotal || null,
+          hoursTotal: snapshot.hoursTotal || null,
+        });
+      }
+
+      res.status(201).json({ ...report, snapshot: snapshotRecord });
+    } catch (err: any) {
+      console.error("Create legacy report error:", err);
+      res.status(500).json({ message: "Failed to create legacy report" });
+    }
+  });
+
+  app.patch("/api/legacy-reports/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getLegacyReport(id);
+      if (!existing || existing.userId !== userId) return res.status(404).json({ message: "Not found" });
+
+      const { quarterLabel, periodStart, periodEnd, notes, snapshot } = req.body;
+
+      const updated = await storage.updateLegacyReport(id, {
+        ...(quarterLabel && { quarterLabel }),
+        ...(periodStart && { periodStart: new Date(periodStart) }),
+        ...(periodEnd && { periodEnd: new Date(periodEnd) }),
+        ...(notes !== undefined && { notes }),
+      });
+
+      let snapshotRecord = null;
+      if (snapshot) {
+        const existingSnapshot = await storage.getLegacyReportSnapshot(id);
+        if (existingSnapshot) {
+          snapshotRecord = await storage.updateLegacyReportSnapshot(existingSnapshot.id, snapshot);
+        } else {
+          snapshotRecord = await storage.createLegacyReportSnapshot({
+            legacyReportId: id,
+            ...snapshot,
+          });
+        }
+      }
+
+      res.json({ ...updated, snapshot: snapshotRecord || (await storage.getLegacyReportSnapshot(id)) });
+    } catch (err: any) {
+      console.error("Update legacy report error:", err);
+      res.status(500).json({ message: "Failed to update legacy report" });
+    }
+  });
+
+  app.delete("/api/legacy-reports/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getLegacyReport(id);
+      if (!existing || existing.userId !== userId) return res.status(404).json({ message: "Not found" });
+      await storage.deleteLegacyReport(id);
+      res.status(204).end();
+    } catch (err: any) {
+      console.error("Delete legacy report error:", err);
+      res.status(500).json({ message: "Failed to delete legacy report" });
+    }
+  });
+
+  // === Reporting Settings API ===
+
+  app.get("/api/reporting-settings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const settings = await storage.getReportingSettings(userId);
+      res.json(settings || { boundaryDate: null });
+    } catch (err: any) {
+      console.error("Reporting settings error:", err);
+      res.status(500).json({ message: "Failed to fetch reporting settings" });
+    }
+  });
+
+  app.put("/api/reporting-settings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { boundaryDate } = req.body;
+      const settings = await storage.upsertReportingSettings(userId, {
+        boundaryDate: boundaryDate ? new Date(boundaryDate) : null,
+      });
+      res.json(settings);
+    } catch (err: any) {
+      console.error("Update reporting settings error:", err);
+      res.status(500).json({ message: "Failed to update reporting settings" });
+    }
+  });
+
+  // === Benchmark Insights API ===
+
+  app.get("/api/benchmark-insights", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { startDate, endDate } = req.query as { startDate: string; endDate: string };
+      if (!startDate || !endDate) return res.status(400).json({ message: "startDate and endDate required" });
+
+      const legacyReportsData = await storage.getLegacyReports(userId);
+      const snapshots = await Promise.all(
+        legacyReportsData.map(async (r) => {
+          const snapshot = await storage.getLegacyReportSnapshot(r.id);
+          return { report: r, snapshot };
+        })
+      );
+
+      const settings = await storage.getReportingSettings(userId);
+      const boundaryDate = settings?.boundaryDate;
+
+      const quarterlyData: Array<{
+        label: string;
+        periodStart: Date;
+        periodEnd: Date;
+        activationsTotal: number;
+        source: "legacy" | "live";
+      }> = [];
+
+      for (const { report, snapshot } of snapshots) {
+        if (snapshot) {
+          quarterlyData.push({
+            label: report.quarterLabel,
+            periodStart: report.periodStart,
+            periodEnd: report.periodEnd,
+            activationsTotal: snapshot.activationsTotal || 0,
+            source: "legacy",
+          });
+        }
+      }
+
+      if (boundaryDate) {
+        const liveEvents = await storage.getEvents(userId);
+        const postBoundary = liveEvents.filter(e =>
+          new Date(e.startTime) >= boundaryDate && e.type !== "Personal"
+        );
+        const currentStart = new Date(startDate);
+        const currentEnd = new Date(endDate);
+        const liveInRange = postBoundary.filter(e => {
+          const d = new Date(e.startTime);
+          return d >= currentStart && d <= currentEnd;
+        });
+
+        quarterlyData.push({
+          label: "Current Period",
+          periodStart: currentStart,
+          periodEnd: currentEnd,
+          activationsTotal: liveInRange.length,
+          source: "live",
+        });
+      }
+
+      quarterlyData.sort((a, b) => a.periodStart.getTime() - b.periodStart.getTime());
+
+      const activationValues = quarterlyData.map(q => q.activationsTotal).filter(v => v > 0);
+      const historicAvg = activationValues.length > 0
+        ? Math.round(activationValues.reduce((s, v) => s + v, 0) / activationValues.length)
+        : 0;
+      const highest = Math.max(...activationValues, 0);
+      const highestQuarter = quarterlyData.find(q => q.activationsTotal === highest);
+      const current = quarterlyData[quarterlyData.length - 1];
+      const previous = quarterlyData.length > 1 ? quarterlyData[quarterlyData.length - 2] : null;
+      const qoqChange = previous && previous.activationsTotal > 0
+        ? Math.round(((current?.activationsTotal || 0) - previous.activationsTotal) / previous.activationsTotal * 100)
+        : null;
+      const rank = current
+        ? [...activationValues].sort((a, b) => b - a).indexOf(current.activationsTotal) + 1
+        : null;
+      const pctVsAvg = historicAvg > 0 && current
+        ? Math.round(((current.activationsTotal - historicAvg) / historicAvg) * 100)
+        : null;
+
+      const insights: string[] = [];
+      if (historicAvg > 0) {
+        insights.push(`Historic average activations per quarter: ${historicAvg}`);
+      }
+      if (highestQuarter) {
+        insights.push(`Highest quarter: ${highestQuarter.label} with ${highest} activations`);
+      }
+      if (rank && quarterlyData.length > 1) {
+        insights.push(`Current period ranks #${rank} out of ${quarterlyData.length} quarters`);
+      }
+      if (qoqChange !== null) {
+        const dir = qoqChange >= 0 ? "up" : "down";
+        insights.push(`Quarter-over-quarter change: ${dir} ${Math.abs(qoqChange)}% from ${previous?.label}`);
+      }
+      if (pctVsAvg !== null) {
+        const rel = pctVsAvg >= 0 ? "above" : "below";
+        insights.push(`Current period is ${Math.abs(pctVsAvg)}% ${rel} the historic average`);
+      }
+
+      res.json({
+        quarterlyData,
+        benchmarks: {
+          historicAverage: historicAvg,
+          highestQuarter: highestQuarter?.label || null,
+          highestValue: highest,
+          currentRank: rank,
+          totalQuarters: quarterlyData.length,
+          qoqChange,
+          pctVsAverage: pctVsAvg,
+        },
+        insights,
+        boundaryDate: boundaryDate?.toISOString() || null,
+      });
+    } catch (err: any) {
+      console.error("Benchmark insights error:", err);
+      res.status(500).json({ message: "Failed to compute benchmark insights" });
+    }
+  });
+
+  // === Legacy Trend Data API (for dashboard blending) ===
+
+  app.get("/api/legacy-trend-data", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const legacyReportsData = await storage.getLegacyReports(userId);
+      const settings = await storage.getReportingSettings(userId);
+
+      const trendData = await Promise.all(
+        legacyReportsData.map(async (r) => {
+          const snapshot = await storage.getLegacyReportSnapshot(r.id);
+          return {
+            quarterLabel: r.quarterLabel,
+            periodStart: r.periodStart,
+            periodEnd: r.periodEnd,
+            activationsTotal: snapshot?.activationsTotal || 0,
+            activationsWorkshops: snapshot?.activationsWorkshops || 0,
+            activationsMentoring: snapshot?.activationsMentoring || 0,
+            activationsEvents: snapshot?.activationsEvents || 0,
+            activationsPartnerMeetings: snapshot?.activationsPartnerMeetings || 0,
+            peopleUnique: snapshot?.peopleUnique || null,
+            engagementsTotal: snapshot?.engagementsTotal || null,
+            groupsUnique: snapshot?.groupsUnique || null,
+            bookingsTotal: snapshot?.bookingsTotal || null,
+            hoursTotal: snapshot?.hoursTotal ? Number(snapshot.hoursTotal) : null,
+          };
+        })
+      );
+
+      trendData.sort((a, b) => new Date(a.periodStart).getTime() - new Date(b.periodStart).getTime());
+
+      res.json({
+        trendData,
+        boundaryDate: settings?.boundaryDate?.toISOString() || null,
+      });
+    } catch (err: any) {
+      console.error("Legacy trend error:", err);
+      res.status(500).json({ message: "Failed to fetch legacy trend data" });
+    }
+  });
+
+  // === Legacy Metrics Review Tool (AI-powered) ===
+
+  app.post("/api/legacy-reports/:id/ai-review", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const reportId = parseInt(req.params.id);
+      const report = await storage.getLegacyReport(reportId);
+      if (!report || report.userId !== userId) {
+        return res.status(404).json({ message: "Report not found" });
+      }
+
+      const snapshot = await storage.getLegacyReportSnapshot(reportId);
+      const taxonomy = await storage.getTaxonomy(userId);
+
+      const taxonomyNames = taxonomy.map(t => t.name).join(", ");
+      const snapshotSummary = snapshot
+        ? `Activations: ${snapshot.activationsTotal} (Workshops: ${snapshot.activationsWorkshops}, Mentoring: ${snapshot.activationsMentoring}, Events: ${snapshot.activationsEvents}, Partner Meetings: ${snapshot.activationsPartnerMeetings}), People: ${snapshot.peopleUnique || "N/A"}, Engagements: ${snapshot.engagementsTotal || "N/A"}, Groups: ${snapshot.groupsUnique || "N/A"}, Bookings: ${snapshot.bookingsTotal || "N/A"}, Hours: ${snapshot.hoursTotal || "N/A"}`
+        : "No snapshot metrics entered.";
+
+      const pdfContext = report.pdfData
+        ? "A PDF report was uploaded for this period (content available but not extractable as text in this context)."
+        : "No PDF was uploaded.";
+
+      const prompt = `You are an impact measurement specialist reviewing a legacy quarterly report from a community organization.
+
+Report: "${report.quarterLabel}" (${report.periodStart?.toISOString?.() || report.periodStart} to ${report.periodEnd?.toISOString?.() || report.periodEnd})
+Notes: ${report.notes || "None"}
+${pdfContext}
+
+Current snapshot metrics: ${snapshotSummary}
+
+Current taxonomy categories in system: ${taxonomyNames || "None defined"}
+
+Please provide:
+1. **Metric Completeness**: Are there metrics that seem missing or could be derived from this data? (e.g., average per event, cost per activation, engagement rate)
+2. **Taxonomy Gap Analysis**: Based on these metrics, suggest 3-5 impact taxonomy categories that would help categorize this work better. Note which ones already exist.
+3. **Trend Indicators**: What questions should be asked when comparing this quarter to others?
+4. **Dashboard Suggestions**: What additional dashboard metrics or charts would help visualize this data alongside live system data?
+5. **Data Quality Notes**: Any concerns about the snapshot data (e.g., missing fields, unusual values, potential double-counting risks)
+
+Keep responses concise and actionable. Format as structured sections.`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 1000,
+        temperature: 0.7,
+      });
+
+      const analysis = response.choices[0]?.message?.content || "Unable to generate analysis.";
+
+      res.json({
+        reportId,
+        quarterLabel: report.quarterLabel,
+        analysis,
+        snapshotSummary,
+        taxonomyCount: taxonomy.length,
+      });
+    } catch (err: any) {
+      console.error("AI review error:", err);
+      res.status(500).json({ message: "Failed to generate AI review" });
+    }
+  });
+
   return httpServer;
 }

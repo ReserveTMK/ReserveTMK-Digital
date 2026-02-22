@@ -20,7 +20,7 @@ The frontend is built with React and TypeScript using Vite. It employs Wouter fo
 The backend is an Express.js application running on Node.js with TypeScript, providing a RESTful JSON API. Authentication is managed via Replit Auth using OpenID Connect. AI integrations with OpenAI (via Replit AI Integrations proxy) power speech-to-text, text-to-speech, voice chat, image generation, interaction analysis, and impact debrief extraction. Server-side audio processing uses ffmpeg for format conversion. Batch processing is handled by a utility module for rate-limited, retryable API calls.
 
 ### Database
-The application uses PostgreSQL with Drizzle ORM. Key tables include `users`, `sessions`, `contacts`, `interactions`, `meetings`, `events`, `impact_logs`, `impact_taxonomy`, `impact_tags`, `programmes`, `bookings`, `memberships`, `mo_us`, `groups`, and related junction tables to support the comprehensive tracking and reporting features. JSONB columns are used for flexible metrics.
+The application uses PostgreSQL with Drizzle ORM. Key tables include `users`, `sessions`, `contacts`, `interactions`, `meetings`, `events`, `impact_logs`, `impact_taxonomy`, `impact_tags`, `programmes`, `bookings`, `memberships`, `mo_us`, `groups`, `legacy_reports`, `legacy_report_snapshots`, `reporting_settings`, and related junction tables to support the comprehensive tracking and reporting features. JSONB columns are used for flexible metrics.
 
 ### Key Design Decisions
 1.  **Shared API contracts**: Zod schemas define API request/response shapes for type safety across client and server.
@@ -40,6 +40,9 @@ The application uses PostgreSQL with Drizzle ORM. Key tables include `users`, `s
 -   **Unified Calendar View**: Displays personal events, programmes, and bookings on a single calendar grid with color-coding and conflict detection.
 -   **Two-layer CRM (Groups)**: Manages organizations, collectives, and community groups, with searchable member management and roles.
 -   **Kaupapa Matching**: AI-powered enrichment for matching organizations to impact taxonomy categories.
+-   **Legacy Reporting Layer**: Upload historical quarterly PDF reports with snapshot metrics (activations, workshops, mentoring, events, people, engagements, groups, bookings, hours). Supports boundary date to blend legacy data with live system data.
+-   **Benchmark Insights Engine**: Computes historical averages, highest quarter, QoQ change, and current rank from combined legacy + live data. Displayed as a collapsible panel in quarterly reports.
+-   **Legacy Metrics Review Tool**: AI-powered analysis of legacy report snapshots suggesting taxonomy improvements, missing metrics, and dashboard enhancements.
 
 ## External Dependencies
 

@@ -78,6 +78,15 @@ import {
   reports,
   type Report,
   type InsertReport,
+  legacyReports,
+  legacyReportSnapshots,
+  reportingSettings,
+  type LegacyReport,
+  type InsertLegacyReport,
+  type LegacyReportSnapshot,
+  type InsertLegacyReportSnapshot,
+  type ReportingSettings,
+  type InsertReportingSettings,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, sql, max, count } from "drizzle-orm";
 
@@ -235,6 +244,22 @@ export interface IStorage {
   createReport(data: InsertReport): Promise<Report>;
   updateReport(id: number, updates: Partial<InsertReport>): Promise<Report>;
   deleteReport(id: number): Promise<void>;
+
+  // Legacy Reports
+  getLegacyReports(userId: string): Promise<LegacyReport[]>;
+  getLegacyReport(id: number): Promise<LegacyReport | undefined>;
+  createLegacyReport(data: InsertLegacyReport): Promise<LegacyReport>;
+  updateLegacyReport(id: number, updates: Partial<InsertLegacyReport>): Promise<LegacyReport>;
+  deleteLegacyReport(id: number): Promise<void>;
+
+  // Legacy Report Snapshots
+  getLegacyReportSnapshot(legacyReportId: number): Promise<LegacyReportSnapshot | undefined>;
+  createLegacyReportSnapshot(data: InsertLegacyReportSnapshot): Promise<LegacyReportSnapshot>;
+  updateLegacyReportSnapshot(id: number, updates: Partial<InsertLegacyReportSnapshot>): Promise<LegacyReportSnapshot>;
+
+  // Reporting Settings
+  getReportingSettings(userId: string): Promise<ReportingSettings | undefined>;
+  upsertReportingSettings(userId: string, updates: Partial<InsertReportingSettings>): Promise<ReportingSettings>;
 
   // Auth (re-exported or separate)
   auth: IAuthStorage;
@@ -994,6 +1019,75 @@ export class DatabaseStorage implements IStorage {
 
   async deleteReport(id: number): Promise<void> {
     await db.delete(reports).where(eq(reports.id, id));
+  }
+
+  // Legacy Reports
+  async getLegacyReports(userId: string): Promise<LegacyReport[]> {
+    return await db.select().from(legacyReports).where(eq(legacyReports.userId, userId)).orderBy(desc(legacyReports.periodStart));
+  }
+
+  async getLegacyReport(id: number): Promise<LegacyReport | undefined> {
+    const [report] = await db.select().from(legacyReports).where(eq(legacyReports.id, id));
+    return report;
+  }
+
+  async createLegacyReport(data: InsertLegacyReport): Promise<LegacyReport> {
+    const [report] = await db.insert(legacyReports).values(data).returning();
+    return report;
+  }
+
+  async updateLegacyReport(id: number, updates: Partial<InsertLegacyReport>): Promise<LegacyReport> {
+    const [report] = await db
+      .update(legacyReports)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(legacyReports.id, id))
+      .returning();
+    return report;
+  }
+
+  async deleteLegacyReport(id: number): Promise<void> {
+    await db.delete(legacyReportSnapshots).where(eq(legacyReportSnapshots.legacyReportId, id));
+    await db.delete(legacyReports).where(eq(legacyReports.id, id));
+  }
+
+  // Legacy Report Snapshots
+  async getLegacyReportSnapshot(legacyReportId: number): Promise<LegacyReportSnapshot | undefined> {
+    const [snapshot] = await db.select().from(legacyReportSnapshots).where(eq(legacyReportSnapshots.legacyReportId, legacyReportId));
+    return snapshot;
+  }
+
+  async createLegacyReportSnapshot(data: InsertLegacyReportSnapshot): Promise<LegacyReportSnapshot> {
+    const [snapshot] = await db.insert(legacyReportSnapshots).values(data).returning();
+    return snapshot;
+  }
+
+  async updateLegacyReportSnapshot(id: number, updates: Partial<InsertLegacyReportSnapshot>): Promise<LegacyReportSnapshot> {
+    const [snapshot] = await db
+      .update(legacyReportSnapshots)
+      .set(updates)
+      .where(eq(legacyReportSnapshots.id, id))
+      .returning();
+    return snapshot;
+  }
+
+  // Reporting Settings
+  async getReportingSettings(userId: string): Promise<ReportingSettings | undefined> {
+    const [settings] = await db.select().from(reportingSettings).where(eq(reportingSettings.userId, userId));
+    return settings;
+  }
+
+  async upsertReportingSettings(userId: string, updates: Partial<InsertReportingSettings>): Promise<ReportingSettings> {
+    const existing = await this.getReportingSettings(userId);
+    if (existing) {
+      const [updated] = await db
+        .update(reportingSettings)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(reportingSettings.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(reportingSettings).values({ userId, ...updates }).returning();
+    return created;
   }
 }
 

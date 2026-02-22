@@ -24,6 +24,7 @@ import Bookings from "@/pages/bookings";
 import Agreements from "@/pages/agreements";
 import GroupsPage from "@/pages/groups";
 import DebriefQueuePage from "@/pages/debrief-queue";
+import LegacyReportsPage from "@/pages/legacy-reports";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -125,6 +126,10 @@ function Router() {
 
       <Route path="/debrief-queue">
         <ProtectedRoute component={DebriefQueuePage} />
+      </Route>
+
+      <Route path="/legacy-reports">
+        <ProtectedRoute component={LegacyReportsPage} />
       </Route>
 
       <Route component={NotFound} />

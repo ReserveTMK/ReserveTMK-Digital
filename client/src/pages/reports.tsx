@@ -139,6 +139,7 @@ export default function Reports() {
 
   const [programmeFilter, setProgrammeFilter] = useState("all");
   const [taxonomyFilter, setTaxonomyFilter] = useState("all");
+  const [benchmarkData, setBenchmarkData] = useState<any>(null);
 
   const getDateRange = () => {
     if (activeTab === "monthly") {
@@ -164,10 +165,18 @@ export default function Reports() {
       if (programmeFilter !== "all") filters.programmeIds = [parseInt(programmeFilter)];
       if (taxonomyFilter !== "all") filters.taxonomyIds = [parseInt(taxonomyFilter)];
 
-      const res = await apiRequest("POST", "/api/reports/generate", filters);
-      const data = await res.json();
+      const reportRes = await apiRequest("POST", "/api/reports/generate", filters);
+      const data = await reportRes.json();
       setReportData(data);
       setGenerated(true);
+
+      try {
+        const benchmarkRes = await apiRequest("GET", `/api/benchmark-insights?startDate=${startDate}&endDate=${endDate}`);
+        const bData = await benchmarkRes.json();
+        setBenchmarkData(bData);
+      } catch {
+        setBenchmarkData(null);
+      }
     } catch (err: any) {
       toast({ title: "Error", description: "Failed to generate report", variant: "destructive" });
     } finally {
@@ -716,7 +725,46 @@ export default function Reports() {
                 </div>
               </CollapsibleSection>
 
-              {/* Section 6: Narrative */}
+              {/* Section 6: Benchmark Insights */}
+              {benchmarkData && benchmarkData.insights?.length > 0 && (
+                <CollapsibleSection title="Benchmark Insights" icon={TrendingUp} testId="section-benchmark" defaultOpen={true}>
+                  <div className="pt-4 space-y-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <StatCard icon={BarChart3} label="Historic Avg" value={benchmarkData.benchmarks?.historicAverage || 0} color="indigo" testId="stat-historic-avg" />
+                      <StatCard icon={TrendingUp} label="Highest Quarter" value={benchmarkData.benchmarks?.highestValue || 0} color="green" testId="stat-highest-quarter" />
+                      <StatCard
+                        icon={Activity}
+                        label="QoQ Change"
+                        value={benchmarkData.benchmarks?.qoqChange !== null ? `${benchmarkData.benchmarks.qoqChange >= 0 ? "+" : ""}${benchmarkData.benchmarks.qoqChange}%` : "N/A"}
+                        color={benchmarkData.benchmarks?.qoqChange >= 0 ? "green" : "orange"}
+                        testId="stat-qoq-change"
+                      />
+                      <StatCard
+                        icon={Activity}
+                        label="vs Average"
+                        value={benchmarkData.benchmarks?.pctVsAverage !== null ? `${benchmarkData.benchmarks.pctVsAverage >= 0 ? "+" : ""}${benchmarkData.benchmarks.pctVsAverage}%` : "N/A"}
+                        color={benchmarkData.benchmarks?.pctVsAverage >= 0 ? "blue" : "amber"}
+                        testId="stat-pct-vs-avg"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      {benchmarkData.insights.map((insight: string, i: number) => (
+                        <div key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+                          <TrendingUp className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                          <span>{insight}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {benchmarkData.benchmarks?.highestQuarter && (
+                      <p className="text-xs text-muted-foreground italic">
+                        Best quarter: {benchmarkData.benchmarks.highestQuarter} &middot; Current ranks #{benchmarkData.benchmarks.currentRank} of {benchmarkData.benchmarks.totalQuarters} quarters
+                      </p>
+                    )}
+                  </div>
+                </CollapsibleSection>
+              )}
+
+              {/* Section 7: Narrative */}
               <CollapsibleSection title="Narrative Summary" icon={FileText} testId="section-narrative">
                 <div className="pt-4">
                   {narrativeData ? (

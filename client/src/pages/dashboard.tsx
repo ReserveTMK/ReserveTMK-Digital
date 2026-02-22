@@ -8,7 +8,7 @@ import { useImpactLogs } from "@/hooks/use-impact-logs";
 import { useAuth } from "@/hooks/use-auth";
 import { useProgrammes } from "@/hooks/use-programmes";
 import { useBookings, useVenues } from "@/hooks/use-bookings";
-import { Users, Activity, TrendingUp, Calendar as CalendarIcon, ArrowRight, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, PartyPopper, Mic, FileText, Building2, Layers } from "lucide-react";
+import { Users, Activity, TrendingUp, Calendar as CalendarIcon, ArrowRight, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, PartyPopper, Mic, FileText, Building2, Layers, BookOpen } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, isBefore } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,6 +23,10 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from "recharts";
 import type { Meeting, Contact, Event, Programme, Booking } from "@shared/schema";
 
 const MEETING_STATUS_COLORS: Record<string, string> = {
@@ -46,6 +50,22 @@ export default function Dashboard() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [viewMeeting, setViewMeeting] = useState<Meeting | null>(null);
+
+  const { data: trendData } = useQuery<{
+    trendData: Array<{
+      quarterLabel: string;
+      activationsTotal: number;
+      activationsWorkshops: number;
+      activationsMentoring: number;
+      activationsEvents: number;
+      peopleUnique: number | null;
+      engagementsTotal: number | null;
+      source?: string;
+    }>;
+    boundaryDate: string | null;
+  }>({
+    queryKey: ["/api/legacy-trend-data"],
+  });
 
   const totalContacts = contacts?.length || 0;
   const totalInteractions = interactions?.length || 0;
@@ -591,6 +611,38 @@ export default function Dashboard() {
               </Card>
             </div>
           </div>
+
+          {trendData?.trendData && trendData.trendData.length > 1 && (
+            <Card className="p-5" data-testid="card-dashboard-trend">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-primary" />
+                  <h3 className="font-display font-semibold">Quarterly Trend</h3>
+                  <Badge variant="secondary" className="text-[10px]">{trendData.trendData.length} quarters</Badge>
+                </div>
+                <Link href="/legacy-reports">
+                  <Button variant="ghost" size="sm" className="text-xs">
+                    <BookOpen className="w-3 h-3 mr-1" /> Manage Legacy Data
+                  </Button>
+                </Link>
+              </div>
+              <div className="h-[220px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={trendData.trendData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="quarterLabel" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip
+                      contentStyle={{ borderRadius: 8, fontSize: 12 }}
+                    />
+                    <Line type="monotone" dataKey="activationsTotal" stroke="#7c3aed" strokeWidth={2} name="Activations" dot />
+                    <Line type="monotone" dataKey="activationsWorkshops" stroke="#6366f1" strokeWidth={1.5} name="Workshops" dot />
+                    <Line type="monotone" dataKey="activationsMentoring" stroke="#3b82f6" strokeWidth={1.5} name="Mentoring" dot />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+          )}
         </div>
       </main>
 

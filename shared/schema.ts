@@ -400,6 +400,72 @@ export const reports = pgTable("reports", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// === LEGACY REPORTING ===
+
+export const legacyReports = pgTable("legacy_reports", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  quarterLabel: text("quarter_label").notNull(),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  pdfFileName: text("pdf_file_name"),
+  pdfData: text("pdf_data"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const legacyReportSnapshots = pgTable("legacy_report_snapshots", {
+  id: serial("id").primaryKey(),
+  legacyReportId: integer("legacy_report_id").notNull(),
+  activationsTotal: integer("activations_total").default(0),
+  activationsWorkshops: integer("activations_workshops").default(0),
+  activationsMentoring: integer("activations_mentoring").default(0),
+  activationsEvents: integer("activations_events").default(0),
+  activationsPartnerMeetings: integer("activations_partner_meetings").default(0),
+  peopleUnique: integer("people_unique"),
+  engagementsTotal: integer("engagements_total"),
+  groupsUnique: integer("groups_unique"),
+  bookingsTotal: integer("bookings_total"),
+  hoursTotal: numeric("hours_total"),
+  extraMetrics: jsonb("extra_metrics").$type<Record<string, number>>().default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const reportingSettings = pgTable("reporting_settings", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  boundaryDate: timestamp("boundary_date"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertLegacyReportSchema = createInsertSchema(legacyReports).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertLegacyReportSnapshotSchema = createInsertSchema(legacyReportSnapshots).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertReportingSettingsSchema = createInsertSchema(reportingSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type LegacyReport = typeof legacyReports.$inferSelect;
+export type InsertLegacyReport = z.infer<typeof insertLegacyReportSchema>;
+
+export type LegacyReportSnapshot = typeof legacyReportSnapshots.$inferSelect;
+export type InsertLegacyReportSnapshot = z.infer<typeof insertLegacyReportSnapshotSchema>;
+
+export type ReportingSettings = typeof reportingSettings.$inferSelect;
+export type InsertReportingSettings = z.infer<typeof insertReportingSettingsSchema>;
+
 // === RELATIONS ===
 export const groupsRelations = relations(groups, ({ many }) => ({
   members: many(groupMembers),
