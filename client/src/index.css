@@ -8,67 +8,84 @@
   --font-sans: 'DM Sans', sans-serif;
   --font-display: 'Outfit', sans-serif;
 
-  /* Elegant Light Theme with Deep Purple Accents */
-  --background: 210 40% 98%;
-  --foreground: 222 47% 11%;
-  
+  /* ReserveTMK Brand Theme */
+  --background: 10 85% 97%;
+  --foreground: 161 100% 10%;
+
   --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  
+  --card-foreground: 161 100% 10%;
+
   --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  
-  --primary: 262 83% 58%;
-  --primary-foreground: 210 40% 98%;
-  
-  --secondary: 210 40% 96%;
-  --secondary-foreground: 222 47% 11%;
-  
-  --muted: 210 40% 96%;
-  --muted-foreground: 215 16% 47%;
-  
-  --accent: 262 83% 96%;
-  --accent-foreground: 262 83% 58%;
-  
+  --popover-foreground: 161 100% 10%;
+
+  --primary: 161 100% 12%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 10 85% 96%;
+  --secondary-foreground: 161 100% 10%;
+
+  --muted: 10 30% 94%;
+  --muted-foreground: 161 20% 40%;
+
+  --accent: 14 87% 54%;
+  --accent-foreground: 0 0% 100%;
+
   --destructive: 0 84% 60%;
-  --destructive-foreground: 210 40% 98%;
-  
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
-  --ring: 262 83% 58%;
-  
-  --radius: 0.75rem;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 161 15% 88%;
+  --input: 161 15% 88%;
+  --ring: 161 100% 12%;
+
+  --radius: 0.5rem;
+
+  --chart-1: 161 100% 12%;
+  --chart-2: 14 87% 54%;
+  --chart-3: 335 82% 76%;
+  --chart-4: 199 85% 83%;
+  --chart-5: 14 88% 68%;
+
+  --brand-orange: 14 87% 54%;
+  --brand-pink: 335 82% 76%;
+  --brand-melon: 14 88% 68%;
+  --brand-pale-pink: 335 79% 85%;
+  --brand-baby-blue: 199 85% 83%;
 }
 
 .dark {
-  /* Rich Dark Theme */
-  --background: 222 47% 11%;
-  --foreground: 210 40% 98%;
-  
-  --card: 217 33% 17%;
-  --card-foreground: 210 40% 98%;
-  
-  --popover: 217 33% 17%;
-  --popover-foreground: 210 40% 98%;
-  
-  --primary: 263 70% 65%;
-  --primary-foreground: 210 40% 98%;
-  
-  --secondary: 217 33% 25%;
-  --secondary-foreground: 210 40% 98%;
-  
-  --muted: 217 33% 25%;
-  --muted-foreground: 215 20% 65%;
-  
-  --accent: 263 70% 65%;
-  --accent-foreground: 210 40% 98%;
-  
+  --background: 161 30% 8%;
+  --foreground: 10 85% 96%;
+
+  --card: 161 25% 12%;
+  --card-foreground: 10 85% 96%;
+
+  --popover: 161 25% 12%;
+  --popover-foreground: 10 85% 96%;
+
+  --primary: 161 60% 35%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 161 20% 18%;
+  --secondary-foreground: 10 85% 96%;
+
+  --muted: 161 20% 18%;
+  --muted-foreground: 161 15% 55%;
+
+  --accent: 14 87% 54%;
+  --accent-foreground: 0 0% 100%;
+
   --destructive: 0 62% 30%;
-  --destructive-foreground: 210 40% 98%;
-  
-  --border: 217 33% 25%;
-  --input: 217 33% 25%;
-  --ring: 263 70% 65%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 161 20% 20%;
+  --input: 161 20% 20%;
+  --ring: 161 60% 35%;
+
+  --chart-1: 161 60% 35%;
+  --chart-2: 14 87% 54%;
+  --chart-3: 335 82% 76%;
+  --chart-4: 199 85% 83%;
+  --chart-5: 14 88% 68%;
 }
 
 @layer base {
@@ -87,25 +104,24 @@
   .glass-panel {
     @apply bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-white/20 dark:border-white/10 shadow-xl;
   }
-  
+
   .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-purple-400;
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-emerald-500;
   }
-  
+
   .card-hover {
     @apply transition-all duration-300 hover:shadow-lg hover:-translate-y-1 hover:border-primary/20;
   }
 }
 
-/* Xero-style dark sidebar */
-.sidebar-dark {
-  --sidebar-bg: 220 26% 14%;
-  --sidebar-hover: 220 20% 20%;
-  --sidebar-active: 220 20% 24%;
-  --sidebar-text: 210 20% 70%;
-  --sidebar-text-active: 0 0% 100%;
-  --sidebar-border: 220 20% 22%;
-  --sidebar-accent: 262 83% 65%;
+/* Top navigation bar */
+.topnav {
+  --nav-bg: 161 100% 12%;
+  --nav-hover: 161 80% 18%;
+  --nav-active: 161 80% 22%;
+  --nav-text: 161 15% 75%;
+  --nav-text-active: 0 0% 100%;
+  --nav-border: 161 60% 16%;
 }
 
 /* Mobile safe area for bottom nav */

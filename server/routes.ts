@@ -407,6 +407,82 @@ export async function registerRoutes(
     res.json(eventsList);
   });
 
+  // === Debrief Queue API (must be before /api/events/:id) ===
+  app.get("/api/events/needs-debrief", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const userEvents = await storage.getEvents(userId);
+      const allDebriefs = await storage.getImpactLogs(userId);
+      const now = new Date();
+
+      const confirmedEventIds = new Set(
+        allDebriefs
+          .filter(d => d.eventId && d.status === "confirmed")
+          .map(d => d.eventId)
+      );
+
+      const needsDebrief = userEvents.filter(e => {
+        if (!e.requiresDebrief) return false;
+        if (e.eventStatus === "cancelled") return false;
+        if (e.debriefSkippedReason) return false;
+        if (confirmedEventIds.has(e.id)) return false;
+        const eventEnd = new Date(e.endTime || e.startTime);
+        if (eventEnd > now) return false;
+        return true;
+      });
+
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      const enriched = needsDebrief.map(e => {
+        const eventEnd = new Date(e.endTime || e.startTime);
+        const existingDebrief = allDebriefs.find(d => d.eventId === e.id);
+        let queueStatus: "overdue" | "due" | "in_progress" = "due";
+        if (existingDebrief && existingDebrief.status === "draft") {
+          queueStatus = "in_progress";
+        } else if (eventEnd < sevenDaysAgo) {
+          queueStatus = "overdue";
+        }
+        return {
+          ...e,
+          queueStatus,
+          existingDebriefId: existingDebrief?.id || null,
+          existingDebriefStatus: existingDebrief?.status || null,
+        };
+      });
+
+      enriched.sort((a, b) => {
+        const priority = { overdue: 0, due: 1, in_progress: 2 };
+        if (priority[a.queueStatus] !== priority[b.queueStatus]) {
+          return priority[a.queueStatus] - priority[b.queueStatus];
+        }
+        return new Date(b.startTime).getTime() - new Date(a.startTime).getTime();
+      });
+
+      res.json(enriched);
+    } catch (err) {
+      console.error("Debrief queue error:", err);
+      res.status(500).json({ message: "Failed to fetch debrief queue" });
+    }
+  });
+
+  app.post("/api/events/:id/skip-debrief", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const eventId = parseInt(req.params.id);
+      const event = await storage.getEvent(eventId);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+      if (event.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+      const { reason } = req.body;
+      const updated = await storage.updateEvent(eventId, {
+        debriefSkippedReason: reason || "Skipped by user",
+      });
+      res.json(updated);
+    } catch (err) {
+      console.error("Skip debrief error:", err);
+      res.status(500).json({ message: "Failed to skip debrief" });
+    }
+  });
+
   app.get(api.events.get.path, isAuthenticated, async (req, res) => {
     const id = parseInt(req.params.id);
     const event = await storage.getEvent(id);
@@ -592,45 +668,6 @@ export async function registerRoutes(
     }
   });
 
-  // === Debrief Queue API ===
-  app.get("/api/events/needs-debrief", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      const userEvents = await storage.getEvents(userId);
-      const now = new Date();
-      const needsDebrief = userEvents.filter(e => {
-        if (!e.requiresDebrief) return false;
-        if (e.eventStatus === "cancelled") return false;
-        if (e.debriefSkippedReason) return false;
-        const eventEnd = new Date(e.endTime || e.startTime);
-        if (eventEnd > now) return false;
-        return true;
-      });
-      needsDebrief.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
-      res.json(needsDebrief);
-    } catch (err) {
-      console.error("Debrief queue error:", err);
-      res.status(500).json({ message: "Failed to fetch debrief queue" });
-    }
-  });
-
-  app.post("/api/events/:id/skip-debrief", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      const eventId = parseInt(req.params.id);
-      const event = await storage.getEvent(eventId);
-      if (!event) return res.status(404).json({ message: "Event not found" });
-      if (event.userId !== userId) return res.status(403).json({ message: "Forbidden" });
-      const { reason } = req.body;
-      const updated = await storage.updateEvent(eventId, {
-        debriefSkippedReason: reason || "Skipped by user",
-      });
-      res.json(updated);
-    } catch (err) {
-      console.error("Skip debrief error:", err);
-      res.status(500).json({ message: "Failed to skip debrief" });
-    }
-  });
 
   // === Event Attendance API ===
 

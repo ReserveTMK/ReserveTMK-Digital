@@ -1,4 +1,3 @@
-import { Sidebar } from "@/components/layout/sidebar";
 import { MetricCard } from "@/components/ui/metric-card";
 import { useContacts } from "@/hooks/use-contacts";
 import { useInteractions } from "@/hooks/use-interactions";
@@ -8,7 +7,7 @@ import { useImpactLogs } from "@/hooks/use-impact-logs";
 import { useAuth } from "@/hooks/use-auth";
 import { useProgrammes } from "@/hooks/use-programmes";
 import { useBookings, useVenues } from "@/hooks/use-bookings";
-import { Users, Activity, TrendingUp, Calendar as CalendarIcon, ArrowRight, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, PartyPopper, Mic, FileText, Building2, Layers, BookOpen } from "lucide-react";
+import { Users, Activity, TrendingUp, Calendar as CalendarIcon, ArrowRight, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, PartyPopper, Mic, FileText, Building2, Layers, BookOpen, AlertTriangle, ClipboardCheck, SkipForward } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, isBefore } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -50,6 +49,10 @@ export default function Dashboard() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [viewMeeting, setViewMeeting] = useState<Meeting | null>(null);
+
+  const { data: debriefQueue } = useQuery<any[]>({
+    queryKey: ["/api/events/needs-debrief"],
+  });
 
   const { data: trendData } = useQuery<{
     trendData: Array<{
@@ -172,9 +175,8 @@ export default function Dashboard() {
   if (!user) return null;
 
   return (
-    <div className="flex min-h-screen bg-background/50">
-      <Sidebar />
-      <main className="flex-1 md:ml-64 p-4 md:p-8 pt-14 md:pt-0 pb-20 md:pb-0 overflow-y-auto">
+    <>
+    <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
         <div className="max-w-6xl mx-auto space-y-8">
           <div className="flex flex-col gap-2">
             <h1 className="text-3xl md:text-4xl font-display font-bold text-foreground" data-testid="text-welcome">
@@ -220,6 +222,61 @@ export default function Dashboard() {
               data-testid="metric-total-events"
             />
           </div>
+
+          {debriefQueue && debriefQueue.length > 0 && (
+            <Card className="border-l-4 border-l-orange-500 p-4 md:p-6" data-testid="card-debrief-queue">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-orange-500/10">
+                    <ClipboardCheck className="w-5 h-5 text-orange-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold font-display">To Be Debriefed</h2>
+                    <p className="text-sm text-muted-foreground">
+                      {debriefQueue.length} event{debriefQueue.length !== 1 ? "s" : ""} awaiting debrief
+                    </p>
+                  </div>
+                </div>
+                <Link href="/debrief-queue" data-testid="link-view-all-debriefs">
+                  <Button variant="outline" size="sm" className="gap-1">
+                    View All <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </Link>
+              </div>
+
+              <div className="space-y-2">
+                {debriefQueue.slice(0, 3).map((item: any) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                    data-testid={`debrief-queue-item-${item.id}`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Badge
+                        variant={item.queueStatus === "overdue" ? "destructive" : item.queueStatus === "in_progress" ? "secondary" : "outline"}
+                        className="shrink-0 text-xs"
+                        data-testid={`badge-status-${item.id}`}
+                      >
+                        {item.queueStatus === "overdue" && <AlertTriangle className="w-3 h-3 mr-1" />}
+                        {item.queueStatus === "overdue" ? "Overdue" : item.queueStatus === "in_progress" ? "In Progress" : "Due"}
+                      </Badge>
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm truncate">{item.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(item.startTime), "d MMM yyyy")} · {item.type}
+                        </p>
+                      </div>
+                    </div>
+                    <Link href={`/debrief-queue?reconcile=${item.id}`} data-testid={`button-reconcile-${item.id}`}>
+                      <Button size="sm" variant="default" className="gap-1 shrink-0">
+                        <Mic className="w-3 h-3" /> Reconcile
+                      </Button>
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-4">
@@ -651,7 +708,7 @@ export default function Dashboard() {
         onClose={() => setViewMeeting(null)}
         contacts={contacts || []}
       />
-    </div>
+    </>
   );
 }
 

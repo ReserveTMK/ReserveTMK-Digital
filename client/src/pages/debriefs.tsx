@@ -1,4 +1,3 @@
-import { Sidebar } from "@/components/layout/sidebar";
 import { Button } from "@/components/ui/beautiful-button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -114,9 +113,8 @@ function ListView() {
   });
 
   return (
-    <div className="flex min-h-screen bg-background/50">
-      <Sidebar />
-      <main className="flex-1 md:ml-64 p-4 md:p-8 pt-14 md:pt-0 pb-20 md:pb-0 overflow-y-auto">
+    <>
+    <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
         <div className="max-w-6xl mx-auto space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
@@ -218,7 +216,7 @@ function ListView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }
 
@@ -808,20 +806,15 @@ function ReviewView({ id }: { id: number }) {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen bg-background/50">
-        <Sidebar />
-        <main className="flex-1 md:ml-64 flex items-center justify-center pt-14 md:pt-0 pb-20 md:pb-0">
+      <main className="flex-1 flex items-center justify-center overflow-y-auto">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </main>
-      </div>
     );
   }
 
   if (!impactLog) {
     return (
-      <div className="flex min-h-screen bg-background/50">
-        <Sidebar />
-        <main className="flex-1 md:ml-64 p-4 md:p-8 pt-14 md:pt-0 pb-20 md:pb-0">
+      <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
           <div className="max-w-6xl mx-auto">
             <Card className="p-12 text-center">
               <h3 className="text-lg font-semibold mb-2">Debrief not found</h3>
@@ -832,7 +825,6 @@ function ReviewView({ id }: { id: number }) {
             </Card>
           </div>
         </main>
-      </div>
     );
   }
 
@@ -880,9 +872,7 @@ function ReviewView({ id }: { id: number }) {
   };
 
   return (
-    <div className="flex min-h-screen bg-background/50">
-      <Sidebar />
-      <main className="flex-1 md:ml-64 p-4 md:p-8 pt-14 md:pt-0 overflow-y-auto pb-20 md:pb-0">
+    <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
         <div className="max-w-7xl mx-auto space-y-6">
           <div className="flex items-center gap-4 flex-wrap">
             <Button variant="ghost" size="icon" onClick={() => setLocation("/debriefs")} data-testid="button-back">
@@ -1554,7 +1544,7 @@ function ReviewView({ id }: { id: number }) {
           </div>
         </div>
 
-        <div className="fixed bottom-0 left-0 right-0 md:left-72 bg-card border-t border-border p-4 z-40">
+        <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border p-4 z-40">
           <div className="max-w-7xl mx-auto flex items-center justify-end gap-3">
             <Button
               variant="outline"
@@ -1601,7 +1591,6 @@ function ReviewView({ id }: { id: number }) {
           </DialogContent>
         </Dialog>
       </main>
-    </div>
   );
 }
 

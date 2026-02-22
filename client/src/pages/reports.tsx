@@ -1,4 +1,3 @@
-import { Sidebar } from "@/components/layout/sidebar";
 import { Button } from "@/components/ui/beautiful-button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -316,9 +315,7 @@ export default function Reports() {
   const val = reportData?.value;
 
   return (
-    <div className="flex min-h-screen bg-background/50">
-      <Sidebar />
-      <main className="flex-1 md:ml-64 p-4 md:p-8 pt-14 md:pt-0 pb-20 md:pb-0 overflow-y-auto">
+    <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
         <div className="max-w-6xl mx-auto space-y-6">
           <div>
             <h1 className="text-3xl font-display font-bold" data-testid="text-reports-title">Reports</h1>
@@ -794,6 +791,5 @@ export default function Reports() {
           )}
         </div>
       </main>
-    </div>
   );
 }

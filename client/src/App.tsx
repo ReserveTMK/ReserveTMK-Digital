@@ -6,15 +6,14 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
 import { useEffect } from "react";
+import { TopNav } from "@/components/layout/top-nav";
 
-// Pages
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 import Contacts from "@/pages/contacts";
 import ContactDetail from "@/pages/contact-detail";
 import Reports from "@/pages/reports";
-
 import Debriefs from "@/pages/debriefs";
 import Actions from "@/pages/actions";
 import Taxonomy from "@/pages/taxonomy";
@@ -32,11 +31,6 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 
   useEffect(() => {
     if (!isLoading && !user) {
-      // No user, redirect to landing
-      // Note: Landing is at /, but if we are at a deep route, we might want to redirect to / first
-      // But actually, for this app structure:
-      // / -> Landing (if not logged in) OR Dashboard (if logged in)
-      // So ProtectedRoute logic is simpler: if no user, render null (and effect redirects or we show landing)
     }
   }, [user, isLoading, setLocation]);
 
@@ -49,11 +43,27 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   }
 
   if (!user) {
-    // If not logged in, show Landing Page instead of redirecting loop
     return <LandingPage />;
   }
 
   return <Component />;
+}
+
+function AppLayout({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+
+  if (!user) {
+    return <>{children}</>;
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <TopNav />
+      <main className="pt-14">
+        {children}
+      </main>
+    </div>
+  );
 }
 
 function Router() {
@@ -68,72 +78,69 @@ function Router() {
   }
 
   return (
-    <Switch>
-      {/* 
-        Root path "/" behaves differently based on auth:
-        - Logged in -> Dashboard
-        - Logged out -> Landing Page
-      */}
-      <Route path="/">
-        {user ? <Dashboard /> : <LandingPage />}
-      </Route>
+    <AppLayout>
+      <Switch>
+        <Route path="/">
+          {user ? <Dashboard /> : <LandingPage />}
+        </Route>
 
-      <Route path="/contacts">
-        <ProtectedRoute component={Contacts} />
-      </Route>
-      
-      <Route path="/contacts/:id">
-        <ProtectedRoute component={ContactDetail} />
-      </Route>
+        <Route path="/contacts">
+          <ProtectedRoute component={Contacts} />
+        </Route>
+        
+        <Route path="/contacts/:id">
+          <ProtectedRoute component={ContactDetail} />
+        </Route>
 
-      <Route path="/debriefs">
-        <ProtectedRoute component={Debriefs} />
-      </Route>
-      <Route path="/debriefs/:id">
-        <ProtectedRoute component={Debriefs} />
-      </Route>
-      <Route path="/actions">
-        <ProtectedRoute component={Actions} />
-      </Route>
+        <Route path="/debriefs">
+          <ProtectedRoute component={Debriefs} />
+        </Route>
+        <Route path="/debriefs/:id">
+          <ProtectedRoute component={Debriefs} />
+        </Route>
+        <Route path="/actions">
+          <ProtectedRoute component={Actions} />
+        </Route>
 
-      <Route path="/reports">
-        <ProtectedRoute component={Reports} />
-      </Route>
+        <Route path="/reports">
+          <ProtectedRoute component={Reports} />
+        </Route>
 
-      <Route path="/taxonomy">
-        <ProtectedRoute component={Taxonomy} />
-      </Route>
+        <Route path="/taxonomy">
+          <ProtectedRoute component={Taxonomy} />
+        </Route>
 
-      <Route path="/calendar">
-        <ProtectedRoute component={CalendarPage} />
-      </Route>
+        <Route path="/calendar">
+          <ProtectedRoute component={CalendarPage} />
+        </Route>
 
-      <Route path="/programmes">
-        <ProtectedRoute component={Programmes} />
-      </Route>
+        <Route path="/programmes">
+          <ProtectedRoute component={Programmes} />
+        </Route>
 
-      <Route path="/bookings">
-        <ProtectedRoute component={Bookings} />
-      </Route>
+        <Route path="/bookings">
+          <ProtectedRoute component={Bookings} />
+        </Route>
 
-      <Route path="/agreements">
-        <ProtectedRoute component={Agreements} />
-      </Route>
+        <Route path="/agreements">
+          <ProtectedRoute component={Agreements} />
+        </Route>
 
-      <Route path="/groups">
-        <ProtectedRoute component={GroupsPage} />
-      </Route>
+        <Route path="/groups">
+          <ProtectedRoute component={GroupsPage} />
+        </Route>
 
-      <Route path="/debrief-queue">
-        <ProtectedRoute component={DebriefQueuePage} />
-      </Route>
+        <Route path="/debrief-queue">
+          <ProtectedRoute component={DebriefQueuePage} />
+        </Route>
 
-      <Route path="/legacy-reports">
-        <ProtectedRoute component={LegacyReportsPage} />
-      </Route>
+        <Route path="/legacy-reports">
+          <ProtectedRoute component={LegacyReportsPage} />
+        </Route>
 
-      <Route component={NotFound} />
-    </Switch>
+        <Route component={NotFound} />
+      </Switch>
+    </AppLayout>
   );
 }
 
