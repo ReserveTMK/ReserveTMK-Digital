@@ -89,6 +89,8 @@ export default function Dashboard() {
     queryKey: ["/api/legacy-trend-data"],
   });
 
+  const hasLegacy = blendedStats && blendedStats.legacy.reportCount > 0;
+
   const totalContacts = contacts?.length || 0;
   const totalInteractions = interactions?.length || 0;
   const recentInteractions = interactions?.slice(0, 5) || [];
@@ -211,20 +213,26 @@ export default function Dashboard() {
             <MetricCard
               title="Community"
               value={loadingContacts ? "..." : totalContacts}
+              subtext={hasLegacy && blendedStats!.legacy.totalPeople > 0 ? `incl. ${blendedStats!.legacy.totalPeople.toLocaleString()} from legacy` : undefined}
               icon={<Users className="w-5 h-5" />}
               color="primary"
+              data-testid="metric-community"
             />
             <MetricCard
               title="Total Interactions"
               value={loadingInteractions ? "..." : totalInteractions}
+              subtext={hasLegacy && blendedStats!.legacy.totalEngagements > 0 ? `incl. ${blendedStats!.legacy.totalEngagements.toLocaleString()} from legacy` : undefined}
               icon={<Activity className="w-5 h-5" />}
               color="secondary"
+              data-testid="metric-interactions"
             />
             <MetricCard
               title="Impact Debriefs"
               value={(impactLogs as any[])?.length || 0}
+              subtext={hasLegacy && blendedStats!.legacy.totalActivations > 0 ? `incl. ${blendedStats!.legacy.totalActivations.toLocaleString()} legacy activations` : undefined}
               icon={<Mic className="w-5 h-5" />}
               color="green"
+              data-testid="metric-debriefs"
             />
             <MetricCard
               title="Avg Confidence"
@@ -233,28 +241,66 @@ export default function Dashboard() {
               color="green"
               trend={avgConfidence !== "N/A" && Number(avgConfidence) > 7 ? "up" : "neutral"}
               trendValue="Good"
+              data-testid="metric-confidence"
             />
             <MetricCard
               title="Total Events"
               value={events?.length || 0}
+              subtext={hasLegacy && blendedStats!.legacy.totalBookings > 0 ? `incl. ${blendedStats!.legacy.totalBookings.toLocaleString()} legacy bookings` : undefined}
               icon={<CalendarIcon className="w-5 h-5" />}
               color="blue"
               data-testid="metric-total-events"
             />
           </div>
 
-          {blendedStats && blendedStats.legacy.reportCount > 0 && (
-            <Card className="p-3 md:p-4 flex items-center gap-3" data-testid="card-legacy-info">
-              <div className="p-2 rounded-lg bg-blue-500/10 shrink-0">
-                <Info className="w-4 h-4 text-blue-600" />
+          {hasLegacy && (
+            <Card className="p-3 md:p-4" data-testid="card-legacy-info">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-2 rounded-lg bg-blue-500/10 shrink-0">
+                  <Info className="w-4 h-4 text-blue-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-muted-foreground" data-testid="text-legacy-info">
+                    Historical data from <span className="font-semibold text-foreground">{blendedStats!.legacy.reportCount}</span> legacy reports included
+                  </p>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-muted-foreground" data-testid="text-legacy-info">
-                  Historical data from <span className="font-semibold text-foreground">{blendedStats.legacy.reportCount}</span> legacy reports included
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5" data-testid="text-legacy-totals">
-                  {blendedStats.legacy.totalActivations.toLocaleString()} activations · {blendedStats.legacy.totalPeople.toLocaleString()} people · {blendedStats.legacy.totalEngagements.toLocaleString()} engagements
-                </p>
+              <div className="flex flex-wrap gap-2" data-testid="legacy-metric-badges">
+                {blendedStats!.legacy.totalActivations > 0 && (
+                  <Badge variant="secondary" className="text-xs" data-testid="badge-legacy-activations">
+                    {blendedStats!.legacy.totalActivations.toLocaleString()} activations
+                  </Badge>
+                )}
+                {blendedStats!.legacy.totalPeople > 0 && (
+                  <Badge variant="secondary" className="text-xs" data-testid="badge-legacy-people">
+                    {blendedStats!.legacy.totalPeople.toLocaleString()} people
+                  </Badge>
+                )}
+                {blendedStats!.legacy.totalEngagements > 0 && (
+                  <Badge variant="secondary" className="text-xs" data-testid="badge-legacy-engagements">
+                    {blendedStats!.legacy.totalEngagements.toLocaleString()} engagements
+                  </Badge>
+                )}
+                {blendedStats!.legacy.totalBookings > 0 && (
+                  <Badge variant="secondary" className="text-xs" data-testid="badge-legacy-bookings">
+                    {blendedStats!.legacy.totalBookings.toLocaleString()} bookings
+                  </Badge>
+                )}
+                {blendedStats!.legacy.totalHours > 0 && (
+                  <Badge variant="secondary" className="text-xs" data-testid="badge-legacy-hours">
+                    {blendedStats!.legacy.totalHours.toLocaleString()} hours
+                  </Badge>
+                )}
+                {blendedStats!.legacy.totalRevenue > 0 && (
+                  <Badge variant="secondary" className="text-xs" data-testid="badge-legacy-revenue">
+                    ${blendedStats!.legacy.totalRevenue.toLocaleString()} revenue
+                  </Badge>
+                )}
+                {blendedStats!.legacy.totalInKind > 0 && (
+                  <Badge variant="secondary" className="text-xs" data-testid="badge-legacy-inkind">
+                    ${blendedStats!.legacy.totalInKind.toLocaleString()} in-kind
+                  </Badge>
+                )}
               </div>
             </Card>
           )}
@@ -846,6 +892,8 @@ export default function Dashboard() {
                     <Line type="monotone" dataKey="activationsTotal" stroke="hsl(var(--brand-coral))" strokeWidth={2} name="Activations" dot />
                     <Line type="monotone" dataKey="activationsWorkshops" stroke="hsl(var(--brand-green))" strokeWidth={1.5} name="Workshops" dot />
                     <Line type="monotone" dataKey="activationsMentoring" stroke="hsl(var(--brand-blue))" strokeWidth={1.5} name="Mentoring" dot />
+                    <Line type="monotone" dataKey="peopleUnique" stroke="hsl(var(--primary))" strokeWidth={1.5} name="People" dot />
+                    <Line type="monotone" dataKey="engagementsTotal" stroke="hsl(var(--muted-foreground))" strokeWidth={1.5} name="Engagements" dot />
                   </LineChart>
                 </ResponsiveContainer>
               </div>

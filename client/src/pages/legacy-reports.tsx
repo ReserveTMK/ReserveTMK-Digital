@@ -214,12 +214,34 @@ export default function LegacyReportsPage() {
       const res = await apiRequest("POST", "/api/legacy-reports", data);
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (result: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/legacy-reports"] });
       queryClient.invalidateQueries({ queryKey: ["/api/legacy-trend-data"] });
       setShowForm(false);
       resetForm();
-      toast({ title: "Saved", description: "Legacy report uploaded" });
+      if (result.autoExtracted && result.extraction) {
+        const { autoAppliedCount, reviewNeededCount, suggestedMetrics } = result.extraction;
+        toast({
+          title: "Report Created & Metrics Extracted",
+          description: `${autoAppliedCount} metrics auto-applied, ${reviewNeededCount} need review`,
+        });
+        if (reviewNeededCount > 0) {
+          const values: Record<string, string> = {};
+          suggestedMetrics.forEach((m: ExtractionMetric) => {
+            values[m.metricKey] = m.metricValue !== null ? String(m.metricValue) : "";
+          });
+          setEditedMetricValues(values);
+          setExtractionData({ reportId: result.id, metrics: suggestedMetrics });
+        }
+      } else if (result.autoExtracted === false && result.extractionError) {
+        toast({
+          title: "Report Created",
+          description: result.extractionError,
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "Saved", description: "Legacy report uploaded" });
+      }
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -279,10 +301,17 @@ export default function LegacyReportsPage() {
       const res = await apiRequest("PATCH", `/api/legacy-reports/${id}`, { status });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (result: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/legacy-reports"] });
       queryClient.invalidateQueries({ queryKey: ["/api/legacy-trend-data"] });
-      toast({ title: "Updated", description: "Report status updated" });
+      if (result.taxonomySuggestionsAvailable) {
+        toast({
+          title: "Report Confirmed",
+          description: "Taxonomy suggestions are available — click 'Taxonomy' to view them.",
+        });
+      } else {
+        toast({ title: "Updated", description: "Report status updated" });
+      }
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });

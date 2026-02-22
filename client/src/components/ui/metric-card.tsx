@@ -4,21 +4,25 @@ import { ArrowUp, ArrowDown, Minus } from "lucide-react";
 interface MetricCardProps {
   title: string;
   value: number | string;
+  subtext?: string;
   trend?: "up" | "down" | "neutral";
   trendValue?: string;
   icon?: React.ReactNode;
   className?: string;
   color?: "primary" | "secondary" | "accent" | "green" | "blue";
+  "data-testid"?: string;
 }
 
 export function MetricCard({
   title,
   value,
+  subtext,
   trend,
   trendValue,
   icon,
   className,
   color = "primary",
+  "data-testid": testId,
 }: MetricCardProps) {
   
   const colorStyles = {
@@ -30,10 +34,13 @@ export function MetricCard({
   };
 
   return (
-    <div className={cn(
-      "bg-card rounded-2xl p-6 border border-border shadow-sm hover:shadow-md transition-all duration-300",
-      className
-    )}>
+    <div
+      className={cn(
+        "bg-card rounded-2xl p-6 border border-border shadow-sm hover:shadow-md transition-all duration-300",
+        className
+      )}
+      data-testid={testId}
+    >
       <div className="flex justify-between items-start mb-4">
         <p className="text-sm font-medium text-muted-foreground">{title}</p>
         {icon && (
@@ -48,6 +55,11 @@ export function MetricCard({
           <h3 className="text-3xl font-bold font-display tracking-tight text-foreground">
             {value}
           </h3>
+          {subtext && (
+            <p className="text-xs text-muted-foreground mt-1" data-testid={testId ? `${testId}-subtext` : undefined}>
+              {subtext}
+            </p>
+          )}
         </div>
         
         {trend && (

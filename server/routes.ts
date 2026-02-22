@@ -63,6 +63,64 @@ function coerceDateFields(body: Record<string, any>): Record<string, any> {
   return result;
 }
 
+const LEGACY_METRIC_KEYS = [
+  { key: "activations_total", label: "Total Activations", unit: "count" },
+  { key: "activations_workshops", label: "Workshops", unit: "count" },
+  { key: "activations_mentoring", label: "Mentoring Sessions", unit: "count" },
+  { key: "activations_events", label: "Events", unit: "count" },
+  { key: "activations_partner_meetings", label: "Partner Meetings", unit: "count" },
+  { key: "people_unique", label: "Unique People", unit: "count" },
+  { key: "engagements_total", label: "Total Engagements", unit: "count" },
+  { key: "groups_unique", label: "Unique Groups", unit: "count" },
+  { key: "bookings_total", label: "Total Bookings", unit: "count" },
+  { key: "hours_total", label: "Total Hours", unit: "hours" },
+  { key: "revenue_total", label: "Total Revenue", unit: "NZD" },
+  { key: "in_kind_total", label: "In-Kind Value", unit: "NZD" },
+];
+
+const METRIC_KEY_TO_SNAPSHOT_FIELD: Record<string, string> = {
+  activations_total: "activationsTotal",
+  activations_workshops: "activationsWorkshops",
+  activations_mentoring: "activationsMentoring",
+  activations_events: "activationsEvents",
+  activations_partner_meetings: "activationsPartnerMeetings",
+  people_unique: "peopleUnique",
+  engagements_total: "engagementsTotal",
+  groups_unique: "groupsUnique",
+  bookings_total: "bookingsTotal",
+  hours_total: "hoursTotal",
+  revenue_total: "revenueTotal",
+  in_kind_total: "inKindTotal",
+};
+
+function buildExtractionPrompt(pdfText: string): string {
+  return `You are an impact data analyst. Extract quantitative metrics from this community organisation quarterly report text.
+
+For each metric below, find the value in the text. If a metric is not mentioned, set value to null with confidence 0.
+
+Metrics to extract:
+${LEGACY_METRIC_KEYS.map(m => `- ${m.key} (${m.label}, unit: ${m.unit})`).join("\n")}
+
+Report text:
+"""
+${pdfText.substring(0, 8000)}
+"""
+
+Respond in JSON format only:
+{
+  "metrics": [
+    { "metricKey": "activations_total", "metricValue": 42, "metricUnit": "count", "confidence": 85, "evidenceSnippet": "The exact text snippet where you found this number" },
+    ...
+  ]
+}
+
+Rules:
+- confidence is 0-100 (how sure you are)
+- evidenceSnippet is the relevant text snippet (max 200 chars)
+- If not found, set metricValue to null, confidence to 0, evidenceSnippet to null
+- Only return the JSON, no other text`;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -2170,7 +2228,79 @@ Important:
       };
 
       const report = await getFullMonthlyReport(filters);
-      res.json(report);
+
+      let legacyBlend = null;
+      try {
+        const settings = await storage.getReportingSettings(userId);
+        const boundaryDate = settings?.boundaryDate;
+        const reportStart = new Date(startDate);
+
+        if (boundaryDate && reportStart < boundaryDate) {
+          const allLegacy = await storage.getLegacyReports(userId);
+          const confirmed = allLegacy.filter(r => r.status === "confirmed");
+          const reqStart = new Date(startDate);
+          const reqEnd = new Date(endDate);
+
+          const overlapping = confirmed.filter(r => {
+            const ps = new Date(r.periodStart);
+            const pe = new Date(r.periodEnd);
+            return ps <= reqEnd && pe >= reqStart && pe <= boundaryDate;
+          });
+
+          const legacyTotals = {
+            activationsTotal: 0,
+            activationsWorkshops: 0,
+            activationsMentoring: 0,
+            activationsEvents: 0,
+            activationsPartnerMeetings: 0,
+            peopleUnique: 0,
+            engagementsTotal: 0,
+            groupsUnique: 0,
+            bookingsTotal: 0,
+            hoursTotal: 0,
+            revenueTotal: 0,
+            inKindTotal: 0,
+            reportCount: overlapping.length,
+          };
+
+          const quarters: Array<{ label: string; periodStart: string; periodEnd: string }> = [];
+
+          for (const lr of overlapping) {
+            const snapshot = await storage.getLegacyReportSnapshot(lr.id);
+            if (snapshot) {
+              legacyTotals.activationsTotal += snapshot.activationsTotal || 0;
+              legacyTotals.activationsWorkshops += snapshot.activationsWorkshops || 0;
+              legacyTotals.activationsMentoring += snapshot.activationsMentoring || 0;
+              legacyTotals.activationsEvents += snapshot.activationsEvents || 0;
+              legacyTotals.activationsPartnerMeetings += snapshot.activationsPartnerMeetings || 0;
+              legacyTotals.peopleUnique += snapshot.peopleUnique || 0;
+              legacyTotals.engagementsTotal += snapshot.engagementsTotal || 0;
+              legacyTotals.groupsUnique += snapshot.groupsUnique || 0;
+              legacyTotals.bookingsTotal += snapshot.bookingsTotal || 0;
+              legacyTotals.hoursTotal += parseFloat(String(snapshot.hoursTotal || 0));
+              legacyTotals.revenueTotal += parseFloat(String(snapshot.revenueTotal || 0));
+              legacyTotals.inKindTotal += parseFloat(String(snapshot.inKindTotal || 0));
+            }
+            quarters.push({
+              label: lr.quarterLabel,
+              periodStart: lr.periodStart.toISOString(),
+              periodEnd: lr.periodEnd.toISOString(),
+            });
+          }
+
+          if (overlapping.length > 0) {
+            legacyBlend = {
+              boundaryDate: boundaryDate.toISOString(),
+              legacyTotals,
+              quarters,
+            };
+          }
+        }
+      } catch (blendErr) {
+        console.error("Legacy blend error (non-fatal):", blendErr);
+      }
+
+      res.json({ ...report, legacyBlend });
     } catch (err: any) {
       console.error("Report generation error:", err);
       res.status(500).json({ message: "Failed to generate report" });
@@ -2382,6 +2512,85 @@ Important:
         });
       }
 
+      if (pdfData) {
+        try {
+          const mod = await import("pdf-parse");
+          const pdfParse = mod.default || mod;
+          const pdfBuffer = Buffer.from(pdfData, "base64");
+          const pdfResult = await pdfParse(pdfBuffer);
+          const pdfText = pdfResult.text;
+
+          const prompt = buildExtractionPrompt(pdfText);
+          const response = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.2,
+            response_format: { type: "json_object" },
+          });
+
+          const content = response.choices[0]?.message?.content || "{}";
+          let parsed: any;
+          try {
+            parsed = JSON.parse(content);
+          } catch {
+            parsed = { metrics: [] };
+          }
+
+          const suggestedMetrics = (parsed.metrics || []).map((m: any) => ({
+            metricKey: m.metricKey,
+            metricValue: m.metricValue,
+            metricUnit: m.metricUnit || null,
+            confidence: m.confidence || 0,
+            evidenceSnippet: m.evidenceSnippet || null,
+          }));
+
+          await storage.createLegacyReportExtraction({
+            legacyReportId: report.id,
+            suggestedMetrics,
+            rawText: pdfText.substring(0, 20000),
+          });
+
+          const snapshotData: Record<string, any> = { legacyReportId: report.id };
+          let autoAppliedCount = 0;
+          let reviewNeededCount = 0;
+
+          for (const m of suggestedMetrics) {
+            if (m.confidence >= 70 && m.metricValue !== null && m.metricValue !== undefined) {
+              const field = METRIC_KEY_TO_SNAPSHOT_FIELD[m.metricKey];
+              if (field) {
+                snapshotData[field] = typeof m.metricValue === "string" ? parseFloat(m.metricValue) : m.metricValue;
+                autoAppliedCount++;
+              }
+            } else if (m.confidence > 0 && m.confidence < 70) {
+              reviewNeededCount++;
+            }
+          }
+
+          if (autoAppliedCount > 0) {
+            if (snapshotRecord) {
+              snapshotRecord = await storage.updateLegacyReportSnapshot(snapshotRecord.id, snapshotData);
+            } else {
+              snapshotRecord = await storage.createLegacyReportSnapshot(snapshotData as any);
+            }
+          }
+
+          return res.status(201).json({
+            ...report,
+            snapshot: snapshotRecord,
+            autoExtracted: true,
+            extraction: { suggestedMetrics, autoAppliedCount, reviewNeededCount },
+          });
+        } catch (extractErr: any) {
+          console.error("Auto-extraction error (non-fatal):", extractErr);
+          return res.status(201).json({
+            ...report,
+            snapshot: snapshotRecord,
+            autoExtracted: false,
+            extractionError: "Metric extraction failed — you can retry manually using the Extract button.",
+          });
+        }
+      }
+
       res.status(201).json({ ...report, snapshot: snapshotRecord });
     } catch (err: any) {
       console.error("Create legacy report error:", err);
@@ -2425,10 +2634,88 @@ Important:
         }
       }
 
-      res.json({ ...updated, snapshot: snapshotRecord || (await storage.getLegacyReportSnapshot(id)) });
+      const finalSnapshot = snapshotRecord || (await storage.getLegacyReportSnapshot(id));
+      const taxonomySuggestionsAvailable = status === "confirmed" && existing.status !== "confirmed";
+      res.json({ ...updated, snapshot: finalSnapshot, taxonomySuggestionsAvailable });
     } catch (err: any) {
       console.error("Update legacy report error:", err);
       res.status(500).json({ message: "Failed to update legacy report" });
+    }
+  });
+
+  app.get("/api/legacy-reports/:id/taxonomy-suggestions", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const reportId = parseInt(req.params.id);
+      const report = await storage.getLegacyReport(reportId);
+      if (!report) return res.status(404).json({ message: "Legacy report not found" });
+      if (report.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      const taxonomy = await storage.getTaxonomy(userId);
+      const snapshot = await storage.getLegacyReportSnapshot(reportId);
+
+      let pdfText = "";
+      if (report.pdfData) {
+        try {
+          const pdfParseModule = await import("pdf-parse");
+          const pdfParse = pdfParseModule.default || pdfParseModule;
+          const buffer = Buffer.from(report.pdfData, "base64");
+          const parsed = await pdfParse(buffer);
+          pdfText = parsed.text || "";
+        } catch (e) {
+          pdfText = "";
+        }
+      }
+
+      const existingCategories = taxonomy.map(t => ({
+        id: t.id,
+        category: t.name,
+        description: t.description,
+      }));
+
+      const snapshotInfo = snapshot ? {
+        activationsTotal: snapshot.activationsTotal,
+        peopleUnique: snapshot.peopleUnique,
+        engagementsTotal: snapshot.engagementsTotal,
+        bookingsTotal: snapshot.bookingsTotal,
+        hoursTotal: snapshot.hoursTotal,
+        revenueTotal: snapshot.revenueTotal,
+        inKindTotal: snapshot.inKindTotal,
+      } : {};
+
+      const prompt = `You are analyzing a legacy report to suggest taxonomy categories for impact classification.
+
+Report Period: ${report.quarterLabel} (${report.periodStart} to ${report.periodEnd})
+Report Metrics: ${JSON.stringify(snapshotInfo)}
+${pdfText ? `Report Text Content:\n${pdfText.slice(0, 3000)}` : "No PDF text available."}
+
+Existing taxonomy categories:
+${JSON.stringify(existingCategories, null, 2)}
+
+Analyze the report data and suggest taxonomy categories. For each suggestion:
+- If it matches an existing category, reference it
+- If it's a new category, explain why it should be added
+- Include a confidence score (0-100)
+
+Return a JSON object with this exact structure:
+{
+  "suggestions": [
+    { "category": "category name", "description": "why this category fits the report data", "matchesExisting": "existing category name or null", "confidence": 85 }
+  ]
+}`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        temperature: 0.3,
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+      });
+
+      const result = JSON.parse(response.choices[0].message.content || '{"suggestions":[]}');
+      res.json(result.suggestions || []);
+    } catch (err: any) {
+      console.error("Taxonomy suggestions GET error:", err);
+      res.status(500).json({ message: "Failed to generate taxonomy suggestions" });
     }
   });
 
@@ -2930,51 +3217,13 @@ Keep responses concise and actionable. Format as structured sections.`;
       if (!report || report.userId !== userId) return res.status(404).json({ message: "Not found" });
       if (!report.pdfData) return res.status(400).json({ message: "No PDF data attached to this report" });
 
-      const pdfParse = (await import("pdf-parse")).default;
+      const pdfParseModule = await import("pdf-parse");
+      const pdfParse = pdfParseModule.default || pdfParseModule;
       const pdfBuffer = Buffer.from(report.pdfData, "base64");
       const pdfResult = await pdfParse(pdfBuffer);
       const pdfText = pdfResult.text;
 
-      const metricKeys = [
-        { key: "activations_total", label: "Total Activations", unit: "count" },
-        { key: "activations_workshops", label: "Workshops", unit: "count" },
-        { key: "activations_mentoring", label: "Mentoring Sessions", unit: "count" },
-        { key: "activations_events", label: "Events", unit: "count" },
-        { key: "activations_partner_meetings", label: "Partner Meetings", unit: "count" },
-        { key: "people_unique", label: "Unique People", unit: "count" },
-        { key: "engagements_total", label: "Total Engagements", unit: "count" },
-        { key: "groups_unique", label: "Unique Groups", unit: "count" },
-        { key: "bookings_total", label: "Total Bookings", unit: "count" },
-        { key: "hours_total", label: "Total Hours", unit: "hours" },
-        { key: "revenue_total", label: "Total Revenue", unit: "NZD" },
-        { key: "in_kind_total", label: "In-Kind Value", unit: "NZD" },
-      ];
-
-      const prompt = `You are an impact data analyst. Extract quantitative metrics from this community organisation quarterly report text.
-
-For each metric below, find the value in the text. If a metric is not mentioned, set value to null with confidence 0.
-
-Metrics to extract:
-${metricKeys.map(m => `- ${m.key} (${m.label}, unit: ${m.unit})`).join("\n")}
-
-Report text:
-"""
-${pdfText.substring(0, 8000)}
-"""
-
-Respond in JSON format only:
-{
-  "metrics": [
-    { "metricKey": "activations_total", "metricValue": 42, "metricUnit": "count", "confidence": 85, "evidenceSnippet": "The exact text snippet where you found this number" },
-    ...
-  ]
-}
-
-Rules:
-- confidence is 0-100 (how sure you are)
-- evidenceSnippet is the relevant text snippet (max 200 chars)
-- If not found, set metricValue to null, confidence to 0, evidenceSnippet to null
-- Only return the JSON, no other text`;
+      const prompt = buildExtractionPrompt(pdfText);
 
       const response = await openai.chat.completions.create({
         model: "gpt-4o-mini",
@@ -3221,7 +3470,8 @@ Rules:
       let pdfText = "";
       if (report.pdfData) {
         try {
-          const pdfParse = (await import("pdf-parse")).default;
+          const pdfParseModule = await import("pdf-parse");
+          const pdfParse = pdfParseModule.default || pdfParseModule;
           const buffer = Buffer.from(report.pdfData, "base64");
           const parsed = await pdfParse(buffer);
           pdfText = parsed.text || "";
