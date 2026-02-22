@@ -297,20 +297,20 @@ export default function ContactDetail() {
                   {chartData.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={chartData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
-                        <XAxis dataKey="date" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} domain={[0, 10]} />
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                        <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} domain={[0, 10]} />
                         <Tooltip 
-                          contentStyle={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                          contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '12px', border: '1px solid hsl(var(--border))', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                         />
                         <Legend />
-                        <Line type="monotone" dataKey="mindset" stroke="#8b5cf6" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
-                        <Line type="monotone" dataKey="skill" stroke="#10b981" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
-                        <Line type="monotone" dataKey="confidence" stroke="#f59e0b" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
-                        <Line type="monotone" dataKey="bizConfidence" name="Biz Confidence" stroke="#ec4899" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
-                        <Line type="monotone" dataKey="systems" name="Systems" stroke="#06b6d4" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
-                        <Line type="monotone" dataKey="funding" name="Funding" stroke="#14b8a6" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
-                        <Line type="monotone" dataKey="network" name="Network" stroke="#f97316" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
+                        <Line type="monotone" dataKey="mindset" stroke="hsl(var(--brand-coral))" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
+                        <Line type="monotone" dataKey="skill" stroke="hsl(var(--brand-green))" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
+                        <Line type="monotone" dataKey="confidence" stroke="hsl(var(--brand-pink))" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
+                        <Line type="monotone" dataKey="bizConfidence" name="Biz Confidence" stroke="hsl(var(--brand-blue))" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
+                        <Line type="monotone" dataKey="systems" name="Systems" stroke="hsl(var(--chart-5))" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
+                        <Line type="monotone" dataKey="funding" name="Funding" stroke="hsl(var(--brand-dark-green))" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
+                        <Line type="monotone" dataKey="network" name="Network" stroke="hsl(var(--chart-4))" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
                       </LineChart>
                     </ResponsiveContainer>
                   ) : (

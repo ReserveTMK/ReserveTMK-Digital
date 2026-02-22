@@ -27,7 +27,7 @@ import {
 import { format } from "date-fns";
 
 const CHART_COLORS = [
-  "#7c3aed", "#6366f1", "#3b82f6", "#06b6d4", "#10b981",
+  "hsl(14, 88%, 68%)", "hsl(161, 100%, 12%)", "hsl(199, 85%, 83%)", "hsl(335, 82%, 76%)", "hsl(161, 40%, 35%)",
 ];
 
 interface LegacyReportSnapshot {

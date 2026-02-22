@@ -200,7 +200,7 @@ export function TopNav() {
       <header className="topnav fixed top-0 left-0 right-0 z-50 bg-[hsl(var(--nav-bg))] border-b border-[hsl(var(--nav-border))]" data-testid="top-nav">
         <div className="flex items-center h-14 px-4 max-w-full">
           <Link href="/" className="flex items-center gap-2 mr-6 flex-shrink-0" data-testid="nav-logo">
-            <div className="bg-[hsl(var(--brand-orange))] w-8 h-8 rounded-lg flex items-center justify-center">
+            <div className="bg-[hsl(var(--brand-coral))] w-8 h-8 rounded-lg flex items-center justify-center">
               <span className="text-white font-display font-bold text-sm">R</span>
             </div>
             <span className="font-display font-bold text-base text-white hidden sm:block">
@@ -223,7 +223,7 @@ export function TopNav() {
           <div className="flex items-center gap-2 ml-auto">
             <div className="hidden md:flex items-center gap-3">
               <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-full bg-[hsl(var(--brand-orange))] flex items-center justify-center text-white text-xs font-semibold">
+                <div className="w-7 h-7 rounded-full bg-[hsl(var(--brand-coral))] flex items-center justify-center text-white text-xs font-semibold">
                   {user?.firstName?.[0] || "U"}
                 </div>
                 <span className="text-[13px] text-[hsl(var(--nav-text))] hidden lg:block">
@@ -265,7 +265,7 @@ export function TopNav() {
 
               <div className="border-t border-border mt-2 pt-2">
                 <div className="flex items-center gap-3 px-3 py-2">
-                  <div className="w-8 h-8 rounded-full bg-[hsl(var(--brand-orange))] flex items-center justify-center text-white text-sm font-semibold">
+                  <div className="w-8 h-8 rounded-full bg-[hsl(var(--brand-coral))] flex items-center justify-center text-white text-sm font-semibold">
                     {user?.firstName?.[0] || "U"}
                   </div>
                   <div className="flex-1 min-w-0">

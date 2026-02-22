@@ -692,9 +692,9 @@ export default function Dashboard() {
                     <Tooltip
                       contentStyle={{ borderRadius: 8, fontSize: 12 }}
                     />
-                    <Line type="monotone" dataKey="activationsTotal" stroke="#7c3aed" strokeWidth={2} name="Activations" dot />
-                    <Line type="monotone" dataKey="activationsWorkshops" stroke="#6366f1" strokeWidth={1.5} name="Workshops" dot />
-                    <Line type="monotone" dataKey="activationsMentoring" stroke="#3b82f6" strokeWidth={1.5} name="Mentoring" dot />
+                    <Line type="monotone" dataKey="activationsTotal" stroke="hsl(var(--brand-coral))" strokeWidth={2} name="Activations" dot />
+                    <Line type="monotone" dataKey="activationsWorkshops" stroke="hsl(var(--brand-green))" strokeWidth={1.5} name="Workshops" dot />
+                    <Line type="monotone" dataKey="activationsMentoring" stroke="hsl(var(--brand-blue))" strokeWidth={1.5} name="Mentoring" dot />
                   </LineChart>
                 </ResponsiveContainer>
               </div>

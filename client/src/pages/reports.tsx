@@ -23,8 +23,8 @@ import {
 } from "date-fns";
 
 const CHART_COLORS = [
-  "#7c3aed", "#6366f1", "#3b82f6", "#06b6d4", "#10b981",
-  "#f59e0b", "#ef4444", "#ec4899", "#8b5cf6", "#14b8a6",
+  "hsl(14, 88%, 68%)", "hsl(161, 100%, 12%)", "hsl(199, 85%, 83%)", "hsl(335, 82%, 76%)", "hsl(161, 40%, 35%)",
+  "hsl(153, 30%, 18%)", "hsl(0, 84%, 60%)", "hsl(14, 88%, 58%)", "hsl(161, 60%, 25%)", "hsl(199, 70%, 60%)",
 ];
 
 function getMonthOptions() {
@@ -500,7 +500,7 @@ export default function Reports() {
                             <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                             <YAxis allowDecimals={false} />
                             <Tooltip />
-                            <Bar dataKey="value" fill="#7c3aed" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="value" fill="hsl(14, 88%, 68%)" radius={[4, 4, 0, 0]} />
                           </BarChart>
                         </ResponsiveContainer>
                       </div>
@@ -530,7 +530,7 @@ export default function Reports() {
                             <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                             <YAxis allowDecimals={false} />
                             <Tooltip />
-                            <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="value" fill="hsl(161, 100%, 12%)" radius={[4, 4, 0, 0]} />
                           </BarChart>
                         </ResponsiveContainer>
                       </div>
@@ -544,7 +544,7 @@ export default function Reports() {
                             <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                             <YAxis allowDecimals={false} />
                             <Tooltip />
-                            <Bar dataKey="value" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="value" fill="hsl(199, 85%, 83%)" radius={[4, 4, 0, 0]} />
                           </BarChart>
                         </ResponsiveContainer>
                       </div>
@@ -564,7 +564,7 @@ export default function Reports() {
                           <XAxis type="number" />
                           <YAxis type="category" dataKey="taxonomyName" tick={{ fontSize: 12 }} width={120} />
                           <Tooltip />
-                          <Bar dataKey="weightedImpactScore" name="Impact Score" fill="#7c3aed" radius={[0, 4, 4, 0]} />
+                          <Bar dataKey="weightedImpactScore" name="Impact Score" fill="hsl(14, 88%, 68%)" radius={[0, 4, 4, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
 
@@ -573,7 +573,7 @@ export default function Reports() {
                           <div key={cat.taxonomyId} className="border rounded-lg p-4">
                             <div className="flex items-center justify-between mb-2">
                               <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat.taxonomyColor || "#7c3aed" }} />
+                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat.taxonomyColor || "hsl(14, 88%, 68%)" }} />
                                 <span className="font-semibold">{cat.taxonomyName}</span>
                               </div>
                               <div className="flex gap-2 text-sm text-muted-foreground">
