@@ -110,11 +110,13 @@ export const impactLogs = pgTable("impact_logs", {
   reviewedData: jsonb("reviewed_data"),
   status: text("status").notNull().default("draft"),
   eventId: integer("event_id"),
+  programmeId: integer("programme_id"),
   sentiment: text("sentiment"),
   milestones: text("milestones").array(),
   keyQuotes: text("key_quotes").array(),
   reviewedAt: timestamp("reviewed_at"),
   reviewedBy: text("reviewed_by"),
+  confirmedAt: timestamp("confirmed_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -123,6 +125,7 @@ export const impactLogContacts = pgTable("impact_log_contacts", {
   impactLogId: integer("impact_log_id").notNull(),
   contactId: integer("contact_id").notNull(),
   role: text("role"),
+  confidence: integer("confidence"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -143,6 +146,7 @@ export const impactTags = pgTable("impact_tags", {
   taxonomyId: integer("taxonomy_id").notNull(),
   confidence: integer("confidence"),
   notes: text("notes"),
+  evidence: text("evidence"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -360,6 +364,36 @@ export const programmeEvents = pgTable("programme_events", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const impactLogGroups = pgTable("impact_log_groups", {
+  id: serial("id").primaryKey(),
+  impactLogId: integer("impact_log_id").notNull(),
+  groupId: integer("group_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const REPORT_TYPES = ["monthly", "quarterly", "ad_hoc"] as const;
+export type ReportType = typeof REPORT_TYPES[number];
+
+export const reports = pgTable("reports", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  title: text("title").notNull(),
+  type: text("type").notNull().default("monthly"),
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date").notNull(),
+  filters: jsonb("filters").$type<{
+    programmeIds?: number[];
+    taxonomyIds?: number[];
+    demographicSegments?: string[];
+    funder?: string;
+  }>().default({}),
+  snapshotData: jsonb("snapshot_data"),
+  narrative: text("narrative"),
+  status: text("status").notNull().default("draft"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // === RELATIONS ===
 export const groupsRelations = relations(groups, ({ many }) => ({
   members: many(groupMembers),
@@ -489,9 +523,25 @@ export const impactLogsRelations = relations(impactLogs, ({ one, many }) => ({
     fields: [impactLogs.eventId],
     references: [events.id],
   }),
+  programme: one(programmes, {
+    fields: [impactLogs.programmeId],
+    references: [programmes.id],
+  }),
   impactLogContacts: many(impactLogContacts),
+  impactLogGroups: many(impactLogGroups),
   impactTags: many(impactTags),
   actionItems: many(actionItems),
+}));
+
+export const impactLogGroupsRelations = relations(impactLogGroups, ({ one }) => ({
+  impactLog: one(impactLogs, {
+    fields: [impactLogGroups.impactLogId],
+    references: [impactLogs.id],
+  }),
+  group: one(groups, {
+    fields: [impactLogGroups.groupId],
+    references: [groups.id],
+  }),
 }));
 
 export const impactLogContactsRelations = relations(impactLogContacts, ({ one }) => ({
@@ -793,6 +843,25 @@ export type InsertMembership = z.infer<typeof insertMembershipSchema>;
 
 export type Mou = typeof mous.$inferSelect;
 export type InsertMou = z.infer<typeof insertMouSchema>;
+
+export const insertImpactLogGroupSchema = createInsertSchema(impactLogGroups).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type ImpactLogGroup = typeof impactLogGroups.$inferSelect;
+export type InsertImpactLogGroup = z.infer<typeof insertImpactLogGroupSchema>;
+
+export const insertReportSchema = createInsertSchema(reports).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  type: z.enum(REPORT_TYPES).default("monthly"),
+});
+
+export type Report = typeof reports.$inferSelect;
+export type InsertReport = z.infer<typeof insertReportSchema>;
 
 // Request types
 export type CreateContactRequest = InsertContact;

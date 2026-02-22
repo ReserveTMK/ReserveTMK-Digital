@@ -75,6 +75,9 @@ import {
   type InsertGroupMember,
   type GroupTaxonomyLink,
   type InsertGroupTaxonomyLink,
+  reports,
+  type Report,
+  type InsertReport,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, sql, max, count } from "drizzle-orm";
 
@@ -225,6 +228,13 @@ export interface IStorage {
   getGroupTaxonomyLinks(groupId: number): Promise<GroupTaxonomyLink[]>;
   setGroupTaxonomyLinks(groupId: number, links: InsertGroupTaxonomyLink[]): Promise<GroupTaxonomyLink[]>;
   deleteGroupTaxonomyLinks(groupId: number): Promise<void>;
+
+  // Reports
+  getReports(userId: string): Promise<Report[]>;
+  getReport(id: number): Promise<Report | undefined>;
+  createReport(data: InsertReport): Promise<Report>;
+  updateReport(id: number, updates: Partial<InsertReport>): Promise<Report>;
+  deleteReport(id: number): Promise<void>;
 
   // Auth (re-exported or separate)
   auth: IAuthStorage;
@@ -957,6 +967,33 @@ export class DatabaseStorage implements IStorage {
 
   async deleteGroupTaxonomyLinks(groupId: number): Promise<void> {
     await db.delete(groupTaxonomyLinks).where(eq(groupTaxonomyLinks.groupId, groupId));
+  }
+
+  async getReports(userId: string): Promise<Report[]> {
+    return await db.select().from(reports).where(eq(reports.userId, userId)).orderBy(desc(reports.createdAt));
+  }
+
+  async getReport(id: number): Promise<Report | undefined> {
+    const [report] = await db.select().from(reports).where(eq(reports.id, id));
+    return report;
+  }
+
+  async createReport(data: InsertReport): Promise<Report> {
+    const [report] = await db.insert(reports).values(data).returning();
+    return report;
+  }
+
+  async updateReport(id: number, updates: Partial<InsertReport>): Promise<Report> {
+    const [report] = await db
+      .update(reports)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(reports.id, id))
+      .returning();
+    return report;
+  }
+
+  async deleteReport(id: number): Promise<void> {
+    await db.delete(reports).where(eq(reports.id, id));
   }
 }
 

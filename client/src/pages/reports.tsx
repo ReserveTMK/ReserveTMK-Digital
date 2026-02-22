@@ -1,85 +1,32 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { Button } from "@/components/ui/beautiful-button";
 import { Card } from "@/components/ui/card";
-import { useContacts } from "@/hooks/use-contacts";
-import { useImpactLogs } from "@/hooks/use-impact-logs";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import {
-  FileText,
-  Calendar,
-  Users,
-  MessageSquare,
-  Brain,
-  Sparkles,
-  TrendingUp,
-  Loader2,
-  BarChart3,
-  CalendarDays,
-  CalendarRange,
-  PartyPopper,
-  Rocket,
-  Settings,
-  DollarSign,
-  Network,
-  Download,
-  CheckCircle,
-  Activity,
-  Tag,
-  Zap,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend,
+} from "recharts";
+import {
+  FileText, Users, Loader2, BarChart3, CalendarDays, CalendarRange,
+  Download, Activity, Tag, TrendingUp, Building2, DollarSign,
+  Save, BookOpen, ChevronDown, ChevronUp, Handshake, Clock,
 } from "lucide-react";
 import {
-  format,
-  startOfMonth,
-  endOfMonth,
-  startOfQuarter,
-  endOfQuarter,
-  subMonths,
+  format, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, subMonths,
 } from "date-fns";
 
-type ReportData = {
-  period: { startDate: string; endDate: string };
-  summary: {
-    totalInteractions: number;
-    totalMeetings: number;
-    totalContacts: number;
-    totalEvents: number;
-    totalAttendees: number;
-    interactionsByType: Record<string, number>;
-    meetingsByStatus: Record<string, number>;
-    eventsByType: Record<string, number>;
-    avgMindset: number | null;
-    avgSkill: number | null;
-    avgConfidence: number | null;
-    avgConfidenceScore: number | null;
-    avgSystemsInPlace: number | null;
-    avgFundingReadiness: number | null;
-    avgNetworkStrength: number | null;
-  };
-  contactBreakdowns: {
-    contactId: number;
-    contactName: string;
-    businessName: string | null;
-    role: string;
-    interactionCount: number;
-    meetingCount: number;
-    completedMeetings: number;
-    avgMindset: number | null;
-    avgSkill: number | null;
-    avgConfidence: number | null;
-    avgConfidenceScore: number | null;
-    avgSystemsInPlace: number | null;
-    avgFundingReadiness: number | null;
-    avgNetworkStrength: number | null;
-    currentMetrics: { mindset?: number; skill?: number; confidence?: number; confidenceScore?: number; systemsInPlace?: number; fundingReadiness?: number; networkStrength?: number } | null;
-    revenueBand: string | null;
-  }[];
-};
+const CHART_COLORS = [
+  "#7c3aed", "#6366f1", "#3b82f6", "#06b6d4", "#10b981",
+  "#f59e0b", "#ef4444", "#ec4899", "#8b5cf6", "#14b8a6",
+];
 
 function getMonthOptions() {
   const options = [];
@@ -116,41 +63,82 @@ function getQuarterOptions() {
   return options;
 }
 
-function getSentimentLabel(score: number): string {
-  if (score >= 0.75) return "Positive";
-  if (score >= 0.25) return "Mixed";
-  if (score >= -0.25) return "Neutral";
-  return "Negative";
+function StatCard({ icon: Icon, label, value, color = "primary", testId }: {
+  icon: any; label: string; value: string | number; color?: string; testId: string;
+}) {
+  const colorMap: Record<string, string> = {
+    primary: "bg-primary/10 text-primary",
+    blue: "bg-blue-500/10 text-blue-500",
+    green: "bg-green-500/10 text-green-500",
+    amber: "bg-amber-500/10 text-amber-500",
+    violet: "bg-violet-500/10 text-violet-500",
+    pink: "bg-pink-500/10 text-pink-500",
+    orange: "bg-orange-500/10 text-orange-500",
+    indigo: "bg-indigo-500/10 text-indigo-500",
+  };
+  return (
+    <Card className="p-4">
+      <div className="flex items-center gap-3 mb-2">
+        <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${colorMap[color] || colorMap.primary}`}>
+          <Icon className="w-4 h-4" />
+        </div>
+        <span className="text-sm text-muted-foreground">{label}</span>
+      </div>
+      <p className="text-2xl font-bold" data-testid={testId}>{value}</p>
+    </Card>
+  );
 }
 
-function getSentimentValue(sentiment: string | null | undefined): number {
-  switch (sentiment?.toLowerCase()) {
-    case "positive": return 1;
-    case "mixed": return 0.5;
-    case "neutral": return 0;
-    case "negative": return -1;
-    default: return 0;
-  }
+function CollapsibleSection({ title, icon: Icon, children, defaultOpen = true, testId }: {
+  title: string; icon: any; children: React.ReactNode; defaultOpen?: boolean; testId: string;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <Card className="overflow-hidden" data-testid={testId}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between p-5 hover:bg-muted/30 transition-colors"
+        data-testid={`${testId}-toggle`}
+      >
+        <div className="flex items-center gap-3">
+          <Icon className="w-5 h-5 text-primary" />
+          <h3 className="text-lg font-display font-semibold">{title}</h3>
+        </div>
+        {open ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+      </button>
+      {open && <div className="px-5 pb-5 border-t">{children}</div>}
+    </Card>
+  );
 }
 
 export default function Reports() {
-  const { data: contacts } = useContacts();
-  const { data: impactLogsRaw } = useImpactLogs();
-  const { data: taxonomyData } = useQuery<any[]>({ queryKey: ['/api/taxonomy'] });
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("monthly");
-
   const monthOptions = getMonthOptions();
   const quarterOptions = getQuarterOptions();
-
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[0]?.value || "");
   const [selectedQuarter, setSelectedQuarter] = useState(quarterOptions[0]?.value || "");
   const [adHocStart, setAdHocStart] = useState(format(startOfMonth(new Date()), "yyyy-MM-dd"));
   const [adHocEnd, setAdHocEnd] = useState(format(new Date(), "yyyy-MM-dd"));
-
-  const [roleFilter, setRoleFilter] = useState("all");
-  const [contactFilter, setContactFilter] = useState("all");
-
   const [generated, setGenerated] = useState(false);
+  const [reportData, setReportData] = useState<any>(null);
+  const [narrativeData, setNarrativeData] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const { data: savedReports } = useQuery<any[]>({
+    queryKey: ["/api/reports"],
+  });
+
+  const { data: programmes } = useQuery<any[]>({
+    queryKey: ["/api/programmes"],
+  });
+
+  const { data: taxonomy } = useQuery<any[]>({
+    queryKey: ["/api/taxonomy"],
+  });
+
+  const [programmeFilter, setProgrammeFilter] = useState("all");
+  const [taxonomyFilter, setTaxonomyFilter] = useState("all");
 
   const getDateRange = () => {
     if (activeTab === "monthly") {
@@ -159,172 +147,164 @@ export default function Reports() {
     } else if (activeTab === "quarterly") {
       const opt = quarterOptions.find(o => o.value === selectedQuarter);
       return { startDate: opt?.start || "", endDate: opt?.end || "" };
-    } else {
-      return { startDate: adHocStart, endDate: adHocEnd };
+    }
+    return { startDate: adHocStart, endDate: adHocEnd };
+  };
+
+  const handleGenerate = async () => {
+    const { startDate, endDate } = getDateRange();
+    if (!startDate || !endDate) return;
+
+    setIsGenerating(true);
+    setGenerated(false);
+    setNarrativeData(null);
+
+    try {
+      const filters: any = { startDate, endDate };
+      if (programmeFilter !== "all") filters.programmeIds = [parseInt(programmeFilter)];
+      if (taxonomyFilter !== "all") filters.taxonomyIds = [parseInt(taxonomyFilter)];
+
+      const res = await apiRequest("POST", "/api/reports/generate", filters);
+      const data = await res.json();
+      setReportData(data);
+      setGenerated(true);
+    } catch (err: any) {
+      toast({ title: "Error", description: "Failed to generate report", variant: "destructive" });
+    } finally {
+      setIsGenerating(false);
     }
   };
 
-  const { startDate, endDate } = getDateRange();
+  const handleGenerateNarrative = async () => {
+    const { startDate, endDate } = getDateRange();
+    const filters: any = { startDate, endDate };
+    if (programmeFilter !== "all") filters.programmeIds = [parseInt(programmeFilter)];
+    if (taxonomyFilter !== "all") filters.taxonomyIds = [parseInt(taxonomyFilter)];
 
-  const queryParams = new URLSearchParams({
-    startDate,
-    endDate,
-    ...(roleFilter !== "all" ? { role: roleFilter } : {}),
-    ...(contactFilter !== "all" ? { contactId: contactFilter } : {}),
-  });
+    try {
+      const res = await apiRequest("POST", "/api/reports/narrative", filters);
+      const data = await res.json();
+      setNarrativeData(data.narrative);
+    } catch (err: any) {
+      toast({ title: "Error", description: "Failed to generate narrative", variant: "destructive" });
+    }
+  };
 
-  const {
-    data: report,
-    isLoading,
-    refetch,
-  } = useQuery<ReportData>({
-    queryKey: ["/api/reports", startDate, endDate, roleFilter, contactFilter, generated],
-    queryFn: async () => {
-      const res = await fetch(`/api/reports?${queryParams.toString()}`, {
-        credentials: "include",
+  const handleSaveReport = async () => {
+    const { startDate, endDate } = getDateRange();
+    const periodLabel = getPeriodLabel();
+    try {
+      await apiRequest("POST", "/api/reports/save", {
+        title: `Report: ${periodLabel}`,
+        type: activeTab === "quarterly" ? "quarterly" : activeTab === "adhoc" ? "ad_hoc" : "monthly",
+        startDate,
+        endDate,
+        filters: {
+          programmeIds: programmeFilter !== "all" ? [parseInt(programmeFilter)] : undefined,
+          taxonomyIds: taxonomyFilter !== "all" ? [parseInt(taxonomyFilter)] : undefined,
+        },
+        snapshotData: reportData,
+        narrative: narrativeData,
       });
-      if (!res.ok) throw new Error("Failed to fetch report");
-      return res.json();
-    },
-    enabled: generated && !!startDate && !!endDate,
-  });
-
-  const handleGenerate = () => {
-    setGenerated(true);
-    refetch();
+      queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
+      toast({ title: "Saved", description: "Report snapshot saved successfully" });
+    } catch (err: any) {
+      toast({ title: "Error", description: "Failed to save report", variant: "destructive" });
+    }
   };
 
-  const impactSummary = useMemo(() => {
-    if (!impactLogsRaw || !generated || !startDate || !endDate) return null;
-    const logs = (impactLogsRaw as any[]).filter((log: any) => {
-      if (!log.createdAt) return false;
-      const logDate = new Date(log.createdAt).toISOString().slice(0, 10);
-      return logDate >= startDate && logDate <= endDate;
-    });
-
-    const totalDebriefs = logs.length;
-    const confirmedDebriefs = logs.filter((l: any) => l.status === "confirmed").length;
-
-    const peopleSet = new Set<number>();
-    for (const log of logs) {
-      const extraction = log.status === "confirmed" && log.reviewedData
-        ? log.reviewedData
-        : log.rawExtraction;
-      if (extraction?.people) {
-        for (const p of extraction.people) {
-          if (p.contactId) peopleSet.add(p.contactId);
-        }
+  const handleLoadReport = async (id: number) => {
+    try {
+      const res = await fetch(`/api/reports/${id}`, { credentials: "include" });
+      const data = await res.json();
+      if (data.snapshotData) {
+        setReportData(data.snapshotData);
+        setNarrativeData(data.narrative || null);
+        setGenerated(true);
       }
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to load report", variant: "destructive" });
     }
+  };
 
-    const sentimentValues = logs
-      .filter((l: any) => l.sentiment)
-      .map((l: any) => getSentimentValue(l.sentiment));
-    const avgSentiment = sentimentValues.length > 0
-      ? sentimentValues.reduce((a: number, b: number) => a + b, 0) / sentimentValues.length
-      : null;
-
-    const tagCounts: Record<string, number> = {};
-    let economicActivityCount = 0;
-    for (const log of logs) {
-      const extraction = log.status === "confirmed" && log.reviewedData
-        ? log.reviewedData
-        : log.rawExtraction;
-      if (extraction?.impactTags) {
-        for (const tag of extraction.impactTags) {
-          const category = tag.category || tag.name || "Uncategorized";
-          tagCounts[category] = (tagCounts[category] || 0) + 1;
-        }
-      }
-      if (extraction?.economicActivity?.mentioned) {
-        economicActivityCount++;
-      }
-    }
-
-    const sortedTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]);
-    const maxTagCount = sortedTags.length > 0 ? sortedTags[0][1] : 0;
-
-    return {
-      totalDebriefs,
-      confirmedDebriefs,
-      peopleMentioned: peopleSet.size,
-      avgSentiment,
-      tagDistribution: sortedTags,
-      maxTagCount,
-      economicActivityCount,
-    };
-  }, [impactLogsRaw, generated, startDate, endDate]);
+  const getPeriodLabel = () => {
+    const { startDate, endDate } = getDateRange();
+    if (!startDate || !endDate) return "";
+    return `${format(new Date(startDate), "MMM d, yyyy")} – ${format(new Date(endDate), "MMM d, yyyy")}`;
+  };
 
   const handleDownloadCSV = () => {
-    if (!report) return;
+    if (!reportData) return;
     const rows: string[][] = [];
+    const d = reportData;
 
     rows.push(["Report Period", getPeriodLabel()]);
     rows.push([]);
-    rows.push(["Summary Metrics"]);
-    rows.push(["Total Contacts", String(report.summary.totalContacts)]);
-    rows.push(["Total Interactions", String(report.summary.totalInteractions)]);
-    rows.push(["Total Meetings", String(report.summary.totalMeetings)]);
-    rows.push(["Total Events", String(report.summary.totalEvents)]);
-    rows.push(["Total Connections", String(report.summary.totalAttendees)]);
-    rows.push(["Avg Mindset", report.summary.avgMindset !== null ? String(report.summary.avgMindset) : "-"]);
-    rows.push(["Avg Skill", report.summary.avgSkill !== null ? String(report.summary.avgSkill) : "-"]);
-    rows.push(["Avg Confidence", report.summary.avgConfidence !== null ? String(report.summary.avgConfidence) : "-"]);
-
-    if (impactSummary) {
-      rows.push([]);
-      rows.push(["Impact Summary"]);
-      rows.push(["Total Debriefs", String(impactSummary.totalDebriefs)]);
-      rows.push(["Confirmed Debriefs", String(impactSummary.confirmedDebriefs)]);
-      rows.push(["People Mentioned", String(impactSummary.peopleMentioned)]);
-      rows.push(["Avg Sentiment", impactSummary.avgSentiment !== null ? getSentimentLabel(impactSummary.avgSentiment) : "-"]);
-      rows.push(["Economic Activity Signals", String(impactSummary.economicActivityCount)]);
-      rows.push([]);
-      rows.push(["Impact Tag", "Count"]);
-      for (const [tag, count] of impactSummary.tagDistribution) {
-        rows.push([tag, String(count)]);
+    rows.push(["=== ENGAGEMENT ==="]);
+    rows.push(["Unique Contacts", String(d.engagement?.uniqueContacts || 0)]);
+    rows.push(["Total Engagement Instances", String(d.engagement?.totalEngagementInstances || 0)]);
+    rows.push(["New Contacts", String(d.engagement?.newContacts || 0)]);
+    rows.push(["Active Groups", String(d.engagement?.activeGroups || 0)]);
+    rows.push(["Repeat Engagement Rate", `${d.engagement?.repeatEngagementRate || 0}%`]);
+    rows.push([]);
+    rows.push(["=== DELIVERY ==="]);
+    rows.push(["Total Events", String(d.delivery?.events?.total || 0)]);
+    if (d.delivery?.events?.byType) {
+      for (const [type, count] of Object.entries(d.delivery.events.byType)) {
+        rows.push([`  ${type}`, String(count)]);
       }
     }
-
-    if (report.contactBreakdowns.length > 0) {
-      rows.push([]);
-      rows.push(["Member", "Role", "Revenue", "Interactions", "Mindset", "Skill", "Confidence", "Biz Conf.", "Systems", "Funding", "Network"]);
-      for (const cb of report.contactBreakdowns) {
-        rows.push([
-          cb.contactName,
-          cb.role,
-          cb.revenueBand || "-",
-          String(cb.interactionCount),
-          cb.avgMindset !== null ? String(cb.avgMindset) : "-",
-          cb.avgSkill !== null ? String(cb.avgSkill) : "-",
-          cb.avgConfidence !== null ? String(cb.avgConfidence) : "-",
-          cb.avgConfidenceScore !== null ? String(cb.avgConfidenceScore) : "-",
-          cb.avgSystemsInPlace !== null ? String(cb.avgSystemsInPlace) : "-",
-          cb.avgFundingReadiness !== null ? String(cb.avgFundingReadiness) : "-",
-          cb.avgNetworkStrength !== null ? String(cb.avgNetworkStrength) : "-",
-        ]);
+    rows.push(["Total Bookings", String(d.delivery?.bookings?.total || 0)]);
+    rows.push(["Community Hours", String(d.delivery?.bookings?.communityHours || 0)]);
+    rows.push(["Programmes Total", String(d.delivery?.programmes?.total || 0)]);
+    rows.push(["Programmes Completed", String(d.delivery?.programmes?.completed || 0)]);
+    rows.push([]);
+    rows.push(["=== IMPACT BY TAXONOMY ==="]);
+    rows.push(["Category", "Debriefs", "Impact Score", "Contacts Affected"]);
+    if (d.impact) {
+      for (const cat of d.impact) {
+        rows.push([cat.taxonomyName, String(cat.debriefCount), String(cat.weightedImpactScore), String(cat.uniqueContactsAffected)]);
       }
+    }
+    rows.push([]);
+    rows.push(["=== OUTCOME MOVEMENT ==="]);
+    rows.push(["Contacts Tracked", String(d.outcomes?.totalContacts || 0)]);
+    rows.push(["With Metrics", String(d.outcomes?.contactsWithMetrics || 0)]);
+    rows.push(["Avg Mindset", String(d.outcomes?.averageChange?.mindset || 0)]);
+    rows.push(["Avg Skill", String(d.outcomes?.averageChange?.skill || 0)]);
+    rows.push(["Avg Confidence", String(d.outcomes?.averageChange?.confidence || 0)]);
+    rows.push(["Milestones Recorded", String(d.outcomes?.milestoneCount || 0)]);
+    rows.push([]);
+    rows.push(["=== VALUE & CONTRIBUTION ==="]);
+    rows.push(["Total Revenue", `$${d.value?.revenue?.total || 0}`]);
+    rows.push(["In-Kind Value", `$${d.value?.inKindValue || 0}`]);
+    rows.push(["Active Memberships", String(d.value?.memberships?.active || 0)]);
+    rows.push(["Membership Revenue", `$${d.value?.memberships?.totalRevenue || 0}`]);
+
+    if (narrativeData) {
+      rows.push([]);
+      rows.push(["=== NARRATIVE ==="]);
+      rows.push([narrativeData]);
     }
 
     const csvContent = rows.map(row =>
       row.map(cell => `"${(cell || "").replace(/"/g, '""')}"`).join(",")
     ).join("\n");
-
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
+    const { startDate, endDate } = getDateRange();
     link.download = `report-${startDate}-to-${endDate}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
 
-  const getPeriodLabel = () => {
-    if (!report) return "";
-    const s = new Date(report.period.startDate);
-    const e = new Date(report.period.endDate);
-    return `${format(s, "MMM d, yyyy")} - ${format(e, "MMM d, yyyy")}`;
-  };
+  const eng = reportData?.engagement;
+  const del = reportData?.delivery;
+  const imp = reportData?.impact;
+  const out = reportData?.outcomes;
+  const val = reportData?.value;
 
   return (
     <div className="flex min-h-screen bg-background/50">
@@ -333,23 +313,20 @@ export default function Reports() {
         <div className="max-w-6xl mx-auto space-y-6">
           <div>
             <h1 className="text-3xl font-display font-bold" data-testid="text-reports-title">Reports</h1>
-            <p className="text-muted-foreground mt-1">Generate reports to track mentorship progress and activity.</p>
+            <p className="text-muted-foreground mt-1">Generate funder-ready impact reports from your operational data.</p>
           </div>
 
           <Card className="p-6">
             <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setGenerated(false); }}>
               <TabsList className="bg-muted/50 p-1 rounded-xl mb-6">
                 <TabsTrigger value="monthly" className="rounded-lg gap-2 data-[state=active]:bg-primary/10 data-[state=active]:text-primary" data-testid="tab-monthly">
-                  <CalendarDays className="w-4 h-4" />
-                  Monthly
+                  <CalendarDays className="w-4 h-4" /> Monthly
                 </TabsTrigger>
                 <TabsTrigger value="quarterly" className="rounded-lg gap-2 data-[state=active]:bg-primary/10 data-[state=active]:text-primary" data-testid="tab-quarterly">
-                  <CalendarRange className="w-4 h-4" />
-                  Quarterly
+                  <CalendarRange className="w-4 h-4" /> Quarterly
                 </TabsTrigger>
                 <TabsTrigger value="adhoc" className="rounded-lg gap-2 data-[state=active]:bg-primary/10 data-[state=active]:text-primary" data-testid="tab-adhoc">
-                  <BarChart3 className="w-4 h-4" />
-                  Custom
+                  <BarChart3 className="w-4 h-4" /> Custom
                 </TabsTrigger>
               </TabsList>
 
@@ -358,9 +335,7 @@ export default function Reports() {
                   <div className="space-y-2">
                     <Label>Month</Label>
                     <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                      <SelectTrigger data-testid="select-month">
-                        <SelectValue placeholder="Select month" />
-                      </SelectTrigger>
+                      <SelectTrigger data-testid="select-month"><SelectValue placeholder="Select month" /></SelectTrigger>
                       <SelectContent>
                         {monthOptions.map(opt => (
                           <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
@@ -374,9 +349,7 @@ export default function Reports() {
                   <div className="space-y-2">
                     <Label>Quarter</Label>
                     <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
-                      <SelectTrigger data-testid="select-quarter">
-                        <SelectValue placeholder="Select quarter" />
-                      </SelectTrigger>
+                      <SelectTrigger data-testid="select-quarter"><SelectValue placeholder="Select quarter" /></SelectTrigger>
                       <SelectContent>
                         {quarterOptions.map(opt => (
                           <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
@@ -390,512 +363,386 @@ export default function Reports() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Start Date</Label>
-                      <Input
-                        type="date"
-                        value={adHocStart}
-                        onChange={e => setAdHocStart(e.target.value)}
-                        data-testid="input-adhoc-start"
-                      />
+                      <Input type="date" value={adHocStart} onChange={e => setAdHocStart(e.target.value)} data-testid="input-adhoc-start" />
                     </div>
                     <div className="space-y-2">
                       <Label>End Date</Label>
-                      <Input
-                        type="date"
-                        value={adHocEnd}
-                        onChange={e => setAdHocEnd(e.target.value)}
-                        data-testid="input-adhoc-end"
-                      />
+                      <Input type="date" value={adHocEnd} onChange={e => setAdHocEnd(e.target.value)} data-testid="input-adhoc-end" />
                     </div>
                   </div>
                 </TabsContent>
 
                 <div className="space-y-2">
-                  <Label>Role</Label>
-                  <Select value={roleFilter} onValueChange={setRoleFilter}>
-                    <SelectTrigger data-testid="select-report-role">
-                      <SelectValue placeholder="All roles" />
-                    </SelectTrigger>
+                  <Label>Programme</Label>
+                  <Select value={programmeFilter} onValueChange={setProgrammeFilter}>
+                    <SelectTrigger data-testid="select-programme-filter"><SelectValue placeholder="All programmes" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Roles</SelectItem>
-                      <SelectItem value="Entrepreneur">Entrepreneur</SelectItem>
-                      <SelectItem value="Professional">Professional</SelectItem>
-                      <SelectItem value="Innovator">Innovator</SelectItem>
-                      <SelectItem value="Want-trepreneur">Want-trepreneur</SelectItem>
-                      <SelectItem value="Rangatahi">Rangatahi</SelectItem>
-                      <SelectItem value="Business Owner">Business Owner</SelectItem>
+                      <SelectItem value="all">All Programmes</SelectItem>
+                      {programmes?.map((p: any) => (
+                        <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Community Member</Label>
-                  <Select value={contactFilter} onValueChange={setContactFilter}>
-                    <SelectTrigger data-testid="select-report-contact">
-                      <SelectValue placeholder="All members" />
-                    </SelectTrigger>
+                  <Label>Impact Category</Label>
+                  <Select value={taxonomyFilter} onValueChange={setTaxonomyFilter}>
+                    <SelectTrigger data-testid="select-taxonomy-filter"><SelectValue placeholder="All categories" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Members</SelectItem>
-                      {contacts?.map(c => (
-                        <SelectItem key={c.id} value={String(c.id)}>
-                          {c.name}{c.businessName ? ` (${c.businessName})` : ""}
-                        </SelectItem>
+                      <SelectItem value="all">All Categories</SelectItem>
+                      {taxonomy?.map((t: any) => (
+                        <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
 
-              <Button onClick={handleGenerate} disabled={isLoading} data-testid="button-generate-report">
-                {isLoading ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating...</>
-                ) : (
-                  <><FileText className="w-4 h-4 mr-2" /> Generate Report</>
-                )}
-              </Button>
+              <div className="flex gap-3">
+                <Button onClick={handleGenerate} disabled={isGenerating} data-testid="button-generate-report">
+                  {isGenerating ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating...</>
+                  ) : (
+                    <><FileText className="w-4 h-4 mr-2" /> Generate Report</>
+                  )}
+                </Button>
+              </div>
             </Tabs>
           </Card>
 
-          {isLoading && (
+          {savedReports && savedReports.length > 0 && (
+            <Card className="p-5">
+              <h3 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+                <BookOpen className="w-4 h-4" /> Saved Reports
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {savedReports.map((r: any) => (
+                  <Button
+                    key={r.id}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleLoadReport(r.id)}
+                    data-testid={`button-load-report-${r.id}`}
+                  >
+                    {r.title}
+                    <Badge variant="secondary" className="ml-2 text-xs">{r.type}</Badge>
+                  </Button>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {isGenerating && (
             <div className="flex justify-center py-12">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
             </div>
           )}
 
-          {report && !isLoading && (
+          {generated && reportData && !isGenerating && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500" data-testid="report-results">
               <div className="flex items-center justify-between gap-4 flex-wrap">
                 <div>
                   <h2 className="text-xl font-display font-bold">Report Results</h2>
                   <p className="text-sm text-muted-foreground" data-testid="text-report-period">{getPeriodLabel()}</p>
                 </div>
-                <Button variant="outline" onClick={handleDownloadCSV} data-testid="button-download-csv">
-                  <Download className="w-4 h-4 mr-2" />
-                  Download CSV
-                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={handleSaveReport} data-testid="button-save-report">
+                    <Save className="w-4 h-4 mr-2" /> Save Snapshot
+                  </Button>
+                  <Button variant="outline" onClick={handleDownloadCSV} data-testid="button-download-csv">
+                    <Download className="w-4 h-4 mr-2" /> Download CSV
+                  </Button>
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <Card className="p-4">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <Users className="w-4 h-4 text-primary" />
-                    </div>
-                    <span className="text-sm text-muted-foreground">Community</span>
+              {/* Section 1: Engagement */}
+              <CollapsibleSection title="Engagement" icon={Users} testId="section-engagement">
+                <div className="pt-4 space-y-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                    <StatCard icon={Users} label="Unique Contacts" value={eng?.uniqueContacts || 0} color="primary" testId="stat-unique-contacts" />
+                    <StatCard icon={Activity} label="Engagements" value={eng?.totalEngagementInstances || 0} color="blue" testId="stat-engagements" />
+                    <StatCard icon={Users} label="New Contacts" value={eng?.newContacts || 0} color="green" testId="stat-new-contacts" />
+                    <StatCard icon={Building2} label="Active Groups" value={eng?.activeGroups || 0} color="violet" testId="stat-active-groups" />
+                    <StatCard icon={TrendingUp} label="Repeat Rate" value={`${eng?.repeatEngagementRate || 0}%`} color="amber" testId="stat-repeat-rate" />
+                    <StatCard icon={Users} label="Repeat Contacts" value={eng?.repeatEngagementCount || 0} color="pink" testId="stat-repeat-contacts" />
                   </div>
-                  <p className="text-2xl font-bold" data-testid="text-total-contacts">{report.summary.totalContacts}</p>
-                </Card>
 
-                <Card className="p-4">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-9 h-9 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                      <MessageSquare className="w-4 h-4 text-blue-500" />
-                    </div>
-                    <span className="text-sm text-muted-foreground">Interactions</span>
-                  </div>
-                  <p className="text-2xl font-bold" data-testid="text-total-interactions">{report.summary.totalInteractions}</p>
-                </Card>
-
-                <Card className="p-4">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-9 h-9 rounded-lg bg-green-500/10 flex items-center justify-center">
-                      <Calendar className="w-4 h-4 text-green-500" />
-                    </div>
-                    <span className="text-sm text-muted-foreground">Meetings</span>
-                  </div>
-                  <p className="text-2xl font-bold" data-testid="text-total-meetings">{report.summary.totalMeetings}</p>
-                </Card>
-
-                <Card className="p-4">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center">
-                      <TrendingUp className="w-4 h-4 text-amber-500" />
-                    </div>
-                    <span className="text-sm text-muted-foreground">Avg Confidence</span>
-                  </div>
-                  <p className="text-2xl font-bold" data-testid="text-avg-confidence">
-                    {report.summary.avgConfidence !== null ? `${report.summary.avgConfidence}/10` : "-"}
-                  </p>
-                </Card>
-
-                <Card className="p-4">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-9 h-9 rounded-lg bg-violet-500/10 flex items-center justify-center">
-                      <PartyPopper className="w-4 h-4 text-violet-500" />
-                    </div>
-                    <span className="text-sm text-muted-foreground">Events</span>
-                  </div>
-                  <p className="text-2xl font-bold" data-testid="text-total-events">{report.summary.totalEvents}</p>
-                </Card>
-
-                <Card className="p-4">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-9 h-9 rounded-lg bg-pink-500/10 flex items-center justify-center">
-                      <Users className="w-4 h-4 text-pink-500" />
-                    </div>
-                    <span className="text-sm text-muted-foreground">Total Connections</span>
-                  </div>
-                  <p className="text-2xl font-bold" data-testid="text-total-attendees">{report.summary.totalAttendees}</p>
-                </Card>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-                <Card className="p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Brain className="w-4 h-4 text-primary" />
-                    <span className="font-semibold text-xs">Mindset</span>
-                  </div>
-                  <p className="text-2xl font-bold text-primary" data-testid="text-avg-mindset">
-                    {report.summary.avgMindset !== null ? report.summary.avgMindset : "-"}
-                    {report.summary.avgMindset !== null && <span className="text-xs font-normal text-muted-foreground">/10</span>}
-                  </p>
-                </Card>
-
-                <Card className="p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Sparkles className="w-4 h-4 text-green-500" />
-                    <span className="font-semibold text-xs">Skill</span>
-                  </div>
-                  <p className="text-2xl font-bold text-green-600" data-testid="text-avg-skill">
-                    {report.summary.avgSkill !== null ? report.summary.avgSkill : "-"}
-                    {report.summary.avgSkill !== null && <span className="text-xs font-normal text-muted-foreground">/10</span>}
-                  </p>
-                </Card>
-
-                <Card className="p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <TrendingUp className="w-4 h-4 text-amber-500" />
-                    <span className="font-semibold text-xs">Confidence</span>
-                  </div>
-                  <p className="text-2xl font-bold text-amber-500" data-testid="text-avg-confidence-detail">
-                    {report.summary.avgConfidence !== null ? report.summary.avgConfidence : "-"}
-                    {report.summary.avgConfidence !== null && <span className="text-xs font-normal text-muted-foreground">/10</span>}
-                  </p>
-                </Card>
-
-                <Card className="p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Rocket className="w-4 h-4 text-pink-500" />
-                    <span className="font-semibold text-xs">Biz Conf.</span>
-                  </div>
-                  <p className="text-2xl font-bold text-pink-500" data-testid="text-avg-confidence-score">
-                    {report.summary.avgConfidenceScore !== null ? report.summary.avgConfidenceScore : "-"}
-                    {report.summary.avgConfidenceScore !== null && <span className="text-xs font-normal text-muted-foreground">/10</span>}
-                  </p>
-                </Card>
-
-                <Card className="p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Settings className="w-4 h-4 text-cyan-500" />
-                    <span className="font-semibold text-xs">Systems</span>
-                  </div>
-                  <p className="text-2xl font-bold text-cyan-500" data-testid="text-avg-systems">
-                    {report.summary.avgSystemsInPlace !== null ? report.summary.avgSystemsInPlace : "-"}
-                    {report.summary.avgSystemsInPlace !== null && <span className="text-xs font-normal text-muted-foreground">/10</span>}
-                  </p>
-                </Card>
-
-                <Card className="p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <DollarSign className="w-4 h-4 text-teal-500" />
-                    <span className="font-semibold text-xs">Funding</span>
-                  </div>
-                  <p className="text-2xl font-bold text-teal-500" data-testid="text-avg-funding">
-                    {report.summary.avgFundingReadiness !== null ? report.summary.avgFundingReadiness : "-"}
-                    {report.summary.avgFundingReadiness !== null && <span className="text-xs font-normal text-muted-foreground">/10</span>}
-                  </p>
-                </Card>
-
-                <Card className="p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Network className="w-4 h-4 text-orange-500" />
-                    <span className="font-semibold text-xs">Network</span>
-                  </div>
-                  <p className="text-2xl font-bold text-orange-500" data-testid="text-avg-network">
-                    {report.summary.avgNetworkStrength !== null ? report.summary.avgNetworkStrength : "-"}
-                    {report.summary.avgNetworkStrength !== null && <span className="text-xs font-normal text-muted-foreground">/10</span>}
-                  </p>
-                </Card>
-              </div>
-
-              {impactSummary && impactSummary.totalDebriefs > 0 && (
-                <div className="space-y-4" data-testid="impact-signals-section">
-                  <h3 className="text-lg font-display font-semibold flex items-center gap-2">
-                    <Zap className="w-5 h-5 text-primary" />
-                    Impact Signals
-                  </h3>
-
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    <Card className="p-4" data-testid="card-total-debriefs">
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="w-9 h-9 rounded-lg bg-indigo-500/10 flex items-center justify-center">
-                          <FileText className="w-4 h-4 text-indigo-500" />
-                        </div>
-                        <span className="text-sm text-muted-foreground">Total Debriefs</span>
+                  {eng?.demographicBreakdown?.ethnicity && Object.keys(eng.demographicBreakdown.ethnicity).length > 0 && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                      <div>
+                        <h4 className="text-sm font-semibold mb-3">Ethnicity Breakdown</h4>
+                        <ResponsiveContainer width="100%" height={200}>
+                          <PieChart>
+                            <Pie
+                              data={Object.entries(eng.demographicBreakdown.ethnicity).map(([name, value]) => ({ name, value }))}
+                              cx="50%" cy="50%" outerRadius={70} dataKey="value" label={({ name, percent }: any) => `${name} ${(percent * 100).toFixed(0)}%`}
+                            >
+                              {Object.entries(eng.demographicBreakdown.ethnicity).map((_: any, i: number) => (
+                                <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip />
+                          </PieChart>
+                        </ResponsiveContainer>
                       </div>
-                      <p className="text-2xl font-bold" data-testid="text-total-debriefs">{impactSummary.totalDebriefs}</p>
-                    </Card>
-
-                    <Card className="p-4" data-testid="card-confirmed-debriefs">
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-                          <CheckCircle className="w-4 h-4 text-emerald-500" />
-                        </div>
-                        <span className="text-sm text-muted-foreground">Confirmed Debriefs</span>
+                      <div>
+                        <h4 className="text-sm font-semibold mb-3">Age Groups</h4>
+                        <ResponsiveContainer width="100%" height={200}>
+                          <BarChart data={Object.entries(eng.demographicBreakdown.ageGroups || {}).filter(([_, v]) => (v as number) > 0).map(([name, value]) => ({ name: name.replace("_", "-"), value }))}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                            <YAxis allowDecimals={false} />
+                            <Tooltip />
+                            <Bar dataKey="value" fill="#7c3aed" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
                       </div>
-                      <p className="text-2xl font-bold" data-testid="text-confirmed-debriefs">{impactSummary.confirmedDebriefs}</p>
-                    </Card>
+                    </div>
+                  )}
+                </div>
+              </CollapsibleSection>
 
-                    <Card className="p-4" data-testid="card-people-mentioned">
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="w-9 h-9 rounded-lg bg-sky-500/10 flex items-center justify-center">
-                          <Users className="w-4 h-4 text-sky-500" />
-                        </div>
-                        <span className="text-sm text-muted-foreground">People Mentioned</span>
-                      </div>
-                      <p className="text-2xl font-bold" data-testid="text-people-mentioned">{impactSummary.peopleMentioned}</p>
-                    </Card>
-
-                    <Card className="p-4" data-testid="card-avg-sentiment">
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center">
-                          <Activity className="w-4 h-4 text-amber-500" />
-                        </div>
-                        <span className="text-sm text-muted-foreground">Avg Sentiment</span>
-                      </div>
-                      <p className="text-2xl font-bold" data-testid="text-avg-sentiment">
-                        {impactSummary.avgSentiment !== null ? (
-                          <Badge
-                            variant={
-                              impactSummary.avgSentiment >= 0.75 ? "default" :
-                              impactSummary.avgSentiment <= -0.25 ? "destructive" : "secondary"
-                            }
-                          >
-                            {getSentimentLabel(impactSummary.avgSentiment)}
-                          </Badge>
-                        ) : "-"}
-                      </p>
-                    </Card>
-
-                    <Card className="p-4" data-testid="card-economic-activity">
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="w-9 h-9 rounded-lg bg-teal-500/10 flex items-center justify-center">
-                          <DollarSign className="w-4 h-4 text-teal-500" />
-                        </div>
-                        <span className="text-sm text-muted-foreground">Economic Signals</span>
-                      </div>
-                      <p className="text-2xl font-bold" data-testid="text-economic-activity">{impactSummary.economicActivityCount}</p>
-                    </Card>
-
-                    <Card className="p-4" data-testid="card-tag-categories">
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="w-9 h-9 rounded-lg bg-violet-500/10 flex items-center justify-center">
-                          <Tag className="w-4 h-4 text-violet-500" />
-                        </div>
-                        <span className="text-sm text-muted-foreground">Tag Categories</span>
-                      </div>
-                      <p className="text-2xl font-bold" data-testid="text-tag-categories">{impactSummary.tagDistribution.length}</p>
-                    </Card>
+              {/* Section 2: Delivery */}
+              <CollapsibleSection title="Delivery" icon={CalendarDays} testId="section-delivery">
+                <div className="pt-4 space-y-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                    <StatCard icon={CalendarDays} label="Events" value={del?.events?.total || 0} color="blue" testId="stat-events" />
+                    <StatCard icon={Building2} label="Bookings" value={del?.bookings?.total || 0} color="orange" testId="stat-bookings" />
+                    <StatCard icon={Clock} label="Community Hours" value={del?.bookings?.communityHours || 0} color="green" testId="stat-community-hours" />
+                    <StatCard icon={Activity} label="Programmes" value={del?.programmes?.total || 0} color="indigo" testId="stat-programmes" />
+                    <StatCard icon={TrendingUp} label="Completed" value={del?.programmes?.completed || 0} color="amber" testId="stat-completed" />
                   </div>
 
-                  {impactSummary.tagDistribution.length > 0 && (
-                    <Card className="p-5" data-testid="card-tag-distribution">
-                      <h3 className="font-semibold mb-4 flex items-center gap-2">
-                        <Tag className="w-4 h-4 text-muted-foreground" />
-                        Impact Tags by Category
-                      </h3>
-                      <div className="space-y-3">
-                        {impactSummary.tagDistribution.map(([category, count]) => (
-                          <div key={category} className="space-y-1" data-testid={`tag-bar-${category}`}>
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-sm font-medium truncate">{category}</span>
-                              <Badge variant="secondary" className="text-xs shrink-0">{count}</Badge>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {del?.events?.byType && Object.keys(del.events.byType).length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold mb-3">Events by Type</h4>
+                        <ResponsiveContainer width="100%" height={200}>
+                          <BarChart data={Object.entries(del.events.byType).map(([name, value]) => ({ name, value }))}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                            <YAxis allowDecimals={false} />
+                            <Tooltip />
+                            <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                    {del?.bookings?.byClassification && Object.keys(del.bookings.byClassification).length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold mb-3">Bookings by Type</h4>
+                        <ResponsiveContainer width="100%" height={200}>
+                          <BarChart data={Object.entries(del.bookings.byClassification).map(([name, value]) => ({ name, value }))}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                            <YAxis allowDecimals={false} />
+                            <Tooltip />
+                            <Bar dataKey="value" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </CollapsibleSection>
+
+              {/* Section 3: Impact by Taxonomy */}
+              <CollapsibleSection title="Impact by Taxonomy" icon={Tag} testId="section-impact">
+                <div className="pt-4">
+                  {imp && imp.length > 0 ? (
+                    <div className="space-y-4">
+                      <ResponsiveContainer width="100%" height={Math.max(200, imp.length * 40)}>
+                        <BarChart data={imp} layout="vertical" margin={{ left: 120 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis type="number" />
+                          <YAxis type="category" dataKey="taxonomyName" tick={{ fontSize: 12 }} width={120} />
+                          <Tooltip />
+                          <Bar dataKey="weightedImpactScore" name="Impact Score" fill="#7c3aed" radius={[0, 4, 4, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+
+                      <div className="space-y-3 mt-4">
+                        {imp.map((cat: any) => (
+                          <div key={cat.taxonomyId} className="border rounded-lg p-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat.taxonomyColor || "#7c3aed" }} />
+                                <span className="font-semibold">{cat.taxonomyName}</span>
+                              </div>
+                              <div className="flex gap-2 text-sm text-muted-foreground">
+                                <span>{cat.debriefCount} debriefs</span>
+                                <span>·</span>
+                                <span>{cat.uniqueContactsAffected} people</span>
+                                <span>·</span>
+                                <span>Score: {cat.weightedImpactScore}</span>
+                              </div>
                             </div>
-                            <div className="w-full bg-muted/50 rounded-md h-2.5">
-                              <div
-                                className="bg-primary/70 h-2.5 rounded-md transition-all duration-500"
-                                style={{ width: `${impactSummary.maxTagCount > 0 ? (count / impactSummary.maxTagCount) * 100 : 0}%` }}
-                              />
-                            </div>
+                            {cat.representativeQuotes?.length > 0 && (
+                              <div className="mt-2 space-y-1">
+                                {cat.representativeQuotes.slice(0, 2).map((q: string, i: number) => (
+                                  <p key={i} className="text-sm italic text-muted-foreground border-l-2 border-primary/30 pl-3">"{q}"</p>
+                                ))}
+                              </div>
+                            )}
+                            {cat.evidenceSnippets?.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-1">
+                                {cat.evidenceSnippets.slice(0, 3).map((e: string, i: number) => (
+                                  <Badge key={i} variant="secondary" className="text-xs">{e.length > 80 ? e.slice(0, 80) + "..." : e}</Badge>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
-                    </Card>
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground text-sm py-4">No confirmed debriefs with taxonomy tags found in this period.</p>
                   )}
                 </div>
-              )}
+              </CollapsibleSection>
 
-              {Object.keys(report.summary.interactionsByType).length > 0 && (
-                <Card className="p-5">
-                  <h3 className="font-semibold mb-4 flex items-center gap-2">
-                    <MessageSquare className="w-4 h-4 text-muted-foreground" />
-                    Interactions by Type
-                  </h3>
-                  <div className="flex flex-wrap gap-3">
-                    {Object.entries(report.summary.interactionsByType).map(([type, count]) => (
-                      <div key={type} className="flex items-center gap-2 bg-muted/50 rounded-lg px-4 py-2">
-                        <span className="text-sm font-medium">{type}</span>
-                        <Badge variant="secondary" className="text-xs">{count}</Badge>
-                      </div>
-                    ))}
+              {/* Section 4: Outcome Movement */}
+              <CollapsibleSection title="Outcome Movement" icon={TrendingUp} testId="section-outcomes">
+                <div className="pt-4 space-y-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <StatCard icon={Users} label="Contacts Tracked" value={out?.totalContacts || 0} color="primary" testId="stat-tracked-contacts" />
+                    <StatCard icon={Activity} label="With Metrics" value={out?.contactsWithMetrics || 0} color="blue" testId="stat-with-metrics" />
+                    <StatCard icon={TrendingUp} label="Milestones" value={out?.milestoneCount || 0} color="amber" testId="stat-milestones" />
+                    <StatCard icon={Activity} label="Positive Movement" value={`${out?.positiveMovementPercent?.confidence || 0}%`} color="green" testId="stat-positive-movement" />
                   </div>
-                </Card>
-              )}
 
-              {Object.keys(report.summary.meetingsByStatus).length > 0 && (
-                <Card className="p-5">
-                  <h3 className="font-semibold mb-4 flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-muted-foreground" />
-                    Meetings by Status
-                  </h3>
-                  <div className="flex flex-wrap gap-3">
-                    {Object.entries(report.summary.meetingsByStatus).map(([status, count]) => (
-                      <div key={status} className="flex items-center gap-2 bg-muted/50 rounded-lg px-4 py-2">
-                        <span className="text-sm font-medium capitalize">{status}</span>
-                        <Badge
-                          variant={status === "completed" ? "default" : status === "cancelled" ? "destructive" : "secondary"}
-                          className="text-xs"
-                        >
-                          {count}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-              )}
-
-              {report.summary.eventsByType && Object.keys(report.summary.eventsByType).length > 0 && (
-                <Card className="p-5">
-                  <h3 className="font-semibold mb-4 flex items-center gap-2">
-                    <PartyPopper className="w-4 h-4 text-muted-foreground" />
-                    Events by Type
-                  </h3>
-                  <div className="flex flex-wrap gap-3">
-                    {Object.entries(report.summary.eventsByType).map(([type, count]) => (
-                      <div key={type} className="flex items-center gap-2 bg-violet-500/5 rounded-lg px-4 py-2">
-                        <span className="text-sm font-medium">{type}</span>
-                        <Badge variant="secondary" className="text-xs bg-violet-500/15 text-violet-700 dark:text-violet-300">{count}</Badge>
-                      </div>
-                    ))}
-                  </div>
-                  {report.summary.totalAttendees > 0 && (
-                    <p className="text-sm text-muted-foreground mt-3">
-                      Total connections made across events: <span className="font-semibold text-foreground">{report.summary.totalAttendees}</span>
-                    </p>
+                  {out && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {["mindset", "skill", "confidence"].map(metric => (
+                        <Card key={metric} className="p-4">
+                          <h4 className="text-sm font-semibold capitalize mb-2">{metric}</h4>
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-2xl font-bold">{out.averageChange?.[metric] || 0}</span>
+                            <span className="text-xs text-muted-foreground">/10 avg</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">{out.positiveMovementPercent?.[metric] || 0}% positive movement</p>
+                        </Card>
+                      ))}
+                    </div>
                   )}
-                </Card>
-              )}
+                </div>
+              </CollapsibleSection>
 
-              {report.contactBreakdowns.length > 0 && (
-                <Card className="p-5">
-                  <h3 className="font-semibold mb-4 flex items-center gap-2">
-                    <Users className="w-4 h-4 text-muted-foreground" />
-                    Community Breakdown
-                  </h3>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm" data-testid="table-contact-breakdown">
-                      <thead>
-                        <tr className="border-b border-border">
-                          <th className="text-left py-3 px-2 font-semibold text-muted-foreground">Member</th>
-                          <th className="text-left py-3 px-2 font-semibold text-muted-foreground">Role</th>
-                          <th className="text-center py-3 px-2 font-semibold text-muted-foreground">Revenue</th>
-                          <th className="text-center py-3 px-2 font-semibold text-muted-foreground text-xs">Interactions</th>
-                          <th className="text-center py-3 px-2 font-semibold text-muted-foreground text-xs">Mindset</th>
-                          <th className="text-center py-3 px-2 font-semibold text-muted-foreground text-xs">Skill</th>
-                          <th className="text-center py-3 px-2 font-semibold text-muted-foreground text-xs">Conf.</th>
-                          <th className="text-center py-3 px-2 font-semibold text-muted-foreground text-xs">Biz Conf.</th>
-                          <th className="text-center py-3 px-2 font-semibold text-muted-foreground text-xs">Systems</th>
-                          <th className="text-center py-3 px-2 font-semibold text-muted-foreground text-xs">Funding</th>
-                          <th className="text-center py-3 px-2 font-semibold text-muted-foreground text-xs">Network</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {report.contactBreakdowns.map(cb => (
-                          <tr key={cb.contactId} className="border-b border-border/50 hover-elevate" data-testid={`row-contact-${cb.contactId}`}>
-                            <td className="py-3 px-2">
-                              <div className="flex items-center gap-2">
-                                <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
-                                  {cb.contactName[0]}
-                                </div>
-                                <div>
-                                  <p className="font-medium text-xs">{cb.contactName}</p>
-                                  {cb.businessName && (
-                                    <p className="text-xs text-muted-foreground">{cb.businessName}</p>
-                                  )}
-                                </div>
-                              </div>
-                            </td>
-                            <td className="py-3 px-2">
-                              <Badge variant="outline" className="text-xs">{cb.role}</Badge>
-                            </td>
-                            <td className="py-3 px-2 text-center">
-                              <span className="text-xs text-muted-foreground">{cb.revenueBand || "-"}</span>
-                            </td>
-                            <td className="py-3 px-2 text-center font-medium text-xs">{cb.interactionCount}</td>
-                            <td className="py-3 px-2 text-center">
-                              <span className={cb.avgMindset !== null ? "font-bold text-xs text-primary" : "text-xs text-muted-foreground"}>
-                                {cb.avgMindset !== null ? cb.avgMindset : "-"}
-                              </span>
-                            </td>
-                            <td className="py-3 px-2 text-center">
-                              <span className={cb.avgSkill !== null ? "font-bold text-xs text-green-600" : "text-xs text-muted-foreground"}>
-                                {cb.avgSkill !== null ? cb.avgSkill : "-"}
-                              </span>
-                            </td>
-                            <td className="py-3 px-2 text-center">
-                              <span className={cb.avgConfidence !== null ? "font-bold text-xs text-amber-500" : "text-xs text-muted-foreground"}>
-                                {cb.avgConfidence !== null ? cb.avgConfidence : "-"}
-                              </span>
-                            </td>
-                            <td className="py-3 px-2 text-center">
-                              <span className={cb.avgConfidenceScore !== null ? "font-bold text-xs text-pink-500" : "text-xs text-muted-foreground"}>
-                                {cb.avgConfidenceScore !== null ? cb.avgConfidenceScore : "-"}
-                              </span>
-                            </td>
-                            <td className="py-3 px-2 text-center">
-                              <span className={cb.avgSystemsInPlace !== null ? "font-bold text-xs text-cyan-500" : "text-xs text-muted-foreground"}>
-                                {cb.avgSystemsInPlace !== null ? cb.avgSystemsInPlace : "-"}
-                              </span>
-                            </td>
-                            <td className="py-3 px-2 text-center">
-                              <span className={cb.avgFundingReadiness !== null ? "font-bold text-xs text-teal-500" : "text-xs text-muted-foreground"}>
-                                {cb.avgFundingReadiness !== null ? cb.avgFundingReadiness : "-"}
-                              </span>
-                            </td>
-                            <td className="py-3 px-2 text-center">
-                              <span className={cb.avgNetworkStrength !== null ? "font-bold text-xs text-orange-500" : "text-xs text-muted-foreground"}>
-                                {cb.avgNetworkStrength !== null ? cb.avgNetworkStrength : "-"}
-                              </span>
-                            </td>
-                          </tr>
+              {/* Section 5: Value & Contribution */}
+              <CollapsibleSection title="Value & Contribution" icon={DollarSign} testId="section-value">
+                <div className="pt-4 space-y-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <StatCard icon={DollarSign} label="Total Revenue" value={`$${val?.revenue?.total?.toLocaleString() || 0}`} color="green" testId="stat-total-revenue" />
+                    <StatCard icon={Handshake} label="In-Kind Value" value={`$${val?.inKindValue?.toLocaleString() || 0}`} color="blue" testId="stat-inkind-value" />
+                    <StatCard icon={Users} label="Active Memberships" value={val?.memberships?.active || 0} color="violet" testId="stat-memberships" />
+                    <StatCard icon={Handshake} label="Active MOUs" value={val?.mouExchange?.active || 0} color="amber" testId="stat-mous" />
+                  </div>
+
+                  {val?.revenue?.byPricingTier && Object.keys(val.revenue.byPricingTier).length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-semibold mb-3">Revenue by Pricing Tier</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {Object.entries(val.revenue.byPricingTier).map(([tier, data]: [string, any]) => (
+                          <Card key={tier} className="p-3">
+                            <p className="text-sm text-muted-foreground capitalize">{tier.replace("_", " ")}</p>
+                            <p className="text-lg font-bold">${data.revenue?.toLocaleString()}</p>
+                            <p className="text-xs text-muted-foreground">{data.count} bookings</p>
+                          </Card>
                         ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </Card>
-              )}
+                      </div>
+                    </div>
+                  )}
 
-              {report.contactBreakdowns.length === 0 && report.summary.totalInteractions === 0 && (
-                <Card className="p-8 text-center">
-                  <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mx-auto mb-3">
-                    <FileText className="w-6 h-6 text-muted-foreground" />
-                  </div>
-                  <h3 className="font-semibold mb-1">No data for this period</h3>
-                  <p className="text-sm text-muted-foreground">Try selecting a different date range or adjusting your filters.</p>
-                </Card>
-              )}
+                  {val?.memberships?.details?.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-semibold mb-3">Membership Usage</h4>
+                      <div className="border rounded-lg overflow-hidden">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted/50">
+                            <tr>
+                              <th className="text-left p-3">Membership</th>
+                              <th className="text-right p-3">Allocated</th>
+                              <th className="text-right p-3">Used</th>
+                              <th className="text-right p-3">Usage</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {val.memberships.details.map((m: any) => (
+                              <tr key={m.id} className="border-t">
+                                <td className="p-3">{m.name}</td>
+                                <td className="text-right p-3">{m.allocatedHours}h</td>
+                                <td className="text-right p-3">{m.usedHours}h</td>
+                                <td className="text-right p-3">
+                                  <Badge variant={m.usagePercent > 80 ? "destructive" : "secondary"}>{m.usagePercent}%</Badge>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {val?.programmeCosts?.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-semibold mb-3">Programme Costs</h4>
+                      <div className="border rounded-lg overflow-hidden">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted/50">
+                            <tr>
+                              <th className="text-left p-3">Programme</th>
+                              <th className="text-right p-3">Facilitator</th>
+                              <th className="text-right p-3">Catering</th>
+                              <th className="text-right p-3">Promo</th>
+                              <th className="text-right p-3 font-bold">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {val.programmeCosts.map((p: any) => (
+                              <tr key={p.id} className="border-t">
+                                <td className="p-3">{p.name}</td>
+                                <td className="text-right p-3">${p.facilitatorCost}</td>
+                                <td className="text-right p-3">${p.cateringCost}</td>
+                                <td className="text-right p-3">${p.promoCost}</td>
+                                <td className="text-right p-3 font-bold">${p.totalCost}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CollapsibleSection>
+
+              {/* Section 6: Narrative */}
+              <CollapsibleSection title="Narrative Summary" icon={FileText} testId="section-narrative">
+                <div className="pt-4">
+                  {narrativeData ? (
+                    <div className="prose prose-sm dark:prose-invert max-w-none" data-testid="text-narrative">
+                      {narrativeData.split("\n").map((line, i) => {
+                        if (line.startsWith("## ")) return <h3 key={i} className="text-lg font-semibold mt-4 mb-2">{line.replace("## ", "")}</h3>;
+                        if (line.startsWith("- **")) {
+                          const match = line.match(/^- \*\*(.+?)\*\*: (.+)$/);
+                          if (match) return <p key={i} className="ml-4 mb-1"><strong>{match[1]}</strong>: {match[2]}</p>;
+                        }
+                        if (line.startsWith("  > ")) return <blockquote key={i} className="border-l-2 border-primary/30 pl-3 ml-8 italic text-muted-foreground">{line.replace("  > ", "")}</blockquote>;
+                        if (line.trim()) return <p key={i} className="mb-2">{line}</p>;
+                        return <br key={i} />;
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-center py-6">
+                      <p className="text-muted-foreground text-sm mb-3">Generate a structured narrative summary based on this report's data.</p>
+                      <Button onClick={handleGenerateNarrative} data-testid="button-generate-narrative">
+                        <FileText className="w-4 h-4 mr-2" /> Generate Narrative
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </CollapsibleSection>
             </div>
-          )}
-
-          {!generated && !isLoading && (
-            <Card className="p-12 text-center border-dashed">
-              <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-                <BarChart3 className="w-8 h-8 text-muted-foreground" />
-              </div>
-              <h3 className="text-lg font-semibold mb-2">Select a report type and generate</h3>
-              <p className="text-muted-foreground text-sm max-w-md mx-auto">
-                Choose monthly, quarterly, or a custom date range, apply any filters, then click Generate Report to see your mentorship activity summary.
-              </p>
-            </Card>
           )}
         </div>
       </main>

@@ -5,7 +5,8 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { registerAudioRoutes } from "./replit_integrations/audio/routes";
-import { openai } from "./replit_integrations/audio/client"; // Use standard client
+import { openai } from "./replit_integrations/audio/client";
+import { getFullMonthlyReport, generateNarrative, type ReportFilters } from "./reporting";
 
 function parseTimeToMinutes(timeStr: string): number {
   const parts = timeStr.split(":");
@@ -317,183 +318,6 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Analysis error:", error);
       res.status(500).json({ message: "Failed to analyze text" });
-    }
-  });
-
-  // === Reports API ===
-
-  app.get("/api/reports", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      const { startDate, endDate, contactId, role } = req.query;
-
-      if (!startDate || !endDate) {
-        return res.status(400).json({ message: "startDate and endDate are required" });
-      }
-
-      const start = new Date(startDate as string);
-      const end = new Date(endDate as string);
-      end.setHours(23, 59, 59, 999);
-
-      const userContacts = await storage.getContacts(userId);
-      let filteredContacts = userContacts;
-
-      if (contactId) {
-        filteredContacts = filteredContacts.filter(c => c.id === parseInt(contactId as string));
-      }
-      if (role && role !== "all") {
-        filteredContacts = filteredContacts.filter(c => c.role === role);
-      }
-
-      const contactIds = filteredContacts.map(c => c.id);
-
-      const allInteractions = await Promise.all(
-        contactIds.map(id => storage.getInteractions(id))
-      );
-      const flatInteractions = allInteractions.flat().filter(i => {
-        const d = new Date(i.date);
-        return d >= start && d <= end;
-      });
-
-      const allMeetings = await storage.getMeetings(userId);
-      const filteredMeetings = allMeetings.filter(m => {
-        const d = new Date(m.startTime);
-        return d >= start && d <= end && contactIds.includes(m.contactId);
-      });
-
-      const allEvents = await storage.getEvents(userId);
-      const filteredEvents = allEvents.filter(ev => {
-        const d = new Date(ev.startTime);
-        return d >= start && d <= end;
-      });
-
-      const eventsByType: Record<string, number> = {};
-      let totalAttendees = 0;
-      filteredEvents.forEach(ev => {
-        eventsByType[ev.type] = (eventsByType[ev.type] || 0) + 1;
-        totalAttendees += ev.attendeeCount || 0;
-      });
-
-      const interactionsByType: Record<string, number> = {};
-      flatInteractions.forEach(i => {
-        interactionsByType[i.type] = (interactionsByType[i.type] || 0) + 1;
-      });
-
-      const meetingsByStatus: Record<string, number> = {};
-      filteredMeetings.forEach(m => {
-        meetingsByStatus[m.status] = (meetingsByStatus[m.status] || 0) + 1;
-      });
-
-      let totalMindset = 0, totalSkill = 0, totalConfidence = 0, scoredCount = 0;
-      let totalConfidenceScore = 0, totalSystemsInPlace = 0, totalFundingReadiness = 0, totalNetworkStrength = 0;
-      flatInteractions.forEach(i => {
-        const a = i.analysis as any;
-        if (a?.mindsetScore || a?.skillScore || a?.confidenceScore) {
-          totalMindset += a.mindsetScore || 0;
-          totalSkill += a.skillScore || 0;
-          totalConfidence += a.confidenceScore || 0;
-          totalConfidenceScore += a.confidenceScoreMetric || 0;
-          totalSystemsInPlace += a.systemsInPlaceScore || 0;
-          totalFundingReadiness += a.fundingReadinessScore || 0;
-          totalNetworkStrength += a.networkStrengthScore || 0;
-          scoredCount++;
-        }
-      });
-
-      if (scoredCount === 0) {
-        filteredContacts.forEach(c => {
-          const m = c.metrics as any;
-          if (m && (m.mindset || m.skill || m.confidence || m.confidenceScore || m.systemsInPlace || m.fundingReadiness || m.networkStrength)) {
-            totalMindset += m.mindset || 0;
-            totalSkill += m.skill || 0;
-            totalConfidence += m.confidence || 0;
-            totalConfidenceScore += m.confidenceScore || 0;
-            totalSystemsInPlace += m.systemsInPlace || 0;
-            totalFundingReadiness += m.fundingReadiness || 0;
-            totalNetworkStrength += m.networkStrength || 0;
-            scoredCount++;
-          }
-        });
-      }
-
-      const contactBreakdowns = filteredContacts.map(c => {
-        const cInteractions = flatInteractions.filter(i => i.contactId === c.id);
-        const cMeetings = filteredMeetings.filter(m => m.contactId === c.id);
-
-        let cMindset = 0, cSkill = 0, cConfidence = 0, cScored = 0;
-        let cConfidenceScore = 0, cSystemsInPlace = 0, cFundingReadiness = 0, cNetworkStrength = 0;
-        cInteractions.forEach(i => {
-          const a = i.analysis as any;
-          if (a?.mindsetScore || a?.skillScore || a?.confidenceScore) {
-            cMindset += a.mindsetScore || 0;
-            cSkill += a.skillScore || 0;
-            cConfidence += a.confidenceScore || 0;
-            cConfidenceScore += a.confidenceScoreMetric || 0;
-            cSystemsInPlace += a.systemsInPlaceScore || 0;
-            cFundingReadiness += a.fundingReadinessScore || 0;
-            cNetworkStrength += a.networkStrengthScore || 0;
-            cScored++;
-          }
-        });
-
-        if (cScored === 0) {
-          const m = c.metrics as any;
-          if (m && (m.mindset || m.skill || m.confidence || m.confidenceScore || m.systemsInPlace || m.fundingReadiness || m.networkStrength)) {
-            cMindset = m.mindset || 0;
-            cSkill = m.skill || 0;
-            cConfidence = m.confidence || 0;
-            cConfidenceScore = m.confidenceScore || 0;
-            cSystemsInPlace = m.systemsInPlace || 0;
-            cFundingReadiness = m.fundingReadiness || 0;
-            cNetworkStrength = m.networkStrength || 0;
-            cScored = 1;
-          }
-        }
-
-        return {
-          contactId: c.id,
-          contactName: c.name,
-          businessName: c.businessName,
-          role: c.role,
-          interactionCount: cInteractions.length,
-          meetingCount: cMeetings.length,
-          completedMeetings: cMeetings.filter(m => m.status === "completed").length,
-          avgMindset: cScored > 0 ? Math.round((cMindset / cScored) * 10) / 10 : null,
-          avgSkill: cScored > 0 ? Math.round((cSkill / cScored) * 10) / 10 : null,
-          avgConfidence: cScored > 0 ? Math.round((cConfidence / cScored) * 10) / 10 : null,
-          avgConfidenceScore: cScored > 0 ? Math.round((cConfidenceScore / cScored) * 10) / 10 : null,
-          avgSystemsInPlace: cScored > 0 ? Math.round((cSystemsInPlace / cScored) * 10) / 10 : null,
-          avgFundingReadiness: cScored > 0 ? Math.round((cFundingReadiness / cScored) * 10) / 10 : null,
-          avgNetworkStrength: cScored > 0 ? Math.round((cNetworkStrength / cScored) * 10) / 10 : null,
-          currentMetrics: c.metrics,
-          revenueBand: c.revenueBand,
-        };
-      });
-
-      res.json({
-        period: { startDate: start.toISOString(), endDate: end.toISOString() },
-        summary: {
-          totalInteractions: flatInteractions.length,
-          totalMeetings: filteredMeetings.length,
-          totalContacts: filteredContacts.length,
-          totalEvents: filteredEvents.length,
-          totalAttendees,
-          interactionsByType,
-          meetingsByStatus,
-          eventsByType,
-          avgMindset: scoredCount > 0 ? Math.round((totalMindset / scoredCount) * 10) / 10 : null,
-          avgSkill: scoredCount > 0 ? Math.round((totalSkill / scoredCount) * 10) / 10 : null,
-          avgConfidence: scoredCount > 0 ? Math.round((totalConfidence / scoredCount) * 10) / 10 : null,
-          avgConfidenceScore: scoredCount > 0 ? Math.round((totalConfidenceScore / scoredCount) * 10) / 10 : null,
-          avgSystemsInPlace: scoredCount > 0 ? Math.round((totalSystemsInPlace / scoredCount) * 10) / 10 : null,
-          avgFundingReadiness: scoredCount > 0 ? Math.round((totalFundingReadiness / scoredCount) * 10) / 10 : null,
-          avgNetworkStrength: scoredCount > 0 ? Math.round((totalNetworkStrength / scoredCount) * 10) / 10 : null,
-        },
-        contactBreakdowns,
-      });
-    } catch (error) {
-      console.error("Report generation error:", error);
-      res.status(500).json({ message: "Failed to generate report" });
     }
   });
 
@@ -2136,6 +1960,141 @@ Important:
     } catch (err: any) {
       console.error("Link error:", err.message);
       res.status(500).json({ message: "Failed to link event" });
+    }
+  });
+
+  // === REPORTING ROUTES ===
+
+  app.post("/api/reports/generate", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder } = req.body;
+
+      if (!startDate || !endDate) {
+        return res.status(400).json({ message: "startDate and endDate are required" });
+      }
+
+      const filters: ReportFilters = {
+        userId,
+        startDate,
+        endDate,
+        programmeIds,
+        taxonomyIds,
+        demographicSegments,
+        funder,
+      };
+
+      const report = await getFullMonthlyReport(filters);
+      res.json(report);
+    } catch (err: any) {
+      console.error("Report generation error:", err);
+      res.status(500).json({ message: "Failed to generate report" });
+    }
+  });
+
+  app.post("/api/reports/narrative", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder } = req.body;
+
+      if (!startDate || !endDate) {
+        return res.status(400).json({ message: "startDate and endDate are required" });
+      }
+
+      const filters: ReportFilters = {
+        userId,
+        startDate,
+        endDate,
+        programmeIds,
+        taxonomyIds,
+        demographicSegments,
+        funder,
+      };
+
+      const result = await generateNarrative(filters);
+      res.json(result);
+    } catch (err: any) {
+      console.error("Narrative generation error:", err);
+      res.status(500).json({ message: "Failed to generate narrative" });
+    }
+  });
+
+  app.get("/api/reports", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const savedReports = await storage.getReports(userId);
+      res.json(savedReports);
+    } catch (err: any) {
+      console.error("Get reports error:", err);
+      res.status(500).json({ message: "Failed to fetch reports" });
+    }
+  });
+
+  app.get("/api/reports/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const report = await storage.getReport(parseInt(req.params.id));
+      if (!report || report.userId !== userId) return res.status(404).json({ message: "Report not found" });
+      res.json(report);
+    } catch (err: any) {
+      console.error("Get report error:", err);
+      res.status(500).json({ message: "Failed to fetch report" });
+    }
+  });
+
+  app.post("/api/reports/save", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { title, type, startDate, endDate, filters, snapshotData, narrative } = req.body;
+
+      if (!title || !startDate || !endDate) {
+        return res.status(400).json({ message: "title, startDate, and endDate are required" });
+      }
+
+      const report = await storage.createReport({
+        userId,
+        title,
+        type: type || "monthly",
+        startDate: new Date(startDate),
+        endDate: new Date(endDate),
+        filters: filters || {},
+        snapshotData,
+        narrative,
+        status: "draft",
+      });
+      res.status(201).json(report);
+    } catch (err: any) {
+      console.error("Save report error:", err);
+      res.status(500).json({ message: "Failed to save report" });
+    }
+  });
+
+  app.patch("/api/reports/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const id = parseInt(req.params.id);
+      const report = await storage.getReport(id);
+      if (!report || report.userId !== userId) return res.status(404).json({ message: "Report not found" });
+
+      const updated = await storage.updateReport(id, req.body);
+      res.json(updated);
+    } catch (err: any) {
+      console.error("Update report error:", err);
+      res.status(500).json({ message: "Failed to update report" });
+    }
+  });
+
+  app.delete("/api/reports/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const id = parseInt(req.params.id);
+      const report = await storage.getReport(id);
+      if (!report || report.userId !== userId) return res.status(404).json({ message: "Report not found" });
+      await storage.deleteReport(id);
+      res.status(204).end();
+    } catch (err: any) {
+      console.error("Delete report error:", err);
+      res.status(500).json({ message: "Failed to delete report" });
     }
   });
 
