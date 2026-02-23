@@ -98,6 +98,7 @@ interface LegacyReportWithSnapshot {
   userId: string;
   year: number | null;
   quarter: number | null;
+  month: number | null;
   quarterLabel: string;
   periodStart: string;
   periodEnd: string;
@@ -164,8 +165,17 @@ const emptySnapshot: LegacyReportSnapshot = {
 };
 
 const currentYear = new Date().getFullYear();
-const currentMonth = new Date().getMonth();
-const currentQuarter = Math.floor(currentMonth / 3) + 1;
+const currentMonthIndex = new Date().getMonth();
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
+];
+
+const MONTH_OPTIONS = MONTH_NAMES.map((name, i) => ({
+  value: i + 1,
+  label: name,
+}));
 
 function getYearOptions() {
   const years: number[] = [];
@@ -175,18 +185,15 @@ function getYearOptions() {
   return years;
 }
 
-function isQuarterInFuture(year: number, quarter: number): boolean {
+function isMonthInFuture(year: number, month: number): boolean {
   if (year < currentYear) return false;
   if (year > currentYear) return true;
-  return quarter > currentQuarter;
+  return month > currentMonthIndex + 1;
 }
 
-const QUARTER_LABELS = [
-  { value: 1, label: "Q1 (Jan–Mar)" },
-  { value: 2, label: "Q2 (Apr–Jun)" },
-  { value: 3, label: "Q3 (Jul–Sep)" },
-  { value: 4, label: "Q4 (Oct–Dec)" },
-];
+function isMonthBeforeStart(year: number, month: number): boolean {
+  return year === 2023 && month < 11;
+}
 
 export default function LegacyReportsPage() {
   const { toast } = useToast();
@@ -195,7 +202,7 @@ export default function LegacyReportsPage() {
   const [expandedTrend, setExpandedTrend] = useState(true);
 
   const [selectedYear, setSelectedYear] = useState<string>("");
-  const [selectedQuarter, setSelectedQuarter] = useState<string>("");
+  const [selectedMonth, setSelectedMonth] = useState<string>("");
 
   const [formData, setFormData] = useState({
     pdfFileName: "",
@@ -419,7 +426,7 @@ export default function LegacyReportsPage() {
       snapshot: { ...emptySnapshot },
     });
     setSelectedYear("");
-    setSelectedQuarter("");
+    setSelectedMonth("");
     setEditingId(null);
   }
 
@@ -432,7 +439,7 @@ export default function LegacyReportsPage() {
       snapshot: report.snapshot || { ...emptySnapshot },
     });
     setSelectedYear("");
-    setSelectedQuarter("");
+    setSelectedMonth("");
     setShowForm(true);
   }
 
@@ -449,8 +456,8 @@ export default function LegacyReportsPage() {
   }
 
   function handleSubmit() {
-    if (!editingId && (!selectedYear || !selectedQuarter)) {
-      toast({ title: "Missing fields", description: "Year and quarter are required", variant: "destructive" });
+    if (!editingId && (!selectedYear || !selectedMonth)) {
+      toast({ title: "Missing fields", description: "Year and month are required", variant: "destructive" });
       return;
     }
 
@@ -463,7 +470,7 @@ export default function LegacyReportsPage() {
     } else {
       const payload = {
         year: parseInt(selectedYear),
-        quarter: parseInt(selectedQuarter),
+        month: parseInt(selectedMonth),
         pdfFileName: formData.pdfFileName || null,
         pdfData: formData.pdfData || null,
         notes: formData.notes || null,
@@ -552,7 +559,7 @@ export default function LegacyReportsPage() {
                 Legacy Reports
               </h1>
               <p className="text-sm text-muted-foreground">
-                Upload past quarterly reports and snapshot data to build historical trends.
+                Upload past monthly reports and snapshot data to build historical trends.
               </p>
             </div>
             <div className="flex gap-2">
@@ -602,7 +609,7 @@ export default function LegacyReportsPage() {
                 <div className="flex items-center gap-3">
                   <TrendingUp className="w-5 h-5 text-primary" />
                   <h3 className="text-lg font-display font-semibold">Historical Trend</h3>
-                  <Badge variant="secondary" className="text-xs">{chartData.length} quarters</Badge>
+                  <Badge variant="secondary" className="text-xs">{chartData.length} periods</Badge>
                 </div>
                 {expandedTrend ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
               </button>
@@ -651,7 +658,7 @@ export default function LegacyReportsPage() {
               <FileText className="w-10 h-10 mx-auto text-muted-foreground/40 mb-2" />
               <h3 className="font-medium text-foreground">No legacy reports yet</h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Upload your past quarterly PDF reports and enter snapshot metrics to build historical baselines.
+                Upload your past monthly PDF reports and enter snapshot metrics to build historical baselines.
               </p>
             </Card>
           )}
@@ -1099,20 +1106,20 @@ export default function LegacyReportsPage() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Quarter</Label>
-                    <Select value={selectedQuarter} onValueChange={setSelectedQuarter} data-testid="select-quarter">
-                      <SelectTrigger data-testid="select-quarter-trigger">
-                        <SelectValue placeholder="Select quarter" />
+                    <Label>Month</Label>
+                    <Select value={selectedMonth} onValueChange={setSelectedMonth} data-testid="select-month">
+                      <SelectTrigger data-testid="select-month-trigger">
+                        <SelectValue placeholder="Select month" />
                       </SelectTrigger>
                       <SelectContent>
-                        {QUARTER_LABELS.map((q) => (
+                        {MONTH_OPTIONS.map((m) => (
                           <SelectItem
-                            key={q.value}
-                            value={String(q.value)}
-                            disabled={selectedYear ? isQuarterInFuture(parseInt(selectedYear), q.value) : false}
-                            data-testid={`select-quarter-${q.value}`}
+                            key={m.value}
+                            value={String(m.value)}
+                            disabled={selectedYear ? (isMonthInFuture(parseInt(selectedYear), m.value) || isMonthBeforeStart(parseInt(selectedYear), m.value)) : false}
+                            data-testid={`select-month-${m.value}`}
                           >
-                            {q.label}
+                            {m.label}
                           </SelectItem>
                         ))}
                       </SelectContent>

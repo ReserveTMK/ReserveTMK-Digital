@@ -461,6 +461,7 @@ export const legacyReports = pgTable("legacy_reports", {
   userId: text("user_id").notNull(),
   year: integer("year"),
   quarter: integer("quarter"),
+  month: integer("month"),
   quarterLabel: text("quarter_label").notNull(),
   periodStart: timestamp("period_start").notNull(),
   periodEnd: timestamp("period_end").notNull(),

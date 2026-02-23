@@ -63,6 +63,11 @@ function coerceDateFields(body: Record<string, any>): Record<string, any> {
   return result;
 }
 
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
+];
+
 const LEGACY_METRIC_KEYS = [
   { key: "activations_total", label: "Total Activations", unit: "count" },
   { key: "activations_workshops", label: "Workshops", unit: "count" },
@@ -94,18 +99,18 @@ const METRIC_KEY_TO_SNAPSHOT_FIELD: Record<string, string> = {
 };
 
 function buildExtractionPrompt(pdfText: string): string {
-  return `You are an impact data analyst extracting information from a community organisation quarterly report.
+  return `You are an impact data analyst extracting information from a community organisation MONTHLY report.
 
-CRITICAL: These reports often contain YEAR-TO-DATE (YTD) cumulative tallies alongside quarterly numbers. You MUST:
-- Look for column headers or labels indicating "YTD", "Year to Date", "Total", "Cumulative"
-- Extract ONLY the QUARTERLY figures, NOT the YTD/cumulative totals
-- If only YTD figures are available and no quarterly breakdown exists, set the value to null rather than guessing
-- Monthly figures within a quarter should be summed to get the quarterly total
-- If there are columns for each month (e.g. Jul, Aug, Sep) and a total column, use the total column ONLY if it represents the quarter, not the full year
+CRITICAL: These reports often contain YEAR-TO-DATE (YTD) cumulative tallies alongside monthly numbers. You MUST:
+- Look for column headers or labels indicating "YTD", "Year to Date", "Total", "Cumulative", quarterly totals
+- Extract ONLY the SINGLE MONTH's figures, NOT the YTD/cumulative/quarterly totals
+- If only YTD or quarterly figures are available and no single-month breakdown exists, set the value to null rather than guessing
+- If there are columns for each month (e.g. Jul, Aug, Sep) and a quarterly/YTD total column, extract ONLY the specific month's column value
+- The report title usually says the month (e.g. "August 2025") - extract data for THAT month only
 
 Extract THREE types of information:
 
-1. QUANTITATIVE METRICS - For each metric below, find the quarterly value:
+1. QUANTITATIVE METRICS - For each metric below, find the SINGLE MONTH value:
 ${LEGACY_METRIC_KEYS.map(m => `- ${m.key} (${m.label}, unit: ${m.unit})`).join("\n")}
 
 2. ORGANISATIONS & PARTNERS - Extract names of organisations, businesses, community groups, partners mentioned in the report. Include:
@@ -146,7 +151,7 @@ Respond in JSON format only:
 
 Rules:
 - For metrics: confidence 0-100. If not found, set metricValue to null, confidence to 0
-- Be conservative: do NOT fabricate numbers. If uncertain between YTD and quarterly, set to null
+- Be conservative: do NOT fabricate numbers. If uncertain between YTD/quarterly and monthly, set to null
 - For organisations: only include named entities explicitly mentioned in the text
 - For highlights: stick to what the report actually says, do not infer or embellish
 - For people: only include people mentioned by name, not generic roles
@@ -2481,41 +2486,46 @@ Important:
   app.post("/api/legacy-reports", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { year, quarter, pdfFileName, pdfData, notes, snapshot } = req.body;
+      const { year, month, pdfFileName, pdfData, notes, snapshot } = req.body;
 
-      if (!year || !quarter) {
-        return res.status(400).json({ message: "Year and quarter are required" });
+      if (!year || !month) {
+        return res.status(400).json({ message: "Year and month are required" });
       }
 
       const now = new Date();
       const currentYear = now.getFullYear();
-      if (year < 2023 || year > currentYear) {
+      if (year < 2023 || year > currentYear + 1) {
         return res.status(400).json({ message: "Year must be between 2023 and current year" });
       }
-      if (quarter < 1 || quarter > 4) {
-        return res.status(400).json({ message: "Quarter must be between 1 and 4" });
+      if (month < 1 || month > 12) {
+        return res.status(400).json({ message: "Month must be between 1 and 12" });
       }
 
-      const quarterEndMonth = quarter * 3;
-      const quarterEndDate = new Date(year, quarterEndMonth, 0);
-      if (quarterEndDate > now) {
-        return res.status(400).json({ message: "Cannot create reports for future quarters" });
+      const monthEndDate = new Date(year, month, 0);
+      if (monthEndDate > now) {
+        return res.status(400).json({ message: "Cannot create reports for future months" });
+      }
+
+      if (year === 2023 && month < 11) {
+        return res.status(400).json({ message: "Reports start from November 2023" });
       }
 
       const existing = await storage.getLegacyReports(userId);
-      const duplicate = existing.find(r => r.year === year && r.quarter === quarter);
+      const duplicate = existing.find(r => r.year === year && r.month === month);
       if (duplicate) {
-        return res.status(409).json({ message: `A report for ${year} Q${quarter} already exists` });
+        return res.status(409).json({ message: `A report for ${MONTH_NAMES[month - 1]} ${year} already exists` });
       }
 
-      const periodStart = new Date(year, (quarter - 1) * 3, 1);
-      const periodEnd = quarterEndDate;
-      const quarterLabel = `${year} Q${quarter}`;
+      const periodStart = new Date(year, month - 1, 1);
+      const periodEnd = monthEndDate;
+      const quarter = Math.floor((month - 1) / 3) + 1;
+      const quarterLabel = `${MONTH_NAMES[month - 1]} ${year}`;
 
       const report = await storage.createLegacyReport({
         userId,
         year,
         quarter,
+        month,
         quarterLabel,
         periodStart,
         periodEnd,
@@ -2711,7 +2721,7 @@ Important:
                         org.type === "resident_company" ? "Resident Company" :
                         org.type === "business" ? "Business" : "Organisation",
                   description: org.description || null,
-                  notes: org.relationship ? `Relationship: ${org.relationship}. Imported from legacy report Q${existing.quarter} ${existing.year}.` : `Imported from legacy report Q${existing.quarter} ${existing.year}.`,
+                  notes: org.relationship ? `Relationship: ${org.relationship}. Imported from legacy report ${existing.quarterLabel}.` : `Imported from legacy report ${existing.quarterLabel}.`,
                   active: true,
                 });
                 existingNames.add(org.name.toLowerCase().trim());
@@ -2934,17 +2944,17 @@ Return a JSON object with this exact structure:
 
       const insights: string[] = [];
       if (historicAvg > 0) {
-        insights.push(`Historic average activations per quarter: ${historicAvg}`);
+        insights.push(`Historic average activations per period: ${historicAvg}`);
       }
       if (highestQuarter) {
-        insights.push(`Highest quarter: ${highestQuarter.label} with ${highest} activations`);
+        insights.push(`Highest period: ${highestQuarter.label} with ${highest} activations`);
       }
       if (rank && quarterlyData.length > 1) {
-        insights.push(`Current period ranks #${rank} out of ${quarterlyData.length} quarters`);
+        insights.push(`Current period ranks #${rank} out of ${quarterlyData.length} periods`);
       }
       if (qoqChange !== null) {
         const dir = qoqChange >= 0 ? "up" : "down";
-        insights.push(`Quarter-over-quarter change: ${dir} ${Math.abs(qoqChange)}% from ${previous?.label}`);
+        insights.push(`Period-over-period change: ${dir} ${Math.abs(qoqChange)}% from ${previous?.label}`);
       }
       if (pctVsAvg !== null) {
         const rel = pctVsAvg >= 0 ? "above" : "below";
