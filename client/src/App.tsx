@@ -22,6 +22,7 @@ import Programmes from "@/pages/programmes";
 import Bookings from "@/pages/bookings";
 import Agreements from "@/pages/agreements";
 import GroupsPage from "@/pages/groups";
+import EcosystemPage from "@/pages/ecosystem";
 import DebriefQueuePage from "@/pages/debrief-queue";
 import LegacyReportsPage from "@/pages/legacy-reports";
 import MilestonesPage from "@/pages/milestones";
@@ -131,6 +132,10 @@ function Router() {
 
         <Route path="/groups">
           <ProtectedRoute component={GroupsPage} />
+        </Route>
+
+        <Route path="/ecosystem">
+          <ProtectedRoute component={EcosystemPage} />
         </Route>
 
         <Route path="/debrief-queue">

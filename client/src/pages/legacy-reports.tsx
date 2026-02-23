@@ -57,8 +57,7 @@ const METRIC_KEY_TO_LABEL: Record<string, string> = {
   activations_mentoring: "Mentoring",
   activations_events: "Events",
   activations_partner_meetings: "Partner Meetings",
-  people_unique: "Unique People",
-  engagements_total: "Total Engagements",
+  hub_foottraffic: "Hub Foot Traffic",
   groups_unique: "Unique Groups",
   bookings_total: "Total Bookings",
   hours_total: "Total Hours",
@@ -72,8 +71,7 @@ const METRIC_KEY_TO_SNAPSHOT_FIELD: Record<string, keyof LegacyReportSnapshot> =
   activations_mentoring: "activationsMentoring",
   activations_events: "activationsEvents",
   activations_partner_meetings: "activationsPartnerMeetings",
-  people_unique: "peopleUnique",
-  engagements_total: "engagementsTotal",
+  hub_foottraffic: "foottrafficUnique",
   groups_unique: "groupsUnique",
   bookings_total: "bookingsTotal",
   hours_total: "hoursTotal",
@@ -87,8 +85,7 @@ interface LegacyReportSnapshot {
   activationsMentoring: number;
   activationsEvents: number;
   activationsPartnerMeetings: number;
-  peopleUnique: number | null;
-  engagementsTotal: number | null;
+  foottrafficUnique: number | null;
   groupsUnique: number | null;
   bookingsTotal: number | null;
   hoursTotal: string | null;
@@ -158,8 +155,7 @@ const emptySnapshot: LegacyReportSnapshot = {
   activationsMentoring: 0,
   activationsEvents: 0,
   activationsPartnerMeetings: 0,
-  peopleUnique: null,
-  engagementsTotal: null,
+  foottrafficUnique: null,
   groupsUnique: null,
   bookingsTotal: null,
   hoursTotal: null,
@@ -255,8 +251,7 @@ export default function LegacyReportsPage() {
       activationsWorkshops: number;
       activationsMentoring: number;
       activationsEvents: number;
-      peopleUnique: number | null;
-      engagementsTotal: number | null;
+      foottrafficUnique: number | null;
     }>;
     boundaryDate: string | null;
   }>({
@@ -362,6 +357,9 @@ export default function LegacyReportsPage() {
       }
       if (result.createdGroups && result.createdGroups.length > 0) {
         parts.push(`${result.createdGroups.length} organisation(s) added to Groups: ${result.createdGroups.join(", ")}`);
+      }
+      if (result.createdContacts && result.createdContacts.length > 0) {
+        parts.push(`${result.createdContacts.length} person(s) added to Contacts: ${result.createdContacts.join(", ")}`);
       }
       toast({
         title: result.status === "confirmed" ? "Report Confirmed" : "Status Updated",
@@ -793,16 +791,15 @@ export default function LegacyReportsPage() {
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
-                  {chartData.some(d => d.peopleUnique || d.engagementsTotal) && (
+                  {chartData.some(d => d.foottrafficUnique) && (
                     <div className="h-[200px]">
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={chartData.filter(d => d.peopleUnique || d.engagementsTotal)}>
+                        <BarChart data={chartData.filter(d => d.foottrafficUnique)}>
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis dataKey="quarterLabel" tick={{ fontSize: 12 }} />
                           <YAxis tick={{ fontSize: 12 }} />
                           <Tooltip />
-                          <Bar dataKey="peopleUnique" fill={CHART_COLORS[3]} name="Unique People" />
-                          <Bar dataKey="engagementsTotal" fill={CHART_COLORS[4]} name="Total Engagements" />
+                          <Bar dataKey="foottrafficUnique" fill={CHART_COLORS[3]} name="Hub Foot Traffic" />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
@@ -936,8 +933,7 @@ export default function LegacyReportsPage() {
                           {report.snapshot.activationsWorkshops > 0 && <span>{report.snapshot.activationsWorkshops} workshops</span>}
                           {report.snapshot.activationsMentoring > 0 && <span>{report.snapshot.activationsMentoring} mentoring</span>}
                           {report.snapshot.activationsEvents > 0 && <span>{report.snapshot.activationsEvents} events</span>}
-                          {report.snapshot.peopleUnique && <span>{report.snapshot.peopleUnique} people</span>}
-                          {report.snapshot.engagementsTotal && <span>{report.snapshot.engagementsTotal} engagements</span>}
+                          {report.snapshot.foottrafficUnique && <span>{report.snapshot.foottrafficUnique} foot traffic</span>}
                           {report.snapshot.hoursTotal && <span>{report.snapshot.hoursTotal} hrs</span>}
                           {report.snapshot.revenueTotal && <span>${report.snapshot.revenueTotal} revenue</span>}
                           {report.snapshot.inKindTotal && <span>${report.snapshot.inKindTotal} in-kind</span>}

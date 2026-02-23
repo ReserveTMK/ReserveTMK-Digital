@@ -44,6 +44,7 @@ const navigation: NavItem[] = [
     children: [
       { name: "People", href: "/contacts", icon: Users },
       { name: "Groups", href: "/groups", icon: Network },
+      { name: "Ecosystem", href: "/ecosystem", icon: Handshake },
     ],
   },
   {

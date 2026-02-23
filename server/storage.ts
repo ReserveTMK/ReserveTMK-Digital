@@ -980,6 +980,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteGroup(id: number): Promise<void> {
+    await db.delete(groupTaxonomyLinks).where(eq(groupTaxonomyLinks.groupId, id));
     await db.delete(groupMembers).where(eq(groupMembers.groupId, id));
     await db.delete(groups).where(eq(groups.id, id));
   }

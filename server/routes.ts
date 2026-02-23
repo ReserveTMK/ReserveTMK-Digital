@@ -74,8 +74,7 @@ const LEGACY_METRIC_KEYS = [
   { key: "activations_mentoring", label: "Mentoring Sessions", unit: "count" },
   { key: "activations_events", label: "Events", unit: "count" },
   { key: "activations_partner_meetings", label: "Partner Meetings", unit: "count" },
-  { key: "people_unique", label: "Unique People", unit: "count" },
-  { key: "engagements_total", label: "Total Engagements", unit: "count" },
+  { key: "hub_foottraffic", label: "Hub Foot Traffic", unit: "count" },
   { key: "groups_unique", label: "Unique Groups", unit: "count" },
   { key: "bookings_total", label: "Total Bookings", unit: "count" },
   { key: "hours_total", label: "Total Hours", unit: "hours" },
@@ -89,8 +88,7 @@ const METRIC_KEY_TO_SNAPSHOT_FIELD: Record<string, string> = {
   activations_mentoring: "activationsMentoring",
   activations_events: "activationsEvents",
   activations_partner_meetings: "activationsPartnerMeetings",
-  people_unique: "peopleUnique",
-  engagements_total: "engagementsTotal",
+  hub_foottraffic: "foottrafficUnique",
   groups_unique: "groupsUnique",
   bookings_total: "bookingsTotal",
   hours_total: "hoursTotal",
@@ -2302,8 +2300,7 @@ Important:
             activationsMentoring: 0,
             activationsEvents: 0,
             activationsPartnerMeetings: 0,
-            peopleUnique: 0,
-            engagementsTotal: 0,
+            foottrafficUnique: 0,
             groupsUnique: 0,
             bookingsTotal: 0,
             hoursTotal: 0,
@@ -2322,8 +2319,7 @@ Important:
               legacyTotals.activationsMentoring += snapshot.activationsMentoring || 0;
               legacyTotals.activationsEvents += snapshot.activationsEvents || 0;
               legacyTotals.activationsPartnerMeetings += snapshot.activationsPartnerMeetings || 0;
-              legacyTotals.peopleUnique += snapshot.peopleUnique || 0;
-              legacyTotals.engagementsTotal += snapshot.engagementsTotal || 0;
+              legacyTotals.foottrafficUnique += snapshot.foottrafficUnique || 0;
               legacyTotals.groupsUnique += snapshot.groupsUnique || 0;
               legacyTotals.bookingsTotal += snapshot.bookingsTotal || 0;
               legacyTotals.hoursTotal += parseFloat(String(snapshot.hoursTotal || 0));
@@ -2558,6 +2554,7 @@ Important:
           activationsPartnerMeetings: snapshot.activationsPartnerMeetings ?? null,
           peopleUnique: snapshot.peopleUnique ?? null,
           engagementsTotal: snapshot.engagementsTotal ?? null,
+          foottrafficUnique: snapshot.foottrafficUnique ?? null,
           groupsUnique: snapshot.groupsUnique ?? null,
           bookingsTotal: snapshot.bookingsTotal ?? null,
           hoursTotal: snapshot.hoursTotal ?? null,
@@ -2804,6 +2801,9 @@ Important:
                         org.type === "education" ? "Education" : "Organisation",
                   description: org.description || null,
                   notes: org.relationship ? `Relationship: ${org.relationship}. Imported from legacy report ${existing.quarterLabel}.` : `Imported from legacy report ${existing.quarterLabel}.`,
+                  importSource: `Imported from legacy report ${existing.quarterLabel}`,
+                  relationshipTier: org.relationship === "mentored" || org.relationship === "supported" ? "support" :
+                                    org.relationship === "partnered" || org.relationship === "engaged" ? "collaborate" : "mentioned",
                   active: true,
                 });
                 existingNames.add(org.name.toLowerCase().trim());
@@ -2818,7 +2818,36 @@ Important:
         }
       }
 
-      res.json({ ...updated, snapshot: finalSnapshot, taxonomySuggestionsAvailable, createdGroups });
+      let createdContacts: string[] = [];
+      if (status === "confirmed" && existing.status !== "confirmed") {
+        try {
+          const extraction = await storage.getLegacyReportExtraction(id);
+          if (extraction?.extractedPeople && Array.isArray(extraction.extractedPeople)) {
+            const existingContacts = await storage.getContacts(userId);
+            const existingContactNames = new Set(existingContacts.map(c => c.name.toLowerCase().trim()));
+
+            for (const person of extraction.extractedPeople as any[]) {
+              if (!person.name || existingContactNames.has(person.name.toLowerCase().trim())) continue;
+              try {
+                await storage.createContact({
+                  userId,
+                  name: person.name,
+                  role: person.role || "Community Member",
+                  notes: person.context ? `${person.context}. Imported from legacy report ${existing.quarterLabel}.` : `Imported from legacy report ${existing.quarterLabel}.`,
+                });
+                existingContactNames.add(person.name.toLowerCase().trim());
+                createdContacts.push(person.name);
+              } catch (contactErr) {
+                console.error(`Failed to create contact "${person.name}":`, contactErr);
+              }
+            }
+          }
+        } catch (extractErr) {
+          console.error("Failed to auto-create contacts from extraction:", extractErr);
+        }
+      }
+
+      res.json({ ...updated, snapshot: finalSnapshot, taxonomySuggestionsAvailable, createdGroups, createdContacts });
     } catch (err: any) {
       console.error("Update legacy report error:", err);
       res.status(500).json({ message: "Failed to update legacy report" });
@@ -2858,8 +2887,7 @@ Important:
 
       const snapshotInfo = snapshot ? {
         activationsTotal: snapshot.activationsTotal,
-        peopleUnique: snapshot.peopleUnique,
-        engagementsTotal: snapshot.engagementsTotal,
+        foottrafficUnique: snapshot.foottrafficUnique,
         bookingsTotal: snapshot.bookingsTotal,
         hoursTotal: snapshot.hoursTotal,
         revenueTotal: snapshot.revenueTotal,
@@ -3084,8 +3112,7 @@ Return a JSON object with this exact structure:
             activationsMentoring: snapshot?.activationsMentoring || 0,
             activationsEvents: snapshot?.activationsEvents || 0,
             activationsPartnerMeetings: snapshot?.activationsPartnerMeetings || 0,
-            peopleUnique: snapshot?.peopleUnique || null,
-            engagementsTotal: snapshot?.engagementsTotal || null,
+            foottrafficUnique: snapshot?.foottrafficUnique || null,
             groupsUnique: snapshot?.groupsUnique || null,
             bookingsTotal: snapshot?.bookingsTotal || null,
             hoursTotal: snapshot?.hoursTotal ? Number(snapshot.hoursTotal) : null,
@@ -3161,6 +3188,72 @@ Return a JSON object with this exact structure:
       res.json(updated);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/groups/:id/relationship-tier", isAuthenticated, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { tier } = req.body;
+      if (!["support", "collaborate", "mentioned"].includes(tier)) {
+        return res.status(400).json({ message: "Invalid tier. Must be support, collaborate, or mentioned" });
+      }
+      const group = await storage.getGroup(id);
+      if (!group) return res.status(404).json({ message: "Group not found" });
+      const updated = await storage.updateGroup(id, { relationshipTier: tier });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/groups/merge", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { primaryId, mergeIds } = req.body;
+      if (!primaryId || !mergeIds || !Array.isArray(mergeIds) || mergeIds.length === 0) {
+        return res.status(400).json({ message: "primaryId and mergeIds array required" });
+      }
+
+      const primary = await storage.getGroup(primaryId);
+      if (!primary || primary.userId !== userId) return res.status(404).json({ message: "Primary group not found" });
+
+      for (const mergeId of mergeIds) {
+        if (mergeId === primaryId) continue;
+        const source = await storage.getGroup(mergeId);
+        if (!source || source.userId !== userId) continue;
+
+        const sourceMembers = await storage.getGroupMembers(mergeId);
+        const primaryMembers = await storage.getGroupMembers(primaryId);
+        const existingContactIds = new Set(primaryMembers.map((m: any) => m.contactId));
+
+        for (const member of sourceMembers) {
+          if (!existingContactIds.has(member.contactId)) {
+            await storage.addGroupMember({ groupId: primaryId, contactId: member.contactId, role: member.role });
+          }
+        }
+
+        const sourceTaxLinks = await storage.getGroupTaxonomyLinks(mergeId);
+        const primaryTaxLinks = await storage.getGroupTaxonomyLinks(primaryId);
+        const existingTaxIds = new Set(primaryTaxLinks.map((l: any) => l.taxonomyId));
+
+        const newTaxLinks = sourceTaxLinks
+          .filter((l: any) => !existingTaxIds.has(l.taxonomyId))
+          .map((l: any) => ({ groupId: primaryId, taxonomyId: l.taxonomyId, relevanceScore: l.relevanceScore }));
+
+        if (newTaxLinks.length > 0) {
+          const allLinks = [...primaryTaxLinks.map((l: any) => ({ groupId: primaryId, taxonomyId: l.taxonomyId, relevanceScore: l.relevanceScore })), ...newTaxLinks];
+          await storage.setGroupTaxonomyLinks(primaryId, allLinks);
+        }
+
+        await storage.deleteGroup(mergeId);
+      }
+
+      const updated = await storage.getGroup(primaryId);
+      res.json(updated);
+    } catch (err: any) {
+      console.error("Merge groups error:", err);
+      res.status(500).json({ message: "Failed to merge groups" });
     }
   });
 
@@ -3689,8 +3782,7 @@ Return a JSON object with this exact structure:
 
       const snapshotInfo = snapshot ? {
         activationsTotal: snapshot.activationsTotal,
-        peopleUnique: snapshot.peopleUnique,
-        engagementsTotal: snapshot.engagementsTotal,
+        foottrafficUnique: snapshot.foottrafficUnique,
         bookingsTotal: snapshot.bookingsTotal,
         hoursTotal: snapshot.hoursTotal,
         revenueTotal: snapshot.revenueTotal,
@@ -3743,8 +3835,7 @@ Return a JSON object with this exact structure:
 
       const legacyTotals = {
         totalActivations: 0,
-        totalPeople: 0,
-        totalEngagements: 0,
+        totalFoottraffic: 0,
         totalBookings: 0,
         totalHours: 0,
         totalRevenue: 0,
@@ -3756,8 +3847,7 @@ Return a JSON object with this exact structure:
         const snapshot = await storage.getLegacyReportSnapshot(report.id);
         if (snapshot) {
           legacyTotals.totalActivations += snapshot.activationsTotal || 0;
-          legacyTotals.totalPeople += snapshot.peopleUnique || 0;
-          legacyTotals.totalEngagements += snapshot.engagementsTotal || 0;
+          legacyTotals.totalFoottraffic += snapshot.foottrafficUnique || 0;
           legacyTotals.totalBookings += snapshot.bookingsTotal || 0;
           legacyTotals.totalHours += parseFloat(String(snapshot.hoursTotal || 0));
           legacyTotals.totalRevenue += parseFloat(String(snapshot.revenueTotal || 0));

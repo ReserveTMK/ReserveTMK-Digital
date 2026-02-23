@@ -61,7 +61,7 @@ export default function Dashboard() {
   });
 
   const { data: blendedStats } = useQuery<{
-    legacy: { totalActivations: number; totalPeople: number; totalEngagements: number; totalBookings: number; totalHours: number; totalRevenue: number; totalInKind: number; reportCount: number };
+    legacy: { totalActivations: number; totalFoottraffic: number; totalBookings: number; totalHours: number; totalRevenue: number; totalInKind: number; reportCount: number };
     live: { completedProgrammes: number; completedBookings: number; confirmedDebriefs: number };
     boundaryDate: string | null;
   }>({ queryKey: ["/api/dashboard/blended-stats"] });
@@ -80,8 +80,7 @@ export default function Dashboard() {
       activationsWorkshops: number;
       activationsMentoring: number;
       activationsEvents: number;
-      peopleUnique: number | null;
-      engagementsTotal: number | null;
+      foottrafficUnique: number | null;
       source?: string;
     }>;
     boundaryDate: string | null;
@@ -213,7 +212,7 @@ export default function Dashboard() {
             <MetricCard
               title="Community"
               value={loadingContacts ? "..." : totalContacts}
-              subtext={hasLegacy && blendedStats!.legacy.totalPeople > 0 ? `incl. ${blendedStats!.legacy.totalPeople.toLocaleString()} from legacy` : undefined}
+              subtext={hasLegacy && blendedStats!.legacy.totalFoottraffic > 0 ? `incl. ${blendedStats!.legacy.totalFoottraffic.toLocaleString()} foot traffic from legacy` : undefined}
               icon={<Users className="w-5 h-5" />}
               color="primary"
               data-testid="metric-community"
@@ -221,7 +220,7 @@ export default function Dashboard() {
             <MetricCard
               title="Total Interactions"
               value={loadingInteractions ? "..." : totalInteractions}
-              subtext={hasLegacy && blendedStats!.legacy.totalEngagements > 0 ? `incl. ${blendedStats!.legacy.totalEngagements.toLocaleString()} from legacy` : undefined}
+              subtext={hasLegacy && blendedStats!.legacy.totalFoottraffic > 0 ? `incl. ${blendedStats!.legacy.totalFoottraffic.toLocaleString()} foot traffic from legacy` : undefined}
               icon={<Activity className="w-5 h-5" />}
               color="secondary"
               data-testid="metric-interactions"
@@ -271,14 +270,9 @@ export default function Dashboard() {
                     {blendedStats!.legacy.totalActivations.toLocaleString()} activations
                   </Badge>
                 )}
-                {blendedStats!.legacy.totalPeople > 0 && (
-                  <Badge variant="secondary" className="text-xs" data-testid="badge-legacy-people">
-                    {blendedStats!.legacy.totalPeople.toLocaleString()} people
-                  </Badge>
-                )}
-                {blendedStats!.legacy.totalEngagements > 0 && (
-                  <Badge variant="secondary" className="text-xs" data-testid="badge-legacy-engagements">
-                    {blendedStats!.legacy.totalEngagements.toLocaleString()} engagements
+                {blendedStats!.legacy.totalFoottraffic > 0 && (
+                  <Badge variant="secondary" className="text-xs" data-testid="badge-legacy-foottraffic">
+                    {blendedStats!.legacy.totalFoottraffic.toLocaleString()} foot traffic
                   </Badge>
                 )}
                 {blendedStats!.legacy.totalBookings > 0 && (
@@ -892,8 +886,7 @@ export default function Dashboard() {
                     <Line type="monotone" dataKey="activationsTotal" stroke="hsl(var(--brand-coral))" strokeWidth={2} name="Activations" dot />
                     <Line type="monotone" dataKey="activationsWorkshops" stroke="hsl(var(--brand-green))" strokeWidth={1.5} name="Workshops" dot />
                     <Line type="monotone" dataKey="activationsMentoring" stroke="hsl(var(--brand-blue))" strokeWidth={1.5} name="Mentoring" dot />
-                    <Line type="monotone" dataKey="peopleUnique" stroke="hsl(var(--primary))" strokeWidth={1.5} name="People" dot />
-                    <Line type="monotone" dataKey="engagementsTotal" stroke="hsl(var(--muted-foreground))" strokeWidth={1.5} name="Engagements" dot />
+                    <Line type="monotone" dataKey="foottrafficUnique" stroke="hsl(var(--primary))" strokeWidth={1.5} name="Hub Foot Traffic" dot />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
