@@ -48,7 +48,7 @@ const PEOPLE_ROLE_OPTIONS = [
 ];
 
 const ORG_TYPE_OPTIONS = [
-  "community_group", "resident_company", "business", "partner", "government", "iwi", "ngo", "education", "other",
+  "community_group", "community_collective", "resident_company", "business", "partner", "government", "iwi", "ngo", "education", "other",
 ];
 
 const METRIC_KEY_TO_LABEL: Record<string, string> = {
@@ -282,10 +282,11 @@ export default function LegacyReportsPage() {
       setShowForm(false);
       resetForm();
       if (result.autoExtracted && result.extraction) {
-        const { autoAppliedCount, reviewNeededCount, suggestedMetrics } = result.extraction;
+        const { autoAppliedCount, reviewNeededCount, suggestedMetrics, detectedMonth: dm2, detectedYear: dy2 } = result.extraction;
+        const dateInfo2 = dm2 && dy2 ? ` Date detected: ${MONTH_NAMES[dm2 - 1]} ${dy2}.` : "";
         toast({
           title: "Report Created & Metrics Extracted",
-          description: `${autoAppliedCount} metrics auto-applied, ${reviewNeededCount} need review`,
+          description: `${autoAppliedCount} metrics auto-applied, ${reviewNeededCount} need review.${dateInfo2}`,
         });
         const values: Record<string, string> = {};
         suggestedMetrics.forEach((m: ExtractionMetric) => {
@@ -533,10 +534,11 @@ export default function LegacyReportsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/legacy-trend-data"] });
 
       if (result.autoExtracted && result.extraction) {
-        const { autoAppliedCount, reviewNeededCount, suggestedMetrics } = result.extraction;
+        const { autoAppliedCount, reviewNeededCount, suggestedMetrics, detectedMonth: dm, detectedYear: dy } = result.extraction;
+        const dateInfo = dm && dy ? ` Date detected: ${MONTH_NAMES[dm - 1]} ${dy}.` : "";
         toast({
           title: "PDF Uploaded & Metrics Extracted",
-          description: `${autoAppliedCount} metrics auto-applied, ${reviewNeededCount} need review. You can edit the month/year from the report card.`,
+          description: `${autoAppliedCount} metrics auto-applied, ${reviewNeededCount} need review.${dateInfo}`,
         });
         const values: Record<string, string> = {};
         suggestedMetrics.forEach((m: ExtractionMetric) => {

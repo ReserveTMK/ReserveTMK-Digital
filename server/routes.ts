@@ -108,7 +108,15 @@ CRITICAL: These reports often contain YEAR-TO-DATE (YTD) cumulative tallies alon
 - If there are columns for each month (e.g. Jul, Aug, Sep) and a quarterly/YTD total column, extract ONLY the specific month's column value
 - The report title usually says the month (e.g. "August 2025") - extract data for THAT month only
 
-Extract THREE types of information:
+Extract FIVE types of information:
+
+0. REPORT DATE - Look at the document title, header, or first page for the report's month and year. Common patterns:
+- "Monthly Report - August 2025"
+- "August 2025 Report"
+- "Report for the month of August 2025"
+- "TMK Monthly Report Aug 2025"
+- "The Reserve - September 2024"
+Return the detected month (1-12) and year (e.g. 2025). If not found, return null for both.
 
 1. QUANTITATIVE METRICS - For each metric below, find the SINGLE MONTH value:
 ${LEGACY_METRIC_KEYS.map(m => `- ${m.key} (${m.label}, unit: ${m.unit})`).join("\n")}
@@ -117,6 +125,7 @@ ${LEGACY_METRIC_KEYS.map(m => `- ${m.key} (${m.label}, unit: ${m.unit})`).join("
 - Partner organisations
 - Businesses mentored or supported
 - Community groups engaged
+- Community collectives
 - Resident companies
 - Any named collective, trust, or entity
 
@@ -135,11 +144,13 @@ ${pdfText.substring(0, 12000)}
 
 Respond in JSON format only:
 {
+  "detectedMonth": 8,
+  "detectedYear": 2025,
   "metrics": [
     { "metricKey": "activations_total", "metricValue": 42, "metricUnit": "count", "confidence": 85, "evidenceSnippet": "exact text snippet (max 200 chars)" }
   ],
   "organisations": [
-    { "name": "Org Name", "type": "partner|business|community_group|resident_company|other", "description": "brief context about this org from the report", "relationship": "mentored|partnered|engaged|supported|hosted|other" }
+    { "name": "Org Name", "type": "partner|business|community_group|community_collective|resident_company|government|iwi|ngo|education|other", "description": "brief context about this org from the report", "relationship": "mentored|partnered|engaged|supported|hosted|other" }
   ],
   "highlights": [
     { "theme": "short theme label", "summary": "2-3 sentence description of this highlight from the report", "activityType": "workshop|mentoring|event|community|partnership|programme|other" }
@@ -150,6 +161,7 @@ Respond in JSON format only:
 }
 
 Rules:
+- For detectedMonth/detectedYear: Look at the document title, heading, or header for the month and year this report covers. Return null if not found.
 - For metrics: confidence 0-100. If not found, set metricValue to null, confidence to 0
 - Be conservative: do NOT fabricate numbers. If uncertain between YTD/quarterly and monthly, set to null
 - For organisations: only include named entities explicitly mentioned in the text
@@ -2615,6 +2627,38 @@ Important:
             rawText: pdfText.substring(0, 20000),
           });
 
+          const detectedMonth = parsed.detectedMonth ? parseInt(parsed.detectedMonth) : null;
+          const detectedYear = parsed.detectedYear ? parseInt(parsed.detectedYear) : null;
+
+          let updatedReport = report;
+          if (detectedMonth && detectedYear && detectedMonth >= 1 && detectedMonth <= 12 && detectedYear >= 2023) {
+            const isValidDate = !(detectedYear === 2023 && detectedMonth < 11);
+            const detectedEnd = new Date(detectedYear, detectedMonth, 0);
+            const notFuture = detectedEnd <= new Date();
+            const isDifferent = detectedMonth !== report.month || detectedYear !== report.year;
+
+            if (isValidDate && notFuture && isDifferent) {
+              const existingReports = await storage.getLegacyReports(userId);
+              const wouldDuplicate = existingReports.find(r => r.id !== report.id && r.year === detectedYear && r.month === detectedMonth);
+
+              if (!wouldDuplicate) {
+                const periodStart = new Date(detectedYear, detectedMonth - 1, 1);
+                const periodEnd = detectedEnd;
+                const quarter = Math.floor((detectedMonth - 1) / 3) + 1;
+                const quarterLabel = `${MONTH_NAMES[detectedMonth - 1]} ${detectedYear}`;
+
+                updatedReport = await storage.updateLegacyReport(report.id, {
+                  year: detectedYear,
+                  month: detectedMonth,
+                  quarter,
+                  quarterLabel,
+                  periodStart,
+                  periodEnd,
+                });
+              }
+            }
+          }
+
           const snapshotData: Record<string, any> = { legacyReportId: report.id };
           let autoAppliedCount = 0;
           let reviewNeededCount = 0;
@@ -2640,10 +2684,10 @@ Important:
           }
 
           return res.status(201).json({
-            ...report,
+            ...updatedReport,
             snapshot: snapshotRecord,
             autoExtracted: true,
-            extraction: { suggestedMetrics, autoAppliedCount, reviewNeededCount, extractedOrganisations, extractedHighlights, extractedPeople },
+            extraction: { suggestedMetrics, autoAppliedCount, reviewNeededCount, extractedOrganisations, extractedHighlights, extractedPeople, detectedMonth, detectedYear },
           });
         } catch (extractErr: any) {
           console.error("Auto-extraction error (non-fatal):", extractErr);
@@ -2750,6 +2794,7 @@ Important:
                   userId,
                   name: org.name,
                   type: org.type === "community_group" ? "Community Group" :
+                        org.type === "community_collective" ? "Community Collective" :
                         org.type === "resident_company" ? "Resident Company" :
                         org.type === "business" ? "Business" :
                         org.type === "partner" ? "Partner" :
