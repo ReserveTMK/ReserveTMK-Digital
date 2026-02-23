@@ -58,11 +58,7 @@ const METRIC_KEY_TO_LABEL: Record<string, string> = {
   activations_events: "Events",
   activations_partner_meetings: "Partner Meetings",
   hub_foottraffic: "Hub Foot Traffic",
-  groups_unique: "Unique Groups",
   bookings_total: "Total Bookings",
-  hours_total: "Total Hours",
-  revenue_total: "Total Revenue",
-  in_kind_total: "In-Kind Value",
 };
 
 const METRIC_KEY_TO_SNAPSHOT_FIELD: Record<string, keyof LegacyReportSnapshot> = {
@@ -72,11 +68,7 @@ const METRIC_KEY_TO_SNAPSHOT_FIELD: Record<string, keyof LegacyReportSnapshot> =
   activations_events: "activationsEvents",
   activations_partner_meetings: "activationsPartnerMeetings",
   hub_foottraffic: "foottrafficUnique",
-  groups_unique: "groupsUnique",
   bookings_total: "bookingsTotal",
-  hours_total: "hoursTotal",
-  revenue_total: "revenueTotal",
-  in_kind_total: "inKindTotal",
 };
 
 interface LegacyReportSnapshot {
@@ -86,11 +78,7 @@ interface LegacyReportSnapshot {
   activationsEvents: number;
   activationsPartnerMeetings: number;
   foottrafficUnique: number | null;
-  groupsUnique: number | null;
   bookingsTotal: number | null;
-  hoursTotal: string | null;
-  revenueTotal: string | null;
-  inKindTotal: string | null;
 }
 
 interface LegacyReportWithSnapshot {
@@ -110,6 +98,13 @@ interface LegacyReportWithSnapshot {
   confirmedBy: string | null;
   createdAt: string;
   snapshot: LegacyReportSnapshot | null;
+  processingStatus?: {
+    hasExtraction: boolean;
+    extractedOrgCount: number;
+    extractedPeopleCount: number;
+    groupsImported: number;
+    contactsImported: number;
+  };
 }
 
 interface ExtractionMetric {
@@ -156,11 +151,7 @@ const emptySnapshot: LegacyReportSnapshot = {
   activationsEvents: 0,
   activationsPartnerMeetings: 0,
   foottrafficUnique: null,
-  groupsUnique: null,
   bookingsTotal: null,
-  hoursTotal: null,
-  revenueTotal: null,
-  inKindTotal: null,
 };
 
 const currentYear = new Date().getFullYear();
@@ -593,7 +584,7 @@ export default function LegacyReportsPage() {
       ...prev,
       snapshot: {
         ...prev.snapshot,
-        [field]: value === "" ? null : (field === "hoursTotal" || field === "revenueTotal" || field === "inKindTotal" ? value : parseInt(value) || 0),
+        [field]: value === "" ? null : (parseInt(value) || 0),
       },
     }));
   }
@@ -606,8 +597,6 @@ export default function LegacyReportsPage() {
       if (snapshotField) {
         if (value === "") {
           snapshotUpdate[snapshotField] = null;
-        } else if (snapshotField === "hoursTotal" || snapshotField === "revenueTotal" || snapshotField === "inKindTotal") {
-          snapshotUpdate[snapshotField] = value;
         } else {
           snapshotUpdate[snapshotField] = parseInt(value) || 0;
         }
@@ -934,13 +923,35 @@ export default function LegacyReportsPage() {
                           {report.snapshot.activationsMentoring > 0 && <span>{report.snapshot.activationsMentoring} mentoring</span>}
                           {report.snapshot.activationsEvents > 0 && <span>{report.snapshot.activationsEvents} events</span>}
                           {report.snapshot.foottrafficUnique && <span>{report.snapshot.foottrafficUnique} foot traffic</span>}
-                          {report.snapshot.hoursTotal && <span>{report.snapshot.hoursTotal} hrs</span>}
-                          {report.snapshot.revenueTotal && <span>${report.snapshot.revenueTotal} revenue</span>}
-                          {report.snapshot.inKindTotal && <span>${report.snapshot.inKindTotal} in-kind</span>}
+                          {(report.snapshot.bookingsTotal ?? 0) > 0 && <span>{report.snapshot.bookingsTotal} bookings</span>}
                         </div>
                       )}
                       {report.notes && (
                         <p className="text-xs text-muted-foreground mt-1 italic">{report.notes}</p>
+                      )}
+                      {report.status === "confirmed" && report.processingStatus && (
+                        <div className="flex flex-wrap gap-1.5 mt-2" data-testid={`processing-status-${report.id}`}>
+                          {report.processingStatus.groupsImported > 0 && (
+                            <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 border-emerald-200">
+                              {report.processingStatus.groupsImported} groups imported
+                            </Badge>
+                          )}
+                          {report.processingStatus.contactsImported > 0 && (
+                            <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400 border-blue-200">
+                              {report.processingStatus.contactsImported} people imported
+                            </Badge>
+                          )}
+                          {report.processingStatus.extractedOrgCount > 0 && report.processingStatus.groupsImported === 0 && (
+                            <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 border-amber-200">
+                              {report.processingStatus.extractedOrgCount} orgs extracted (not imported)
+                            </Badge>
+                          )}
+                          {report.processingStatus.extractedPeopleCount > 0 && report.processingStatus.contactsImported === 0 && (
+                            <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 border-amber-200">
+                              {report.processingStatus.extractedPeopleCount} people extracted (not imported)
+                            </Badge>
+                          )}
+                        </div>
                       )}
                     </div>
                     <div className="flex gap-1 shrink-0 flex-wrap">

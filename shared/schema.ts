@@ -491,15 +491,8 @@ export const legacyReportSnapshots = pgTable("legacy_report_snapshots", {
   activationsMentoring: integer("activations_mentoring").default(0),
   activationsEvents: integer("activations_events").default(0),
   activationsPartnerMeetings: integer("activations_partner_meetings").default(0),
-  peopleUnique: integer("people_unique"),
-  engagementsTotal: integer("engagements_total"),
   foottrafficUnique: integer("foottraffic_unique"),
-  groupsUnique: integer("groups_unique"),
   bookingsTotal: integer("bookings_total"),
-  hoursTotal: numeric("hours_total"),
-  revenueTotal: numeric("revenue_total"),
-  inKindTotal: numeric("in_kind_total"),
-  extraMetrics: jsonb("extra_metrics").$type<Record<string, number>>().default({}),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

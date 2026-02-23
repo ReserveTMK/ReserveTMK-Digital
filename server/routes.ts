@@ -75,11 +75,7 @@ const LEGACY_METRIC_KEYS = [
   { key: "activations_events", label: "Events", unit: "count" },
   { key: "activations_partner_meetings", label: "Partner Meetings", unit: "count" },
   { key: "hub_foottraffic", label: "Hub Foot Traffic", unit: "count" },
-  { key: "groups_unique", label: "Unique Groups", unit: "count" },
   { key: "bookings_total", label: "Total Bookings", unit: "count" },
-  { key: "hours_total", label: "Total Hours", unit: "hours" },
-  { key: "revenue_total", label: "Total Revenue", unit: "NZD" },
-  { key: "in_kind_total", label: "In-Kind Value", unit: "NZD" },
 ];
 
 const METRIC_KEY_TO_SNAPSHOT_FIELD: Record<string, string> = {
@@ -89,11 +85,7 @@ const METRIC_KEY_TO_SNAPSHOT_FIELD: Record<string, string> = {
   activations_events: "activationsEvents",
   activations_partner_meetings: "activationsPartnerMeetings",
   hub_foottraffic: "foottrafficUnique",
-  groups_unique: "groupsUnique",
   bookings_total: "bookingsTotal",
-  hours_total: "hoursTotal",
-  revenue_total: "revenueTotal",
-  in_kind_total: "inKindTotal",
 };
 
 function buildExtractionPrompt(pdfText: string): string {
@@ -2301,11 +2293,7 @@ Important:
             activationsEvents: 0,
             activationsPartnerMeetings: 0,
             foottrafficUnique: 0,
-            groupsUnique: 0,
             bookingsTotal: 0,
-            hoursTotal: 0,
-            revenueTotal: 0,
-            inKindTotal: 0,
             reportCount: overlapping.length,
           };
 
@@ -2320,11 +2308,7 @@ Important:
               legacyTotals.activationsEvents += snapshot.activationsEvents || 0;
               legacyTotals.activationsPartnerMeetings += snapshot.activationsPartnerMeetings || 0;
               legacyTotals.foottrafficUnique += snapshot.foottrafficUnique || 0;
-              legacyTotals.groupsUnique += snapshot.groupsUnique || 0;
               legacyTotals.bookingsTotal += snapshot.bookingsTotal || 0;
-              legacyTotals.hoursTotal += parseFloat(String(snapshot.hoursTotal || 0));
-              legacyTotals.revenueTotal += parseFloat(String(snapshot.revenueTotal || 0));
-              legacyTotals.inKindTotal += parseFloat(String(snapshot.inKindTotal || 0));
             }
             quarters.push({
               label: lr.quarterLabel,
@@ -2464,10 +2448,19 @@ Important:
     try {
       const userId = (req.user as any).claims.sub;
       const reports = await storage.getLegacyReports(userId);
+      const allGroups = await storage.getGroups(userId);
+      const allContacts = await storage.getContacts(userId);
       const reportsWithSnapshots = await Promise.all(
         reports.map(async (r) => {
           const snapshot = await storage.getLegacyReportSnapshot(r.id);
-          return { ...r, snapshot };
+          const extraction = await storage.getLegacyReportExtraction(r.id);
+          const importLabel = `Imported from legacy report ${r.quarterLabel}`;
+          const groupsImported = allGroups.filter(g => g.importSource === importLabel).length;
+          const contactsImported = allContacts.filter(c => c.notes?.includes(importLabel)).length;
+          const hasExtraction = !!extraction;
+          const extractedOrgCount = (extraction?.extractedOrganisations as any[])?.length || 0;
+          const extractedPeopleCount = (extraction?.extractedPeople as any[])?.length || 0;
+          return { ...r, snapshot, processingStatus: { hasExtraction, extractedOrgCount, extractedPeopleCount, groupsImported, contactsImported } };
         })
       );
       res.json(reportsWithSnapshots);
@@ -2552,14 +2545,8 @@ Important:
           activationsMentoring: snapshot.activationsMentoring ?? null,
           activationsEvents: snapshot.activationsEvents ?? null,
           activationsPartnerMeetings: snapshot.activationsPartnerMeetings ?? null,
-          peopleUnique: snapshot.peopleUnique ?? null,
-          engagementsTotal: snapshot.engagementsTotal ?? null,
           foottrafficUnique: snapshot.foottrafficUnique ?? null,
-          groupsUnique: snapshot.groupsUnique ?? null,
           bookingsTotal: snapshot.bookingsTotal ?? null,
-          hoursTotal: snapshot.hoursTotal ?? null,
-          revenueTotal: snapshot.revenueTotal ?? null,
-          inKindTotal: snapshot.inKindTotal ?? null,
         });
       }
 
@@ -2889,9 +2876,6 @@ Important:
         activationsTotal: snapshot.activationsTotal,
         foottrafficUnique: snapshot.foottrafficUnique,
         bookingsTotal: snapshot.bookingsTotal,
-        hoursTotal: snapshot.hoursTotal,
-        revenueTotal: snapshot.revenueTotal,
-        inKindTotal: snapshot.inKindTotal,
       } : {};
 
       const prompt = `You are analyzing a legacy report to suggest taxonomy categories for impact classification.
@@ -3113,9 +3097,7 @@ Return a JSON object with this exact structure:
             activationsEvents: snapshot?.activationsEvents || 0,
             activationsPartnerMeetings: snapshot?.activationsPartnerMeetings || 0,
             foottrafficUnique: snapshot?.foottrafficUnique || null,
-            groupsUnique: snapshot?.groupsUnique || null,
             bookingsTotal: snapshot?.bookingsTotal || null,
-            hoursTotal: snapshot?.hoursTotal ? Number(snapshot.hoursTotal) : null,
           };
         })
       );
@@ -3784,9 +3766,6 @@ Return a JSON object with this exact structure:
         activationsTotal: snapshot.activationsTotal,
         foottrafficUnique: snapshot.foottrafficUnique,
         bookingsTotal: snapshot.bookingsTotal,
-        hoursTotal: snapshot.hoursTotal,
-        revenueTotal: snapshot.revenueTotal,
-        inKindTotal: snapshot.inKindTotal,
       } : {};
 
       const prompt = `You are analyzing a legacy report to suggest taxonomy categories for impact classification.
@@ -3837,9 +3816,6 @@ Return a JSON object with this exact structure:
         totalActivations: 0,
         totalFoottraffic: 0,
         totalBookings: 0,
-        totalHours: 0,
-        totalRevenue: 0,
-        totalInKind: 0,
         reportCount: confirmedReports.length,
       };
 
@@ -3849,9 +3825,6 @@ Return a JSON object with this exact structure:
           legacyTotals.totalActivations += snapshot.activationsTotal || 0;
           legacyTotals.totalFoottraffic += snapshot.foottrafficUnique || 0;
           legacyTotals.totalBookings += snapshot.bookingsTotal || 0;
-          legacyTotals.totalHours += parseFloat(String(snapshot.hoursTotal || 0));
-          legacyTotals.totalRevenue += parseFloat(String(snapshot.revenueTotal || 0));
-          legacyTotals.totalInKind += parseFloat(String(snapshot.inKindTotal || 0));
         }
       }
 
