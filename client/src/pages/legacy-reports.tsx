@@ -44,8 +44,11 @@ const ACTIVITY_TYPE_OPTIONS = [
 ];
 
 const PEOPLE_ROLE_OPTIONS = [
-  "mentee", "mentor", "facilitator", "partner", "speaker", "coordinator",
-  "volunteer", "board member", "staff", "community leader", "participant", "other",
+  "mentee", "collaborator", "community",
+];
+
+const ORG_TYPE_OPTIONS = [
+  "community_group", "resident_company", "business", "partner", "government", "iwi", "ngo", "education", "other",
 ];
 
 const METRIC_KEY_TO_LABEL: Record<string, string> = {
@@ -226,6 +229,7 @@ export default function LegacyReportsPage() {
   const [editedMetricValues, setEditedMetricValues] = useState<Record<string, string>>({});
   const [editedHighlightTypes, setEditedHighlightTypes] = useState<Record<number, string>>({});
   const [editedPeopleRoles, setEditedPeopleRoles] = useState<Record<number, string>>({});
+  const [editedOrgTypes, setEditedOrgTypes] = useState<Record<string, string>>({});
   const [addingMetric, setAddingMetric] = useState(false);
   const [editingDateId, setEditingDateId] = useState<number | null>(null);
   const [editDateYear, setEditDateYear] = useState<string>("");
@@ -257,6 +261,14 @@ export default function LegacyReportsPage() {
     boundaryDate: string | null;
   }>({
     queryKey: ["/api/legacy-trend-data"],
+  });
+
+  const { data: existingGroups } = useQuery<Array<{ id: number; name: string; type: string }>>({
+    queryKey: ["/api/groups"],
+  });
+
+  const { data: existingContacts } = useQuery<Array<{ id: number; name: string }>>({
+    queryKey: ["/api/contacts"],
   });
 
   const createMutation = useMutation({
@@ -418,6 +430,34 @@ export default function LegacyReportsPage() {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     },
   });
+
+  async function loadExtractionForReview(reportId: number) {
+    try {
+      const res = await apiRequest("GET", `/api/legacy-report-extractions/${reportId}`);
+      const extraction = await res.json();
+      if (extraction && extraction.suggestedMetrics) {
+        const values: Record<string, string> = {};
+        (extraction.suggestedMetrics as ExtractionMetric[]).forEach((m: ExtractionMetric) => {
+          values[m.metricKey] = m.metricValue !== null ? String(m.metricValue) : "";
+        });
+        setEditedMetricValues(values);
+        setEditedHighlightTypes({});
+        setEditedPeopleRoles({});
+        setEditedOrgTypes({});
+        setExtractionData({
+          reportId,
+          metrics: extraction.suggestedMetrics,
+          organisations: extraction.extractedOrganisations,
+          highlights: extraction.extractedHighlights,
+          people: extraction.extractedPeople,
+        });
+      } else {
+        toast({ title: "No extraction", description: "No extraction data found for this report", variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to load extraction", variant: "destructive" });
+    }
+  }
 
   const [boundaryDateInput, setBoundaryDateInput] = useState(
     reportingSettings?.boundaryDate ? format(new Date(reportingSettings.boundaryDate), "yyyy-MM-dd") : ""
@@ -581,8 +621,9 @@ export default function LegacyReportsPage() {
 
     const hasHighlightEdits = Object.keys(editedHighlightTypes).length > 0;
     const hasPeopleEdits = Object.keys(editedPeopleRoles).length > 0;
+    const hasOrgEdits = Object.keys(editedOrgTypes).length > 0;
 
-    if (hasHighlightEdits || hasPeopleEdits) {
+    if (hasHighlightEdits || hasPeopleEdits || hasOrgEdits) {
       const extractionUpdate: any = {};
       if (hasHighlightEdits && extractionData.highlights) {
         extractionUpdate.extractedHighlights = extractionData.highlights.map((h, i) => ({
@@ -594,6 +635,12 @@ export default function LegacyReportsPage() {
         extractionUpdate.extractedPeople = extractionData.people.map((p, i) => ({
           ...p,
           role: editedPeopleRoles[i] ?? p.role,
+        }));
+      }
+      if (hasOrgEdits && extractionData.organisations) {
+        extractionUpdate.extractedOrganisations = extractionData.organisations.map((o) => ({
+          ...o,
+          type: editedOrgTypes[o.name] ?? o.type,
         }));
       }
       try {
@@ -608,6 +655,7 @@ export default function LegacyReportsPage() {
     setEditedMetricValues({});
     setEditedHighlightTypes({});
     setEditedPeopleRoles({});
+    setEditedOrgTypes({});
     setAddingMetric(false);
   }
 
@@ -898,23 +946,30 @@ export default function LegacyReportsPage() {
                       )}
                     </div>
                     <div className="flex gap-1 shrink-0 flex-wrap">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => loadExtractionForReview(report.id)}
+                        data-testid={`button-review-extraction-${report.id}`}
+                      >
+                        <Eye className="w-3 h-3 mr-1" />
+                        Review
+                      </Button>
                       {report.pdfFileName && (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => extractMetricsMutation.mutate(report.id)}
-                            disabled={extractingId === report.id}
-                            data-testid={`button-extract-metrics-${report.id}`}
-                          >
-                            {extractingId === report.id ? (
-                              <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                            ) : (
-                              <Eye className="w-3 h-3 mr-1" />
-                            )}
-                            Extract
-                          </Button>
-                        </>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => extractMetricsMutation.mutate(report.id)}
+                          disabled={extractingId === report.id}
+                          data-testid={`button-extract-metrics-${report.id}`}
+                        >
+                          {extractingId === report.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                          ) : (
+                            <Sparkles className="w-3 h-3 mr-1" />
+                          )}
+                          Re-extract
+                        </Button>
                       )}
                       {report.status === "draft" || !report.status ? (
                         <Button
@@ -1113,15 +1168,36 @@ export default function LegacyReportsPage() {
                 <>
                   <h4 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wide">Organisations Found</h4>
                   <p className="text-xs text-muted-foreground mb-2">These will be added to your Groups when you confirm the report.</p>
-                  <div className="flex flex-wrap gap-2 mb-4" data-testid="section-extracted-orgs">
-                    {extractionData.organisations.map((org, i) => (
-                      <Badge key={i} variant="secondary" className="text-xs py-1 px-2" data-testid={`badge-org-${i}`}>
-                        <span className="font-medium">{org.name}</span>
-                        {org.type && org.type !== "other" && (
-                          <span className="text-muted-foreground ml-1">({org.type.replace(/_/g, " ")})</span>
-                        )}
-                      </Badge>
-                    ))}
+                  <div className="space-y-2 mb-4" data-testid="section-extracted-orgs">
+                    {extractionData.organisations.map((org, i) => {
+                      const matchingGroup = existingGroups?.find(g => g.name.toLowerCase().trim() === org.name.toLowerCase().trim());
+                      return (
+                        <div key={i} className="flex items-center gap-2 flex-wrap" data-testid={`org-row-${i}`}>
+                          <span className="text-sm font-medium">{org.name}</span>
+                          <Select
+                            value={editedOrgTypes[org.name] ?? org.type ?? "other"}
+                            onValueChange={(val) => setEditedOrgTypes(prev => ({ ...prev, [org.name]: val }))}
+                          >
+                            <SelectTrigger className="h-6 w-auto min-w-[120px] text-[10px] px-2 py-0" data-testid={`select-org-type-${i}`}>
+                              <SelectValue placeholder="Type..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ORG_TYPE_OPTIONS.map(opt => (
+                                <SelectItem key={opt} value={opt} className="text-xs">{opt.replace(/_/g, " ")}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {matchingGroup ? (
+                            <Badge variant="outline" className="text-[10px] border-amber-500 text-amber-600 dark:text-amber-400" data-testid={`badge-org-exists-${i}`}>
+                              Already in Groups
+                            </Badge>
+                          ) : null}
+                          {org.description && (
+                            <span className="text-xs text-muted-foreground italic">{org.description}</span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </>
               )}
@@ -1159,27 +1235,35 @@ export default function LegacyReportsPage() {
                 <>
                   <h4 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wide">People Mentioned</h4>
                   <div className="space-y-2 mb-4" data-testid="section-extracted-people">
-                    {extractionData.people.map((p, i) => (
-                      <div key={i} className="flex items-center gap-2 flex-wrap" data-testid={`person-row-${i}`}>
-                        <span className="text-sm font-medium">{p.name}</span>
-                        <Select
-                          value={editedPeopleRoles[i] ?? p.role ?? ""}
-                          onValueChange={(val) => setEditedPeopleRoles(prev => ({ ...prev, [i]: val }))}
-                        >
-                          <SelectTrigger className="h-6 w-auto min-w-[100px] text-[10px] px-2 py-0" data-testid={`select-person-role-${i}`}>
-                            <SelectValue placeholder="Role..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {PEOPLE_ROLE_OPTIONS.map(opt => (
-                              <SelectItem key={opt} value={opt} className="text-xs">{opt}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {p.context && (
-                          <span className="text-xs text-muted-foreground italic">{p.context}</span>
-                        )}
-                      </div>
-                    ))}
+                    {extractionData.people.map((p, i) => {
+                      const matchingContact = existingContacts?.find(c => c.name.toLowerCase().trim() === p.name.toLowerCase().trim());
+                      return (
+                        <div key={i} className="flex items-center gap-2 flex-wrap" data-testid={`person-row-${i}`}>
+                          <span className="text-sm font-medium">{p.name}</span>
+                          <Select
+                            value={editedPeopleRoles[i] ?? p.role ?? ""}
+                            onValueChange={(val) => setEditedPeopleRoles(prev => ({ ...prev, [i]: val }))}
+                          >
+                            <SelectTrigger className="h-6 w-auto min-w-[100px] text-[10px] px-2 py-0" data-testid={`select-person-role-${i}`}>
+                              <SelectValue placeholder="Role..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {PEOPLE_ROLE_OPTIONS.map(opt => (
+                                <SelectItem key={opt} value={opt} className="text-xs">{opt}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {matchingContact ? (
+                            <Badge variant="outline" className="text-[10px] border-amber-500 text-amber-600 dark:text-amber-400" data-testid={`badge-person-exists-${i}`}>
+                              Already in Contacts
+                            </Badge>
+                          ) : null}
+                          {p.context && (
+                            <span className="text-xs text-muted-foreground italic">{p.context}</span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </>
               )}
@@ -1197,7 +1281,7 @@ export default function LegacyReportsPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => { setExtractionData(null); setEditedMetricValues({}); setEditedHighlightTypes({}); setEditedPeopleRoles({}); setAddingMetric(false); }}
+                  onClick={() => { setExtractionData(null); setEditedMetricValues({}); setEditedHighlightTypes({}); setEditedPeopleRoles({}); setEditedOrgTypes({}); setAddingMetric(false); }}
                   data-testid="button-dismiss-extraction-footer"
                 >
                   Dismiss

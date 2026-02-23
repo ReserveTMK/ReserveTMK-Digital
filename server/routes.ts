@@ -2751,7 +2751,12 @@ Important:
                   name: org.name,
                   type: org.type === "community_group" ? "Community Group" :
                         org.type === "resident_company" ? "Resident Company" :
-                        org.type === "business" ? "Business" : "Organisation",
+                        org.type === "business" ? "Business" :
+                        org.type === "partner" ? "Partner" :
+                        org.type === "government" ? "Government" :
+                        org.type === "iwi" ? "Iwi" :
+                        org.type === "ngo" ? "NGO" :
+                        org.type === "education" ? "Education" : "Organisation",
                   description: org.description || null,
                   notes: org.relationship ? `Relationship: ${org.relationship}. Imported from legacy report ${existing.quarterLabel}.` : `Imported from legacy report ${existing.quarterLabel}.`,
                   active: true,
@@ -3353,6 +3358,50 @@ Return a JSON object with this exact structure:
     }
   });
 
+  app.get("/api/legacy-report-extractions/:reportId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const reportId = parseInt(req.params.reportId);
+      const report = await storage.getLegacyReport(reportId);
+      if (!report || report.userId !== userId) return res.status(404).json({ message: "Not found" });
+
+      const extraction = await storage.getLegacyReportExtraction(reportId);
+      if (!extraction) return res.status(404).json({ message: "No extraction found" });
+
+      res.json(extraction);
+    } catch (err: any) {
+      console.error("Get extraction error:", err);
+      res.status(500).json({ message: "Failed to get extraction" });
+    }
+  });
+
+  app.post("/api/legacy-report-extractions", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { legacyReportId, rawText, suggestedMetrics, extractedOrganisations, extractedHighlights, extractedPeople } = req.body;
+
+      const report = await storage.getLegacyReport(legacyReportId);
+      if (!report || report.userId !== userId) return res.status(404).json({ message: "Report not found" });
+
+      const existing = await storage.getLegacyReportExtraction(legacyReportId);
+      if (existing) return res.status(409).json({ message: "Extraction already exists for this report" });
+
+      const extraction = await storage.createLegacyReportExtraction({
+        legacyReportId,
+        rawText: rawText || null,
+        suggestedMetrics: suggestedMetrics || [],
+        extractedOrganisations: extractedOrganisations || null,
+        extractedHighlights: extractedHighlights || null,
+        extractedPeople: extractedPeople || null,
+      });
+
+      res.status(201).json(extraction);
+    } catch (err: any) {
+      console.error("Create extraction error:", err);
+      res.status(500).json({ message: "Failed to create extraction" });
+    }
+  });
+
   app.patch("/api/legacy-report-extractions/:reportId", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
@@ -3363,10 +3412,11 @@ Return a JSON object with this exact structure:
       const extraction = await storage.getLegacyReportExtraction(reportId);
       if (!extraction) return res.status(404).json({ message: "No extraction found" });
 
-      const { extractedHighlights, extractedPeople } = req.body;
+      const { extractedHighlights, extractedPeople, extractedOrganisations } = req.body;
       const updates: any = {};
       if (extractedHighlights) updates.extractedHighlights = extractedHighlights;
       if (extractedPeople) updates.extractedPeople = extractedPeople;
+      if (extractedOrganisations) updates.extractedOrganisations = extractedOrganisations;
 
       const updated = await storage.updateLegacyReportExtraction(extraction.id, updates);
       res.json(updated);
