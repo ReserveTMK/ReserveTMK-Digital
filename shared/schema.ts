@@ -240,10 +240,16 @@ export const calendarSettings = pgTable("calendar_settings", {
 export const GROUP_TYPES = [
   "Organisation",
   "Collective",
+  "Community Group",
+  "Community Collective",
   "Whānau Group",
   "Business",
-  "Community Group",
+  "Resident Company",
+  "Partner",
   "Government",
+  "Iwi",
+  "NGO",
+  "Education",
   "Other",
 ] as const;
 export type GroupType = typeof GROUP_TYPES[number];

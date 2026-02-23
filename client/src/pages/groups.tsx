@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/beautiful-button";
 import { useGroups, useCreateGroup, useUpdateGroup, useDeleteGroup, useGroupMembers, useAddGroupMember, useRemoveGroupMember, useEnrichGroup, useGroupTaxonomyLinks, useSaveGroupTaxonomyLinks } from "@/hooks/use-groups";
 import { useContacts } from "@/hooks/use-contacts";
 import { useTaxonomy } from "@/hooks/use-taxonomy";
-import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe, Target, History, ChevronDown } from "lucide-react";
+import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe, Target, History, ChevronDown, Pencil } from "lucide-react";
 import { RelationshipStageSelector } from "@/components/relationship-stage-selector";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -41,10 +41,16 @@ import {
 const GROUP_TYPE_COLORS: Record<string, string> = {
   "Organisation": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
   "Collective": "bg-purple-500/10 text-purple-700 dark:text-purple-300",
+  "Community Group": "bg-rose-500/10 text-rose-700 dark:text-rose-300",
+  "Community Collective": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
   "Whānau Group": "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
   "Business": "bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  "Community Group": "bg-rose-500/10 text-rose-700 dark:text-rose-300",
+  "Resident Company": "bg-teal-500/10 text-teal-700 dark:text-teal-300",
+  "Partner": "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
   "Government": "bg-slate-500/10 text-slate-700 dark:text-slate-300",
+  "Iwi": "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  "NGO": "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
+  "Education": "bg-yellow-500/10 text-yellow-700 dark:text-yellow-300",
   "Other": "bg-gray-500/10 text-gray-700 dark:text-gray-300",
 };
 
@@ -245,8 +251,11 @@ function GroupCard({ group, onSelect, onEdit, onDelete }: {
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-            <Button size="icon" variant="ghost" onClick={onEdit} data-testid={`button-edit-group-${group.id}`}>
-              <ChevronRight className="w-4 h-4" />
+            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onEdit} title="Edit" data-testid={`button-edit-group-${group.id}`}>
+              <Pencil className="w-3.5 h-3.5" />
+            </Button>
+            <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={onDelete} title="Delete" data-testid={`button-delete-group-${group.id}`}>
+              <Trash2 className="w-3.5 h-3.5" />
             </Button>
           </div>
         </div>
