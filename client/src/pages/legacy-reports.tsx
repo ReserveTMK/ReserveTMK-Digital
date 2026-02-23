@@ -200,6 +200,8 @@ export default function LegacyReportsPage() {
   const [showForm, setShowForm] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [expandedTrend, setExpandedTrend] = useState(true);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dropUploading, setDropUploading] = useState(false);
 
   const [selectedYear, setSelectedYear] = useState<string>("");
   const [selectedMonth, setSelectedMonth] = useState<string>("");
@@ -225,6 +227,9 @@ export default function LegacyReportsPage() {
   const [editedHighlightTypes, setEditedHighlightTypes] = useState<Record<number, string>>({});
   const [editedPeopleRoles, setEditedPeopleRoles] = useState<Record<number, string>>({});
   const [addingMetric, setAddingMetric] = useState(false);
+  const [editingDateId, setEditingDateId] = useState<number | null>(null);
+  const [editDateYear, setEditDateYear] = useState<string>("");
+  const [editDateMonth, setEditDateMonth] = useState<string>("");
   const [suggestingTaxonomyId, setSuggestingTaxonomyId] = useState<number | null>(null);
   const [taxonomySuggestions, setTaxonomySuggestions] = useState<{
     reportId: number;
@@ -455,6 +460,70 @@ export default function LegacyReportsPage() {
     reader.readAsDataURL(file);
   }
 
+  async function handleDropUpload(file: File) {
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      toast({ title: "Invalid file", description: "Please drop a PDF file", variant: "destructive" });
+      return;
+    }
+    setDropUploading(true);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const now = new Date();
+      const defaultMonth = now.getMonth() === 0 ? 12 : now.getMonth();
+      const defaultYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+
+      const payload = {
+        year: defaultYear,
+        month: defaultMonth,
+        pdfFileName: file.name,
+        pdfData: base64,
+        notes: null,
+      };
+
+      const res = await apiRequest("POST", "/api/legacy-reports", payload);
+      const result = await res.json();
+
+      queryClient.invalidateQueries({ queryKey: ["/api/legacy-reports"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/legacy-trend-data"] });
+
+      if (result.autoExtracted && result.extraction) {
+        const { autoAppliedCount, reviewNeededCount, suggestedMetrics } = result.extraction;
+        toast({
+          title: "PDF Uploaded & Metrics Extracted",
+          description: `${autoAppliedCount} metrics auto-applied, ${reviewNeededCount} need review. You can edit the month/year from the report card.`,
+        });
+        const values: Record<string, string> = {};
+        suggestedMetrics.forEach((m: ExtractionMetric) => {
+          values[m.metricKey] = m.metricValue !== null ? String(m.metricValue) : "";
+        });
+        setEditedMetricValues(values);
+        setExtractionData({
+          reportId: result.id,
+          metrics: suggestedMetrics,
+          organisations: result.extraction.extractedOrganisations,
+          highlights: result.extraction.extractedHighlights,
+          people: result.extraction.extractedPeople,
+        });
+      } else {
+        toast({
+          title: "PDF Uploaded",
+          description: `Draft report created for ${MONTH_NAMES[defaultMonth - 1]} ${defaultYear}. Edit the report to adjust the date or add metrics.`,
+        });
+      }
+    } catch (err: any) {
+      const msg = err?.message || "Failed to upload PDF";
+      toast({ title: "Upload failed", description: msg, variant: "destructive" });
+    } finally {
+      setDropUploading(false);
+    }
+  }
+
   function handleSubmit() {
     if (!editingId && (!selectedYear || !selectedMonth)) {
       toast({ title: "Missing fields", description: "Year and month are required", variant: "destructive" });
@@ -600,6 +669,52 @@ export default function LegacyReportsPage() {
             </Card>
           )}
 
+          <div
+            className={`relative border-2 border-dashed rounded-lg p-6 text-center transition-all cursor-pointer ${
+              isDragging
+                ? "border-primary bg-primary/5 scale-[1.01]"
+                : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30"
+            }`}
+            data-testid="drop-zone-pdf"
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+            onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+            onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDragging(false);
+              const file = e.dataTransfer.files?.[0];
+              if (file) handleDropUpload(file);
+            }}
+            onClick={() => {
+              const input = document.createElement("input");
+              input.type = "file";
+              input.accept = ".pdf";
+              input.onchange = (e) => {
+                const file = (e.target as HTMLInputElement).files?.[0];
+                if (file) handleDropUpload(file);
+              };
+              input.click();
+            }}
+          >
+            {dropUploading ? (
+              <div className="flex flex-col items-center gap-2">
+                <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                <p className="text-sm font-medium text-foreground">Uploading & extracting metrics...</p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2">
+                <Upload className={`w-8 h-8 ${isDragging ? "text-primary" : "text-muted-foreground/50"}`} />
+                <p className="text-sm font-medium text-foreground">
+                  {isDragging ? "Drop your PDF here" : "Drag & drop a PDF report here"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  or click to browse — a draft report will be created automatically
+                </p>
+              </div>
+            )}
+          </div>
+
           {chartData.length > 0 && (
             <Card className="overflow-hidden" data-testid="card-trend-chart">
               <button
@@ -670,9 +785,76 @@ export default function LegacyReportsPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="space-y-1 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="font-medium text-sm" data-testid={`text-quarter-${report.id}`}>
-                          {report.quarterLabel}
-                        </h4>
+                        {editingDateId === report.id ? (
+                          <div className="flex items-center gap-1" data-testid={`date-edit-${report.id}`}>
+                            <Select value={editDateMonth} onValueChange={setEditDateMonth}>
+                              <SelectTrigger className="h-7 text-xs w-[110px]">
+                                <SelectValue placeholder="Month" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {MONTH_OPTIONS.map((m) => (
+                                  <SelectItem key={m.value} value={String(m.value)} className="text-xs">
+                                    {m.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Select value={editDateYear} onValueChange={setEditDateYear}>
+                              <SelectTrigger className="h-7 text-xs w-[80px]">
+                                <SelectValue placeholder="Year" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {getYearOptions().map((y) => (
+                                  <SelectItem key={y} value={String(y)} className="text-xs">{y}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0"
+                              data-testid={`button-save-date-${report.id}`}
+                              disabled={!editDateYear || !editDateMonth || (editDateYear && editDateMonth ? (isMonthInFuture(parseInt(editDateYear), parseInt(editDateMonth)) || isMonthBeforeStart(parseInt(editDateYear), parseInt(editDateMonth))) : false)}
+                              onClick={() => {
+                                if (editDateYear && editDateMonth) {
+                                  updateMutation.mutate({
+                                    id: report.id,
+                                    data: { year: parseInt(editDateYear), month: parseInt(editDateMonth) },
+                                  });
+                                }
+                                setEditingDateId(null);
+                              }}
+                            >
+                              <CheckCircle className="w-3.5 h-3.5 text-green-600" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0"
+                              onClick={() => setEditingDateId(null)}
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <h4
+                            className={`font-medium text-sm ${report.status === "draft" ? "cursor-pointer hover:text-primary" : ""}`}
+                            data-testid={`text-quarter-${report.id}`}
+                            onClick={() => {
+                              if (report.status === "draft") {
+                                setEditingDateId(report.id);
+                                setEditDateYear(report.year ? String(report.year) : "");
+                                setEditDateMonth(report.month ? String(report.month) : "");
+                              }
+                            }}
+                            title={report.status === "draft" ? "Click to change date" : undefined}
+                          >
+                            {report.quarterLabel}
+                            {report.status === "draft" && (
+                              <Calendar className="w-3 h-3 inline ml-1 text-muted-foreground" />
+                            )}
+                          </h4>
+                        )}
                         {report.status === "confirmed" ? (
                           <Badge variant="secondary" className="text-[10px] bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 no-default-hover-elevate no-default-active-elevate" data-testid={`badge-status-${report.id}`}>
                             <CheckCircle className="w-3 h-3 mr-0.5" />

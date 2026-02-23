@@ -2670,10 +2670,42 @@ Important:
       const existing = await storage.getLegacyReport(id);
       if (!existing || existing.userId !== userId) return res.status(404).json({ message: "Not found" });
 
-      const { notes, snapshot, status } = req.body;
+      const { notes, snapshot, status, year, month } = req.body;
 
       const updateData: any = {};
       if (notes !== undefined) updateData.notes = notes;
+
+      if (year !== undefined && month !== undefined && existing.status === "draft") {
+        if (month < 1 || month > 12) {
+          return res.status(400).json({ message: "Month must be between 1 and 12" });
+        }
+        if (year < 2023) {
+          return res.status(400).json({ message: "Year must be 2023 or later" });
+        }
+        if (year === 2023 && month < 11) {
+          return res.status(400).json({ message: "Reports start from November 2023" });
+        }
+        const monthEndDate = new Date(year, month, 0);
+        const now = new Date();
+        if (monthEndDate > now) {
+          return res.status(400).json({ message: "Cannot set date to a future month" });
+        }
+        const allReports = await storage.getLegacyReports(userId);
+        const duplicate = allReports.find(r => r.id !== id && r.year === year && r.month === month);
+        if (duplicate) {
+          return res.status(409).json({ message: `A report for ${MONTH_NAMES[month - 1]} ${year} already exists` });
+        }
+        const periodStart = new Date(year, month - 1, 1);
+        const periodEnd = monthEndDate;
+        const quarter = Math.floor((month - 1) / 3) + 1;
+        updateData.year = year;
+        updateData.month = month;
+        updateData.quarter = quarter;
+        updateData.quarterLabel = `${MONTH_NAMES[month - 1]} ${year}`;
+        updateData.periodStart = periodStart;
+        updateData.periodEnd = periodEnd;
+      }
+
       if (status === "confirmed" && existing.status !== "confirmed") {
         updateData.status = "confirmed";
         updateData.confirmedAt = new Date();
