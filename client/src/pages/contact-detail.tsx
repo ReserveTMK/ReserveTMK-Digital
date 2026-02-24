@@ -9,7 +9,9 @@ import { Card } from "@/components/ui/card";
 import { useRoute } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Loader2, Mic, StopCircle, ArrowLeft, Brain, TrendingUp, Sparkles, AlertCircle, DollarSign, Settings, Rocket, Network, Shield, FileText, CheckSquare, Calendar, Clock, ChevronDown, History, MessageSquare } from "lucide-react";
+import { Loader2, Mic, StopCircle, ArrowLeft, Brain, TrendingUp, Sparkles, AlertCircle, DollarSign, Settings, Rocket, Network, Shield, FileText, CheckSquare, Calendar, Clock, ChevronDown, History, MessageSquare, Pencil, Check, X } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { useToast } from "@/hooks/use-toast";
 import { RelationshipStageSelector } from "@/components/relationship-stage-selector";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Link } from "wouter";
@@ -67,6 +69,7 @@ export default function ContactDetail() {
 
   const { data: contactGroups } = useContactGroups(id);
   const [consentDialogOpen, setConsentDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [stageHistoryOpen, setStageHistoryOpen] = useState(false);
 
   const { data: stageHistory } = useQuery({
@@ -183,7 +186,17 @@ export default function ContactDetail() {
                   {contact.name[0]}
                 </div>
                 <div>
-                  <h1 className="text-2xl sm:text-4xl font-display font-bold text-foreground">{contact.name}</h1>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-2xl sm:text-4xl font-display font-bold text-foreground">{contact.name}</h1>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setEditDialogOpen(true)}
+                      data-testid="button-edit-contact"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </Button>
+                  </div>
                   {contact.businessName && (
                     <p className="text-muted-foreground/80 text-base" data-testid="text-business-name">{contact.businessName}</p>
                   )}
@@ -535,6 +548,11 @@ export default function ContactDetail() {
         </div>
       </main>
 
+      <EditContactDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        contact={contact}
+      />
       <RecordConsentDialog
         open={consentDialogOpen}
         onOpenChange={setConsentDialogOpen}
@@ -713,6 +731,234 @@ function ActivityCard({ item }: { item: { type: string; subType: string; date: s
         </div>
       </div>
     </Card>
+  );
+}
+
+const ETHNICITY_OPTIONS = [
+  { group: "Polynesian", options: ["Samoan", "Tongan", "Cook Islands Māori", "Niuean", "Tokelauan", "Fijian", "Hawaiian", "Tahitian", "Māori", "Other Polynesian"] },
+  { group: "Pacific", options: ["Micronesian", "Melanesian"] },
+  { group: "European", options: ["NZ European/Pākehā", "Other European"] },
+  { group: "Asian", options: ["Chinese", "Indian", "Other Asian"] },
+  { group: "Other", options: ["Middle Eastern", "Latin American", "African", "Other"] },
+];
+
+function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onOpenChange: (v: boolean) => void; contact: any }) {
+  const { toast } = useToast();
+  const [name, setName] = useState(contact.name || "");
+  const [email, setEmail] = useState(contact.email || "");
+  const [phone, setPhone] = useState(contact.phone || "");
+  const [location, setLocation] = useState(contact.location || "");
+  const [businessName, setBusinessName] = useState(contact.businessName || "");
+  const [role, setRole] = useState(contact.role || "Entrepreneur");
+  const [age, setAge] = useState(contact.age?.toString() || "");
+  const [revenueBand, setRevenueBand] = useState(contact.revenueBand || "");
+  const [selectedEthnicities, setSelectedEthnicities] = useState<string[]>(contact.ethnicity || []);
+
+  useEffect(() => {
+    if (open) {
+      setName(contact.name || "");
+      setEmail(contact.email || "");
+      setPhone(contact.phone || "");
+      setLocation(contact.location || "");
+      setBusinessName(contact.businessName || "");
+      setRole(contact.role || "Entrepreneur");
+      setAge(contact.age?.toString() || "");
+      setRevenueBand(contact.revenueBand || "");
+      setSelectedEthnicities(contact.ethnicity || []);
+    }
+  }, [open, contact]);
+
+  const toggleEthnicity = (eth: string) => {
+    setSelectedEthnicities(prev =>
+      prev.includes(eth) ? prev.filter(e => e !== eth) : [...prev, eth]
+    );
+  };
+
+  const mutation = useMutation({
+    mutationFn: (data: any) =>
+      apiRequest('PATCH', `/api/contacts/${contact.id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts', contact.id] });
+      toast({ title: "Contact updated" });
+      onOpenChange(false);
+    },
+    onError: () => {
+      toast({ title: "Failed to update contact", variant: "destructive" });
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    mutation.mutate({
+      name: name.trim(),
+      email: email.trim() || null,
+      phone: phone.trim() || null,
+      location: location.trim() || null,
+      businessName: businessName.trim() || null,
+      role: role,
+      age: age ? parseInt(age) : null,
+      revenueBand: revenueBand || null,
+      ethnicity: selectedEthnicities,
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[500px] max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit Contact Details</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 py-2">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2 col-span-2">
+              <Label htmlFor="edit-name">Name *</Label>
+              <Input
+                id="edit-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                data-testid="input-edit-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-email">Email</Label>
+              <Input
+                id="edit-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                data-testid="input-edit-email"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-phone">Phone</Label>
+              <Input
+                id="edit-phone"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                data-testid="input-edit-phone"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-business">Business Name</Label>
+              <Input
+                id="edit-business"
+                value={businessName}
+                onChange={(e) => setBusinessName(e.target.value)}
+                data-testid="input-edit-business"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-role">Role</Label>
+              <Select value={role} onValueChange={setRole}>
+                <SelectTrigger data-testid="select-edit-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Entrepreneur">Entrepreneur</SelectItem>
+                  <SelectItem value="Professional">Professional</SelectItem>
+                  <SelectItem value="Innovator">Innovator</SelectItem>
+                  <SelectItem value="Want-trepreneur">Want-trepreneur</SelectItem>
+                  <SelectItem value="Rangatahi">Rangatahi</SelectItem>
+                  <SelectItem value="Business Owner">Business Owner</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-location">Location</Label>
+              <Input
+                id="edit-location"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                data-testid="input-edit-location"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-age">Age</Label>
+              <Input
+                id="edit-age"
+                type="number"
+                value={age}
+                onChange={(e) => setAge(e.target.value)}
+                data-testid="input-edit-age"
+              />
+            </div>
+            <div className="space-y-2 col-span-2">
+              <Label htmlFor="edit-revenue">Revenue Band</Label>
+              <Select value={revenueBand} onValueChange={setRevenueBand}>
+                <SelectTrigger data-testid="select-edit-revenue">
+                  <SelectValue placeholder="Select revenue band" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Pre-revenue">Pre-revenue</SelectItem>
+                  <SelectItem value="$0-$50k">$0-$50k</SelectItem>
+                  <SelectItem value="$50k-$100k">$50k-$100k</SelectItem>
+                  <SelectItem value="$100k-$250k">$100k-$250k</SelectItem>
+                  <SelectItem value="$250k-$500k">$250k-$500k</SelectItem>
+                  <SelectItem value="$500k-$1M">$500k-$1M</SelectItem>
+                  <SelectItem value="$1M+">$1M+</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <Label>Ethnicity</Label>
+            <div className="border border-border rounded-lg p-3 space-y-3 max-h-[200px] overflow-y-auto">
+              {ETHNICITY_OPTIONS.map((group) => (
+                <div key={group.group}>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">{group.group}</p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {group.options.map((eth) => (
+                      <label
+                        key={eth}
+                        className="flex items-center gap-2 cursor-pointer rounded px-1.5 py-1"
+                        data-testid={`checkbox-ethnicity-${eth.toLowerCase().replace(/[\s/]+/g, '-')}`}
+                      >
+                        <Checkbox
+                          checked={selectedEthnicities.includes(eth)}
+                          onCheckedChange={() => toggleEthnicity(eth)}
+                        />
+                        <span className="text-sm">{eth}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {selectedEthnicities.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {selectedEthnicities.map((eth) => (
+                  <Badge key={eth} variant="secondary" className="text-xs gap-1 pr-1">
+                    {eth}
+                    <button
+                      type="button"
+                      onClick={() => toggleEthnicity(eth)}
+                      aria-label={`Remove ${eth}`}
+                      className="inline-flex items-center justify-center rounded-full"
+                      data-testid={`button-remove-ethnicity-${eth.toLowerCase().replace(/[\s/]+/g, '-')}`}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-edit">
+              Cancel
+            </Button>
+            <Button type="submit" isLoading={mutation.isPending} data-testid="button-save-contact">
+              <Check className="w-4 h-4 mr-1" /> Save Changes
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
