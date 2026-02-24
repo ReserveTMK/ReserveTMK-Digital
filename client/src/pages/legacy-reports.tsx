@@ -30,7 +30,7 @@ import {
 import {
   Plus, Loader2, Trash2, FileText, Upload, Calendar,
   TrendingUp, Settings, Save, ChevronDown, ChevronUp, AlertCircle, Sparkles, X,
-  CheckCircle, Eye,
+  CheckCircle, Eye, RefreshCw,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -105,6 +105,7 @@ interface LegacyReportWithSnapshot {
     groupsImported: number;
     contactsImported: number;
   };
+  highlights?: Array<{ theme: string; summary: string; activityType: string | null }>;
 }
 
 interface ExtractionMetric {
@@ -222,6 +223,8 @@ export default function LegacyReportsPage() {
   const [editDateYear, setEditDateYear] = useState<string>("");
   const [editDateMonth, setEditDateMonth] = useState<string>("");
   const [suggestingTaxonomyId, setSuggestingTaxonomyId] = useState<number | null>(null);
+  const [viewPdfReportId, setViewPdfReportId] = useState<number | null>(null);
+  const [syncing, setSyncing] = useState(false);
   const [taxonomySuggestions, setTaxonomySuggestions] = useState<{
     reportId: number;
     suggestions: Array<{ category: string; description: string; matchesExisting: string | null; confidence: number }>;
@@ -256,6 +259,13 @@ export default function LegacyReportsPage() {
   const { data: existingContacts } = useQuery<Array<{ id: number; name: string }>>({
     queryKey: ["/api/contacts"],
   });
+
+  const hasUnimportedData = legacyReports?.some(r => 
+    r.status === "confirmed" && r.processingStatus && (
+      (r.processingStatus.extractedOrgCount > 0 && r.processingStatus.groupsImported === 0) ||
+      (r.processingStatus.extractedPeopleCount > 0 && r.processingStatus.contactsImported === 0)
+    )
+  ) || false;
 
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -418,6 +428,25 @@ export default function LegacyReportsPage() {
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const syncImportsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/legacy-reports/sync-imports");
+      return res.json();
+    },
+    onSuccess: (result: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/legacy-reports"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast({
+        title: "Sync Complete",
+        description: `Created ${result.groupsCreated || 0} groups and ${result.contactsCreated || 0} contacts from ${result.reportsProcessed || 0} reports.`,
+      });
+    },
+    onError: () => {
+      toast({ title: "Sync failed", description: "Failed to sync imports", variant: "destructive" });
     },
   });
 
@@ -706,6 +735,29 @@ export default function LegacyReportsPage() {
             </Card>
           )}
 
+          {hasUnimportedData && (
+            <div className="flex items-center gap-3 p-3 rounded-lg border bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <p className="text-sm text-amber-700 dark:text-amber-400 flex-1">
+                Some confirmed reports have groups or people that haven't been imported into your database yet.
+              </p>
+              <Button
+                size="sm"
+                onClick={() => syncImportsMutation.mutate()}
+                disabled={syncImportsMutation.isPending}
+                data-testid="button-sync-imports"
+                className="shrink-0"
+              >
+                {syncImportsMutation.isPending ? (
+                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                ) : (
+                  <RefreshCw className="w-3 h-3 mr-1" />
+                )}
+                Sync Groups & People
+              </Button>
+            </div>
+          )}
+
           <div
             className={`relative border-2 border-dashed rounded-lg p-6 text-center transition-all cursor-pointer ${
               isDragging
@@ -815,9 +867,16 @@ export default function LegacyReportsPage() {
           )}
 
           {legacyReports && legacyReports.length > 0 && (
-            <div className="space-y-3" data-testid="list-legacy-reports">
-              {legacyReports.map((report) => (
-                <Card key={report.id} className="p-4" data-testid={`card-legacy-report-${report.id}`}>
+            <div className="relative" data-testid="list-legacy-reports">
+              <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-border" />
+              {legacyReports.map((report, index) => (
+                <div key={report.id} className="relative pl-10 pb-6" data-testid={`card-legacy-report-${report.id}`}>
+                  <div className={`absolute left-2.5 top-1 w-3 h-3 rounded-full border-2 ${
+                    report.status === "confirmed" 
+                      ? "bg-primary border-primary" 
+                      : "bg-background border-muted-foreground"
+                  }`} />
+                  <Card className="p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="space-y-1 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -953,34 +1012,33 @@ export default function LegacyReportsPage() {
                           )}
                         </div>
                       )}
+                      {report.status === "confirmed" && report.highlights && report.highlights.length > 0 && (
+                        <div className="mt-2 space-y-1" data-testid={`highlights-${report.id}`}>
+                          <p className="text-xs font-medium text-muted-foreground">Key highlights:</p>
+                          <ul className="space-y-0.5">
+                            {report.highlights.slice(0, 4).map((h, i) => (
+                              <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
+                                <span className="text-primary mt-0.5 shrink-0">•</span>
+                                <span><strong className="text-foreground/80">{h.theme}</strong> — {h.summary}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </div>
                     <div className="flex gap-1 shrink-0 flex-wrap">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => loadExtractionForReview(report.id)}
-                        data-testid={`button-review-extraction-${report.id}`}
-                      >
-                        <Eye className="w-3 h-3 mr-1" />
-                        Review
-                      </Button>
                       {report.pdfFileName && (
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => extractMetricsMutation.mutate(report.id)}
-                          disabled={extractingId === report.id}
-                          data-testid={`button-extract-metrics-${report.id}`}
+                          onClick={() => setViewPdfReportId(report.id)}
+                          data-testid={`button-review-extraction-${report.id}`}
                         >
-                          {extractingId === report.id ? (
-                            <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                          ) : (
-                            <Sparkles className="w-3 h-3 mr-1" />
-                          )}
-                          Re-extract
+                          <FileText className="w-3 h-3 mr-1" />
+                          View PDF
                         </Button>
                       )}
-                      {report.status === "draft" || !report.status ? (
+                      {(report.status === "draft" || !report.status) && (
                         <Button
                           size="sm"
                           variant="ghost"
@@ -990,16 +1048,6 @@ export default function LegacyReportsPage() {
                         >
                           <CheckCircle className="w-3 h-3 mr-1" />
                           Confirm
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => confirmMutation.mutate({ id: report.id, status: "draft" })}
-                          disabled={confirmMutation.isPending}
-                          data-testid={`button-unconfirm-${report.id}`}
-                        >
-                          Unconfirm
                         </Button>
                       )}
                       {report.status === "confirmed" && (
@@ -1037,7 +1085,8 @@ export default function LegacyReportsPage() {
                       </Button>
                     </div>
                   </div>
-                </Card>
+                  </Card>
+                </div>
               ))}
             </div>
           )}
@@ -1453,6 +1502,36 @@ export default function LegacyReportsPage() {
                 {editingId ? "Update" : "Save"}
               </Button>
             </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={viewPdfReportId !== null} onOpenChange={(open) => { if (!open) setViewPdfReportId(null); }}>
+          <DialogContent className="max-w-4xl h-[80vh]">
+            <DialogHeader>
+              <DialogTitle>
+                {legacyReports?.find(r => r.id === viewPdfReportId)?.quarterLabel || "PDF Viewer"}
+              </DialogTitle>
+              <DialogDescription>
+                {legacyReports?.find(r => r.id === viewPdfReportId)?.pdfFileName || ""}
+              </DialogDescription>
+            </DialogHeader>
+            {(() => {
+              const report = legacyReports?.find(r => r.id === viewPdfReportId);
+              if (report?.pdfData) {
+                return (
+                  <iframe
+                    src={`data:application/pdf;base64,${report.pdfData}`}
+                    className="w-full flex-1 rounded border"
+                    title="PDF Viewer"
+                  />
+                );
+              }
+              return (
+                <div className="flex items-center justify-center flex-1 text-muted-foreground">
+                  No PDF available
+                </div>
+              );
+            })()}
           </DialogContent>
         </Dialog>
 

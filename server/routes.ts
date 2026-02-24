@@ -2460,7 +2460,8 @@ Important:
           const hasExtraction = !!extraction;
           const extractedOrgCount = (extraction?.extractedOrganisations as any[])?.length || 0;
           const extractedPeopleCount = (extraction?.extractedPeople as any[])?.length || 0;
-          return { ...r, snapshot, processingStatus: { hasExtraction, extractedOrgCount, extractedPeopleCount, groupsImported, contactsImported } };
+          const highlights = (extraction?.extractedHighlights as any[]) || [];
+          return { ...r, snapshot, highlights, processingStatus: { hasExtraction, extractedOrgCount, extractedPeopleCount, groupsImported, contactsImported } };
         })
       );
       res.json(reportsWithSnapshots);
@@ -2838,6 +2839,94 @@ Important:
     } catch (err: any) {
       console.error("Update legacy report error:", err);
       res.status(500).json({ message: "Failed to update legacy report" });
+    }
+  });
+
+  app.post("/api/legacy-reports/sync-imports", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const reports = await storage.getLegacyReports(userId);
+      const confirmedReports = reports.filter(r => r.status === "confirmed");
+
+      const existingGroups = await storage.getGroups(userId);
+      const existingGroupNames = new Set(existingGroups.map(g => g.name.toLowerCase().trim()));
+
+      const existingContacts = await storage.getContacts(userId);
+      const existingContactNames = new Set(existingContacts.map(c => c.name.toLowerCase().trim()));
+
+      let totalGroupsCreated = 0;
+      let totalContactsCreated = 0;
+      let reportsProcessed = 0;
+
+      for (const report of confirmedReports) {
+        const extraction = await storage.getLegacyReportExtraction(report.id);
+        if (!extraction) continue;
+
+        let reportHadWork = false;
+
+        if (extraction.extractedOrganisations && Array.isArray(extraction.extractedOrganisations)) {
+          for (const org of extraction.extractedOrganisations as any[]) {
+            if (!org.name || existingGroupNames.has(org.name.toLowerCase().trim())) continue;
+            try {
+              await storage.createGroup({
+                userId,
+                name: org.name,
+                type: org.type === "community_group" ? "Community Group" :
+                      org.type === "community_collective" ? "Community Collective" :
+                      org.type === "resident_company" ? "Resident Company" :
+                      org.type === "business" ? "Business" :
+                      org.type === "partner" ? "Partner" :
+                      org.type === "government" ? "Government" :
+                      org.type === "iwi" ? "Iwi" :
+                      org.type === "ngo" ? "NGO" :
+                      org.type === "education" ? "Education" : "Organisation",
+                description: org.description || null,
+                notes: org.relationship ? `Relationship: ${org.relationship}. Imported from legacy report ${report.quarterLabel}.` : `Imported from legacy report ${report.quarterLabel}.`,
+                importSource: `Imported from legacy report ${report.quarterLabel}`,
+                relationshipTier: org.relationship === "mentored" || org.relationship === "supported" ? "support" :
+                                  org.relationship === "partnered" || org.relationship === "engaged" ? "collaborate" : "mentioned",
+                active: true,
+              });
+              existingGroupNames.add(org.name.toLowerCase().trim());
+              totalGroupsCreated++;
+              reportHadWork = true;
+            } catch (groupErr) {
+              console.error(`Sync: Failed to create group "${org.name}":`, groupErr);
+            }
+          }
+        }
+
+        if (extraction.extractedPeople && Array.isArray(extraction.extractedPeople)) {
+          for (const person of extraction.extractedPeople as any[]) {
+            if (!person.name || existingContactNames.has(person.name.toLowerCase().trim())) continue;
+            try {
+              await storage.createContact({
+                userId,
+                name: person.name,
+                role: person.role || "Community Member",
+                notes: person.context ? `${person.context}. Imported from legacy report ${report.quarterLabel}.` : `Imported from legacy report ${report.quarterLabel}.`,
+              });
+              existingContactNames.add(person.name.toLowerCase().trim());
+              totalContactsCreated++;
+              reportHadWork = true;
+            } catch (contactErr) {
+              console.error(`Sync: Failed to create contact "${person.name}":`, contactErr);
+            }
+          }
+        }
+
+        if (reportHadWork) reportsProcessed++;
+      }
+
+      res.json({
+        groupsCreated: totalGroupsCreated,
+        contactsCreated: totalContactsCreated,
+        reportsProcessed,
+        totalReportsChecked: confirmedReports.length,
+      });
+    } catch (err: any) {
+      console.error("Sync imports error:", err);
+      res.status(500).json({ message: "Failed to sync imports" });
     }
   });
 
