@@ -1083,6 +1083,22 @@ export type InsertVenue = z.infer<typeof insertVenueSchema>;
 export type Booking = typeof bookings.$inferSelect;
 export type InsertBooking = z.infer<typeof insertBookingSchema>;
 
+export const bookingPricingDefaults = pgTable("booking_pricing_defaults", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  fullDayRate: text("full_day_rate").default("0"),
+  halfDayRate: text("half_day_rate").default("0"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertBookingPricingDefaultsSchema = createInsertSchema(bookingPricingDefaults).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type BookingPricingDefaults = typeof bookingPricingDefaults.$inferSelect;
+export type InsertBookingPricingDefaults = z.infer<typeof insertBookingPricingDefaultsSchema>;
+
 export const PAYMENT_STATUSES = ["unpaid", "paid", "partial", "refunded"] as const;
 export type PaymentStatus = typeof PAYMENT_STATUSES[number];
 

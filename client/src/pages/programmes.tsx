@@ -157,24 +157,30 @@ export default function Programmes() {
     }
   }, [programmes, updateMutation, toast]);
 
-  const yearlyBudget = useMemo(() => {
-    if (!programmes) return { total: 0, facilitator: 0, catering: 0, promo: 0, count: 0 };
-    const currentYear = new Date().getFullYear();
+  const budgetTracker = useMemo(() => {
+    if (!programmes) return { totalSpend: 0, yearCount: 0, monthCount: 0 };
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
     const yearProgrammes = programmes.filter(p => {
       if (p.status === "cancelled") return false;
-      if (p.startDate) {
-        return new Date(p.startDate).getFullYear() === currentYear;
-      }
+      if (p.startDate) return new Date(p.startDate).getFullYear() === currentYear;
       if (p.tbcYear) return parseInt(p.tbcYear) === currentYear;
       return false;
     });
-    let facilitator = 0, catering = 0, promo = 0;
-    yearProgrammes.forEach(p => {
-      facilitator += parseFloat(p.facilitatorCost || "0");
-      catering += parseFloat(p.cateringCost || "0");
-      promo += parseFloat(p.promoCost || "0");
+    const monthProgrammes = yearProgrammes.filter(p => {
+      if (p.startDate) return new Date(p.startDate).getMonth() === currentMonth;
+      if (p.tbcMonth) {
+        const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+        return monthNames.indexOf(p.tbcMonth) === currentMonth;
+      }
+      return false;
     });
-    return { total: facilitator + catering + promo, facilitator, catering, promo, count: yearProgrammes.length };
+    let totalSpend = 0;
+    yearProgrammes.forEach(p => {
+      totalSpend += parseFloat(p.facilitatorCost || "0") + parseFloat(p.cateringCost || "0") + parseFloat(p.promoCost || "0");
+    });
+    return { totalSpend, yearCount: yearProgrammes.length, monthCount: monthProgrammes.length };
   }, [programmes]);
 
   const kanbanColumns = useMemo(() => {
@@ -294,36 +300,59 @@ export default function Programmes() {
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <MetricCard
               title={`${new Date().getFullYear()} Total Spend`}
-              value={`$${yearlyBudget.total.toFixed(2)}`}
-              subtext={`${yearlyBudget.count} programmes`}
+              value={`$${budgetTracker.totalSpend.toFixed(2)}`}
+              subtext={`${budgetTracker.yearCount} programmes`}
               icon={<DollarSign className="w-4 h-4" />}
               color="primary"
               data-testid="stat-yearly-total"
             />
-            <MetricCard
-              title="Facilitator Costs"
-              value={`$${yearlyBudget.facilitator.toFixed(2)}`}
-              icon={<Users className="w-4 h-4" />}
-              color="blue"
-              data-testid="stat-facilitator-costs"
-            />
-            <MetricCard
-              title="Catering Costs"
-              value={`$${yearlyBudget.catering.toFixed(2)}`}
-              icon={<Zap className="w-4 h-4" />}
-              color="green"
-              data-testid="stat-catering-costs"
-            />
-            <MetricCard
-              title="Promo Costs"
-              value={`$${yearlyBudget.promo.toFixed(2)}`}
-              icon={<BarChart3 className="w-4 h-4" />}
-              color="accent"
-              data-testid="stat-promo-costs"
-            />
+            <div className="bg-card rounded-2xl p-6 border border-border shadow-sm hover:shadow-md transition-all duration-300" data-testid="stat-this-month">
+              <div className="flex justify-between items-start mb-4">
+                <p className="text-sm font-medium text-muted-foreground">This Month</p>
+                <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600">
+                  <Calendar className="w-4 h-4" />
+                </div>
+              </div>
+              <h3 className="text-3xl font-bold font-display tracking-tight text-foreground">
+                {budgetTracker.monthCount} <span className="text-lg font-normal text-muted-foreground">/ 2</span>
+              </h3>
+              <div className="mt-3">
+                <div className="w-full bg-muted rounded-full h-2.5">
+                  <div
+                    className={`h-2.5 rounded-full transition-all duration-500 ${budgetTracker.monthCount >= 2 ? "bg-emerald-500" : "bg-blue-500"}`}
+                    style={{ width: `${Math.min((budgetTracker.monthCount / 2) * 100, 100)}%` }}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  {budgetTracker.monthCount >= 2 ? "Target reached" : `${2 - budgetTracker.monthCount} more to go`}
+                </p>
+              </div>
+            </div>
+            <div className="bg-card rounded-2xl p-6 border border-border shadow-sm hover:shadow-md transition-all duration-300" data-testid="stat-this-year">
+              <div className="flex justify-between items-start mb-4">
+                <p className="text-sm font-medium text-muted-foreground">This Year</p>
+                <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600">
+                  <BarChart3 className="w-4 h-4" />
+                </div>
+              </div>
+              <h3 className="text-3xl font-bold font-display tracking-tight text-foreground">
+                {budgetTracker.yearCount} <span className="text-lg font-normal text-muted-foreground">/ 24</span>
+              </h3>
+              <div className="mt-3">
+                <div className="w-full bg-muted rounded-full h-2.5">
+                  <div
+                    className={`h-2.5 rounded-full transition-all duration-500 ${budgetTracker.yearCount >= 24 ? "bg-emerald-500" : "bg-emerald-500"}`}
+                    style={{ width: `${Math.min((budgetTracker.yearCount / 24) * 100, 100)}%` }}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  {budgetTracker.yearCount >= 24 ? "Yearly target reached" : `${24 - budgetTracker.yearCount} more to reach target`}
+                </p>
+              </div>
+            </div>
           </div>
 
           {isLoading ? (
@@ -1087,14 +1116,17 @@ function ProgrammeFormDialog({
                     </button>
                   ))}
                   <button
-                    onClick={() => {
-                      setNewPersonName(facilitatorSearch.trim());
-                      setShowNewPersonDialog(true);
+                    onClick={async () => {
+                      try {
+                        const newContact = await createContactMutation.mutateAsync({ name: facilitatorSearch.trim() });
+                        setSelectedFacilitators((prev) => [...prev, newContact.id]);
+                        setFacilitatorSearch("");
+                      } catch (err: any) {}
                     }}
                     className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between text-primary"
                     data-testid="button-create-new-facilitator"
                   >
-                    <span>Add "{facilitatorSearch.trim()}" as new person</span>
+                    <span>Create "{facilitatorSearch.trim()}" as new contact</span>
                     <UserPlus className="w-3 h-3" />
                   </button>
                 </div>
@@ -1123,7 +1155,7 @@ function ProgrammeFormDialog({
                   value={attendeeSearch}
                   onChange={(e) => setAttendeeSearch(e.target.value)}
                 />
-                {attendeeSearch.trim() && filteredAttendeeContacts.length > 0 && (
+                {attendeeSearch.trim() && (
                   <Card className="absolute z-50 w-full mt-1 p-1 shadow-xl border-primary/20 bg-background/95 backdrop-blur-sm">
                     {filteredAttendeeContacts.map((contact) => (
                       <div
@@ -1138,6 +1170,20 @@ function ProgrammeFormDialog({
                         <Plus className="w-3 h-3 text-primary" />
                       </div>
                     ))}
+                    <div
+                      className="flex items-center justify-between p-2 hover:bg-accent rounded-sm cursor-pointer transition-colors text-primary"
+                      onClick={async () => {
+                        try {
+                          const newContact = await createContactMutation.mutateAsync({ name: attendeeSearch.trim() });
+                          setSelectedAttendees((prev) => [...prev, newContact.id]);
+                          setAttendeeSearch("");
+                        } catch (err: any) {}
+                      }}
+                      data-testid="button-create-new-attendee"
+                    >
+                      <span className="text-sm font-medium">Create "{attendeeSearch.trim()}" as new contact</span>
+                      <UserPlus className="w-3 h-3" />
+                    </div>
                   </Card>
                 )}
               </div>

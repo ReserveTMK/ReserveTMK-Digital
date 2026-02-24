@@ -635,14 +635,21 @@ function EventCard({
                     </button>
                   ))}
                   <button
-                    onClick={() => {
-                      setNewPersonName(contactSearch.trim());
-                      setShowNewPersonDialog(true);
+                    onClick={async () => {
+                      try {
+                        const res = await apiRequest("POST", "/api/contacts", {
+                          name: contactSearch.trim(),
+                          role: "Entrepreneur",
+                        });
+                        const newContact = await res.json();
+                        queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+                        handleAddContact(newContact);
+                      } catch (err: any) {}
                     }}
                     className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between text-primary"
                     data-testid="button-create-new-person"
                   >
-                    <span>Add "{contactSearch.trim()}" as new person</span>
+                    <span>Create "{contactSearch.trim()}" as new contact</span>
                     <UserPlus className="w-3 h-3" />
                   </button>
                 </div>

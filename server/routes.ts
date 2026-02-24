@@ -2028,6 +2028,19 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     res.status(204).send();
   });
 
+  app.get("/api/booking-pricing-defaults", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const defaults = await storage.getBookingPricingDefaults(userId);
+    res.json(defaults || { fullDayRate: "0", halfDayRate: "0" });
+  });
+
+  app.put("/api/booking-pricing-defaults", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const { fullDayRate, halfDayRate } = req.body;
+    const result = await storage.upsertBookingPricingDefaults(userId, { fullDayRate, halfDayRate });
+    res.json(result);
+  });
+
   // === Groups API ===
   app.get(api.groups.list.path, isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;

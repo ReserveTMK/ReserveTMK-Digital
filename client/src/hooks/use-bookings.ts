@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { Venue, Booking } from "@shared/schema";
+import type { Venue, Booking, BookingPricingDefaults } from "@shared/schema";
 
 export function useVenues() {
   return useQuery<Venue[]>({ queryKey: ['/api/venues'] });
@@ -49,5 +49,17 @@ export function useDeleteBooking() {
   return useMutation({
     mutationFn: (id: number) => apiRequest('DELETE', `/api/bookings/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/bookings'] }),
+  });
+}
+
+export function useBookingPricingDefaults() {
+  return useQuery<BookingPricingDefaults>({ queryKey: ['/api/booking-pricing-defaults'] });
+}
+
+export function useUpdateBookingPricingDefaults() {
+  return useMutation({
+    mutationFn: (data: { fullDayRate?: string; halfDayRate?: string }) =>
+      apiRequest('PUT', '/api/booking-pricing-defaults', data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/booking-pricing-defaults'] }),
   });
 }

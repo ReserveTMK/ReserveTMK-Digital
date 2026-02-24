@@ -23,8 +23,8 @@ import {
   useUpdateMou,
   useDeleteMou,
 } from "@/hooks/use-memberships";
-import { useContacts } from "@/hooks/use-contacts";
-import { useGroups } from "@/hooks/use-groups";
+import { useContacts, useCreateContact } from "@/hooks/use-contacts";
+import { useGroups, useCreateGroup } from "@/hooks/use-groups";
 import { useBookings } from "@/hooks/use-bookings";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useMemo } from "react";
@@ -626,12 +626,18 @@ function MembershipFormDialog({
 }) {
   const { data: contacts } = useContacts();
   const { data: allGroups } = useGroups();
+  const createContact = useCreateContact();
+  const createGroupMutation = useCreateGroup();
 
   const [name, setName] = useState(membership?.name || "");
   const [contactId, setContactId] = useState<number | null>(membership?.contactId || null);
   const [contactSearch, setContactSearch] = useState("");
   const [groupId, setGroupId] = useState<number | null>((membership as any)?.groupId || null);
   const [groupSearch, setGroupSearch] = useState("");
+  const [showQuickAddContact, setShowQuickAddContact] = useState(false);
+  const [quickContactName, setQuickContactName] = useState("");
+  const [showQuickAddGroup, setShowQuickAddGroup] = useState(false);
+  const [quickGroupName, setQuickGroupName] = useState("");
   const [annualFee, setAnnualFee] = useState(membership?.annualFee || "0");
   const [venueHireHours, setVenueHireHours] = useState((membership?.venueHireHours || 0).toString());
   const [bookingAllowance, setBookingAllowance] = useState((membership?.bookingAllowance || 0).toString());
@@ -661,6 +667,28 @@ function MembershipFormDialog({
   const handleSelectContact = (contact: Contact) => {
     setContactId(contact.id);
     setContactSearch("");
+  };
+
+  const handleQuickAddMembershipContact = async () => {
+    if (!quickContactName.trim()) return;
+    try {
+      const newContact = await createContact.mutateAsync({ name: quickContactName.trim() });
+      setContactId(newContact.id);
+      setQuickContactName("");
+      setShowQuickAddContact(false);
+      setContactSearch("");
+    } catch (err: any) {}
+  };
+
+  const handleQuickAddMembershipGroup = async () => {
+    if (!quickGroupName.trim()) return;
+    try {
+      const newGroup = await createGroupMutation.mutateAsync({ name: quickGroupName.trim(), type: "organisation" });
+      setGroupId(newGroup.id);
+      setQuickGroupName("");
+      setShowQuickAddGroup(false);
+      setGroupSearch("");
+    } catch (err: any) {}
   };
 
   const handleSubmit = () => {
@@ -732,18 +760,68 @@ function MembershipFormDialog({
               />
             </div>
             {contactSearch.trim() && (
-              <div className="border border-border rounded-md divide-y divide-border/50 max-h-[150px] overflow-y-auto">
-                {filteredContacts.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => handleSelectContact(c)}
-                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between"
-                    data-testid={`button-select-contact-${c.id}`}
-                  >
-                    <span>{c.name}</span>
-                    <UserPlus className="w-3 h-3 text-muted-foreground" />
-                  </button>
-                ))}
+              <>
+                {filteredContacts.length > 0 && (
+                  <div className="border border-border rounded-md divide-y divide-border/50 max-h-[150px] overflow-y-auto">
+                    {filteredContacts.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => handleSelectContact(c)}
+                        className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between"
+                        data-testid={`button-select-contact-${c.id}`}
+                      >
+                        <span>{c.name}</span>
+                        <UserPlus className="w-3 h-3 text-muted-foreground" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {filteredContacts.length === 0 && !showQuickAddContact && (
+                  <div className="text-xs text-muted-foreground flex items-center justify-between p-2 bg-muted/30 rounded-md">
+                    <span>No contacts found for "{contactSearch}"</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 text-[10px]"
+                      onClick={() => {
+                        setQuickContactName(contactSearch);
+                        setShowQuickAddContact(true);
+                      }}
+                      data-testid="button-quick-add-membership-contact"
+                    >
+                      <Plus className="w-3 h-3 mr-1" />
+                      Quick Add
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+            {showQuickAddContact && (
+              <div className="flex items-center gap-2 p-2 bg-primary/5 rounded-md border border-primary/20">
+                <Input
+                  value={quickContactName}
+                  onChange={(e) => setQuickContactName(e.target.value)}
+                  placeholder="Person's name"
+                  className="h-7 text-xs flex-1"
+                  data-testid="input-quick-add-membership-contact-name"
+                />
+                <Button
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={handleQuickAddMembershipContact}
+                  disabled={!quickContactName.trim() || createContact.isPending}
+                  data-testid="button-save-quick-membership-contact"
+                >
+                  {createContact.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setShowQuickAddContact(false)}
+                >
+                  <X className="w-3 h-3" />
+                </Button>
               </div>
             )}
           </div>
@@ -776,21 +854,71 @@ function MembershipFormDialog({
               />
             </div>
             {groupSearch.trim() && (
-              <div className="border border-border rounded-md divide-y divide-border/50 max-h-[150px] overflow-y-auto">
-                {filteredGroups.map((g) => (
-                  <button
-                    key={g.id}
-                    onClick={() => { setGroupId(g.id); setGroupSearch(""); }}
-                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between"
-                    data-testid={`button-select-membership-group-${g.id}`}
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <Network className="w-3 h-3 text-muted-foreground" />
-                      {g.name}
-                    </span>
-                    <Badge variant="outline" className="text-[10px]">{g.type}</Badge>
-                  </button>
-                ))}
+              <>
+                {filteredGroups.length > 0 && (
+                  <div className="border border-border rounded-md divide-y divide-border/50 max-h-[150px] overflow-y-auto">
+                    {filteredGroups.map((g) => (
+                      <button
+                        key={g.id}
+                        onClick={() => { setGroupId(g.id); setGroupSearch(""); }}
+                        className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between"
+                        data-testid={`button-select-membership-group-${g.id}`}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <Network className="w-3 h-3 text-muted-foreground" />
+                          {g.name}
+                        </span>
+                        <Badge variant="outline" className="text-[10px]">{g.type}</Badge>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {filteredGroups.length === 0 && !showQuickAddGroup && (
+                  <div className="text-xs text-muted-foreground flex items-center justify-between p-2 bg-muted/30 rounded-md">
+                    <span>No groups found for "{groupSearch}"</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 text-[10px]"
+                      onClick={() => {
+                        setQuickGroupName(groupSearch);
+                        setShowQuickAddGroup(true);
+                      }}
+                      data-testid="button-quick-add-membership-group"
+                    >
+                      <Plus className="w-3 h-3 mr-1" />
+                      Quick Add
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+            {showQuickAddGroup && (
+              <div className="flex items-center gap-2 p-2 bg-primary/5 rounded-md border border-primary/20">
+                <Input
+                  value={quickGroupName}
+                  onChange={(e) => setQuickGroupName(e.target.value)}
+                  placeholder="Organisation name"
+                  className="h-7 text-xs flex-1"
+                  data-testid="input-quick-add-membership-group-name"
+                />
+                <Button
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={handleQuickAddMembershipGroup}
+                  disabled={!quickGroupName.trim() || createGroupMutation.isPending}
+                  data-testid="button-save-quick-membership-group"
+                >
+                  {createGroupMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setShowQuickAddGroup(false)}
+                >
+                  <X className="w-3 h-3" />
+                </Button>
               </div>
             )}
           </div>
@@ -943,6 +1071,8 @@ function MouFormDialog({
 }) {
   const { data: contacts } = useContacts();
   const { data: allGroups } = useGroups();
+  const createContact = useCreateContact();
+  const createGroupMutation = useCreateGroup();
 
   const [title, setTitle] = useState(mou?.title || "");
   const [partnerName, setPartnerName] = useState(mou?.partnerName || "");
@@ -950,6 +1080,10 @@ function MouFormDialog({
   const [contactSearch, setContactSearch] = useState("");
   const [groupId, setGroupId] = useState<number | null>((mou as any)?.groupId || null);
   const [groupSearch, setGroupSearch] = useState("");
+  const [showQuickAddContact, setShowQuickAddContact] = useState(false);
+  const [quickContactName, setQuickContactName] = useState("");
+  const [showQuickAddGroup, setShowQuickAddGroup] = useState(false);
+  const [quickGroupName, setQuickGroupName] = useState("");
   const [providing, setProviding] = useState(mou?.providing || "");
   const [receiving, setReceiving] = useState(mou?.receiving || "");
   const [inKindValue, setInKindValue] = useState(mou?.inKindValue || "0");
@@ -979,6 +1113,28 @@ function MouFormDialog({
   const handleSelectContact = (contact: Contact) => {
     setContactId(contact.id);
     setContactSearch("");
+  };
+
+  const handleQuickAddMouContact = async () => {
+    if (!quickContactName.trim()) return;
+    try {
+      const newContact = await createContact.mutateAsync({ name: quickContactName.trim() });
+      setContactId(newContact.id);
+      setQuickContactName("");
+      setShowQuickAddContact(false);
+      setContactSearch("");
+    } catch (err: any) {}
+  };
+
+  const handleQuickAddMouGroup = async () => {
+    if (!quickGroupName.trim()) return;
+    try {
+      const newGroup = await createGroupMutation.mutateAsync({ name: quickGroupName.trim(), type: "organisation" });
+      setGroupId(newGroup.id);
+      setQuickGroupName("");
+      setShowQuickAddGroup(false);
+      setGroupSearch("");
+    } catch (err: any) {}
   };
 
   const handleSubmit = () => {
@@ -1061,18 +1217,68 @@ function MouFormDialog({
               />
             </div>
             {contactSearch.trim() && (
-              <div className="border border-border rounded-md divide-y divide-border/50 max-h-[150px] overflow-y-auto">
-                {filteredContacts.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => handleSelectContact(c)}
-                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between"
-                    data-testid={`button-select-mou-contact-${c.id}`}
-                  >
-                    <span>{c.name}</span>
-                    <UserPlus className="w-3 h-3 text-muted-foreground" />
-                  </button>
-                ))}
+              <>
+                {filteredContacts.length > 0 && (
+                  <div className="border border-border rounded-md divide-y divide-border/50 max-h-[150px] overflow-y-auto">
+                    {filteredContacts.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => handleSelectContact(c)}
+                        className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between"
+                        data-testid={`button-select-mou-contact-${c.id}`}
+                      >
+                        <span>{c.name}</span>
+                        <UserPlus className="w-3 h-3 text-muted-foreground" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {filteredContacts.length === 0 && !showQuickAddContact && (
+                  <div className="text-xs text-muted-foreground flex items-center justify-between p-2 bg-muted/30 rounded-md">
+                    <span>No contacts found for "{contactSearch}"</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 text-[10px]"
+                      onClick={() => {
+                        setQuickContactName(contactSearch);
+                        setShowQuickAddContact(true);
+                      }}
+                      data-testid="button-quick-add-mou-contact"
+                    >
+                      <Plus className="w-3 h-3 mr-1" />
+                      Quick Add
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+            {showQuickAddContact && (
+              <div className="flex items-center gap-2 p-2 bg-primary/5 rounded-md border border-primary/20">
+                <Input
+                  value={quickContactName}
+                  onChange={(e) => setQuickContactName(e.target.value)}
+                  placeholder="Person's name"
+                  className="h-7 text-xs flex-1"
+                  data-testid="input-quick-add-mou-contact-name"
+                />
+                <Button
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={handleQuickAddMouContact}
+                  disabled={!quickContactName.trim() || createContact.isPending}
+                  data-testid="button-save-quick-mou-contact"
+                >
+                  {createContact.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setShowQuickAddContact(false)}
+                >
+                  <X className="w-3 h-3" />
+                </Button>
               </div>
             )}
           </div>
@@ -1105,21 +1311,71 @@ function MouFormDialog({
               />
             </div>
             {groupSearch.trim() && (
-              <div className="border border-border rounded-md divide-y divide-border/50 max-h-[150px] overflow-y-auto">
-                {filteredMouGroups.map((g) => (
-                  <button
-                    key={g.id}
-                    onClick={() => { setGroupId(g.id); setGroupSearch(""); }}
-                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between"
-                    data-testid={`button-select-mou-group-${g.id}`}
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <Network className="w-3 h-3 text-muted-foreground" />
-                      {g.name}
-                    </span>
-                    <Badge variant="outline" className="text-[10px]">{g.type}</Badge>
-                  </button>
-                ))}
+              <>
+                {filteredMouGroups.length > 0 && (
+                  <div className="border border-border rounded-md divide-y divide-border/50 max-h-[150px] overflow-y-auto">
+                    {filteredMouGroups.map((g) => (
+                      <button
+                        key={g.id}
+                        onClick={() => { setGroupId(g.id); setGroupSearch(""); }}
+                        className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between"
+                        data-testid={`button-select-mou-group-${g.id}`}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <Network className="w-3 h-3 text-muted-foreground" />
+                          {g.name}
+                        </span>
+                        <Badge variant="outline" className="text-[10px]">{g.type}</Badge>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {filteredMouGroups.length === 0 && !showQuickAddGroup && (
+                  <div className="text-xs text-muted-foreground flex items-center justify-between p-2 bg-muted/30 rounded-md">
+                    <span>No groups found for "{groupSearch}"</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 text-[10px]"
+                      onClick={() => {
+                        setQuickGroupName(groupSearch);
+                        setShowQuickAddGroup(true);
+                      }}
+                      data-testid="button-quick-add-mou-group"
+                    >
+                      <Plus className="w-3 h-3 mr-1" />
+                      Quick Add
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+            {showQuickAddGroup && (
+              <div className="flex items-center gap-2 p-2 bg-primary/5 rounded-md border border-primary/20">
+                <Input
+                  value={quickGroupName}
+                  onChange={(e) => setQuickGroupName(e.target.value)}
+                  placeholder="Organisation name"
+                  className="h-7 text-xs flex-1"
+                  data-testid="input-quick-add-mou-group-name"
+                />
+                <Button
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={handleQuickAddMouGroup}
+                  disabled={!quickGroupName.trim() || createGroupMutation.isPending}
+                  data-testid="button-save-quick-mou-group"
+                >
+                  {createGroupMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setShowQuickAddGroup(false)}
+                >
+                  <X className="w-3 h-3" />
+                </Button>
               </div>
             )}
           </div>

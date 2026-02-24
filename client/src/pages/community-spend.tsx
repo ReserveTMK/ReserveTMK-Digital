@@ -1,7 +1,9 @@
 import { Button } from "@/components/ui/beautiful-button";
-import { Plus, Search, Loader2, DollarSign, Trash2, Pencil, Filter } from "lucide-react";
+import { Plus, Search, Loader2, DollarSign, Trash2, Pencil, Filter, UserPlus, X } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useCreateContact } from "@/hooks/use-contacts";
+import { useCreateGroup } from "@/hooks/use-groups";
 import { format } from "date-fns";
 import { useState, useMemo } from "react";
 import {
@@ -433,6 +435,34 @@ function SpendFormDialog({ open, onOpenChange, item, contacts, groups, programme
   const [notes, setNotes] = useState("");
   const [contactSearchOpen, setContactSearchOpen] = useState(false);
   const [groupSearchOpen, setGroupSearchOpen] = useState(false);
+  const [showQuickAddContact, setShowQuickAddContact] = useState(false);
+  const [quickContactName, setQuickContactName] = useState("");
+  const [showQuickAddGroup, setShowQuickAddGroup] = useState(false);
+  const [quickGroupName, setQuickGroupName] = useState("");
+  const createContact = useCreateContact();
+  const createGroup = useCreateGroup();
+
+  const handleQuickAddContact = async () => {
+    if (!quickContactName.trim()) return;
+    try {
+      const newContact = await createContact.mutateAsync({ name: quickContactName.trim() });
+      setContactId(String(newContact.id));
+      setQuickContactName("");
+      setShowQuickAddContact(false);
+      setContactSearchOpen(false);
+    } catch (err: any) {}
+  };
+
+  const handleQuickAddGroup = async () => {
+    if (!quickGroupName.trim()) return;
+    try {
+      const newGroup = await createGroup.mutateAsync({ name: quickGroupName.trim(), type: "organisation" });
+      setGroupId(String(newGroup.id));
+      setQuickGroupName("");
+      setShowQuickAddGroup(false);
+      setGroupSearchOpen(false);
+    } catch (err: any) {}
+  };
 
   const resetForm = () => {
     setAmount(item ? item.amount : "");
@@ -568,7 +598,50 @@ function SpendFormDialog({ open, onOpenChange, item, contacts, groups, programme
                 <Command>
                   <CommandInput placeholder="Search contacts..." />
                   <CommandList>
-                    <CommandEmpty>No contacts found.</CommandEmpty>
+                    <CommandEmpty>
+                      {!showQuickAddContact ? (
+                        <div className="flex items-center justify-between p-1">
+                          <span className="text-xs text-muted-foreground">No contacts found.</span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 text-[10px]"
+                            onClick={() => setShowQuickAddContact(true)}
+                            data-testid="button-quick-add-contact"
+                          >
+                            <Plus className="w-3 h-3 mr-1" />
+                            Quick Add
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 p-1">
+                          <Input
+                            value={quickContactName}
+                            onChange={(e) => setQuickContactName(e.target.value)}
+                            placeholder="Person's name"
+                            className="h-7 text-xs flex-1"
+                            data-testid="input-quick-add-contact-name"
+                          />
+                          <Button
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={handleQuickAddContact}
+                            disabled={!quickContactName.trim() || createContact.isPending}
+                            data-testid="button-save-quick-contact"
+                          >
+                            {createContact.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add"}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => setShowQuickAddContact(false)}
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      )}
+                    </CommandEmpty>
                     <CommandGroup>
                       <CommandItem
                         value="__none__"
@@ -614,7 +687,50 @@ function SpendFormDialog({ open, onOpenChange, item, contacts, groups, programme
                 <Command>
                   <CommandInput placeholder="Search groups..." />
                   <CommandList>
-                    <CommandEmpty>No groups found.</CommandEmpty>
+                    <CommandEmpty>
+                      {!showQuickAddGroup ? (
+                        <div className="flex items-center justify-between p-1">
+                          <span className="text-xs text-muted-foreground">No groups found.</span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 text-[10px]"
+                            onClick={() => setShowQuickAddGroup(true)}
+                            data-testid="button-quick-add-group"
+                          >
+                            <Plus className="w-3 h-3 mr-1" />
+                            Quick Add
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 p-1">
+                          <Input
+                            value={quickGroupName}
+                            onChange={(e) => setQuickGroupName(e.target.value)}
+                            placeholder="Organisation name"
+                            className="h-7 text-xs flex-1"
+                            data-testid="input-quick-add-group-name"
+                          />
+                          <Button
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={handleQuickAddGroup}
+                            disabled={!quickGroupName.trim() || createGroup.isPending}
+                            data-testid="button-save-quick-group"
+                          >
+                            {createGroup.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add"}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => setShowQuickAddGroup(false)}
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      )}
+                    </CommandEmpty>
                     <CommandGroup>
                       <CommandItem
                         value="__none__"

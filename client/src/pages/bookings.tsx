@@ -23,6 +23,8 @@ import {
   useCreateBooking,
   useUpdateBooking,
   useDeleteBooking,
+  useBookingPricingDefaults,
+  useUpdateBookingPricingDefaults,
 } from "@/hooks/use-bookings";
 import { useContacts, useCreateContact } from "@/hooks/use-contacts";
 import { useGroups, useCreateGroup } from "@/hooks/use-groups";
@@ -53,6 +55,7 @@ import {
   AlertCircle,
   Ban,
   CircleDashed,
+  MapPin,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -143,6 +146,8 @@ export default function Bookings() {
   const { data: allGroups } = useGroups();
   const { data: allMemberships } = useMemberships();
   const { data: allMous } = useMous();
+  const { data: pricingDefaults } = useBookingPricingDefaults();
+  const updatePricingMutation = useUpdateBookingPricingDefaults();
   const createMutation = useCreateBooking();
   const updateMutation = useUpdateBooking();
   const deleteMutation = useDeleteBooking();
@@ -485,7 +490,10 @@ export default function Bookings() {
                                             </div>
                                             <div className="min-w-0 flex-1">
                                               <p className="text-sm font-medium truncate" data-testid={`kanban-name-${booking.id}`}>
-                                                {getVenueName(booking.venueId)}
+                                                {getBookingGroupName(booking.bookerGroupId) || getVenueName(booking.venueId)}
+                                              </p>
+                                              <p className="text-[10px] text-muted-foreground truncate mt-0.5">
+                                                {getBookingGroupName(booking.bookerGroupId) ? getVenueName(booking.venueId) : ""}
                                               </p>
                                               <Badge className={`${CLASSIFICATION_COLORS[booking.classification] || ""} text-[10px] mt-1`}>
                                                 {booking.classification}
@@ -585,12 +593,18 @@ export default function Bookings() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap mb-1">
                               <h3 className={`font-semibold text-base truncate ${isCancelled ? "line-through opacity-70" : ""}`} data-testid={`text-booking-title-${booking.id}`}>
-                                {getVenueName(booking.venueId)}
+                                {bookingGroupName || getVenueName(booking.venueId)}
                               </h3>
                               <Badge className={CLASSIFICATION_COLORS[booking.classification] || ""} data-testid={`badge-classification-${booking.id}`}>
                                 {booking.classification}
                               </Badge>
                             </div>
+                            {bookingGroupName && (
+                              <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                                <MapPin className="w-3 h-3" />
+                                {getVenueName(booking.venueId)}
+                              </p>
+                            )}
 
                             {booking.description && (
                               <p className="text-sm text-muted-foreground line-clamp-2 mb-2">{booking.description}</p>
@@ -647,12 +661,6 @@ export default function Bookings() {
                             </div>
 
                             <div className="flex items-center gap-4 text-xs text-muted-foreground mt-2 flex-wrap">
-                              {bookingGroupName && (
-                                <span className="flex items-center gap-1" data-testid={`text-booking-group-${booking.id}`}>
-                                  <Network className="w-3 h-3" />
-                                  {bookingGroupName}
-                                </span>
-                              )}
                               {bookerName && (
                                 <span className="flex items-center gap-1" data-testid={`text-booker-${booking.id}`}>
                                   <Users className="w-3 h-3" />
@@ -718,6 +726,7 @@ export default function Bookings() {
           }
         }}
         isPending={createMutation.isPending}
+        pricingDefaults={pricingDefaults}
       />
 
       {editBooking && (
@@ -736,12 +745,23 @@ export default function Bookings() {
             }
           }}
           isPending={updateMutation.isPending}
+          pricingDefaults={pricingDefaults}
         />
       )}
 
       <VenueManagementDialog
         open={venueDialogOpen}
         onOpenChange={setVenueDialogOpen}
+        pricingDefaults={pricingDefaults}
+        onUpdatePricing={async (data) => {
+          try {
+            await updatePricingMutation.mutateAsync(data);
+            toast({ title: "Pricing defaults saved" });
+          } catch {
+            toast({ title: "Error saving pricing defaults", variant: "destructive" });
+          }
+        }}
+        pricingPending={updatePricingMutation.isPending}
       />
     </>
   );
@@ -750,9 +770,15 @@ export default function Bookings() {
 function VenueManagementDialog({
   open,
   onOpenChange,
+  pricingDefaults,
+  onUpdatePricing,
+  pricingPending,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  pricingDefaults?: { fullDayRate?: string | null; halfDayRate?: string | null };
+  onUpdatePricing: (data: { fullDayRate?: string; halfDayRate?: string }) => void;
+  pricingPending?: boolean;
 }) {
   const { data: venues } = useVenues();
   const createVenue = useCreateVenue();
@@ -767,6 +793,8 @@ function VenueManagementDialog({
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editCapacity, setEditCapacity] = useState("");
+  const [localFullDay, setLocalFullDay] = useState(pricingDefaults?.fullDayRate || "0");
+  const [localHalfDay, setLocalHalfDay] = useState(pricingDefaults?.halfDayRate || "0");
 
   const handleCreateVenue = async () => {
     if (!newName.trim()) return;
@@ -936,6 +964,55 @@ function VenueManagementDialog({
               Add Venue
             </Button>
           </div>
+
+          <div className="border-t pt-4 space-y-3">
+            <Label className="text-sm font-semibold flex items-center gap-2">
+              <DollarSign className="w-4 h-4" />
+              Default Pricing (Full Price, GST Excl.)
+            </Label>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Full Day Rate</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={localFullDay}
+                    onChange={(e) => setLocalFullDay(e.target.value)}
+                    className="pl-7"
+                    data-testid="input-default-full-day-rate"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Half Day Rate</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={localHalfDay}
+                    onChange={(e) => setLocalHalfDay(e.target.value)}
+                    className="pl-7"
+                    data-testid="input-default-half-day-rate"
+                  />
+                </div>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onUpdatePricing({ fullDayRate: localFullDay, halfDayRate: localHalfDay })}
+              disabled={pricingPending}
+              data-testid="button-save-pricing-defaults"
+            >
+              {pricingPending && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+              Save Pricing Defaults
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
@@ -949,6 +1026,7 @@ function BookingFormDialog({
   venues,
   onSubmit,
   isPending,
+  pricingDefaults,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -956,6 +1034,7 @@ function BookingFormDialog({
   venues: Venue[];
   onSubmit: (data: any) => Promise<void>;
   isPending: boolean;
+  pricingDefaults?: { fullDayRate?: string | null; halfDayRate?: string | null };
 }) {
   const { data: contacts } = useContacts();
   const createContact = useCreateContact();
@@ -984,6 +1063,18 @@ function BookingFormDialog({
   const [durationType, setDurationType] = useState(booking?.durationType || "hourly");
   const [rateType, setRateType] = useState(booking?.rateType || "standard");
   const [amount, setAmount] = useState(booking?.amount || "0");
+
+  const applyDefaultRate = (newDuration: string, newRate: string) => {
+    if (!pricingDefaults) return;
+    let baseRate = "0";
+    if (newDuration === "full_day") baseRate = pricingDefaults.fullDayRate || "0";
+    else if (newDuration === "half_day") baseRate = pricingDefaults.halfDayRate || "0";
+    else return;
+    const base = parseFloat(baseRate);
+    if (base <= 0) return;
+    const finalAmount = newRate === "community" ? (base * (1 - 0.20)).toFixed(2) : base.toFixed(2);
+    setAmount(finalAmount);
+  };
 
   const [bookerId, setBookerId] = useState<number | null>(booking?.bookerId || null);
   const [bookerSearch, setBookerSearch] = useState("");
@@ -1441,7 +1532,7 @@ function BookingFormDialog({
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <Label className="text-xs text-muted-foreground">Duration</Label>
-                <Select value={durationType} onValueChange={setDurationType}>
+                <Select value={durationType} onValueChange={(v) => { setDurationType(v); applyDefaultRate(v, rateType); }}>
                   <SelectTrigger data-testid="select-booking-duration-type">
                     <SelectValue />
                   </SelectTrigger>
@@ -1454,7 +1545,7 @@ function BookingFormDialog({
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">Rate</Label>
-                <Select value={rateType} onValueChange={setRateType}>
+                <Select value={rateType} onValueChange={(v) => { setRateType(v); applyDefaultRate(durationType, v); }}>
                   <SelectTrigger data-testid="select-booking-rate-type">
                     <SelectValue />
                   </SelectTrigger>

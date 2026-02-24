@@ -103,6 +103,8 @@ import {
   communitySpend,
   type CommunitySpend,
   type InsertCommunitySpend,
+  bookingPricingDefaults,
+  type BookingPricingDefaults,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, sql, max, count } from "drizzle-orm";
 
@@ -221,6 +223,10 @@ export interface IStorage {
   createBooking(data: InsertBooking): Promise<Booking>;
   updateBooking(id: number, updates: Partial<InsertBooking>): Promise<Booking>;
   deleteBooking(id: number): Promise<void>;
+
+  // Booking Pricing Defaults
+  getBookingPricingDefaults(userId: string): Promise<BookingPricingDefaults | undefined>;
+  upsertBookingPricingDefaults(userId: string, data: { fullDayRate?: string; halfDayRate?: string }): Promise<BookingPricingDefaults>;
 
   // Memberships
   getMemberships(userId: string): Promise<Membership[]>;
@@ -899,6 +905,26 @@ export class DatabaseStorage implements IStorage {
 
   async deleteBooking(id: number): Promise<void> {
     await db.delete(bookings).where(eq(bookings.id, id));
+  }
+
+  async getBookingPricingDefaults(userId: string): Promise<BookingPricingDefaults | undefined> {
+    const [defaults] = await db.select().from(bookingPricingDefaults).where(eq(bookingPricingDefaults.userId, userId));
+    return defaults;
+  }
+
+  async upsertBookingPricingDefaults(userId: string, data: { fullDayRate?: string; halfDayRate?: string }): Promise<BookingPricingDefaults> {
+    const existing = await this.getBookingPricingDefaults(userId);
+    if (existing) {
+      const [updated] = await db.update(bookingPricingDefaults)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(bookingPricingDefaults.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(bookingPricingDefaults)
+      .values({ userId, fullDayRate: data.fullDayRate || "0", halfDayRate: data.halfDayRate || "0" })
+      .returning();
+    return created;
   }
 
   // Memberships

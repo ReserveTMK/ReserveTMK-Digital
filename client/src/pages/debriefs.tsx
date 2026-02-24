@@ -1843,6 +1843,25 @@ function ContactSearchPicker({
   testId: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+
+  const handleQuickCreate = async () => {
+    if (!searchValue.trim()) return;
+    setIsCreating(true);
+    try {
+      const res = await apiRequest("POST", "/api/contacts", {
+        name: searchValue.trim(),
+        role: "Community Member",
+      });
+      const newContact = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      onSelect(newContact.id);
+      setSearchValue("");
+      setOpen(false);
+    } catch (err: any) {}
+    setIsCreating(false);
+  };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -1858,9 +1877,35 @@ function ContactSearchPicker({
       </PopoverTrigger>
       <PopoverContent className="w-[300px] p-0" align="start">
         <Command>
-          <CommandInput placeholder="Type a name to search..." data-testid={`${testId}-input`} />
+          <CommandInput
+            placeholder="Type a name to search..."
+            data-testid={`${testId}-input`}
+            value={searchValue}
+            onValueChange={setSearchValue}
+          />
           <CommandList>
-            <CommandEmpty>No contacts found.</CommandEmpty>
+            <CommandEmpty>
+              <div className="py-2 px-1">
+                <p className="text-xs text-muted-foreground mb-2">No contacts found</p>
+                {searchValue.trim() && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full h-7 text-xs"
+                    onClick={handleQuickCreate}
+                    disabled={isCreating}
+                    data-testid={`${testId}-quick-add`}
+                  >
+                    {isCreating ? (
+                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                    ) : (
+                      <UserPlus className="w-3 h-3 mr-1" />
+                    )}
+                    Create "{searchValue.trim()}"
+                  </Button>
+                )}
+              </div>
+            </CommandEmpty>
             <CommandGroup>
               {contacts.map((c) => (
                 <CommandItem
