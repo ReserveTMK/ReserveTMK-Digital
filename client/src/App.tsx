@@ -28,6 +28,7 @@ import LegacyReportsPage from "@/pages/legacy-reports";
 import MilestonesPage from "@/pages/milestones";
 import ProgrammeEffectivenessPage from "@/pages/programme-effectiveness";
 import WeeklyDebriefs from "@/pages/weekly-debriefs";
+import CommunitySpend from "@/pages/community-spend";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -136,6 +137,10 @@ function Router() {
 
         <Route path="/ecosystem">
           <ProtectedRoute component={EcosystemPage} />
+        </Route>
+
+        <Route path="/community-spend">
+          <ProtectedRoute component={CommunitySpend} />
         </Route>
 
         <Route path="/debrief-queue">

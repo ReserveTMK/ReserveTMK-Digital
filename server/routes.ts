@@ -8,6 +8,7 @@ import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { openai } from "./replit_integrations/audio/client";
 import { getFullMonthlyReport, generateNarrative, type ReportFilters } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
+import { insertCommunitySpendSchema } from "@shared/schema";
 
 function parseTimeToMinutes(timeStr: string): number {
   const parts = timeStr.split(":");
@@ -1536,6 +1537,25 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const body = coerceDateFields({ ...req.body, userId });
       const input = api.programmes.create.input.parse(body);
       const programme = await storage.createProgramme(input);
+
+      if (programme.facilitators && programme.facilitators.length > 0 && programme.facilitatorCost && parseFloat(String(programme.facilitatorCost)) > 0) {
+        const costPerFacilitator = parseFloat(String(programme.facilitatorCost)) / programme.facilitators.length;
+        for (const contactId of programme.facilitators) {
+          try {
+            await storage.createCommunitySpend({
+              userId,
+              amount: String(costPerFacilitator.toFixed(2)),
+              date: programme.startDate || new Date(),
+              category: "contracting",
+              description: `Facilitator for ${programme.name}`,
+              contactId,
+              programmeId: programme.id,
+              paymentStatus: "pending",
+            });
+          } catch (e) { console.error("Auto community spend error:", e); }
+        }
+      }
+
       res.status(201).json(programme);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1553,6 +1573,31 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
       const input = api.programmes.update.input.parse(coerceDateFields(req.body));
       const updated = await storage.updateProgramme(id, input);
+
+      const existingSpend = await storage.getCommunitySpendByProgramme(id);
+      const autoSpend = existingSpend.filter(s => s.category === "contracting" && s.description?.includes("Facilitator for"));
+      for (const old of autoSpend) {
+        await storage.deleteCommunitySpend(old.id);
+      }
+
+      if (updated.facilitators && updated.facilitators.length > 0 && updated.facilitatorCost && parseFloat(String(updated.facilitatorCost)) > 0) {
+        const costPerFacilitator = parseFloat(String(updated.facilitatorCost)) / updated.facilitators.length;
+        for (const contactId of updated.facilitators) {
+          try {
+            await storage.createCommunitySpend({
+              userId: existing.userId,
+              amount: String(costPerFacilitator.toFixed(2)),
+              date: updated.startDate || new Date(),
+              category: "contracting",
+              description: `Facilitator for ${updated.name}`,
+              contactId,
+              programmeId: id,
+              paymentStatus: "pending",
+            });
+          } catch (e) { console.error("Auto community spend update error:", e); }
+        }
+      }
+
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -2450,16 +2495,19 @@ Important:
       const reports = await storage.getLegacyReports(userId);
       const allGroups = await storage.getGroups(userId);
       const allContacts = await storage.getContacts(userId);
+      const groupNameSet = new Set(allGroups.map(g => g.name.toLowerCase().trim()));
+      const contactNameSet = new Set(allContacts.map(c => c.name.toLowerCase().trim()));
       const reportsWithSnapshots = await Promise.all(
         reports.map(async (r) => {
           const snapshot = await storage.getLegacyReportSnapshot(r.id);
           const extraction = await storage.getLegacyReportExtraction(r.id);
-          const importLabel = `Imported from legacy report ${r.quarterLabel}`;
-          const groupsImported = allGroups.filter(g => g.importSource === importLabel).length;
-          const contactsImported = allContacts.filter(c => c.notes?.includes(importLabel)).length;
           const hasExtraction = !!extraction;
-          const extractedOrgCount = (extraction?.extractedOrganisations as any[])?.length || 0;
-          const extractedPeopleCount = (extraction?.extractedPeople as any[])?.length || 0;
+          const extractedOrgs = (extraction?.extractedOrganisations as any[]) || [];
+          const extractedPeople = (extraction?.extractedPeople as any[]) || [];
+          const extractedOrgCount = extractedOrgs.length;
+          const extractedPeopleCount = extractedPeople.length;
+          const groupsImported = extractedOrgs.filter(o => o.name && groupNameSet.has(o.name.toLowerCase().trim())).length;
+          const contactsImported = extractedPeople.filter(p => p.name && contactNameSet.has(p.name.toLowerCase().trim())).length;
           const highlights = (extraction?.extractedHighlights as any[]) || [];
           return { ...r, snapshot, highlights, processingStatus: { hasExtraction, extractedOrgCount, extractedPeopleCount, groupsImported, contactsImported } };
         })
@@ -3995,6 +4043,106 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     } catch (err: any) {
       console.error("Outstanding actions error:", err);
       res.status(500).json({ message: "Failed to fetch outstanding actions" });
+    }
+  });
+
+  // === Community Spend API ===
+
+  app.get("/api/community-spend", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const items = await storage.getCommunitySpend(userId);
+      const allContacts = await storage.getContacts(userId);
+      const allGroups = await storage.getGroups(userId);
+      const allProgrammes = await storage.getProgrammes(userId);
+      const enriched = items.map(item => ({
+        ...item,
+        contactName: item.contactId ? allContacts.find(c => c.id === item.contactId)?.name : null,
+        groupName: item.groupId ? allGroups.find(g => g.id === item.groupId)?.name : null,
+        programmeName: item.programmeId ? allProgrammes.find(p => p.id === item.programmeId)?.name : null,
+      }));
+      res.json(enriched);
+    } catch (err: any) {
+      console.error("Community spend error:", err);
+      res.status(500).json({ message: "Failed to fetch community spend" });
+    }
+  });
+
+  app.post("/api/community-spend", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const body = coerceDateFields({ ...req.body, userId });
+      if (body.amount !== undefined && typeof body.amount === 'number') body.amount = String(body.amount);
+      const input = insertCommunitySpendSchema.parse(body);
+      const item = await storage.createCommunitySpend(input);
+      res.status(201).json(item);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
+      }
+      console.error("Create community spend error:", err);
+      res.status(500).json({ message: "Failed to create community spend" });
+    }
+  });
+
+  app.put("/api/community-spend/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getCommunitySpendItem(id);
+      if (!existing || String(existing.userId) !== String(userId)) return res.status(404).json({ message: "Not found" });
+      const body = coerceDateFields(req.body);
+      if (body.amount !== undefined && typeof body.amount === 'number') body.amount = String(body.amount);
+      const updated = await storage.updateCommunitySpend(id, body);
+      res.json(updated);
+    } catch (err: any) {
+      console.error("Update community spend error:", err);
+      res.status(500).json({ message: "Failed to update community spend" });
+    }
+  });
+
+  app.delete("/api/community-spend/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getCommunitySpendItem(id);
+      if (!existing || String(existing.userId) !== String(userId)) return res.status(404).json({ message: "Not found" });
+      await storage.deleteCommunitySpend(id);
+      res.status(204).end();
+    } catch (err: any) {
+      console.error("Delete community spend error:", err);
+      res.status(500).json({ message: "Failed to delete community spend" });
+    }
+  });
+
+  app.get("/api/community-spend/summary", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const items = await storage.getCommunitySpend(userId);
+      const totalSpend = items.reduce((sum, i) => sum + parseFloat(String(i.amount)), 0);
+      const byCategory: Record<string, number> = {};
+      const byGroup: Record<string, number> = {};
+      const byMonth: Record<string, number> = {};
+
+      for (const item of items) {
+        byCategory[item.category] = (byCategory[item.category] || 0) + parseFloat(String(item.amount));
+        if (item.groupId) {
+          const groups = await storage.getGroups(userId);
+          const group = groups.find(g => g.id === item.groupId);
+          if (group) {
+            byGroup[group.name] = (byGroup[group.name] || 0) + parseFloat(String(item.amount));
+          }
+        }
+        if (item.date) {
+          const monthKey = new Date(item.date).toISOString().slice(0, 7);
+          byMonth[monthKey] = (byMonth[monthKey] || 0) + parseFloat(String(item.amount));
+        }
+      }
+
+      res.json({ totalSpend, byCategory, byGroup, byMonth, totalEntries: items.length });
+    } catch (err: any) {
+      console.error("Community spend summary error:", err);
+      res.status(500).json({ message: "Failed to fetch summary" });
     }
   });
 

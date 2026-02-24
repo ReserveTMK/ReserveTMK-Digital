@@ -534,6 +534,23 @@ export const legacyReportExtractions = pgTable("legacy_report_extractions", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const communitySpend = pgTable("community_spend", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  date: timestamp("date").notNull(),
+  category: text("category").notNull(),
+  description: text("description").notNull(),
+  contactId: integer("contact_id"),
+  groupId: integer("group_id"),
+  programmeId: integer("programme_id"),
+  bookingId: integer("booking_id"),
+  paymentStatus: text("payment_status").notNull().default("paid"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const weeklyHubDebriefs = pgTable("weekly_hub_debriefs", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
@@ -1097,6 +1114,15 @@ export const insertReportSchema = createInsertSchema(reports).omit({
 
 export type Report = typeof reports.$inferSelect;
 export type InsertReport = z.infer<typeof insertReportSchema>;
+
+export const insertCommunitySpendSchema = createInsertSchema(communitySpend).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type CommunitySpend = typeof communitySpend.$inferSelect;
+export type InsertCommunitySpend = z.infer<typeof insertCommunitySpendSchema>;
 
 // Request types
 export type CreateContactRequest = InsertContact;

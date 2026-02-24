@@ -24,6 +24,7 @@ import {
   Shield,
   Calendar,
   Trophy,
+  DollarSign,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useRef, useEffect } from "react";
@@ -54,6 +55,7 @@ const navGroups: NavGroup[] = [
       { name: "People", href: "/contacts", icon: Users, description: "Manage contacts & mentees" },
       { name: "Groups", href: "/groups", icon: Network, description: "Organisations & collectives" },
       { name: "Ecosystem", href: "/ecosystem", icon: Handshake, description: "Organisation network overview" },
+      { name: "Community Spend", href: "/community-spend", icon: DollarSign, description: "Track community investment" },
     ],
   },
   {

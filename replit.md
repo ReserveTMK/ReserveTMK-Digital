@@ -45,6 +45,7 @@ The application uses PostgreSQL with Drizzle ORM. Key tables include `users`, `s
 -   **Benchmark Insights Engine**: Computes historical averages, highest period, period-over-period change, and current rank from combined legacy + live data. Displayed as a collapsible panel in reports.
 -   **Legacy Metrics Review Tool**: AI-powered analysis of legacy report snapshots suggesting taxonomy improvements, missing metrics, and dashboard enhancements.
 -   **Weekly Hub Debriefs**: Weekly operational summaries aggregating confirmed debriefs, completed programmes/bookings, milestones, themes, and sentiment for Monday-Sunday weeks. Supports draft/confirmed workflow with editable final summaries.
+-   **Community Spend Tracking**: Tracks money spent in the community (contracting, goods, services, sponsorship, donations). Located under Community section at `/community-spend`. Supports linking spend entries to contacts, groups, programmes, and bookings. Auto-creates spend entries when programmes have facilitators with costs. Summary dashboard with total spend, category breakdown, and payment status tracking (paid/pending/invoiced).
 -   **NZ Timezone Standardization**: All date calculations use Pacific/Auckland timezone with Monday-start weeks via shared `nz-week.ts` utility.
 
 ## External Dependencies

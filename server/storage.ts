@@ -100,6 +100,9 @@ import {
   type InsertLegacyReportExtraction,
   type WeeklyHubDebrief,
   type InsertWeeklyHubDebrief,
+  communitySpend,
+  type CommunitySpend,
+  type InsertCommunitySpend,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, sql, max, count } from "drizzle-orm";
 
@@ -297,6 +300,14 @@ export interface IStorage {
   // Relationship Stage History
   getRelationshipStageHistory(entityType: string, entityId: number): Promise<RelationshipStageHistoryRecord[]>;
   createRelationshipStageHistory(data: InsertRelationshipStageHistory): Promise<RelationshipStageHistoryRecord>;
+
+  // Community Spend
+  getCommunitySpend(userId: string): Promise<CommunitySpend[]>;
+  getCommunitySpendItem(id: number): Promise<CommunitySpend | undefined>;
+  createCommunitySpend(data: InsertCommunitySpend): Promise<CommunitySpend>;
+  updateCommunitySpend(id: number, updates: Partial<InsertCommunitySpend>): Promise<CommunitySpend>;
+  deleteCommunitySpend(id: number): Promise<void>;
+  getCommunitySpendByProgramme(programmeId: number): Promise<CommunitySpend[]>;
 
   // Auth (re-exported or separate)
   auth: IAuthStorage;
@@ -1214,6 +1225,33 @@ export class DatabaseStorage implements IStorage {
 
   async deleteWeeklyHubDebrief(id: number): Promise<void> {
     await db.delete(weeklyHubDebriefs).where(eq(weeklyHubDebriefs.id, id));
+  }
+
+  async getCommunitySpend(userId: string): Promise<CommunitySpend[]> {
+    return db.select().from(communitySpend).where(eq(communitySpend.userId, userId)).orderBy(desc(communitySpend.date));
+  }
+
+  async getCommunitySpendItem(id: number): Promise<CommunitySpend | undefined> {
+    const [item] = await db.select().from(communitySpend).where(eq(communitySpend.id, id));
+    return item;
+  }
+
+  async createCommunitySpend(data: InsertCommunitySpend): Promise<CommunitySpend> {
+    const [item] = await db.insert(communitySpend).values(data).returning();
+    return item;
+  }
+
+  async updateCommunitySpend(id: number, updates: Partial<InsertCommunitySpend>): Promise<CommunitySpend> {
+    const [item] = await db.update(communitySpend).set({ ...updates, updatedAt: new Date() }).where(eq(communitySpend.id, id)).returning();
+    return item;
+  }
+
+  async deleteCommunitySpend(id: number): Promise<void> {
+    await db.delete(communitySpend).where(eq(communitySpend.id, id));
+  }
+
+  async getCommunitySpendByProgramme(programmeId: number): Promise<CommunitySpend[]> {
+    return db.select().from(communitySpend).where(eq(communitySpend.programmeId, programmeId)).orderBy(desc(communitySpend.date));
   }
 }
 

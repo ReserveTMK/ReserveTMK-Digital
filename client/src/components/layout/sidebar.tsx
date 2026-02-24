@@ -20,6 +20,7 @@ import {
   ClipboardList,
   BookOpen,
   Settings,
+  DollarSign,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "../ui/beautiful-button";
@@ -45,6 +46,7 @@ const navigation: NavItem[] = [
       { name: "People", href: "/contacts", icon: Users },
       { name: "Groups", href: "/groups", icon: Network },
       { name: "Ecosystem", href: "/ecosystem", icon: Handshake },
+      { name: "Community Spend", href: "/community-spend", icon: DollarSign },
     ],
   },
   {
