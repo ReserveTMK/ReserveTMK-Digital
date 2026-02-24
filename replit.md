@@ -22,7 +22,7 @@ The app uses a top navigation bar (desktop) and sidebar/bottom nav (mobile) with
 - **Calendar** (standalone, `/calendar`)
 - **Community**: People (`/contacts`), Groups (`/groups`), Ecosystem (`/ecosystem`)
 - **Delivery**: Programmes (`/programmes`), Bookings (`/bookings`), Agreements (`/agreements`)
-- **Tracking**: Interactions (`/debriefs`), Impact Logs (`/debrief-queue`), Debriefs (`/weekly-debriefs`), Community Spend (`/community-spend`)
+- **Tracking**: Debriefs (`/debriefs` — unified page with All Debriefs, Calendar, Weekly, Updates tabs; supports `?tab=calendar|weekly|updates` deep-linking and `?reconcile=ID`), Community Spend (`/community-spend`)
 - **Reporting**: Reports (`/reports`), Legacy Reports (`/legacy-reports`), Taxonomy (`/taxonomy`)
 - **Settings**: Gmail Import (`/gmail-import`)
 

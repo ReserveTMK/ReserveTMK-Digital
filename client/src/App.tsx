@@ -23,11 +23,9 @@ import Bookings from "@/pages/bookings";
 import Agreements from "@/pages/agreements";
 import GroupsPage from "@/pages/groups";
 import EcosystemPage from "@/pages/ecosystem";
-import DebriefQueuePage from "@/pages/debrief-queue";
 import LegacyReportsPage from "@/pages/legacy-reports";
 import MilestonesPage from "@/pages/milestones";
 import ProgrammeEffectivenessPage from "@/pages/programme-effectiveness";
-import WeeklyDebriefs from "@/pages/weekly-debriefs";
 import CommunitySpend from "@/pages/community-spend";
 import GmailImportPage from "@/pages/gmail-import";
 
@@ -144,10 +142,6 @@ function Router() {
           <ProtectedRoute component={CommunitySpend} />
         </Route>
 
-        <Route path="/debrief-queue">
-          <ProtectedRoute component={DebriefQueuePage} />
-        </Route>
-
         <Route path="/legacy-reports">
           <ProtectedRoute component={LegacyReportsPage} />
         </Route>
@@ -158,10 +152,6 @@ function Router() {
 
         <Route path="/programme-effectiveness">
           <ProtectedRoute component={ProgrammeEffectivenessPage} />
-        </Route>
-
-        <Route path="/weekly-debriefs">
-          <ProtectedRoute component={WeeklyDebriefs} />
         </Route>
 
         <Route path="/gmail-import">

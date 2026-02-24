@@ -16,11 +16,9 @@ import {
   Handshake,
   Network,
   ChevronDown,
-  ClipboardList,
   BookOpen,
   Settings,
   DollarSign,
-  CalendarDays,
   Activity,
   Mail,
 } from "lucide-react";
@@ -62,9 +60,7 @@ const navigation: NavItem[] = [
   {
     name: "Tracking", href: "/debriefs", icon: Activity,
     children: [
-      { name: "Interactions", href: "/debriefs", icon: Mic },
-      { name: "Impact Logs", href: "/debrief-queue", icon: ClipboardList },
-      { name: "Debriefs", href: "/weekly-debriefs", icon: CalendarDays },
+      { name: "Debriefs", href: "/debriefs", icon: Mic },
       { name: "Community Spend", href: "/community-spend", icon: DollarSign },
     ],
   },

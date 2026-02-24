@@ -362,7 +362,7 @@ export default function Dashboard() {
                     </p>
                   </div>
                 </div>
-                <Link href="/debrief-queue" data-testid="link-view-all-debriefs">
+                <Link href="/debriefs?tab=calendar" data-testid="link-view-all-debriefs">
                   <Button variant="outline" size="sm" className="gap-1">
                     View All <ArrowRight className="w-4 h-4" />
                   </Button>
@@ -392,7 +392,7 @@ export default function Dashboard() {
                         </p>
                       </div>
                     </div>
-                    <Link href={`/debrief-queue?reconcile=${item.id}`} data-testid={`button-reconcile-${item.id}`}>
+                    <Link href={`/debriefs?tab=calendar&reconcile=${item.id}`} data-testid={`button-reconcile-${item.id}`}>
                       <Button size="sm" variant="default" className="gap-1 shrink-0">
                         <Mic className="w-3 h-3" /> Reconcile
                       </Button>
