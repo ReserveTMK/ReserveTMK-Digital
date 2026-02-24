@@ -9,7 +9,7 @@ import { openai } from "./replit_integrations/audio/client";
 import { getFullMonthlyReport, generateNarrative, type ReportFilters } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
 import { insertCommunitySpendSchema } from "@shared/schema";
-import { checkGmailConnection, scanGmailEmails, startAutoSync, getGmailOAuth2Client } from "./gmail-import";
+import { scanGmailEmails, startAutoSync, getGmailOAuth2Client } from "./gmail-import";
 
 function parseTimeToMinutes(timeStr: string): number {
   const parts = timeStr.split(":");
@@ -4165,11 +4165,11 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   app.get("/api/gmail/status", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const connected = await checkGmailConnection();
       const syncSettings = await storage.getGmailSyncSettings(userId);
       const history = await storage.getGmailImportHistory(userId);
       const latestImport = history[0] || null;
       const additionalAccounts = await storage.getGmailConnectedAccounts(userId);
+      const connected = additionalAccounts.length > 0;
 
       res.json({
         connected,

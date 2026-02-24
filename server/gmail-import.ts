@@ -1,4 +1,3 @@
-import { getUncachableGmailClient, isGmailConnected } from './replit_integrations/gmail/client';
 import { storage } from './storage';
 import OpenAI from 'openai';
 import { google } from 'googleapis';
@@ -108,10 +107,6 @@ function determineTier(frequency: number): string {
   return 'mentioned';
 }
 
-export async function checkGmailConnection(): Promise<boolean> {
-  return isGmailConnected();
-}
-
 export function getGmailOAuth2Client() {
   const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
@@ -190,11 +185,6 @@ export async function scanGmailEmails(
         const gmail = await getGmailClientForAccount(account);
         gmailClients.push({ gmail, label: account.email });
       } else {
-        try {
-          const connectorGmail = await getUncachableGmailClient();
-          gmailClients.push({ gmail: connectorGmail, label: 'Primary (Connector)' });
-        } catch {}
-
         const additionalAccounts = await storage.getGmailConnectedAccounts(userId);
         for (const account of additionalAccounts) {
           try {
@@ -242,24 +232,34 @@ async function processMultiAccountImport(
   const peopleMap = new Map<string, ExtractedPerson>();
   let totalEmails = 0;
 
+  const failedAccounts: string[] = [];
   for (const { gmail, label } of gmailClients) {
-    console.log(`Scanning emails from: ${label}`);
-    const { emails, people } = await scanSingleAccount(gmail, fromDate, toDate, excludedDomains, excludedEmails);
-    totalEmails += emails;
+    try {
+      console.log(`Scanning emails from: ${label}`);
+      const { emails, people } = await scanSingleAccount(gmail, fromDate, toDate, excludedDomains, excludedEmails);
+      totalEmails += emails;
 
-    for (const [email, person] of Array.from(people.entries())) {
-      if (peopleMap.has(email)) {
-        const existing = peopleMap.get(email)!;
-        existing.frequency += person.frequency;
-        if (person.name && person.name !== email.split('@')[0] && (!existing.name || existing.name === email.split('@')[0])) {
-          existing.name = person.name;
+      for (const [email, person] of Array.from(people.entries())) {
+        if (peopleMap.has(email)) {
+          const existing = peopleMap.get(email)!;
+          existing.frequency += person.frequency;
+          if (person.name && person.name !== email.split('@')[0] && (!existing.name || existing.name === email.split('@')[0])) {
+            existing.name = person.name;
+          }
+        } else {
+          peopleMap.set(email, { ...person });
         }
-      } else {
-        peopleMap.set(email, { ...person });
       }
-    }
 
-    await storage.updateGmailImportHistory(historyId, { emailsScanned: totalEmails });
+      await storage.updateGmailImportHistory(historyId, { emailsScanned: totalEmails });
+    } catch (err: any) {
+      console.error(`Error scanning account ${label}:`, err.message);
+      failedAccounts.push(label);
+    }
+  }
+
+  if (failedAccounts.length > 0 && failedAccounts.length === gmailClients.length) {
+    throw new Error(`All accounts failed to scan: ${failedAccounts.join(', ')}`);
   }
 
   await finalizeImport(peopleMap, userId, historyId, totalEmails, excludedDomains);
@@ -553,9 +553,8 @@ export function startAutoSync() {
         const now = Date.now();
         
         if (now - lastSync >= intervalMs) {
-          const connectorConnected = await isGmailConnected();
           const additionalAccounts = await storage.getGmailConnectedAccounts(settings.userId);
-          if (!connectorConnected && additionalAccounts.length === 0) continue;
+          if (additionalAccounts.length === 0) continue;
 
           const daysSinceLastSync = settings.lastSyncAt
             ? Math.ceil((now - lastSync) / (24 * 60 * 60 * 1000)) + 1
