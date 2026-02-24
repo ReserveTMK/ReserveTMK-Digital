@@ -17,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useProgrammes, useCreateProgramme, useUpdateProgramme, useDeleteProgramme } from "@/hooks/use-programmes";
 import { useContacts, useCreateContact } from "@/hooks/use-contacts";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
   Plus,
   Loader2,
@@ -38,6 +38,9 @@ import {
   Ban,
   CircleDashed,
   Zap,
+  LayoutList,
+  Columns3,
+  GripVertical,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -47,6 +50,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import { PROGRAMME_CLASSIFICATIONS, PROGRAMME_STATUSES, type Programme, type Contact } from "@shared/schema";
+import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 
 const CLASSIFICATION_COLORS: Record<string, string> = {
   "Community Workshop": "bg-blue-500/15 text-blue-700 dark:text-blue-300",
@@ -83,6 +87,7 @@ export default function Programmes() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [createOpen, setCreateOpen] = useState(false);
   const [editProgramme, setEditProgramme] = useState<Programme | null>(null);
+  const [viewMode, setViewMode] = useState<"list" | "kanban">("kanban");
 
   const filtered = programmes?.filter((p) => {
     const matchesSearch =
@@ -135,6 +140,34 @@ export default function Programmes() {
     return { date: dateStr, time: timeStr };
   };
 
+  const handleDragEnd = useCallback(async (result: DropResult) => {
+    if (!result.destination) return;
+    const newStatus = result.destination.droppableId;
+    if (!PROGRAMME_STATUSES.includes(newStatus as any)) return;
+    const programmeId = parseInt(result.draggableId);
+    const programme = programmes?.find(p => p.id === programmeId);
+    if (!programme || programme.status === newStatus) return;
+    try {
+      await updateMutation.mutateAsync({ id: programmeId, data: { status: newStatus } });
+      toast({ title: "Status updated", description: `"${programme.name}" moved to ${STATUS_LABELS[newStatus]}` });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to update status", variant: "destructive" });
+    }
+  }, [programmes, updateMutation, toast]);
+
+  const kanbanColumns = useMemo(() => {
+    const columns: Record<string, Programme[]> = {
+      planned: [],
+      active: [],
+      completed: [],
+      cancelled: [],
+    };
+    filtered?.forEach(p => {
+      if (columns[p.status]) columns[p.status].push(p);
+    });
+    return columns;
+  }, [filtered]);
+
   const handleDuplicate = async (p: Programme) => {
     try {
       await createMutation.mutateAsync({
@@ -172,16 +205,36 @@ export default function Programmes() {
   return (
     <>
     <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
-        <div className="max-w-6xl mx-auto space-y-6">
+        <div className={`${viewMode === "kanban" ? "max-w-[1600px]" : "max-w-6xl"} mx-auto space-y-6`}>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-display font-bold" data-testid="text-programmes-title">Programmes</h1>
               <p className="text-muted-foreground mt-1">Manage internal events and activations.</p>
             </div>
-            <Button className="shadow-lg" onClick={() => setCreateOpen(true)} data-testid="button-create-programme">
-              <Plus className="w-4 h-4 mr-2" />
-              New Programme
-            </Button>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center border border-border rounded-lg overflow-hidden" data-testid="view-toggle">
+                <button
+                  onClick={() => setViewMode("kanban")}
+                  className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors ${viewMode === "kanban" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:text-foreground"}`}
+                  data-testid="button-kanban-view"
+                >
+                  <Columns3 className="w-3.5 h-3.5" />
+                  Board
+                </button>
+                <button
+                  onClick={() => setViewMode("list")}
+                  className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors ${viewMode === "list" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:text-foreground"}`}
+                  data-testid="button-list-view"
+                >
+                  <LayoutList className="w-3.5 h-3.5" />
+                  List
+                </button>
+              </div>
+              <Button className="shadow-lg" onClick={() => setCreateOpen(true)} data-testid="button-create-programme">
+                <Plus className="w-4 h-4 mr-2" />
+                New Programme
+              </Button>
+            </div>
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
@@ -223,7 +276,7 @@ export default function Programmes() {
             <div className="flex justify-center py-20">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
             </div>
-          ) : !filtered?.length ? (
+          ) : !programmes?.length ? (
             <Card className="p-12 text-center">
               <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
                 <Calendar className="w-8 h-8 text-muted-foreground" />
@@ -235,9 +288,31 @@ export default function Programmes() {
                 Create Programme
               </Button>
             </Card>
+          ) : viewMode === "kanban" ? (
+            filtered?.length === 0 ? (
+              <Card className="p-8 text-center">
+                <p className="text-muted-foreground">No programmes match your filters.</p>
+              </Card>
+            ) : (
+              <KanbanBoard
+                columns={kanbanColumns}
+                onDragEnd={handleDragEnd}
+                onEdit={setEditProgramme}
+                onDuplicate={handleDuplicate}
+                onDelete={handleDelete}
+                formatDateTime={formatDateTime}
+                getFacilitatorNames={getFacilitatorNames}
+                getTotalBudget={getTotalBudget}
+                contacts={contacts}
+              />
+            )
           ) : (
             <div className="space-y-3">
-              {filtered.map((programme) => {
+              {!filtered?.length ? (
+                <Card className="p-8 text-center">
+                  <p className="text-muted-foreground">No programmes match your filters.</p>
+                </Card>
+              ) : filtered.map((programme) => {
                 const dateTime = formatDateTime(programme);
                 const facNames = getFacilitatorNames(programme);
                 const attNames = getAttendeeNames(programme);
@@ -408,6 +483,178 @@ export default function Programmes() {
         />
       )}
     </>
+  );
+}
+
+const COLUMN_STYLES: Record<string, { header: string; dot: string; bg: string }> = {
+  planned: {
+    header: "text-slate-700 dark:text-slate-300",
+    dot: "bg-slate-400",
+    bg: "bg-slate-50/50 dark:bg-slate-900/20",
+  },
+  active: {
+    header: "text-amber-700 dark:text-amber-300",
+    dot: "bg-amber-500",
+    bg: "bg-amber-50/30 dark:bg-amber-900/10",
+  },
+  completed: {
+    header: "text-green-700 dark:text-green-300",
+    dot: "bg-green-500",
+    bg: "bg-green-50/30 dark:bg-green-900/10",
+  },
+  cancelled: {
+    header: "text-gray-500 dark:text-gray-400",
+    dot: "bg-gray-400",
+    bg: "bg-gray-50/30 dark:bg-gray-900/10",
+  },
+};
+
+function KanbanBoard({
+  columns,
+  onDragEnd,
+  onEdit,
+  onDuplicate,
+  onDelete,
+  formatDateTime,
+  getFacilitatorNames,
+  getTotalBudget,
+  contacts,
+}: {
+  columns: Record<string, Programme[]>;
+  onDragEnd: (result: DropResult) => void;
+  onEdit: (p: Programme) => void;
+  onDuplicate: (p: Programme) => void;
+  onDelete: (id: number) => void;
+  formatDateTime: (p: Programme) => { date: string; time: string | null } | null;
+  getFacilitatorNames: (p: Programme) => string[];
+  getTotalBudget: (p: Programme) => number;
+  contacts?: Contact[];
+}) {
+  const columnOrder = ["planned", "active", "completed", "cancelled"];
+
+  return (
+    <DragDropContext onDragEnd={onDragEnd}>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" data-testid="kanban-board">
+        {columnOrder.map((status) => {
+          const items = columns[status] || [];
+          const style = COLUMN_STYLES[status];
+
+          return (
+            <div key={status} className={`rounded-xl border border-border/50 ${style.bg} flex flex-col min-h-[200px]`} data-testid={`kanban-column-${status}`}>
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-border/30">
+                <div className={`w-2.5 h-2.5 rounded-full ${style.dot}`} />
+                <h3 className={`text-sm font-semibold ${style.header}`}>{STATUS_LABELS[status]}</h3>
+                <Badge variant="secondary" className="ml-auto text-xs h-5 min-w-[20px] justify-center" data-testid={`kanban-count-${status}`}>
+                  {items.length}
+                </Badge>
+              </div>
+              <Droppable droppableId={status}>
+                {(provided, snapshot) => (
+                  <div
+                    ref={provided.innerRef}
+                    {...provided.droppableProps}
+                    className={`flex-1 p-2 space-y-2 transition-colors ${snapshot.isDraggingOver ? "bg-primary/5" : ""}`}
+                  >
+                    {items.map((programme, index) => (
+                      <Draggable key={programme.id} draggableId={String(programme.id)} index={index}>
+                        {(provided, snapshot) => (
+                          <div
+                            ref={provided.innerRef}
+                            {...provided.draggableProps}
+                            className={`group bg-card border border-border/60 rounded-lg shadow-sm transition-shadow ${snapshot.isDragging ? "shadow-lg ring-2 ring-primary/20" : "hover:shadow-md"}`}
+                            data-testid={`kanban-card-${programme.id}`}
+                          >
+                            <div className="p-3">
+                              <div className="flex items-start justify-between gap-1">
+                                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                                  <div {...provided.dragHandleProps} className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground shrink-0 mt-0.5" data-testid={`drag-handle-${programme.id}`}>
+                                    <GripVertical className="w-3.5 h-3.5" />
+                                  </div>
+                                  <h4 className={`text-sm font-medium truncate ${status === "cancelled" ? "line-through text-muted-foreground" : ""}`} data-testid={`kanban-name-${programme.id}`}>
+                                    {programme.name}
+                                  </h4>
+                                </div>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <button className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-muted shrink-0" data-testid={`kanban-menu-${programme.id}`}>
+                                      <MoreVertical className="w-3.5 h-3.5 text-muted-foreground" />
+                                    </button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="w-36">
+                                    <DropdownMenuItem onClick={() => onEdit(programme)} data-testid={`kanban-edit-${programme.id}`}>
+                                      <Pencil className="w-3.5 h-3.5 mr-2" />
+                                      Edit
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => onDuplicate(programme)} data-testid={`kanban-duplicate-${programme.id}`}>
+                                      <Copy className="w-3.5 h-3.5 mr-2" />
+                                      Duplicate
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => onDelete(programme.id)} className="text-destructive focus:text-destructive" data-testid={`kanban-delete-${programme.id}`}>
+                                      <Trash2 className="w-3.5 h-3.5 mr-2" />
+                                      Delete
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+
+                              <Badge className={`mt-1.5 text-[10px] ${CLASSIFICATION_COLORS[programme.classification] || ""}`} data-testid={`kanban-badge-${programme.id}`}>
+                                {programme.classification}
+                              </Badge>
+
+                              {programme.description && (
+                                <p className="text-xs text-muted-foreground line-clamp-2 mt-1.5">{programme.description}</p>
+                              )}
+
+                              <div className="flex flex-col gap-1 mt-2 text-[11px] text-muted-foreground">
+                                {formatDateTime(programme) && (
+                                  <span className="flex items-center gap-1">
+                                    <Calendar className="w-3 h-3 shrink-0" />
+                                    {formatDateTime(programme)!.date}
+                                  </span>
+                                )}
+                                {programme.location && (
+                                  <span className="flex items-center gap-1">
+                                    <MapPin className="w-3 h-3 shrink-0" />
+                                    <span className="truncate">{programme.location}</span>
+                                  </span>
+                                )}
+                              </div>
+
+                              {(getTotalBudget(programme) > 0 || getFacilitatorNames(programme).length > 0) && (
+                                <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/30">
+                                  {getTotalBudget(programme) > 0 && (
+                                    <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
+                                      <DollarSign className="w-3 h-3" />
+                                      {getTotalBudget(programme).toFixed(2)}
+                                    </span>
+                                  )}
+                                  {getFacilitatorNames(programme).length > 0 && (
+                                    <span className="text-[11px] text-muted-foreground flex items-center gap-0.5 ml-auto">
+                                      <Users className="w-3 h-3" />
+                                      {getFacilitatorNames(programme).length}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </Draggable>
+                    ))}
+                    {provided.placeholder}
+                    {items.length === 0 && !snapshot.isDraggingOver && (
+                      <div className="flex items-center justify-center py-8 text-xs text-muted-foreground/50">
+                        Drop here
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Droppable>
+            </div>
+          );
+        })}
+      </div>
+    </DragDropContext>
   );
 }
 
