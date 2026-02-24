@@ -364,6 +364,15 @@ export class DatabaseStorage implements IStorage {
       .groupBy(impactLogContacts.contactId)
       .as('deb_stats');
 
+    const groupLink = db
+      .select({
+        contactId: groupMembers.contactId,
+        groupId: sql<number>`MIN(${groupMembers.groupId})`.as('first_group_id'),
+      })
+      .from(groupMembers)
+      .groupBy(groupMembers.contactId)
+      .as('grp_link');
+
     const rows = await db
       .select({
         contact: contacts,
@@ -371,13 +380,24 @@ export class DatabaseStorage implements IStorage {
         interactionCount: interactionStats.interactionCount,
         eventCount: attendanceStats.eventCount,
         debriefCount: debriefStats.debriefCount,
+        linkedGroupId: groupLink.groupId,
       })
       .from(contacts)
       .leftJoin(interactionStats, eq(contacts.id, interactionStats.contactId))
       .leftJoin(attendanceStats, eq(contacts.id, attendanceStats.contactId))
       .leftJoin(debriefStats, eq(contacts.id, debriefStats.contactId))
+      .leftJoin(groupLink, eq(contacts.id, groupLink.contactId))
       .where(eq(contacts.userId, userId))
       .orderBy(desc(sql`COALESCE(${contacts.lastActiveDate}, ${interactionStats.lastInteractionDate}, ${contacts.createdAt})`));
+
+    const groupIds = [...new Set(rows.map(r => r.linkedGroupId).filter(Boolean))] as number[];
+    const groupNameMap: Record<number, string> = {};
+    if (groupIds.length > 0) {
+      const grps = await db.select({ id: groups.id, name: groups.name }).from(groups).where(sql`${groups.id} IN (${sql.join(groupIds.map(id => sql`${id}`), sql`, `)})`);
+      for (const g of grps) {
+        groupNameMap[g.id] = g.name;
+      }
+    }
 
     return rows.map(r => ({
       ...r.contact,
@@ -385,6 +405,8 @@ export class DatabaseStorage implements IStorage {
       interactionCount: Number(r.interactionCount) || 0,
       eventCount: Number(r.eventCount) || 0,
       debriefCount: Number(r.debriefCount) || 0,
+      linkedGroupId: r.linkedGroupId || null,
+      linkedGroupName: r.linkedGroupId ? (groupNameMap[r.linkedGroupId] || null) : null,
     }));
   }
 

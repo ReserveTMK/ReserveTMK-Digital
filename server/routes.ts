@@ -4746,6 +4746,129 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     }
   });
 
+  app.post("/api/contacts/auto-link-groups", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const allContacts = await storage.getContacts(userId);
+      const allGroups = await storage.getGroups(userId);
+
+      const PUBLIC_DOMAINS = new Set([
+        'gmail.com', 'googlemail.com', 'hotmail.com', 'hotmail.co.nz', 'outlook.com', 'outlook.co.nz',
+        'yahoo.com', 'yahoo.co.nz', 'icloud.com', 'live.com', 'msn.com', 'aol.com', 'protonmail.com',
+        'mail.com', 'me.com', 'ymail.com', 'rocketmail.com',
+      ]);
+
+      const groupNameLower = new Map<string, number>();
+      for (const g of allGroups) {
+        groupNameLower.set(g.name.toLowerCase().trim(), g.id);
+      }
+
+      let linked = 0;
+
+      for (const c of allContacts) {
+        if (c.linkedGroupId) continue;
+
+        let matchedGroupId: number | null = null;
+
+        if (c.businessName) {
+          const key = c.businessName.toLowerCase().trim();
+          if (groupNameLower.has(key)) {
+            matchedGroupId = groupNameLower.get(key)!;
+          }
+        }
+
+        if (!matchedGroupId && c.email) {
+          const domain = c.email.split('@')[1]?.toLowerCase();
+          if (domain && !PUBLIC_DOMAINS.has(domain)) {
+            const domainBase = domain.replace(/\.(co\.nz|org\.nz|com|nz|net|io|co)$/i, '').replace(/\./g, ' ');
+            for (const [gName, gId] of groupNameLower) {
+              if (gName.includes(domainBase) || domainBase.includes(gName.replace(/\s+/g, ''))) {
+                matchedGroupId = gId;
+                break;
+              }
+            }
+          }
+        }
+
+        if (matchedGroupId) {
+          const existing = await storage.getContactGroups(c.id);
+          const alreadyLinked = existing.some((m: any) => m.groupId === matchedGroupId);
+          if (!alreadyLinked) {
+            await storage.addGroupMember({ groupId: matchedGroupId, contactId: c.id, role: 'member' });
+            linked++;
+          }
+        }
+      }
+
+      res.json({ linked, total: allContacts.length });
+    } catch (err: any) {
+      console.error("Auto-link error:", err);
+      res.status(500).json({ message: "Failed to auto-link contacts" });
+    }
+  });
+
+  app.post("/api/contacts/:id/link-group", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const contactId = parseInt(req.params.id);
+      const { groupId } = req.body;
+
+      const contact = await storage.getContact(contactId);
+      if (!contact || contact.userId !== userId) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+
+      const group = await storage.getGroup(groupId);
+      if (!group || group.userId !== userId) {
+        return res.status(404).json({ message: "Group not found" });
+      }
+
+      const existing = await storage.getContactGroups(contactId);
+      for (const m of existing) {
+        await storage.removeGroupMember(m.id);
+      }
+
+      await storage.addGroupMember({ groupId, contactId, role: 'member' });
+
+      if (contact.isCommunityMember && group.relationshipTier === 'mentioned') {
+        await storage.updateGroup(groupId, { relationshipTier: 'collaborate' });
+      }
+
+      res.json({ linked: true });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to link contact to group" });
+    }
+  });
+
+  app.delete("/api/contacts/:id/unlink-group/:groupId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const contactId = parseInt(req.params.id);
+      const groupId = parseInt(req.params.groupId);
+
+      const contact = await storage.getContact(contactId);
+      if (!contact || contact.userId !== userId) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+
+      const group = await storage.getGroup(groupId);
+      if (!group || group.userId !== userId) {
+        return res.status(404).json({ message: "Group not found" });
+      }
+
+      const memberships = await storage.getContactGroups(contactId);
+      const membership = memberships.find((m: any) => m.groupId === groupId);
+      if (!membership) {
+        return res.status(404).json({ message: "Link not found" });
+      }
+
+      await storage.removeGroupMember(membership.id);
+      res.json({ unlinked: true });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to unlink contact from group" });
+    }
+  });
+
   app.post("/api/groups/bulk-update-tier", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;

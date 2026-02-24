@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { useContacts, useCreateContact, useDeleteContact } from "@/hooks/use-contacts";
-import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag } from "lucide-react";
+import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2 } from "lucide-react";
 import { useState, useRef, useCallback, useMemo } from "react";
 import { Link } from "wouter";
 import { format } from "date-fns";
@@ -28,7 +28,7 @@ import { insertContactSchema } from "@shared/schema";
 import { z } from "zod";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -63,6 +63,11 @@ export default function Contacts() {
   const [bulkRoleValue, setBulkRoleValue] = useState("");
   const [bulkRelationshipOpen, setBulkRelationshipOpen] = useState(false);
   const [bulkRelationshipValue, setBulkRelationshipValue] = useState("");
+  const [linkGroupOpen, setLinkGroupOpen] = useState(false);
+  const [linkGroupContactId, setLinkGroupContactId] = useState<number | null>(null);
+  const [linkGroupSearch, setLinkGroupSearch] = useState("");
+
+  const { data: allGroups } = useQuery<any[]>({ queryKey: ["/api/groups"] });
 
   const deleteContact = useDeleteContact();
 
@@ -135,6 +140,54 @@ export default function Contacts() {
       setEditMode(false);
       setBulkRelationshipOpen(false);
       setBulkRelationshipValue("");
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const autoLinkMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/contacts/auto-link-groups");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      toast({ title: "Auto-Link Complete", description: data.linked > 0 ? `${data.linked} contact${data.linked !== 1 ? 's' : ''} linked to groups` : "No new links found" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const linkGroupMutation = useMutation({
+    mutationFn: async ({ contactId, groupId }: { contactId: number; groupId: number }) => {
+      const res = await apiRequest("POST", `/api/contacts/${contactId}/link-group`, { groupId });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      toast({ title: "Success", description: "Contact linked to group" });
+      setLinkGroupOpen(false);
+      setLinkGroupContactId(null);
+      setLinkGroupSearch("");
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const unlinkGroupMutation = useMutation({
+    mutationFn: async ({ contactId, groupId }: { contactId: number; groupId: number }) => {
+      const res = await apiRequest("DELETE", `/api/contacts/${contactId}/unlink-group/${groupId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      toast({ title: "Success", description: "Contact unlinked from group" });
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -278,6 +331,10 @@ export default function Contacts() {
               </Button>
               {!editMode && (
                 <>
+                  <Button variant="outline" onClick={() => autoLinkMutation.mutate()} disabled={autoLinkMutation.isPending} data-testid="button-auto-link">
+                    {autoLinkMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Link2 className="w-4 h-4 mr-2" />}
+                    Auto-Link
+                  </Button>
                   <Button variant="outline" onClick={() => setBulkOpen(true)} data-testid="button-bulk-upload">
                     <Upload className="w-4 h-4 mr-2" />
                     Bulk Upload
@@ -389,6 +446,45 @@ export default function Contacts() {
                   Apply
                 </Button>
               </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={linkGroupOpen} onOpenChange={(v) => { setLinkGroupOpen(v); if (!v) { setLinkGroupContactId(null); setLinkGroupSearch(""); } }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle data-testid="text-link-group-title">Link to Group</DialogTitle>
+              </DialogHeader>
+              <div className="py-2 space-y-3">
+                <Input
+                  placeholder="Search groups..."
+                  value={linkGroupSearch}
+                  onChange={(e) => setLinkGroupSearch(e.target.value)}
+                  data-testid="input-link-group-search"
+                />
+                <div className="max-h-[300px] overflow-y-auto space-y-1">
+                  {(allGroups || [])
+                    .filter((g: any) => g.name.toLowerCase().includes(linkGroupSearch.toLowerCase()))
+                    .slice(0, 20)
+                    .map((g: any) => (
+                      <button
+                        key={g.id}
+                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-muted transition-colors text-sm flex items-center justify-between"
+                        onClick={() => linkGroupContactId && linkGroupMutation.mutate({ contactId: linkGroupContactId, groupId: g.id })}
+                        disabled={linkGroupMutation.isPending}
+                        data-testid={`button-link-group-${g.id}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Building2 className="w-4 h-4 text-muted-foreground" />
+                          <span>{g.name}</span>
+                        </div>
+                        <Badge variant="outline" className="text-[10px]">{g.type || 'Organisation'}</Badge>
+                      </button>
+                    ))}
+                  {(allGroups || []).filter((g: any) => g.name.toLowerCase().includes(linkGroupSearch.toLowerCase())).length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-4">No groups found</p>
+                  )}
+                </div>
+              </div>
             </DialogContent>
           </Dialog>
 
@@ -587,11 +683,17 @@ export default function Contacts() {
                       </div>
                     </div>
 
-                    <div className="hidden sm:flex flex-wrap gap-1 justify-end max-w-[200px] shrink-0">
+                    <div className="hidden sm:flex flex-col items-end gap-1 max-w-[200px] shrink-0">
                       {contact.role && (
                         <Badge variant="outline" className="text-[10px] h-5 px-2 shrink-0" data-testid={`badge-role-side-${contact.id}`}>
                           {contact.role}
                         </Badge>
+                      )}
+                      {contact.linkedGroupName && (
+                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground" data-testid={`text-group-link-${contact.id}`}>
+                          <Building2 className="w-3 h-3" />
+                          {contact.linkedGroupName}
+                        </span>
                       )}
                     </div>
                   </Link>
@@ -619,6 +721,22 @@ export default function Contacts() {
                         >
                           <UserCheck className="w-4 h-4 mr-2" />
                           Mark as Community Member
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem
+                        onClick={() => { setLinkGroupContactId(contact.id); setLinkGroupOpen(true); }}
+                        data-testid={`menu-link-group-${contact.id}`}
+                      >
+                        <Link2 className="w-4 h-4 mr-2" />
+                        {contact.linkedGroupId ? "Change Group" : "Link to Group"}
+                      </DropdownMenuItem>
+                      {contact.linkedGroupId && (
+                        <DropdownMenuItem
+                          onClick={() => unlinkGroupMutation.mutate({ contactId: contact.id, groupId: contact.linkedGroupId })}
+                          data-testid={`menu-unlink-group-${contact.id}`}
+                        >
+                          <X className="w-4 h-4 mr-2" />
+                          Unlink from {contact.linkedGroupName}
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuItem
