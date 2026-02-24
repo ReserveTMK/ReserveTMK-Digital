@@ -61,6 +61,11 @@ export const contacts = pgTable("contacts", {
   consentNotes: text("consent_notes"),
   stage: text("stage"),
   relationshipStage: text("relationship_stage").default("new"),
+  isCommunityMember: boolean("is_community_member").default(false),
+  communityMemberOverride: boolean("community_member_override").default(false),
+  relationshipCircle: text("relationship_circle"),
+  relationshipCircleOverride: boolean("relationship_circle_override").default(false),
+  importSource: text("import_source"),
 });
 
 export const interactions = pgTable("interactions", {

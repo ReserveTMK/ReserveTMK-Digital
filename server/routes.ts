@@ -4422,6 +4422,231 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     }
   });
 
+  // === COMMUNITY MANAGEMENT ===
+
+  app.get("/api/contacts/community/junk-scan", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const allContacts = await storage.getContacts(userId);
+
+      const JUNK_PATTERNS = [
+        /^no[-_.]?reply/i, /^do[-_.]?not[-_.]?reply/i, /^noreply/i,
+        /^mailer[-_.]?daemon/i, /^postmaster/i, /^bounce/i,
+        /^notifications?@/i, /^alerts?@/i, /^news(letter)?@/i,
+        /^support@/i, /^admin@/i, /^system@/i, /^automated/i,
+        /^billing@/i, /^invoice/i, /^receipt/i, /^orders?@/i,
+        /^feedback@/i, /^help@/i, /^contact@/i, /^enquir/i,
+        /^sales@/i, /^marketing@/i, /^team@/i, /^accounts?@/i,
+        /^subscribe/i, /^unsubscribe/i, /^updates?@/i, /^digest@/i,
+        /^daemon@/i, /^root@/i, /^webmaster@/i, /^cron@/i,
+        /^nobody@/i, /^mail@/i, /^service@/i, /^payments?@/i,
+        /^confirmation/i, /^verify/i, /^security@/i, /^privacy@/i,
+        /^compliance@/i, /^calendar-notification/i, /^drive-shares-/i,
+        /^info@.*\.(com|org|net|io|co\.\w+)$/i,
+        /^hello@.*\.(com|org|net|io|co\.\w+)$/i,
+      ];
+
+      const junkContacts = allContacts.filter((c: any) => {
+        if (!c.email) return false;
+        return JUNK_PATTERNS.some(p => p.test(c.email));
+      });
+
+      res.json({ junkContacts, totalContacts: allContacts.length });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to scan for junk contacts" });
+    }
+  });
+
+  app.post("/api/contacts/community/bulk-delete", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { contactIds } = req.body;
+      if (!Array.isArray(contactIds) || contactIds.length === 0) {
+        return res.status(400).json({ message: "No contact IDs provided" });
+      }
+
+      let deleted = 0;
+      for (const id of contactIds) {
+        const contact = await storage.getContact(id);
+        if (contact && contact.userId === userId) {
+          await storage.deleteContact(id);
+          deleted++;
+        }
+      }
+
+      res.json({ deleted });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to delete contacts" });
+    }
+  });
+
+  app.post("/api/contacts/community/backfill", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const allContacts = await storage.getContacts(userId);
+
+      const contactIdsWithEngagement = new Set<number>();
+
+      for (const contact of allContacts) {
+        const contactInteractions = await storage.getInteractions(contact.id);
+        if (contactInteractions.length > 0) {
+          contactIdsWithEngagement.add(contact.id);
+        }
+      }
+
+      const allBookings = await storage.getBookings(userId);
+      for (const b of allBookings) {
+        if (b.bookerId) contactIdsWithEngagement.add(b.bookerId);
+        if (b.attendees) {
+          for (const a of b.attendees) contactIdsWithEngagement.add(a);
+        }
+      }
+
+      const allProgrammes = await storage.getProgrammes(userId);
+      for (const p of allProgrammes) {
+        if (p.facilitators) {
+          for (const f of p.facilitators) contactIdsWithEngagement.add(f);
+        }
+        if (p.attendees) {
+          for (const a of p.attendees) contactIdsWithEngagement.add(a);
+        }
+      }
+
+      const allMemberships = await storage.getMemberships(userId);
+      for (const m of allMemberships) {
+        if (m.contactId) contactIdsWithEngagement.add(m.contactId);
+      }
+
+      const allMous = await storage.getMous(userId);
+      for (const m of allMous) {
+        if (m.contactId) contactIdsWithEngagement.add(m.contactId);
+      }
+
+      const allSpend = await storage.getCommunitySpend(userId);
+      for (const s of allSpend) {
+        if (s.contactId) contactIdsWithEngagement.add(s.contactId);
+      }
+
+      const impactLogs = await storage.getImpactLogs(userId);
+      for (const log of impactLogs) {
+        if (log.linkedContactId) contactIdsWithEngagement.add(log.linkedContactId);
+      }
+
+      let flagged = 0;
+      for (const contact of allContacts) {
+        if (contactIdsWithEngagement.has(contact.id) && !contact.isCommunityMember && !contact.communityMemberOverride) {
+          await storage.updateContact(contact.id, { isCommunityMember: true });
+          flagged++;
+        }
+      }
+
+      res.json({ flagged, totalEngagedContacts: contactIdsWithEngagement.size });
+    } catch (err: any) {
+      console.error("Backfill error:", err);
+      res.status(500).json({ message: "Failed to backfill community members" });
+    }
+  });
+
+  app.patch("/api/contacts/:id/community-status", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const contactId = parseInt(req.params.id);
+      const contact = await storage.getContact(contactId);
+      if (!contact || contact.userId !== userId) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+
+      const { isCommunityMember, relationshipCircle } = req.body;
+
+      const updates: any = {};
+      if (typeof isCommunityMember === 'boolean') {
+        updates.isCommunityMember = isCommunityMember;
+        updates.communityMemberOverride = true;
+      }
+      if (relationshipCircle !== undefined) {
+        updates.relationshipCircle = relationshipCircle;
+        updates.relationshipCircleOverride = true;
+      }
+
+      const updated = await storage.updateContact(contactId, updates);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update community status" });
+    }
+  });
+
+  app.post("/api/contacts/community/ai-score", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const allContacts = await storage.getContacts(userId);
+      const communityMembers = allContacts.filter((c: any) => c.isCommunityMember && !c.relationshipCircleOverride);
+
+      if (communityMembers.length === 0) {
+        return res.json({ scored: 0, message: "No community members to score" });
+      }
+
+      const allBookings = await storage.getBookings(userId);
+      const allProgrammes = await storage.getProgrammes(userId);
+      const allMemberships = await storage.getMemberships(userId);
+      const allMous = await storage.getMous(userId);
+      const allSpend = await storage.getCommunitySpend(userId);
+
+      const contactScores = new Map<number, number>();
+
+      for (const contact of communityMembers) {
+        let score = 0;
+
+        const contactInteractions = await storage.getInteractions(contact.id);
+        score += contactInteractions.length * 3;
+
+        const bookingsAsBooker = allBookings.filter((b: any) => b.bookerId === contact.id);
+        const bookingsAsAttendee = allBookings.filter((b: any) => b.attendees?.includes(contact.id));
+        score += bookingsAsBooker.length * 4;
+        score += bookingsAsAttendee.length * 2;
+
+        const progAsFacilitator = allProgrammes.filter((p: any) => p.facilitators?.includes(contact.id));
+        const progAsAttendee = allProgrammes.filter((p: any) => p.attendees?.includes(contact.id));
+        score += progAsFacilitator.length * 5;
+        score += progAsAttendee.length * 2;
+
+        const contactMemberships = allMemberships.filter((m: any) => m.contactId === contact.id);
+        score += contactMemberships.length * 5;
+
+        const contactMous = allMous.filter((m: any) => m.contactId === contact.id);
+        score += contactMous.length * 5;
+
+        const contactSpend = allSpend.filter((s: any) => s.contactId === contact.id);
+        score += contactSpend.length * 3;
+
+        contactScores.set(contact.id, score);
+      }
+
+      const scores = Array.from(contactScores.values()).sort((a, b) => b - a);
+      const topThreshold = scores.length > 0 ? scores[Math.floor(scores.length * 0.2)] || 10 : 10;
+      const midThreshold = scores.length > 0 ? scores[Math.floor(scores.length * 0.6)] || 3 : 3;
+
+      let scored = 0;
+      for (const [contactId, score] of Array.from(contactScores.entries())) {
+        let circle: string;
+        if (score >= topThreshold && score > 0) {
+          circle = 'inner_circle';
+        } else if (score >= midThreshold && score > 0) {
+          circle = 'active_network';
+        } else {
+          circle = 'wider_community';
+        }
+
+        await storage.updateContact(contactId, { relationshipCircle: circle });
+        scored++;
+      }
+
+      res.json({ scored, thresholds: { innerCircle: topThreshold, activeNetwork: midThreshold } });
+    } catch (err: any) {
+      console.error("AI scoring error:", err);
+      res.status(500).json({ message: "Failed to score relationships" });
+    }
+  });
+
   startAutoSync();
 
   return httpServer;

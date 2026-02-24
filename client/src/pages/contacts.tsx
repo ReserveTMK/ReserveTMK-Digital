@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/beautiful-button";
-import { useContacts, useCreateContact } from "@/hooks/use-contacts";
-import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX } from "lucide-react";
+import { useContacts, useCreateContact, useDeleteContact } from "@/hooks/use-contacts";
+import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Flag, Sparkles, Eraser } from "lucide-react";
 import { useState, useRef, useCallback, useMemo } from "react";
 import { Link } from "wouter";
 import { format } from "date-fns";
@@ -12,6 +12,13 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -27,19 +34,81 @@ import { useToast } from "@/hooks/use-toast";
 
 type ContactFormValues = Record<string, any>;
 
+function getCircleBadge(circle: string | null | undefined) {
+  if (!circle) return null;
+  switch (circle) {
+    case "inner_circle":
+      return <Badge variant="secondary" className="text-[10px] h-5 px-2 bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/20" data-testid="badge-inner-circle">Inner Circle</Badge>;
+    case "active_network":
+      return <Badge variant="secondary" className="text-[10px] h-5 px-2 bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/20" data-testid="badge-active-network">Active</Badge>;
+    case "wider_community":
+      return <Badge variant="secondary" className="text-[10px] h-5 px-2 bg-muted text-muted-foreground" data-testid="badge-wider-community">Wider</Badge>;
+    default:
+      return null;
+  }
+}
+
 export default function Contacts() {
   const { data: contacts, isLoading } = useContacts();
+  const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [viewMode, setViewMode] = useState<"community" | "all">("community");
   const [open, setOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [cleanUpOpen, setCleanUpOpen] = useState(false);
+
+  const deleteContact = useDeleteContact();
+
+  const communityStatusMutation = useMutation({
+    mutationFn: async ({ id, isCommunityMember }: { id: number; isCommunityMember: boolean }) => {
+      const res = await apiRequest("PATCH", `/api/contacts/${id}/community-status`, { isCommunityMember });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast({ title: "Success", description: "Community status updated" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const backfillMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/contacts/community/backfill");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast({ title: "Community Members Flagged", description: `${data.flagged ?? 0} contacts were flagged as community members.` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const aiScoreMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/contacts/community/ai-score");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast({ title: "Relationships Scored", description: `${data.scored ?? 0} contacts scored successfully.` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
 
   const filteredContacts = contacts?.filter(contact => {
     const matchesSearch = contact.name.toLowerCase().includes(search.toLowerCase()) || 
                           contact.businessName?.toLowerCase().includes(search.toLowerCase()) ||
                           contact.email?.toLowerCase().includes(search.toLowerCase());
     const matchesRole = roleFilter === "all" || contact.role === roleFilter;
-    return matchesSearch && matchesRole;
+    const matchesView = viewMode === "all" || (contact as any).isCommunityMember === true;
+    return matchesSearch && matchesRole && matchesView;
   });
 
   const analytics = useMemo(() => {
@@ -84,6 +153,22 @@ export default function Contacts() {
             </div>
             
             <div className="flex items-center gap-2 flex-wrap">
+              {contacts && contacts.length > 0 && (
+                <Button variant="outline" onClick={() => backfillMutation.mutate()} disabled={backfillMutation.isPending} data-testid="button-flag-community">
+                  {backfillMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Flag className="w-4 h-4 mr-2" />}
+                  Flag Community Members
+                </Button>
+              )}
+              {viewMode === "community" && (
+                <Button variant="outline" onClick={() => aiScoreMutation.mutate()} disabled={aiScoreMutation.isPending} data-testid="button-score-relationships">
+                  {aiScoreMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                  Score Relationships
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => setCleanUpOpen(true)} data-testid="button-clean-up">
+                <Eraser className="w-4 h-4 mr-2" />
+                Clean Up
+              </Button>
               <Button variant="outline" onClick={() => setBulkOpen(true)} data-testid="button-bulk-upload">
                 <Upload className="w-4 h-4 mr-2" />
                 Bulk Upload
@@ -101,6 +186,7 @@ export default function Contacts() {
           </div>
 
           <BulkUploadDialog open={bulkOpen} onOpenChange={setBulkOpen} />
+          <CleanUpDialog open={cleanUpOpen} onOpenChange={setCleanUpOpen} />
 
           {analytics && (
             <div className="space-y-3" data-testid="community-analytics">
@@ -163,36 +249,57 @@ export default function Contacts() {
             </div>
           )}
 
-          {/* Filters */}
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input 
-                placeholder="Search by name or email..." 
-                className="pl-10 h-11 bg-card rounded-xl border-border/60"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                data-testid="input-search-contacts"
-              />
+          {/* View Toggle + Filters */}
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-2" data-testid="view-toggle">
+              <Button
+                variant={viewMode === "community" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setViewMode("community")}
+                data-testid="button-view-community"
+              >
+                <Users className="w-4 h-4 mr-1.5" />
+                Community
+              </Button>
+              <Button
+                variant={viewMode === "all" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setViewMode("all")}
+                data-testid="button-view-all"
+              >
+                All Contacts
+              </Button>
             </div>
-            <div className="w-full sm:w-48">
-              <Select value={roleFilter} onValueChange={setRoleFilter}>
-                <SelectTrigger className="h-11 rounded-xl bg-card border-border/60" data-testid="select-role-filter">
-                  <div className="flex items-center gap-2">
-                    <Filter className="w-4 h-4 text-muted-foreground" />
-                    <SelectValue placeholder="Filter by Role" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Roles</SelectItem>
-                  <SelectItem value="Entrepreneur">Entrepreneur</SelectItem>
-                  <SelectItem value="Professional">Professional</SelectItem>
-                  <SelectItem value="Innovator">Innovator</SelectItem>
-                  <SelectItem value="Want-trepreneur">Want-trepreneur</SelectItem>
-                  <SelectItem value="Rangatahi">Rangatahi</SelectItem>
-                  <SelectItem value="Business Owner">Business Owner</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input 
+                  placeholder="Search by name or email..." 
+                  className="pl-10 h-11 bg-card rounded-xl border-border/60"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  data-testid="input-search-contacts"
+                />
+              </div>
+              <div className="w-full sm:w-48">
+                <Select value={roleFilter} onValueChange={setRoleFilter}>
+                  <SelectTrigger className="h-11 rounded-xl bg-card border-border/60" data-testid="select-role-filter">
+                    <div className="flex items-center gap-2">
+                      <Filter className="w-4 h-4 text-muted-foreground" />
+                      <SelectValue placeholder="Filter by Role" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Roles</SelectItem>
+                    <SelectItem value="Entrepreneur">Entrepreneur</SelectItem>
+                    <SelectItem value="Professional">Professional</SelectItem>
+                    <SelectItem value="Innovator">Innovator</SelectItem>
+                    <SelectItem value="Want-trepreneur">Want-trepreneur</SelectItem>
+                    <SelectItem value="Rangatahi">Rangatahi</SelectItem>
+                    <SelectItem value="Business Owner">Business Owner</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
 
@@ -213,20 +320,21 @@ export default function Contacts() {
           ) : (
             <div className="space-y-3">
               {(filteredContacts || []).map((contact: any) => (
-                <Link key={contact.id} href={`/contacts/${contact.id}`} data-testid={`link-contact-${contact.id}`}>
-                  <div className="group bg-card hover:bg-card/80 border border-border rounded-xl p-4 transition-all duration-200 hover:shadow-md cursor-pointer flex items-center gap-4" data-testid={`card-contact-${contact.id}`}>
+                <div key={contact.id} className="group bg-card hover:bg-card/80 border border-border rounded-xl p-4 transition-all duration-200 hover:shadow-md flex items-center gap-4" data-testid={`card-contact-${contact.id}`}>
+                  <Link href={`/contacts/${contact.id}`} className="flex items-center gap-4 flex-1 min-w-0 cursor-pointer" data-testid={`link-contact-${contact.id}`}>
                     <div className="w-12 h-12 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-lg shrink-0">
                       {contact.name[0]}
                     </div>
                     
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2 mb-0.5">
+                      <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                         <h3 className="text-base font-bold font-display text-foreground truncate group-hover:text-primary transition-colors" data-testid={`text-name-${contact.id}`}>
                           {contact.name}
                         </h3>
                         <Badge variant="secondary" className="text-[10px] h-5 px-2 font-medium shrink-0" data-testid={`text-role-${contact.id}`}>
                           {contact.role}
                         </Badge>
+                        {getCircleBadge(contact.relationshipCircle)}
                       </div>
                       
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -270,8 +378,44 @@ export default function Contacts() {
                         ))
                       ) : null}
                     </div>
-                  </div>
-                </Link>
+                  </Link>
+
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="icon" variant="ghost" className="shrink-0" data-testid={`button-contact-menu-${contact.id}`}>
+                        <MoreVertical className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {contact.isCommunityMember && (
+                        <DropdownMenuItem
+                          onClick={() => communityStatusMutation.mutate({ id: contact.id, isCommunityMember: false })}
+                          data-testid={`menu-move-business-${contact.id}`}
+                        >
+                          <ArrowRightLeft className="w-4 h-4 mr-2" />
+                          Move to Business Contacts
+                        </DropdownMenuItem>
+                      )}
+                      {viewMode === "all" && !contact.isCommunityMember && (
+                        <DropdownMenuItem
+                          onClick={() => communityStatusMutation.mutate({ id: contact.id, isCommunityMember: true })}
+                          data-testid={`menu-mark-community-${contact.id}`}
+                        >
+                          <UserCheck className="w-4 h-4 mr-2" />
+                          Mark as Community Member
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onClick={() => deleteContact.mutate(contact.id)}
+                        data-testid={`menu-delete-${contact.id}`}
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Delete Contact
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               ))}
             </div>
           )}
@@ -789,6 +933,148 @@ function BulkUploadDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
                 <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Importing...</>
               ) : (
                 <><Upload className="w-4 h-4 mr-2" /> Import {parsedRows.length} Contact{parsedRows.length !== 1 ? "s" : ""}</>
+              )}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CleanUpDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const { toast } = useToast();
+  const [junkContacts, setJunkContacts] = useState<any[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [isLoading, setIsLoading] = useState(false);
+
+  const fetchJunk = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch("/api/contacts/community/junk-scan", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to scan for junk contacts");
+      const data = await res.json();
+      const contacts = data.junkContacts || data || [];
+      setJunkContacts(contacts);
+      setSelectedIds(new Set(contacts.map((c: any) => c.id)));
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [toast]);
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (contactIds: number[]) => {
+      const res = await apiRequest("POST", "/api/contacts/community/bulk-delete", { contactIds });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast({ title: "Cleaned Up", description: `${data.deleted ?? selectedIds.size} contacts removed.` });
+      onOpenChange(false);
+      setJunkContacts([]);
+      setSelectedIds(new Set());
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleOpen = (isOpen: boolean) => {
+    onOpenChange(isOpen);
+    if (isOpen) {
+      fetchJunk();
+    } else {
+      setJunkContacts([]);
+      setSelectedIds(new Set());
+    }
+  };
+
+  const toggleId = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selectedIds.size === junkContacts.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(junkContacts.map((c: any) => c.id)));
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpen}>
+      <DialogContent className="sm:max-w-[550px]">
+        <DialogHeader>
+          <DialogTitle>Clean Up Junk Contacts</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          {isLoading ? (
+            <div className="flex justify-center items-center h-32">
+              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            </div>
+          ) : junkContacts.length === 0 ? (
+            <div className="text-center py-8">
+              <CheckCircle2 className="w-10 h-10 mx-auto mb-3 text-emerald-500" />
+              <p className="text-sm font-medium" data-testid="text-no-junk">No junk contacts found</p>
+              <p className="text-xs text-muted-foreground mt-1">Your contact list looks clean.</p>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm text-muted-foreground" data-testid="text-junk-count">
+                  {junkContacts.length} junk contact{junkContacts.length !== 1 ? "s" : ""} found
+                </p>
+                <Button variant="ghost" size="sm" onClick={toggleAll} data-testid="button-toggle-all-junk">
+                  {selectedIds.size === junkContacts.length ? "Deselect All" : "Select All"}
+                </Button>
+              </div>
+              <div className="max-h-64 overflow-auto border border-border rounded-lg">
+                {junkContacts.map((contact: any) => (
+                  <div
+                    key={contact.id}
+                    className="flex items-center gap-3 p-3 border-b border-border/50 last:border-b-0"
+                    data-testid={`junk-contact-${contact.id}`}
+                  >
+                    <Checkbox
+                      checked={selectedIds.has(contact.id)}
+                      onCheckedChange={() => toggleId(contact.id)}
+                      data-testid={`checkbox-junk-${contact.id}`}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{contact.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">{contact.email || contact.reason || "No email"}</p>
+                    </div>
+                    {contact.reason && (
+                      <Badge variant="secondary" className="text-[10px] shrink-0">{contact.reason}</Badge>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => handleOpen(false)} data-testid="button-cancel-cleanup">
+            Cancel
+          </Button>
+          {junkContacts.length > 0 && (
+            <Button
+              variant="destructive"
+              onClick={() => bulkDeleteMutation.mutate(Array.from(selectedIds))}
+              disabled={selectedIds.size === 0 || bulkDeleteMutation.isPending}
+              data-testid="button-delete-selected"
+            >
+              {bulkDeleteMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Deleting...</>
+              ) : (
+                <><Trash2 className="w-4 h-4 mr-2" /> Delete Selected ({selectedIds.size})</>
               )}
             </Button>
           )}
