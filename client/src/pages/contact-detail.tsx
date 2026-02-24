@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { searchSuburbs, getLocalBoard, SUBURB_TO_LOCAL_BOARD } from "@shared/auckland-suburbs";
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend 
 } from "recharts";
@@ -215,6 +216,12 @@ export default function ContactDetail() {
                         ))}
                       </div>
                     )}
+                      {contact.suburb && <span>{contact.suburb}</span>}
+                      {contact.localBoard && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 rounded-md text-xs font-medium">
+                          {contact.localBoard}
+                        </span>
+                      )}
                       {contact.location && <span>{contact.location}</span>}
                     {contact.revenueBand && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-md text-xs font-medium">
@@ -754,11 +761,18 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
   const [email, setEmail] = useState(contact.email || "");
   const [phone, setPhone] = useState(contact.phone || "");
   const [location, setLocation] = useState(contact.location || "");
+  const [suburb, setSuburb] = useState(contact.suburb || "");
+  const [suburbSearch, setSuburbSearch] = useState(contact.suburb || "");
+  const [localBoard, setLocalBoard] = useState(contact.localBoard || "");
+  const [showSuburbDropdown, setShowSuburbDropdown] = useState(false);
   const [businessName, setBusinessName] = useState(contact.businessName || "");
   const [role, setRole] = useState(contact.role || "Entrepreneur");
   const [age, setAge] = useState(contact.age?.toString() || "");
   const [revenueBand, setRevenueBand] = useState(contact.revenueBand || "");
   const [selectedEthnicities, setSelectedEthnicities] = useState<string[]>(contact.ethnicity || []);
+  const suburbRef = useRef<HTMLDivElement>(null);
+
+  const suburbResults = searchSuburbs(suburbSearch);
 
   useEffect(() => {
     if (open) {
@@ -767,6 +781,9 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
       setEmail(contact.email || "");
       setPhone(contact.phone || "");
       setLocation(contact.location || "");
+      setSuburb(contact.suburb || "");
+      setSuburbSearch(contact.suburb || "");
+      setLocalBoard(contact.localBoard || "");
       setBusinessName(contact.businessName || "");
       setRole(contact.role || "Entrepreneur");
       setAge(contact.age?.toString() || "");
@@ -774,6 +791,16 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
       setSelectedEthnicities(contact.ethnicity || []);
     }
   }, [open, contact]);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (suburbRef.current && !suburbRef.current.contains(e.target as Node)) {
+        setShowSuburbDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const toggleEthnicity = (eth: string) => {
     setSelectedEthnicities(prev =>
@@ -786,7 +813,7 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
       apiRequest('PATCH', `/api/contacts/${contact.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/contacts', contact.id] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts/:id', contact.id] });
       toast({ title: "Contact updated" });
       onOpenChange(false);
     },
@@ -804,6 +831,8 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
       email: email.trim() || null,
       phone: phone.trim() || null,
       location: location.trim() || null,
+      suburb: suburb.trim() || null,
+      localBoard: localBoard.trim() || null,
       businessName: businessName.trim() || null,
       role: role,
       age: age ? parseInt(age) : null,
@@ -892,6 +921,70 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
                 onChange={(e) => setLocation(e.target.value)}
                 data-testid="input-edit-location"
               />
+            </div>
+            <div className="space-y-2 col-span-2" ref={suburbRef}>
+              <Label htmlFor="edit-suburb">Suburb</Label>
+              <div className="relative">
+                <Input
+                  id="edit-suburb"
+                  value={suburbSearch}
+                  onChange={(e) => {
+                    setSuburbSearch(e.target.value);
+                    setShowSuburbDropdown(true);
+                    if (!e.target.value.trim()) {
+                      setSuburb("");
+                      setLocalBoard("");
+                    }
+                  }}
+                  onFocus={() => suburbSearch && setShowSuburbDropdown(true)}
+                  onBlur={() => {
+                    setTimeout(() => {
+                      if (suburbSearch.trim() && suburbSearch !== suburb) {
+                        const board = getLocalBoard(suburbSearch.trim());
+                        if (board) {
+                          const matched = Object.keys(SUBURB_TO_LOCAL_BOARD).find(
+                            k => k.toLowerCase() === suburbSearch.trim().toLowerCase()
+                          );
+                          if (matched) {
+                            setSuburb(matched);
+                            setSuburbSearch(matched);
+                            setLocalBoard(board);
+                          }
+                        }
+                      }
+                    }, 200);
+                  }}
+                  placeholder="Type to search Auckland suburbs..."
+                  data-testid="input-edit-suburb"
+                />
+                {showSuburbDropdown && suburbResults.length > 0 && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-lg shadow-lg max-h-[200px] overflow-y-auto">
+                    {suburbResults.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex justify-between items-center"
+                        onClick={() => {
+                          setSuburb(s);
+                          setSuburbSearch(s);
+                          const board = getLocalBoard(s);
+                          if (board) setLocalBoard(board);
+                          setShowSuburbDropdown(false);
+                        }}
+                        data-testid={`suburb-option-${s.toLowerCase().replace(/[\s/]+/g, '-')}`}
+                      >
+                        <span>{s}</span>
+                        <span className="text-xs text-muted-foreground">{getLocalBoard(s)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {localBoard && (
+                <p className="text-xs text-muted-foreground mt-1" data-testid="text-local-board">
+                  Local Board: <span className="font-medium text-foreground">{localBoard}</span>
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-age">Age</Label>

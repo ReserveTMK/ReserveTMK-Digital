@@ -42,6 +42,8 @@ export const contacts = pgTable("contacts", {
   age: integer("age"),
   ethnicity: text("ethnicity").array(),
   location: text("location"),
+  suburb: text("suburb"),
+  localBoard: text("local_board"),
   tags: text("tags").array(),
   revenueBand: text("revenue_band"),
   metrics: jsonb("metrics").$type<{
