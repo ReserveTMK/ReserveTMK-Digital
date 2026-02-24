@@ -29,6 +29,7 @@ import MilestonesPage from "@/pages/milestones";
 import ProgrammeEffectivenessPage from "@/pages/programme-effectiveness";
 import WeeklyDebriefs from "@/pages/weekly-debriefs";
 import CommunitySpend from "@/pages/community-spend";
+import GmailImportPage from "@/pages/gmail-import";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -161,6 +162,10 @@ function Router() {
 
         <Route path="/weekly-debriefs">
           <ProtectedRoute component={WeeklyDebriefs} />
+        </Route>
+
+        <Route path="/gmail-import">
+          <ProtectedRoute component={GmailImportPage} />
         </Route>
 
         <Route component={NotFound} />

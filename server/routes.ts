@@ -9,6 +9,7 @@ import { openai } from "./replit_integrations/audio/client";
 import { getFullMonthlyReport, generateNarrative, type ReportFilters } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
 import { insertCommunitySpendSchema } from "@shared/schema";
+import { checkGmailConnection, scanGmailEmails, startAutoSync } from "./gmail-import";
 
 function parseTimeToMinutes(timeStr: string): number {
   const parts = timeStr.split(":");
@@ -4158,6 +4159,141 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       res.status(500).json({ message: "Failed to fetch summary" });
     }
   });
+
+  // === GMAIL IMPORT ===
+
+  app.get("/api/gmail/status", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const connected = await checkGmailConnection();
+      const syncSettings = await storage.getGmailSyncSettings(userId);
+      const history = await storage.getGmailImportHistory(userId);
+      const latestImport = history[0] || null;
+
+      res.json({
+        connected,
+        syncSettings: syncSettings || null,
+        latestImport,
+        totalImports: history.length,
+      });
+    } catch (err: any) {
+      console.error("Gmail status error:", err);
+      res.status(500).json({ message: "Failed to check Gmail status" });
+    }
+  });
+
+  app.post("/api/gmail/scan", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const scanSchema = z.object({
+        daysBack: z.number().min(1).max(730).default(365),
+        scanType: z.enum(['initial', 'manual', 'sync']).default('manual'),
+      });
+      const parsed = scanSchema.parse(req.body);
+      const result = await scanGmailEmails(userId, parsed.scanType, parsed.daysBack);
+      res.json(result);
+    } catch (err: any) {
+      console.error("Gmail scan error:", err);
+      if (err.name === 'ZodError') return res.status(400).json({ message: "Invalid parameters" });
+      res.status(500).json({ message: err.message || "Failed to start scan" });
+    }
+  });
+
+  app.get("/api/gmail/history", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const history = await storage.getGmailImportHistory(userId);
+      res.json(history);
+    } catch (err: any) {
+      console.error("Gmail history error:", err);
+      res.status(500).json({ message: "Failed to fetch history" });
+    }
+  });
+
+  app.get("/api/gmail/history/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const item = await storage.getGmailImportHistoryItem(parseInt(req.params.id));
+      if (!item || item.userId !== userId) return res.status(404).json({ message: "Not found" });
+      res.json(item);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch import details" });
+    }
+  });
+
+  app.get("/api/gmail/exclusions", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const exclusions = await storage.getGmailExclusions(userId);
+      res.json(exclusions);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch exclusions" });
+    }
+  });
+
+  app.post("/api/gmail/exclusions", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { type, value } = req.body;
+      if (!type || !value) return res.status(400).json({ message: "Type and value required" });
+      if (!['domain', 'email'].includes(type)) return res.status(400).json({ message: "Type must be 'domain' or 'email'" });
+
+      const exclusion = await storage.createGmailExclusion({
+        userId,
+        type,
+        value: value.toLowerCase().trim(),
+      });
+      res.json(exclusion);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to create exclusion" });
+    }
+  });
+
+  app.delete("/api/gmail/exclusions/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const exclusions = await storage.getGmailExclusions(userId);
+      const exclusion = exclusions.find(e => e.id === parseInt(req.params.id));
+      if (!exclusion) return res.status(404).json({ message: "Not found" });
+      await storage.deleteGmailExclusion(exclusion.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to delete exclusion" });
+    }
+  });
+
+  app.get("/api/gmail/sync-settings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const settings = await storage.getGmailSyncSettings(userId);
+      res.json(settings || { autoSyncEnabled: false, syncIntervalHours: 24, lastSyncAt: null });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch sync settings" });
+    }
+  });
+
+  app.put("/api/gmail/sync-settings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { autoSyncEnabled } = req.body;
+      const existing = await storage.getGmailSyncSettings(userId);
+      if (existing) {
+        const updated = await storage.updateGmailSyncSettings(userId, { autoSyncEnabled });
+        res.json(updated);
+      } else {
+        const created = await storage.createGmailSyncSettings({
+          userId,
+          autoSyncEnabled,
+          syncIntervalHours: 24,
+        });
+        res.json(created);
+      }
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update sync settings" });
+    }
+  });
+
+  startAutoSync();
 
   return httpServer;
 }

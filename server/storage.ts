@@ -105,6 +105,15 @@ import {
   type InsertCommunitySpend,
   bookingPricingDefaults,
   type BookingPricingDefaults,
+  gmailImportHistory,
+  gmailExclusions,
+  gmailSyncSettings,
+  type GmailImportHistory,
+  type InsertGmailImportHistory,
+  type GmailExclusion,
+  type InsertGmailExclusion,
+  type GmailSyncSettings,
+  type InsertGmailSyncSettings,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, sql, max, count } from "drizzle-orm";
 
@@ -1278,6 +1287,64 @@ export class DatabaseStorage implements IStorage {
 
   async getCommunitySpendByProgramme(programmeId: number): Promise<CommunitySpend[]> {
     return db.select().from(communitySpend).where(eq(communitySpend.programmeId, programmeId)).orderBy(desc(communitySpend.date));
+  }
+
+  async getGmailImportHistory(userId: string): Promise<GmailImportHistory[]> {
+    return db.select().from(gmailImportHistory).where(eq(gmailImportHistory.userId, userId)).orderBy(desc(gmailImportHistory.createdAt));
+  }
+
+  async getGmailImportHistoryItem(id: number): Promise<GmailImportHistory | undefined> {
+    const [item] = await db.select().from(gmailImportHistory).where(eq(gmailImportHistory.id, id));
+    return item;
+  }
+
+  async createGmailImportHistory(data: InsertGmailImportHistory): Promise<GmailImportHistory> {
+    const [item] = await db.insert(gmailImportHistory).values(data).returning();
+    return item;
+  }
+
+  async updateGmailImportHistory(id: number, updates: Partial<GmailImportHistory>): Promise<GmailImportHistory> {
+    const [item] = await db.update(gmailImportHistory).set(updates).where(eq(gmailImportHistory.id, id)).returning();
+    return item;
+  }
+
+  async getGmailExclusions(userId: string): Promise<GmailExclusion[]> {
+    return db.select().from(gmailExclusions).where(eq(gmailExclusions.userId, userId)).orderBy(desc(gmailExclusions.createdAt));
+  }
+
+  async createGmailExclusion(data: InsertGmailExclusion): Promise<GmailExclusion> {
+    const [item] = await db.insert(gmailExclusions).values(data).returning();
+    return item;
+  }
+
+  async deleteGmailExclusion(id: number): Promise<void> {
+    await db.delete(gmailExclusions).where(eq(gmailExclusions.id, id));
+  }
+
+  async getGmailSyncSettings(userId: string): Promise<GmailSyncSettings | undefined> {
+    const [settings] = await db.select().from(gmailSyncSettings).where(eq(gmailSyncSettings.userId, userId));
+    return settings;
+  }
+
+  async createGmailSyncSettings(data: InsertGmailSyncSettings): Promise<GmailSyncSettings> {
+    const [item] = await db.insert(gmailSyncSettings).values(data).returning();
+    return item;
+  }
+
+  async updateGmailSyncSettings(userId: string, updates: Partial<InsertGmailSyncSettings>): Promise<GmailSyncSettings> {
+    const [item] = await db.update(gmailSyncSettings).set({ ...updates, updatedAt: new Date() }).where(eq(gmailSyncSettings.userId, userId)).returning();
+    return item;
+  }
+
+  async updateGmailSyncLastSync(userId: string, lastSyncAt: Date): Promise<void> {
+    const existing = await this.getGmailSyncSettings(userId);
+    if (existing) {
+      await db.update(gmailSyncSettings).set({ lastSyncAt, updatedAt: new Date() }).where(eq(gmailSyncSettings.userId, userId));
+    }
+  }
+
+  async getAllGmailSyncSettings(): Promise<GmailSyncSettings[]> {
+    return db.select().from(gmailSyncSettings).where(eq(gmailSyncSettings.autoSyncEnabled, true));
   }
 }
 

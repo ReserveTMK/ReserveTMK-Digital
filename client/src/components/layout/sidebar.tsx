@@ -22,6 +22,7 @@ import {
   DollarSign,
   CalendarDays,
   Activity,
+  Mail,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "../ui/beautiful-button";
@@ -73,6 +74,12 @@ const navigation: NavItem[] = [
       { name: "Reports", href: "/reports", icon: FileText },
       { name: "Legacy Reports", href: "/legacy-reports", icon: BookOpen },
       { name: "Taxonomy", href: "/taxonomy", icon: Tags },
+    ],
+  },
+  {
+    name: "Settings", href: "/gmail-import", icon: Settings,
+    children: [
+      { name: "Gmail Import", href: "/gmail-import", icon: Mail },
     ],
   },
 ];

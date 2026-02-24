@@ -1153,6 +1153,69 @@ export const insertCommunitySpendSchema = createInsertSchema(communitySpend).omi
 export type CommunitySpend = typeof communitySpend.$inferSelect;
 export type InsertCommunitySpend = z.infer<typeof insertCommunitySpendSchema>;
 
+// === GMAIL IMPORT ===
+
+export const gmailImportHistory = pgTable("gmail_import_history", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  scanType: text("scan_type").notNull().default("manual"),
+  emailsScanned: integer("emails_scanned").default(0),
+  contactsCreated: integer("contacts_created").default(0),
+  groupsCreated: integer("groups_created").default(0),
+  contactsSkipped: integer("contacts_skipped").default(0),
+  groupsSkipped: integer("groups_skipped").default(0),
+  status: text("status").notNull().default("running"),
+  errorMessage: text("error_message"),
+  scanFromDate: timestamp("scan_from_date"),
+  scanToDate: timestamp("scan_to_date"),
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+});
+
+export const gmailExclusions = pgTable("gmail_exclusions", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  type: text("type").notNull(),
+  value: text("value").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const gmailSyncSettings = pgTable("gmail_sync_settings", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  autoSyncEnabled: boolean("auto_sync_enabled").default(true),
+  lastSyncAt: timestamp("last_sync_at"),
+  syncIntervalHours: integer("sync_interval_hours").default(24),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertGmailImportHistorySchema = createInsertSchema(gmailImportHistory).omit({
+  id: true,
+  createdAt: true,
+  completedAt: true,
+});
+
+export const insertGmailExclusionSchema = createInsertSchema(gmailExclusions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertGmailSyncSettingsSchema = createInsertSchema(gmailSyncSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type GmailImportHistory = typeof gmailImportHistory.$inferSelect;
+export type InsertGmailImportHistory = z.infer<typeof insertGmailImportHistorySchema>;
+
+export type GmailExclusion = typeof gmailExclusions.$inferSelect;
+export type InsertGmailExclusion = z.infer<typeof insertGmailExclusionSchema>;
+
+export type GmailSyncSettings = typeof gmailSyncSettings.$inferSelect;
+export type InsertGmailSyncSettings = z.infer<typeof insertGmailSyncSettingsSchema>;
+
 // Request types
 export type CreateContactRequest = InsertContact;
 export type UpdateContactRequest = Partial<InsertContact>;

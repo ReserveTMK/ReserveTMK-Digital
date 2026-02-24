@@ -19,6 +19,8 @@ import {
   X,
   DollarSign,
   Activity,
+  Settings,
+  Mail,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useRef, useEffect } from "react";
@@ -82,6 +84,13 @@ const navGroups: NavGroup[] = [
       { name: "Reports", href: "/reports", icon: FileText, description: "Monthly & quarterly reports" },
       { name: "Legacy Reports", href: "/legacy-reports", icon: BookOpen, description: "Historical PDF uploads" },
       { name: "Taxonomy", href: "/taxonomy", icon: Tags, description: "Impact categories & tags" },
+    ],
+  },
+  {
+    name: "Settings",
+    href: "/gmail-import",
+    children: [
+      { name: "Gmail Import", href: "/gmail-import", icon: Mail, description: "Import contacts from email" },
     ],
   },
 ];
