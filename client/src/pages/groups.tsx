@@ -228,68 +228,70 @@ export default function Groups() {
 
   return (
     <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
-        <div className="max-w-6xl mx-auto space-y-6">
-          {editMode && (
-            <div className="sticky -top-4 md:-top-8 z-30 -mx-4 md:-mx-8 px-4 md:px-8 py-3 bg-background/95 backdrop-blur-sm border-b border-border shadow-md flex items-center gap-2 flex-wrap" data-testid="edit-toolbar-groups">
-              <Button variant="outline" size="sm" onClick={selectAll} data-testid="button-select-all-groups">
-                <CheckSquare className="w-4 h-4 mr-2" />
-                Select All
-              </Button>
-              {selectedGroups.size > 0 && (
-                <>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => setBulkDeleteOpen(true)}
-                    data-testid="button-bulk-delete-groups"
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Delete ({selectedGroups.size})
-                  </Button>
-                  {viewMode === "all" && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        toast({
-                          title: "Community membership",
-                          description: "Community status is determined by member engagement, not manual assignment.",
-                        });
-                      }}
-                      data-testid="button-move-to-community"
-                    >
-                      <ArrowRightLeft className="w-4 h-4 mr-2" />
-                      Move to Community
-                    </Button>
-                  )}
+      {editMode && (
+        <div className="fixed top-14 left-0 right-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border shadow-md px-4 md:px-8 py-3" data-testid="edit-toolbar-groups">
+          <div className="max-w-6xl mx-auto w-full flex items-center gap-2 flex-wrap">
+            <Button variant="outline" size="sm" onClick={selectAll} data-testid="button-select-all-groups">
+              <CheckSquare className="w-4 h-4 mr-2" />
+              Select All
+            </Button>
+            {selectedGroups.size > 0 && (
+              <>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setBulkDeleteOpen(true)}
+                  data-testid="button-bulk-delete-groups"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete ({selectedGroups.size})
+                </Button>
+                {viewMode === "all" && (
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setBulkTierOpen(true)}
-                    data-testid="button-change-tier"
+                    onClick={() => {
+                      toast({
+                        title: "Community membership",
+                        description: "Community status is determined by member engagement, not manual assignment.",
+                      });
+                    }}
+                    data-testid="button-move-to-community"
                   >
-                    <Tag className="w-4 h-4 mr-2" />
-                    Change Tier
+                    <ArrowRightLeft className="w-4 h-4 mr-2" />
+                    Move to Community
                   </Button>
-                  {selectedGroups.size >= 2 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={openMergeDialog}
-                      data-testid="button-merge-groups"
-                    >
-                      <Merge className="w-4 h-4 mr-2" />
-                      Merge ({selectedGroups.size})
-                    </Button>
-                  )}
-                </>
-              )}
-              <Button variant="outline" onClick={toggleEditMode} data-testid="button-toggle-edit-mode">
-                <Edit3 className="w-4 h-4 mr-2" />
-                Done
-              </Button>
-            </div>
-          )}
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBulkTierOpen(true)}
+                  data-testid="button-change-tier"
+                >
+                  <Tag className="w-4 h-4 mr-2" />
+                  Change Tier
+                </Button>
+                {selectedGroups.size >= 2 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={openMergeDialog}
+                    data-testid="button-merge-groups"
+                  >
+                    <Merge className="w-4 h-4 mr-2" />
+                    Merge ({selectedGroups.size})
+                  </Button>
+                )}
+              </>
+            )}
+            <Button variant="outline" onClick={toggleEditMode} data-testid="button-toggle-edit-mode">
+              <Check className="w-4 h-4 mr-2" />
+              Done
+            </Button>
+          </div>
+        </div>
+      )}
+        <div className="max-w-6xl mx-auto space-y-6">
 
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>

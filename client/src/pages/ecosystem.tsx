@@ -383,6 +383,39 @@ export default function EcosystemPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-6" data-testid="ecosystem-page">
+      {editMode && (
+        <div className="fixed top-14 left-0 right-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border shadow-md px-4 md:px-8 py-3" data-testid="edit-toolbar-ecosystem">
+          <div className="max-w-7xl mx-auto w-full flex items-center gap-2 flex-wrap">
+            {selectedForMerge.length >= 1 && (
+              <Button size="sm" variant="destructive" onClick={() => setBulkDeleteOpen(true)} data-testid="button-bulk-delete">
+                <Trash2 className="w-4 h-4 mr-1" />
+                Delete ({selectedForMerge.length})
+              </Button>
+            )}
+            {selectedForMerge.length >= 1 && (
+              <Button size="sm" variant="outline" onClick={() => setBulkTierOpen(true)} data-testid="button-bulk-tier">
+                <Heart className="w-4 h-4 mr-1" />
+                Change Tier ({selectedForMerge.length})
+              </Button>
+            )}
+            {selectedForMerge.length >= 2 && (
+              <Button size="sm" onClick={openMergeDialog} data-testid="button-merge">
+                <Merge className="w-4 h-4 mr-1" />
+                Merge ({selectedForMerge.length})
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setEditMode(false); setSelectedForMerge([]); }}
+              data-testid="button-toggle-edit"
+            >
+              <Check className="w-4 h-4 mr-1" />
+              Done
+            </Button>
+          </div>
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-page-title">Ecosystem</h1>
@@ -391,31 +424,15 @@ export default function EcosystemPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant={editMode ? "default" : "outline"}
-            size="sm"
-            onClick={() => { setEditMode(!editMode); setSelectedForMerge([]); }}
-            data-testid="button-toggle-edit"
-          >
-            <Edit3 className="w-4 h-4 mr-1" />
-            {editMode ? "Done" : "Edit"}
-          </Button>
-          {editMode && selectedForMerge.length >= 2 && (
-            <Button size="sm" onClick={openMergeDialog} data-testid="button-merge">
-              <Merge className="w-4 h-4 mr-1" />
-              Merge ({selectedForMerge.length})
-            </Button>
-          )}
-          {editMode && selectedForMerge.length >= 1 && (
-            <Button size="sm" variant="outline" onClick={() => setBulkTierOpen(true)} data-testid="button-bulk-tier">
-              <Heart className="w-4 h-4 mr-1" />
-              Change Tier ({selectedForMerge.length})
-            </Button>
-          )}
-          {editMode && selectedForMerge.length >= 1 && (
-            <Button size="sm" variant="destructive" onClick={() => setBulkDeleteOpen(true)} data-testid="button-bulk-delete">
-              <Trash2 className="w-4 h-4 mr-1" />
-              Delete ({selectedForMerge.length})
+          {!editMode && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setEditMode(true); setSelectedForMerge([]); }}
+              data-testid="button-toggle-edit"
+            >
+              <Edit3 className="w-4 h-4 mr-1" />
+              Edit
             </Button>
           )}
         </div>

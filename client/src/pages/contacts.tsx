@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { useContacts, useCreateContact, useDeleteContact } from "@/hooks/use-contacts";
-import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge } from "lucide-react";
+import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge } from "lucide-react";
 import { useState, useRef, useCallback, useMemo } from "react";
 import { Link } from "wouter";
 import { format } from "date-fns";
@@ -314,59 +314,61 @@ export default function Contacts() {
 
   return (
     <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
+      {editMode && (
+        <div className="fixed top-14 left-0 right-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border shadow-md px-4 md:px-8 py-3" data-testid="edit-toolbar-contacts">
+          <div className="max-w-6xl mx-auto w-full flex items-center gap-2 flex-wrap">
+            {selectedContacts.size > 0 && (
+              <>
+                <Button variant="destructive" onClick={() => setBulkDeleteConfirmOpen(true)} data-testid="button-bulk-delete">
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete ({selectedContacts.size})
+                </Button>
+                {viewMode === "community" && (
+                  <Button variant="outline" onClick={() => bulkMoveMutation.mutate({ contactIds: Array.from(selectedContacts), isCommunityMember: false })} disabled={bulkMoveMutation.isPending} data-testid="button-bulk-move-all">
+                    {bulkMoveMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowRightLeft className="w-4 h-4 mr-2" />}
+                    Move to All
+                  </Button>
+                )}
+                {viewMode === "all" && (
+                  <Button variant="outline" onClick={() => bulkMoveMutation.mutate({ contactIds: Array.from(selectedContacts), isCommunityMember: true })} disabled={bulkMoveMutation.isPending} data-testid="button-bulk-mark-community">
+                    {bulkMoveMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <UserCheck className="w-4 h-4 mr-2" />}
+                    Mark Community
+                  </Button>
+                )}
+                <Button variant="outline" onClick={() => setBulkRoleOpen(true)} data-testid="button-bulk-update-role">
+                  <Tag className="w-4 h-4 mr-2" />
+                  Update Role
+                </Button>
+                <Button variant="outline" onClick={() => setBulkRelationshipOpen(true)} data-testid="button-bulk-update-relationship">
+                  <Users className="w-4 h-4 mr-2" />
+                  Update Relationship
+                </Button>
+                {selectedContacts.size >= 2 && (
+                  <Button variant="outline" onClick={openMergeDialog} data-testid="button-merge-contacts">
+                    <Merge className="w-4 h-4 mr-2" />
+                    Merge ({selectedContacts.size})
+                  </Button>
+                )}
+              </>
+            )}
+            {filteredContacts && filteredContacts.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={filteredContacts.length > 0 && selectedContacts.size === filteredContacts.length}
+                  onCheckedChange={toggleSelectAll}
+                  data-testid="checkbox-select-all"
+                />
+                <span className="text-sm text-muted-foreground">Select All</span>
+              </div>
+            )}
+            <Button variant="outline" onClick={handleExitEditMode} data-testid="button-edit-mode">
+              <Check className="w-4 h-4 mr-2" />
+              Done
+            </Button>
+          </div>
+        </div>
+      )}
         <div className="max-w-6xl mx-auto space-y-6">
-          {editMode && (
-            <div className="sticky -top-4 md:-top-8 z-30 -mx-4 md:-mx-8 px-4 md:px-8 py-3 bg-background/95 backdrop-blur-sm border-b border-border shadow-md flex items-center gap-2 flex-wrap" data-testid="edit-toolbar-contacts">
-              {selectedContacts.size > 0 && (
-                <>
-                  <Button variant="destructive" onClick={() => setBulkDeleteConfirmOpen(true)} data-testid="button-bulk-delete">
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Delete ({selectedContacts.size})
-                  </Button>
-                  {viewMode === "community" && (
-                    <Button variant="outline" onClick={() => bulkMoveMutation.mutate({ contactIds: Array.from(selectedContacts), isCommunityMember: false })} disabled={bulkMoveMutation.isPending} data-testid="button-bulk-move-all">
-                      {bulkMoveMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowRightLeft className="w-4 h-4 mr-2" />}
-                      Move to All
-                    </Button>
-                  )}
-                  {viewMode === "all" && (
-                    <Button variant="outline" onClick={() => bulkMoveMutation.mutate({ contactIds: Array.from(selectedContacts), isCommunityMember: true })} disabled={bulkMoveMutation.isPending} data-testid="button-bulk-mark-community">
-                      {bulkMoveMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <UserCheck className="w-4 h-4 mr-2" />}
-                      Mark Community
-                    </Button>
-                  )}
-                  <Button variant="outline" onClick={() => setBulkRoleOpen(true)} data-testid="button-bulk-update-role">
-                    <Tag className="w-4 h-4 mr-2" />
-                    Update Role
-                  </Button>
-                  <Button variant="outline" onClick={() => setBulkRelationshipOpen(true)} data-testid="button-bulk-update-relationship">
-                    <Users className="w-4 h-4 mr-2" />
-                    Update Relationship
-                  </Button>
-                  {selectedContacts.size >= 2 && (
-                    <Button variant="outline" onClick={openMergeDialog} data-testid="button-merge-contacts">
-                      <Merge className="w-4 h-4 mr-2" />
-                      Merge ({selectedContacts.size})
-                    </Button>
-                  )}
-                </>
-              )}
-              {filteredContacts && filteredContacts.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    checked={filteredContacts.length > 0 && selectedContacts.size === filteredContacts.length}
-                    onCheckedChange={toggleSelectAll}
-                    data-testid="checkbox-select-all"
-                  />
-                  <span className="text-sm text-muted-foreground">Select All</span>
-                </div>
-              )}
-              <Button variant="outline" onClick={handleExitEditMode} data-testid="button-edit-mode">
-                <Edit3 className="w-4 h-4 mr-2" />
-                Done
-              </Button>
-            </div>
-          )}
 
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -739,11 +741,6 @@ export default function Contacts() {
                       </div>
                       
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                        {contact.businessName && (
-                          <p className="text-xs text-foreground/70 truncate max-w-[200px]" data-testid={`text-business-${contact.id}`}>
-                            {contact.businessName}
-                          </p>
-                        )}
                         <p className="text-xs text-muted-foreground truncate" data-testid={`text-email-${contact.id}`}>
                           {contact.email || "No email"}
                         </p>
@@ -779,16 +776,16 @@ export default function Contacts() {
                       </div>
                     </div>
 
-                    <div className="hidden sm:flex flex-col items-end gap-1 max-w-[200px] shrink-0">
+                    <div className="flex flex-col items-end gap-1 max-w-[200px] shrink-0">
                       {contact.role && (
-                        <Badge variant="outline" className="text-[10px] h-5 px-2 shrink-0" data-testid={`badge-role-side-${contact.id}`}>
+                        <Badge variant="outline" className="text-[10px] h-5 px-2 shrink-0 hidden sm:inline-flex" data-testid={`badge-role-side-${contact.id}`}>
                           {contact.role}
                         </Badge>
                       )}
-                      {contact.linkedGroupName && (
-                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground" data-testid={`text-group-link-${contact.id}`}>
-                          <Building2 className="w-3 h-3" />
-                          {contact.linkedGroupName}
+                      {(contact.linkedGroupName || contact.businessName) && (
+                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground truncate max-w-full" data-testid={`text-group-link-${contact.id}`}>
+                          <Building2 className="w-3 h-3 shrink-0" />
+                          {contact.linkedGroupName || contact.businessName}
                         </span>
                       )}
                     </div>
@@ -1514,21 +1511,3 @@ function CleanUpDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v
   );
 }
 
-function UsersIcon({ className }: { className?: string }) {
-  return (
-    <svg 
-      xmlns="http://www.w3.org/2000/svg" 
-      width="24" 
-      height="24" 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round" 
-      className={className}
-    >
-      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-    </svg>
-  );
-}
