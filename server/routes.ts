@@ -2697,7 +2697,7 @@ Important:
       const userId = (req.user as any).claims.sub;
       const id = parseInt(req.params.id);
       const existing = await storage.getLegacyReport(id);
-      if (!existing || existing.userId !== userId) return res.status(404).json({ message: "Not found" });
+      if (!existing || String(existing.userId) !== String(userId)) return res.status(404).json({ message: "Not found" });
 
       const { notes, snapshot, status, year, month } = req.body;
 
@@ -3008,7 +3008,7 @@ Return a JSON object with this exact structure:
       const userId = (req.user as any).claims.sub;
       const id = parseInt(req.params.id);
       const existing = await storage.getLegacyReport(id);
-      if (!existing || existing.userId !== userId) return res.status(404).json({ message: "Not found" });
+      if (!existing || String(existing.userId) !== String(userId)) return res.status(404).json({ message: "Not found" });
       await storage.deleteLegacyReport(id);
       res.status(204).end();
     } catch (err: any) {
@@ -3819,64 +3819,92 @@ Return a JSON object with this exact structure:
     }
   });
 
-  // === Taxonomy Suggestion for Legacy Reports ===
-  app.post("/api/legacy-reports/:id/suggest-taxonomy", isAuthenticated, async (req, res) => {
+  // === Taxonomy Scan - AI-powered suggestion engine ===
+  app.post("/api/taxonomy/scan-suggestions", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const reportId = parseInt(req.params.id);
-      const report = await storage.getLegacyReport(reportId);
-      if (!report) return res.status(404).json({ message: "Legacy report not found" });
-      if (report.userId !== userId) return res.status(403).json({ message: "Forbidden" });
 
       const taxonomy = await storage.getTaxonomy(userId);
-      const snapshot = await storage.getLegacyReportSnapshot(reportId);
+      const keywords = await storage.getKeywords(userId);
+      const existingCategories = taxonomy.map(t => ({
+        name: t.name,
+        description: t.description,
+        active: t.active,
+      }));
+      const existingKeywords = keywords.map(k => {
+        const cat = taxonomy.find(t => t.id === k.taxonomyId);
+        return { phrase: k.phrase, category: cat?.name || "Unknown" };
+      });
 
-      let pdfText = "";
-      if (report.pdfData) {
-        try {
-          const { PDFParse: PdfParser } = await import("pdf-parse");
-          const buffer = Buffer.from(report.pdfData, "base64");
-          const parser = new PdfParser({ data: buffer });
-          await parser.load();
-          const pdfResult = await parser.getText();
-          pdfText = pdfResult.text || "";
-        } catch (e) {
-          pdfText = "";
+      const legacyReports = await storage.getLegacyReports(userId);
+      const confirmedReports = legacyReports.filter(r => r.status === "confirmed");
+
+      const reportSummaries: string[] = [];
+      for (const report of confirmedReports.slice(0, 24)) {
+        const extraction = await storage.getLegacyReportExtraction(report.id);
+        const parts: string[] = [`Period: ${report.quarterLabel}`];
+        if (extraction?.extractedOrganisations) {
+          const orgs = extraction.extractedOrganisations as any[];
+          parts.push(`Organisations: ${orgs.map((o: any) => `${o.name} (${o.relationshipTier || "unknown"})`).join(", ")}`);
+        }
+        if (extraction?.extractedHighlights) {
+          const highlights = extraction.extractedHighlights as any[];
+          parts.push(`Highlights: ${highlights.map((h: any) => `${h.theme}: ${h.summary}`).join("; ")}`);
+        }
+        if (extraction?.extractedPeople) {
+          const people = extraction.extractedPeople as any[];
+          if (people.length > 0) {
+            parts.push(`People mentioned: ${people.map((p: any) => `${p.name} (${p.role || "unknown"})`).join(", ")}`);
+          }
+        }
+        reportSummaries.push(parts.join("\n"));
+      }
+
+      const contacts = await storage.getContacts(userId);
+      const interactionSummaries: string[] = [];
+      for (const contact of contacts.slice(0, 20)) {
+        const interactions = await storage.getInteractions(contact.id);
+        const recentInteractions = interactions.slice(0, 5);
+        for (const interaction of recentInteractions) {
+          if (interaction.notes || interaction.transcript) {
+            const text = (interaction.notes || interaction.transcript || "").slice(0, 200);
+            interactionSummaries.push(`${contact.name} - ${interaction.type}: ${text}`);
+          }
         }
       }
 
-      const existingCategories = taxonomy.map(t => ({
-        id: t.id,
-        category: t.name,
-        description: t.description,
-      }));
+      const prompt = `You are analyzing data from a community hub/mentorship platform to suggest NEW impact taxonomy categories and keywords.
 
-      const snapshotInfo = snapshot ? {
-        activationsTotal: snapshot.activationsTotal,
-        foottrafficUnique: snapshot.foottrafficUnique,
-        bookingsTotal: snapshot.bookingsTotal,
-      } : {};
-
-      const prompt = `You are analyzing a legacy report to suggest taxonomy categories for impact classification.
-
-Report Period: ${report.quarterLabel} (${report.periodStart} to ${report.periodEnd})
-Report Metrics: ${JSON.stringify(snapshotInfo)}
-${pdfText ? `Report Text Content:\n${pdfText.slice(0, 3000)}` : "No PDF text available."}
-
-Existing taxonomy categories:
+EXISTING CATEGORIES:
 ${JSON.stringify(existingCategories, null, 2)}
 
-Analyze the report data and suggest taxonomy categories. For each suggestion:
-- If it matches an existing category, reference it
-- If it's a new category, explain why it should be added
-- Include a confidence score (0-100)
+EXISTING KEYWORDS:
+${JSON.stringify(existingKeywords, null, 2)}
+
+DATA FROM LEGACY REPORTS (${confirmedReports.length} confirmed reports):
+${reportSummaries.join("\n---\n")}
+
+DATA FROM INTERACTIONS (sample):
+${interactionSummaries.slice(0, 30).join("\n")}
+
+Your task:
+1. Analyze all the data above for recurring themes, activities, and impact areas
+2. Suggest NEW categories that are NOT already covered by existing ones
+3. Suggest NEW keywords that could map to existing OR new categories
+4. Focus on categories relevant to community impact, mentorship, youth development, events, partnerships, and social outcomes
+5. Do NOT suggest categories that duplicate existing ones (even with different wording)
 
 Return a JSON object with this exact structure:
 {
-  "suggestions": [
-    { "category": "category name", "description": "why this category fits the report data", "matchesExisting": "existing category name or null", "confidence": 85 }
+  "categorySuggestions": [
+    { "name": "Category Name", "description": "Why this category should be added", "color": "suggested color (purple/blue/green/amber/red/pink/teal/orange/cyan/indigo)", "confidence": 85, "evidence": "Brief quote or reference from the data" }
+  ],
+  "keywordSuggestions": [
+    { "phrase": "keyword phrase", "suggestedCategory": "category name (existing or new)", "confidence": 80, "evidence": "Where this phrase appears in the data" }
   ]
-}`;
+}
+
+Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords max.`;
 
       const response = await openai.chat.completions.create({
         model: "gpt-4o-mini",
@@ -3885,11 +3913,16 @@ Return a JSON object with this exact structure:
         response_format: { type: "json_object" },
       });
 
-      const result = JSON.parse(response.choices[0].message.content || '{"suggestions":[]}');
-      res.json(result.suggestions || []);
+      const result = JSON.parse(response.choices[0].message.content || '{"categorySuggestions":[],"keywordSuggestions":[]}');
+      res.json({
+        categorySuggestions: result.categorySuggestions || [],
+        keywordSuggestions: result.keywordSuggestions || [],
+        scannedReports: confirmedReports.length,
+        scannedInteractions: interactionSummaries.length,
+      });
     } catch (err: any) {
-      console.error("Taxonomy suggestion error:", err);
-      res.status(500).json({ message: "Failed to generate taxonomy suggestions" });
+      console.error("Taxonomy scan error:", err);
+      res.status(500).json({ message: "Failed to scan for taxonomy suggestions" });
     }
   });
 

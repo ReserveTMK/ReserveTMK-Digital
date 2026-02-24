@@ -222,13 +222,8 @@ export default function LegacyReportsPage() {
   const [editingDateId, setEditingDateId] = useState<number | null>(null);
   const [editDateYear, setEditDateYear] = useState<string>("");
   const [editDateMonth, setEditDateMonth] = useState<string>("");
-  const [suggestingTaxonomyId, setSuggestingTaxonomyId] = useState<number | null>(null);
   const [viewPdfReportId, setViewPdfReportId] = useState<number | null>(null);
   const [syncing, setSyncing] = useState(false);
-  const [taxonomySuggestions, setTaxonomySuggestions] = useState<{
-    reportId: number;
-    suggestions: Array<{ category: string; description: string; matchesExisting: string | null; confidence: number }>;
-  } | null>(null);
 
   const { data: legacyReports, isLoading } = useQuery<LegacyReportWithSnapshot[]>({
     queryKey: ["/api/legacy-reports"],
@@ -399,21 +394,6 @@ export default function LegacyReportsPage() {
     },
   });
 
-  const taxonomyMutation = useMutation({
-    mutationFn: async (id: number) => {
-      setSuggestingTaxonomyId(id);
-      const res = await apiRequest("POST", `/api/legacy-reports/${id}/suggest-taxonomy`);
-      return res.json();
-    },
-    onSuccess: (data: any, id: number) => {
-      setSuggestingTaxonomyId(null);
-      setTaxonomySuggestions({ reportId: id, suggestions: data.suggestions || [] });
-    },
-    onError: (err: any) => {
-      setSuggestingTaxonomyId(null);
-      toast({ title: "Error", description: err.message || "Failed to generate taxonomy suggestions", variant: "destructive" });
-    },
-  });
 
   const settingsMutation = useMutation({
     mutationFn: async (boundaryDate: string | null) => {
@@ -1050,22 +1030,6 @@ export default function LegacyReportsPage() {
                           Confirm
                         </Button>
                       )}
-                      {report.status === "confirmed" && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => taxonomyMutation.mutate(report.id)}
-                          disabled={suggestingTaxonomyId === report.id}
-                          data-testid={`button-suggest-taxonomy-${report.id}`}
-                        >
-                          {suggestingTaxonomyId === report.id ? (
-                            <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                          ) : (
-                            <Sparkles className="w-3 h-3 mr-1" />
-                          )}
-                          Taxonomy
-                        </Button>
-                      )}
                       <Button
                         size="sm"
                         variant="ghost"
@@ -1348,57 +1312,6 @@ export default function LegacyReportsPage() {
             </Card>
           )}
 
-          {taxonomySuggestions && taxonomySuggestions.suggestions.length > 0 && (
-            <Card className="p-5 border-primary/20 bg-primary/5" data-testid="card-taxonomy-suggestions">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-primary" />
-                  <h3 className="font-display font-semibold">Taxonomy Suggestions</h3>
-                </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => setTaxonomySuggestions(null)}
-                  data-testid="button-dismiss-taxonomy"
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-              <div className="space-y-3">
-                {taxonomySuggestions.suggestions.map((s, i) => (
-                  <div key={i} className="flex items-start gap-3 p-3 bg-background rounded-lg border" data-testid={`taxonomy-suggestion-${i}`}>
-                    <div className="flex-1 space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm">{s.category}</span>
-                        <Badge
-                          variant="secondary"
-                          className={`text-[10px] no-default-hover-elevate no-default-active-elevate ${confidenceBadgeVariant(s.confidence)}`}
-                        >
-                          {s.confidence}%
-                        </Badge>
-                        {s.matchesExisting && (
-                          <Badge variant="outline" className="text-[10px]">
-                            Matches: {s.matchesExisting}
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground">{s.description}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-2 mt-4">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setTaxonomySuggestions(null)}
-                  data-testid="button-dismiss-taxonomy-footer"
-                >
-                  Dismiss
-                </Button>
-              </div>
-            </Card>
-          )}
 
         </div>
 
@@ -1506,8 +1419,8 @@ export default function LegacyReportsPage() {
         </Dialog>
 
         <Dialog open={viewPdfReportId !== null} onOpenChange={(open) => { if (!open) setViewPdfReportId(null); }}>
-          <DialogContent className="max-w-4xl h-[80vh]">
-            <DialogHeader>
+          <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
+            <DialogHeader className="shrink-0">
               <DialogTitle>
                 {legacyReports?.find(r => r.id === viewPdfReportId)?.quarterLabel || "PDF Viewer"}
               </DialogTitle>
@@ -1521,7 +1434,7 @@ export default function LegacyReportsPage() {
                 return (
                   <iframe
                     src={`data:application/pdf;base64,${report.pdfData}`}
-                    className="w-full flex-1 rounded border"
+                    className="w-full flex-1 min-h-0 rounded border"
                     title="PDF Viewer"
                   />
                 );

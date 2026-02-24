@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/beautiful-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,8 +12,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, X, Check, BookOpen, Tags } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Check, BookOpen, Tags, Scan, Loader2, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import {
   useTaxonomy,
   useCreateTaxonomy,
@@ -22,6 +24,28 @@ import {
   useCreateKeyword,
   useDeleteKeyword,
 } from "@/hooks/use-taxonomy";
+
+interface CategorySuggestion {
+  name: string;
+  description: string;
+  color: string;
+  confidence: number;
+  evidence: string;
+}
+
+interface KeywordSuggestion {
+  phrase: string;
+  suggestedCategory: string;
+  confidence: number;
+  evidence: string;
+}
+
+interface ScanResult {
+  categorySuggestions: CategorySuggestion[];
+  keywordSuggestions: KeywordSuggestion[];
+  scannedReports: number;
+  scannedInteractions: number;
+}
 
 const COLOR_OPTIONS = [
   { value: "purple", bg: "bg-purple-500", ring: "ring-purple-200" },
@@ -64,6 +88,64 @@ export default function Taxonomy() {
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editColor, setEditColor] = useState("");
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [showSuggestions, setShowSuggestions] = useState(true);
+  const [acceptedCategories, setAcceptedCategories] = useState<Set<number>>(new Set());
+  const [acceptedKeywords, setAcceptedKeywords] = useState<Set<number>>(new Set());
+
+  const scanMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/taxonomy/scan-suggestions");
+      return res.json() as Promise<ScanResult>;
+    },
+    onSuccess: (data) => {
+      setScanResult(data);
+      setShowSuggestions(true);
+      setAcceptedCategories(new Set());
+      setAcceptedKeywords(new Set());
+      toast({ title: `Scan complete`, description: `Scanned ${data.scannedReports} reports and ${data.scannedInteractions} interactions` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Scan failed", description: err.message || "Failed to scan for suggestions", variant: "destructive" });
+    },
+  });
+
+  function handleAcceptCategory(suggestion: CategorySuggestion, index: number) {
+    createTaxonomy.mutate(
+      { name: suggestion.name, description: suggestion.description, color: suggestion.color || "purple" },
+      {
+        onSuccess: () => {
+          toast({ title: `Category "${suggestion.name}" added` });
+          setAcceptedCategories(prev => new Set(prev).add(index));
+        },
+        onError: (err: any) => {
+          toast({ title: "Error", description: err.message, variant: "destructive" });
+        },
+      }
+    );
+  }
+
+  function handleAcceptKeyword(suggestion: KeywordSuggestion, index: number) {
+    const matchingCategory = taxonomyItems.find((t: any) =>
+      t.name.toLowerCase() === suggestion.suggestedCategory.toLowerCase()
+    );
+    if (!matchingCategory) {
+      toast({ title: "Category not found", description: `Create the "${suggestion.suggestedCategory}" category first, then accept this keyword.`, variant: "destructive" });
+      return;
+    }
+    createKeyword.mutate(
+      { phrase: suggestion.phrase, taxonomyId: matchingCategory.id },
+      {
+        onSuccess: () => {
+          toast({ title: `Keyword "${suggestion.phrase}" added` });
+          setAcceptedKeywords(prev => new Set(prev).add(index));
+        },
+        onError: (err: any) => {
+          toast({ title: "Error", description: err.message, variant: "destructive" });
+        },
+      }
+    );
+  }
 
   function resetCategoryForm() {
     setCategoryName("");
@@ -186,6 +268,186 @@ export default function Taxonomy() {
             Customize impact categories and keyword mappings for AI extraction
           </p>
         </div>
+
+        <div className="mb-6">
+          <Card className="p-4 border-primary/20 bg-primary/5">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <Scan className="w-5 h-5 text-primary" />
+                <div>
+                  <p className="text-sm font-medium">AI-Powered Taxonomy Scanner</p>
+                  <p className="text-xs text-muted-foreground">Scans legacy reports, interactions, and debriefs for new categories and keywords</p>
+                </div>
+              </div>
+              <Button
+                onClick={() => scanMutation.mutate()}
+                disabled={scanMutation.isPending}
+                data-testid="button-scan-taxonomy"
+              >
+                {scanMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Scanning...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Scan for Suggestions
+                  </>
+                )}
+              </Button>
+            </div>
+          </Card>
+        </div>
+
+        {scanResult && showSuggestions && (
+          <div className="mb-6 space-y-4" data-testid="panel-scan-results">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-primary" />
+                <h2 className="text-lg font-semibold">AI Suggestions</h2>
+                <Badge variant="secondary" className="text-xs">
+                  {scanResult.scannedReports} reports, {scanResult.scannedInteractions} interactions scanned
+                </Badge>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowSuggestions(false)}
+                data-testid="button-collapse-suggestions"
+              >
+                <ChevronUp className="w-4 h-4 mr-1" />
+                Collapse
+              </Button>
+            </div>
+
+            {scanResult.categorySuggestions.length > 0 && (
+              <Card className="rounded-xl">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Tags className="w-4 h-4 text-primary" />
+                    Suggested Categories ({scanResult.categorySuggestions.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {scanResult.categorySuggestions.map((s, i) => {
+                    const accepted = acceptedCategories.has(i);
+                    const colors = getColorClasses(s.color);
+                    return (
+                      <div key={i} className={`flex items-start gap-3 p-3 rounded-lg border ${accepted ? "bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800" : "bg-background"}`} data-testid={`suggestion-category-${i}`}>
+                        <span className={`w-3 h-3 rounded-full shrink-0 mt-1 ${colors.bg}`} />
+                        <div className="flex-1 space-y-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-sm">{s.name}</span>
+                            <Badge variant="secondary" className="text-[10px]">{s.confidence}% confidence</Badge>
+                            {accepted && <Badge className="text-[10px] bg-green-600">Added</Badge>}
+                          </div>
+                          <p className="text-xs text-muted-foreground">{s.description}</p>
+                          {s.evidence && (
+                            <p className="text-xs text-muted-foreground/70 italic">Evidence: {s.evidence}</p>
+                          )}
+                        </div>
+                        {!accepted && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleAcceptCategory(s, i)}
+                            disabled={createTaxonomy.isPending}
+                            className="shrink-0"
+                            data-testid={`button-accept-category-${i}`}
+                          >
+                            <Plus className="w-3 h-3 mr-1" />
+                            Add
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            )}
+
+            {scanResult.keywordSuggestions.length > 0 && (
+              <Card className="rounded-xl">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <BookOpen className="w-4 h-4 text-primary" />
+                    Suggested Keywords ({scanResult.keywordSuggestions.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {scanResult.keywordSuggestions.map((s, i) => {
+                    const accepted = acceptedKeywords.has(i);
+                    const matchingCategory = taxonomyItems.find((t: any) =>
+                      t.name.toLowerCase() === s.suggestedCategory.toLowerCase()
+                    );
+                    return (
+                      <div key={i} className={`flex items-start gap-3 p-3 rounded-lg border ${accepted ? "bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800" : "bg-background"}`} data-testid={`suggestion-keyword-${i}`}>
+                        <div className="flex-1 space-y-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-sm">"{s.phrase}"</span>
+                            <Badge variant="outline" className="text-[10px]">
+                              {matchingCategory ? s.suggestedCategory : `${s.suggestedCategory} (new)`}
+                            </Badge>
+                            <Badge variant="secondary" className="text-[10px]">{s.confidence}%</Badge>
+                            {accepted && <Badge className="text-[10px] bg-green-600">Added</Badge>}
+                          </div>
+                          {s.evidence && (
+                            <p className="text-xs text-muted-foreground/70 italic">Source: {s.evidence}</p>
+                          )}
+                        </div>
+                        {!accepted && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleAcceptKeyword(s, i)}
+                            disabled={createKeyword.isPending || !matchingCategory}
+                            className="shrink-0"
+                            data-testid={`button-accept-keyword-${i}`}
+                          >
+                            <Plus className="w-3 h-3 mr-1" />
+                            Add
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            )}
+
+            {scanResult.categorySuggestions.length === 0 && scanResult.keywordSuggestions.length === 0 && (
+              <Card className="p-6 text-center">
+                <p className="text-muted-foreground">No new suggestions found. Your taxonomy looks comprehensive!</p>
+              </Card>
+            )}
+
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => { setScanResult(null); setShowSuggestions(false); }}
+                data-testid="button-dismiss-scan"
+              >
+                Dismiss All
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {scanResult && !showSuggestions && (
+          <div className="mb-6">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowSuggestions(true)}
+              data-testid="button-expand-suggestions"
+            >
+              <ChevronDown className="w-4 h-4 mr-1" />
+              Show AI Suggestions ({scanResult.categorySuggestions.length} categories, {scanResult.keywordSuggestions.length} keywords)
+            </Button>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left: Impact Categories */}
