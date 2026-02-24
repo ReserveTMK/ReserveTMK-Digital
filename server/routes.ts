@@ -4424,6 +4424,30 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   // === COMMUNITY MANAGEMENT ===
 
+  app.get("/api/groups/community-density", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const allGroups = await storage.getGroups(userId);
+      const allContacts = await storage.getContacts(userId);
+
+      const communityContactIds = new Set(
+        allContacts.filter((c: any) => c.isCommunityMember).map((c: any) => c.id)
+      );
+
+      const densityMap: Record<number, { communityCount: number; totalMembers: number }> = {};
+
+      for (const group of allGroups) {
+        const members = await storage.getGroupMembers(group.id);
+        const communityCount = members.filter(m => communityContactIds.has(m.contactId)).length;
+        densityMap[group.id] = { communityCount, totalMembers: members.length };
+      }
+
+      res.json(densityMap);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to get community density" });
+    }
+  });
+
   app.get("/api/contacts/community/junk-scan", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
@@ -4485,62 +4509,132 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       const userId = (req.user as any).claims.sub;
       const allContacts = await storage.getContacts(userId);
 
-      const contactIdsWithEngagement = new Set<number>();
+      const contactEngagement = new Map<number, { hasNonEmailEngagement: boolean; lastActiveDate: Date | null }>();
+
+      const trackDate = (contactId: number, date: Date | null | undefined, isNonEmail: boolean) => {
+        const existing = contactEngagement.get(contactId) || { hasNonEmailEngagement: false, lastActiveDate: null };
+        if (isNonEmail) existing.hasNonEmailEngagement = true;
+        if (date && (!existing.lastActiveDate || date > existing.lastActiveDate)) {
+          existing.lastActiveDate = date;
+        }
+        contactEngagement.set(contactId, existing);
+      };
 
       for (const contact of allContacts) {
         const contactInteractions = await storage.getInteractions(contact.id);
-        if (contactInteractions.length > 0) {
-          contactIdsWithEngagement.add(contact.id);
+        for (const i of contactInteractions) {
+          const isEmailInteraction = i.type?.toLowerCase() === 'email';
+          trackDate(contact.id, i.date ? new Date(i.date) : null, !isEmailInteraction);
         }
       }
 
       const allBookings = await storage.getBookings(userId);
       for (const b of allBookings) {
-        if (b.bookerId) contactIdsWithEngagement.add(b.bookerId);
+        const bDate = b.startDate ? new Date(b.startDate) : null;
+        if (b.bookerId) trackDate(b.bookerId, bDate, true);
         if (b.attendees) {
-          for (const a of b.attendees) contactIdsWithEngagement.add(a);
+          for (const a of b.attendees) trackDate(a, bDate, true);
         }
       }
 
       const allProgrammes = await storage.getProgrammes(userId);
       for (const p of allProgrammes) {
+        const pDate = p.startDate ? new Date(p.startDate) : (p.createdAt ? new Date(p.createdAt) : null);
         if (p.facilitators) {
-          for (const f of p.facilitators) contactIdsWithEngagement.add(f);
+          for (const f of p.facilitators) trackDate(f, pDate, true);
         }
         if (p.attendees) {
-          for (const a of p.attendees) contactIdsWithEngagement.add(a);
+          for (const a of p.attendees) trackDate(a, pDate, true);
         }
       }
 
       const allMemberships = await storage.getMemberships(userId);
       for (const m of allMemberships) {
-        if (m.contactId) contactIdsWithEngagement.add(m.contactId);
+        if (m.contactId) trackDate(m.contactId, m.createdAt ? new Date(m.createdAt) : null, true);
       }
 
       const allMous = await storage.getMous(userId);
       for (const m of allMous) {
-        if (m.contactId) contactIdsWithEngagement.add(m.contactId);
+        if (m.contactId) trackDate(m.contactId, m.createdAt ? new Date(m.createdAt) : null, true);
       }
 
       const allSpend = await storage.getCommunitySpend(userId);
       for (const s of allSpend) {
-        if (s.contactId) contactIdsWithEngagement.add(s.contactId);
+        if (s.contactId) trackDate(s.contactId, s.date ? new Date(s.date) : null, true);
       }
 
       const impactLogs = await storage.getImpactLogs(userId);
       for (const log of impactLogs) {
-        if (log.linkedContactId) contactIdsWithEngagement.add(log.linkedContactId);
+        if (log.linkedContactId) trackDate(log.linkedContactId, log.createdAt ? new Date(log.createdAt) : null, true);
       }
 
-      let flagged = 0;
-      for (const contact of allContacts) {
-        if (contactIdsWithEngagement.has(contact.id) && !contact.isCommunityMember && !contact.communityMemberOverride) {
-          await storage.updateContact(contact.id, { isCommunityMember: true });
-          flagged++;
+      const allEvents = await storage.getEvents(userId);
+      for (const event of allEvents) {
+        const eDate = event.startTime ? new Date(event.startTime) : null;
+        const attendance = await storage.getEventAttendance(event.id);
+        for (const att of attendance) {
+          trackDate(att.contactId, eDate, true);
         }
       }
 
-      res.json({ flagged, totalEngagedContacts: contactIdsWithEngagement.size });
+      const legacyReports = await storage.getLegacyReports(userId);
+      const reportPeopleMap = new Map<string, Date>();
+      for (const report of legacyReports) {
+        if (report.status !== 'confirmed') continue;
+        const extraction = await storage.getLegacyReportExtraction(report.id);
+        if (extraction?.extractedPeople) {
+          const reportDate = (report.year && report.month)
+            ? new Date(report.year, report.month - 1, 15)
+            : (report.createdAt ? new Date(report.createdAt) : null);
+          for (const person of extraction.extractedPeople) {
+            const key = person.name.toLowerCase().trim();
+            const existing = reportPeopleMap.get(key);
+            if (reportDate && (!existing || reportDate > existing)) {
+              reportPeopleMap.set(key, reportDate);
+            } else if (!existing) {
+              reportPeopleMap.set(key, reportDate!);
+            }
+          }
+        }
+      }
+      for (const contact of allContacts) {
+        const reportDate = reportPeopleMap.get(contact.name.toLowerCase().trim());
+        if (reportDate !== undefined) {
+          trackDate(contact.id, reportDate, true);
+        }
+      }
+
+      let flagged = 0;
+      let unflagged = 0;
+      let lastActiveDatesSet = 0;
+      for (const contact of allContacts) {
+        if (contact.communityMemberOverride) continue;
+
+        const engagement = contactEngagement.get(contact.id);
+        const hasNonEmailEngagement = engagement?.hasNonEmailEngagement || false;
+        const lastActiveDate = engagement?.lastActiveDate || null;
+
+        const updates: any = {};
+
+        if (hasNonEmailEngagement && !contact.isCommunityMember) {
+          updates.isCommunityMember = true;
+          flagged++;
+        } else if (!hasNonEmailEngagement && contact.isCommunityMember && !contact.communityMemberOverride) {
+          updates.isCommunityMember = false;
+          unflagged++;
+        }
+
+        if (lastActiveDate) {
+          updates.lastActiveDate = lastActiveDate;
+          lastActiveDatesSet++;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          await storage.updateContact(contact.id, updates);
+        }
+      }
+
+      res.json({ flagged, unflagged, lastActiveDatesSet, totalContacts: allContacts.length, totalEngagedContacts: contactEngagement.size });
     } catch (err: any) {
       console.error("Backfill error:", err);
       res.status(500).json({ message: "Failed to backfill community members" });
@@ -4590,6 +4684,38 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       const allMemberships = await storage.getMemberships(userId);
       const allMous = await storage.getMous(userId);
       const allSpend = await storage.getCommunitySpend(userId);
+      const allEvents = await storage.getEvents(userId);
+
+      const legacyReports = await storage.getLegacyReports(userId);
+      const reportPeopleMap = new Map<string, Date | null>();
+      for (const report of legacyReports) {
+        if (report.status !== 'confirmed') continue;
+        const extraction = await storage.getLegacyReportExtraction(report.id);
+        if (extraction?.extractedPeople) {
+          const reportDate = (report.year && report.month)
+            ? new Date(report.year, report.month - 1, 15)
+            : (report.createdAt ? new Date(report.createdAt) : null);
+          for (const person of extraction.extractedPeople) {
+            const key = person.name.toLowerCase().trim();
+            const existing = reportPeopleMap.get(key);
+            if (reportDate && (!existing || reportDate > existing)) {
+              reportPeopleMap.set(key, reportDate);
+            } else if (!reportPeopleMap.has(key)) {
+              reportPeopleMap.set(key, reportDate);
+            }
+          }
+        }
+      }
+
+      const now = Date.now();
+      const sixMonthsMs = 180 * 24 * 60 * 60 * 1000;
+      const recencyBonus = (date: Date | string | null | undefined) => {
+        if (!date) return 1;
+        const d = date instanceof Date ? date : new Date(date);
+        const age = now - d.getTime();
+        if (age < sixMonthsMs) return 1.5;
+        return 1;
+      };
 
       const contactScores = new Map<number, number>();
 
@@ -4597,17 +4723,20 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
         let score = 0;
 
         const contactInteractions = await storage.getInteractions(contact.id);
-        score += contactInteractions.length * 3;
+        for (const i of contactInteractions) {
+          if (i.type?.toLowerCase() === 'email') continue;
+          score += 3 * recencyBonus(i.date);
+        }
 
         const bookingsAsBooker = allBookings.filter((b: any) => b.bookerId === contact.id);
         const bookingsAsAttendee = allBookings.filter((b: any) => b.attendees?.includes(contact.id));
-        score += bookingsAsBooker.length * 4;
-        score += bookingsAsAttendee.length * 2;
+        for (const b of bookingsAsBooker) score += 4 * recencyBonus(b.startDate);
+        for (const b of bookingsAsAttendee) score += 2 * recencyBonus(b.startDate);
 
         const progAsFacilitator = allProgrammes.filter((p: any) => p.facilitators?.includes(contact.id));
         const progAsAttendee = allProgrammes.filter((p: any) => p.attendees?.includes(contact.id));
-        score += progAsFacilitator.length * 5;
-        score += progAsAttendee.length * 2;
+        for (const p of progAsFacilitator) score += 5 * recencyBonus(p.startDate || p.createdAt);
+        for (const p of progAsAttendee) score += 2 * recencyBonus(p.startDate || p.createdAt);
 
         const contactMemberships = allMemberships.filter((m: any) => m.contactId === contact.id);
         score += contactMemberships.length * 5;
@@ -4616,9 +4745,22 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
         score += contactMous.length * 5;
 
         const contactSpend = allSpend.filter((s: any) => s.contactId === contact.id);
-        score += contactSpend.length * 3;
+        for (const s of contactSpend) score += 3 * recencyBonus(s.date);
 
-        contactScores.set(contact.id, score);
+        for (const event of allEvents) {
+          const attendance = await storage.getEventAttendance(event.id);
+          const attended = attendance.find(a => a.contactId === contact.id);
+          if (attended) {
+            score += 2 * recencyBonus(event.startTime);
+          }
+        }
+
+        const reportDate = reportPeopleMap.get(contact.name.toLowerCase().trim());
+        if (reportDate !== undefined) {
+          score += 4 * recencyBonus(reportDate);
+        }
+
+        contactScores.set(contact.id, Math.round(score));
       }
 
       const scores = Array.from(contactScores.values()).sort((a, b) => b - a);

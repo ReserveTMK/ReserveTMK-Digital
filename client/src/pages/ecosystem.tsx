@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useGroups, useDeleteGroup } from "@/hooks/use-groups";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { api } from "@shared/routes";
 import { Card } from "@/components/ui/card";
@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import {
   Search, Heart, Handshake, MessageCircle, Building2, Users,
   Edit3, Trash2, Merge, Check, X, ChevronDown, ChevronRight,
-  FileText, ExternalLink, Globe
+  FileText, ExternalLink, Globe, UserCheck
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -69,6 +69,9 @@ const TYPE_COLORS: Record<string, string> = {
 
 export default function EcosystemPage() {
   const { data: groups, isLoading } = useGroups();
+  const { data: densityData } = useQuery<Record<number, { communityCount: number; totalMembers: number }>>({
+    queryKey: ['/api/groups/community-density'],
+  });
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [editMode, setEditMode] = useState(false);
@@ -142,8 +145,17 @@ export default function EcosystemPage() {
       if (result[tier]) result[tier].push(g);
       else result.mentioned.push(g);
     });
+    if (densityData) {
+      for (const tier of Object.keys(result) as TierKey[]) {
+        result[tier].sort((a, b) => {
+          const aDensity = densityData[a.id]?.communityCount || 0;
+          const bDensity = densityData[b.id]?.communityCount || 0;
+          return bDensity - aDensity;
+        });
+      }
+    }
     return result;
-  }, [filtered]);
+  }, [filtered, densityData]);
 
   const uniqueTypes = useMemo(() => {
     if (!groups) return [];
@@ -309,6 +321,8 @@ export default function EcosystemPage() {
                       onDelete={() => setDeleteConfirmId(group.id)}
                       onChangeTier={(newTier) => handleTierChange(group, newTier)}
                       onNavigate={() => setLocation("/groups")}
+                      communityCount={densityData?.[group.id]?.communityCount || 0}
+                      totalMembers={densityData?.[group.id]?.totalMembers || 0}
                     />
                   ))}
                 </div>
@@ -438,6 +452,8 @@ function GroupCard({
   onDelete,
   onChangeTier,
   onNavigate,
+  communityCount,
+  totalMembers,
 }: {
   group: Group;
   tier: TierKey;
@@ -447,6 +463,8 @@ function GroupCard({
   onDelete: () => void;
   onChangeTier: (tier: TierKey) => void;
   onNavigate: () => void;
+  communityCount: number;
+  totalMembers: number;
 }) {
   const config = TIER_CONFIG[tier];
   const typeColor = TYPE_COLORS[group.type] || "bg-gray-500/10 text-gray-700 dark:text-gray-300";
@@ -470,6 +488,12 @@ function GroupCard({
             <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{group.description}</p>
           )}
           <div className="flex items-center gap-2 mt-2 flex-wrap">
+            {communityCount > 0 && (
+              <Badge variant="secondary" className="text-[10px] gap-1 bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/20" data-testid={`badge-community-count-${group.id}`}>
+                <UserCheck className="w-3 h-3" />
+                {communityCount} community
+              </Badge>
+            )}
             {group.importSource && (
               <Badge variant="outline" className="text-[10px] gap-1">
                 <FileText className="w-3 h-3" />

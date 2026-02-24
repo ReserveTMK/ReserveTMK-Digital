@@ -66,6 +66,7 @@ export const contacts = pgTable("contacts", {
   relationshipCircle: text("relationship_circle"),
   relationshipCircleOverride: boolean("relationship_circle_override").default(false),
   importSource: text("import_source"),
+  lastActiveDate: timestamp("last_active_date"),
 });
 
 export const interactions = pgTable("interactions", {

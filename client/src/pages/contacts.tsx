@@ -81,7 +81,11 @@ export default function Contacts() {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-      toast({ title: "Community Members Flagged", description: `${data.flagged ?? 0} contacts were flagged as community members.` });
+      const parts = [];
+      if (data.flagged > 0) parts.push(`${data.flagged} flagged as community`);
+      if (data.unflagged > 0) parts.push(`${data.unflagged} moved to business`);
+      if (data.lastActiveDatesSet > 0) parts.push(`${data.lastActiveDatesSet} activity dates updated`);
+      toast({ title: "Community Scan Complete", description: parts.length > 0 ? parts.join(", ") : "No changes needed." });
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -346,9 +350,9 @@ export default function Contacts() {
                         <p className="text-xs text-muted-foreground truncate" data-testid={`text-email-${contact.id}`}>
                           {contact.email || "No email"}
                         </p>
-                        <p className="text-xs text-primary/80 font-medium">
-                          {contact.lastInteractionDate
-                            ? `Last active: ${format(new Date(contact.lastInteractionDate), "MMM d, yyyy")}`
+                        <p className="text-xs text-primary/80 font-medium" data-testid={`text-last-active-${contact.id}`}>
+                          {(contact.lastActiveDate || contact.lastInteractionDate)
+                            ? `Last active: ${format(new Date(contact.lastActiveDate || contact.lastInteractionDate), "MMM d, yyyy")}`
                             : `Added: ${format(new Date(contact.createdAt || Date.now()), "MMM d, yyyy")}`}
                         </p>
                       </div>
