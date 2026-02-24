@@ -4678,14 +4678,38 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
         return res.status(400).json({ message: "No contact IDs provided" });
       }
       let updated = 0;
+      const affectedGroupIds = new Set<number>();
       for (const id of contactIds) {
         const contact = await storage.getContact(id);
         if (contact && contact.userId === userId) {
           await storage.updateContact(id, { isCommunityMember, communityMemberOverride: true });
           updated++;
+          const contactGroupLinks = await storage.getContactGroups(id);
+          for (const m of contactGroupLinks) {
+            affectedGroupIds.add(m.groupId);
+          }
         }
       }
-      res.json({ updated });
+
+      let groupsUpdated = 0;
+      for (const groupId of affectedGroupIds) {
+        const group = await storage.getGroup(groupId);
+        if (!group || group.userId !== userId) continue;
+
+        const members = await storage.getGroupMembers(groupId);
+        const allContacts = await Promise.all(members.map(m => storage.getContact(m.contactId)));
+        const hasCommunityMembers = allContacts.some(c => c && c.isCommunityMember);
+
+        if (hasCommunityMembers && group.relationshipTier === 'mentioned') {
+          await storage.updateGroup(groupId, { relationshipTier: 'collaborate' });
+          groupsUpdated++;
+        } else if (!hasCommunityMembers && group.relationshipTier !== 'mentioned') {
+          await storage.updateGroup(groupId, { relationshipTier: 'mentioned' });
+          groupsUpdated++;
+        }
+      }
+
+      res.json({ updated, groupsUpdated });
     } catch (err: any) {
       res.status(500).json({ message: "Failed to update contacts" });
     }
@@ -4906,7 +4930,29 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       }
 
       const updated = await storage.updateContact(contactId, updates);
-      res.json(updated);
+
+      let groupsUpdated = 0;
+      if (typeof isCommunityMember === 'boolean') {
+        const contactGroupLinks = await storage.getContactGroups(contactId);
+        for (const m of contactGroupLinks) {
+          const group = await storage.getGroup(m.groupId);
+          if (!group || group.userId !== userId) continue;
+
+          const members = await storage.getGroupMembers(m.groupId);
+          const allContacts = await Promise.all(members.map(mem => storage.getContact(mem.contactId)));
+          const hasCommunityMembers = allContacts.some(c => c && c.isCommunityMember);
+
+          if (hasCommunityMembers && group.relationshipTier === 'mentioned') {
+            await storage.updateGroup(m.groupId, { relationshipTier: 'collaborate' });
+            groupsUpdated++;
+          } else if (!hasCommunityMembers && group.relationshipTier !== 'mentioned') {
+            await storage.updateGroup(m.groupId, { relationshipTier: 'mentioned' });
+            groupsUpdated++;
+          }
+        }
+      }
+
+      res.json({ ...updated, groupsUpdated });
     } catch (err: any) {
       res.status(500).json({ message: "Failed to update community status" });
     }

@@ -377,7 +377,7 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(attendanceStats, eq(contacts.id, attendanceStats.contactId))
       .leftJoin(debriefStats, eq(contacts.id, debriefStats.contactId))
       .where(eq(contacts.userId, userId))
-      .orderBy(desc(sql`COALESCE(${interactionStats.lastInteractionDate}, ${contacts.createdAt})`));
+      .orderBy(desc(sql`COALESCE(${contacts.lastActiveDate}, ${interactionStats.lastInteractionDate}, ${contacts.createdAt})`));
 
     return rows.map(r => ({
       ...r.contact,

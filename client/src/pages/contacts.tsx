@@ -89,11 +89,12 @@ export default function Contacts() {
       const res = await apiRequest("POST", "/api/contacts/community/bulk-move", { contactIds, isCommunityMember });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/groups/community-density"] });
       queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
-      toast({ title: "Success", description: `${selectedContacts.size} contact${selectedContacts.size !== 1 ? 's' : ''} moved successfully` });
+      const groupMsg = data?.groupsUpdated ? ` (${data.groupsUpdated} linked group${data.groupsUpdated !== 1 ? 's' : ''} updated)` : '';
+      toast({ title: "Success", description: `${selectedContacts.size} contact${selectedContacts.size !== 1 ? 's' : ''} moved successfully${groupMsg}` });
       setSelectedContacts(new Set());
       setEditMode(false);
     },
@@ -599,17 +600,26 @@ export default function Contacts() {
                       <div className="flex flex-wrap items-center gap-3 mt-1.5">
                         {(() => {
                           const total = (contact.interactionCount || 0) + (contact.eventCount || 0);
-                          return (
+                          if (total > 0) return (
                             <span className="flex items-center gap-1 text-xs text-muted-foreground" data-testid={`stat-interactions-${contact.id}`}>
                               <MessageSquare className="w-3 h-3" />
                               {total} interaction{total !== 1 ? 's' : ''}
                             </span>
                           );
+                          return null;
                         })()}
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground" data-testid={`stat-debriefs-${contact.id}`}>
-                          <FileText className="w-3 h-3" />
-                          {contact.debriefCount || 0} debrief{contact.debriefCount !== 1 ? 's' : ''}
-                        </span>
+                        {(contact.debriefCount || 0) > 0 && (
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground" data-testid={`stat-debriefs-${contact.id}`}>
+                            <FileText className="w-3 h-3" />
+                            {contact.debriefCount} debrief{contact.debriefCount !== 1 ? 's' : ''}
+                          </span>
+                        )}
+                        {(contact.interactionCount || 0) + (contact.eventCount || 0) === 0 && !(contact.debriefCount || 0) && contact.importSource && (
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground" data-testid={`stat-source-${contact.id}`}>
+                            <Users className="w-3 h-3" />
+                            via {contact.importSource === 'gmail' ? 'Gmail' : contact.importSource === 'legacy_report' ? 'Legacy Report' : contact.importSource}
+                          </span>
+                        )}
                       </div>
                     </div>
 
