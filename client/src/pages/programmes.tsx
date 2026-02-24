@@ -41,6 +41,7 @@ import {
   LayoutList,
   Columns3,
   GripVertical,
+  BarChart3,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -51,6 +52,7 @@ import {
 import { format } from "date-fns";
 import { PROGRAMME_CLASSIFICATIONS, PROGRAMME_STATUSES, type Programme, type Contact } from "@shared/schema";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
+import { MetricCard } from "@/components/ui/metric-card";
 
 const CLASSIFICATION_COLORS: Record<string, string> = {
   "Community Workshop": "bg-blue-500/15 text-blue-700 dark:text-blue-300",
@@ -154,6 +156,26 @@ export default function Programmes() {
       toast({ title: "Error", description: err.message || "Failed to update status", variant: "destructive" });
     }
   }, [programmes, updateMutation, toast]);
+
+  const yearlyBudget = useMemo(() => {
+    if (!programmes) return { total: 0, facilitator: 0, catering: 0, promo: 0, count: 0 };
+    const currentYear = new Date().getFullYear();
+    const yearProgrammes = programmes.filter(p => {
+      if (p.status === "cancelled") return false;
+      if (p.startDate) {
+        return new Date(p.startDate).getFullYear() === currentYear;
+      }
+      if (p.tbcYear) return parseInt(p.tbcYear) === currentYear;
+      return false;
+    });
+    let facilitator = 0, catering = 0, promo = 0;
+    yearProgrammes.forEach(p => {
+      facilitator += parseFloat(p.facilitatorCost || "0");
+      catering += parseFloat(p.cateringCost || "0");
+      promo += parseFloat(p.promoCost || "0");
+    });
+    return { total: facilitator + catering + promo, facilitator, catering, promo, count: yearProgrammes.length };
+  }, [programmes]);
 
   const kanbanColumns = useMemo(() => {
     const columns: Record<string, Programme[]> = {
@@ -270,6 +292,38 @@ export default function Programmes() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <MetricCard
+              title={`${new Date().getFullYear()} Total Spend`}
+              value={`$${yearlyBudget.total.toFixed(2)}`}
+              subtext={`${yearlyBudget.count} programmes`}
+              icon={<DollarSign className="w-4 h-4" />}
+              color="primary"
+              data-testid="stat-yearly-total"
+            />
+            <MetricCard
+              title="Facilitator Costs"
+              value={`$${yearlyBudget.facilitator.toFixed(2)}`}
+              icon={<Users className="w-4 h-4" />}
+              color="blue"
+              data-testid="stat-facilitator-costs"
+            />
+            <MetricCard
+              title="Catering Costs"
+              value={`$${yearlyBudget.catering.toFixed(2)}`}
+              icon={<Zap className="w-4 h-4" />}
+              color="green"
+              data-testid="stat-catering-costs"
+            />
+            <MetricCard
+              title="Promo Costs"
+              value={`$${yearlyBudget.promo.toFixed(2)}`}
+              icon={<BarChart3 className="w-4 h-4" />}
+              color="accent"
+              data-testid="stat-promo-costs"
+            />
           </div>
 
           {isLoading ? (

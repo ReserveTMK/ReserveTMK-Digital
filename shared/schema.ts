@@ -329,7 +329,7 @@ export const bookings = pgTable("bookings", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
   venueId: integer("venue_id").notNull(),
-  title: text("title").notNull(),
+  title: text("title"),
   description: text("description"),
   classification: text("classification").notNull(),
   status: text("status").notNull().default("enquiry"),
@@ -337,9 +337,12 @@ export const bookings = pgTable("bookings", {
   endDate: timestamp("end_date"),
   startTime: text("start_time"),
   endTime: text("end_time"),
+  isMultiDay: boolean("is_multi_day").default(false),
   tbcMonth: text("tbc_month"),
   tbcYear: text("tbc_year"),
   pricingTier: text("pricing_tier").notNull().default("full_price"),
+  durationType: text("duration_type").default("hourly"),
+  rateType: text("rate_type").default("standard"),
   amount: numeric("amount", { precision: 10, scale: 2 }).default("0"),
   bookerId: integer("booker_id"),
   bookerGroupId: integer("booker_group_id"),
@@ -1049,6 +1052,14 @@ export type BookingStatus = typeof BOOKING_STATUSES[number];
 export const PRICING_TIERS = ["full_price", "discounted", "free_koha"] as const;
 export type PricingTier = typeof PRICING_TIERS[number];
 
+export const DURATION_TYPES = ["hourly", "half_day", "full_day"] as const;
+export type DurationType = typeof DURATION_TYPES[number];
+
+export const RATE_TYPES = ["standard", "community"] as const;
+export type RateType = typeof RATE_TYPES[number];
+
+export const COMMUNITY_DISCOUNT = 0.20;
+
 export const insertVenueSchema = createInsertSchema(venues).omit({
   id: true,
   createdAt: true,
@@ -1062,6 +1073,8 @@ export const insertBookingSchema = createInsertSchema(bookings).omit({
   classification: z.enum(BOOKING_CLASSIFICATIONS),
   status: z.enum(BOOKING_STATUSES).default("enquiry"),
   pricingTier: z.enum(PRICING_TIERS).default("full_price"),
+  durationType: z.enum(DURATION_TYPES).default("hourly").optional(),
+  rateType: z.enum(RATE_TYPES).default("standard").optional(),
 });
 
 export type Venue = typeof venues.$inferSelect;

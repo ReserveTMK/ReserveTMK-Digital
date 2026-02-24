@@ -1953,7 +1953,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
           if (!datesOverlap(input.startDate, input.endDate || input.startDate, b.startDate, b.endDate || b.startDate)) continue;
           if (!timesOverlap(input.startTime, input.endTime, b.startTime, b.endTime)) continue;
           return res.status(409).json({
-            message: `Conflict: "${b.title}" is already booked for ${b.startTime || "all day"} on ${b.startDate ? new Date(b.startDate).toLocaleDateString() : "that date"}`,
+            message: `Conflict: A booking is already scheduled for ${b.startTime || "all day"} on ${b.startDate ? new Date(b.startDate).toLocaleDateString() : "that date"}`,
           });
         }
         for (const p of programmes) {
@@ -1996,7 +1996,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
           if (!datesOverlap(merged.startDate, merged.endDate || merged.startDate, b.startDate, b.endDate || b.startDate)) continue;
           if (!timesOverlap(merged.startTime, merged.endTime, b.startTime, b.endTime)) continue;
           return res.status(409).json({
-            message: `Conflict: "${b.title}" is already booked for ${b.startTime || "all day"} on that date`,
+            message: `Conflict: A booking is already scheduled for ${b.startTime || "all day"} on that date`,
           });
         }
         for (const p of programmes) {

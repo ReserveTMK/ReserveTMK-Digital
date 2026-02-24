@@ -24,11 +24,11 @@ import {
   useUpdateBooking,
   useDeleteBooking,
 } from "@/hooks/use-bookings";
-import { useContacts } from "@/hooks/use-contacts";
-import { useGroups } from "@/hooks/use-groups";
+import { useContacts, useCreateContact } from "@/hooks/use-contacts";
+import { useGroups, useCreateGroup } from "@/hooks/use-groups";
 import { useMemberships, useMous } from "@/hooks/use-memberships";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
   Plus,
   Loader2,
@@ -47,6 +47,12 @@ import {
   BarChart3,
   UserPlus,
   Network,
+  LayoutList,
+  Columns3,
+  GripVertical,
+  AlertCircle,
+  Ban,
+  CircleDashed,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -55,8 +61,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
-import { BOOKING_CLASSIFICATIONS, BOOKING_STATUSES, PRICING_TIERS, type Booking, type Venue, type Contact } from "@shared/schema";
+import { BOOKING_CLASSIFICATIONS, BOOKING_STATUSES, PRICING_TIERS, DURATION_TYPES, RATE_TYPES, COMMUNITY_DISCOUNT, type Booking, type Venue, type Contact } from "@shared/schema";
 import { MetricCard } from "@/components/ui/metric-card";
+import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 
 const CLASSIFICATION_COLORS: Record<string, string> = {
   "Workshop": "bg-blue-500/15 text-blue-700 dark:text-blue-300",
@@ -82,11 +89,52 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: "Cancelled",
 };
 
+const STATUS_ICONS: Record<string, typeof CheckCircle2> = {
+  enquiry: CircleDashed,
+  confirmed: CheckCircle2,
+  completed: CheckCircle2,
+  cancelled: Ban,
+};
+
+const STATUS_ICON_COLORS: Record<string, string> = {
+  enquiry: "text-yellow-500",
+  confirmed: "text-blue-500",
+  completed: "text-green-500",
+  cancelled: "text-gray-400",
+};
+
 const PRICING_LABELS: Record<string, string> = {
   full_price: "Full Price",
   discounted: "Discounted",
   free_koha: "Free / Koha",
 };
+
+const DURATION_LABELS: Record<string, string> = {
+  hourly: "Hourly",
+  half_day: "Half Day",
+  full_day: "Full Day",
+};
+
+const RATE_LABELS: Record<string, string> = {
+  standard: "Standard",
+  community: "Community (20% off)",
+};
+
+const TIME_SLOTS = [
+  "06:00", "06:30", "07:00", "07:30", "08:00", "08:30",
+  "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
+  "12:00", "12:30", "13:00", "13:30", "14:00", "14:30",
+  "15:00", "15:30", "16:00", "16:30", "17:00", "17:30",
+  "18:00", "18:30", "19:00", "19:30", "20:00", "20:30",
+  "21:00", "21:30", "22:00",
+];
+
+function formatTimeSlot(time: string) {
+  const [h, m] = time.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const displayHour = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${displayHour}:${m.toString().padStart(2, "0")} ${period}`;
+}
 
 export default function Bookings() {
   const { data: bookings, isLoading } = useBookings();
@@ -106,14 +154,15 @@ export default function Bookings() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
   const [venueDialogOpen, setVenueDialogOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<"list" | "kanban">("kanban");
 
   const filtered = useMemo(() => {
     if (!bookings) return [];
     return bookings.filter((b) => {
       const venueName = venues?.find((v) => v.id === b.venueId)?.name || "";
       const matchesSearch =
-        b.title.toLowerCase().includes(search.toLowerCase()) ||
-        b.description?.toLowerCase().includes(search.toLowerCase()) ||
+        (b.title || "").toLowerCase().includes(search.toLowerCase()) ||
+        (b.description || "").toLowerCase().includes(search.toLowerCase()) ||
         venueName.toLowerCase().includes(search.toLowerCase());
       const matchesClass = classFilter === "all" || b.classification === classFilter;
       const matchesStatus = statusFilter === "all" || b.status === statusFilter;
@@ -178,8 +227,8 @@ export default function Bookings() {
     const hasEndDate = b.endDate && format(new Date(b.endDate), "yyyy-MM-dd") !== format(new Date(b.startDate), "yyyy-MM-dd");
     const timeStr = b.startTime
       ? b.endTime
-        ? `${b.startTime} - ${b.endTime}`
-        : b.startTime
+        ? `${formatTimeSlot(b.startTime)} - ${formatTimeSlot(b.endTime)}`
+        : formatTimeSlot(b.startTime)
       : null;
 
     if (hasEndDate) {
@@ -189,10 +238,16 @@ export default function Bookings() {
     return { date: dateStr, time: timeStr };
   };
 
+  const getBookingDisplayName = (b: Booking) => {
+    const venueName = getVenueName(b.venueId);
+    const dateTime = formatDateTime(b);
+    if (dateTime) return `${venueName} — ${dateTime.date}`;
+    return venueName;
+  };
+
   const handleDuplicate = async (b: Booking) => {
     try {
       await createMutation.mutateAsync({
-        title: `${b.title} (Copy)`,
         venueId: b.venueId,
         description: b.description || undefined,
         classification: b.classification,
@@ -201,16 +256,18 @@ export default function Bookings() {
         endDate: b.endDate || undefined,
         startTime: b.startTime || undefined,
         endTime: b.endTime || undefined,
+        isMultiDay: b.isMultiDay || false,
         tbcMonth: b.tbcMonth || undefined,
         tbcYear: b.tbcYear || undefined,
         pricingTier: b.pricingTier,
+        durationType: b.durationType || "hourly",
+        rateType: b.rateType || "standard",
         amount: b.amount || "0",
         bookerId: b.bookerId || undefined,
-        attendees: b.attendees || undefined,
-        attendeeCount: b.attendeeCount || undefined,
+        bookerGroupId: b.bookerGroupId || undefined,
         notes: b.notes || undefined,
       });
-      toast({ title: "Duplicated", description: `"${b.title}" has been duplicated` });
+      toast({ title: "Duplicated", description: `Booking has been duplicated` });
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Failed to duplicate", variant: "destructive" });
     }
@@ -225,16 +282,66 @@ export default function Bookings() {
     }
   };
 
+  const handleDragEnd = useCallback(async (result: DropResult) => {
+    if (!result.destination) return;
+    const newStatus = result.destination.droppableId;
+    if (!BOOKING_STATUSES.includes(newStatus as any)) return;
+    const bookingId = parseInt(result.draggableId);
+    const booking = bookings?.find(b => b.id === bookingId);
+    if (!booking || booking.status === newStatus) return;
+    try {
+      await updateMutation.mutateAsync({ id: bookingId, data: { status: newStatus } });
+      toast({ title: "Status updated", description: `Booking moved to ${STATUS_LABELS[newStatus]}` });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to update status", variant: "destructive" });
+    }
+  }, [bookings, updateMutation, toast]);
+
+  const kanbanColumns = useMemo(() => {
+    const columns: Record<string, Booking[]> = {
+      enquiry: [],
+      confirmed: [],
+      completed: [],
+      cancelled: [],
+    };
+    filtered?.forEach(b => {
+      if (columns[b.status]) columns[b.status].push(b);
+    });
+    return columns;
+  }, [filtered]);
+
   return (
     <>
     <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
-        <div className="max-w-6xl mx-auto space-y-6">
+        <div className={`${viewMode === "kanban" ? "max-w-[1600px]" : "max-w-6xl"} mx-auto space-y-6`}>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-display font-bold" data-testid="text-bookings-title">Bookings</h1>
               <p className="text-muted-foreground mt-1">Manage venue hire and community space bookings.</p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center border border-border rounded-lg overflow-hidden" data-testid="view-toggle">
+                <Button
+                  variant={viewMode === "kanban" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("kanban")}
+                  className="rounded-none gap-1.5 text-xs"
+                  data-testid="button-kanban-view"
+                >
+                  <Columns3 className="w-3.5 h-3.5" />
+                  Board
+                </Button>
+                <Button
+                  variant={viewMode === "list" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("list")}
+                  className="rounded-none gap-1.5 text-xs"
+                  data-testid="button-list-view"
+                >
+                  <LayoutList className="w-3.5 h-3.5" />
+                  List
+                </Button>
+              </div>
               <Button variant="outline" onClick={() => setVenueDialogOpen(true)} data-testid="button-manage-venues">
                 <Building2 className="w-4 h-4 mr-2" />
                 Manage Venues
@@ -269,8 +376,9 @@ export default function Bookings() {
               data-testid="stat-community-hours"
             />
             <MetricCard
-              title="Revenue / In-Kind"
-              value={`$${stats.revenue.toFixed(0)} / $${stats.inKind.toFixed(0)}`}
+              title="Revenue (excl. GST)"
+              value={`$${stats.revenue.toFixed(2)}`}
+              subtext={stats.inKind > 0 ? `+ $${stats.inKind.toFixed(2)} in-kind` : undefined}
               icon={<DollarSign className="w-4 h-4" />}
               color="accent"
               data-testid="stat-revenue"
@@ -316,7 +424,7 @@ export default function Bookings() {
             <div className="flex justify-center py-20">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
             </div>
-          ) : !filtered?.length ? (
+          ) : !bookings?.length ? (
             <Card className="p-12 text-center">
               <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
                 <Calendar className="w-8 h-8 text-muted-foreground" />
@@ -328,136 +436,269 @@ export default function Bookings() {
                 Create Booking
               </Button>
             </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {filtered.map((booking) => {
-                const dateTime = formatDateTime(booking);
-                const bookerName = getBookerName(booking.bookerId);
-                const bookingGroupName = getBookingGroupName(booking.bookerGroupId);
-                const isCancelled = booking.status === "cancelled";
-
-                return (
-                  <Card
-                    key={booking.id}
-                    className={`p-4 hover-elevate transition-all ${STATUS_CARD_COLORS[booking.status] || ""}`}
-                    data-testid={`card-booking-${booking.id}`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <h3 className={`font-semibold text-base truncate ${isCancelled ? "line-through opacity-70" : ""}`} data-testid={`text-booking-title-${booking.id}`}>
-                            {booking.title}
-                          </h3>
-                          <Badge className={CLASSIFICATION_COLORS[booking.classification] || ""} data-testid={`badge-classification-${booking.id}`}>
-                            {booking.classification}
+          ) : viewMode === "kanban" ? (
+            filtered?.length === 0 ? (
+              <Card className="p-8 text-center">
+                <p className="text-muted-foreground">No bookings match your filters.</p>
+              </Card>
+            ) : (
+              <DragDropContext onDragEnd={handleDragEnd}>
+                <div className="grid grid-cols-4 gap-4" data-testid="kanban-board">
+                  {BOOKING_STATUSES.map(status => {
+                    const items = kanbanColumns[status] || [];
+                    const StatusIcon = STATUS_ICONS[status] || CircleDashed;
+                    return (
+                      <div key={status} className="flex flex-col" data-testid={`kanban-column-${status}`}>
+                        <div className="flex items-center gap-2 mb-3 px-1">
+                          <StatusIcon className={`w-4 h-4 ${STATUS_ICON_COLORS[status]}`} />
+                          <h3 className="text-sm font-semibold">{STATUS_LABELS[status]}</h3>
+                          <Badge variant="secondary" className="text-[10px] ml-auto" data-testid={`kanban-count-${status}`}>
+                            {items.length}
                           </Badge>
                         </div>
+                        <Droppable droppableId={status}>
+                          {(provided, snapshot) => (
+                            <div
+                              ref={provided.innerRef}
+                              {...provided.droppableProps}
+                              className={`flex-1 min-h-[200px] rounded-xl p-2 space-y-2 transition-colors ${
+                                snapshot.isDraggingOver ? "bg-primary/5 ring-2 ring-primary/20" : "bg-muted/30"
+                              }`}
+                            >
+                              {items.map((booking, index) => {
+                                const dateTime = formatDateTime(booking);
+                                return (
+                                  <Draggable key={booking.id} draggableId={booking.id.toString()} index={index}>
+                                    {(provided, snapshot) => (
+                                      <div
+                                        ref={provided.innerRef}
+                                        {...provided.draggableProps}
+                                        className={`bg-card rounded-lg border p-3 transition-shadow ${
+                                          snapshot.isDragging ? "shadow-lg ring-2 ring-primary/30" : "shadow-sm"
+                                        }`}
+                                        data-testid={`kanban-card-${booking.id}`}
+                                      >
+                                        <div className="flex items-start justify-between gap-1">
+                                          <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                                            <div {...provided.dragHandleProps} className="cursor-grab" data-testid={`drag-handle-${booking.id}`}>
+                                              <GripVertical className="w-3.5 h-3.5 text-muted-foreground/50" />
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                              <p className="text-sm font-medium truncate" data-testid={`kanban-name-${booking.id}`}>
+                                                {getVenueName(booking.venueId)}
+                                              </p>
+                                              <Badge className={`${CLASSIFICATION_COLORS[booking.classification] || ""} text-[10px] mt-1`}>
+                                                {booking.classification}
+                                              </Badge>
+                                            </div>
+                                          </div>
+                                          <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                              <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" data-testid={`kanban-menu-${booking.id}`}>
+                                                <MoreVertical className="w-3.5 h-3.5" />
+                                              </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end">
+                                              <DropdownMenuItem onClick={() => setEditBooking(booking)} data-testid={`kanban-edit-${booking.id}`}>
+                                                <Pencil className="w-4 h-4 mr-2" /> Edit
+                                              </DropdownMenuItem>
+                                              <DropdownMenuItem onClick={() => handleDuplicate(booking)} data-testid={`kanban-duplicate-${booking.id}`}>
+                                                <Copy className="w-4 h-4 mr-2" /> Duplicate
+                                              </DropdownMenuItem>
+                                              <DropdownMenuItem onClick={() => handleDelete(booking.id)} className="text-destructive" data-testid={`kanban-delete-${booking.id}`}>
+                                                <Trash2 className="w-4 h-4 mr-2" /> Delete
+                                              </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                          </DropdownMenu>
+                                        </div>
 
-                        <p className="text-sm text-muted-foreground mb-2 flex items-center gap-1">
-                          <Building2 className="w-3 h-3" />
-                          {getVenueName(booking.venueId)}
-                        </p>
+                                        {dateTime && (
+                                          <div className="mt-2 text-[11px] text-muted-foreground space-y-0.5">
+                                            <div className="flex items-center gap-1">
+                                              <Calendar className="w-3 h-3" />
+                                              {dateTime.date}
+                                            </div>
+                                            {dateTime.time && (
+                                              <div className="flex items-center gap-1">
+                                                <Clock className="w-3 h-3" />
+                                                {dateTime.time}
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
 
-                        {booking.description && (
-                          <p className="text-sm text-muted-foreground line-clamp-2 mb-2">{booking.description}</p>
-                        )}
-
-                        <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
-                          {dateTime && (
-                            <span className="flex items-center gap-1" data-testid={`text-date-${booking.id}`}>
-                              <Calendar className="w-3 h-3" />
-                              {dateTime.date}
-                            </span>
+                                        {(parseFloat(booking.amount || "0") > 0 || getBookerName(booking.bookerId)) && (
+                                          <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/30">
+                                            {parseFloat(booking.amount || "0") > 0 && (
+                                              <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
+                                                <DollarSign className="w-3 h-3" />
+                                                {parseFloat(booking.amount || "0").toFixed(2)}
+                                                {booking.rateType === "community" && (
+                                                  <Badge variant="secondary" className="text-[8px] ml-1 px-1 py-0">Community</Badge>
+                                                )}
+                                              </span>
+                                            )}
+                                            {getBookerName(booking.bookerId) && (
+                                              <span className="text-[11px] text-muted-foreground flex items-center gap-0.5 ml-auto">
+                                                <Users className="w-3 h-3" />
+                                                {getBookerName(booking.bookerId)}
+                                              </span>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </Draggable>
+                                );
+                              })}
+                              {provided.placeholder}
+                            </div>
                           )}
-                          {dateTime?.time && (
-                            <span className="flex items-center gap-1" data-testid={`text-time-${booking.id}`}>
-                              <Clock className="w-3 h-3" />
-                              {dateTime.time}
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-2 mt-2 flex-wrap">
-                          <Badge
-                            variant={booking.pricingTier === "full_price" ? "default" : booking.pricingTier === "discounted" ? "outline" : "secondary"}
-                            className={booking.pricingTier === "free_koha" ? "bg-green-500/15 text-green-700 dark:text-green-300" : ""}
-                            data-testid={`badge-pricing-${booking.id}`}
-                          >
-                            {PRICING_LABELS[booking.pricingTier] || booking.pricingTier}
-                          </Badge>
-                          <span className="text-sm font-medium" data-testid={`text-amount-${booking.id}`}>
-                            <DollarSign className="w-3 h-3 inline" />
-                            {parseFloat(booking.amount || "0").toFixed(2)}
-                          </span>
-                          {booking.membershipId && (
-                            <Badge variant="outline" className="text-xs bg-green-500/10 text-green-700 dark:text-green-300" data-testid={`badge-membership-${booking.id}`}>
-                              {allMemberships?.find(m => m.id === booking.membershipId)?.name || "Membership"}
-                            </Badge>
-                          )}
-                          {booking.mouId && (
-                            <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-700 dark:text-blue-300" data-testid={`badge-mou-${booking.id}`}>
-                              {allMous?.find(m => m.id === booking.mouId)?.title || "MOU"}
-                            </Badge>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-4 text-xs text-muted-foreground mt-2 flex-wrap">
-                          {bookingGroupName && (
-                            <span className="flex items-center gap-1" data-testid={`text-booking-group-${booking.id}`}>
-                              <Network className="w-3 h-3" />
-                              {bookingGroupName}
-                            </span>
-                          )}
-                          {bookerName && (
-                            <span className="flex items-center gap-1" data-testid={`text-booker-${booking.id}`}>
-                              <Users className="w-3 h-3" />
-                              Booker: {bookerName}
-                            </span>
-                          )}
-                          {(booking.attendeeCount ?? 0) > 0 && (
-                            <span className="flex items-center gap-1" data-testid={`text-attendee-count-${booking.id}`}>
-                              <Users className="w-3 h-3" />
-                              {booking.attendeeCount} attendees
-                            </span>
-                          )}
-                        </div>
-
-                        {booking.notes && (
-                          <p className="text-xs text-muted-foreground mt-2 line-clamp-1 italic" data-testid={`text-notes-${booking.id}`}>
-                            {booking.notes}
-                          </p>
-                        )}
+                        </Droppable>
                       </div>
+                    );
+                  })}
+                </div>
+              </DragDropContext>
+            )
+          ) : (
+            <div className="space-y-3">
+              {!filtered?.length ? (
+                <Card className="p-8 text-center">
+                  <p className="text-muted-foreground">No bookings match your filters.</p>
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {filtered.map((booking) => {
+                    const dateTime = formatDateTime(booking);
+                    const bookerName = getBookerName(booking.bookerId);
+                    const bookingGroupName = getBookingGroupName(booking.bookerGroupId);
+                    const isCancelled = booking.status === "cancelled";
 
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" data-testid={`button-booking-menu-${booking.id}`}>
-                            <MoreVertical className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => setEditBooking(booking)} data-testid={`button-edit-booking-${booking.id}`}>
-                            <Pencil className="w-4 h-4 mr-2" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDuplicate(booking)} data-testid={`button-duplicate-booking-${booking.id}`}>
-                            <Copy className="w-4 h-4 mr-2" />
-                            Duplicate
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleDelete(booking.id)}
-                            className="text-destructive focus:text-destructive"
-                            data-testid={`button-delete-booking-${booking.id}`}
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </Card>
-                );
-              })}
+                    return (
+                      <Card
+                        key={booking.id}
+                        className={`p-4 hover-elevate transition-all ${STATUS_CARD_COLORS[booking.status] || ""}`}
+                        data-testid={`card-booking-${booking.id}`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap mb-1">
+                              <h3 className={`font-semibold text-base truncate ${isCancelled ? "line-through opacity-70" : ""}`} data-testid={`text-booking-title-${booking.id}`}>
+                                {getVenueName(booking.venueId)}
+                              </h3>
+                              <Badge className={CLASSIFICATION_COLORS[booking.classification] || ""} data-testid={`badge-classification-${booking.id}`}>
+                                {booking.classification}
+                              </Badge>
+                            </div>
+
+                            {booking.description && (
+                              <p className="text-sm text-muted-foreground line-clamp-2 mb-2">{booking.description}</p>
+                            )}
+
+                            <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                              {dateTime && (
+                                <span className="flex items-center gap-1" data-testid={`text-date-${booking.id}`}>
+                                  <Calendar className="w-3 h-3" />
+                                  {dateTime.date}
+                                </span>
+                              )}
+                              {dateTime?.time && (
+                                <span className="flex items-center gap-1" data-testid={`text-time-${booking.id}`}>
+                                  <Clock className="w-3 h-3" />
+                                  {dateTime.time}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-2 mt-2 flex-wrap">
+                              <Badge
+                                variant={booking.pricingTier === "full_price" ? "default" : booking.pricingTier === "discounted" ? "outline" : "secondary"}
+                                className={booking.pricingTier === "free_koha" ? "bg-green-500/15 text-green-700 dark:text-green-300" : ""}
+                                data-testid={`badge-pricing-${booking.id}`}
+                              >
+                                {PRICING_LABELS[booking.pricingTier] || booking.pricingTier}
+                              </Badge>
+                              {booking.durationType && (
+                                <Badge variant="outline" className="text-xs" data-testid={`badge-duration-${booking.id}`}>
+                                  {DURATION_LABELS[booking.durationType] || booking.durationType}
+                                </Badge>
+                              )}
+                              {booking.rateType === "community" && (
+                                <Badge variant="outline" className="text-xs bg-green-500/10 text-green-700 dark:text-green-300" data-testid={`badge-rate-${booking.id}`}>
+                                  Community Rate
+                                </Badge>
+                              )}
+                              <span className="text-sm font-medium" data-testid={`text-amount-${booking.id}`}>
+                                <DollarSign className="w-3 h-3 inline" />
+                                {parseFloat(booking.amount || "0").toFixed(2)}
+                                <span className="text-[10px] text-muted-foreground ml-0.5">excl. GST</span>
+                              </span>
+                              {booking.membershipId && (
+                                <Badge variant="outline" className="text-xs bg-green-500/10 text-green-700 dark:text-green-300" data-testid={`badge-membership-${booking.id}`}>
+                                  {allMemberships?.find(m => m.id === booking.membershipId)?.name || "Membership"}
+                                </Badge>
+                              )}
+                              {booking.mouId && (
+                                <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-700 dark:text-blue-300" data-testid={`badge-mou-${booking.id}`}>
+                                  {allMous?.find(m => m.id === booking.mouId)?.title || "MOU"}
+                                </Badge>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-4 text-xs text-muted-foreground mt-2 flex-wrap">
+                              {bookingGroupName && (
+                                <span className="flex items-center gap-1" data-testid={`text-booking-group-${booking.id}`}>
+                                  <Network className="w-3 h-3" />
+                                  {bookingGroupName}
+                                </span>
+                              )}
+                              {bookerName && (
+                                <span className="flex items-center gap-1" data-testid={`text-booker-${booking.id}`}>
+                                  <Users className="w-3 h-3" />
+                                  Booker: {bookerName}
+                                </span>
+                              )}
+                            </div>
+
+                            {booking.notes && (
+                              <p className="text-xs text-muted-foreground mt-2 line-clamp-1 italic" data-testid={`text-notes-${booking.id}`}>
+                                {booking.notes}
+                              </p>
+                            )}
+                          </div>
+
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" data-testid={`button-booking-menu-${booking.id}`}>
+                                <MoreVertical className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => setEditBooking(booking)} data-testid={`button-edit-booking-${booking.id}`}>
+                                <Pencil className="w-4 h-4 mr-2" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleDuplicate(booking)} data-testid={`button-duplicate-booking-${booking.id}`}>
+                                <Copy className="w-4 h-4 mr-2" />
+                                Duplicate
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleDelete(booking.id)}
+                                className="text-destructive focus:text-destructive"
+                                data-testid={`button-delete-booking-${booking.id}`}
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -717,15 +958,17 @@ function BookingFormDialog({
   isPending: boolean;
 }) {
   const { data: contacts } = useContacts();
+  const createContact = useCreateContact();
+  const { data: allGroups } = useGroups();
+  const createGroup = useCreateGroup();
 
-  const [title, setTitle] = useState(booking?.title || "");
   const [venueId, setVenueId] = useState(booking?.venueId?.toString() || "");
   const [classification, setClassification] = useState(booking?.classification || "");
   const [status, setStatus] = useState(booking?.status || "enquiry");
-  const [description, setDescription] = useState(booking?.description || "");
   const [notes, setNotes] = useState(booking?.notes || "");
 
   const [isTBC, setIsTBC] = useState(!!(booking?.tbcMonth || booking?.tbcYear));
+  const [isMultiDay, setIsMultiDay] = useState(booking?.isMultiDay || false);
   const [startDate, setStartDate] = useState(
     booking?.startDate ? format(new Date(booking.startDate), "yyyy-MM-dd") : ""
   );
@@ -738,23 +981,23 @@ function BookingFormDialog({
   const [tbcYear, setTbcYear] = useState(booking?.tbcYear || new Date().getFullYear().toString());
 
   const [pricingTier, setPricingTier] = useState(booking?.pricingTier || "full_price");
+  const [durationType, setDurationType] = useState(booking?.durationType || "hourly");
+  const [rateType, setRateType] = useState(booking?.rateType || "standard");
   const [amount, setAmount] = useState(booking?.amount || "0");
 
   const [bookerId, setBookerId] = useState<number | null>(booking?.bookerId || null);
   const [bookerSearch, setBookerSearch] = useState("");
+  const [showQuickAddBooker, setShowQuickAddBooker] = useState(false);
+  const [quickBookerName, setQuickBookerName] = useState("");
   const [groupId, setGroupId] = useState<number | null>(booking?.bookerGroupId || null);
   const [groupSearch, setGroupSearch] = useState("");
-  const [selectedAttendees, setSelectedAttendees] = useState<number[]>(booking?.attendees || []);
-  const [attendeeSearch, setAttendeeSearch] = useState("");
-  const [attendeeCount, setAttendeeCount] = useState(booking?.attendeeCount?.toString() || (booking?.attendees?.length || 0).toString());
+  const [showQuickAddGroup, setShowQuickAddGroup] = useState(false);
+  const [quickGroupName, setQuickGroupName] = useState("");
   const [membershipId, setMembershipId] = useState<number | null>(booking?.membershipId || null);
   const [mouId, setMouId] = useState<number | null>(booking?.mouId || null);
-  const [funderTags, setFunderTags] = useState<string[]>(booking?.funderTags || []);
-  const [funderTagInput, setFunderTagInput] = useState("");
 
   const { data: allMemberships } = useMemberships();
   const { data: allMous } = useMous();
-  const { data: allGroups } = useGroups();
   const activeMemberships = useMemo(() => (allMemberships || []).filter(m => m.status === "active"), [allMemberships]);
   const activeMous = useMemo(() => (allMous || []).filter(m => m.status === "active"), [allMous]);
 
@@ -779,51 +1022,50 @@ function BookingFormDialog({
     return (allGroups as any[]).filter((g: any) => g.name.toLowerCase().includes(term)).slice(0, 8);
   }, [allGroups, groupSearch]);
 
-  const filteredAttendeeContacts = useMemo(() => {
-    if (!contacts || !attendeeSearch.trim()) return [];
-    const term = attendeeSearch.toLowerCase();
-    return contacts
-      .filter((c) => c.name.toLowerCase().includes(term) && !selectedAttendees.includes(c.id))
-      .slice(0, 8);
-  }, [contacts, attendeeSearch, selectedAttendees]);
-
-  const handleAddAttendee = (contact: Contact) => {
-    const newAttendees = [...selectedAttendees, contact.id];
-    setSelectedAttendees(newAttendees);
-    setAttendeeCount(newAttendees.length.toString());
-    setAttendeeSearch("");
+  const handleQuickAddBooker = async () => {
+    if (!quickBookerName.trim()) return;
+    try {
+      const newContact = await createContact.mutateAsync({ name: quickBookerName.trim() });
+      setBookerId(newContact.id);
+      setQuickBookerName("");
+      setShowQuickAddBooker(false);
+      setBookerSearch("");
+    } catch (err: any) {}
   };
 
-  const handleRemoveAttendee = (contactId: number) => {
-    const newAttendees = selectedAttendees.filter((id) => id !== contactId);
-    setSelectedAttendees(newAttendees);
-    setAttendeeCount(newAttendees.length.toString());
+  const handleQuickAddGroup = async () => {
+    if (!quickGroupName.trim()) return;
+    try {
+      const newGroup = await createGroup.mutateAsync({ name: quickGroupName.trim(), type: "organisation" });
+      setGroupId(newGroup.id);
+      setQuickGroupName("");
+      setShowQuickAddGroup(false);
+      setGroupSearch("");
+    } catch (err: any) {}
   };
 
   const handleSubmit = () => {
-    if (!title.trim() || !classification || !venueId) return;
+    if (!classification || !venueId) return;
     const data: any = {
-      title: title.trim(),
       venueId: parseInt(venueId),
-      description: description.trim() || undefined,
       classification,
       status,
       startDate: !isTBC && startDate ? new Date(startDate).toISOString() : null,
-      endDate: !isTBC && endDate ? new Date(endDate).toISOString() : null,
+      endDate: !isTBC && isMultiDay && endDate ? new Date(endDate).toISOString() : null,
       startTime: !isTBC && startTime ? startTime : null,
       endTime: !isTBC && endTime ? endTime : null,
+      isMultiDay,
       tbcMonth: isTBC ? tbcMonth : null,
       tbcYear: isTBC ? tbcYear : null,
       pricingTier,
+      durationType,
+      rateType,
       amount: amount || "0",
       bookerId: bookerId || null,
       bookerGroupId: groupId || null,
-      attendees: selectedAttendees.length > 0 ? selectedAttendees : null,
-      attendeeCount: parseInt(attendeeCount) || selectedAttendees.length || null,
       membershipId: membershipId || null,
       mouId: mouId || null,
       notes: notes.trim() || undefined,
-      funderTags: funderTags.length > 0 ? funderTags : [],
     };
     onSubmit(data);
   };
@@ -841,14 +1083,201 @@ function BookingFormDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          <div>
-            <Label>Title *</Label>
-            <Input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Booking title"
-              data-testid="input-booking-title"
-            />
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Booker (Person)</Label>
+            {bookerId && (
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="text-xs gap-1 pr-1" data-testid="badge-selected-booker">
+                  {contacts?.find((c) => c.id === bookerId)?.name || `Contact #${bookerId}`}
+                  <button
+                    onClick={() => setBookerId(null)}
+                    className="ml-0.5 transition-colors"
+                    type="button"
+                    data-testid="button-remove-booker"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              </div>
+            )}
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <Input
+                value={bookerSearch}
+                onChange={(e) => setBookerSearch(e.target.value)}
+                placeholder="Search contacts..."
+                className="h-8 text-xs pl-7"
+                data-testid="input-search-booker"
+              />
+            </div>
+            {bookerSearch.trim() && (
+              <>
+                {filteredBookerContacts.length > 0 && (
+                  <div className="border border-border rounded-md divide-y divide-border/50 max-h-[150px] overflow-y-auto">
+                    {filteredBookerContacts.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => {
+                          setBookerId(c.id);
+                          setBookerSearch("");
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-xs flex items-center justify-between"
+                        type="button"
+                        data-testid={`button-select-booker-${c.id}`}
+                      >
+                        <span>{c.name}</span>
+                        <UserPlus className="w-3 h-3 text-muted-foreground" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {filteredBookerContacts.length === 0 && !showQuickAddBooker && (
+                  <div className="text-xs text-muted-foreground flex items-center justify-between p-2 bg-muted/30 rounded-md">
+                    <span>No contacts found for "{bookerSearch}"</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 text-[10px]"
+                      onClick={() => {
+                        setQuickBookerName(bookerSearch);
+                        setShowQuickAddBooker(true);
+                      }}
+                      data-testid="button-quick-add-booker"
+                    >
+                      <Plus className="w-3 h-3 mr-1" />
+                      Quick Add
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+            {showQuickAddBooker && (
+              <div className="flex items-center gap-2 p-2 bg-primary/5 rounded-md border border-primary/20">
+                <Input
+                  value={quickBookerName}
+                  onChange={(e) => setQuickBookerName(e.target.value)}
+                  placeholder="Person's name"
+                  className="h-7 text-xs flex-1"
+                  data-testid="input-quick-add-booker-name"
+                />
+                <Button
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={handleQuickAddBooker}
+                  disabled={!quickBookerName.trim() || createContact.isPending}
+                  data-testid="button-save-quick-booker"
+                >
+                  {createContact.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setShowQuickAddBooker(false)}
+                >
+                  <X className="w-3 h-3" />
+                </Button>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Booking Group / Organisation</Label>
+            {groupId && (
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="text-xs gap-1 pr-1" data-testid="badge-selected-booking-group">
+                  <Network className="w-3 h-3 mr-0.5" />
+                  {(allGroups as any[])?.find((g: any) => g.id === groupId)?.name || `Group #${groupId}`}
+                  <button
+                    onClick={() => setGroupId(null)}
+                    className="ml-0.5 transition-colors"
+                    type="button"
+                    data-testid="button-remove-booking-group"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              </div>
+            )}
+            <div className="relative">
+              <Network className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <Input
+                value={groupSearch}
+                onChange={(e) => setGroupSearch(e.target.value)}
+                placeholder="Search groups..."
+                className="h-8 text-xs pl-7"
+                data-testid="input-search-booking-group"
+              />
+            </div>
+            {groupSearch.trim() && (
+              <>
+                {filteredBookerGroups.length > 0 && (
+                  <div className="border border-border rounded-md divide-y divide-border/50 max-h-[150px] overflow-y-auto">
+                    {filteredBookerGroups.map((g: any) => (
+                      <button
+                        key={g.id}
+                        onClick={() => { setGroupId(g.id); setGroupSearch(""); }}
+                        className="w-full text-left px-3 py-1.5 text-xs flex items-center justify-between"
+                        type="button"
+                        data-testid={`button-select-booking-group-${g.id}`}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <Network className="w-3 h-3 text-muted-foreground" />
+                          {g.name}
+                        </span>
+                        <Badge variant="outline" className="text-[10px]">{g.type}</Badge>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {filteredBookerGroups.length === 0 && !showQuickAddGroup && (
+                  <div className="text-xs text-muted-foreground flex items-center justify-between p-2 bg-muted/30 rounded-md">
+                    <span>No groups found for "{groupSearch}"</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 text-[10px]"
+                      onClick={() => {
+                        setQuickGroupName(groupSearch);
+                        setShowQuickAddGroup(true);
+                      }}
+                      data-testid="button-quick-add-group"
+                    >
+                      <Plus className="w-3 h-3 mr-1" />
+                      Quick Add
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+            {showQuickAddGroup && (
+              <div className="flex items-center gap-2 p-2 bg-primary/5 rounded-md border border-primary/20">
+                <Input
+                  value={quickGroupName}
+                  onChange={(e) => setQuickGroupName(e.target.value)}
+                  placeholder="Organisation name"
+                  className="h-7 text-xs flex-1"
+                  data-testid="input-quick-add-group-name"
+                />
+                <Button
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={handleQuickAddGroup}
+                  disabled={!quickGroupName.trim() || createGroup.isPending}
+                  data-testid="button-save-quick-group"
+                >
+                  {createGroup.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setShowQuickAddGroup(false)}
+                >
+                  <X className="w-3 h-3" />
+                </Button>
+              </div>
+            )}
           </div>
 
           <div>
@@ -896,14 +1325,25 @@ function BookingFormDialog({
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <Label className="text-sm font-semibold">Date & Time</Label>
-              <div className="flex items-center gap-2">
-                <Label className="text-xs text-muted-foreground cursor-pointer" htmlFor="booking-tbc-toggle">Date TBC</Label>
-                <Switch
-                  id="booking-tbc-toggle"
-                  checked={isTBC}
-                  onCheckedChange={setIsTBC}
-                  data-testid="switch-booking-tbc"
-                />
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs text-muted-foreground cursor-pointer" htmlFor="booking-multi-day-toggle">Multi-day</Label>
+                  <Switch
+                    id="booking-multi-day-toggle"
+                    checked={isMultiDay}
+                    onCheckedChange={setIsMultiDay}
+                    data-testid="switch-booking-multi-day"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs text-muted-foreground cursor-pointer" htmlFor="booking-tbc-toggle">Date TBC</Label>
+                  <Switch
+                    id="booking-tbc-toggle"
+                    checked={isTBC}
+                    onCheckedChange={setIsTBC}
+                    data-testid="switch-booking-tbc"
+                  />
+                </div>
               </div>
             </div>
 
@@ -938,44 +1378,58 @@ function BookingFormDialog({
               </div>
             ) : (
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
+                <div className={`grid ${isMultiDay ? "grid-cols-2" : "grid-cols-1"} gap-3`}>
                   <div>
-                    <Label className="text-xs text-muted-foreground">Start Date</Label>
+                    <Label className="text-xs text-muted-foreground">{isMultiDay ? "Start Date" : "Date"}</Label>
                     <Input
                       type="date"
                       value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
+                      onChange={(e) => {
+                        setStartDate(e.target.value);
+                        if (!isMultiDay) setEndDate(e.target.value);
+                      }}
                       data-testid="input-booking-start-date"
                     />
                   </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground">End Date</Label>
-                    <Input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      data-testid="input-booking-end-date"
-                    />
-                  </div>
+                  {isMultiDay && (
+                    <div>
+                      <Label className="text-xs text-muted-foreground">End Date</Label>
+                      <Input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        min={startDate}
+                        data-testid="input-booking-end-date"
+                      />
+                    </div>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label className="text-xs text-muted-foreground">Start Time</Label>
-                    <Input
-                      type="time"
-                      value={startTime}
-                      onChange={(e) => setStartTime(e.target.value)}
-                      data-testid="input-booking-start-time"
-                    />
+                    <Select value={startTime} onValueChange={setStartTime}>
+                      <SelectTrigger data-testid="select-booking-start-time">
+                        <SelectValue placeholder="Select start" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[200px]">
+                        {TIME_SLOTS.map((t) => (
+                          <SelectItem key={t} value={t}>{formatTimeSlot(t)}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <Label className="text-xs text-muted-foreground">End Time</Label>
-                    <Input
-                      type="time"
-                      value={endTime}
-                      onChange={(e) => setEndTime(e.target.value)}
-                      data-testid="input-booking-end-time"
-                    />
+                    <Select value={endTime} onValueChange={setEndTime}>
+                      <SelectTrigger data-testid="select-booking-end-time">
+                        <SelectValue placeholder="Select end" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[200px]">
+                        {TIME_SLOTS.filter(t => !startTime || t > startTime).map((t) => (
+                          <SelectItem key={t} value={t}>{formatTimeSlot(t)}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               </div>
@@ -983,8 +1437,34 @@ function BookingFormDialog({
           </div>
 
           <div className="space-y-3">
-            <Label className="text-sm font-semibold">Pricing</Label>
-            <div className="grid grid-cols-2 gap-3">
+            <Label className="text-sm font-semibold">Pricing (GST Exclusive)</Label>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <Label className="text-xs text-muted-foreground">Duration</Label>
+                <Select value={durationType} onValueChange={setDurationType}>
+                  <SelectTrigger data-testid="select-booking-duration-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DURATION_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>{DURATION_LABELS[t]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Rate</Label>
+                <Select value={rateType} onValueChange={setRateType}>
+                  <SelectTrigger data-testid="select-booking-rate-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {RATE_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>{RATE_LABELS[t]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div>
                 <Label className="text-xs text-muted-foreground">Pricing Tier</Label>
                 <Select value={pricingTier} onValueChange={setPricingTier}>
@@ -998,21 +1478,26 @@ function BookingFormDialog({
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">Amount</Label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    className="pl-7"
-                    data-testid="input-booking-amount"
-                  />
-                </div>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Amount (excl. GST)</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="pl-7"
+                  data-testid="input-booking-amount"
+                />
               </div>
+              {rateType === "community" && parseFloat(amount || "0") > 0 && (
+                <p className="text-[10px] text-muted-foreground mt-1" data-testid="text-community-rate-info">
+                  Standard rate: ${(parseFloat(amount || "0") / (1 - COMMUNITY_DISCOUNT)).toFixed(2)} → Community rate (20% off): ${parseFloat(amount || "0").toFixed(2)}
+                </p>
+              )}
             </div>
           </div>
 
@@ -1068,221 +1553,6 @@ function BookingFormDialog({
             </div>
           )}
 
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold">Booker</Label>
-            {bookerId && (
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary" className="text-xs gap-1 pr-1" data-testid="badge-selected-booker">
-                  {contacts?.find((c) => c.id === bookerId)?.name || `Contact #${bookerId}`}
-                  <button
-                    onClick={() => setBookerId(null)}
-                    className="ml-0.5 transition-colors"
-                    data-testid="button-remove-booker"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </Badge>
-              </div>
-            )}
-            <div className="relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-              <Input
-                value={bookerSearch}
-                onChange={(e) => setBookerSearch(e.target.value)}
-                placeholder="Search contacts..."
-                className="h-8 text-xs pl-7"
-                data-testid="input-search-booker"
-              />
-            </div>
-            {bookerSearch.trim() && filteredBookerContacts.length > 0 && (
-              <div className="border border-border rounded-md divide-y divide-border/50 max-h-[150px] overflow-y-auto">
-                {filteredBookerContacts.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => {
-                      setBookerId(c.id);
-                      setBookerSearch("");
-                    }}
-                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between"
-                    data-testid={`button-select-booker-${c.id}`}
-                  >
-                    <span>{c.name}</span>
-                    <UserPlus className="w-3 h-3 text-muted-foreground" />
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold">Booking Group / Organisation</Label>
-            {groupId && (
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary" className="text-xs gap-1 pr-1" data-testid="badge-selected-booking-group">
-                  <Network className="w-3 h-3 mr-0.5" />
-                  {(allGroups as any[])?.find((g: any) => g.id === groupId)?.name || `Group #${groupId}`}
-                  <button
-                    onClick={() => setGroupId(null)}
-                    className="ml-0.5 transition-colors"
-                    data-testid="button-remove-booking-group"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </Badge>
-              </div>
-            )}
-            <div className="relative">
-              <Network className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-              <Input
-                value={groupSearch}
-                onChange={(e) => setGroupSearch(e.target.value)}
-                placeholder="Search groups..."
-                className="h-8 text-xs pl-7"
-                data-testid="input-search-booking-group"
-              />
-            </div>
-            {groupSearch.trim() && filteredBookerGroups.length > 0 && (
-              <div className="border border-border rounded-md divide-y divide-border/50 max-h-[150px] overflow-y-auto">
-                {filteredBookerGroups.map((g: any) => (
-                  <button
-                    key={g.id}
-                    onClick={() => { setGroupId(g.id); setGroupSearch(""); }}
-                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between"
-                    data-testid={`button-select-booking-group-${g.id}`}
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <Network className="w-3 h-3 text-muted-foreground" />
-                      {g.name}
-                    </span>
-                    <Badge variant="outline" className="text-[10px]">{g.type}</Badge>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-semibold">Attendees</Label>
-            </div>
-            <div className="relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
-              <Input
-                className="pl-7 h-8 text-xs"
-                placeholder="Search community members..."
-                value={attendeeSearch}
-                onChange={(e) => setAttendeeSearch(e.target.value)}
-                data-testid="input-search-attendees"
-              />
-              {attendeeSearch.trim() && filteredAttendeeContacts.length > 0 && (
-                <Card className="absolute z-50 w-full mt-1 p-1 shadow-xl border-primary/20 bg-background/95 backdrop-blur-sm">
-                  {filteredAttendeeContacts.map((contact) => (
-                    <div
-                      key={contact.id}
-                      className="flex items-center justify-between p-2 hover:bg-accent rounded-sm cursor-pointer transition-colors"
-                      onClick={() => handleAddAttendee(contact)}
-                      data-testid={`button-add-attendee-${contact.id}`}
-                    >
-                      <div className="flex flex-col">
-                        <span className="text-sm font-medium">{contact.name}</span>
-                        <span className="text-[10px] text-muted-foreground">{contact.role}</span>
-                      </div>
-                      <Plus className="w-3 h-3 text-primary" />
-                    </div>
-                  ))}
-                </Card>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-1.5 min-h-[2rem] p-2 bg-muted/30 rounded-md border border-dashed">
-              {selectedAttendees.length === 0 ? (
-                <span className="text-[10px] text-muted-foreground italic">No attendees tagged yet</span>
-              ) : (
-                selectedAttendees.map((id) => {
-                  const contact = contacts?.find((c) => c.id === id);
-                  if (!contact) return null;
-                  return (
-                    <Badge key={id} variant="secondary" className="flex items-center gap-1 pl-1.5 pr-1 py-0 h-6 text-[10px]" data-testid={`badge-attendee-${id}`}>
-                      {contact.name}
-                      <button
-                        onClick={() => handleRemoveAttendee(id)}
-                        className="rounded-full p-0.5 transition-colors"
-                        type="button"
-                        data-testid={`button-remove-attendee-${id}`}
-                      >
-                        <X className="w-2 h-2" />
-                      </button>
-                    </Badge>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          <div>
-            <Label>Attendee Count</Label>
-            <Input
-              type="number"
-              min="0"
-              value={attendeeCount}
-              onChange={(e) => setAttendeeCount(e.target.value)}
-              placeholder="Number of attendees"
-              data-testid="input-booking-attendee-count"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold">Funder Tags</Label>
-            {funderTags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {funderTags.map((tag, i) => (
-                  <Badge key={i} variant="secondary" className="text-xs gap-1 pr-1" data-testid={`badge-funder-tag-${i}`}>
-                    {tag}
-                    <button
-                      onClick={() => setFunderTags(funderTags.filter(t => t !== tag))}
-                      className="ml-0.5 transition-colors"
-                      type="button"
-                      data-testid={`button-remove-funder-tag-${i}`}
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-            )}
-            <div className="flex items-center gap-2">
-              <Input
-                value={funderTagInput}
-                onChange={(e) => setFunderTagInput(e.target.value)}
-                placeholder="Add funder tag..."
-                className="flex-1"
-                data-testid="input-funder-tag"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    if (funderTagInput.trim() && !funderTags.includes(funderTagInput.trim())) {
-                      setFunderTags([...funderTags, funderTagInput.trim()]);
-                      setFunderTagInput("");
-                    }
-                  }
-                }}
-              />
-              <Button
-                variant="outline"
-                size="icon"
-                type="button"
-                onClick={() => {
-                  if (funderTagInput.trim() && !funderTags.includes(funderTagInput.trim())) {
-                    setFunderTags([...funderTags, funderTagInput.trim()]);
-                    setFunderTagInput("");
-                  }
-                }}
-                data-testid="button-add-funder-tag"
-              >
-                <Plus className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-
           <div>
             <Label>Notes</Label>
             <Textarea
@@ -1290,16 +1560,6 @@ function BookingFormDialog({
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Any additional notes..."
               data-testid="input-booking-notes"
-            />
-          </div>
-
-          <div>
-            <Label>Description</Label>
-            <Textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Booking description..."
-              data-testid="input-booking-description"
             />
           </div>
         </div>
@@ -1310,7 +1570,7 @@ function BookingFormDialog({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={isPending || !title.trim() || !classification || !venueId}
+            disabled={isPending || !classification || !venueId}
             data-testid="button-save-booking"
           >
             {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
