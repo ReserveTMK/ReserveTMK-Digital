@@ -89,7 +89,7 @@ export default function Programmes() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [createOpen, setCreateOpen] = useState(false);
   const [editProgramme, setEditProgramme] = useState<Programme | null>(null);
-  const [viewMode, setViewMode] = useState<"list" | "kanban">("kanban");
+  const [viewMode, setViewMode] = useState<"list" | "kanban" | "monthly">("kanban");
 
   const filtered = programmes?.filter((p) => {
     const matchesSearch =
@@ -158,7 +158,7 @@ export default function Programmes() {
   }, [programmes, updateMutation, toast]);
 
   const budgetTracker = useMemo(() => {
-    if (!programmes) return { totalSpend: 0, yearCount: 0, monthCount: 0 };
+    if (!programmes) return { budgetTagged: 0, budgetSpent: 0, yearCount: 0, monthCount: 0 };
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
@@ -176,11 +176,16 @@ export default function Programmes() {
       }
       return false;
     });
-    let totalSpend = 0;
+    let budgetTagged = 0;
+    let budgetSpent = 0;
     yearProgrammes.forEach(p => {
-      totalSpend += parseFloat(p.facilitatorCost || "0") + parseFloat(p.cateringCost || "0") + parseFloat(p.promoCost || "0");
+      const cost = parseFloat(p.facilitatorCost || "0") + parseFloat(p.cateringCost || "0") + parseFloat(p.promoCost || "0");
+      budgetTagged += cost;
+      if (p.status === "completed") {
+        budgetSpent += cost;
+      }
     });
-    return { totalSpend, yearCount: yearProgrammes.length, monthCount: monthProgrammes.length };
+    return { budgetTagged, budgetSpent, yearCount: yearProgrammes.length, monthCount: monthProgrammes.length };
   }, [programmes]);
 
   const kanbanColumns = useMemo(() => {
@@ -194,6 +199,35 @@ export default function Programmes() {
       if (columns[p.status]) columns[p.status].push(p);
     });
     return columns;
+  }, [filtered]);
+
+  const monthlyGroups = useMemo(() => {
+    const source = filtered || [];
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    const groups: { month: string; monthIndex: number; programmes: Programme[] }[] = monthNames.map((m, i) => ({
+      month: m,
+      monthIndex: i,
+      programmes: [],
+    }));
+    const yearProgrammes = source.filter(p => {
+      if (p.startDate) return new Date(p.startDate).getFullYear() === currentYear;
+      if (p.tbcYear) return parseInt(p.tbcYear) === currentYear;
+      return false;
+    });
+    yearProgrammes.forEach(p => {
+      let monthIdx = -1;
+      if (p.startDate) {
+        monthIdx = new Date(p.startDate).getMonth();
+      } else if (p.tbcMonth) {
+        monthIdx = monthNames.indexOf(p.tbcMonth);
+      }
+      if (monthIdx >= 0 && monthIdx < 12) {
+        groups[monthIdx].programmes.push(p);
+      }
+    });
+    return groups;
   }, [filtered]);
 
   const handleDuplicate = async (p: Programme) => {
@@ -257,6 +291,14 @@ export default function Programmes() {
                   <LayoutList className="w-3.5 h-3.5" />
                   List
                 </button>
+                <button
+                  onClick={() => setViewMode("monthly")}
+                  className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors ${viewMode === "monthly" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:text-foreground"}`}
+                  data-testid="button-monthly-view"
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  Monthly
+                </button>
               </div>
               <Button className="shadow-lg" onClick={() => setCreateOpen(true)} data-testid="button-create-programme">
                 <Plus className="w-4 h-4 mr-2" />
@@ -300,57 +342,87 @@ export default function Programmes() {
             </Select>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <MetricCard
-              title={`${new Date().getFullYear()} Total Spend`}
-              value={`$${budgetTracker.totalSpend.toFixed(2)}`}
-              subtext={`${budgetTracker.yearCount} programmes`}
-              icon={<DollarSign className="w-4 h-4" />}
-              color="primary"
-              data-testid="stat-yearly-total"
-            />
-            <div className="bg-card rounded-2xl p-6 border border-border shadow-sm hover:shadow-md transition-all duration-300" data-testid="stat-this-month">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="bg-card rounded-2xl p-6 border border-border shadow-sm hover:shadow-md transition-all duration-300" data-testid="stat-targets">
               <div className="flex justify-between items-start mb-4">
-                <p className="text-sm font-medium text-muted-foreground">This Month</p>
+                <p className="text-sm font-medium text-muted-foreground">{new Date().getFullYear()} Targets</p>
                 <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600">
-                  <Calendar className="w-4 h-4" />
-                </div>
-              </div>
-              <h3 className="text-3xl font-bold font-display tracking-tight text-foreground">
-                {budgetTracker.monthCount} <span className="text-lg font-normal text-muted-foreground">/ 2</span>
-              </h3>
-              <div className="mt-3">
-                <div className="w-full bg-muted rounded-full h-2.5">
-                  <div
-                    className={`h-2.5 rounded-full transition-all duration-500 ${budgetTracker.monthCount >= 2 ? "bg-emerald-500" : "bg-blue-500"}`}
-                    style={{ width: `${Math.min((budgetTracker.monthCount / 2) * 100, 100)}%` }}
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground mt-1.5">
-                  {budgetTracker.monthCount >= 2 ? "Target reached" : `${2 - budgetTracker.monthCount} more to go`}
-                </p>
-              </div>
-            </div>
-            <div className="bg-card rounded-2xl p-6 border border-border shadow-sm hover:shadow-md transition-all duration-300" data-testid="stat-this-year">
-              <div className="flex justify-between items-start mb-4">
-                <p className="text-sm font-medium text-muted-foreground">This Year</p>
-                <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600">
                   <BarChart3 className="w-4 h-4" />
                 </div>
               </div>
-              <h3 className="text-3xl font-bold font-display tracking-tight text-foreground">
-                {budgetTracker.yearCount} <span className="text-lg font-normal text-muted-foreground">/ 24</span>
-              </h3>
-              <div className="mt-3">
-                <div className="w-full bg-muted rounded-full h-2.5">
-                  <div
-                    className={`h-2.5 rounded-full transition-all duration-500 ${budgetTracker.yearCount >= 24 ? "bg-emerald-500" : "bg-emerald-500"}`}
-                    style={{ width: `${Math.min((budgetTracker.yearCount / 24) * 100, 100)}%` }}
-                  />
+              <div className="space-y-4">
+                <div>
+                  <div className="flex items-baseline justify-between mb-1.5">
+                    <span className="text-sm font-medium text-foreground">This Month</span>
+                    <span className="text-sm tabular-nums">
+                      <span className="font-bold text-foreground">{budgetTracker.monthCount}</span>
+                      <span className="text-muted-foreground"> / 2</span>
+                    </span>
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-2.5">
+                    <div
+                      className={`h-2.5 rounded-full transition-all duration-500 ${budgetTracker.monthCount >= 2 ? "bg-emerald-500" : "bg-blue-500"}`}
+                      style={{ width: `${Math.min((budgetTracker.monthCount / 2) * 100, 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {budgetTracker.monthCount >= 2 ? "Target reached" : `${2 - budgetTracker.monthCount} more to go`}
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1.5">
-                  {budgetTracker.yearCount >= 24 ? "Yearly target reached" : `${24 - budgetTracker.yearCount} more to reach target`}
-                </p>
+                <div>
+                  <div className="flex items-baseline justify-between mb-1.5">
+                    <span className="text-sm font-medium text-foreground">This Year</span>
+                    <span className="text-sm tabular-nums">
+                      <span className="font-bold text-foreground">{budgetTracker.yearCount}</span>
+                      <span className="text-muted-foreground"> / 24</span>
+                    </span>
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-2.5">
+                    <div
+                      className={`h-2.5 rounded-full transition-all duration-500 ${budgetTracker.yearCount >= 24 ? "bg-emerald-500" : "bg-emerald-500"}`}
+                      style={{ width: `${Math.min((budgetTracker.yearCount / 24) * 100, 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {budgetTracker.yearCount >= 24 ? "Yearly target reached" : `${24 - budgetTracker.yearCount} more to reach target`}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-card rounded-2xl p-6 border border-border shadow-sm hover:shadow-md transition-all duration-300" data-testid="stat-budget">
+              <div className="flex justify-between items-start mb-4">
+                <p className="text-sm font-medium text-muted-foreground">{new Date().getFullYear()} Budget</p>
+                <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                  <DollarSign className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <div className="flex items-baseline justify-between mb-1">
+                    <span className="text-sm font-medium text-foreground">Tagged</span>
+                    <span className="text-2xl font-bold font-display tracking-tight text-foreground">${budgetTracker.budgetTagged.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Total budget across {budgetTracker.yearCount} programmes</p>
+                </div>
+                <div className="border-t border-border pt-3">
+                  <div className="flex items-baseline justify-between mb-1">
+                    <span className="text-sm font-medium text-foreground">Spent</span>
+                    <span className="text-2xl font-bold font-display tracking-tight text-emerald-600 dark:text-emerald-400">${budgetTracker.budgetSpent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                  {budgetTracker.budgetTagged > 0 && (
+                    <div className="mt-2">
+                      <div className="w-full bg-muted rounded-full h-2.5">
+                        <div
+                          className="h-2.5 rounded-full bg-emerald-500 transition-all duration-500"
+                          style={{ width: `${Math.min((budgetTracker.budgetSpent / budgetTracker.budgetTagged) * 100, 100)}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {Math.round((budgetTracker.budgetSpent / budgetTracker.budgetTagged) * 100)}% of tagged budget spent
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -389,6 +461,16 @@ export default function Programmes() {
                 contacts={contacts}
               />
             )
+          ) : viewMode === "monthly" ? (
+            <MonthlyView
+              monthlyGroups={monthlyGroups}
+              onEdit={setEditProgramme}
+              onDuplicate={handleDuplicate}
+              onDelete={handleDelete}
+              formatDateTime={formatDateTime}
+              getFacilitatorNames={getFacilitatorNames}
+              getTotalBudget={getTotalBudget}
+            />
           ) : (
             <div className="space-y-3">
               {!filtered?.length ? (
@@ -591,6 +673,154 @@ const COLUMN_STYLES: Record<string, { header: string; dot: string; bg: string }>
     bg: "bg-gray-50/30 dark:bg-gray-900/10",
   },
 };
+
+function MonthlyView({
+  monthlyGroups,
+  onEdit,
+  onDuplicate,
+  onDelete,
+  formatDateTime,
+  getFacilitatorNames,
+  getTotalBudget,
+}: {
+  monthlyGroups: { month: string; monthIndex: number; programmes: Programme[] }[];
+  onEdit: (p: Programme) => void;
+  onDuplicate: (p: Programme) => void;
+  onDelete: (id: number) => void;
+  formatDateTime: (p: Programme) => { date: string; time: string | null } | null;
+  getFacilitatorNames: (p: Programme) => string[];
+  getTotalBudget: (p: Programme) => number;
+}) {
+  const currentMonth = new Date().getMonth();
+
+  return (
+    <div className="space-y-3" data-testid="monthly-view">
+      {monthlyGroups.map((group) => {
+        const isCurrentMonth = group.monthIndex === currentMonth;
+        const monthBudget = group.programmes.reduce((sum, p) => sum + getTotalBudget(p), 0);
+        const hasTarget = group.programmes.length >= 2;
+
+        return (
+          <div
+            key={group.month}
+            className={`rounded-2xl border transition-all ${
+              isCurrentMonth
+                ? "border-primary/30 bg-primary/[0.02] shadow-sm"
+                : group.programmes.length > 0
+                ? "border-border bg-card shadow-sm"
+                : "border-border/50 bg-card/50"
+            }`}
+            data-testid={`monthly-group-${group.monthIndex}`}
+          >
+            <div className={`flex items-center justify-between px-5 py-3 ${group.programmes.length > 0 ? "border-b border-border/50" : ""}`}>
+              <div className="flex items-center gap-3">
+                <h3 className={`font-semibold text-sm ${isCurrentMonth ? "text-primary" : group.programmes.length > 0 ? "text-foreground" : "text-muted-foreground"}`}>
+                  {group.month}
+                </h3>
+                {isCurrentMonth && (
+                  <Badge className="bg-primary/10 text-primary text-[10px] px-1.5 py-0">Now</Badge>
+                )}
+                <span className="text-xs text-muted-foreground">
+                  {group.programmes.length} programme{group.programmes.length !== 1 ? "s" : ""}
+                </span>
+                {hasTarget && (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                )}
+              </div>
+              {monthBudget > 0 && (
+                <span className="text-xs font-medium text-muted-foreground">
+                  ${monthBudget.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              )}
+            </div>
+            {group.programmes.length > 0 && (
+              <div className="p-3 space-y-2">
+                {group.programmes.map((programme) => {
+                  const dateTime = formatDateTime(programme);
+                  const facNames = getFacilitatorNames(programme);
+                  const budget = getTotalBudget(programme);
+
+                  return (
+                    <div
+                      key={programme.id}
+                      className={`flex items-center justify-between gap-3 rounded-xl px-4 py-3 border transition-all hover:shadow-sm ${STATUS_CARD_COLORS[programme.status] || "border-border"}`}
+                      data-testid={`monthly-programme-${programme.id}`}
+                    >
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className="shrink-0">
+                          {programme.status === "cancelled" ? (
+                            <Ban className="w-4 h-4 text-muted-foreground/60" />
+                          ) : programme.status === "completed" ? (
+                            <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-400" />
+                          ) : programme.status === "active" ? (
+                            <Zap className="w-4 h-4 text-amber-500" />
+                          ) : (
+                            <CircleDashed className="w-4 h-4 text-muted-foreground/50" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`font-medium text-sm truncate ${programme.status === "cancelled" ? "line-through text-muted-foreground" : ""}`}>
+                              {programme.name}
+                            </span>
+                            <Badge className={`text-[10px] px-1.5 py-0 ${CLASSIFICATION_COLORS[programme.classification] || ""}`}>
+                              {programme.classification}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
+                            {dateTime && (
+                              <span className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                {dateTime.date}
+                              </span>
+                            )}
+                            {facNames.length > 0 && (
+                              <span className="flex items-center gap-1">
+                                <Users className="w-3 h-3" />
+                                {facNames.join(", ")}
+                              </span>
+                            )}
+                            {budget > 0 && (
+                              <span className="flex items-center gap-1">
+                                <DollarSign className="w-3 h-3" />
+                                ${budget.toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" data-testid={`button-monthly-menu-${programme.id}`}>
+                            <MoreVertical className="w-4 h-4 text-muted-foreground" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => onEdit(programme)} data-testid={`button-monthly-edit-${programme.id}`}>
+                            <Pencil className="w-3.5 h-3.5 mr-2" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => onDuplicate(programme)} data-testid={`button-monthly-duplicate-${programme.id}`}>
+                            <Copy className="w-3.5 h-3.5 mr-2" />
+                            Duplicate
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => onDelete(programme.id)} className="text-destructive" data-testid={`button-monthly-delete-${programme.id}`}>
+                            <Trash2 className="w-3.5 h-3.5 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function KanbanBoard({
   columns,
