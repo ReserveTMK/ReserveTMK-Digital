@@ -187,7 +187,12 @@ export default function ContactDetail() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h1 className="text-2xl sm:text-4xl font-display font-bold text-foreground">{contact.name}</h1>
+                    <h1 className="text-2xl sm:text-4xl font-display font-bold text-foreground">
+                      {contact.name}
+                      {contact.nickname && (
+                        <span className="text-muted-foreground ml-2 text-xl font-normal">({contact.nickname})</span>
+                      )}
+                    </h1>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -745,6 +750,7 @@ const ETHNICITY_OPTIONS = [
 function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onOpenChange: (v: boolean) => void; contact: any }) {
   const { toast } = useToast();
   const [name, setName] = useState(contact.name || "");
+  const [nickname, setNickname] = useState(contact.nickname || "");
   const [email, setEmail] = useState(contact.email || "");
   const [phone, setPhone] = useState(contact.phone || "");
   const [location, setLocation] = useState(contact.location || "");
@@ -757,6 +763,7 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
   useEffect(() => {
     if (open) {
       setName(contact.name || "");
+      setNickname(contact.nickname || "");
       setEmail(contact.email || "");
       setPhone(contact.phone || "");
       setLocation(contact.location || "");
@@ -793,6 +800,7 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
     if (!name.trim()) return;
     mutation.mutate({
       name: name.trim(),
+      nickname: nickname.trim() || null,
       email: email.trim() || null,
       phone: phone.trim() || null,
       location: location.trim() || null,
@@ -820,6 +828,16 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
                 onChange={(e) => setName(e.target.value)}
                 required
                 data-testid="input-edit-name"
+              />
+            </div>
+            <div className="space-y-2 col-span-2">
+              <Label htmlFor="edit-nickname">Preferred Name / Nickname</Label>
+              <Input
+                id="edit-nickname"
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                placeholder="e.g. 'AJ' or 'Mana'"
+                data-testid="input-edit-nickname"
               />
             </div>
             <div className="space-y-2">

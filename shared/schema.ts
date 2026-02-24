@@ -34,6 +34,7 @@ export const contacts = pgTable("contacts", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(), // Links to users.id from auth
   name: text("name").notNull(),
+  nickname: text("nickname"),
   businessName: text("business_name"),
   role: text("role").notNull(), // 'Entrepreneur', 'Professional', 'Innovator', 'Want-trepreneur', 'Rangatahi', 'Business Owner'
   email: text("email"),
