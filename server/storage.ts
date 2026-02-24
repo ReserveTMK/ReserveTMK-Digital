@@ -1061,7 +1061,7 @@ export class DatabaseStorage implements IStorage {
       groupId: groupMembers.groupId,
       contactId: groupMembers.contactId,
       role: groupMembers.role,
-      joinedAt: groupMembers.joinedAt,
+      createdAt: groupMembers.createdAt,
       groupName: groups.name,
       groupType: groups.type,
     })
