@@ -79,6 +79,7 @@ export default function EcosystemPage() {
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [primaryMergeId, setPrimaryMergeId] = useState<number | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [collapsedTiers, setCollapsedTiers] = useState<Record<string, boolean>>({});
   const [changeTierDialog, setChangeTierDialog] = useState<{ group: Group; newTier: TierKey } | null>(null);
   const { toast } = useToast();
@@ -100,6 +101,30 @@ export default function EcosystemPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.groups.list.path] });
       toast({ title: "Tier updated" });
+    },
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (groupIds: number[]) => {
+      const res = await fetch("/api/groups/bulk-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ groupIds }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to delete groups");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: [api.groups.list.path] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups/community-density'] });
+      setSelectedForMerge([]);
+      setBulkDeleteOpen(false);
+      setEditMode(false);
+      toast({ title: "Deleted", description: `${data.deleted} group${data.deleted !== 1 ? 's' : ''} removed.` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
     },
   });
 
@@ -234,6 +259,12 @@ export default function EcosystemPage() {
             <Button size="sm" onClick={openMergeDialog} data-testid="button-merge">
               <Merge className="w-4 h-4 mr-1" />
               Merge ({selectedForMerge.length})
+            </Button>
+          )}
+          {editMode && selectedForMerge.length >= 1 && (
+            <Button size="sm" variant="destructive" onClick={() => setBulkDeleteOpen(true)} data-testid="button-bulk-delete">
+              <Trash2 className="w-4 h-4 mr-1" />
+              Delete ({selectedForMerge.length})
             </Button>
           )}
         </div>
@@ -435,6 +466,30 @@ export default function EcosystemPage() {
               data-testid="button-confirm-tier-change"
             >
               {changeTierMutation.isPending ? "Updating..." : "Confirm"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <DialogContent data-testid="dialog-bulk-delete">
+          <DialogHeader>
+            <DialogTitle>Delete {selectedForMerge.length} Group{selectedForMerge.length !== 1 ? 's' : ''}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This will remove the selected groups, their member links, and taxonomy links permanently. This cannot be undone.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkDeleteOpen(false)} data-testid="button-cancel-bulk-delete">
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => bulkDeleteMutation.mutate(selectedForMerge)}
+              disabled={bulkDeleteMutation.isPending}
+              data-testid="button-confirm-bulk-delete"
+            >
+              {bulkDeleteMutation.isPending ? "Deleting..." : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>

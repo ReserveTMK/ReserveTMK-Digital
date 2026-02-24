@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card";
 import { useRoute } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Loader2, Mic, StopCircle, ArrowLeft, Brain, TrendingUp, Sparkles, AlertCircle, DollarSign, Settings, Rocket, Network, Shield, FileText, CheckSquare, Calendar, Clock, ChevronDown, History } from "lucide-react";
+import { Loader2, Mic, StopCircle, ArrowLeft, Brain, TrendingUp, Sparkles, AlertCircle, DollarSign, Settings, Rocket, Network, Shield, FileText, CheckSquare, Calendar, Clock, ChevronDown, History, MessageSquare } from "lucide-react";
 import { RelationshipStageSelector } from "@/components/relationship-stage-selector";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Link } from "wouter";
@@ -56,6 +56,12 @@ export default function ContactDetail() {
   const { data: consentRecords } = useQuery({
     queryKey: ['/api/contacts', id, 'consent'],
     queryFn: () => fetch(`/api/contacts/${id}/consent`, { credentials: 'include' }).then(r => r.json()),
+    enabled: !!id,
+  });
+
+  const { data: activityData, isLoading: activityLoading } = useQuery({
+    queryKey: ['/api/contacts', id, 'activity'],
+    queryFn: () => fetch(`/api/contacts/${id}/activity`, { credentials: 'include' }).then(r => r.json()),
     enabled: !!id,
   });
 
@@ -363,6 +369,7 @@ export default function ContactDetail() {
               <TabsTrigger value="overview" className="rounded-lg data-[state=active]:bg-primary/10 data-[state=active]:text-primary" data-testid="tab-overview">Overview</TabsTrigger>
               <TabsTrigger value="history" className="rounded-lg data-[state=active]:bg-primary/10 data-[state=active]:text-primary" data-testid="tab-history">History</TabsTrigger>
               <TabsTrigger value="timeline" className="rounded-lg data-[state=active]:bg-primary/10 data-[state=active]:text-primary" data-testid="tab-timeline">Timeline</TabsTrigger>
+              <TabsTrigger value="activity" className="rounded-lg data-[state=active]:bg-primary/10 data-[state=active]:text-primary" data-testid="tab-activity">Activity</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6">
@@ -479,6 +486,49 @@ export default function ContactDetail() {
                     <TimelineCard key={`${item.type}-${item.data.id}-${idx}`} item={item} />
                   ))}
                 </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="activity" className="space-y-4" data-testid="activity-content">
+              {activityLoading ? (
+                <div className="flex justify-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" data-testid="activity-loading" />
+                </div>
+              ) : !activityData || (activityData as any[]).length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground bg-card rounded-2xl border border-dashed border-border" data-testid="activity-empty">
+                  No activity recorded yet.
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-wrap gap-2" data-testid="activity-summary">
+                    {(() => {
+                      const counts: Record<string, number> = {};
+                      (activityData as any[]).forEach((item: any) => {
+                        counts[item.type] = (counts[item.type] || 0) + 1;
+                      });
+                      const typeLabels: Record<string, string> = {
+                        interaction: 'Interactions',
+                        booking: 'Bookings',
+                        programme: 'Programmes',
+                        event: 'Events',
+                        membership: 'Memberships',
+                        mou: 'MOUs',
+                        community_spend: 'Community Spend',
+                        legacy_report: 'Legacy Reports',
+                      };
+                      return Object.entries(counts).map(([type, count]) => (
+                        <Badge key={type} variant="secondary" className="text-xs" data-testid={`badge-activity-count-${type}`}>
+                          {count} {typeLabels[type] || type}
+                        </Badge>
+                      ));
+                    })()}
+                  </div>
+                  <div className="space-y-3">
+                    {(activityData as any[]).map((item: any, idx: number) => (
+                      <ActivityCard key={`${item.type}-${item.id}-${idx}`} item={item} />
+                    ))}
+                  </div>
+                </>
               )}
             </TabsContent>
           </Tabs>
@@ -617,6 +667,48 @@ function TimelineCard({ item }: { item: { date: Date; type: string; data: any } 
                 <p className="text-sm text-muted-foreground">{item.data.notes}</p>
               )}
             </div>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function ActivityCard({ item }: { item: { type: string; subType: string; date: string; title: string; details?: string; id: number } }) {
+  const iconMap: Record<string, { icon: any; color: string; bg: string }> = {
+    interaction: { icon: MessageSquare, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10" },
+    booking: { icon: Calendar, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-500/10" },
+    programme: { icon: Rocket, color: "text-purple-600 dark:text-purple-400", bg: "bg-purple-500/10" },
+    event: { icon: Calendar, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-500/10" },
+    membership: { icon: Shield, color: "text-teal-600 dark:text-teal-400", bg: "bg-teal-500/10" },
+    mou: { icon: FileText, color: "text-indigo-600 dark:text-indigo-400", bg: "bg-indigo-500/10" },
+    community_spend: { icon: DollarSign, color: "text-green-600 dark:text-green-400", bg: "bg-green-500/10" },
+    legacy_report: { icon: History, color: "text-rose-600 dark:text-rose-400", bg: "bg-rose-500/10" },
+  };
+
+  const config = iconMap[item.type] || iconMap.interaction;
+  const Icon = config.icon;
+
+  return (
+    <Card className="p-4" data-testid={`activity-item-${item.type}-${item.id}`}>
+      <div className="flex gap-4">
+        <div className={`shrink-0 w-10 h-10 rounded-full ${config.bg} flex items-center justify-center ${config.color}`}>
+          <Icon className="w-5 h-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-2 mb-1">
+            <p className="text-xs text-muted-foreground font-medium" data-testid={`activity-date-${item.id}`}>
+              {format(new Date(item.date), 'MMM d, yyyy')}
+            </p>
+            {item.subType && (
+              <Badge variant="secondary" className="text-xs" data-testid={`activity-subtype-${item.id}`}>
+                {item.subType}
+              </Badge>
+            )}
+          </div>
+          <p className="font-semibold text-sm" data-testid={`activity-title-${item.id}`}>{item.title}</p>
+          {item.details && (
+            <p className="text-sm text-muted-foreground mt-1 line-clamp-2" data-testid={`activity-details-${item.id}`}>{item.details}</p>
           )}
         </div>
       </div>

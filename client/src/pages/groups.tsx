@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/beautiful-button";
 import { useGroups, useCreateGroup, useUpdateGroup, useDeleteGroup, useGroupMembers, useAddGroupMember, useRemoveGroupMember, useEnrichGroup, useGroupTaxonomyLinks, useSaveGroupTaxonomyLinks } from "@/hooks/use-groups";
 import { useContacts } from "@/hooks/use-contacts";
 import { useTaxonomy } from "@/hooks/use-taxonomy";
-import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe, Target, History, ChevronDown, Pencil } from "lucide-react";
+import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe, Target, History, ChevronDown, Pencil, Edit3, CheckSquare, UserCheck } from "lucide-react";
 import { RelationshipStageSelector } from "@/components/relationship-stage-selector";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -22,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { GROUP_TYPES, type Group, type GroupMember } from "@shared/schema";
 import {
@@ -65,11 +66,35 @@ export default function Groups() {
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [selectedGroups, setSelectedGroups] = useState<Set<number>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const { toast } = useToast();
 
   const createGroup = useCreateGroup();
   const updateGroup = useUpdateGroup();
   const deleteGroup = useDeleteGroup();
+
+  const { data: communityDensity } = useQuery<Record<number, { communityCount: number; totalMembers: number }>>({
+    queryKey: ['/api/groups/community-density'],
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (groupIds: number[]) => {
+      await apiRequest('POST', '/api/groups/bulk-delete', { groupIds });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups/community-density'] });
+      toast({ title: "Groups deleted", description: `${selectedGroups.size} group(s) deleted successfully` });
+      setSelectedGroups(new Set());
+      setEditMode(false);
+      setBulkDeleteOpen(false);
+    },
+    onError: (error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
 
   const filteredGroups = useMemo(() => {
     if (!groups) return [];
@@ -82,6 +107,25 @@ export default function Groups() {
     });
   }, [groups, search, typeFilter]);
 
+  const { communityGroups, businessGroups } = useMemo(() => {
+    const community: Group[] = [];
+    const business: Group[] = [];
+    for (const g of filteredGroups) {
+      const density = communityDensity?.[g.id];
+      if (density && density.communityCount > 0) {
+        community.push(g);
+      } else {
+        business.push(g);
+      }
+    }
+    community.sort((a, b) => {
+      const aCount = communityDensity?.[a.id]?.communityCount || 0;
+      const bCount = communityDensity?.[b.id]?.communityCount || 0;
+      return bCount - aCount;
+    });
+    return { communityGroups: community, businessGroups: business };
+  }, [filteredGroups, communityDensity]);
+
   const openCreateDialog = () => {
     setEditingGroup(null);
     setDialogOpen(true);
@@ -91,6 +135,41 @@ export default function Groups() {
     setEditingGroup(group);
     setDialogOpen(true);
   };
+
+  const toggleEditMode = () => {
+    if (editMode) {
+      setSelectedGroups(new Set());
+    }
+    setEditMode(!editMode);
+  };
+
+  const toggleGroupSelection = (groupId: number) => {
+    setSelectedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    const allIds = filteredGroups.map((g: Group) => g.id);
+    setSelectedGroups(new Set(allIds));
+  };
+
+  const renderGroupCard = (group: Group) => (
+    <GroupCard
+      key={group.id}
+      group={group}
+      onSelect={() => setSelectedGroup(group)}
+      onEdit={() => openEditDialog(group)}
+      onDelete={() => setDeleteConfirmId(group.id)}
+      editMode={editMode}
+      isSelected={selectedGroups.has(group.id)}
+      onToggleSelect={() => toggleGroupSelection(group.id)}
+      communityCount={communityDensity?.[group.id]?.communityCount || 0}
+    />
+  );
 
   return (
     <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
@@ -104,10 +183,37 @@ export default function Groups() {
                 Manage organisations, collectives and community groups
               </p>
             </div>
-            <Button onClick={openCreateDialog} data-testid="button-create-group">
-              <Plus className="w-4 h-4 mr-2" />
-              New Group
-            </Button>
+            <div className="flex items-center gap-2 flex-wrap">
+              {editMode && (
+                <>
+                  <Button variant="outline" size="sm" onClick={selectAll} data-testid="button-select-all-groups">
+                    <CheckSquare className="w-4 h-4 mr-2" />
+                    Select All
+                  </Button>
+                  {selectedGroups.size > 0 && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => setBulkDeleteOpen(true)}
+                      data-testid="button-bulk-delete-groups"
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete ({selectedGroups.size})
+                    </Button>
+                  )}
+                </>
+              )}
+              <Button variant="outline" onClick={toggleEditMode} data-testid="button-toggle-edit-mode">
+                <Edit3 className="w-4 h-4 mr-2" />
+                {editMode ? "Done" : "Edit"}
+              </Button>
+              {!editMode && (
+                <Button onClick={openCreateDialog} data-testid="button-create-group">
+                  <Plus className="w-4 h-4 mr-2" />
+                  New Group
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3">
@@ -159,16 +265,36 @@ export default function Groups() {
               </div>
             </Card>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredGroups.map((group: Group) => (
-                <GroupCard
-                  key={group.id}
-                  group={group}
-                  onSelect={() => setSelectedGroup(group)}
-                  onEdit={() => openEditDialog(group)}
-                  onDelete={() => setDeleteConfirmId(group.id)}
-                />
-              ))}
+            <div className="space-y-6">
+              {communityGroups.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <UserCheck className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                    <h2 className="text-sm font-semibold text-muted-foreground" data-testid="text-community-groups-header">
+                      Community Groups ({communityGroups.length})
+                    </h2>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {communityGroups.map(renderGroupCard)}
+                  </div>
+                </div>
+              )}
+              {communityGroups.length > 0 && businessGroups.length > 0 && (
+                <div className="border-t" />
+              )}
+              {businessGroups.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-muted-foreground" />
+                    <h2 className="text-sm font-semibold text-muted-foreground" data-testid="text-business-groups-header">
+                      Business Groups ({businessGroups.length})
+                    </h2>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {businessGroups.map(renderGroupCard)}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -218,46 +344,102 @@ export default function Groups() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <Dialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle data-testid="text-bulk-delete-title">Delete {selectedGroups.size} groups?</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground" data-testid="text-bulk-delete-description">
+              This will remove all member links. This cannot be undone.
+            </p>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setBulkDeleteOpen(false)} data-testid="button-cancel-bulk-delete">
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => bulkDeleteMutation.mutate(Array.from(selectedGroups))}
+                disabled={bulkDeleteMutation.isPending}
+                data-testid="button-confirm-bulk-delete"
+              >
+                {bulkDeleteMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
   );
 }
 
-function GroupCard({ group, onSelect, onEdit, onDelete }: {
+function GroupCard({ group, onSelect, onEdit, onDelete, editMode, isSelected, onToggleSelect, communityCount }: {
   group: Group;
   onSelect: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  editMode: boolean;
+  isSelected: boolean;
+  onToggleSelect: () => void;
+  communityCount: number;
 }) {
   const { data: members } = useGroupMembers(group.id);
   const memberCount = members?.length || 0;
 
+  const handleClick = () => {
+    if (editMode) {
+      onToggleSelect();
+    } else {
+      onSelect();
+    }
+  };
+
   return (
     <Card
-      className="p-4 hover-elevate cursor-pointer"
-      onClick={onSelect}
+      className={`p-4 hover-elevate cursor-pointer ${editMode && isSelected ? "ring-2 ring-primary" : ""}`}
+      onClick={handleClick}
       data-testid={`card-group-${group.id}`}
     >
       <div className="space-y-3">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
+            {editMode && (
+              <Checkbox
+                checked={isSelected}
+                onCheckedChange={() => onToggleSelect()}
+                onClick={(e) => e.stopPropagation()}
+                className="shrink-0"
+                data-testid={`checkbox-group-${group.id}`}
+              />
+            )}
             <div className="shrink-0 w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
               <Building2 className="w-4 h-4 text-primary" />
             </div>
             <div className="min-w-0">
               <h3 className="font-medium text-sm truncate" data-testid={`text-group-name-${group.id}`}>{group.name}</h3>
-              <Badge className={`text-[10px] mt-0.5 ${GROUP_TYPE_COLORS[group.type] || ""}`}>
-                {group.type}
-              </Badge>
+              <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                <Badge className={`text-[10px] ${GROUP_TYPE_COLORS[group.type] || ""}`}>
+                  {group.type}
+                </Badge>
+                {communityCount > 0 && (
+                  <Badge className="text-[10px] bg-purple-500/10 text-purple-700 dark:text-purple-300" data-testid={`badge-community-${group.id}`}>
+                    <UserCheck className="w-3 h-3 mr-0.5" />
+                    {communityCount} community
+                  </Badge>
+                )}
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onEdit} title="Edit" data-testid={`button-edit-group-${group.id}`}>
-              <Pencil className="w-3.5 h-3.5" />
-            </Button>
-            <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={onDelete} title="Delete" data-testid={`button-delete-group-${group.id}`}>
-              <Trash2 className="w-3.5 h-3.5" />
-            </Button>
-          </div>
+          {!editMode && (
+            <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+              <Button size="icon" variant="ghost" onClick={onEdit} title="Edit" data-testid={`button-edit-group-${group.id}`}>
+                <Pencil className="w-3.5 h-3.5" />
+              </Button>
+              <Button size="icon" variant="ghost" className="text-muted-foreground" onClick={onDelete} title="Delete" data-testid={`button-delete-group-${group.id}`}>
+                <Trash2 className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+          )}
         </div>
 
         {group.description && (

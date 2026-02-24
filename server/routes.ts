@@ -275,6 +275,149 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/contacts/:id/activity", isAuthenticated, async (req, res) => {
+    try {
+      const contactId = parseInt(req.params.id);
+      const contact = await storage.getContact(contactId);
+      if (!contact) return res.status(404).json({ message: "Contact not found" });
+      const userId = (req.user as any).claims.sub;
+      if (contact.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      const activities: any[] = [];
+
+      const interactions = await storage.getInteractions(contactId);
+      for (const i of interactions) {
+        activities.push({
+          type: "interaction",
+          subType: i.type || "General",
+          date: i.date,
+          title: i.summary || `${i.type || "Interaction"} logged`,
+          details: i.transcript ? i.transcript.substring(0, 200) : null,
+          id: i.id,
+        });
+      }
+
+      const allBookings = await storage.getBookings(userId);
+      for (const b of allBookings) {
+        if (b.bookerId === contactId) {
+          activities.push({
+            type: "booking",
+            subType: "Booker",
+            date: b.startDate,
+            title: b.title || "Venue Booking",
+            details: b.notes || null,
+            id: b.id,
+          });
+        }
+      }
+
+      const allProgrammes = await storage.getProgrammes(userId);
+      for (const p of allProgrammes) {
+        if ((p as any).facilitatorId === contactId) {
+          activities.push({
+            type: "programme",
+            subType: "Facilitator",
+            date: (p as any).startDate || p.createdAt,
+            title: p.name || "Programme",
+            details: p.status || null,
+            id: p.id,
+          });
+        }
+      }
+
+      const contactAttendance = await storage.getContactAttendance(contactId);
+      for (const att of contactAttendance) {
+        const event = await storage.getEvent(att.eventId);
+        if (event) {
+          activities.push({
+            type: "event",
+            subType: event.type || "Event",
+            date: event.startTime || event.createdAt,
+            title: event.title || "Event",
+            details: event.location || null,
+            id: event.id,
+          });
+        }
+      }
+
+      const allMemberships = await storage.getMemberships(userId);
+      for (const m of allMemberships) {
+        if (m.contactId === contactId) {
+          activities.push({
+            type: "membership",
+            subType: "Membership",
+            date: m.startDate || m.createdAt,
+            title: `${m.type || "Membership"} - ${m.status || "active"}`,
+            details: null,
+            id: m.id,
+          });
+        }
+      }
+
+      const allMous = await storage.getMous(userId);
+      for (const m of allMous) {
+        if (m.contactId === contactId) {
+          activities.push({
+            type: "mou",
+            subType: "MOU",
+            date: m.startDate || m.createdAt,
+            title: m.title || "MOU Agreement",
+            details: m.status || null,
+            id: m.id,
+          });
+        }
+      }
+
+      const allSpend = await storage.getCommunitySpend(userId);
+      for (const s of allSpend) {
+        if (s.contactId === contactId) {
+          activities.push({
+            type: "community_spend",
+            subType: s.category || "Spend",
+            date: s.date || s.createdAt,
+            title: s.description || "Community Spend",
+            details: s.amount ? `$${s.amount}` : null,
+            id: s.id,
+          });
+        }
+      }
+
+      const legacyReports = await storage.getLegacyReports(userId);
+      for (const report of legacyReports) {
+        if (report.status !== 'confirmed') continue;
+        const extraction = await storage.getLegacyReportExtraction(report.id);
+        if (extraction?.extractedPeople) {
+          const mentioned = extraction.extractedPeople.some(
+            (p: any) => p.name.toLowerCase().trim() === contact.name.toLowerCase().trim()
+          );
+          if (mentioned) {
+            const reportDate = (report.year && report.month)
+              ? new Date(report.year, report.month - 1, 15).toISOString()
+              : report.createdAt;
+            activities.push({
+              type: "legacy_report",
+              subType: "Report Mention",
+              date: reportDate,
+              title: `Mentioned in ${report.quarterLabel || "legacy report"}`,
+              details: null,
+              id: report.id,
+            });
+          }
+        }
+      }
+
+      activities.sort((a, b) => {
+        const da = a.date ? new Date(a.date).getTime() : 0;
+        const db = b.date ? new Date(b.date).getTime() : 0;
+        return db - da;
+      });
+
+      res.json(activities);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch activity" });
+    }
+  });
+
   app.post("/api/contacts/bulk", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
@@ -4501,6 +4644,29 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       res.json({ deleted });
     } catch (err: any) {
       res.status(500).json({ message: "Failed to delete contacts" });
+    }
+  });
+
+  app.post("/api/groups/bulk-delete", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { groupIds } = req.body;
+      if (!Array.isArray(groupIds) || groupIds.length === 0) {
+        return res.status(400).json({ message: "No group IDs provided" });
+      }
+
+      let deleted = 0;
+      for (const id of groupIds) {
+        const group = await storage.getGroup(id);
+        if (group && group.userId === userId) {
+          await storage.deleteGroup(id);
+          deleted++;
+        }
+      }
+
+      res.json({ deleted });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to delete groups" });
     }
   });
 

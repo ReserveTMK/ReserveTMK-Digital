@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { useContacts, useCreateContact, useDeleteContact } from "@/hooks/use-contacts";
-import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Flag, Sparkles, Eraser } from "lucide-react";
+import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Flag, Sparkles, Eraser, Edit3 } from "lucide-react";
 import { useState, useRef, useCallback, useMemo } from "react";
 import { Link } from "wouter";
 import { format } from "date-fns";
@@ -57,8 +57,54 @@ export default function Contacts() {
   const [open, setOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [cleanUpOpen, setCleanUpOpen] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [selectedContacts, setSelectedContacts] = useState<Set<number>>(new Set());
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
 
   const deleteContact = useDeleteContact();
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (contactIds: number[]) => {
+      const res = await apiRequest("POST", "/api/contacts/community/bulk-delete", { contactIds });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast({ title: "Success", description: `${selectedContacts.size} contact${selectedContacts.size !== 1 ? 's' : ''} deleted successfully` });
+      setSelectedContacts(new Set());
+      setEditMode(false);
+      setBulkDeleteConfirmOpen(false);
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const toggleContactSelection = (id: number) => {
+    setSelectedContacts(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (!filteredContacts) return;
+    if (selectedContacts.size === filteredContacts.length) {
+      setSelectedContacts(new Set());
+    } else {
+      setSelectedContacts(new Set(filteredContacts.map((c: any) => c.id)));
+    }
+  };
+
+  const handleExitEditMode = () => {
+    setEditMode(false);
+    setSelectedContacts(new Set());
+  };
 
   const communityStatusMutation = useMutation({
     mutationFn: async ({ id, isCommunityMember }: { id: number; isCommunityMember: boolean }) => {
@@ -67,6 +113,8 @@ export default function Contacts() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups/community-density"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
       toast({ title: "Success", description: "Community status updated" });
     },
     onError: (err: any) => {
@@ -81,6 +129,8 @@ export default function Contacts() {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups/community-density"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
       const parts = [];
       if (data.flagged > 0) parts.push(`${data.flagged} flagged as community`);
       if (data.unflagged > 0) parts.push(`${data.unflagged} moved to business`);
@@ -157,40 +207,89 @@ export default function Contacts() {
             </div>
             
             <div className="flex items-center gap-2 flex-wrap">
-              {contacts && contacts.length > 0 && (
-                <Button variant="outline" onClick={() => backfillMutation.mutate()} disabled={backfillMutation.isPending} data-testid="button-flag-community">
-                  {backfillMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Flag className="w-4 h-4 mr-2" />}
-                  Flag Community Members
+              {editMode && selectedContacts.size > 0 && (
+                <Button variant="destructive" onClick={() => setBulkDeleteConfirmOpen(true)} data-testid="button-bulk-delete">
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete ({selectedContacts.size})
                 </Button>
               )}
-              {viewMode === "community" && (
-                <Button variant="outline" onClick={() => aiScoreMutation.mutate()} disabled={aiScoreMutation.isPending} data-testid="button-score-relationships">
-                  {aiScoreMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
-                  Score Relationships
-                </Button>
+              {editMode && filteredContacts && filteredContacts.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    checked={filteredContacts.length > 0 && selectedContacts.size === filteredContacts.length}
+                    onCheckedChange={toggleSelectAll}
+                    data-testid="checkbox-select-all"
+                  />
+                  <span className="text-sm text-muted-foreground">Select All</span>
+                </div>
               )}
-              <Button variant="outline" onClick={() => setCleanUpOpen(true)} data-testid="button-clean-up">
-                <Eraser className="w-4 h-4 mr-2" />
-                Clean Up
+              <Button variant="outline" onClick={editMode ? handleExitEditMode : () => setEditMode(true)} data-testid="button-edit-mode">
+                <Edit3 className="w-4 h-4 mr-2" />
+                {editMode ? "Done" : "Edit"}
               </Button>
-              <Button variant="outline" onClick={() => setBulkOpen(true)} data-testid="button-bulk-upload">
-                <Upload className="w-4 h-4 mr-2" />
-                Bulk Upload
-              </Button>
-              <Dialog open={open} onOpenChange={setOpen}>
-                <DialogTrigger asChild>
-                  <Button className="shadow-lg" data-testid="button-add-member">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Member
+              {!editMode && (
+                <>
+                  {contacts && contacts.length > 0 && (
+                    <Button variant="outline" onClick={() => backfillMutation.mutate()} disabled={backfillMutation.isPending} data-testid="button-flag-community">
+                      {backfillMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Flag className="w-4 h-4 mr-2" />}
+                      Flag Community Members
+                    </Button>
+                  )}
+                  {viewMode === "community" && (
+                    <Button variant="outline" onClick={() => aiScoreMutation.mutate()} disabled={aiScoreMutation.isPending} data-testid="button-score-relationships">
+                      {aiScoreMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                      Score Relationships
+                    </Button>
+                  )}
+                  <Button variant="outline" onClick={() => setCleanUpOpen(true)} data-testid="button-clean-up">
+                    <Eraser className="w-4 h-4 mr-2" />
+                    Clean Up
                   </Button>
-                </DialogTrigger>
-                <CreateContactDialogContent onSuccess={() => setOpen(false)} />
-              </Dialog>
+                  <Button variant="outline" onClick={() => setBulkOpen(true)} data-testid="button-bulk-upload">
+                    <Upload className="w-4 h-4 mr-2" />
+                    Bulk Upload
+                  </Button>
+                  <Dialog open={open} onOpenChange={setOpen}>
+                    <DialogTrigger asChild>
+                      <Button className="shadow-lg" data-testid="button-add-member">
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Member
+                      </Button>
+                    </DialogTrigger>
+                    <CreateContactDialogContent onSuccess={() => setOpen(false)} />
+                  </Dialog>
+                </>
+              )}
             </div>
           </div>
 
           <BulkUploadDialog open={bulkOpen} onOpenChange={setBulkOpen} />
           <CleanUpDialog open={cleanUpOpen} onOpenChange={setCleanUpOpen} />
+
+          <Dialog open={bulkDeleteConfirmOpen} onOpenChange={setBulkDeleteConfirmOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle data-testid="text-bulk-delete-title">Delete {selectedContacts.size} contact{selectedContacts.size !== 1 ? 's' : ''}?</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground" data-testid="text-bulk-delete-description">
+                Delete {selectedContacts.size} contact{selectedContacts.size !== 1 ? 's' : ''}? This cannot be undone.
+              </p>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setBulkDeleteConfirmOpen(false)} data-testid="button-bulk-delete-cancel">
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => bulkDeleteMutation.mutate(Array.from(selectedContacts))}
+                  disabled={bulkDeleteMutation.isPending}
+                  data-testid="button-bulk-delete-confirm"
+                >
+                  {bulkDeleteMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                  Delete
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {analytics && (
             <div className="space-y-3" data-testid="community-analytics">
@@ -325,6 +424,14 @@ export default function Contacts() {
             <div className="space-y-3">
               {(filteredContacts || []).map((contact: any) => (
                 <div key={contact.id} className="group bg-card hover:bg-card/80 border border-border rounded-xl p-4 transition-all duration-200 hover:shadow-md flex items-center gap-4" data-testid={`card-contact-${contact.id}`}>
+                  {editMode && (
+                    <Checkbox
+                      checked={selectedContacts.has(contact.id)}
+                      onCheckedChange={() => toggleContactSelection(contact.id)}
+                      className="shrink-0"
+                      data-testid={`checkbox-contact-${contact.id}`}
+                    />
+                  )}
                   <Link href={`/contacts/${contact.id}`} className="flex items-center gap-4 flex-1 min-w-0 cursor-pointer" data-testid={`link-contact-${contact.id}`}>
                     <div className="w-12 h-12 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-lg shrink-0">
                       {contact.name[0]}
