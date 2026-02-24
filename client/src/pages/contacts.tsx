@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { useContacts, useCreateContact, useDeleteContact } from "@/hooks/use-contacts";
-import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Flag, Sparkles, Eraser, Edit3, Tag } from "lucide-react";
+import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag } from "lucide-react";
 import { useState, useRef, useCallback, useMemo } from "react";
 import { Link } from "wouter";
 import { format } from "date-fns";
@@ -61,8 +61,8 @@ export default function Contacts() {
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const [bulkRoleOpen, setBulkRoleOpen] = useState(false);
   const [bulkRoleValue, setBulkRoleValue] = useState("");
-  const [bulkActivityOpen, setBulkActivityOpen] = useState(false);
-  const [bulkActivityValue, setBulkActivityValue] = useState("");
+  const [bulkRelationshipOpen, setBulkRelationshipOpen] = useState(false);
+  const [bulkRelationshipValue, setBulkRelationshipValue] = useState("");
 
   const deleteContact = useDeleteContact();
 
@@ -114,8 +114,27 @@ export default function Contacts() {
       setEditMode(false);
       setBulkRoleOpen(false);
       setBulkRoleValue("");
-      setBulkActivityOpen(false);
-      setBulkActivityValue("");
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const bulkRelationshipMutation = useMutation({
+    mutationFn: async ({ contactIds, relationshipCircle }: { contactIds: number[]; relationshipCircle: string }) => {
+      const res = await apiRequest("POST", "/api/contacts/community/bulk-update", {
+        contactIds,
+        updates: { relationshipCircle, relationshipCircleOverride: true },
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast({ title: "Success", description: `${selectedContacts.size} contact${selectedContacts.size !== 1 ? 's' : ''} relationship updated` });
+      setSelectedContacts(new Set());
+      setEditMode(false);
+      setBulkRelationshipOpen(false);
+      setBulkRelationshipValue("");
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -237,9 +256,9 @@ export default function Contacts() {
                     <Tag className="w-4 h-4 mr-2" />
                     Update Role
                   </Button>
-                  <Button variant="outline" onClick={() => setBulkActivityOpen(true)} data-testid="button-bulk-update-activity">
-                    <Edit3 className="w-4 h-4 mr-2" />
-                    Update Activity
+                  <Button variant="outline" onClick={() => setBulkRelationshipOpen(true)} data-testid="button-bulk-update-relationship">
+                    <Users className="w-4 h-4 mr-2" />
+                    Update Relationship
                   </Button>
                 </>
               )}
@@ -340,34 +359,34 @@ export default function Contacts() {
             </DialogContent>
           </Dialog>
 
-          <Dialog open={bulkActivityOpen} onOpenChange={(v) => { setBulkActivityOpen(v); if (!v) setBulkActivityValue(""); }}>
+          <Dialog open={bulkRelationshipOpen} onOpenChange={(v) => { setBulkRelationshipOpen(v); if (!v) setBulkRelationshipValue(""); }}>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle data-testid="text-bulk-activity-title">Update Activity for {selectedContacts.size} contact{selectedContacts.size !== 1 ? 's' : ''}</DialogTitle>
+                <DialogTitle data-testid="text-bulk-relationship-title">Update Relationship for {selectedContacts.size} contact{selectedContacts.size !== 1 ? 's' : ''}</DialogTitle>
               </DialogHeader>
               <div className="py-4">
-                <Select value={bulkActivityValue} onValueChange={setBulkActivityValue}>
-                  <SelectTrigger data-testid="select-bulk-activity">
-                    <SelectValue placeholder="Select activity status" />
+                <Select value={bulkRelationshipValue} onValueChange={setBulkRelationshipValue}>
+                  <SelectTrigger data-testid="select-bulk-relationship">
+                    <SelectValue placeholder="Select relationship circle" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
-                    <SelectItem value="dormant">Dormant</SelectItem>
+                    <SelectItem value="inner_circle">Inner Circle</SelectItem>
+                    <SelectItem value="active_network">Active Network</SelectItem>
+                    <SelectItem value="wider_community">Wider Community</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => { setBulkActivityOpen(false); setBulkActivityValue(""); }} data-testid="button-bulk-activity-cancel">
+                <Button variant="outline" onClick={() => { setBulkRelationshipOpen(false); setBulkRelationshipValue(""); }} data-testid="button-bulk-relationship-cancel">
                   Cancel
                 </Button>
                 <Button
-                  onClick={() => bulkUpdateMutation.mutate({ contactIds: Array.from(selectedContacts), updates: { activityStatus: bulkActivityValue } })}
-                  disabled={!bulkActivityValue || bulkUpdateMutation.isPending}
-                  data-testid="button-bulk-activity-confirm"
+                  onClick={() => bulkRelationshipMutation.mutate({ contactIds: Array.from(selectedContacts), relationshipCircle: bulkRelationshipValue })}
+                  disabled={!bulkRelationshipValue || bulkRelationshipMutation.isPending}
+                  data-testid="button-bulk-relationship-confirm"
                 >
-                  {bulkUpdateMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                  Apply Status
+                  {bulkRelationshipMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                  Apply
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -524,9 +543,6 @@ export default function Contacts() {
                         <h3 className="text-base font-bold font-display text-foreground truncate group-hover:text-primary transition-colors" data-testid={`text-name-${contact.id}`}>
                           {contact.name}
                         </h3>
-                        <Badge variant="secondary" className="text-[10px] h-5 px-2 font-medium shrink-0" data-testid={`text-role-${contact.id}`}>
-                          {contact.role}
-                        </Badge>
                         {getCircleBadge(contact.relationshipCircle)}
                       </div>
                       
@@ -572,13 +588,11 @@ export default function Contacts() {
                     </div>
 
                     <div className="hidden sm:flex flex-wrap gap-1 justify-end max-w-[200px] shrink-0">
-                      {contact.tags && contact.tags.length > 0 ? (
-                        contact.tags.slice(0, 2).map((tag: string, i: number) => (
-                          <span key={i} className="text-[10px] px-1.5 py-0.5 bg-muted rounded text-muted-foreground border border-border/50">
-                            #{tag}
-                          </span>
-                        ))
-                      ) : null}
+                      {contact.role && (
+                        <Badge variant="outline" className="text-[10px] h-5 px-2 shrink-0" data-testid={`badge-role-side-${contact.id}`}>
+                          {contact.role}
+                        </Badge>
+                      )}
                     </div>
                   </Link>
 

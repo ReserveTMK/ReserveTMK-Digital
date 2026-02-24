@@ -4722,7 +4722,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       if (!Array.isArray(contactIds) || contactIds.length === 0) {
         return res.status(400).json({ message: "No contact IDs provided" });
       }
-      const allowedFields = ["role", "activityStatus"];
+      const allowedFields = ["role", "activityStatus", "relationshipCircle", "relationshipCircleOverride"];
       const safeUpdates: Record<string, any> = {};
       for (const key of Object.keys(updates || {})) {
         if (allowedFields.includes(key)) {
