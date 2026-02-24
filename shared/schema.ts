@@ -1216,6 +1216,27 @@ export type InsertGmailExclusion = z.infer<typeof insertGmailExclusionSchema>;
 export type GmailSyncSettings = typeof gmailSyncSettings.$inferSelect;
 export type InsertGmailSyncSettings = z.infer<typeof insertGmailSyncSettingsSchema>;
 
+export const gmailConnectedAccounts = pgTable("gmail_connected_accounts", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  email: text("email").notNull(),
+  label: text("label"),
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token").notNull(),
+  tokenExpiry: timestamp("token_expiry"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertGmailConnectedAccountSchema = createInsertSchema(gmailConnectedAccounts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type GmailConnectedAccount = typeof gmailConnectedAccounts.$inferSelect;
+export type InsertGmailConnectedAccount = z.infer<typeof insertGmailConnectedAccountSchema>;
+
 // Request types
 export type CreateContactRequest = InsertContact;
 export type UpdateContactRequest = Partial<InsertContact>;

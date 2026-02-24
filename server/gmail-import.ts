@@ -1,6 +1,8 @@
 import { getUncachableGmailClient, isGmailConnected } from './replit_integrations/gmail/client';
 import { storage } from './storage';
 import OpenAI from 'openai';
+import { google } from 'googleapis';
+import type { GmailConnectedAccount } from '@shared/schema';
 
 const PUBLIC_DOMAINS = new Set([
   'gmail.com', 'googlemail.com', 'google.com',
@@ -110,12 +112,58 @@ export async function checkGmailConnection(): Promise<boolean> {
   return isGmailConnected();
 }
 
+export function getGmailOAuth2Client() {
+  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return null;
+
+  const baseUrl = process.env.REPLIT_DEV_DOMAIN
+    ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+    : process.env.REPL_SLUG
+      ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
+      : 'http://localhost:5000';
+
+  return new google.auth.OAuth2(
+    clientId,
+    clientSecret,
+    `${baseUrl}/api/gmail/oauth/callback`
+  );
+}
+
+export async function getGmailClientForAccount(account: GmailConnectedAccount) {
+  const oauth2Client = getGmailOAuth2Client();
+  if (!oauth2Client) throw new Error('Google OAuth not configured');
+
+  oauth2Client.setCredentials({
+    access_token: account.accessToken,
+    refresh_token: account.refreshToken,
+    expiry_date: account.tokenExpiry ? new Date(account.tokenExpiry).getTime() : undefined,
+  });
+
+  if (account.tokenExpiry && new Date(account.tokenExpiry).getTime() < Date.now()) {
+    try {
+      const { credentials } = await oauth2Client.refreshAccessToken();
+      await storage.updateGmailConnectedAccount(account.id, {
+        accessToken: credentials.access_token!,
+        refreshToken: credentials.refresh_token || account.refreshToken,
+        tokenExpiry: credentials.expiry_date ? new Date(credentials.expiry_date) : undefined,
+      });
+      oauth2Client.setCredentials(credentials);
+    } catch (err) {
+      console.error(`Failed to refresh token for ${account.email}:`, err);
+      throw new Error(`Token expired for ${account.email}. Please reconnect.`);
+    }
+  }
+
+  return google.gmail({ version: 'v1', auth: oauth2Client });
+}
+
 export async function scanGmailEmails(
   userId: string,
   scanType: 'initial' | 'sync' | 'manual',
-  daysBack: number = 365
+  daysBack: number = 365,
+  accountId?: number
 ): Promise<{ historyId: number }> {
-  const gmail = await getUncachableGmailClient();
   const now = new Date();
   const fromDate = new Date(now.getTime() - daysBack * 24 * 60 * 60 * 1000);
 
@@ -132,20 +180,52 @@ export async function scanGmailEmails(
     groupsSkipped: 0,
   });
 
-  processGmailImport(gmail, userId, historyRecord.id, fromDate, now).catch(async (err) => {
-    console.error('Gmail import error:', err);
-    await storage.updateGmailImportHistory(historyRecord.id, {
-      status: 'error',
-      errorMessage: err.message || 'Unknown error',
-      completedAt: new Date(),
-    });
-  });
+  (async () => {
+    try {
+      const gmailClients: Array<{ gmail: any; label: string }> = [];
+
+      if (accountId) {
+        const account = await storage.getGmailConnectedAccount(accountId);
+        if (!account || account.userId !== userId) throw new Error('Account not found');
+        const gmail = await getGmailClientForAccount(account);
+        gmailClients.push({ gmail, label: account.email });
+      } else {
+        try {
+          const connectorGmail = await getUncachableGmailClient();
+          gmailClients.push({ gmail: connectorGmail, label: 'Primary (Connector)' });
+        } catch {}
+
+        const additionalAccounts = await storage.getGmailConnectedAccounts(userId);
+        for (const account of additionalAccounts) {
+          try {
+            const gmail = await getGmailClientForAccount(account);
+            gmailClients.push({ gmail, label: account.email });
+          } catch (err) {
+            console.error(`Skipping account ${account.email}:`, err);
+          }
+        }
+      }
+
+      if (gmailClients.length === 0) {
+        throw new Error('No Gmail accounts available to scan');
+      }
+
+      await processMultiAccountImport(gmailClients, userId, historyRecord.id, fromDate, now);
+    } catch (err: any) {
+      console.error('Gmail import error:', err);
+      await storage.updateGmailImportHistory(historyRecord.id, {
+        status: 'error',
+        errorMessage: err.message || 'Unknown error',
+        completedAt: new Date(),
+      });
+    }
+  })();
 
   return { historyId: historyRecord.id };
 }
 
-async function processGmailImport(
-  gmail: any,
+async function processMultiAccountImport(
+  gmailClients: Array<{ gmail: any; label: string }>,
   userId: string,
   historyId: number,
   fromDate: Date,
@@ -159,6 +239,39 @@ async function processGmailImport(
     exclusions.filter((e: any) => e.type === 'email').map((e: any) => e.value.toLowerCase())
   );
 
+  const peopleMap = new Map<string, ExtractedPerson>();
+  let totalEmails = 0;
+
+  for (const { gmail, label } of gmailClients) {
+    console.log(`Scanning emails from: ${label}`);
+    const { emails, people } = await scanSingleAccount(gmail, fromDate, toDate, excludedDomains, excludedEmails);
+    totalEmails += emails;
+
+    for (const [email, person] of Array.from(people.entries())) {
+      if (peopleMap.has(email)) {
+        const existing = peopleMap.get(email)!;
+        existing.frequency += person.frequency;
+        if (person.name && person.name !== email.split('@')[0] && (!existing.name || existing.name === email.split('@')[0])) {
+          existing.name = person.name;
+        }
+      } else {
+        peopleMap.set(email, { ...person });
+      }
+    }
+
+    await storage.updateGmailImportHistory(historyId, { emailsScanned: totalEmails });
+  }
+
+  await finalizeImport(peopleMap, userId, historyId, totalEmails, excludedDomains);
+}
+
+async function scanSingleAccount(
+  gmail: any,
+  fromDate: Date,
+  toDate: Date,
+  excludedDomains: Set<string>,
+  excludedEmails: Set<string>
+): Promise<{ emails: number; people: Map<string, ExtractedPerson> }> {
   const afterEpoch = Math.floor(fromDate.getTime() / 1000);
   const beforeEpoch = Math.floor(toDate.getTime() / 1000);
   const query = `after:${afterEpoch} before:${beforeEpoch}`;
@@ -176,11 +289,11 @@ async function processGmailImport(
     });
 
     const messages = listRes.data.messages || [];
-    
+
     const batchSize = 20;
     for (let i = 0; i < messages.length; i += batchSize) {
       const batch = messages.slice(i, i + batchSize);
-      
+
       const details = await Promise.all(
         batch.map((msg: any) =>
           gmail.users.messages.get({
@@ -229,14 +342,18 @@ async function processGmailImport(
     }
 
     pageToken = listRes.data.nextPageToken;
-
-    if (totalEmails % 500 === 0) {
-      await storage.updateGmailImportHistory(historyId, {
-        emailsScanned: totalEmails,
-      });
-    }
   } while (pageToken);
 
+  return { emails: totalEmails, people: peopleMap };
+}
+
+async function finalizeImport(
+  peopleMap: Map<string, ExtractedPerson>,
+  userId: string,
+  historyId: number,
+  totalEmails: number,
+  excludedDomains: Set<string>
+) {
   const orgMap = new Map<string, ExtractedOrg>();
   for (const person of Array.from(peopleMap.values())) {
     if (PUBLIC_DOMAINS.has(person.domain)) continue;
@@ -436,8 +553,9 @@ export function startAutoSync() {
         const now = Date.now();
         
         if (now - lastSync >= intervalMs) {
-          const connected = await isGmailConnected();
-          if (!connected) continue;
+          const connectorConnected = await isGmailConnected();
+          const additionalAccounts = await storage.getGmailConnectedAccounts(settings.userId);
+          if (!connectorConnected && additionalAccounts.length === 0) continue;
 
           const daysSinceLastSync = settings.lastSyncAt
             ? Math.ceil((now - lastSync) / (24 * 60 * 60 * 1000)) + 1

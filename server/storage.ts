@@ -114,6 +114,9 @@ import {
   type InsertGmailExclusion,
   type GmailSyncSettings,
   type InsertGmailSyncSettings,
+  gmailConnectedAccounts,
+  type GmailConnectedAccount,
+  type InsertGmailConnectedAccount,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, sql, max, count } from "drizzle-orm";
 
@@ -1345,6 +1348,34 @@ export class DatabaseStorage implements IStorage {
 
   async getAllGmailSyncSettings(): Promise<GmailSyncSettings[]> {
     return db.select().from(gmailSyncSettings).where(eq(gmailSyncSettings.autoSyncEnabled, true));
+  }
+
+  async getGmailConnectedAccounts(userId: string): Promise<GmailConnectedAccount[]> {
+    return db.select().from(gmailConnectedAccounts).where(eq(gmailConnectedAccounts.userId, userId)).orderBy(desc(gmailConnectedAccounts.createdAt));
+  }
+
+  async getGmailConnectedAccount(id: number): Promise<GmailConnectedAccount | undefined> {
+    const [item] = await db.select().from(gmailConnectedAccounts).where(eq(gmailConnectedAccounts.id, id));
+    return item;
+  }
+
+  async createGmailConnectedAccount(data: InsertGmailConnectedAccount): Promise<GmailConnectedAccount> {
+    const [item] = await db.insert(gmailConnectedAccounts).values(data).returning();
+    return item;
+  }
+
+  async updateGmailConnectedAccount(id: number, updates: Partial<InsertGmailConnectedAccount>): Promise<GmailConnectedAccount> {
+    const [item] = await db.update(gmailConnectedAccounts).set({ ...updates, updatedAt: new Date() }).where(eq(gmailConnectedAccounts.id, id)).returning();
+    return item;
+  }
+
+  async deleteGmailConnectedAccount(id: number): Promise<void> {
+    await db.delete(gmailConnectedAccounts).where(eq(gmailConnectedAccounts.id, id));
+  }
+
+  async getGmailConnectedAccountByEmail(userId: string, email: string): Promise<GmailConnectedAccount | undefined> {
+    const [item] = await db.select().from(gmailConnectedAccounts).where(and(eq(gmailConnectedAccounts.userId, userId), eq(gmailConnectedAccounts.email, email)));
+    return item;
   }
 }
 

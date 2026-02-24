@@ -26,14 +26,16 @@ import {
   Plus,
   AlertCircle,
   ArrowLeft,
-  Shield,
   History,
   Ban,
   Zap,
+  UserPlus,
+  LogOut,
+  AlertTriangle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 
 interface GmailStatus {
   connected: boolean;
@@ -44,6 +46,7 @@ interface GmailStatus {
   } | null;
   latestImport: ImportHistoryItem | null;
   totalImports: number;
+  additionalAccountsCount: number;
 }
 
 interface ImportHistoryItem {
@@ -69,11 +72,41 @@ interface GmailExclusion {
   createdAt: string;
 }
 
+interface ConnectedAccount {
+  id: number;
+  email: string;
+  label: string | null;
+  createdAt: string;
+  tokenExpiry: string | null;
+  hasValidToken: boolean;
+}
+
+interface OAuthConfig {
+  configured: boolean;
+}
+
 export default function GmailImportPage() {
   const { toast } = useToast();
   const [exclusionType, setExclusionType] = useState<string>("domain");
   const [exclusionValue, setExclusionValue] = useState("");
   const [pollingId, setPollingId] = useState<number | null>(null);
+  const [location] = useLocation();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('success') === 'account_added') {
+      toast({ title: "Gmail Account Connected", description: "Your additional Gmail account has been linked." });
+      queryClient.invalidateQueries({ queryKey: ["/api/gmail/accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/gmail/status"] });
+      window.history.replaceState({}, '', '/gmail-import');
+    } else if (params.get('error')) {
+      const errorMsg = params.get('error') === 'auth_failed' ? 'Authentication failed. Please try again.'
+        : params.get('error') === 'not_configured' ? 'Google OAuth is not configured.'
+        : 'An error occurred during authentication.';
+      toast({ title: "Connection Failed", description: errorMsg, variant: "destructive" });
+      window.history.replaceState({}, '', '/gmail-import');
+    }
+  }, []);
 
   const statusQuery = useQuery<GmailStatus>({
     queryKey: ["/api/gmail/status"],
@@ -85,6 +118,14 @@ export default function GmailImportPage() {
 
   const exclusionsQuery = useQuery<GmailExclusion[]>({
     queryKey: ["/api/gmail/exclusions"],
+  });
+
+  const accountsQuery = useQuery<ConnectedAccount[]>({
+    queryKey: ["/api/gmail/accounts"],
+  });
+
+  const oauthConfigQuery = useQuery<OAuthConfig>({
+    queryKey: ["/api/gmail/oauth/config"],
   });
 
   const pollingQuery = useQuery<ImportHistoryItem>({
@@ -114,7 +155,7 @@ export default function GmailImportPage() {
   }, [pollingQuery.data?.status]);
 
   const scanMutation = useMutation({
-    mutationFn: async (params: { daysBack: number; scanType: string }) => {
+    mutationFn: async (params: { daysBack: number; scanType: string; accountId?: number }) => {
       const res = await apiRequest("POST", "/api/gmail/scan", params);
       return res.json();
     },
@@ -163,11 +204,39 @@ export default function GmailImportPage() {
     },
   });
 
+  const addAccountMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("GET", "/api/gmail/oauth/authorize");
+      const data = await res.json();
+      window.location.href = data.url;
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Cannot Add Account",
+        description: err.message || "Google OAuth is not configured",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const removeAccountMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/gmail/accounts/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/gmail/accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/gmail/status"] });
+      toast({ title: "Account Removed" });
+    },
+  });
+
   const isScanning = !!pollingId || scanMutation.isPending;
   const status = statusQuery.data;
   const history = historyQuery.data || [];
   const exclusions = exclusionsQuery.data || [];
-
+  const accounts = accountsQuery.data || [];
+  const oauthConfigured = oauthConfigQuery.data?.configured ?? false;
+  const hasAnyConnection = status?.connected || accounts.length > 0;
   const hasInitialImport = history.some(h => h.status === 'completed');
 
   if (statusQuery.isLoading) {
@@ -190,12 +259,12 @@ export default function GmailImportPage() {
         </div>
       </div>
 
-      {!status?.connected && (
+      {!hasAnyConnection && (
         <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
           <CardContent className="p-4 flex items-center gap-3">
             <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
             <p className="text-sm text-amber-800 dark:text-amber-200">
-              Gmail is not connected. Please set up the Gmail integration to use this feature.
+              No Gmail accounts connected. Connect your primary Gmail via the platform integration, or add accounts below.
             </p>
           </CardContent>
         </Card>
@@ -204,15 +273,15 @@ export default function GmailImportPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card data-testid="card-connection-status">
           <CardContent className="p-4 flex items-center gap-3">
-            {status?.connected ? (
+            {hasAnyConnection ? (
               <CheckCircle2 className="h-8 w-8 text-green-500 shrink-0" />
             ) : (
               <XCircle className="h-8 w-8 text-red-400 shrink-0" />
             )}
             <div>
-              <p className="text-sm font-medium">Connection</p>
+              <p className="text-sm font-medium">Accounts</p>
               <p className="text-lg font-bold" data-testid="text-connection-status">
-                {status?.connected ? "Connected" : "Not Connected"}
+                {(status?.connected ? 1 : 0) + accounts.length} Connected
               </p>
             </div>
           </CardContent>
@@ -249,7 +318,123 @@ export default function GmailImportPage() {
         </Card>
       </div>
 
-      {status?.connected && (
+      <Card data-testid="card-connected-accounts">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Mail className="h-5 w-5" />
+                Connected Gmail Accounts
+              </CardTitle>
+              <CardDescription>
+                Manage your connected Gmail accounts for contact import
+              </CardDescription>
+            </div>
+            {oauthConfigured && (
+              <Button
+                size="sm"
+                onClick={() => addAccountMutation.mutate()}
+                disabled={addAccountMutation.isPending}
+                data-testid="button-add-account"
+              >
+                {addAccountMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <UserPlus className="h-4 w-4 mr-2" />
+                )}
+                Add Gmail Account
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {status?.connected && (
+            <div className="flex items-center justify-between py-3 px-4 rounded-lg border bg-muted/30" data-testid="account-primary">
+              <div className="flex items-center gap-3">
+                <Mail className="h-5 w-5 text-indigo-500 shrink-0" />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">Primary Account</span>
+                    <Badge variant="secondary" className="text-xs">Platform Connector</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Connected via platform integration</p>
+                </div>
+              </div>
+              <CheckCircle2 className="h-4 w-4 text-green-500" />
+            </div>
+          )}
+
+          {accounts.map((account) => (
+            <div
+              key={account.id}
+              className="flex items-center justify-between py-3 px-4 rounded-lg border"
+              data-testid={`account-item-${account.id}`}
+            >
+              <div className="flex items-center gap-3">
+                <Mail className="h-5 w-5 text-indigo-500 shrink-0" />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{account.email}</span>
+                    {!account.hasValidToken && (
+                      <Badge variant="destructive" className="text-xs">
+                        <AlertTriangle className="h-3 w-3 mr-1" />
+                        Token Expired
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Added {new Date(account.createdAt).toLocaleDateString("en-NZ", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })}
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => removeAccountMutation.mutate(account.id)}
+                disabled={removeAccountMutation.isPending}
+                data-testid={`button-remove-account-${account.id}`}
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+
+          {!status?.connected && accounts.length === 0 && (
+            <div className="text-center py-6">
+              <Mail className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+              <p className="text-sm text-muted-foreground mb-3">No Gmail accounts connected yet</p>
+              {oauthConfigured ? (
+                <Button
+                  size="sm"
+                  onClick={() => addAccountMutation.mutate()}
+                  disabled={addAccountMutation.isPending}
+                  data-testid="button-add-first-account"
+                >
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Connect Gmail Account
+                </Button>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Set up the platform Gmail integration or add Google OAuth credentials to connect accounts.
+                </p>
+              )}
+            </div>
+          )}
+
+          {!oauthConfigured && (status?.connected || accounts.length > 0) && (
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 text-xs text-muted-foreground">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>To add more Gmail accounts, configure Google OAuth credentials (GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET).</span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {hasAnyConnection && (
         <Card data-testid="card-scan-controls">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -260,6 +445,7 @@ export default function GmailImportPage() {
               {hasInitialImport
                 ? "Run a new scan to import any new contacts since your last import"
                 : "Run your initial scan to import contacts from the past 12 months of emails"}
+              {accounts.length > 0 && status?.connected && " (scans all connected accounts)"}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -324,7 +510,7 @@ export default function GmailImportPage() {
         </Card>
       )}
 
-      {status?.connected && (
+      {hasAnyConnection && (
         <Card data-testid="card-auto-sync">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

@@ -9,7 +9,7 @@ import { openai } from "./replit_integrations/audio/client";
 import { getFullMonthlyReport, generateNarrative, type ReportFilters } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
 import { insertCommunitySpendSchema } from "@shared/schema";
-import { checkGmailConnection, scanGmailEmails, startAutoSync } from "./gmail-import";
+import { checkGmailConnection, scanGmailEmails, startAutoSync, getGmailOAuth2Client } from "./gmail-import";
 
 function parseTimeToMinutes(timeStr: string): number {
   const parts = timeStr.split(":");
@@ -4169,12 +4169,14 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       const syncSettings = await storage.getGmailSyncSettings(userId);
       const history = await storage.getGmailImportHistory(userId);
       const latestImport = history[0] || null;
+      const additionalAccounts = await storage.getGmailConnectedAccounts(userId);
 
       res.json({
         connected,
         syncSettings: syncSettings || null,
         latestImport,
         totalImports: history.length,
+        additionalAccountsCount: additionalAccounts.length,
       });
     } catch (err: any) {
       console.error("Gmail status error:", err);
@@ -4188,9 +4190,10 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       const scanSchema = z.object({
         daysBack: z.number().min(1).max(730).default(365),
         scanType: z.enum(['initial', 'manual', 'sync']).default('manual'),
+        accountId: z.number().optional(),
       });
       const parsed = scanSchema.parse(req.body);
-      const result = await scanGmailEmails(userId, parsed.scanType, parsed.daysBack);
+      const result = await scanGmailEmails(userId, parsed.scanType, parsed.daysBack, parsed.accountId);
       res.json(result);
     } catch (err: any) {
       console.error("Gmail scan error:", err);
@@ -4290,6 +4293,132 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       }
     } catch (err: any) {
       res.status(500).json({ message: "Failed to update sync settings" });
+    }
+  });
+
+  // === GMAIL MULTI-ACCOUNT OAUTH ===
+
+  app.get("/api/gmail/oauth/config", isAuthenticated, async (req, res) => {
+    const client = getGmailOAuth2Client();
+    res.json({ configured: !!client });
+  });
+
+  app.get("/api/gmail/oauth/authorize", isAuthenticated, async (req, res) => {
+    const oauth2Client = getGmailOAuth2Client();
+    if (!oauth2Client) {
+      return res.status(400).json({ message: "Google OAuth not configured. Please add GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET." });
+    }
+
+    const crypto = await import('crypto');
+    const userId = (req.user as any).claims.sub;
+    const nonce = crypto.randomBytes(16).toString('hex');
+    const secret = process.env.SESSION_SECRET || 'gmail-oauth-state';
+    const payload = JSON.stringify({ userId, nonce, ts: Date.now() });
+    const hmac = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+    const state = Buffer.from(JSON.stringify({ payload, hmac })).toString('base64');
+
+    const url = oauth2Client.generateAuthUrl({
+      access_type: 'offline',
+      prompt: 'consent',
+      scope: ['https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/userinfo.email'],
+      state,
+    });
+
+    res.json({ url });
+  });
+
+  app.get("/api/gmail/oauth/callback", async (req, res) => {
+    const { code, state } = req.query;
+    if (!code || !state) {
+      return res.redirect('/gmail-import?error=missing_params');
+    }
+
+    let userId: string;
+    try {
+      const crypto = await import('crypto');
+      const decoded = JSON.parse(Buffer.from(state as string, 'base64').toString());
+      const { payload, hmac } = decoded;
+      const secret = process.env.SESSION_SECRET || 'gmail-oauth-state';
+      const expectedHmac = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+      if (hmac !== expectedHmac) {
+        return res.redirect('/gmail-import?error=invalid_state');
+      }
+      const parsed = JSON.parse(payload);
+      if (Date.now() - parsed.ts > 10 * 60 * 1000) {
+        return res.redirect('/gmail-import?error=state_expired');
+      }
+      userId = parsed.userId;
+    } catch {
+      return res.redirect('/gmail-import?error=invalid_state');
+    }
+
+    const oauth2Client = getGmailOAuth2Client();
+    if (!oauth2Client) {
+      return res.redirect('/gmail-import?error=not_configured');
+    }
+
+    try {
+      const { tokens } = await oauth2Client.getToken(code as string);
+      oauth2Client.setCredentials(tokens);
+
+      const oauth2 = (await import('googleapis')).google.oauth2({ version: 'v2', auth: oauth2Client });
+      const { data: userInfo } = await oauth2.userinfo.get();
+      const email = userInfo.email || 'unknown';
+
+      const existing = await storage.getGmailConnectedAccountByEmail(userId, email);
+      if (existing) {
+        await storage.updateGmailConnectedAccount(existing.id, {
+          accessToken: tokens.access_token!,
+          refreshToken: tokens.refresh_token || existing.refreshToken,
+          tokenExpiry: tokens.expiry_date ? new Date(tokens.expiry_date) : undefined,
+        });
+      } else {
+        await storage.createGmailConnectedAccount({
+          userId,
+          email,
+          label: email,
+          accessToken: tokens.access_token!,
+          refreshToken: tokens.refresh_token!,
+          tokenExpiry: tokens.expiry_date ? new Date(tokens.expiry_date) : undefined,
+        });
+      }
+
+      res.redirect('/gmail-import?success=account_added');
+    } catch (err: any) {
+      console.error('Gmail OAuth callback error:', err);
+      res.redirect('/gmail-import?error=auth_failed');
+    }
+  });
+
+  app.get("/api/gmail/accounts", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const accounts = await storage.getGmailConnectedAccounts(userId);
+      const safeAccounts = accounts.map(a => ({
+        id: a.id,
+        email: a.email,
+        label: a.label,
+        createdAt: a.createdAt,
+        tokenExpiry: a.tokenExpiry,
+        hasValidToken: !a.tokenExpiry || new Date(a.tokenExpiry).getTime() > Date.now(),
+      }));
+      res.json(safeAccounts);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch accounts" });
+    }
+  });
+
+  app.delete("/api/gmail/accounts/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const account = await storage.getGmailConnectedAccount(parseInt(req.params.id));
+      if (!account || account.userId !== userId) {
+        return res.status(404).json({ message: "Account not found" });
+      }
+      await storage.deleteGmailConnectedAccount(account.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to remove account" });
     }
   });
 
