@@ -315,15 +315,9 @@ export default function Contacts() {
   return (
     <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
         <div className="max-w-6xl mx-auto space-y-6">
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-display font-bold">Community</h1>
-              <p className="text-muted-foreground mt-1">Manage your mentees and network.</p>
-            </div>
-            
-            <div className="flex items-center gap-2 flex-wrap">
-              {editMode && selectedContacts.size > 0 && (
+          {editMode && (
+            <div className="sticky -top-4 md:-top-8 z-30 -mx-4 md:-mx-8 px-4 md:px-8 py-3 bg-background/95 backdrop-blur-sm border-b border-border shadow-md flex items-center gap-2 flex-wrap" data-testid="edit-toolbar-contacts">
+              {selectedContacts.size > 0 && (
                 <>
                   <Button variant="destructive" onClick={() => setBulkDeleteConfirmOpen(true)} data-testid="button-bulk-delete">
                     <Trash2 className="w-4 h-4 mr-2" />
@@ -357,7 +351,7 @@ export default function Contacts() {
                   )}
                 </>
               )}
-              {editMode && filteredContacts && filteredContacts.length > 0 && (
+              {filteredContacts && filteredContacts.length > 0 && (
                 <div className="flex items-center gap-2">
                   <Checkbox
                     checked={filteredContacts.length > 0 && selectedContacts.size === filteredContacts.length}
@@ -367,12 +361,27 @@ export default function Contacts() {
                   <span className="text-sm text-muted-foreground">Select All</span>
                 </div>
               )}
-              <Button variant="outline" onClick={editMode ? handleExitEditMode : () => setEditMode(true)} data-testid="button-edit-mode">
+              <Button variant="outline" onClick={handleExitEditMode} data-testid="button-edit-mode">
                 <Edit3 className="w-4 h-4 mr-2" />
-                {editMode ? "Done" : "Edit"}
+                Done
               </Button>
+            </div>
+          )}
+
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-display font-bold">Community</h1>
+              <p className="text-muted-foreground mt-1">Manage your mentees and network.</p>
+            </div>
+            
+            <div className="flex items-center gap-2 flex-wrap">
               {!editMode && (
                 <>
+                  <Button variant="outline" onClick={() => setEditMode(true)} data-testid="button-edit-mode">
+                    <Edit3 className="w-4 h-4 mr-2" />
+                    Edit
+                  </Button>
                   <Button variant="outline" onClick={() => autoLinkMutation.mutate()} disabled={autoLinkMutation.isPending} data-testid="button-auto-link">
                     {autoLinkMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Link2 className="w-4 h-4 mr-2" />}
                     Auto-Link

@@ -229,6 +229,68 @@ export default function Groups() {
   return (
     <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
         <div className="max-w-6xl mx-auto space-y-6">
+          {editMode && (
+            <div className="sticky -top-4 md:-top-8 z-30 -mx-4 md:-mx-8 px-4 md:px-8 py-3 bg-background/95 backdrop-blur-sm border-b border-border shadow-md flex items-center gap-2 flex-wrap" data-testid="edit-toolbar-groups">
+              <Button variant="outline" size="sm" onClick={selectAll} data-testid="button-select-all-groups">
+                <CheckSquare className="w-4 h-4 mr-2" />
+                Select All
+              </Button>
+              {selectedGroups.size > 0 && (
+                <>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setBulkDeleteOpen(true)}
+                    data-testid="button-bulk-delete-groups"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete ({selectedGroups.size})
+                  </Button>
+                  {viewMode === "all" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        toast({
+                          title: "Community membership",
+                          description: "Community status is determined by member engagement, not manual assignment.",
+                        });
+                      }}
+                      data-testid="button-move-to-community"
+                    >
+                      <ArrowRightLeft className="w-4 h-4 mr-2" />
+                      Move to Community
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setBulkTierOpen(true)}
+                    data-testid="button-change-tier"
+                  >
+                    <Tag className="w-4 h-4 mr-2" />
+                    Change Tier
+                  </Button>
+                  {selectedGroups.size >= 2 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={openMergeDialog}
+                      data-testid="button-merge-groups"
+                    >
+                      <Merge className="w-4 h-4 mr-2" />
+                      Merge ({selectedGroups.size})
+                    </Button>
+                  )}
+                </>
+              )}
+              <Button variant="outline" onClick={toggleEditMode} data-testid="button-toggle-edit-mode">
+                <Edit3 className="w-4 h-4 mr-2" />
+                Done
+              </Button>
+            </div>
+          )}
+
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl md:text-3xl font-bold font-display" data-testid="text-groups-title">
@@ -239,72 +301,17 @@ export default function Groups() {
               </p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              {editMode && (
-                <>
-                  <Button variant="outline" size="sm" onClick={selectAll} data-testid="button-select-all-groups">
-                    <CheckSquare className="w-4 h-4 mr-2" />
-                    Select All
-                  </Button>
-                  {selectedGroups.size > 0 && (
-                    <>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => setBulkDeleteOpen(true)}
-                        data-testid="button-bulk-delete-groups"
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Delete ({selectedGroups.size})
-                      </Button>
-                      {viewMode === "all" && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            toast({
-                              title: "Community membership",
-                              description: "Community status is determined by member engagement, not manual assignment.",
-                            });
-                          }}
-                          data-testid="button-move-to-community"
-                        >
-                          <ArrowRightLeft className="w-4 h-4 mr-2" />
-                          Move to Community
-                        </Button>
-                      )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setBulkTierOpen(true)}
-                        data-testid="button-change-tier"
-                      >
-                        <Tag className="w-4 h-4 mr-2" />
-                        Change Tier
-                      </Button>
-                      {selectedGroups.size >= 2 && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={openMergeDialog}
-                          data-testid="button-merge-groups"
-                        >
-                          <Merge className="w-4 h-4 mr-2" />
-                          Merge ({selectedGroups.size})
-                        </Button>
-                      )}
-                    </>
-                  )}
-                </>
-              )}
-              <Button variant="outline" onClick={toggleEditMode} data-testid="button-toggle-edit-mode">
-                <Edit3 className="w-4 h-4 mr-2" />
-                {editMode ? "Done" : "Edit"}
-              </Button>
               {!editMode && (
-                <Button onClick={openCreateDialog} data-testid="button-create-group">
-                  <Plus className="w-4 h-4 mr-2" />
-                  New Group
-                </Button>
+                <>
+                  <Button variant="outline" onClick={toggleEditMode} data-testid="button-toggle-edit-mode">
+                    <Edit3 className="w-4 h-4 mr-2" />
+                    Edit
+                  </Button>
+                  <Button onClick={openCreateDialog} data-testid="button-create-group">
+                    <Plus className="w-4 h-4 mr-2" />
+                    New Group
+                  </Button>
+                </>
               )}
             </div>
           </div>
