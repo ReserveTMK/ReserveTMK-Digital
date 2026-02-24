@@ -8,7 +8,9 @@ import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { openai } from "./replit_integrations/audio/client";
 import { getFullMonthlyReport, generateNarrative, type ReportFilters } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema } from "@shared/schema";
+import { insertCommunitySpendSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, groupMembers, bookings, programmes, contacts, impactLogGroups } from "@shared/schema";
+import { db } from "./db";
+import { eq, and, sql } from "drizzle-orm";
 import { scanGmailEmails, startAutoSync, getGmailOAuth2Client } from "./gmail-import";
 
 function parseTimeToMinutes(timeStr: string): number {
@@ -3522,6 +3524,22 @@ Return a JSON object with this exact structure:
           await storage.setGroupTaxonomyLinks(primaryId, allLinks);
         }
 
+        await db.update(impactLogGroups).set({ groupId: primaryId }).where(
+          and(eq(impactLogGroups.groupId, mergeId), sql`impact_log_id NOT IN (SELECT impact_log_id FROM impact_log_groups WHERE group_id = ${primaryId})`)
+        );
+        await db.delete(impactLogGroups).where(eq(impactLogGroups.groupId, mergeId));
+
+        await db.update(memberships).set({ groupId: primaryId }).where(eq(memberships.groupId, mergeId));
+        await db.update(mous).set({ groupId: primaryId }).where(eq(mous.groupId, mergeId));
+        await db.update(communitySpend).set({ groupId: primaryId }).where(eq(communitySpend.groupId, mergeId));
+        await db.update(bookings).set({ bookerGroupId: primaryId }).where(eq(bookings.bookerGroupId, mergeId));
+        await db.update(milestones).set({ linkedGroupId: primaryId }).where(eq(milestones.linkedGroupId, mergeId));
+
+        if (source.notes && source.notes !== primary.notes) {
+          const combinedNotes = [primary.notes, source.notes].filter(Boolean).join("\n");
+          await db.update(groups).set({ notes: combinedNotes }).where(eq(groups.id, primaryId));
+        }
+
         await storage.deleteGroup(mergeId);
       }
 
@@ -4743,6 +4761,95 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       res.json({ updated });
     } catch (err: any) {
       res.status(500).json({ message: "Failed to update contacts" });
+    }
+  });
+
+  app.post("/api/contacts/merge", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { primaryId, mergeIds } = req.body;
+      if (!primaryId || !mergeIds || !Array.isArray(mergeIds) || mergeIds.length === 0) {
+        return res.status(400).json({ message: "primaryId and mergeIds array required" });
+      }
+
+      const primary = await storage.getContact(primaryId);
+      if (!primary || primary.userId !== userId) return res.status(404).json({ message: "Primary contact not found" });
+
+      for (const mergeId of mergeIds) {
+        if (mergeId === primaryId) continue;
+        const source = await storage.getContact(mergeId);
+        if (!source || source.userId !== userId) continue;
+
+        await db.update(interactions).set({ contactId: primaryId }).where(eq(interactions.contactId, mergeId));
+        await db.update(meetings).set({ contactId: primaryId }).where(eq(meetings.contactId, mergeId));
+        await db.update(actionItems).set({ contactId: primaryId }).where(eq(actionItems.contactId, mergeId));
+        await db.update(consentRecords).set({ contactId: primaryId }).where(eq(consentRecords.contactId, mergeId));
+        await db.update(memberships).set({ contactId: primaryId }).where(eq(memberships.contactId, mergeId));
+        await db.update(mous).set({ contactId: primaryId }).where(eq(mous.contactId, mergeId));
+        await db.update(milestones).set({ linkedContactId: primaryId }).where(eq(milestones.linkedContactId, mergeId));
+        await db.update(communitySpend).set({ contactId: primaryId }).where(eq(communitySpend.contactId, mergeId));
+
+        await db.update(eventAttendance).set({ contactId: primaryId }).where(
+          and(eq(eventAttendance.contactId, mergeId), sql`event_id NOT IN (SELECT event_id FROM event_attendance WHERE contact_id = ${primaryId})`)
+        );
+        await db.delete(eventAttendance).where(eq(eventAttendance.contactId, mergeId));
+
+        await db.update(impactLogContacts).set({ contactId: primaryId }).where(
+          and(eq(impactLogContacts.contactId, mergeId), sql`impact_log_id NOT IN (SELECT impact_log_id FROM impact_log_contacts WHERE contact_id = ${primaryId})`)
+        );
+        await db.delete(impactLogContacts).where(eq(impactLogContacts.contactId, mergeId));
+
+        const sourceGroups = await storage.getContactGroups(mergeId);
+        const primaryGroups = await storage.getContactGroups(primaryId);
+        const existingGroupIds = new Set(primaryGroups.map((g: any) => g.groupId));
+        for (const sg of sourceGroups) {
+          if (!existingGroupIds.has(sg.groupId)) {
+            await storage.addGroupMember({ groupId: sg.groupId, contactId: primaryId, role: sg.role });
+          }
+        }
+        await db.delete(groupMembers).where(eq(groupMembers.contactId, mergeId));
+
+        await db.update(bookings).set({ bookerId: primaryId }).where(eq(bookings.bookerId, mergeId));
+
+        const progsWithFac = await db.select().from(programmes).where(sql`${primaryId} = ANY(facilitators) OR ${mergeId} = ANY(facilitators)`);
+        for (const p of progsWithFac) {
+          if (p.facilitators && p.facilitators.includes(mergeId)) {
+            const updated = p.facilitators.filter((f: number) => f !== mergeId);
+            if (!updated.includes(primaryId)) updated.push(primaryId);
+            await db.update(programmes).set({ facilitators: updated }).where(eq(programmes.id, p.id));
+          }
+        }
+
+        const bookingsWithAtt = await db.select().from(bookings).where(sql`${mergeId} = ANY(attendees)`);
+        for (const b of bookingsWithAtt) {
+          if (b.attendees && b.attendees.includes(mergeId)) {
+            const updated = b.attendees.filter((a: number) => a !== mergeId);
+            if (!updated.includes(primaryId)) updated.push(primaryId);
+            await db.update(bookings).set({ attendees: updated }).where(eq(bookings.id, b.id));
+          }
+        }
+
+        const merged: Partial<typeof contacts.$inferInsert> = {};
+        if (!primary.email && source.email) merged.email = source.email;
+        if (!primary.phone && source.phone) merged.phone = source.phone;
+        if (!primary.businessName && source.businessName) merged.businessName = source.businessName;
+        if (!primary.location && source.location) merged.location = source.location;
+        if (!primary.ethnicity && source.ethnicity) merged.ethnicity = source.ethnicity;
+        if (source.notes && source.notes !== primary.notes) {
+          merged.notes = [primary.notes, source.notes].filter(Boolean).join("\n");
+        }
+        if (Object.keys(merged).length > 0) {
+          await db.update(contacts).set(merged).where(eq(contacts.id, primaryId));
+        }
+
+        await db.delete(contacts).where(eq(contacts.id, mergeId));
+      }
+
+      const updated = await storage.getContact(primaryId);
+      res.json(updated);
+    } catch (err: any) {
+      console.error("Merge contacts error:", err);
+      res.status(500).json({ message: "Failed to merge contacts" });
     }
   });
 

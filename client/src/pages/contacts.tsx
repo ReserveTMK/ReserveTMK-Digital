@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { useContacts, useCreateContact, useDeleteContact } from "@/hooks/use-contacts";
-import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2 } from "lucide-react";
+import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge } from "lucide-react";
 import { useState, useRef, useCallback, useMemo } from "react";
 import { Link } from "wouter";
 import { format } from "date-fns";
@@ -66,6 +66,8 @@ export default function Contacts() {
   const [linkGroupOpen, setLinkGroupOpen] = useState(false);
   const [linkGroupContactId, setLinkGroupContactId] = useState<number | null>(null);
   const [linkGroupSearch, setLinkGroupSearch] = useState("");
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [primaryMergeId, setPrimaryMergeId] = useState<number | null>(null);
 
   const { data: allGroups } = useQuery<any[]>({ queryKey: ["/api/groups"] });
 
@@ -145,6 +147,40 @@ export default function Contacts() {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     },
   });
+
+  const mergeMutation = useMutation({
+    mutationFn: async ({ primaryId, mergeIds }: { primaryId: number; mergeIds: number[] }) => {
+      const res = await apiRequest("POST", "/api/contacts/merge", { primaryId, mergeIds });
+      if (!res.ok) throw new Error("Failed to merge contacts");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast({ title: "Contacts merged successfully" });
+      setSelectedContacts(new Set());
+      setEditMode(false);
+      setMergeDialogOpen(false);
+      setPrimaryMergeId(null);
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const openMergeDialog = () => {
+    if (selectedContacts.size < 2) {
+      toast({ title: "Select at least 2 contacts to merge", variant: "destructive" });
+      return;
+    }
+    setPrimaryMergeId(Array.from(selectedContacts)[0]);
+    setMergeDialogOpen(true);
+  };
+
+  const confirmMerge = () => {
+    if (!primaryMergeId) return;
+    const mergeIds = Array.from(selectedContacts).filter(id => id !== primaryMergeId);
+    mergeMutation.mutate({ primaryId: primaryMergeId, mergeIds });
+  };
 
   const autoLinkMutation = useMutation({
     mutationFn: async () => {
@@ -313,6 +349,12 @@ export default function Contacts() {
                     <Users className="w-4 h-4 mr-2" />
                     Update Relationship
                   </Button>
+                  {selectedContacts.size >= 2 && (
+                    <Button variant="outline" onClick={openMergeDialog} data-testid="button-merge-contacts">
+                      <Merge className="w-4 h-4 mr-2" />
+                      Merge ({selectedContacts.size})
+                    </Button>
+                  )}
                 </>
               )}
               {editMode && filteredContacts && filteredContacts.length > 0 && (
@@ -444,6 +486,51 @@ export default function Contacts() {
                 >
                   {bulkRelationshipMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
                   Apply
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={mergeDialogOpen} onOpenChange={(v) => { setMergeDialogOpen(v); if (!v) setPrimaryMergeId(null); }}>
+            <DialogContent data-testid="dialog-merge-contacts">
+              <DialogHeader>
+                <DialogTitle data-testid="text-merge-title">Merge {selectedContacts.size} Contacts</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground">Choose the primary contact to keep. All data from the other contacts will be merged into it, and the duplicates will be removed.</p>
+              <div className="space-y-2 max-h-60 overflow-y-auto py-2">
+                {Array.from(selectedContacts).map(id => {
+                  const c = contacts?.find((ct: any) => ct.id === id);
+                  if (!c) return null;
+                  return (
+                    <div
+                      key={id}
+                      className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${primaryMergeId === id ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'}`}
+                      onClick={() => setPrimaryMergeId(id)}
+                      data-testid={`merge-option-${id}`}
+                    >
+                      <input type="radio" checked={primaryMergeId === id} onChange={() => setPrimaryMergeId(id)} className="accent-primary" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{c.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {[c.role, c.email, c.businessName].filter(Boolean).join(" · ")}
+                        </p>
+                      </div>
+                      {primaryMergeId === id && <Badge variant="secondary" className="text-xs">Primary</Badge>}
+                    </div>
+                  );
+                })}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setMergeDialogOpen(false)} data-testid="button-cancel-merge">
+                  Cancel
+                </Button>
+                <Button
+                  onClick={confirmMerge}
+                  disabled={!primaryMergeId || mergeMutation.isPending}
+                  data-testid="button-confirm-merge"
+                >
+                  {mergeMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Merge className="w-4 h-4 mr-2" />}
+                  {mergeMutation.isPending ? "Merging..." : "Merge"}
                 </Button>
               </DialogFooter>
             </DialogContent>

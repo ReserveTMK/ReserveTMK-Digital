@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/beautiful-button";
 import { useGroups, useCreateGroup, useUpdateGroup, useDeleteGroup, useGroupMembers, useAddGroupMember, useRemoveGroupMember, useEnrichGroup, useGroupTaxonomyLinks, useSaveGroupTaxonomyLinks } from "@/hooks/use-groups";
 import { useContacts } from "@/hooks/use-contacts";
 import { useTaxonomy } from "@/hooks/use-taxonomy";
-import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe, Target, History, ChevronDown, Pencil, Edit3, CheckSquare, UserCheck, ArrowRightLeft, Tag } from "lucide-react";
+import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe, Target, History, ChevronDown, Pencil, Edit3, CheckSquare, UserCheck, ArrowRightLeft, Tag, Merge } from "lucide-react";
 import { RelationshipStageSelector } from "@/components/relationship-stage-selector";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -72,6 +72,8 @@ export default function Groups() {
   const [viewMode, setViewMode] = useState<"community" | "all">("all");
   const [bulkTierOpen, setBulkTierOpen] = useState(false);
   const [bulkTierValue, setBulkTierValue] = useState("");
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [primaryMergeId, setPrimaryMergeId] = useState<number | null>(null);
   const { toast } = useToast();
 
   const createGroup = useCreateGroup();
@@ -116,6 +118,41 @@ export default function Groups() {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
+
+  const mergeMutation = useMutation({
+    mutationFn: async ({ primaryId, mergeIds }: { primaryId: number; mergeIds: number[] }) => {
+      const res = await apiRequest("POST", "/api/groups/merge", { primaryId, mergeIds });
+      if (!res.ok) throw new Error("Failed to merge groups");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups/community-density"] });
+      toast({ title: "Groups merged successfully" });
+      setSelectedGroups(new Set());
+      setEditMode(false);
+      setMergeDialogOpen(false);
+      setPrimaryMergeId(null);
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const openMergeDialog = () => {
+    if (selectedGroups.size < 2) {
+      toast({ title: "Select at least 2 groups to merge", variant: "destructive" });
+      return;
+    }
+    setPrimaryMergeId(Array.from(selectedGroups)[0]);
+    setMergeDialogOpen(true);
+  };
+
+  const confirmMerge = () => {
+    if (!primaryMergeId) return;
+    const mergeIds = Array.from(selectedGroups).filter(id => id !== primaryMergeId);
+    mergeMutation.mutate({ primaryId: primaryMergeId, mergeIds });
+  };
 
   const filteredGroups = useMemo(() => {
     if (!groups) return [];
@@ -244,6 +281,17 @@ export default function Groups() {
                         <Tag className="w-4 h-4 mr-2" />
                         Change Tier
                       </Button>
+                      {selectedGroups.size >= 2 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={openMergeDialog}
+                          data-testid="button-merge-groups"
+                        >
+                          <Merge className="w-4 h-4 mr-2" />
+                          Merge ({selectedGroups.size})
+                        </Button>
+                      )}
                     </>
                   )}
                 </>
@@ -438,6 +486,51 @@ export default function Groups() {
               >
                 {bulkTierMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Update Tier
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={mergeDialogOpen} onOpenChange={(v) => { setMergeDialogOpen(v); if (!v) setPrimaryMergeId(null); }}>
+          <DialogContent data-testid="dialog-merge-groups">
+            <DialogHeader>
+              <DialogTitle data-testid="text-merge-groups-title">Merge {selectedGroups.size} Groups</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">Choose the primary group to keep. Members, taxonomy links, and all related data from the other groups will be merged into it, and the duplicates will be removed.</p>
+            <div className="space-y-2 max-h-60 overflow-y-auto py-2">
+              {Array.from(selectedGroups).map(id => {
+                const g = groups?.find((gr: any) => gr.id === id);
+                if (!g) return null;
+                return (
+                  <div
+                    key={id}
+                    className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${primaryMergeId === id ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'}`}
+                    onClick={() => setPrimaryMergeId(id)}
+                    data-testid={`merge-group-option-${id}`}
+                  >
+                    <input type="radio" checked={primaryMergeId === id} onChange={() => setPrimaryMergeId(id)} className="accent-primary" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{g.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {[g.type, g.relationshipTier].filter(Boolean).join(" · ")}
+                      </p>
+                    </div>
+                    {primaryMergeId === id && <Badge variant="secondary" className="text-xs">Primary</Badge>}
+                  </div>
+                );
+              })}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setMergeDialogOpen(false)} data-testid="button-cancel-merge-groups">
+                Cancel
+              </Button>
+              <Button
+                onClick={confirmMerge}
+                disabled={!primaryMergeId || mergeMutation.isPending}
+                data-testid="button-confirm-merge-groups"
+              >
+                {mergeMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Merge className="w-4 h-4 mr-2" />}
+                {mergeMutation.isPending ? "Merging..." : "Merge"}
               </Button>
             </DialogFooter>
           </DialogContent>
