@@ -9,7 +9,6 @@ import {
   Menu,
   FileText,
   Mic,
-  CheckSquare,
   CalendarCheck,
   MoreHorizontal,
   Layers,
@@ -21,6 +20,8 @@ import {
   BookOpen,
   Settings,
   DollarSign,
+  CalendarDays,
+  Activity,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "../ui/beautiful-button";
@@ -40,29 +41,30 @@ type NavItem = {
 
 const navigation: NavItem[] = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
+  { name: "Calendar", href: "/calendar", icon: CalendarCheck },
   {
     name: "Community", href: "/contacts", icon: Users,
     children: [
       { name: "People", href: "/contacts", icon: Users },
       { name: "Groups", href: "/groups", icon: Network },
       { name: "Ecosystem", href: "/ecosystem", icon: Handshake },
-      { name: "Community Spend", href: "/community-spend", icon: DollarSign },
     ],
   },
   {
-    name: "Hub Ops", href: "/calendar", icon: Settings,
+    name: "Delivery", href: "/programmes", icon: Layers,
     children: [
-      { name: "Calendar", href: "/calendar", icon: CalendarCheck },
       { name: "Programmes", href: "/programmes", icon: Layers },
       { name: "Bookings", href: "/bookings", icon: Building2 },
       { name: "Agreements", href: "/agreements", icon: Handshake },
     ],
   },
   {
-    name: "Debriefs", href: "/debriefs", icon: Mic,
+    name: "Tracking", href: "/debriefs", icon: Activity,
     children: [
-      { name: "Log Debrief", href: "/debriefs", icon: Mic },
-      { name: "Debrief Queue", href: "/debrief-queue", icon: ClipboardList },
+      { name: "Interactions", href: "/debriefs", icon: Mic },
+      { name: "Impact Logs", href: "/debrief-queue", icon: ClipboardList },
+      { name: "Debriefs", href: "/weekly-debriefs", icon: CalendarDays },
+      { name: "Community Spend", href: "/community-spend", icon: DollarSign },
     ],
   },
   {
@@ -70,17 +72,16 @@ const navigation: NavItem[] = [
     children: [
       { name: "Reports", href: "/reports", icon: FileText },
       { name: "Legacy Reports", href: "/legacy-reports", icon: BookOpen },
+      { name: "Taxonomy", href: "/taxonomy", icon: Tags },
     ],
   },
-  { name: "Actions", href: "/actions", icon: CheckSquare },
-  { name: "Taxonomy", href: "/taxonomy", icon: Tags },
 ];
 
 const bottomNavItems: NavItem[] = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
-  { name: "Community", href: "/contacts", icon: Users },
   { name: "Calendar", href: "/calendar", icon: CalendarCheck },
-  { name: "Reports", href: "/reports", icon: FileText },
+  { name: "Community", href: "/contacts", icon: Users },
+  { name: "Tracking", href: "/debriefs", icon: Activity },
 ];
 
 export function Sidebar() {

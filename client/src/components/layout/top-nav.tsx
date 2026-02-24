@@ -1,13 +1,11 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import {
-  LayoutDashboard,
   Users,
   LogOut,
   Menu,
   FileText,
   Mic,
-  CheckSquare,
   CalendarCheck,
   CalendarDays,
   Layers,
@@ -18,13 +16,9 @@ import {
   ClipboardList,
   BookOpen,
   Tags,
-  Settings,
-  BarChart3,
   X,
-  Shield,
-  Calendar,
-  Trophy,
   DollarSign,
+  Activity,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useRef, useEffect } from "react";
@@ -49,34 +43,36 @@ const navGroups: NavGroup[] = [
     children: [],
   },
   {
+    name: "Calendar",
+    href: "/calendar",
+    children: [],
+  },
+  {
     name: "Community",
     href: "/contacts",
     children: [
       { name: "People", href: "/contacts", icon: Users, description: "Manage contacts & mentees" },
       { name: "Groups", href: "/groups", icon: Network, description: "Organisations & collectives" },
       { name: "Ecosystem", href: "/ecosystem", icon: Handshake, description: "Organisation network overview" },
-      { name: "Community Spend", href: "/community-spend", icon: DollarSign, description: "Track community investment" },
     ],
   },
   {
     name: "Delivery",
-    href: "/calendar",
+    href: "/programmes",
     children: [
-      { name: "Calendar", href: "/calendar", icon: CalendarCheck, description: "Events & scheduling" },
       { name: "Programmes", href: "/programmes", icon: Layers, description: "Workshops & activations" },
-      { name: "Debriefs", href: "/debriefs", icon: Mic, description: "Log impact debriefs" },
-      { name: "Debrief Queue", href: "/debrief-queue", icon: ClipboardList, description: "Reconcile pending debriefs" },
-      { name: "Action Items", href: "/actions", icon: CheckSquare, description: "Track follow-ups" },
-      { name: "Milestones", href: "/milestones", icon: Trophy, description: "Achievements & outcomes" },
-      { name: "Programme Effectiveness", href: "/programme-effectiveness", icon: BarChart3, description: "Programme quality metrics" },
+      { name: "Bookings", href: "/bookings", icon: Building2, description: "Venue hire & spaces" },
+      { name: "Agreements", href: "/agreements", icon: Handshake, description: "Memberships & MOUs" },
     ],
   },
   {
-    name: "Space",
-    href: "/bookings",
+    name: "Tracking",
+    href: "/debriefs",
     children: [
-      { name: "Bookings", href: "/bookings", icon: Building2, description: "Venue hire & spaces" },
-      { name: "Agreements", href: "/agreements", icon: Handshake, description: "Memberships & MOUs" },
+      { name: "Interactions", href: "/debriefs", icon: Mic, description: "Calls, meetings & voice notes" },
+      { name: "Impact Logs", href: "/debrief-queue", icon: ClipboardList, description: "Specific impact moments" },
+      { name: "Debriefs", href: "/weekly-debriefs", icon: CalendarDays, description: "Weekly hub summaries" },
+      { name: "Community Spend", href: "/community-spend", icon: DollarSign, description: "Track community investment" },
     ],
   },
   {
@@ -85,13 +81,6 @@ const navGroups: NavGroup[] = [
     children: [
       { name: "Reports", href: "/reports", icon: FileText, description: "Monthly & quarterly reports" },
       { name: "Legacy Reports", href: "/legacy-reports", icon: BookOpen, description: "Historical PDF uploads" },
-      { name: "Weekly Debriefs", href: "/weekly-debriefs", icon: CalendarDays, description: "Weekly hub summaries" },
-    ],
-  },
-  {
-    name: "Settings",
-    href: "/taxonomy",
-    children: [
       { name: "Taxonomy", href: "/taxonomy", icon: Tags, description: "Impact categories & tags" },
     ],
   },

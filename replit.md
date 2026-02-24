@@ -16,6 +16,15 @@ The project uses a monorepo structure with `client/` (React frontend), `server/`
 ### Frontend Architecture
 The frontend is built with React and TypeScript using Vite. It employs Wouter for routing, TanStack React Query for state management, and shadcn/ui (Radix UI + Tailwind CSS) for UI components. Styling is handled by Tailwind CSS with custom fonts. Forms use React Hook Form with Zod validation. Recharts is used for data visualization, and Lucide React for icons. The application is a PWA with mobile bottom navigation.
 
+### Navigation Structure
+The app uses a top navigation bar (desktop) and sidebar/bottom nav (mobile) with the following sections:
+- **Dashboard** (standalone, `/`)
+- **Calendar** (standalone, `/calendar`)
+- **Community**: People (`/contacts`), Groups (`/groups`), Ecosystem (`/ecosystem`)
+- **Delivery**: Programmes (`/programmes`), Bookings (`/bookings`), Agreements (`/agreements`)
+- **Tracking**: Interactions (`/debriefs`), Impact Logs (`/debrief-queue`), Debriefs (`/weekly-debriefs`), Community Spend (`/community-spend`)
+- **Reporting**: Reports (`/reports`), Legacy Reports (`/legacy-reports`), Taxonomy (`/taxonomy`)
+
 ### Backend Architecture
 The backend is an Express.js application running on Node.js with TypeScript, providing a RESTful JSON API. Authentication is managed via Replit Auth using OpenID Connect. AI integrations with OpenAI (via Replit AI Integrations proxy) power speech-to-text, text-to-speech, voice chat, image generation, interaction analysis, and impact debrief extraction. Server-side audio processing uses ffmpeg for format conversion. Batch processing is handled by a utility module for rate-limited, retryable API calls.
 
