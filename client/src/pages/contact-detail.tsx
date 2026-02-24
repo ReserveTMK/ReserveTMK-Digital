@@ -1,7 +1,7 @@
-import { useContact } from "@/hooks/use-contacts";
+import { useContact, useContacts, useCreateContact } from "@/hooks/use-contacts";
 import { useInteractions, useCreateInteraction, useAnalyzeInteraction } from "@/hooks/use-interactions";
 import { useActionItems } from "@/hooks/use-action-items";
-import { useContactGroups } from "@/hooks/use-groups";
+import { useContactGroups, useGroups, useCreateGroup } from "@/hooks/use-groups";
 import { Button } from "@/components/ui/beautiful-button";
 import { MetricCard } from "@/components/ui/metric-card";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +17,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Link } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -766,11 +766,38 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
   const [localBoard, setLocalBoard] = useState(contact.localBoard || "");
   const [showSuburbDropdown, setShowSuburbDropdown] = useState(false);
   const [businessName, setBusinessName] = useState(contact.businessName || "");
+  const [businessSearch, setBusinessSearch] = useState(contact.businessName || "");
+  const [showBusinessDropdown, setShowBusinessDropdown] = useState(false);
+  const [showQuickAddBusiness, setShowQuickAddBusiness] = useState(false);
+  const [showEmailDropdown, setShowEmailDropdown] = useState(false);
+  const [showQuickAddEmail, setShowQuickAddEmail] = useState(false);
+  const [quickAddEmailName, setQuickAddEmailName] = useState("");
   const [role, setRole] = useState(contact.role || "Entrepreneur");
   const [age, setAge] = useState(contact.age?.toString() || "");
   const [revenueBand, setRevenueBand] = useState(contact.revenueBand || "");
   const [selectedEthnicities, setSelectedEthnicities] = useState<string[]>(contact.ethnicity || []);
   const suburbRef = useRef<HTMLDivElement>(null);
+  const emailRef = useRef<HTMLDivElement>(null);
+  const businessRef = useRef<HTMLDivElement>(null);
+
+  const { data: allContacts } = useContacts();
+  const { data: allGroups } = useGroups();
+  const createContact = useCreateContact();
+  const createGroup = useCreateGroup();
+
+  const filteredEmailContacts = useMemo(() => {
+    if (!allContacts || !email.trim()) return [];
+    const term = email.toLowerCase();
+    return allContacts
+      .filter((c: any) => c.id !== contact.id && c.email && c.email.toLowerCase().includes(term))
+      .slice(0, 8);
+  }, [allContacts, email, contact.id]);
+
+  const filteredGroups = useMemo(() => {
+    if (!allGroups || !businessSearch.trim()) return [];
+    const term = businessSearch.toLowerCase();
+    return (allGroups as any[]).filter((g: any) => g.name.toLowerCase().includes(term)).slice(0, 8);
+  }, [allGroups, businessSearch]);
 
   const suburbResults = searchSuburbs(suburbSearch);
 
@@ -785,10 +812,16 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
       setSuburbSearch(contact.suburb || "");
       setLocalBoard(contact.localBoard || "");
       setBusinessName(contact.businessName || "");
+      setBusinessSearch(contact.businessName || "");
       setRole(contact.role || "Entrepreneur");
       setAge(contact.age?.toString() || "");
       setRevenueBand(contact.revenueBand || "");
       setSelectedEthnicities(contact.ethnicity || []);
+      setShowEmailDropdown(false);
+      setShowBusinessDropdown(false);
+      setShowQuickAddEmail(false);
+      setShowQuickAddBusiness(false);
+      setQuickAddEmailName("");
     }
   }, [open, contact]);
 
@@ -797,10 +830,35 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
       if (suburbRef.current && !suburbRef.current.contains(e.target as Node)) {
         setShowSuburbDropdown(false);
       }
+      if (emailRef.current && !emailRef.current.contains(e.target as Node)) {
+        setShowEmailDropdown(false);
+      }
+      if (businessRef.current && !businessRef.current.contains(e.target as Node)) {
+        setShowBusinessDropdown(false);
+      }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  const handleQuickAddEmailContact = async () => {
+    if (!quickAddEmailName.trim() || !email.trim()) return;
+    try {
+      await createContact.mutateAsync({ name: quickAddEmailName.trim(), email: email.trim(), role: "Professional" });
+      setShowQuickAddEmail(false);
+      setQuickAddEmailName("");
+    } catch (err: any) {}
+  };
+
+  const handleQuickAddGroup = async () => {
+    if (!businessSearch.trim()) return;
+    try {
+      const newGroup = await createGroup.mutateAsync({ name: businessSearch.trim(), type: "Organisation" });
+      setBusinessName(businessSearch.trim());
+      setShowQuickAddBusiness(false);
+      setShowBusinessDropdown(false);
+    } catch (err: any) {}
+  };
 
   const toggleEthnicity = (eth: string) => {
     setSelectedEthnicities(prev =>
@@ -869,15 +927,89 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
                 data-testid="input-edit-nickname"
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2" ref={emailRef}>
               <Label htmlFor="edit-email">Email</Label>
-              <Input
-                id="edit-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                data-testid="input-edit-email"
-              />
+              <div className="relative">
+                <Input
+                  id="edit-email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setShowEmailDropdown(true);
+                    setShowQuickAddEmail(false);
+                  }}
+                  onFocus={() => email.trim() && setShowEmailDropdown(true)}
+                  placeholder="Search or enter email..."
+                  data-testid="input-edit-email"
+                />
+                {showEmailDropdown && email.trim() && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-lg shadow-lg max-h-[200px] overflow-y-auto">
+                    {filteredEmailContacts.length > 0 ? (
+                      filteredEmailContacts.map((c: any) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex justify-between items-center"
+                          onClick={() => {
+                            setEmail(c.email);
+                            setShowEmailDropdown(false);
+                          }}
+                          data-testid={`email-option-${c.id}`}
+                        >
+                          <span className="truncate">{c.email}</span>
+                          <span className="text-xs text-muted-foreground ml-2 shrink-0">{c.name}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-3 py-2 text-sm text-muted-foreground" data-testid="text-no-email-matches">
+                        <p>No matching contacts found</p>
+                        {!showQuickAddEmail && (
+                          <Button
+                            type="button"
+                            variant="link"
+                            size="sm"
+                            className="p-0 h-auto mt-1"
+                            onClick={() => setShowQuickAddEmail(true)}
+                            data-testid="button-quick-add-email-contact"
+                          >
+                            + Quick Add as new contact
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {showQuickAddEmail && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <Input
+                      value={quickAddEmailName}
+                      onChange={(e) => setQuickAddEmailName(e.target.value)}
+                      placeholder="Contact name for this email..."
+                      className="flex-1"
+                      data-testid="input-quick-add-email-name"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleQuickAddEmailContact}
+                      disabled={!quickAddEmailName.trim() || createContact.isPending}
+                      data-testid="button-save-quick-add-email"
+                    >
+                      {createContact.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => { setShowQuickAddEmail(false); setQuickAddEmailName(""); }}
+                      data-testid="button-cancel-quick-add-email"
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-phone">Phone</Label>
@@ -888,14 +1020,84 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
                 data-testid="input-edit-phone"
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2" ref={businessRef}>
               <Label htmlFor="edit-business">Business Name</Label>
-              <Input
-                id="edit-business"
-                value={businessName}
-                onChange={(e) => setBusinessName(e.target.value)}
-                data-testid="input-edit-business"
-              />
+              <div className="relative">
+                <Input
+                  id="edit-business"
+                  value={businessSearch}
+                  onChange={(e) => {
+                    setBusinessSearch(e.target.value);
+                    setBusinessName(e.target.value);
+                    setShowBusinessDropdown(true);
+                    setShowQuickAddBusiness(false);
+                  }}
+                  onFocus={() => businessSearch && setShowBusinessDropdown(true)}
+                  placeholder="Search or enter business name..."
+                  data-testid="input-edit-business"
+                />
+                {showBusinessDropdown && businessSearch.trim() && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-lg shadow-lg max-h-[200px] overflow-y-auto">
+                    {filteredGroups.length > 0 ? (
+                      filteredGroups.map((g: any) => (
+                        <button
+                          key={g.id}
+                          type="button"
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex justify-between items-center"
+                          onClick={() => {
+                            setBusinessName(g.name);
+                            setBusinessSearch(g.name);
+                            setShowBusinessDropdown(false);
+                          }}
+                          data-testid={`business-option-${g.id}`}
+                        >
+                          <span className="truncate">{g.name}</span>
+                          {g.type && <span className="text-xs text-muted-foreground ml-2 shrink-0">{g.type}</span>}
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-3 py-2 text-sm text-muted-foreground" data-testid="text-no-business-matches">
+                        <p>No matching groups found</p>
+                        {!showQuickAddBusiness && (
+                          <Button
+                            type="button"
+                            variant="link"
+                            size="sm"
+                            className="p-0 h-auto mt-1"
+                            onClick={() => setShowQuickAddBusiness(true)}
+                            data-testid="button-quick-add-business"
+                          >
+                            + Quick Add as new group
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {showQuickAddBusiness && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-sm text-muted-foreground truncate flex-1">Create "{businessSearch.trim()}"?</span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleQuickAddGroup}
+                      disabled={!businessSearch.trim() || createGroup.isPending}
+                      data-testid="button-save-quick-add-business"
+                    >
+                      {createGroup.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setShowQuickAddBusiness(false)}
+                      data-testid="button-cancel-quick-add-business"
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-role">Role</Label>

@@ -798,7 +798,7 @@ export default function Contacts() {
                           data-testid={`menu-move-business-${contact.id}`}
                         >
                           <ArrowRightLeft className="w-4 h-4 mr-2" />
-                          Move to Business Contacts
+                          Move to All Contacts
                         </DropdownMenuItem>
                       )}
                       {viewMode === "all" && !contact.isCommunityMember && (
