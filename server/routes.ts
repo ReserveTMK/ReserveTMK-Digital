@@ -8,7 +8,7 @@ import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { openai } from "./replit_integrations/audio/client";
 import { getFullMonthlyReport, generateNarrative, type ReportFilters } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, groupMembers, bookings, programmes, contacts, impactLogGroups } from "@shared/schema";
+import { insertCommunitySpendSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql } from "drizzle-orm";
 import { scanGmailEmails, startAutoSync, getGmailOAuth2Client } from "./gmail-import";
@@ -2196,6 +2196,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
   app.get(api.groups.get.path, isAuthenticated, async (req, res) => {
     const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid group ID" });
     const group = await storage.getGroup(id);
     if (!group) return res.status(404).json({ message: "Group not found" });
     if (group.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -4606,6 +4607,155 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       res.json(densityMap);
     } catch (err: any) {
       res.status(500).json({ message: "Failed to get community density" });
+    }
+  });
+
+  app.get("/api/groups/engagement-metrics", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+
+      const metricsResult = await db.execute(sql`
+        WITH group_events AS (
+          SELECT g.id as group_id,
+            COUNT(DISTINCT CASE WHEN ea.id IS NOT NULL THEN e.id END) as event_count,
+            MAX(CASE WHEN ea.id IS NOT NULL THEN e.start_time END) as last_event_date
+          FROM groups g
+          LEFT JOIN group_members gm ON gm.group_id = g.id
+          LEFT JOIN event_attendance ea ON ea.contact_id = gm.contact_id
+          LEFT JOIN events e ON e.id = ea.event_id AND e.user_id = ${userId}
+          WHERE g.user_id = ${userId}
+          GROUP BY g.id
+        ),
+        group_programmes AS (
+          SELECT g.id as group_id,
+            COUNT(DISTINCT p.id) as programme_count,
+            MAX(COALESCE(p.start_date, p.created_at)) as last_programme_date
+          FROM groups g
+          LEFT JOIN group_members gm ON gm.group_id = g.id
+          LEFT JOIN programmes p ON p.user_id = ${userId}
+            AND (gm.contact_id = ANY(p.facilitators) OR gm.contact_id = ANY(p.attendees))
+          WHERE g.user_id = ${userId}
+          GROUP BY g.id
+        ),
+        group_bookings AS (
+          SELECT g.id as group_id,
+            COUNT(DISTINCT b.id) as booking_count,
+            MAX(COALESCE(b.start_date, b.created_at)) as last_booking_date
+          FROM groups g
+          LEFT JOIN bookings b ON b.booker_group_id = g.id AND b.user_id = ${userId}
+          WHERE g.user_id = ${userId}
+          GROUP BY g.id
+        ),
+        group_spend AS (
+          SELECT g.id as group_id,
+            COUNT(DISTINCT cs.id) as spend_count,
+            MAX(cs.date) as last_spend_date
+          FROM groups g
+          LEFT JOIN community_spend cs ON cs.group_id = g.id AND cs.user_id = ${userId}
+          WHERE g.user_id = ${userId}
+          GROUP BY g.id
+        ),
+        group_impact AS (
+          SELECT g.id as group_id,
+            COUNT(DISTINCT ilg.impact_log_id) as impact_count,
+            MAX(ilg.created_at) as last_impact_date
+          FROM groups g
+          LEFT JOIN impact_log_groups ilg ON ilg.group_id = g.id
+          WHERE g.user_id = ${userId}
+          GROUP BY g.id
+        ),
+        group_agreements AS (
+          SELECT g.id as group_id,
+            COUNT(DISTINCT m.id) + COUNT(DISTINCT mo.id) as agreement_count
+          FROM groups g
+          LEFT JOIN memberships m ON m.group_id = g.id AND m.user_id = ${userId}
+          LEFT JOIN mous mo ON mo.group_id = g.id AND mo.user_id = ${userId}
+          WHERE g.user_id = ${userId}
+          GROUP BY g.id
+        )
+        SELECT
+          g.id as group_id,
+          COALESCE(ge.event_count, 0)::int as total_events,
+          COALESCE(gp.programme_count, 0)::int as total_programmes,
+          COALESCE(gb.booking_count, 0)::int as total_bookings,
+          COALESCE(gs.spend_count, 0)::int as total_spend_entries,
+          COALESCE(gi.impact_count, 0)::int as total_impact_logs,
+          COALESCE(ga.agreement_count, 0)::int as total_agreements,
+          GREATEST(
+            ge.last_event_date,
+            gp.last_programme_date,
+            gb.last_booking_date,
+            gs.last_spend_date,
+            gi.last_impact_date
+          ) as last_engagement_date
+        FROM groups g
+        LEFT JOIN group_events ge ON ge.group_id = g.id
+        LEFT JOIN group_programmes gp ON gp.group_id = g.id
+        LEFT JOIN group_bookings gb ON gb.group_id = g.id
+        LEFT JOIN group_spend gs ON gs.group_id = g.id
+        LEFT JOIN group_impact gi ON gi.group_id = g.id
+        LEFT JOIN group_agreements ga ON ga.group_id = g.id
+        WHERE g.user_id = ${userId}
+      `);
+
+      const metricsMap: Record<number, any> = {};
+      for (const row of metricsResult.rows) {
+        metricsMap[row.group_id as number] = {
+          totalEvents: Number(row.total_events) || 0,
+          totalProgrammes: Number(row.total_programmes) || 0,
+          totalBookings: Number(row.total_bookings) || 0,
+          totalSpendEntries: Number(row.total_spend_entries) || 0,
+          totalImpactLogs: Number(row.total_impact_logs) || 0,
+          totalAgreements: Number(row.total_agreements) || 0,
+          totalCollaborations: (Number(row.total_events) || 0) + (Number(row.total_programmes) || 0) + (Number(row.total_bookings) || 0),
+          lastEngagementDate: row.last_engagement_date || null,
+        };
+      }
+
+      res.json(metricsMap);
+    } catch (err: any) {
+      console.error("Engagement metrics error:", err);
+      res.status(500).json({ message: "Failed to get engagement metrics" });
+    }
+  });
+
+  app.get("/api/groups/ecosystem-health", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+
+      const healthResult = await db.execute(sql`
+        WITH last_engagement AS (
+          SELECT g.id as group_id, g.strategic_importance,
+            GREATEST(
+              (SELECT MAX(e.start_time) FROM events e
+               JOIN event_attendance ea ON ea.event_id = e.id
+               JOIN group_members gm ON gm.contact_id = ea.contact_id AND gm.group_id = g.id
+               WHERE e.user_id = ${userId}),
+              (SELECT MAX(COALESCE(b.start_date, b.created_at)) FROM bookings b WHERE b.booker_group_id = g.id AND b.user_id = ${userId}),
+              (SELECT MAX(cs.date) FROM community_spend cs WHERE cs.group_id = g.id AND cs.user_id = ${userId}),
+              (SELECT MAX(ilg.created_at) FROM impact_log_groups ilg WHERE ilg.group_id = g.id)
+            ) as last_date
+          FROM groups g
+          WHERE g.user_id = ${userId}
+        )
+        SELECT
+          COUNT(*) as total,
+          COUNT(CASE WHEN last_date >= NOW() - INTERVAL '90 days' THEN 1 END) as active,
+          COUNT(CASE WHEN last_date < NOW() - INTERVAL '180 days' OR last_date IS NULL THEN 1 END) as dormant,
+          COUNT(CASE WHEN strategic_importance = 'high' AND (last_date < NOW() - INTERVAL '90 days' OR last_date IS NULL) THEN 1 END) as at_risk
+        FROM last_engagement
+      `);
+
+      const row = healthResult.rows[0] || {};
+      res.json({
+        total: Number(row.total) || 0,
+        active: Number(row.active) || 0,
+        dormant: Number(row.dormant) || 0,
+        atRisk: Number(row.at_risk) || 0,
+      });
+    } catch (err: any) {
+      console.error("Ecosystem health error:", err);
+      res.status(500).json({ message: "Failed to get ecosystem health" });
     }
   });
 

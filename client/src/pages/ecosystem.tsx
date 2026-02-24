@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import {
   Search, Heart, Handshake, MessageCircle, Building2, Users,
   Edit3, Trash2, Merge, Check, X, ChevronDown, ChevronRight,
-  FileText, ExternalLink, Globe, UserCheck
+  ExternalLink, UserCheck, Activity, AlertTriangle, Clock,
+  Star, Zap, Shield, TrendingUp, Calendar
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -18,6 +19,9 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover, PopoverContent, PopoverTrigger,
+} from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import type { Group } from "@shared/schema";
@@ -67,13 +71,95 @@ const TYPE_COLORS: Record<string, string> = {
   "Education": "bg-yellow-500/10 text-yellow-700 dark:text-yellow-300",
 };
 
+const ECOSYSTEM_ROLES = [
+  { value: "funder", label: "Funder" },
+  { value: "delivery_partner", label: "Delivery Partner" },
+  { value: "referral_partner", label: "Referral Partner" },
+  { value: "corporate", label: "Corporate" },
+  { value: "government", label: "Government" },
+  { value: "supplier", label: "Supplier" },
+  { value: "creative", label: "Creative" },
+  { value: "alumni_business", label: "Alumni Business" },
+  { value: "connector", label: "Connector" },
+] as const;
+
+const ROLE_COLORS: Record<string, string> = {
+  funder: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
+  delivery_partner: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
+  referral_partner: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
+  corporate: "bg-slate-100 text-slate-800 dark:bg-slate-900/40 dark:text-slate-300",
+  government: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+  supplier: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300",
+  creative: "bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300",
+  alumni_business: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300",
+  connector: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
+};
+
+const IMPORTANCE_CONFIG = {
+  high: { label: "High", color: "text-red-600", bg: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" },
+  medium: { label: "Medium", color: "text-amber-600", bg: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" },
+  low: { label: "Low", color: "text-slate-500", bg: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300" },
+};
+
+type EngagementMetrics = {
+  totalEvents: number;
+  totalProgrammes: number;
+  totalBookings: number;
+  totalSpendEntries: number;
+  totalImpactLogs: number;
+  totalAgreements: number;
+  totalCollaborations: number;
+  lastEngagementDate: string | null;
+};
+
+type HealthSummary = {
+  total: number;
+  active: number;
+  dormant: number;
+  atRisk: number;
+};
+
+function getEngagementStatus(lastDate: string | null): "active" | "recent" | "dormant" {
+  if (!lastDate) return "dormant";
+  const d = new Date(lastDate);
+  const now = new Date();
+  const daysDiff = (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
+  if (daysDiff <= 90) return "active";
+  if (daysDiff <= 180) return "recent";
+  return "dormant";
+}
+
+function formatRelativeDate(dateStr: string | null): string {
+  if (!dateStr) return "No activity";
+  const d = new Date(dateStr);
+  const now = new Date();
+  const daysDiff = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
+  if (daysDiff === 0) return "Today";
+  if (daysDiff === 1) return "Yesterday";
+  if (daysDiff < 7) return `${daysDiff}d ago`;
+  if (daysDiff < 30) return `${Math.floor(daysDiff / 7)}w ago`;
+  if (daysDiff < 365) return `${Math.floor(daysDiff / 30)}mo ago`;
+  return `${Math.floor(daysDiff / 365)}y ago`;
+}
+
 export default function EcosystemPage() {
   const { data: groups, isLoading } = useGroups();
   const { data: densityData } = useQuery<Record<number, { communityCount: number; totalMembers: number }>>({
     queryKey: ['/api/groups/community-density'],
   });
+  const { data: engagementData } = useQuery<Record<number, EngagementMetrics>>({
+    queryKey: ['/api/groups/engagement-metrics'],
+  });
+  const { data: healthData } = useQuery<HealthSummary>({
+    queryKey: ['/api/groups/ecosystem-health'],
+  });
+
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [importanceFilter, setImportanceFilter] = useState<string>("all");
+  const [strengthFilter, setStrengthFilter] = useState<string>("all");
+  const [engagementFilter, setEngagementFilter] = useState<string>("all");
   const [editMode, setEditMode] = useState(false);
   const [selectedForMerge, setSelectedForMerge] = useState<number[]>([]);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
@@ -84,6 +170,7 @@ export default function EcosystemPage() {
   const [changeTierDialog, setChangeTierDialog] = useState<{ group: Group; newTier: TierKey } | null>(null);
   const [bulkTierOpen, setBulkTierOpen] = useState(false);
   const [bulkTierValue, setBulkTierValue] = useState<string>("");
+  const [showFilters, setShowFilters] = useState(false);
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
@@ -102,6 +189,7 @@ export default function EcosystemPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.groups.list.path] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups/ecosystem-health'] });
       toast({ title: "Tier updated" });
     },
   });
@@ -120,6 +208,8 @@ export default function EcosystemPage() {
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: [api.groups.list.path] });
       queryClient.invalidateQueries({ queryKey: ['/api/groups/community-density'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups/engagement-metrics'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups/ecosystem-health'] });
       setSelectedForMerge([]);
       setBulkDeleteOpen(false);
       setEditMode(false);
@@ -144,6 +234,7 @@ export default function EcosystemPage() {
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: [api.groups.list.path] });
       queryClient.invalidateQueries({ queryKey: ['/api/groups/community-density'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups/ecosystem-health'] });
       setSelectedForMerge([]);
       setBulkTierOpen(false);
       setBulkTierValue("");
@@ -168,6 +259,8 @@ export default function EcosystemPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.groups.list.path] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups/engagement-metrics'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups/ecosystem-health'] });
       setSelectedForMerge([]);
       setMergeDialogOpen(false);
       setPrimaryMergeId(null);
@@ -178,15 +271,40 @@ export default function EcosystemPage() {
     },
   });
 
+  const updateGroupMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: Record<string, any> }) => {
+      const res = await apiRequest("PATCH", `/api/groups/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.groups.list.path] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups/ecosystem-health'] });
+    },
+  });
+
+  const hasActiveFilters = roleFilter !== "all" || importanceFilter !== "all" || strengthFilter !== "all" || engagementFilter !== "all";
+
   const filtered = useMemo(() => {
     if (!groups) return [];
     return (groups as Group[]).filter((g) => {
       const matchesSearch = !search || g.name.toLowerCase().includes(search.toLowerCase()) ||
         g.description?.toLowerCase().includes(search.toLowerCase());
       const matchesType = typeFilter === "all" || g.type === typeFilter;
-      return matchesSearch && matchesType;
+      const matchesRole = roleFilter === "all" || (g.ecosystemRoles && g.ecosystemRoles.includes(roleFilter));
+      const matchesImportance = importanceFilter === "all" || g.strategicImportance === importanceFilter;
+      const matchesStrength = strengthFilter === "all" || String(g.relationshipStrength) === strengthFilter;
+      const matchesEngagement = (() => {
+        if (engagementFilter === "all") return true;
+        const metrics = engagementData?.[g.id];
+        const status = getEngagementStatus(metrics?.lastEngagementDate || null);
+        if (engagementFilter === "active") return status === "active";
+        if (engagementFilter === "dormant") return status === "dormant";
+        if (engagementFilter === "recent") return status === "recent";
+        return true;
+      })();
+      return matchesSearch && matchesType && matchesRole && matchesImportance && matchesStrength && matchesEngagement;
     });
-  }, [groups, search, typeFilter]);
+  }, [groups, search, typeFilter, roleFilter, importanceFilter, strengthFilter, engagementFilter, engagementData]);
 
   const tiers: TierKey[] = ["support", "collaborate", "mentioned"];
 
@@ -269,7 +387,7 @@ export default function EcosystemPage() {
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-page-title">Ecosystem</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {totalGroups} organisations across your network
+            Network intelligence across {totalGroups} organisations
           </p>
         </div>
         <div className="flex gap-2">
@@ -303,49 +421,171 @@ export default function EcosystemPage() {
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Search organisations..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-            data-testid="input-search"
-          />
+      {/* Health Summary */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3" data-testid="health-summary">
+        <Card className="p-4 border" data-testid="stat-total">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <Building2 className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold" data-testid="text-total-count">{healthData?.total ?? totalGroups}</div>
+              <div className="text-xs text-muted-foreground">Total Orgs</div>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4 border border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20" data-testid="stat-active">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
+              <Activity className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-400" data-testid="text-active-count">{healthData?.active ?? 0}</div>
+              <div className="text-xs text-muted-foreground">Active (90d)</div>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4 border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/20" data-testid="stat-dormant">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800">
+              <Clock className="w-5 h-5 text-slate-500" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-slate-600 dark:text-slate-400" data-testid="text-dormant-count">{healthData?.dormant ?? 0}</div>
+              <div className="text-xs text-muted-foreground">Dormant (6mo+)</div>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4 border border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/20" data-testid="stat-at-risk">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/40">
+              <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-red-600 dark:text-red-400" data-testid="text-at-risk-count">{healthData?.atRisk ?? 0}</div>
+              <div className="text-xs text-muted-foreground">At Risk</div>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Search & Filters */}
+      <div className="space-y-3">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Search organisations..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+              data-testid="input-search"
+            />
+          </div>
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="w-full sm:w-48" data-testid="select-type-filter">
+              <SelectValue placeholder="All types" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types</SelectItem>
+              {uniqueTypes.map(t => (
+                <SelectItem key={t} value={t}>{t}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant={showFilters || hasActiveFilters ? "default" : "outline"}
+            size="sm"
+            className="h-10"
+            onClick={() => setShowFilters(!showFilters)}
+            data-testid="button-toggle-filters"
+          >
+            <TrendingUp className="w-4 h-4 mr-1" />
+            Filters
+            {hasActiveFilters && (
+              <Badge variant="secondary" className="ml-1 px-1.5 text-[10px]">
+                {[roleFilter, importanceFilter, strengthFilter, engagementFilter].filter(f => f !== "all").length}
+              </Badge>
+            )}
+          </Button>
         </div>
-        <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-full sm:w-48" data-testid="select-type-filter">
-            <SelectValue placeholder="All types" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All types</SelectItem>
-            {uniqueTypes.map(t => (
-              <SelectItem key={t} value={t}>{t}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+
+        {showFilters && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3 rounded-lg border bg-muted/30" data-testid="filter-panel">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Ecosystem Role</label>
+              <Select value={roleFilter} onValueChange={setRoleFilter}>
+                <SelectTrigger className="h-9" data-testid="select-role-filter">
+                  <SelectValue placeholder="All roles" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All roles</SelectItem>
+                  {ECOSYSTEM_ROLES.map(r => (
+                    <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Strategic Importance</label>
+              <Select value={importanceFilter} onValueChange={setImportanceFilter}>
+                <SelectTrigger className="h-9" data-testid="select-importance-filter">
+                  <SelectValue placeholder="All levels" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All levels</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Relationship Strength</label>
+              <Select value={strengthFilter} onValueChange={setStrengthFilter}>
+                <SelectTrigger className="h-9" data-testid="select-strength-filter">
+                  <SelectValue placeholder="Any strength" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Any strength</SelectItem>
+                  <SelectItem value="5">5 - Very Strong</SelectItem>
+                  <SelectItem value="4">4 - Strong</SelectItem>
+                  <SelectItem value="3">3 - Moderate</SelectItem>
+                  <SelectItem value="2">2 - Weak</SelectItem>
+                  <SelectItem value="1">1 - Very Weak</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Engagement Status</label>
+              <Select value={engagementFilter} onValueChange={setEngagementFilter}>
+                <SelectTrigger className="h-9" data-testid="select-engagement-filter">
+                  <SelectValue placeholder="Any status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Any status</SelectItem>
+                  <SelectItem value="active">Active (90d)</SelectItem>
+                  <SelectItem value="recent">Recent (3-6mo)</SelectItem>
+                  <SelectItem value="dormant">Dormant (6mo+)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="col-span-2 md:col-span-4 text-xs"
+                onClick={() => { setRoleFilter("all"); setImportanceFilter("all"); setStrengthFilter("all"); setEngagementFilter("all"); }}
+                data-testid="button-clear-filters"
+              >
+                <X className="w-3 h-3 mr-1" /> Clear all filters
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
-        {tiers.map(tier => {
-          const config = TIER_CONFIG[tier];
-          const Icon = config.icon;
-          const count = groupedByTier[tier].length;
-          return (
-            <Card key={tier} className={`p-3 ${config.bg} border ${config.border}`} data-testid={`stat-tier-${tier}`}>
-              <div className="flex items-center gap-2">
-                <Icon className={`w-5 h-5 ${config.color}`} />
-                <div>
-                  <div className="text-lg font-bold">{count}</div>
-                  <div className="text-xs text-muted-foreground">{config.label}</div>
-                </div>
-              </div>
-            </Card>
-          );
-        })}
-      </div>
-
+      {/* Tier Sections */}
       <div className="space-y-6">
         {tiers.map(tier => {
           const config = TIER_CONFIG[tier];
@@ -387,6 +627,8 @@ export default function EcosystemPage() {
                       onNavigate={() => setLocation("/groups")}
                       communityCount={densityData?.[group.id]?.communityCount || 0}
                       totalMembers={densityData?.[group.id]?.totalMembers || 0}
+                      metrics={engagementData?.[group.id]}
+                      onUpdateGroup={(data) => updateGroupMutation.mutate({ id: group.id, data })}
                     />
                   ))}
                 </div>
@@ -396,6 +638,7 @@ export default function EcosystemPage() {
         })}
       </div>
 
+      {/* Dialogs */}
       <Dialog open={mergeDialogOpen} onOpenChange={setMergeDialogOpen}>
         <DialogContent data-testid="dialog-merge">
           <DialogHeader>
@@ -564,6 +807,26 @@ export default function EcosystemPage() {
   );
 }
 
+function StrengthDots({ value, onChange }: { value: number | null; onChange: (v: number) => void }) {
+  return (
+    <div className="flex gap-0.5" data-testid="strength-dots">
+      {[1, 2, 3, 4, 5].map(n => (
+        <button
+          key={n}
+          className={`w-2.5 h-2.5 rounded-full transition-all ${
+            n <= (value || 0)
+              ? "bg-primary scale-110"
+              : "bg-muted-foreground/20 hover:bg-muted-foreground/40"
+          }`}
+          onClick={(e) => { e.stopPropagation(); onChange(n); }}
+          title={`Strength ${n}/5`}
+          data-testid={`strength-dot-${n}`}
+        />
+      ))}
+    </div>
+  );
+}
+
 function GroupCard({
   group,
   tier,
@@ -575,6 +838,8 @@ function GroupCard({
   onNavigate,
   communityCount,
   totalMembers,
+  metrics,
+  onUpdateGroup,
 }: {
   group: Group;
   tier: TierKey;
@@ -586,9 +851,21 @@ function GroupCard({
   onNavigate: () => void;
   communityCount: number;
   totalMembers: number;
+  metrics?: EngagementMetrics;
+  onUpdateGroup: (data: Record<string, any>) => void;
 }) {
   const config = TIER_CONFIG[tier];
   const typeColor = TYPE_COLORS[group.type] || "bg-gray-500/10 text-gray-700 dark:text-gray-300";
+  const engagementStatus = getEngagementStatus(metrics?.lastEngagementDate || null);
+  const [rolesOpen, setRolesOpen] = useState(false);
+
+  const statusIndicator = {
+    active: { color: "bg-emerald-500", label: "Active" },
+    recent: { color: "bg-amber-400", label: "Recent" },
+    dormant: { color: "bg-slate-300 dark:bg-slate-600", label: "Dormant" },
+  }[engagementStatus];
+
+  const totalActivity = metrics ? metrics.totalCollaborations + metrics.totalImpactLogs + metrics.totalSpendEntries : 0;
 
   return (
     <Card
@@ -598,6 +875,7 @@ function GroupCard({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
+            <div className={`w-2 h-2 rounded-full shrink-0 ${statusIndicator.color}`} title={statusIndicator.label} />
             <h3 className="font-semibold text-sm truncate" data-testid={`text-group-name-${group.id}`}>
               {group.name}
             </h3>
@@ -605,28 +883,63 @@ function GroupCard({
               {group.type}
             </Badge>
           </div>
+
           {group.description && (
-            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{group.description}</p>
+            <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{group.description}</p>
           )}
+
+          {/* Strategic Info Row */}
           <div className="flex items-center gap-2 mt-2 flex-wrap">
+            {group.strategicImportance && (
+              <Badge variant="outline" className={`text-[10px] px-1.5 ${IMPORTANCE_CONFIG[group.strategicImportance as keyof typeof IMPORTANCE_CONFIG]?.bg || ''}`} data-testid={`badge-importance-${group.id}`}>
+                <Shield className="w-2.5 h-2.5 mr-0.5" />
+                {IMPORTANCE_CONFIG[group.strategicImportance as keyof typeof IMPORTANCE_CONFIG]?.label}
+              </Badge>
+            )}
+            {group.ecosystemRoles && group.ecosystemRoles.length > 0 && (
+              group.ecosystemRoles.slice(0, 2).map(role => (
+                <Badge key={role} variant="outline" className={`text-[10px] px-1.5 ${ROLE_COLORS[role] || ''}`} data-testid={`badge-role-${role}-${group.id}`}>
+                  {ECOSYSTEM_ROLES.find(r => r.value === role)?.label || role}
+                </Badge>
+              ))
+            )}
+            {group.ecosystemRoles && group.ecosystemRoles.length > 2 && (
+              <Badge variant="outline" className="text-[10px] px-1.5">+{group.ecosystemRoles.length - 2}</Badge>
+            )}
+          </div>
+
+          {/* Metrics Row */}
+          <div className="flex items-center gap-3 mt-2 text-[11px] text-muted-foreground">
             {communityCount > 0 && (
-              <Badge variant="secondary" className="text-[10px] gap-1 bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/20" data-testid={`badge-community-count-${group.id}`}>
-                <UserCheck className="w-3 h-3" />
-                {communityCount} community
-              </Badge>
+              <span className="flex items-center gap-1" data-testid={`badge-community-count-${group.id}`}>
+                <UserCheck className="w-3 h-3 text-violet-500" />
+                {communityCount}
+              </span>
             )}
-            {group.importSource && (
-              <Badge variant="outline" className="text-[10px] gap-1">
-                <FileText className="w-3 h-3" />
-                {group.importSource.replace("Imported from legacy report ", "")}
-              </Badge>
+            {totalMembers > 0 && (
+              <span className="flex items-center gap-1">
+                <Users className="w-3 h-3" />
+                {totalMembers}
+              </span>
             )}
-            {group.website && (
-              <Badge variant="outline" className="text-[10px] gap-1">
-                <Globe className="w-3 h-3" />
-                Web
-              </Badge>
+            {totalActivity > 0 && (
+              <span className="flex items-center gap-1">
+                <Activity className="w-3 h-3 text-emerald-500" />
+                {totalActivity}
+              </span>
             )}
+            <span className="flex items-center gap-1 ml-auto" data-testid={`text-last-engagement-${group.id}`}>
+              <Calendar className="w-3 h-3" />
+              {formatRelativeDate(metrics?.lastEngagementDate || null)}
+            </span>
+          </div>
+
+          {/* Strength dots */}
+          <div className="mt-2">
+            <StrengthDots
+              value={group.relationshipStrength ?? null}
+              onChange={(v) => onUpdateGroup({ relationshipStrength: v })}
+            />
           </div>
         </div>
 
@@ -655,31 +968,99 @@ function GroupCard({
       </div>
 
       {!editMode && (
-        <div className="flex items-center gap-1 mt-3">
-          {(["support", "collaborate", "mentioned"] as TierKey[]).map(t => {
-            const TierIcon = TIER_CONFIG[t].icon;
-            const isActive = tier === t;
-            return (
-              <button
-                key={t}
-                className={`p-1 rounded transition ${
-                  isActive
-                    ? `${TIER_CONFIG[t].badge}`
-                    : "text-muted-foreground/40 hover:text-muted-foreground"
-                }`}
-                onClick={() => onChangeTier(t)}
-                title={`Move to ${TIER_CONFIG[t].label}`}
-                data-testid={`button-tier-${t}-${group.id}`}
-              >
-                <TierIcon className="w-3.5 h-3.5" />
+        <div className="flex items-center gap-1 mt-3 pt-2 border-t">
+          <div className="flex items-center gap-1">
+            {(["support", "collaborate", "mentioned"] as TierKey[]).map(t => {
+              const TierIcon = TIER_CONFIG[t].icon;
+              const isActive = tier === t;
+              return (
+                <button
+                  key={t}
+                  className={`p-1 rounded transition ${
+                    isActive
+                      ? `${TIER_CONFIG[t].badge}`
+                      : "text-muted-foreground/40 hover:text-muted-foreground"
+                  }`}
+                  onClick={() => onChangeTier(t)}
+                  title={`Move to ${TIER_CONFIG[t].label}`}
+                  data-testid={`button-tier-${t}-${group.id}`}
+                >
+                  <TierIcon className="w-3.5 h-3.5" />
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Inline importance toggle */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="p-1 rounded text-muted-foreground/60 hover:text-muted-foreground transition ml-1" title="Strategic importance" data-testid={`button-importance-${group.id}`}>
+                <Shield className="w-3.5 h-3.5" />
               </button>
-            );
-          })}
+            </PopoverTrigger>
+            <PopoverContent className="w-36 p-1" align="start">
+              {(["high", "medium", "low"] as const).map(level => (
+                <button
+                  key={level}
+                  className={`w-full text-left px-3 py-1.5 text-xs rounded transition ${
+                    group.strategicImportance === level ? "bg-primary/10 font-medium" : "hover:bg-muted"
+                  }`}
+                  onClick={() => onUpdateGroup({ strategicImportance: level })}
+                  data-testid={`option-importance-${level}-${group.id}`}
+                >
+                  {IMPORTANCE_CONFIG[level].label}
+                </button>
+              ))}
+              {group.strategicImportance && (
+                <button
+                  className="w-full text-left px-3 py-1.5 text-xs rounded text-muted-foreground hover:bg-muted transition"
+                  onClick={() => onUpdateGroup({ strategicImportance: null })}
+                  data-testid={`option-importance-clear-${group.id}`}
+                >
+                  Clear
+                </button>
+              )}
+            </PopoverContent>
+          </Popover>
+
+          {/* Inline roles toggle */}
+          <Popover open={rolesOpen} onOpenChange={setRolesOpen}>
+            <PopoverTrigger asChild>
+              <button className="p-1 rounded text-muted-foreground/60 hover:text-muted-foreground transition" title="Ecosystem roles" data-testid={`button-roles-${group.id}`}>
+                <Zap className="w-3.5 h-3.5" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-48 p-1" align="start">
+              {ECOSYSTEM_ROLES.map(role => {
+                const isSelected = group.ecosystemRoles?.includes(role.value) || false;
+                return (
+                  <button
+                    key={role.value}
+                    className={`w-full text-left px-3 py-1.5 text-xs rounded flex items-center gap-2 transition ${
+                      isSelected ? "bg-primary/10 font-medium" : "hover:bg-muted"
+                    }`}
+                    onClick={() => {
+                      const current = group.ecosystemRoles || [];
+                      const updated = isSelected
+                        ? current.filter(r => r !== role.value)
+                        : [...current, role.value];
+                      onUpdateGroup({ ecosystemRoles: updated });
+                    }}
+                    data-testid={`option-role-${role.value}-${group.id}`}
+                  >
+                    {isSelected && <Check className="w-3 h-3 text-primary" />}
+                    <span className={isSelected ? "" : "ml-5"}>{role.label}</span>
+                  </button>
+                );
+              })}
+            </PopoverContent>
+          </Popover>
+
           <button
             className="ml-auto p-1 text-muted-foreground hover:text-foreground transition"
             onClick={onNavigate}
             title="View in Groups"
-            data-testid={`button-view-group-${group.id}`}
+            data-testid={`button-navigate-${group.id}`}
           >
             <ExternalLink className="w-3.5 h-3.5" />
           </button>
