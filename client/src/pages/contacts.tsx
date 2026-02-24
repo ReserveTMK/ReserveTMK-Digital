@@ -56,7 +56,6 @@ export default function Contacts() {
   const [viewMode, setViewMode] = useState<"community" | "all">("community");
   const [open, setOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [cleanUpOpen, setCleanUpOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [selectedContacts, setSelectedContacts] = useState<Set<number>>(new Set());
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
@@ -165,40 +164,6 @@ export default function Contacts() {
     },
   });
 
-  const backfillMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/contacts/community/backfill");
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/groups/community-density"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
-      const parts = [];
-      if (data.flagged > 0) parts.push(`${data.flagged} flagged as community`);
-      if (data.unflagged > 0) parts.push(`${data.unflagged} moved to business`);
-      if (data.lastActiveDatesSet > 0) parts.push(`${data.lastActiveDatesSet} activity dates updated`);
-      toast({ title: "Community Scan Complete", description: parts.length > 0 ? parts.join(", ") : "No changes needed." });
-    },
-    onError: (err: any) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const aiScoreMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/contacts/community/ai-score");
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-      toast({ title: "Relationships Scored", description: `${data.scored ?? 0} contacts scored successfully.` });
-    },
-    onError: (err: any) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    },
-  });
-
   const filteredContacts = contacts?.filter(contact => {
     const matchesSearch = contact.name.toLowerCase().includes(search.toLowerCase()) || 
                           contact.businessName?.toLowerCase().includes(search.toLowerCase()) ||
@@ -294,22 +259,6 @@ export default function Contacts() {
               </Button>
               {!editMode && (
                 <>
-                  {contacts && contacts.length > 0 && (
-                    <Button variant="outline" onClick={() => backfillMutation.mutate()} disabled={backfillMutation.isPending} data-testid="button-flag-community">
-                      {backfillMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Flag className="w-4 h-4 mr-2" />}
-                      Flag Community Members
-                    </Button>
-                  )}
-                  {viewMode === "community" && (
-                    <Button variant="outline" onClick={() => aiScoreMutation.mutate()} disabled={aiScoreMutation.isPending} data-testid="button-score-relationships">
-                      {aiScoreMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
-                      Score Relationships
-                    </Button>
-                  )}
-                  <Button variant="outline" onClick={() => setCleanUpOpen(true)} data-testid="button-clean-up">
-                    <Eraser className="w-4 h-4 mr-2" />
-                    Clean Up
-                  </Button>
                   <Button variant="outline" onClick={() => setBulkOpen(true)} data-testid="button-bulk-upload">
                     <Upload className="w-4 h-4 mr-2" />
                     Bulk Upload
@@ -329,7 +278,6 @@ export default function Contacts() {
           </div>
 
           <BulkUploadDialog open={bulkOpen} onOpenChange={setBulkOpen} />
-          <CleanUpDialog open={cleanUpOpen} onOpenChange={setCleanUpOpen} />
 
           <Dialog open={bulkDeleteConfirmOpen} onOpenChange={setBulkDeleteConfirmOpen}>
             <DialogContent>
