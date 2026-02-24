@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { useContacts, useCreateContact, useDeleteContact } from "@/hooks/use-contacts";
-import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Flag, Sparkles, Eraser, Edit3 } from "lucide-react";
+import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Flag, Sparkles, Eraser, Edit3, Tag } from "lucide-react";
 import { useState, useRef, useCallback, useMemo } from "react";
 import { Link } from "wouter";
 import { format } from "date-fns";
@@ -60,6 +60,10 @@ export default function Contacts() {
   const [editMode, setEditMode] = useState(false);
   const [selectedContacts, setSelectedContacts] = useState<Set<number>>(new Set());
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
+  const [bulkRoleOpen, setBulkRoleOpen] = useState(false);
+  const [bulkRoleValue, setBulkRoleValue] = useState("");
+  const [bulkActivityOpen, setBulkActivityOpen] = useState(false);
+  const [bulkActivityValue, setBulkActivityValue] = useState("");
 
   const deleteContact = useDeleteContact();
 
@@ -74,6 +78,44 @@ export default function Contacts() {
       setSelectedContacts(new Set());
       setEditMode(false);
       setBulkDeleteConfirmOpen(false);
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const bulkMoveMutation = useMutation({
+    mutationFn: async ({ contactIds, isCommunityMember }: { contactIds: number[]; isCommunityMember: boolean }) => {
+      const res = await apiRequest("POST", "/api/contacts/community/bulk-move", { contactIds, isCommunityMember });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups/community-density"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      toast({ title: "Success", description: `${selectedContacts.size} contact${selectedContacts.size !== 1 ? 's' : ''} moved successfully` });
+      setSelectedContacts(new Set());
+      setEditMode(false);
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const bulkUpdateMutation = useMutation({
+    mutationFn: async ({ contactIds, updates }: { contactIds: number[]; updates: Record<string, string> }) => {
+      const res = await apiRequest("POST", "/api/contacts/community/bulk-update", { contactIds, updates });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast({ title: "Success", description: `${selectedContacts.size} contact${selectedContacts.size !== 1 ? 's' : ''} updated successfully` });
+      setSelectedContacts(new Set());
+      setEditMode(false);
+      setBulkRoleOpen(false);
+      setBulkRoleValue("");
+      setBulkActivityOpen(false);
+      setBulkActivityValue("");
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -167,34 +209,34 @@ export default function Contacts() {
 
   const analytics = useMemo(() => {
     if (!contacts || contacts.length === 0) return null;
-    const now = Date.now();
-    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
-    const ninetyDaysAgo = now - 90 * 24 * 60 * 60 * 1000;
+    const communityContacts = (contacts as any[]).filter(c => c.isCommunityMember);
+    const pool = viewMode === "community" ? communityContacts : (contacts as any[]);
+    if (pool.length === 0) return null;
 
-    let active30 = 0;
-    let active90 = 0;
+    const now = Date.now();
+    const ninetyDaysAgo = now - 90 * 24 * 60 * 60 * 1000;
+    let active = 0;
+    let inactive = 0;
     let totalInteractions = 0;
     let totalDebriefs = 0;
     const roleCounts: Record<string, number> = {};
 
-    for (const c of contacts as any[]) {
-      const parsed = c.lastInteractionDate ? new Date(c.lastInteractionDate).getTime() : 0;
-      const lastDate = Number.isFinite(parsed) ? parsed : 0;
-      if (lastDate >= thirtyDaysAgo) active30++;
-      if (lastDate >= ninetyDaysAgo) active90++;
+    for (const c of pool) {
+      const lastActive = c.lastActiveDate ? new Date(c.lastActiveDate).getTime() : (c.lastInteractionDate ? new Date(c.lastInteractionDate).getTime() : 0);
+      if (lastActive >= ninetyDaysAgo) active++;
+      else inactive++;
       totalInteractions += (c.interactionCount || 0) + (c.eventCount || 0);
       totalDebriefs += c.debriefCount || 0;
       const role = c.role || "Unknown";
       roleCounts[role] = (roleCounts[role] || 0) + 1;
     }
 
-    const inactive = contacts.length - active90;
     const topRoles = Object.entries(roleCounts)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 4);
 
-    return { total: contacts.length, active30, active90, inactive, totalInteractions, totalDebriefs, topRoles };
-  }, [contacts]);
+    return { total: pool.length, active, inactive, totalInteractions, totalDebriefs, topRoles };
+  }, [contacts, viewMode]);
 
   return (
     <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
@@ -208,10 +250,32 @@ export default function Contacts() {
             
             <div className="flex items-center gap-2 flex-wrap">
               {editMode && selectedContacts.size > 0 && (
-                <Button variant="destructive" onClick={() => setBulkDeleteConfirmOpen(true)} data-testid="button-bulk-delete">
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete ({selectedContacts.size})
-                </Button>
+                <>
+                  <Button variant="destructive" onClick={() => setBulkDeleteConfirmOpen(true)} data-testid="button-bulk-delete">
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete ({selectedContacts.size})
+                  </Button>
+                  {viewMode === "community" && (
+                    <Button variant="outline" onClick={() => bulkMoveMutation.mutate({ contactIds: Array.from(selectedContacts), isCommunityMember: false })} disabled={bulkMoveMutation.isPending} data-testid="button-bulk-move-all">
+                      {bulkMoveMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowRightLeft className="w-4 h-4 mr-2" />}
+                      Move to All
+                    </Button>
+                  )}
+                  {viewMode === "all" && (
+                    <Button variant="outline" onClick={() => bulkMoveMutation.mutate({ contactIds: Array.from(selectedContacts), isCommunityMember: true })} disabled={bulkMoveMutation.isPending} data-testid="button-bulk-mark-community">
+                      {bulkMoveMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <UserCheck className="w-4 h-4 mr-2" />}
+                      Mark Community
+                    </Button>
+                  )}
+                  <Button variant="outline" onClick={() => setBulkRoleOpen(true)} data-testid="button-bulk-update-role">
+                    <Tag className="w-4 h-4 mr-2" />
+                    Update Role
+                  </Button>
+                  <Button variant="outline" onClick={() => setBulkActivityOpen(true)} data-testid="button-bulk-update-activity">
+                    <Edit3 className="w-4 h-4 mr-2" />
+                    Update Activity
+                  </Button>
+                </>
               )}
               {editMode && filteredContacts && filteredContacts.length > 0 && (
                 <div className="flex items-center gap-2">
@@ -291,6 +355,75 @@ export default function Contacts() {
             </DialogContent>
           </Dialog>
 
+          <Dialog open={bulkRoleOpen} onOpenChange={(v) => { setBulkRoleOpen(v); if (!v) setBulkRoleValue(""); }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle data-testid="text-bulk-role-title">Update Role for {selectedContacts.size} contact{selectedContacts.size !== 1 ? 's' : ''}</DialogTitle>
+              </DialogHeader>
+              <div className="py-4">
+                <Select value={bulkRoleValue} onValueChange={setBulkRoleValue}>
+                  <SelectTrigger data-testid="select-bulk-role">
+                    <SelectValue placeholder="Select a role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Entrepreneur">Entrepreneur</SelectItem>
+                    <SelectItem value="Professional">Professional</SelectItem>
+                    <SelectItem value="Innovator">Innovator</SelectItem>
+                    <SelectItem value="Want-trepreneur">Want-trepreneur</SelectItem>
+                    <SelectItem value="Rangatahi">Rangatahi</SelectItem>
+                    <SelectItem value="Business Owner">Business Owner</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => { setBulkRoleOpen(false); setBulkRoleValue(""); }} data-testid="button-bulk-role-cancel">
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => bulkUpdateMutation.mutate({ contactIds: Array.from(selectedContacts), updates: { role: bulkRoleValue } })}
+                  disabled={!bulkRoleValue || bulkUpdateMutation.isPending}
+                  data-testid="button-bulk-role-confirm"
+                >
+                  {bulkUpdateMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                  Apply Role
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={bulkActivityOpen} onOpenChange={(v) => { setBulkActivityOpen(v); if (!v) setBulkActivityValue(""); }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle data-testid="text-bulk-activity-title">Update Activity for {selectedContacts.size} contact{selectedContacts.size !== 1 ? 's' : ''}</DialogTitle>
+              </DialogHeader>
+              <div className="py-4">
+                <Select value={bulkActivityValue} onValueChange={setBulkActivityValue}>
+                  <SelectTrigger data-testid="select-bulk-activity">
+                    <SelectValue placeholder="Select activity status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                    <SelectItem value="dormant">Dormant</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => { setBulkActivityOpen(false); setBulkActivityValue(""); }} data-testid="button-bulk-activity-cancel">
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => bulkUpdateMutation.mutate({ contactIds: Array.from(selectedContacts), updates: { activityStatus: bulkActivityValue } })}
+                  disabled={!bulkActivityValue || bulkUpdateMutation.isPending}
+                  data-testid="button-bulk-activity-confirm"
+                >
+                  {bulkUpdateMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                  Apply Status
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           {analytics && (
             <div className="space-y-3" data-testid="community-analytics">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -301,18 +434,18 @@ export default function Contacts() {
                     </div>
                     <div className="min-w-0">
                       <p className="text-2xl font-bold font-display leading-none">{analytics.total}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Total Members</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Total Community</p>
                     </div>
                   </div>
                 </Card>
-                <Card className="p-4" data-testid="stat-active-30">
+                <Card className="p-4" data-testid="stat-active">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
                       <UserCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-2xl font-bold font-display leading-none">{analytics.active30}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Active (30d)</p>
+                      <p className="text-2xl font-bold font-display leading-none">{analytics.active}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Active (90d)</p>
                     </div>
                   </div>
                 </Card>
@@ -327,7 +460,7 @@ export default function Contacts() {
                     </div>
                   </div>
                 </Card>
-                <Card className="p-4" data-testid="stat-total-interactions">
+                <Card className="p-4" data-testid="stat-ytd-interactions">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
                       <TrendingUp className="w-4 h-4 text-violet-600 dark:text-violet-400" />

@@ -4670,6 +4670,83 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     }
   });
 
+  app.post("/api/contacts/community/bulk-move", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { contactIds, isCommunityMember } = req.body;
+      if (!Array.isArray(contactIds) || contactIds.length === 0) {
+        return res.status(400).json({ message: "No contact IDs provided" });
+      }
+      let updated = 0;
+      for (const id of contactIds) {
+        const contact = await storage.getContact(id);
+        if (contact && contact.userId === userId) {
+          await storage.updateContact(id, { isCommunityMember, communityMemberOverride: true });
+          updated++;
+        }
+      }
+      res.json({ updated });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update contacts" });
+    }
+  });
+
+  app.post("/api/contacts/community/bulk-update", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { contactIds, updates } = req.body;
+      if (!Array.isArray(contactIds) || contactIds.length === 0) {
+        return res.status(400).json({ message: "No contact IDs provided" });
+      }
+      const allowedFields = ["role", "activityStatus"];
+      const safeUpdates: Record<string, any> = {};
+      for (const key of Object.keys(updates || {})) {
+        if (allowedFields.includes(key)) {
+          safeUpdates[key] = updates[key];
+        }
+      }
+      if (Object.keys(safeUpdates).length === 0) {
+        return res.status(400).json({ message: "No valid fields to update" });
+      }
+      let updated = 0;
+      for (const id of contactIds) {
+        const contact = await storage.getContact(id);
+        if (contact && contact.userId === userId) {
+          await storage.updateContact(id, safeUpdates);
+          updated++;
+        }
+      }
+      res.json({ updated });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update contacts" });
+    }
+  });
+
+  app.post("/api/groups/bulk-update-tier", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { groupIds, tier } = req.body;
+      if (!Array.isArray(groupIds) || groupIds.length === 0) {
+        return res.status(400).json({ message: "No group IDs provided" });
+      }
+      const validTiers = ["support", "collaborate", "mentioned"];
+      if (!validTiers.includes(tier)) {
+        return res.status(400).json({ message: "Invalid tier" });
+      }
+      let updated = 0;
+      for (const id of groupIds) {
+        const group = await storage.getGroup(id);
+        if (group && group.userId === userId) {
+          await storage.updateGroup(id, { relationshipTier: tier });
+          updated++;
+        }
+      }
+      res.json({ updated });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update groups" });
+    }
+  });
+
   app.post("/api/contacts/community/backfill", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;

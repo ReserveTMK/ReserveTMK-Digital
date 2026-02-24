@@ -42,8 +42,8 @@ const TIER_CONFIG = {
     badge: "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300",
   },
   mentioned: {
-    label: "Mentioned",
-    description: "Loose connections and references",
+    label: "Noted",
+    description: "Logged in the network for reference",
     icon: MessageCircle,
     color: "text-slate-600 dark:text-slate-400",
     bg: "bg-slate-50 dark:bg-slate-950/30",
@@ -82,6 +82,8 @@ export default function EcosystemPage() {
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [collapsedTiers, setCollapsedTiers] = useState<Record<string, boolean>>({});
   const [changeTierDialog, setChangeTierDialog] = useState<{ group: Group; newTier: TierKey } | null>(null);
+  const [bulkTierOpen, setBulkTierOpen] = useState(false);
+  const [bulkTierValue, setBulkTierValue] = useState<string>("");
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
@@ -122,6 +124,31 @@ export default function EcosystemPage() {
       setBulkDeleteOpen(false);
       setEditMode(false);
       toast({ title: "Deleted", description: `${data.deleted} group${data.deleted !== 1 ? 's' : ''} removed.` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const bulkTierMutation = useMutation({
+    mutationFn: async ({ groupIds, tier }: { groupIds: number[]; tier: string }) => {
+      const res = await fetch("/api/groups/bulk-update-tier", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ groupIds, tier }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to update tiers");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: [api.groups.list.path] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups/community-density'] });
+      setSelectedForMerge([]);
+      setBulkTierOpen(false);
+      setBulkTierValue("");
+      setEditMode(false);
+      toast({ title: "Tiers updated", description: `${data.updated} group${data.updated !== 1 ? 's' : ''} updated.` });
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -259,6 +286,12 @@ export default function EcosystemPage() {
             <Button size="sm" onClick={openMergeDialog} data-testid="button-merge">
               <Merge className="w-4 h-4 mr-1" />
               Merge ({selectedForMerge.length})
+            </Button>
+          )}
+          {editMode && selectedForMerge.length >= 1 && (
+            <Button size="sm" variant="outline" onClick={() => setBulkTierOpen(true)} data-testid="button-bulk-tier">
+              <Heart className="w-4 h-4 mr-1" />
+              Change Tier ({selectedForMerge.length})
             </Button>
           )}
           {editMode && selectedForMerge.length >= 1 && (
@@ -490,6 +523,39 @@ export default function EcosystemPage() {
               data-testid="button-confirm-bulk-delete"
             >
               {bulkDeleteMutation.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkTierOpen} onOpenChange={setBulkTierOpen}>
+        <DialogContent data-testid="dialog-bulk-tier">
+          <DialogHeader>
+            <DialogTitle>Change Tier for {selectedForMerge.length} Group{selectedForMerge.length !== 1 ? 's' : ''}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Move the selected groups to a new relationship tier.
+          </p>
+          <Select value={bulkTierValue} onValueChange={setBulkTierValue}>
+            <SelectTrigger data-testid="select-bulk-tier">
+              <SelectValue placeholder="Select tier..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="support">Support</SelectItem>
+              <SelectItem value="collaborate">Collaborate</SelectItem>
+              <SelectItem value="mentioned">Noted</SelectItem>
+            </SelectContent>
+          </Select>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setBulkTierOpen(false); setBulkTierValue(""); }} data-testid="button-cancel-bulk-tier">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => bulkTierMutation.mutate({ groupIds: selectedForMerge, tier: bulkTierValue })}
+              disabled={!bulkTierValue || bulkTierMutation.isPending}
+              data-testid="button-confirm-bulk-tier"
+            >
+              {bulkTierMutation.isPending ? "Updating..." : "Update Tier"}
             </Button>
           </DialogFooter>
         </DialogContent>

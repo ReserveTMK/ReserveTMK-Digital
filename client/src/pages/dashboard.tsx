@@ -90,7 +90,13 @@ export default function Dashboard() {
 
   const hasLegacy = blendedStats && blendedStats.legacy.reportCount > 0;
 
+  const communityCount = contacts?.filter((c: any) => c.isCommunityMember)?.length || 0;
   const totalContacts = contacts?.length || 0;
+  const ytdInteractions = useMemo(() => {
+    if (!interactions) return 0;
+    const ytdStart = new Date(new Date().getFullYear(), 0, 1);
+    return interactions.filter((i: any) => new Date(i.date || i.createdAt) >= ytdStart).length;
+  }, [interactions]);
   const totalInteractions = interactions?.length || 0;
   const recentInteractions = interactions?.slice(0, 5) || [];
 
@@ -210,17 +216,17 @@ export default function Dashboard() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 md:gap-6">
             <MetricCard
-              title="Community"
-              value={loadingContacts ? "..." : totalContacts}
-              subtext={hasLegacy && blendedStats!.legacy.totalFoottraffic > 0 ? `incl. ${blendedStats!.legacy.totalFoottraffic.toLocaleString()} foot traffic from legacy` : undefined}
+              title="Total Community"
+              value={loadingContacts ? "..." : communityCount}
+              subtext={totalContacts > 0 ? `${totalContacts} total contacts` : undefined}
               icon={<Users className="w-5 h-5" />}
               color="primary"
               data-testid="metric-community"
             />
             <MetricCard
-              title="Total Interactions"
-              value={loadingInteractions ? "..." : totalInteractions}
-              subtext={hasLegacy && blendedStats!.legacy.totalFoottraffic > 0 ? `incl. ${blendedStats!.legacy.totalFoottraffic.toLocaleString()} foot traffic from legacy` : undefined}
+              title="Interactions YTD"
+              value={loadingInteractions ? "..." : ytdInteractions}
+              subtext={totalInteractions > ytdInteractions ? `${totalInteractions} all time` : undefined}
               icon={<Activity className="w-5 h-5" />}
               color="secondary"
               data-testid="metric-interactions"

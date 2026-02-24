@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/beautiful-button";
 import { useGroups, useCreateGroup, useUpdateGroup, useDeleteGroup, useGroupMembers, useAddGroupMember, useRemoveGroupMember, useEnrichGroup, useGroupTaxonomyLinks, useSaveGroupTaxonomyLinks } from "@/hooks/use-groups";
 import { useContacts } from "@/hooks/use-contacts";
 import { useTaxonomy } from "@/hooks/use-taxonomy";
-import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe, Target, History, ChevronDown, Pencil, Edit3, CheckSquare, UserCheck } from "lucide-react";
+import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe, Target, History, ChevronDown, Pencil, Edit3, CheckSquare, UserCheck, ArrowRightLeft, Tag } from "lucide-react";
 import { RelationshipStageSelector } from "@/components/relationship-stage-selector";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -69,6 +69,9 @@ export default function Groups() {
   const [editMode, setEditMode] = useState(false);
   const [selectedGroups, setSelectedGroups] = useState<Set<number>>(new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<"community" | "all">("all");
+  const [bulkTierOpen, setBulkTierOpen] = useState(false);
+  const [bulkTierValue, setBulkTierValue] = useState("");
   const { toast } = useToast();
 
   const createGroup = useCreateGroup();
@@ -96,6 +99,24 @@ export default function Groups() {
     },
   });
 
+  const bulkTierMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest('POST', '/api/groups/bulk-update-tier', { groupIds: Array.from(selectedGroups), tier: bulkTierValue });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups/community-density'] });
+      toast({ title: "Tier updated", description: `${selectedGroups.size} group(s) updated to "${bulkTierValue}"` });
+      setSelectedGroups(new Set());
+      setEditMode(false);
+      setBulkTierOpen(false);
+      setBulkTierValue("");
+    },
+    onError: (error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
   const filteredGroups = useMemo(() => {
     if (!groups) return [];
     return groups.filter((g: Group) => {
@@ -107,24 +128,21 @@ export default function Groups() {
     });
   }, [groups, search, typeFilter]);
 
-  const { communityGroups, businessGroups } = useMemo(() => {
-    const community: Group[] = [];
-    const business: Group[] = [];
-    for (const g of filteredGroups) {
-      const density = communityDensity?.[g.id];
-      if (density && density.communityCount > 0) {
-        community.push(g);
-      } else {
-        business.push(g);
-      }
+  const displayGroups = useMemo(() => {
+    let result = filteredGroups;
+    if (viewMode === "community") {
+      result = result.filter((g: Group) => {
+        const density = communityDensity?.[g.id];
+        return density && density.communityCount > 0;
+      });
     }
-    community.sort((a, b) => {
+    result.sort((a: Group, b: Group) => {
       const aCount = communityDensity?.[a.id]?.communityCount || 0;
       const bCount = communityDensity?.[b.id]?.communityCount || 0;
       return bCount - aCount;
     });
-    return { communityGroups: community, businessGroups: business };
-  }, [filteredGroups, communityDensity]);
+    return result;
+  }, [filteredGroups, communityDensity, viewMode]);
 
   const openCreateDialog = () => {
     setEditingGroup(null);
@@ -153,7 +171,7 @@ export default function Groups() {
   };
 
   const selectAll = () => {
-    const allIds = filteredGroups.map((g: Group) => g.id);
+    const allIds = displayGroups.map((g: Group) => g.id);
     setSelectedGroups(new Set(allIds));
   };
 
@@ -191,15 +209,42 @@ export default function Groups() {
                     Select All
                   </Button>
                   {selectedGroups.size > 0 && (
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => setBulkDeleteOpen(true)}
-                      data-testid="button-bulk-delete-groups"
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Delete ({selectedGroups.size})
-                    </Button>
+                    <>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => setBulkDeleteOpen(true)}
+                        data-testid="button-bulk-delete-groups"
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Delete ({selectedGroups.size})
+                      </Button>
+                      {viewMode === "all" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            toast({
+                              title: "Community membership",
+                              description: "Community status is determined by member engagement, not manual assignment.",
+                            });
+                          }}
+                          data-testid="button-move-to-community"
+                        >
+                          <ArrowRightLeft className="w-4 h-4 mr-2" />
+                          Move to Community
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setBulkTierOpen(true)}
+                        data-testid="button-change-tier"
+                      >
+                        <Tag className="w-4 h-4 mr-2" />
+                        Change Tier
+                      </Button>
+                    </>
                   )}
                 </>
               )}
@@ -216,35 +261,57 @@ export default function Groups() {
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Search groups..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-10"
-                data-testid="input-search-groups"
-              />
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2" data-testid="view-toggle">
+              <Button
+                variant={viewMode === "community" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setViewMode("community")}
+                data-testid="button-view-community"
+              >
+                <UserCheck className="w-4 h-4 mr-2" />
+                Community
+              </Button>
+              <Button
+                variant={viewMode === "all" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setViewMode("all")}
+                data-testid="button-view-all"
+              >
+                <Building2 className="w-4 h-4 mr-2" />
+                All
+              </Button>
             </div>
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-full sm:w-[180px]" data-testid="select-type-filter">
-                <SelectValue placeholder="All types" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All types</SelectItem>
-                {GROUP_TYPES.map((t) => (
-                  <SelectItem key={t} value={t}>{t}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search groups..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-10"
+                  data-testid="input-search-groups"
+                />
+              </div>
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger className="w-full sm:w-[180px]" data-testid="select-type-filter">
+                  <SelectValue placeholder="All types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All types</SelectItem>
+                  {GROUP_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {isLoading ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
             </div>
-          ) : filteredGroups.length === 0 ? (
+          ) : displayGroups.length === 0 ? (
             <Card className="p-12">
               <div className="text-center text-muted-foreground">
                 <Building2 className="w-12 h-12 mx-auto mb-4 opacity-40" />
@@ -265,36 +332,8 @@ export default function Groups() {
               </div>
             </Card>
           ) : (
-            <div className="space-y-6">
-              {communityGroups.length > 0 && (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <UserCheck className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                    <h2 className="text-sm font-semibold text-muted-foreground" data-testid="text-community-groups-header">
-                      Community Groups ({communityGroups.length})
-                    </h2>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {communityGroups.map(renderGroupCard)}
-                  </div>
-                </div>
-              )}
-              {communityGroups.length > 0 && businessGroups.length > 0 && (
-                <div className="border-t" />
-              )}
-              {businessGroups.length > 0 && (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Building2 className="w-4 h-4 text-muted-foreground" />
-                    <h2 className="text-sm font-semibold text-muted-foreground" data-testid="text-business-groups-header">
-                      Business Groups ({businessGroups.length})
-                    </h2>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {businessGroups.map(renderGroupCard)}
-                  </div>
-                </div>
-              )}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {displayGroups.map(renderGroupCard)}
             </div>
           )}
         </div>
@@ -365,6 +404,40 @@ export default function Groups() {
               >
                 {bulkDeleteMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={bulkTierOpen} onOpenChange={(open) => { setBulkTierOpen(open); if (!open) setBulkTierValue(""); }}>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle data-testid="text-bulk-tier-title">Change Tier for {selectedGroups.size} groups</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <Label>Relationship Tier</Label>
+              <Select value={bulkTierValue} onValueChange={setBulkTierValue}>
+                <SelectTrigger data-testid="select-bulk-tier">
+                  <SelectValue placeholder="Select tier" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="support">Support</SelectItem>
+                  <SelectItem value="collaborate">Collaborate</SelectItem>
+                  <SelectItem value="mentioned">Noted</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => { setBulkTierOpen(false); setBulkTierValue(""); }} data-testid="button-cancel-bulk-tier">
+                Cancel
+              </Button>
+              <Button
+                onClick={() => bulkTierMutation.mutate()}
+                disabled={!bulkTierValue || bulkTierMutation.isPending}
+                data-testid="button-confirm-bulk-tier"
+              >
+                {bulkTierMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Update Tier
               </Button>
             </DialogFooter>
           </DialogContent>
