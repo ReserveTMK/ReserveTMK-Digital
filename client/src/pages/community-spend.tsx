@@ -456,7 +456,7 @@ function SpendFormDialog({ open, onOpenChange, item, contacts, groups, programme
   const handleQuickAddGroup = async () => {
     if (!quickGroupName.trim()) return;
     try {
-      const newGroup = await createGroup.mutateAsync({ name: quickGroupName.trim(), type: "organisation" });
+      const newGroup = await createGroup.mutateAsync({ name: quickGroupName.trim(), type: "Organisation" });
       setGroupId(String(newGroup.id));
       setQuickGroupName("");
       setShowQuickAddGroup(false);

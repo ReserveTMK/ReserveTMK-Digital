@@ -1127,7 +1127,7 @@ function BookingFormDialog({
   const handleQuickAddGroup = async () => {
     if (!quickGroupName.trim()) return;
     try {
-      const newGroup = await createGroup.mutateAsync({ name: quickGroupName.trim(), type: "organisation" });
+      const newGroup = await createGroup.mutateAsync({ name: quickGroupName.trim(), type: "Organisation" });
       setGroupId(newGroup.id);
       setQuickGroupName("");
       setShowQuickAddGroup(false);

@@ -683,7 +683,7 @@ function MembershipFormDialog({
   const handleQuickAddMembershipGroup = async () => {
     if (!quickGroupName.trim()) return;
     try {
-      const newGroup = await createGroupMutation.mutateAsync({ name: quickGroupName.trim(), type: "organisation" });
+      const newGroup = await createGroupMutation.mutateAsync({ name: quickGroupName.trim(), type: "Organisation" });
       setGroupId(newGroup.id);
       setQuickGroupName("");
       setShowQuickAddGroup(false);
@@ -1129,7 +1129,7 @@ function MouFormDialog({
   const handleQuickAddMouGroup = async () => {
     if (!quickGroupName.trim()) return;
     try {
-      const newGroup = await createGroupMutation.mutateAsync({ name: quickGroupName.trim(), type: "organisation" });
+      const newGroup = await createGroupMutation.mutateAsync({ name: quickGroupName.trim(), type: "Organisation" });
       setGroupId(newGroup.id);
       setQuickGroupName("");
       setShowQuickAddGroup(false);
