@@ -549,7 +549,10 @@ export async function getValueContribution(filters: ReportFilters) {
   };
 }
 
-export async function generateNarrative(filters: ReportFilters) {
+export async function generateNarrative(
+  filters: ReportFilters,
+  legacyContext?: { metrics: any; highlights: string[]; reportCount: number } | null,
+) {
   const [engagement, delivery, impact, outcomes, value] = await Promise.all([
     getEngagementMetrics(filters),
     getDeliveryMetrics(filters),
@@ -562,13 +565,40 @@ export async function generateNarrative(filters: ReportFilters) {
   const startLabel = new Date(filters.startDate).toLocaleDateString("en-NZ", { month: "long", year: "numeric" });
   const endLabel = new Date(filters.endDate).toLocaleDateString("en-NZ", { month: "long", year: "numeric" });
   const periodLabel = startLabel === endLabel ? startLabel : `${startLabel} – ${endLabel}`;
+  const lm = legacyContext?.metrics;
+  const hasLegacy = legacyContext && legacyContext.reportCount > 0 && lm;
 
   const sections: string[] = [];
 
-  sections.push(`## Engagement Summary\n\nDuring ${periodLabel}, ${engagement.uniqueContacts} unique individuals were engaged across ${engagement.totalEngagementInstances} interactions. ${engagement.newContacts} new contacts were added to the network. ${engagement.activeGroups} groups/organisations were actively involved. The repeat engagement rate was ${engagement.repeatEngagementRate}%, with ${engagement.repeatEngagementCount} individuals engaged more than once.`);
+  let engText = `## Engagement Summary\n\nDuring ${periodLabel}`;
+  if (hasLegacy) {
+    engText += ` (combining data from ${legacyContext.reportCount} legacy report${legacyContext.reportCount > 1 ? "s" : ""} with live tracking)`;
+  }
+  engText += `, ${engagement.uniqueContacts} unique individuals were engaged across ${engagement.totalEngagementInstances} interactions.`;
+  if (hasLegacy && lm.foottrafficUnique > 0) {
+    engText += ` Legacy reports recorded ${lm.foottrafficUnique.toLocaleString()} hub foot traffic (unique visitors).`;
+  }
+  engText += ` ${engagement.newContacts} new contacts were added to the network. ${engagement.activeGroups} groups/organisations were actively involved. The repeat engagement rate was ${engagement.repeatEngagementRate}%, with ${engagement.repeatEngagementCount} individuals engaged more than once.`;
+  sections.push(engText);
 
   const eventTypes = Object.entries(delivery.events.byType).map(([t, c]) => `${c} ${t.toLowerCase()}${c > 1 ? "s" : ""}`).join(", ");
-  sections.push(`## Delivery Overview\n\n${delivery.events.total} events were held (${eventTypes || "none recorded"}). ${delivery.bookings.total} venue bookings totalling ${delivery.bookings.communityHours} community hours were recorded. ${delivery.programmes.total} programmes ran during this period, with ${delivery.programmes.completed} completing.`);
+  let delText = `## Delivery Overview\n\n${delivery.events.total} events were held (${eventTypes || "none recorded"}).`;
+  if (hasLegacy && lm.activationsTotal > 0) {
+    const parts: string[] = [];
+    parts.push(`${lm.activationsTotal} total activations`);
+    if (lm.activationsWorkshops > 0) parts.push(`${lm.activationsWorkshops} workshops`);
+    if (lm.activationsMentoring > 0) parts.push(`${lm.activationsMentoring} mentoring sessions`);
+    if (lm.activationsEvents > 0) parts.push(`${lm.activationsEvents} events`);
+    if (lm.activationsPartnerMeetings > 0) parts.push(`${lm.activationsPartnerMeetings} partner meetings`);
+    delText += ` Legacy reports contributed ${parts.join(", ")}.`;
+  }
+  const combinedBookings = delivery.bookings.total + (hasLegacy ? lm.bookingsTotal || 0 : 0);
+  delText += ` ${combinedBookings} venue bookings were recorded across the period`;
+  if (hasLegacy && lm.bookingsTotal > 0) {
+    delText += ` (${delivery.bookings.total} live, ${lm.bookingsTotal} legacy)`;
+  }
+  delText += ` totalling ${delivery.bookings.communityHours} tracked community hours. ${delivery.programmes.total} programmes ran during this period, with ${delivery.programmes.completed} completing.`;
+  sections.push(delText);
 
   if (topCategories.length > 0) {
     const catLines = topCategories.map(c => {
@@ -584,6 +614,11 @@ export async function generateNarrative(filters: ReportFilters) {
   sections.push(`## Outcome Movement\n\n${outcomes.contactsWithMetrics} of ${outcomes.totalContacts} engaged contacts had tracked metrics. Average scores: mindset ${outcomes.averageChange.mindset}, skill ${outcomes.averageChange.skill}, confidence ${outcomes.averageChange.confidence}. ${outcomes.milestoneCount} milestones were recorded across confirmed debriefs.`);
 
   sections.push(`## Value & Contribution\n\nTotal revenue from bookings: $${value.revenue.total.toLocaleString()}. ${value.memberships.active} active memberships contributed $${value.memberships.totalRevenue.toLocaleString()}. ${value.mouExchange.active} MOUs delivered $${value.mouExchange.totalInKindValue.toLocaleString()} in in-kind value. Programme costs totalled $${value.programmeCosts.reduce((s, p) => s + p.totalCost, 0).toLocaleString()}.`);
+
+  if (hasLegacy && legacyContext.highlights.length > 0) {
+    const hlLines = legacyContext.highlights.slice(0, 5).map(h => `- ${h}`).join("\n");
+    sections.push(`## Legacy Highlights\n\nKey highlights from legacy reports:\n${hlLines}`);
+  }
 
   return {
     narrative: sections.join("\n\n"),

@@ -8,9 +8,9 @@ import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { openai } from "./replit_integrations/audio/client";
 import { getFullMonthlyReport, generateNarrative, type ReportFilters } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups } from "@shared/schema";
+import { insertCommunitySpendSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, gte, lte } from "drizzle-orm";
 import { scanGmailEmails, startAutoSync, getGmailOAuth2Client } from "./gmail-import";
 
 function parseTimeToMinutes(timeStr: string): number {
@@ -2452,6 +2452,40 @@ Important:
 
   // === REPORTING ROUTES ===
 
+  app.get("/api/reports/date-range", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const legacyReports = await storage.getLegacyReports(userId);
+      const confirmed = legacyReports.filter(r => r.status === "confirmed");
+      const liveEvents = await storage.getEvents(userId);
+      const liveLogs = await storage.getImpactLogs(userId);
+
+      const dates: Date[] = [];
+      for (const r of confirmed) {
+        dates.push(new Date(r.periodStart));
+      }
+      for (const e of liveEvents) {
+        if (e.startTime) dates.push(new Date(e.startTime));
+      }
+      for (const l of liveLogs) {
+        if (l.createdAt) dates.push(new Date(l.createdAt));
+      }
+
+      if (dates.length === 0) {
+        return res.json({ earliestDate: null, latestDate: null });
+      }
+
+      dates.sort((a, b) => a.getTime() - b.getTime());
+      res.json({
+        earliestDate: dates[0].toISOString(),
+        latestDate: dates[dates.length - 1].toISOString(),
+      });
+    } catch (err: any) {
+      console.error("Date range error:", err);
+      res.status(500).json({ message: "Failed to fetch date range" });
+    }
+  });
+
   app.post("/api/reports/generate", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
@@ -2473,25 +2507,34 @@ Important:
 
       const report = await getFullMonthlyReport(filters);
 
-      let legacyBlend = null;
+      let legacyMetrics = null;
+      let isBlended = false;
+      let boundaryDateStr: string | null = null;
+      let legacyReportCount = 0;
+      let legacyPeriods: string[] = [];
+      let legacyHighlights: string[] = [];
+
       try {
         const settings = await storage.getReportingSettings(userId);
         const boundaryDate = settings?.boundaryDate;
         const reportStart = new Date(startDate);
 
-        if (boundaryDate && reportStart < boundaryDate) {
-          const allLegacy = await storage.getLegacyReports(userId);
-          const confirmed = allLegacy.filter(r => r.status === "confirmed");
-          const reqStart = new Date(startDate);
-          const reqEnd = new Date(endDate);
+        const allLegacy = await storage.getLegacyReports(userId);
+        const confirmed = allLegacy.filter(r => r.status === "confirmed");
+        const reqStart = new Date(startDate);
+        const reqEnd = new Date(endDate);
 
-          const overlapping = confirmed.filter(r => {
-            const ps = new Date(r.periodStart);
-            const pe = new Date(r.periodEnd);
+        const overlapping = confirmed.filter(r => {
+          const ps = new Date(r.periodStart);
+          const pe = new Date(r.periodEnd);
+          if (boundaryDate) {
             return ps <= reqEnd && pe >= reqStart && pe <= boundaryDate;
-          });
+          }
+          return ps <= reqEnd && pe >= reqStart;
+        });
 
-          const legacyTotals = {
+        if (overlapping.length > 0) {
+          const totals = {
             activationsTotal: 0,
             activationsWorkshops: 0,
             activationsMentoring: 0,
@@ -2499,42 +2542,51 @@ Important:
             activationsPartnerMeetings: 0,
             foottrafficUnique: 0,
             bookingsTotal: 0,
-            reportCount: overlapping.length,
           };
-
-          const quarters: Array<{ label: string; periodStart: string; periodEnd: string }> = [];
 
           for (const lr of overlapping) {
             const snapshot = await storage.getLegacyReportSnapshot(lr.id);
             if (snapshot) {
-              legacyTotals.activationsTotal += snapshot.activationsTotal || 0;
-              legacyTotals.activationsWorkshops += snapshot.activationsWorkshops || 0;
-              legacyTotals.activationsMentoring += snapshot.activationsMentoring || 0;
-              legacyTotals.activationsEvents += snapshot.activationsEvents || 0;
-              legacyTotals.activationsPartnerMeetings += snapshot.activationsPartnerMeetings || 0;
-              legacyTotals.foottrafficUnique += snapshot.foottrafficUnique || 0;
-              legacyTotals.bookingsTotal += snapshot.bookingsTotal || 0;
+              totals.activationsTotal += snapshot.activationsTotal || 0;
+              totals.activationsWorkshops += snapshot.activationsWorkshops || 0;
+              totals.activationsMentoring += snapshot.activationsMentoring || 0;
+              totals.activationsEvents += snapshot.activationsEvents || 0;
+              totals.activationsPartnerMeetings += snapshot.activationsPartnerMeetings || 0;
+              totals.foottrafficUnique += snapshot.foottrafficUnique || 0;
+              totals.bookingsTotal += snapshot.bookingsTotal || 0;
             }
-            quarters.push({
-              label: lr.quarterLabel,
-              periodStart: lr.periodStart.toISOString(),
-              periodEnd: lr.periodEnd.toISOString(),
-            });
+            legacyPeriods.push(lr.quarterLabel);
+
+            try {
+              const extraction = await storage.getLegacyReportExtraction(lr.id);
+              if (extraction?.extractedHighlights) {
+                const highlights = extraction.extractedHighlights as any[];
+                for (const h of highlights) {
+                  if (typeof h === "string" && h.trim()) legacyHighlights.push(h);
+                  else if (h?.text) legacyHighlights.push(h.text);
+                }
+              }
+            } catch {}
           }
 
-          if (overlapping.length > 0) {
-            legacyBlend = {
-              boundaryDate: boundaryDate.toISOString(),
-              legacyTotals,
-              quarters,
-            };
-          }
+          legacyMetrics = totals;
+          isBlended = true;
+          boundaryDateStr = boundaryDate?.toISOString() || null;
+          legacyReportCount = overlapping.length;
         }
       } catch (blendErr) {
         console.error("Legacy blend error (non-fatal):", blendErr);
       }
 
-      res.json({ ...report, legacyBlend });
+      res.json({
+        ...report,
+        isBlended,
+        boundaryDate: boundaryDateStr,
+        legacyReportCount,
+        legacyPeriods,
+        legacyMetrics,
+        legacyHighlights: legacyHighlights.slice(0, 20),
+      });
     } catch (err: any) {
       console.error("Report generation error:", err);
       res.status(500).json({ message: "Failed to generate report" });
@@ -2560,7 +2612,58 @@ Important:
         funder,
       };
 
-      const result = await generateNarrative(filters);
+      let legacyContext: { metrics: any; highlights: string[]; reportCount: number } | null = null;
+      try {
+        const settings = await storage.getReportingSettings(userId);
+        const boundaryDate = settings?.boundaryDate;
+        const allLegacy = await storage.getLegacyReports(userId);
+        const confirmed = allLegacy.filter(r => r.status === "confirmed");
+        const reqStart = new Date(startDate);
+        const reqEnd = new Date(endDate);
+
+        const overlapping = confirmed.filter(r => {
+          const ps = new Date(r.periodStart);
+          const pe = new Date(r.periodEnd);
+          if (boundaryDate) return ps <= reqEnd && pe >= reqStart && pe <= boundaryDate;
+          return ps <= reqEnd && pe >= reqStart;
+        });
+
+        if (overlapping.length > 0) {
+          const totals = {
+            activationsTotal: 0, activationsWorkshops: 0, activationsMentoring: 0,
+            activationsEvents: 0, activationsPartnerMeetings: 0,
+            foottrafficUnique: 0, bookingsTotal: 0,
+          };
+          const highlights: string[] = [];
+
+          for (const lr of overlapping) {
+            const snapshot = await storage.getLegacyReportSnapshot(lr.id);
+            if (snapshot) {
+              totals.activationsTotal += snapshot.activationsTotal || 0;
+              totals.activationsWorkshops += snapshot.activationsWorkshops || 0;
+              totals.activationsMentoring += snapshot.activationsMentoring || 0;
+              totals.activationsEvents += snapshot.activationsEvents || 0;
+              totals.activationsPartnerMeetings += snapshot.activationsPartnerMeetings || 0;
+              totals.foottrafficUnique += snapshot.foottrafficUnique || 0;
+              totals.bookingsTotal += snapshot.bookingsTotal || 0;
+            }
+            try {
+              const extraction = await storage.getLegacyReportExtraction(lr.id);
+              if (extraction?.extractedHighlights) {
+                const hl = extraction.extractedHighlights as any[];
+                for (const h of hl) {
+                  if (typeof h === "string" && h.trim()) highlights.push(h);
+                  else if (h?.text) highlights.push(h.text);
+                }
+              }
+            } catch {}
+          }
+
+          legacyContext = { metrics: totals, highlights: highlights.slice(0, 10), reportCount: overlapping.length };
+        }
+      } catch {}
+
+      const result = await generateNarrative(filters, legacyContext);
       res.json(result);
     } catch (err: any) {
       console.error("Narrative generation error:", err);
@@ -3277,6 +3380,8 @@ Return a JSON object with this exact structure:
         periodStart: Date;
         periodEnd: Date;
         activationsTotal: number;
+        foottrafficUnique: number;
+        bookingsTotal: number;
         source: "legacy" | "live";
       }> = [];
 
@@ -3287,6 +3392,8 @@ Return a JSON object with this exact structure:
             periodStart: report.periodStart,
             periodEnd: report.periodEnd,
             activationsTotal: snapshot.activationsTotal || 0,
+            foottrafficUnique: snapshot.foottrafficUnique || 0,
+            bookingsTotal: snapshot.bookingsTotal || 0,
             source: "legacy",
           });
         }
@@ -3304,64 +3411,99 @@ Return a JSON object with this exact structure:
           return d >= currentStart && d <= currentEnd;
         });
 
+        const liveBookings = await storage.getBookings(userId);
+        const liveBookingsInRange = liveBookings.filter(b => {
+          const d = new Date(b.startDate);
+          return d >= currentStart && d <= currentEnd;
+        });
+
+        const liveContacts = await db
+          .selectDistinct({ contactId: impactLogContacts.contactId })
+          .from(impactLogContacts)
+          .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
+          .where(and(
+            eq(impactLogs.userId, userId),
+            eq(impactLogs.status, "confirmed"),
+            gte(impactLogs.createdAt, currentStart),
+            lte(impactLogs.createdAt, currentEnd),
+          ));
+
         quarterlyData.push({
           label: "Current Period",
           periodStart: currentStart,
           periodEnd: currentEnd,
           activationsTotal: liveInRange.length,
+          foottrafficUnique: liveContacts.length,
+          bookingsTotal: liveBookingsInRange.length,
           source: "live",
         });
       }
 
       quarterlyData.sort((a, b) => a.periodStart.getTime() - b.periodStart.getTime());
 
-      const activationValues = quarterlyData.map(q => q.activationsTotal).filter(v => v > 0);
-      const historicAvg = activationValues.length > 0
-        ? Math.round(activationValues.reduce((s, v) => s + v, 0) / activationValues.length)
-        : 0;
-      const highest = Math.max(...activationValues, 0);
-      const highestQuarter = quarterlyData.find(q => q.activationsTotal === highest);
-      const current = quarterlyData[quarterlyData.length - 1];
-      const previous = quarterlyData.length > 1 ? quarterlyData[quarterlyData.length - 2] : null;
-      const qoqChange = previous && previous.activationsTotal > 0
-        ? Math.round(((current?.activationsTotal || 0) - previous.activationsTotal) / previous.activationsTotal * 100)
-        : null;
-      const rank = current
-        ? [...activationValues].sort((a, b) => b - a).indexOf(current.activationsTotal) + 1
-        : null;
-      const pctVsAvg = historicAvg > 0 && current
-        ? Math.round(((current.activationsTotal - historicAvg) / historicAvg) * 100)
-        : null;
+      function computeMetricBenchmarks(values: number[], labels: string[]) {
+        const nonZero = values.filter(v => v > 0);
+        const avg = nonZero.length > 0 ? Math.round(nonZero.reduce((s, v) => s + v, 0) / nonZero.length) : 0;
+        const max = Math.max(...values, 0);
+        const maxIdx = values.indexOf(max);
+        const currentVal = values[values.length - 1] || 0;
+        const prevVal = values.length > 1 ? values[values.length - 2] : null;
+        const pop = prevVal && prevVal > 0 ? Math.round(((currentVal - prevVal) / prevVal) * 100) : null;
+        const rank = nonZero.length > 0 ? [...nonZero].sort((a, b) => b - a).indexOf(currentVal) + 1 : null;
+        const pctVsAvg = avg > 0 ? Math.round(((currentVal - avg) / avg) * 100) : null;
+        return {
+          historicAverage: avg,
+          highestPeriod: maxIdx >= 0 ? labels[maxIdx] : null,
+          highestValue: max,
+          currentRank: rank,
+          totalPeriods: values.length,
+          popChange: pop,
+          pctVsAverage: pctVsAvg,
+        };
+      }
+
+      const labels = quarterlyData.map(q => q.label);
+      const activationsBenchmarks = computeMetricBenchmarks(quarterlyData.map(q => q.activationsTotal), labels);
+      const foottrafficBenchmarks = computeMetricBenchmarks(quarterlyData.map(q => q.foottrafficUnique), labels);
+      const bookingsBenchmarks = computeMetricBenchmarks(quarterlyData.map(q => q.bookingsTotal), labels);
 
       const insights: string[] = [];
-      if (historicAvg > 0) {
-        insights.push(`Historic average activations per period: ${historicAvg}`);
+      if (activationsBenchmarks.historicAverage > 0) {
+        insights.push(`Historic average activations per period: ${activationsBenchmarks.historicAverage}`);
       }
-      if (highestQuarter) {
-        insights.push(`Highest period: ${highestQuarter.label} with ${highest} activations`);
+      if (activationsBenchmarks.highestPeriod) {
+        insights.push(`Highest activations: ${activationsBenchmarks.highestPeriod} with ${activationsBenchmarks.highestValue}`);
       }
-      if (rank && quarterlyData.length > 1) {
-        insights.push(`Current period ranks #${rank} out of ${quarterlyData.length} periods`);
+      if (activationsBenchmarks.currentRank && quarterlyData.length > 1) {
+        insights.push(`Current period ranks #${activationsBenchmarks.currentRank} out of ${quarterlyData.length} periods`);
       }
-      if (qoqChange !== null) {
-        const dir = qoqChange >= 0 ? "up" : "down";
-        insights.push(`Period-over-period change: ${dir} ${Math.abs(qoqChange)}% from ${previous?.label}`);
+      if (activationsBenchmarks.popChange !== null) {
+        const dir = activationsBenchmarks.popChange >= 0 ? "up" : "down";
+        insights.push(`Activations period-over-period: ${dir} ${Math.abs(activationsBenchmarks.popChange)}%`);
       }
-      if (pctVsAvg !== null) {
-        const rel = pctVsAvg >= 0 ? "above" : "below";
-        insights.push(`Current period is ${Math.abs(pctVsAvg)}% ${rel} the historic average`);
+      if (foottrafficBenchmarks.historicAverage > 0) {
+        insights.push(`Historic average foot traffic: ${foottrafficBenchmarks.historicAverage} unique people per period`);
+      }
+      if (foottrafficBenchmarks.highestPeriod) {
+        insights.push(`Highest foot traffic: ${foottrafficBenchmarks.highestPeriod} with ${foottrafficBenchmarks.highestValue}`);
+      }
+      if (bookingsBenchmarks.historicAverage > 0) {
+        insights.push(`Historic average bookings: ${bookingsBenchmarks.historicAverage} per period`);
       }
 
       res.json({
         quarterlyData,
         benchmarks: {
-          historicAverage: historicAvg,
-          highestQuarter: highestQuarter?.label || null,
-          highestValue: highest,
-          currentRank: rank,
+          activations: activationsBenchmarks,
+          foottraffic: foottrafficBenchmarks,
+          bookings: bookingsBenchmarks,
+          historicAverage: activationsBenchmarks.historicAverage,
+          highestQuarter: activationsBenchmarks.highestPeriod,
+          highestValue: activationsBenchmarks.highestValue,
+          currentRank: activationsBenchmarks.currentRank,
           totalQuarters: quarterlyData.length,
-          qoqChange,
-          pctVsAverage: pctVsAvg,
+          qoqChange: activationsBenchmarks.popChange,
+          pctVsAverage: activationsBenchmarks.pctVsAverage,
         },
         insights,
         boundaryDate: boundaryDate?.toISOString() || null,

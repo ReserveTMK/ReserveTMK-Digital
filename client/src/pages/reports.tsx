@@ -6,20 +6,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend,
+  PieChart, Pie, Cell,
 } from "recharts";
 import {
   FileText, Users, Loader2, BarChart3, CalendarDays, CalendarRange,
   Download, Activity, Tag, TrendingUp, Building2, DollarSign,
   Save, BookOpen, ChevronDown, ChevronUp, Handshake, Clock,
+  Info, History, Zap,
 } from "lucide-react";
 import {
-  format, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, subMonths,
+  format, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, subMonths, startOfYear,
 } from "date-fns";
 
 const CHART_COLORS = [
@@ -62,8 +63,8 @@ function getQuarterOptions() {
   return options;
 }
 
-function StatCard({ icon: Icon, label, value, color = "primary", testId }: {
-  icon: any; label: string; value: string | number; color?: string; testId: string;
+function StatCard({ icon: Icon, label, value, color = "primary", testId, subText }: {
+  icon: any; label: string; value: string | number; color?: string; testId: string; subText?: string;
 }) {
   const colorMap: Record<string, string> = {
     primary: "bg-primary/10 text-primary",
@@ -74,6 +75,8 @@ function StatCard({ icon: Icon, label, value, color = "primary", testId }: {
     pink: "bg-pink-500/10 text-pink-500",
     orange: "bg-orange-500/10 text-orange-500",
     indigo: "bg-indigo-500/10 text-indigo-500",
+    cyan: "bg-cyan-500/10 text-cyan-500",
+    slate: "bg-slate-500/10 text-slate-500",
   };
   return (
     <Card className="p-4">
@@ -84,6 +87,7 @@ function StatCard({ icon: Icon, label, value, color = "primary", testId }: {
         <span className="text-sm text-muted-foreground">{label}</span>
       </div>
       <p className="text-2xl font-bold" data-testid={testId}>{value}</p>
+      {subText && <p className="text-xs text-muted-foreground mt-1">{subText}</p>}
     </Card>
   );
 }
@@ -101,11 +105,50 @@ function CollapsibleSection({ title, icon: Icon, children, defaultOpen = true, t
       >
         <div className="flex items-center gap-3">
           <Icon className="w-5 h-5 text-primary" />
-          <h3 className="text-lg font-display font-semibold">{title}</h3>
+          <span className="font-display font-semibold text-lg">{title}</span>
         </div>
-        {open ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+        {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
       </button>
       {open && <div className="px-5 pb-5 border-t">{children}</div>}
+    </Card>
+  );
+}
+
+function MetricBenchmarkCard({ title, benchmarks, color }: {
+  title: string;
+  benchmarks: any;
+  color: string;
+}) {
+  if (!benchmarks || benchmarks.historicAverage === 0) return null;
+  const pop = benchmarks.popChange;
+  return (
+    <Card className="p-4 space-y-2">
+      <h4 className="text-sm font-semibold text-muted-foreground">{title}</h4>
+      <div className="grid grid-cols-2 gap-2 text-sm">
+        <div>
+          <span className="text-muted-foreground">Avg: </span>
+          <span className="font-bold">{benchmarks.historicAverage}</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Best: </span>
+          <span className="font-bold">{benchmarks.highestValue}</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">PoP: </span>
+          <span className={`font-bold ${pop !== null && pop >= 0 ? "text-green-600" : "text-orange-600"}`}>
+            {pop !== null ? `${pop >= 0 ? "+" : ""}${pop}%` : "N/A"}
+          </span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Rank: </span>
+          <span className="font-bold">
+            {benchmarks.currentRank ? `#${benchmarks.currentRank}/${benchmarks.totalPeriods}` : "N/A"}
+          </span>
+        </div>
+      </div>
+      {benchmarks.highestPeriod && (
+        <p className="text-xs text-muted-foreground italic">Best: {benchmarks.highestPeriod}</p>
+      )}
     </Card>
   );
 }
@@ -136,6 +179,10 @@ export default function Reports() {
     queryKey: ["/api/taxonomy"],
   });
 
+  const { data: dateRange } = useQuery<{ earliestDate: string | null; latestDate: string | null }>({
+    queryKey: ["/api/reports/date-range"],
+  });
+
   const [programmeFilter, setProgrammeFilter] = useState("all");
   const [taxonomyFilter, setTaxonomyFilter] = useState("all");
   const [funderFilter, setFunderFilter] = useState("all");
@@ -152,6 +199,23 @@ export default function Reports() {
     } else if (activeTab === "quarterly") {
       const opt = quarterOptions.find(o => o.value === selectedQuarter);
       return { startDate: opt?.start || "", endDate: opt?.end || "" };
+    } else if (activeTab === "ytd") {
+      const now = new Date();
+      return {
+        startDate: format(startOfYear(now), "yyyy-MM-dd"),
+        endDate: format(now, "yyyy-MM-dd"),
+      };
+    } else if (activeTab === "alltime") {
+      if (dateRange?.earliestDate) {
+        return {
+          startDate: format(new Date(dateRange.earliestDate), "yyyy-MM-dd"),
+          endDate: format(new Date(), "yyyy-MM-dd"),
+        };
+      }
+      return {
+        startDate: "2023-11-01",
+        endDate: format(new Date(), "yyyy-MM-dd"),
+      };
     }
     return { startDate: adHocStart, endDate: adHocEnd };
   };
@@ -211,7 +275,7 @@ export default function Reports() {
     try {
       await apiRequest("POST", "/api/reports/save", {
         title: `Report: ${periodLabel}`,
-        type: activeTab === "quarterly" ? "quarterly" : activeTab === "adhoc" ? "ad_hoc" : "monthly",
+        type: activeTab === "quarterly" ? "quarterly" : activeTab === "adhoc" ? "ad_hoc" : activeTab === "ytd" ? "ytd" : activeTab === "alltime" ? "all_time" : "monthly",
         startDate,
         endDate,
         filters: {
@@ -246,6 +310,8 @@ export default function Reports() {
   const getPeriodLabel = () => {
     const { startDate, endDate } = getDateRange();
     if (!startDate || !endDate) return "";
+    if (activeTab === "ytd") return `YTD ${new Date().getFullYear()}`;
+    if (activeTab === "alltime") return "All Time";
     return `${format(new Date(startDate), "MMM d, yyyy")} – ${format(new Date(endDate), "MMM d, yyyy")}`;
   };
 
@@ -256,14 +322,28 @@ export default function Reports() {
 
     rows.push(["Report Period", getPeriodLabel()]);
     rows.push([]);
-    rows.push(["=== ENGAGEMENT ==="]);
+
+    if (d.isBlended && d.legacyMetrics) {
+      rows.push(["=== LEGACY DATA (from legacy reports) ==="]);
+      rows.push(["Legacy Reports Included", String(d.legacyReportCount || 0)]);
+      rows.push(["Total Activations", String(d.legacyMetrics.activationsTotal || 0)]);
+      rows.push(["Workshops", String(d.legacyMetrics.activationsWorkshops || 0)]);
+      rows.push(["Mentoring Sessions", String(d.legacyMetrics.activationsMentoring || 0)]);
+      rows.push(["Events", String(d.legacyMetrics.activationsEvents || 0)]);
+      rows.push(["Partner Meetings", String(d.legacyMetrics.activationsPartnerMeetings || 0)]);
+      rows.push(["Hub Foot Traffic", String(d.legacyMetrics.foottrafficUnique || 0)]);
+      rows.push(["Legacy Bookings", String(d.legacyMetrics.bookingsTotal || 0)]);
+      rows.push([]);
+    }
+
+    rows.push(["=== ENGAGEMENT (Live) ==="]);
     rows.push(["Unique Contacts", String(d.engagement?.uniqueContacts || 0)]);
     rows.push(["Total Engagement Instances", String(d.engagement?.totalEngagementInstances || 0)]);
     rows.push(["New Contacts", String(d.engagement?.newContacts || 0)]);
     rows.push(["Active Groups", String(d.engagement?.activeGroups || 0)]);
     rows.push(["Repeat Engagement Rate", `${d.engagement?.repeatEngagementRate || 0}%`]);
     rows.push([]);
-    rows.push(["=== DELIVERY ==="]);
+    rows.push(["=== DELIVERY (Live) ==="]);
     rows.push(["Total Events", String(d.delivery?.events?.total || 0)]);
     if (d.delivery?.events?.byType) {
       for (const [type, count] of Object.entries(d.delivery.events.byType)) {
@@ -321,6 +401,8 @@ export default function Reports() {
   const imp = reportData?.impact;
   const out = reportData?.outcomes;
   const val = reportData?.value;
+  const lm = reportData?.legacyMetrics;
+  const isBlended = reportData?.isBlended;
 
   return (
     <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
@@ -332,12 +414,18 @@ export default function Reports() {
 
           <Card className="p-6">
             <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setGenerated(false); }}>
-              <TabsList className="bg-muted/50 p-1 rounded-xl mb-6">
+              <TabsList className="bg-muted/50 p-1 rounded-xl mb-6 flex-wrap">
                 <TabsTrigger value="monthly" className="rounded-lg gap-2 data-[state=active]:bg-primary/10 data-[state=active]:text-primary" data-testid="tab-monthly">
                   <CalendarDays className="w-4 h-4" /> Monthly
                 </TabsTrigger>
                 <TabsTrigger value="quarterly" className="rounded-lg gap-2 data-[state=active]:bg-primary/10 data-[state=active]:text-primary" data-testid="tab-quarterly">
                   <CalendarRange className="w-4 h-4" /> Quarterly
+                </TabsTrigger>
+                <TabsTrigger value="ytd" className="rounded-lg gap-2 data-[state=active]:bg-primary/10 data-[state=active]:text-primary" data-testid="tab-ytd">
+                  <Zap className="w-4 h-4" /> YTD
+                </TabsTrigger>
+                <TabsTrigger value="alltime" className="rounded-lg gap-2 data-[state=active]:bg-primary/10 data-[state=active]:text-primary" data-testid="tab-alltime">
+                  <History className="w-4 h-4" /> All Time
                 </TabsTrigger>
                 <TabsTrigger value="adhoc" className="rounded-lg gap-2 data-[state=active]:bg-primary/10 data-[state=active]:text-primary" data-testid="tab-adhoc">
                   <BarChart3 className="w-4 h-4" /> Custom
@@ -370,6 +458,26 @@ export default function Reports() {
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="ytd" className="mt-0 col-span-1">
+                  <div className="space-y-2">
+                    <Label>Year to Date</Label>
+                    <div className="flex items-center h-10 px-3 rounded-md border bg-muted/30 text-sm">
+                      Jan 1, {new Date().getFullYear()} – Today
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="alltime" className="mt-0 col-span-1">
+                  <div className="space-y-2">
+                    <Label>All Time</Label>
+                    <div className="flex items-center h-10 px-3 rounded-md border bg-muted/30 text-sm">
+                      {dateRange?.earliestDate
+                        ? `${format(new Date(dateRange.earliestDate), "MMM yyyy")} – Today`
+                        : "All available data"}
+                    </div>
                   </div>
                 </TabsContent>
 
@@ -482,6 +590,86 @@ export default function Reports() {
                   </Button>
                 </div>
               </div>
+
+              {isBlended && lm && (
+                <div className="flex items-start gap-3 p-4 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800" data-testid="banner-legacy-blend">
+                  <Info className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+                  <div className="text-sm">
+                    <p className="font-medium text-indigo-900 dark:text-indigo-200">
+                      This report combines data from {reportData.legacyReportCount} legacy report{reportData.legacyReportCount > 1 ? "s" : ""} with live system data
+                    </p>
+                    <p className="text-indigo-700 dark:text-indigo-400 mt-1">
+                      Legacy periods: {reportData.legacyPeriods?.join(", ")}
+                      {reportData.boundaryDate && ` · Boundary: ${format(new Date(reportData.boundaryDate), "MMM d, yyyy")}`}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {isBlended && lm && (
+                <CollapsibleSection title="Legacy Metrics (Historical)" icon={History} testId="section-legacy" defaultOpen={true}>
+                  <div className="pt-4 space-y-4">
+                    <p className="text-sm text-muted-foreground">
+                      Aggregated from {reportData.legacyReportCount} confirmed legacy report{reportData.legacyReportCount > 1 ? "s" : ""} covering the pre-live-tracking period.
+                    </p>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                      <StatCard icon={Activity} label="Total Activations" value={lm.activationsTotal || 0} color="indigo" testId="stat-legacy-activations" />
+                      <StatCard icon={Users} label="Hub Foot Traffic" value={(lm.foottrafficUnique || 0).toLocaleString()} color="cyan" testId="stat-legacy-foottraffic" />
+                      <StatCard icon={Building2} label="Bookings" value={lm.bookingsTotal || 0} color="orange" testId="stat-legacy-bookings" />
+                      <StatCard icon={CalendarDays} label="Workshops" value={lm.activationsWorkshops || 0} color="blue" testId="stat-legacy-workshops" />
+                      <StatCard icon={Users} label="Mentoring" value={lm.activationsMentoring || 0} color="green" testId="stat-legacy-mentoring" />
+                      <StatCard icon={CalendarDays} label="Events" value={lm.activationsEvents || 0} color="violet" testId="stat-legacy-events" />
+                      <StatCard icon={Handshake} label="Partner Meetings" value={lm.activationsPartnerMeetings || 0} color="amber" testId="stat-legacy-partner" />
+                    </div>
+
+                    {isBlended && (
+                      <div className="border-t pt-4 mt-2">
+                        <h4 className="text-sm font-semibold mb-3">Combined Totals (Legacy + Live)</h4>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                          <StatCard
+                            icon={Activity}
+                            label="Total Activities"
+                            value={(lm.activationsTotal || 0) + (del?.events?.total || 0)}
+                            color="primary"
+                            testId="stat-combined-activities"
+                            subText={`${lm.activationsTotal || 0} legacy + ${del?.events?.total || 0} live`}
+                          />
+                          <StatCard
+                            icon={Building2}
+                            label="Total Bookings"
+                            value={(lm.bookingsTotal || 0) + (del?.bookings?.total || 0)}
+                            color="orange"
+                            testId="stat-combined-bookings"
+                            subText={`${lm.bookingsTotal || 0} legacy + ${del?.bookings?.total || 0} live`}
+                          />
+                          <StatCard
+                            icon={Users}
+                            label="Total Reach"
+                            value={((lm.foottrafficUnique || 0) + (eng?.uniqueContacts || 0)).toLocaleString()}
+                            color="cyan"
+                            testId="stat-combined-reach"
+                            subText={`${(lm.foottrafficUnique || 0).toLocaleString()} legacy + ${eng?.uniqueContacts || 0} live`}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {reportData.legacyHighlights && reportData.legacyHighlights.length > 0 && (
+                      <div className="border-t pt-4 mt-2">
+                        <h4 className="text-sm font-semibold mb-2">Legacy Highlights</h4>
+                        <div className="space-y-1">
+                          {reportData.legacyHighlights.slice(0, 8).map((h: string, i: number) => (
+                            <p key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                              <span className="text-primary mt-1">•</span>
+                              <span>{h}</span>
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </CollapsibleSection>
+              )}
 
               {/* Section 1: Engagement */}
               <CollapsibleSection title="Engagement" icon={Users} testId="section-engagement">
@@ -747,24 +935,24 @@ export default function Reports() {
               {benchmarkData && benchmarkData.insights?.length > 0 && (
                 <CollapsibleSection title="Benchmark Insights" icon={TrendingUp} testId="section-benchmark" defaultOpen={true}>
                   <div className="pt-4 space-y-4">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <StatCard icon={BarChart3} label="Historic Avg" value={benchmarkData.benchmarks?.historicAverage || 0} color="indigo" testId="stat-historic-avg" />
-                      <StatCard icon={TrendingUp} label="Highest Quarter" value={benchmarkData.benchmarks?.highestValue || 0} color="green" testId="stat-highest-quarter" />
-                      <StatCard
-                        icon={Activity}
-                        label="QoQ Change"
-                        value={benchmarkData.benchmarks?.qoqChange !== null ? `${benchmarkData.benchmarks.qoqChange >= 0 ? "+" : ""}${benchmarkData.benchmarks.qoqChange}%` : "N/A"}
-                        color={benchmarkData.benchmarks?.qoqChange >= 0 ? "green" : "orange"}
-                        testId="stat-qoq-change"
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <MetricBenchmarkCard
+                        title="Activations"
+                        benchmarks={benchmarkData.benchmarks?.activations || benchmarkData.benchmarks}
+                        color="indigo"
                       />
-                      <StatCard
-                        icon={Activity}
-                        label="vs Average"
-                        value={benchmarkData.benchmarks?.pctVsAverage !== null ? `${benchmarkData.benchmarks.pctVsAverage >= 0 ? "+" : ""}${benchmarkData.benchmarks.pctVsAverage}%` : "N/A"}
-                        color={benchmarkData.benchmarks?.pctVsAverage >= 0 ? "blue" : "amber"}
-                        testId="stat-pct-vs-avg"
+                      <MetricBenchmarkCard
+                        title="Foot Traffic"
+                        benchmarks={benchmarkData.benchmarks?.foottraffic}
+                        color="cyan"
+                      />
+                      <MetricBenchmarkCard
+                        title="Bookings"
+                        benchmarks={benchmarkData.benchmarks?.bookings}
+                        color="orange"
                       />
                     </div>
+
                     <div className="space-y-2">
                       {benchmarkData.insights.map((insight: string, i: number) => (
                         <div key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
@@ -773,11 +961,6 @@ export default function Reports() {
                         </div>
                       ))}
                     </div>
-                    {benchmarkData.benchmarks?.highestQuarter && (
-                      <p className="text-xs text-muted-foreground italic">
-                        Best quarter: {benchmarkData.benchmarks.highestQuarter} &middot; Current ranks #{benchmarkData.benchmarks.currentRank} of {benchmarkData.benchmarks.totalQuarters} quarters
-                      </p>
-                    )}
                   </div>
                 </CollapsibleSection>
               )}
@@ -794,6 +977,7 @@ export default function Reports() {
                           if (match) return <p key={i} className="ml-4 mb-1"><strong>{match[1]}</strong>: {match[2]}</p>;
                         }
                         if (line.startsWith("  > ")) return <blockquote key={i} className="border-l-2 border-primary/30 pl-3 ml-8 italic text-muted-foreground">{line.replace("  > ", "")}</blockquote>;
+                        if (line.startsWith("- ")) return <p key={i} className="ml-4 mb-1">{line}</p>;
                         if (line.trim()) return <p key={i} className="mb-2">{line}</p>;
                         return <br key={i} />;
                       })}
@@ -801,7 +985,7 @@ export default function Reports() {
                   ) : (
                     <div className="text-center py-6">
                       <p className="text-muted-foreground text-sm mb-3">Generate a structured narrative summary based on this report's data.</p>
-                      <Button onClick={handleGenerateNarrative} data-testid="button-generate-narrative">
+                      <Button variant="outline" onClick={handleGenerateNarrative} data-testid="button-generate-narrative">
                         <FileText className="w-4 h-4 mr-2" /> Generate Narrative
                       </Button>
                     </div>
@@ -811,6 +995,6 @@ export default function Reports() {
             </div>
           )}
         </div>
-      </main>
+    </main>
   );
 }
