@@ -5064,8 +5064,12 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
         return res.status(400).json({ message: "primaryId and mergeIds array required" });
       }
 
-      const primary = await storage.getContact(primaryId);
+      let primary = await storage.getContact(primaryId);
       if (!primary || primary.userId !== userId) return res.status(404).json({ message: "Primary contact not found" });
+
+      const allEmailsSet = new Set<string>(
+        primary.email ? primary.email.split(/,\s*/).map((e: string) => e.trim()).filter(Boolean) : []
+      );
 
       for (const mergeId of mergeIds) {
         if (mergeId === primaryId) continue;
@@ -5121,13 +5125,11 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
           }
         }
 
-        const merged: Partial<typeof contacts.$inferInsert> = {};
-        const primaryEmails = primary.email ? primary.email.split(/,\s*/).map((e: string) => e.trim()).filter(Boolean) : [];
-        const sourceEmails = source.email ? source.email.split(/,\s*/).map((e: string) => e.trim()).filter(Boolean) : [];
-        const allEmails = [...new Set([...primaryEmails, ...sourceEmails])];
-        if (allEmails.length > 0 && allEmails.join(", ") !== (primary.email || "")) {
-          merged.email = allEmails.join(", ");
+        if (source.email) {
+          source.email.split(/,\s*/).map((e: string) => e.trim()).filter(Boolean).forEach(e => allEmailsSet.add(e));
         }
+
+        const merged: Partial<typeof contacts.$inferInsert> = {};
         if (!primary.phone && source.phone) merged.phone = source.phone;
         if (!primary.businessName && source.businessName) merged.businessName = source.businessName;
         if (!primary.location && source.location) merged.location = source.location;
@@ -5137,9 +5139,15 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
         }
         if (Object.keys(merged).length > 0) {
           await db.update(contacts).set(merged).where(eq(contacts.id, primaryId));
+          primary = { ...primary, ...merged };
         }
 
         await db.delete(contacts).where(eq(contacts.id, mergeId));
+      }
+
+      const combinedEmail = [...allEmailsSet].join(", ");
+      if (combinedEmail && combinedEmail !== (primary.email || "")) {
+        await db.update(contacts).set({ email: combinedEmail }).where(eq(contacts.id, primaryId));
       }
 
       const updated = await storage.getContact(primaryId);
