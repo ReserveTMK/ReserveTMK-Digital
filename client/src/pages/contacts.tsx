@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { useContacts, useCreateContact, useDeleteContact } from "@/hooks/use-contacts";
-import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil } from "lucide-react";
+import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { Link } from "wouter";
@@ -1024,7 +1024,43 @@ function InlineEthnicityCell({ contactId, ethnicities, ethnicityCounts }: { cont
   );
 }
 
+type SortField = "name" | "role" | "ethnicity" | "age" | "suburb" | "lastActive";
+type SortDir = "asc" | "desc";
+
+function SortHeader({ label, field, activeField, dir, onSort, className }: { label: string; field: SortField; activeField: SortField | null; dir: SortDir; onSort: (f: SortField) => void; className?: string }) {
+  const isActive = activeField === field;
+  return (
+    <th className={`text-left py-3 font-medium text-muted-foreground whitespace-nowrap ${className || ""}`}>
+      <button
+        className="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer select-none"
+        onClick={() => onSort(field)}
+        data-testid={`sort-${field}`}
+      >
+        {label}
+        {isActive ? (
+          dir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+        ) : (
+          <ArrowUpDown className="w-3 h-3 opacity-40" />
+        )}
+      </button>
+    </th>
+  );
+}
+
 function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, toggleContactSelection, toggleSelectAll }: { contacts: any[]; allContacts: any[]; editMode: boolean; selectedContacts: Set<number>; toggleContactSelection: (id: number) => void; toggleSelectAll: () => void }) {
+  const [sortField, setSortField] = useState<SortField | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      if (sortDir === "asc") setSortDir("desc");
+      else { setSortField(null); setSortDir("asc"); }
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  };
+
   const ethnicityCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const c of allContacts) {
@@ -1036,6 +1072,43 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
     }
     return counts;
   }, [allContacts]);
+
+  const sortedContacts = useMemo(() => {
+    if (!sortField) return contacts;
+    const sorted = [...contacts].sort((a, b) => {
+      let av: any, bv: any;
+      switch (sortField) {
+        case "name":
+          av = (a.name || "").toLowerCase();
+          bv = (b.name || "").toLowerCase();
+          break;
+        case "role":
+          av = (a.role || "").toLowerCase();
+          bv = (b.role || "").toLowerCase();
+          break;
+        case "ethnicity":
+          av = (a.ethnicity || []).join(", ").toLowerCase();
+          bv = (b.ethnicity || []).join(", ").toLowerCase();
+          break;
+        case "age":
+          av = a.age ?? -1;
+          bv = b.age ?? -1;
+          return sortDir === "asc" ? av - bv : bv - av;
+        case "suburb":
+          av = (a.suburb || "").toLowerCase();
+          bv = (b.suburb || "").toLowerCase();
+          break;
+        case "lastActive":
+          av = a.lastActiveDate || a.lastInteractionDate || "";
+          bv = b.lastActiveDate || b.lastInteractionDate || "";
+          break;
+      }
+      if (av < bv) return sortDir === "asc" ? -1 : 1;
+      if (av > bv) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+    return sorted;
+  }, [contacts, sortField, sortDir]);
 
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden" data-testid="contacts-table">
@@ -1052,16 +1125,16 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
                   />
                 </th>
               )}
-              <th className="text-left px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">Name</th>
-              <th className="text-left px-3 py-3 font-medium text-muted-foreground whitespace-nowrap">Role</th>
-              <th className="text-left px-3 py-3 font-medium text-muted-foreground whitespace-nowrap min-w-[160px]">Ethnicity</th>
-              <th className="text-left px-3 py-3 font-medium text-muted-foreground whitespace-nowrap w-20">Age</th>
-              <th className="text-left px-3 py-3 font-medium text-muted-foreground whitespace-nowrap">Suburb</th>
-              <th className="text-left px-3 py-3 font-medium text-muted-foreground whitespace-nowrap">Last Active</th>
+              <SortHeader label="Name" field="name" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-4" />
+              <SortHeader label="Role" field="role" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
+              <SortHeader label="Ethnicity" field="ethnicity" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[160px]" />
+              <SortHeader label="Age" field="age" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-20" />
+              <SortHeader label="Suburb" field="suburb" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
+              <SortHeader label="Last Active" field="lastActive" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
             </tr>
           </thead>
           <tbody>
-            {contacts.map((contact) => (
+            {sortedContacts.map((contact) => (
               <tr key={contact.id} className={`border-b last:border-b-0 hover:bg-muted/20 transition-colors ${editMode && selectedContacts.has(contact.id) ? 'bg-primary/5' : ''}`} data-testid={`table-row-${contact.id}`}>
                 {editMode && (
                   <td className="px-3 py-2">
