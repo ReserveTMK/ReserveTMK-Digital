@@ -738,7 +738,7 @@ export default function Contacts() {
               <Button onClick={() => setOpen(true)} variant="outline" data-testid="button-add-member-empty">Add Member</Button>
             </div>
           ) : layoutView === "table" ? (
-            <ContactsTableView contacts={filteredContacts || []} />
+            <ContactsTableView contacts={filteredContacts || []} editMode={editMode} selectedContacts={selectedContacts} toggleContactSelection={toggleContactSelection} toggleSelectAll={toggleSelectAll} />
           ) : (
             <div className="space-y-3">
               {(filteredContacts || []).map((contact: any) => (
@@ -1014,13 +1014,22 @@ function InlineEthnicityCell({ contactId, ethnicities }: { contactId: number; et
   );
 }
 
-function ContactsTableView({ contacts }: { contacts: any[] }) {
+function ContactsTableView({ contacts, editMode, selectedContacts, toggleContactSelection, toggleSelectAll }: { contacts: any[]; editMode: boolean; selectedContacts: Set<number>; toggleContactSelection: (id: number) => void; toggleSelectAll: () => void }) {
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden" data-testid="contacts-table">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/30">
+              {editMode && (
+                <th className="px-3 py-3 w-10">
+                  <Checkbox
+                    checked={contacts.length > 0 && selectedContacts.size === contacts.length}
+                    onCheckedChange={toggleSelectAll}
+                    data-testid="table-checkbox-select-all"
+                  />
+                </th>
+              )}
               <th className="text-left px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">Name</th>
               <th className="text-left px-3 py-3 font-medium text-muted-foreground whitespace-nowrap">Role</th>
               <th className="text-left px-3 py-3 font-medium text-muted-foreground whitespace-nowrap min-w-[160px]">Ethnicity</th>
@@ -1031,7 +1040,16 @@ function ContactsTableView({ contacts }: { contacts: any[] }) {
           </thead>
           <tbody>
             {contacts.map((contact) => (
-              <tr key={contact.id} className="border-b last:border-b-0 hover:bg-muted/20 transition-colors" data-testid={`table-row-${contact.id}`}>
+              <tr key={contact.id} className={`border-b last:border-b-0 hover:bg-muted/20 transition-colors ${editMode && selectedContacts.has(contact.id) ? 'bg-primary/5' : ''}`} data-testid={`table-row-${contact.id}`}>
+                {editMode && (
+                  <td className="px-3 py-2">
+                    <Checkbox
+                      checked={selectedContacts.has(contact.id)}
+                      onCheckedChange={() => toggleContactSelection(contact.id)}
+                      data-testid={`table-checkbox-${contact.id}`}
+                    />
+                  </td>
+                )}
                 <td className="px-4 py-2">
                   <Link href={`/contacts/${contact.id}`} className="flex items-center gap-2 transition-colors" data-testid={`table-link-${contact.id}`}>
                     <div className="w-7 h-7 rounded-md bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
