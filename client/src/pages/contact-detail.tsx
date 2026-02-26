@@ -892,6 +892,18 @@ function EthnicityQuickEdit({ contact }: { contact: any }) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>(contact.ethnicity || []);
   const [saving, setSaving] = useState(false);
+  const { data: allContacts } = useQuery<any[]>({ queryKey: ["/api/contacts"] });
+  const ethnicityCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const c of (allContacts || [])) {
+      if (c.ethnicity) {
+        for (const eth of c.ethnicity) {
+          counts[eth] = (counts[eth] || 0) + 1;
+        }
+      }
+    }
+    return counts;
+  }, [allContacts]);
 
   useEffect(() => {
     if (open) {
@@ -947,7 +959,14 @@ function EthnicityQuickEdit({ contact }: { contact: any }) {
       </PopoverTrigger>
       <PopoverContent className="w-72 p-3" align="start">
         <div className="space-y-3 max-h-64 overflow-y-auto">
-          {ETHNICITY_OPTIONS.map((group) => (
+          {ETHNICITY_OPTIONS
+            .map((group) => ({
+              ...group,
+              options: [...group.options].sort((a, b) => (ethnicityCounts[b] || 0) - (ethnicityCounts[a] || 0)),
+              maxCount: Math.max(...group.options.map(o => ethnicityCounts[o] || 0)),
+            }))
+            .sort((a, b) => b.maxCount - a.maxCount)
+            .map((group) => (
             <div key={group.group}>
               <p className="text-xs font-semibold text-muted-foreground mb-1">{group.group}</p>
               <div className="space-y-1">
@@ -962,6 +981,9 @@ function EthnicityQuickEdit({ contact }: { contact: any }) {
                       onCheckedChange={() => toggle(eth)}
                     />
                     {eth}
+                    {(ethnicityCounts[eth] || 0) > 0 && (
+                      <span className="text-[10px] text-muted-foreground ml-auto">{ethnicityCounts[eth]}</span>
+                    )}
                   </label>
                 ))}
               </div>

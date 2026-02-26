@@ -738,7 +738,7 @@ export default function Contacts() {
               <Button onClick={() => setOpen(true)} variant="outline" data-testid="button-add-member-empty">Add Member</Button>
             </div>
           ) : layoutView === "table" ? (
-            <ContactsTableView contacts={filteredContacts || []} editMode={editMode} selectedContacts={selectedContacts} toggleContactSelection={toggleContactSelection} toggleSelectAll={toggleSelectAll} />
+            <ContactsTableView contacts={filteredContacts || []} allContacts={(contacts as any[]) || []} editMode={editMode} selectedContacts={selectedContacts} toggleContactSelection={toggleContactSelection} toggleSelectAll={toggleSelectAll} />
           ) : (
             <div className="space-y-3">
               {(filteredContacts || []).map((contact: any) => (
@@ -938,7 +938,7 @@ function InlineTextCell({ contactId, field, value, placeholder }: { contactId: n
   );
 }
 
-function InlineEthnicityCell({ contactId, ethnicities }: { contactId: number; ethnicities: string[] }) {
+function InlineEthnicityCell({ contactId, ethnicities, ethnicityCounts }: { contactId: number; ethnicities: string[]; ethnicityCounts: Record<string, number> }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>(ethnicities || []);
@@ -979,7 +979,14 @@ function InlineEthnicityCell({ contactId, ethnicities }: { contactId: number; et
       </PopoverTrigger>
       <PopoverContent className="w-72 p-3" align="start">
         <div className="space-y-3 max-h-64 overflow-y-auto">
-          {TABLE_ETHNICITY_OPTIONS.map((group) => (
+          {TABLE_ETHNICITY_OPTIONS
+            .map((group) => ({
+              ...group,
+              options: [...group.options].sort((a, b) => (ethnicityCounts[b] || 0) - (ethnicityCounts[a] || 0)),
+              maxCount: Math.max(...group.options.map(o => ethnicityCounts[o] || 0)),
+            }))
+            .sort((a, b) => b.maxCount - a.maxCount)
+            .map((group) => (
             <div key={group.group}>
               <p className="text-xs font-semibold text-muted-foreground mb-1">{group.group}</p>
               <div className="space-y-1">
@@ -994,6 +1001,9 @@ function InlineEthnicityCell({ contactId, ethnicities }: { contactId: number; et
                       onCheckedChange={() => toggle(eth)}
                     />
                     {eth}
+                    {(ethnicityCounts[eth] || 0) > 0 && (
+                      <span className="text-[10px] text-muted-foreground ml-auto">{ethnicityCounts[eth]}</span>
+                    )}
                   </label>
                 ))}
               </div>
@@ -1014,7 +1024,19 @@ function InlineEthnicityCell({ contactId, ethnicities }: { contactId: number; et
   );
 }
 
-function ContactsTableView({ contacts, editMode, selectedContacts, toggleContactSelection, toggleSelectAll }: { contacts: any[]; editMode: boolean; selectedContacts: Set<number>; toggleContactSelection: (id: number) => void; toggleSelectAll: () => void }) {
+function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, toggleContactSelection, toggleSelectAll }: { contacts: any[]; allContacts: any[]; editMode: boolean; selectedContacts: Set<number>; toggleContactSelection: (id: number) => void; toggleSelectAll: () => void }) {
+  const ethnicityCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const c of allContacts) {
+      if (c.ethnicity) {
+        for (const eth of c.ethnicity) {
+          counts[eth] = (counts[eth] || 0) + 1;
+        }
+      }
+    }
+    return counts;
+  }, [allContacts]);
+
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden" data-testid="contacts-table">
       <div className="overflow-x-auto">
@@ -1064,7 +1086,7 @@ function ContactsTableView({ contacts, editMode, selectedContacts, toggleContact
                   </Badge>
                 </td>
                 <td className="px-1 py-2">
-                  <InlineEthnicityCell contactId={contact.id} ethnicities={contact.ethnicity || []} />
+                  <InlineEthnicityCell contactId={contact.id} ethnicities={contact.ethnicity || []} ethnicityCounts={ethnicityCounts} />
                 </td>
                 <td className="px-1 py-2">
                   <InlineTextCell contactId={contact.id} field="age" value={contact.age?.toString() || ""} placeholder="—" />
