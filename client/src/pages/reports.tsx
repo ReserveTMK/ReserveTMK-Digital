@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
@@ -17,11 +18,13 @@ import {
   FileText, Users, Loader2, BarChart3, CalendarDays, CalendarRange,
   Download, Activity, Tag, TrendingUp, Building2, DollarSign,
   Save, BookOpen, ChevronDown, ChevronUp, Handshake, Clock,
-  Info, History, Zap,
+  Info, History, Zap, X, Pen, Landmark, Settings,
 } from "lucide-react";
 import {
   format, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, subMonths, startOfYear,
 } from "date-fns";
+import { Link } from "wouter";
+import type { Funder } from "@shared/schema";
 
 const CHART_COLORS = [
   "hsl(14, 88%, 68%)", "hsl(161, 100%, 12%)", "hsl(199, 85%, 83%)", "hsl(335, 82%, 76%)", "hsl(161, 40%, 35%)",
@@ -166,6 +169,11 @@ export default function Reports() {
   const [reportData, setReportData] = useState<any>(null);
   const [narrativeData, setNarrativeData] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [communityLens, setCommunityLens] = useState<"all" | "maori" | "pasifika" | "maori_pasifika">("all");
+  const [communityComparisonData, setCommunityComparisonData] = useState<any>(null);
+  const [tamakiOraData, setTamakiOraData] = useState<any>(null);
+  const [activeFunder, setActiveFunder] = useState<Funder | null>(null);
+  const [narrativeStyle, setNarrativeStyle] = useState<"compliance" | "story">("compliance");
 
   const { data: savedReports } = useQuery<any[]>({
     queryKey: ["/api/reports"],
@@ -181,6 +189,10 @@ export default function Reports() {
 
   const { data: dateRange } = useQuery<{ earliestDate: string | null; latestDate: string | null }>({
     queryKey: ["/api/reports/date-range"],
+  });
+
+  const { data: fundersList } = useQuery<Funder[]>({
+    queryKey: ["/api/funders"],
   });
 
   const [programmeFilter, setProgrammeFilter] = useState("all");
@@ -220,6 +232,38 @@ export default function Reports() {
     return { startDate: adHocStart, endDate: adHocEnd };
   };
 
+  const COMMUNITY_LENS_LABELS: Record<string, string> = {
+    all: "All Communities",
+    maori: "Māori (mātāwaka)",
+    pasifika: "Pasifika",
+    maori_pasifika: "Māori + Pasifika",
+  };
+
+  const handleSelectFunder = (funder: Funder) => {
+    if (activeFunder?.id === funder.id) {
+      setActiveFunder(null);
+      setCommunityLens("all");
+      setNarrativeStyle("compliance");
+      setFunderFilter("all");
+      setGenerated(false);
+      return;
+    }
+    setActiveFunder(funder);
+    const lens = (funder.communityLens || "all") as "all" | "maori" | "pasifika" | "maori_pasifika";
+    setCommunityLens(lens);
+    const style = (funder.narrativeStyle || "compliance") as "compliance" | "story";
+    setNarrativeStyle(style);
+    if (funder.funderTag) {
+      setFunderFilter(funder.funderTag);
+    }
+    setGenerated(false);
+  };
+
+  const isSectionDefaultOpen = (sectionKey: string) => {
+    if (!activeFunder?.prioritySections || activeFunder.prioritySections.length === 0) return true;
+    return activeFunder.prioritySections.includes(sectionKey);
+  };
+
   const handleGenerate = async () => {
     const { startDate, endDate } = getDateRange();
     if (!startDate || !endDate) return;
@@ -233,6 +277,7 @@ export default function Reports() {
       if (programmeFilter !== "all") filters.programmeIds = [parseInt(programmeFilter)];
       if (taxonomyFilter !== "all") filters.taxonomyIds = [parseInt(taxonomyFilter)];
       if (funderFilter !== "all") filters.funder = funderFilter;
+      if (communityLens !== "all") filters.communityLens = communityLens;
 
       const reportRes = await apiRequest("POST", "/api/reports/generate", filters);
       const data = await reportRes.json();
@@ -246,6 +291,36 @@ export default function Reports() {
       } catch {
         setBenchmarkData(null);
       }
+
+      if (communityLens === "all") {
+        try {
+          const compRes = await apiRequest("POST", "/api/reports/community-comparison", { startDate, endDate });
+          const compData = await compRes.json();
+          setCommunityComparisonData(compData);
+        } catch {
+          setCommunityComparisonData(null);
+        }
+      } else {
+        setCommunityComparisonData(null);
+      }
+
+      const showTamakiOra = activeFunder && (
+        activeFunder.name.toLowerCase().includes("ngā mātārae") ||
+        activeFunder.name.toLowerCase().includes("nga matarae") ||
+        (activeFunder.outcomesFramework && activeFunder.outcomesFramework.toLowerCase().includes("tāmaki ora")) ||
+        (activeFunder.outcomesFramework && activeFunder.outcomesFramework.toLowerCase().includes("tamaki ora"))
+      );
+      if (showTamakiOra) {
+        try {
+          const tamakiRes = await apiRequest("POST", "/api/reports/tamaki-ora", filters);
+          const tamakiData = await tamakiRes.json();
+          setTamakiOraData(tamakiData);
+        } catch {
+          setTamakiOraData(null);
+        }
+      } else {
+        setTamakiOraData(null);
+      }
     } catch (err: any) {
       toast({ title: "Error", description: "Failed to generate report", variant: "destructive" });
     } finally {
@@ -253,12 +328,18 @@ export default function Reports() {
     }
   };
 
+  const [participantStory, setParticipantStory] = useState("");
+  const [whatsNext, setWhatsNext] = useState("");
+
+  const countWords = (text: string) => text.trim() ? text.trim().split(/\s+/).length : 0;
+
   const handleGenerateNarrative = async () => {
     const { startDate, endDate } = getDateRange();
-    const filters: any = { startDate, endDate };
+    const filters: any = { startDate, endDate, narrativeStyle };
     if (programmeFilter !== "all") filters.programmeIds = [parseInt(programmeFilter)];
     if (taxonomyFilter !== "all") filters.taxonomyIds = [parseInt(taxonomyFilter)];
     if (funderFilter !== "all") filters.funder = funderFilter;
+    if (communityLens !== "all") filters.communityLens = communityLens;
 
     try {
       const res = await apiRequest("POST", "/api/reports/narrative", filters);
@@ -273,6 +354,12 @@ export default function Reports() {
     const { startDate, endDate } = getDateRange();
     const periodLabel = getPeriodLabel();
     try {
+      const fullNarrative = [
+        narrativeData || "",
+        participantStory.trim() ? `\n\n## Participant Story\n\n${participantStory}` : "",
+        whatsNext.trim() ? `\n\n## What's Next\n\n${whatsNext}` : "",
+      ].join("");
+
       await apiRequest("POST", "/api/reports/save", {
         title: `Report: ${periodLabel}`,
         type: activeTab === "quarterly" ? "quarterly" : activeTab === "adhoc" ? "ad_hoc" : activeTab === "ytd" ? "ytd" : activeTab === "alltime" ? "all_time" : "monthly",
@@ -282,9 +369,14 @@ export default function Reports() {
           programmeIds: programmeFilter !== "all" ? [parseInt(programmeFilter)] : undefined,
           taxonomyIds: taxonomyFilter !== "all" ? [parseInt(taxonomyFilter)] : undefined,
           funder: funderFilter !== "all" ? funderFilter : undefined,
+          communityLens: communityLens !== "all" ? communityLens : undefined,
+          narrativeStyle,
+          activeFunderId: activeFunder?.id,
+          participantStory: participantStory.trim() || undefined,
+          whatsNext: whatsNext.trim() || undefined,
         },
         snapshotData: reportData,
-        narrative: narrativeData,
+        narrative: fullNarrative.trim() || narrativeData,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/reports"] });
       toast({ title: "Saved", description: "Report snapshot saved successfully" });
@@ -321,6 +413,12 @@ export default function Reports() {
     const d = reportData;
 
     rows.push(["Report Period", getPeriodLabel()]);
+    if (communityLens !== "all") {
+      rows.push(["Community Lens", COMMUNITY_LENS_LABELS[communityLens] || communityLens]);
+    }
+    if (activeFunder) {
+      rows.push(["Funder Profile", activeFunder.name]);
+    }
     rows.push([]);
 
     if (d.isBlended && d.legacyMetrics) {
@@ -380,7 +478,20 @@ export default function Reports() {
     if (narrativeData) {
       rows.push([]);
       rows.push(["=== NARRATIVE ==="]);
+      rows.push(["Narrative Style", narrativeStyle]);
       rows.push([narrativeData]);
+    }
+
+    if (participantStory.trim()) {
+      rows.push([]);
+      rows.push(["=== PARTICIPANT STORY ==="]);
+      rows.push([participantStory]);
+    }
+
+    if (whatsNext.trim()) {
+      rows.push([]);
+      rows.push(["=== WHAT'S NEXT ==="]);
+      rows.push([whatsNext]);
     }
 
     const csvContent = rows.map(row =>
@@ -391,7 +502,8 @@ export default function Reports() {
     const link = document.createElement("a");
     link.href = url;
     const { startDate, endDate } = getDateRange();
-    link.download = `report-${startDate}-to-${endDate}.csv`;
+    const funderPrefix = activeFunder ? `${activeFunder.name.replace(/\s+/g, "_")}-` : "";
+    link.download = `${funderPrefix}report-${startDate}-to-${endDate}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -411,6 +523,84 @@ export default function Reports() {
             <h1 className="text-3xl font-display font-bold" data-testid="text-reports-title">Reports</h1>
             <p className="text-muted-foreground mt-1">Generate funder-ready impact reports from your operational data.</p>
           </div>
+
+          <div className="flex flex-wrap gap-1 p-1 bg-muted/50 rounded-lg" data-testid="community-lens-selector">
+            {([
+              { value: "all", label: "All Communities", testId: "lens-all" },
+              { value: "maori", label: "Māori (mātāwaka)", testId: "lens-maori" },
+              { value: "pasifika", label: "Pasifika", testId: "lens-pasifika" },
+              { value: "maori_pasifika", label: "Māori + Pasifika", testId: "lens-maori-pasifika" },
+            ] as const).map((opt) => (
+              <Button
+                key={opt.value}
+                variant={communityLens === opt.value ? "default" : "ghost"}
+                size="sm"
+                onClick={() => { setCommunityLens(opt.value); setGenerated(false); }}
+                data-testid={opt.testId}
+              >
+                {opt.label}
+              </Button>
+            ))}
+          </div>
+
+          {communityLens !== "all" && (
+            <div
+              className="flex items-center justify-between gap-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800"
+              data-testid="banner-community-lens"
+            >
+              <div className="flex items-center gap-2 text-sm font-medium text-amber-900 dark:text-amber-200">
+                <Users className="w-4 h-4 shrink-0" />
+                <span>
+                  Viewing: {communityLens === "maori" ? "Māori (mātāwaka)" : communityLens === "pasifika" ? "Pasifika" : "Māori + Pasifika"} community data only
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => { setCommunityLens("all"); setActiveFunder(null); setNarrativeStyle("compliance"); setGenerated(false); }}
+                data-testid="button-reset-lens"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
+
+          {fundersList && fundersList.length > 0 && (
+            <div data-testid="funder-profile-selector">
+              <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+                <h3 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                  <Landmark className="w-4 h-4" /> Funder Profiles
+                </h3>
+                <Link href="/funders">
+                  <Button variant="ghost" size="sm" data-testid="link-manage-funders">
+                    <Settings className="w-4 h-4 mr-1" /> Manage Funders
+                  </Button>
+                </Link>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {fundersList.map((funder) => {
+                  const isActive = activeFunder?.id === funder.id;
+                  return (
+                    <Button
+                      key={funder.id}
+                      variant={isActive ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => handleSelectFunder(funder)}
+                      data-testid={`button-funder-${funder.id}`}
+                    >
+                      <Landmark className="w-4 h-4 mr-1.5" />
+                      {funder.name}
+                      {funder.communityLens && funder.communityLens !== "all" && (
+                        <Badge variant="secondary" className="ml-2 text-xs">
+                          {COMMUNITY_LENS_LABELS[funder.communityLens] || funder.communityLens}
+                        </Badge>
+                      )}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <Card className="p-6">
             <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setGenerated(false); }}>
@@ -578,7 +768,9 @@ export default function Reports() {
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500" data-testid="report-results">
               <div className="flex items-center justify-between gap-4 flex-wrap">
                 <div>
-                  <h2 className="text-xl font-display font-bold">Report Results</h2>
+                  <h2 className="text-xl font-display font-bold" data-testid="text-report-header">
+                    {activeFunder ? `${activeFunder.name} — ${COMMUNITY_LENS_LABELS[activeFunder.communityLens || "all"]}` : "Report Results"}
+                  </h2>
                   <p className="text-sm text-muted-foreground" data-testid="text-report-period">{getPeriodLabel()}</p>
                 </div>
                 <div className="flex gap-2">
@@ -672,7 +864,7 @@ export default function Reports() {
               )}
 
               {/* Section 1: Engagement */}
-              <CollapsibleSection title="Engagement" icon={Users} testId="section-engagement">
+              <CollapsibleSection title="Engagement" icon={Users} testId="section-engagement" defaultOpen={isSectionDefaultOpen("engagement")} key={`engagement-${activeFunder?.id || 'none'}`}>
                 <div className="pt-4 space-y-4">
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                     <StatCard icon={Users} label="Unique Contacts" value={eng?.uniqueContacts || 0} color="primary" testId="stat-unique-contacts" />
@@ -719,8 +911,14 @@ export default function Reports() {
               </CollapsibleSection>
 
               {/* Section 2: Delivery */}
-              <CollapsibleSection title="Delivery" icon={CalendarDays} testId="section-delivery">
+              <CollapsibleSection title="Delivery" icon={CalendarDays} testId="section-delivery" defaultOpen={isSectionDefaultOpen("delivery")} key={`delivery-${activeFunder?.id || 'none'}`}>
                 <div className="pt-4 space-y-4">
+                  {communityLens !== "all" && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded-md px-3 py-2" data-testid="notice-delivery-unfiltered">
+                      <Info className="w-3.5 h-3.5 shrink-0" />
+                      <span>Delivery metrics show organisation-level data (not filtered by community lens)</span>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                     <StatCard icon={CalendarDays} label="Events" value={del?.events?.total || 0} color="blue" testId="stat-events" />
                     <StatCard icon={Building2} label="Bookings" value={del?.bookings?.total || 0} color="orange" testId="stat-bookings" />
@@ -763,7 +961,7 @@ export default function Reports() {
               </CollapsibleSection>
 
               {/* Section 3: Impact by Taxonomy */}
-              <CollapsibleSection title="Impact by Taxonomy" icon={Tag} testId="section-impact">
+              <CollapsibleSection title="Impact by Taxonomy" icon={Tag} testId="section-impact" defaultOpen={isSectionDefaultOpen("impact")} key={`impact-${activeFunder?.id || 'none'}`}>
                 <div className="pt-4">
                   {imp && imp.length > 0 ? (
                     <div className="space-y-4">
@@ -818,7 +1016,7 @@ export default function Reports() {
               </CollapsibleSection>
 
               {/* Section 4: Outcome Movement */}
-              <CollapsibleSection title="Outcome Movement" icon={TrendingUp} testId="section-outcomes">
+              <CollapsibleSection title="Outcome Movement" icon={TrendingUp} testId="section-outcomes" defaultOpen={isSectionDefaultOpen("outcomes")} key={`outcomes-${activeFunder?.id || 'none'}`}>
                 <div className="pt-4 space-y-4">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <StatCard icon={Users} label="Contacts Tracked" value={out?.totalContacts || 0} color="primary" testId="stat-tracked-contacts" />
@@ -845,8 +1043,14 @@ export default function Reports() {
               </CollapsibleSection>
 
               {/* Section 5: Value & Contribution */}
-              <CollapsibleSection title="Value & Contribution" icon={DollarSign} testId="section-value">
+              <CollapsibleSection title="Value & Contribution" icon={DollarSign} testId="section-value" defaultOpen={isSectionDefaultOpen("value")} key={`value-${activeFunder?.id || 'none'}`}>
                 <div className="pt-4 space-y-4">
+                  {communityLens !== "all" && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded-md px-3 py-2" data-testid="notice-value-unfiltered">
+                      <Info className="w-3.5 h-3.5 shrink-0" />
+                      <span>Financial metrics show organisation-level data (not filtered by community lens)</span>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <StatCard icon={DollarSign} label="Total Revenue" value={`$${val?.revenue?.total?.toLocaleString() || 0}`} color="green" testId="stat-total-revenue" />
                     <StatCard icon={Handshake} label="In-Kind Value" value={`$${val?.inKindValue?.toLocaleString() || 0}`} color="blue" testId="stat-inkind-value" />
@@ -965,22 +1169,283 @@ export default function Reports() {
                 </CollapsibleSection>
               )}
 
-              {/* Section 7: Narrative */}
-              <CollapsibleSection title="Narrative Summary" icon={FileText} testId="section-narrative">
-                <div className="pt-4">
+              {/* Section 7: Community Comparison */}
+              {communityLens === "all" && communityComparisonData && (
+                <CollapsibleSection title="Community Comparison" icon={Users} testId="section-community-comparison" defaultOpen={true}>
+                  <div className="pt-4 space-y-4">
+                    <div className="mb-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium">Community Split</span>
+                        <span className="text-sm text-muted-foreground" data-testid="text-community-total">
+                          {communityComparisonData.communitySplit?.totalParticipants || 0} total participants
+                        </span>
+                      </div>
+                      <div className="w-full h-6 rounded-md overflow-hidden flex" data-testid="bar-community-split">
+                        <div
+                          className="h-full flex items-center justify-center text-xs font-medium text-white"
+                          style={{
+                            width: `${communityComparisonData.communitySplit?.maoriPercent || 0}%`,
+                            backgroundColor: "hsl(14, 88%, 68%)",
+                            minWidth: communityComparisonData.communitySplit?.maoriPercent > 0 ? "2rem" : "0",
+                          }}
+                          data-testid="bar-maori-split"
+                        >
+                          {communityComparisonData.communitySplit?.maoriPercent || 0}%
+                        </div>
+                        <div
+                          className="h-full flex items-center justify-center text-xs font-medium text-white"
+                          style={{
+                            width: `${communityComparisonData.communitySplit?.pasifikaPercent || 0}%`,
+                            backgroundColor: "hsl(161, 100%, 12%)",
+                            minWidth: communityComparisonData.communitySplit?.pasifikaPercent > 0 ? "2rem" : "0",
+                          }}
+                          data-testid="bar-pasifika-split"
+                        >
+                          {communityComparisonData.communitySplit?.pasifikaPercent || 0}%
+                        </div>
+                      </div>
+                      <div className="flex justify-between mt-1">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: "hsl(14, 88%, 68%)" }} />
+                          <span className="text-xs text-muted-foreground">Maori</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: "hsl(161, 100%, 12%)" }} />
+                          <span className="text-xs text-muted-foreground">Pasifika</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border rounded-lg overflow-hidden">
+                      <table className="w-full text-sm" data-testid="table-community-comparison">
+                        <thead className="bg-muted/50">
+                          <tr>
+                            <th className="text-left p-3">Metric</th>
+                            <th className="text-right p-3" style={{ color: "hsl(14, 88%, 68%)" }}>Maori</th>
+                            <th className="text-right p-3" style={{ color: "hsl(161, 100%, 12%)" }}>Pasifika</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className="border-t">
+                            <td className="p-3">Unique Participants</td>
+                            <td className="text-right p-3 font-medium" data-testid="stat-maori-participants">{communityComparisonData.maori?.uniqueParticipants || 0}</td>
+                            <td className="text-right p-3 font-medium" data-testid="stat-pasifika-participants">{communityComparisonData.pasifika?.uniqueParticipants || 0}</td>
+                          </tr>
+                          <tr className="border-t">
+                            <td className="p-3">Rangatahi (under 25)</td>
+                            <td className="text-right p-3 font-medium" data-testid="stat-maori-rangatahi">{communityComparisonData.maori?.rangatahiUnder25 || 0}</td>
+                            <td className="text-right p-3 font-medium" data-testid="stat-pasifika-rangatahi">{communityComparisonData.pasifika?.rangatahiUnder25 || 0}</td>
+                          </tr>
+                          <tr className="border-t">
+                            <td className="p-3">Active in Business Programmes</td>
+                            <td className="text-right p-3 font-medium" data-testid="stat-maori-business">{communityComparisonData.maori?.activeInBusinessProgrammes || 0}</td>
+                            <td className="text-right p-3 font-medium" data-testid="stat-pasifika-business">{communityComparisonData.pasifika?.activeInBusinessProgrammes || 0}</td>
+                          </tr>
+                          <tr className="border-t">
+                            <td className="p-3">Confidence Growth</td>
+                            <td className="text-right p-3 font-medium" data-testid="stat-maori-confidence">{communityComparisonData.maori?.confidenceGrowthPercent || 0}%</td>
+                            <td className="text-right p-3 font-medium" data-testid="stat-pasifika-confidence">{communityComparisonData.pasifika?.confidenceGrowthPercent || 0}%</td>
+                          </tr>
+                          <tr className="border-t">
+                            <td className="p-3">Milestones Achieved</td>
+                            <td className="text-right p-3 font-medium" data-testid="stat-maori-milestones">{communityComparisonData.maori?.milestonesAchieved || 0}</td>
+                            <td className="text-right p-3 font-medium" data-testid="stat-pasifika-milestones">{communityComparisonData.pasifika?.milestonesAchieved || 0}</td>
+                          </tr>
+                          <tr className="border-t">
+                            <td className="p-3">New Contacts This Period</td>
+                            <td className="text-right p-3 font-medium" data-testid="stat-maori-new-contacts">{communityComparisonData.maori?.newContactsThisPeriod || 0}</td>
+                            <td className="text-right p-3 font-medium" data-testid="stat-pasifika-new-contacts">{communityComparisonData.pasifika?.newContactsThisPeriod || 0}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </CollapsibleSection>
+              )}
+
+              {/* Section 8: Tāmaki Ora Alignment */}
+              {tamakiOraData && (
+                <CollapsibleSection title="Tāmaki Ora Alignment" icon={Landmark} testId="section-tamaki-ora" defaultOpen={isSectionDefaultOpen("tamaki-ora")}>
+                  <div className="pt-4 space-y-4">
+                    <p className="text-sm text-muted-foreground">
+                      Alignment with the Tāmaki Ora outcomes framework — measuring impact across three pou for Māori community wellbeing.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <Card className="p-4 space-y-3" data-testid="card-whai-rawa-ora">
+                        <div className="flex items-center gap-2">
+                          <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-amber-500/10 text-amber-600">
+                            <DollarSign className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="font-semibold text-sm">Whai Rawa Ora</h4>
+                            <p className="text-xs text-muted-foreground">Economic Wellbeing</p>
+                          </div>
+                        </div>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-muted-foreground">In business programmes</span>
+                            <span className="font-medium" data-testid="stat-whai-rawa-biz">{tamakiOraData.whaiRawaOra?.contactsInBusinessProgrammes || 0}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-muted-foreground">Funding milestones</span>
+                            <span className="font-medium" data-testid="stat-whai-rawa-funding">{tamakiOraData.whaiRawaOra?.fundingMilestones || 0}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-muted-foreground">Stage progressions</span>
+                            <span className="font-medium" data-testid="stat-whai-rawa-stage">{tamakiOraData.whaiRawaOra?.stageProgressions || 0}</span>
+                          </div>
+                        </div>
+                      </Card>
+
+                      <Card className="p-4 space-y-3" data-testid="card-te-hapori-ora">
+                        <div className="flex items-center gap-2">
+                          <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-green-500/10 text-green-600">
+                            <Users className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="font-semibold text-sm">Te Hapori Ora</h4>
+                            <p className="text-xs text-muted-foreground">Thriving Communities</p>
+                          </div>
+                        </div>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-muted-foreground">In community events</span>
+                            <span className="font-medium" data-testid="stat-hapori-events">{tamakiOraData.teHaporiOra?.contactsInCommunityEvents || 0}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-muted-foreground">Rangatahi count</span>
+                            <span className="font-medium" data-testid="stat-hapori-rangatahi">{tamakiOraData.teHaporiOra?.rangatahiCount || 0}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-muted-foreground">Repeat engagement</span>
+                            <span className="font-medium" data-testid="stat-hapori-repeat">{tamakiOraData.teHaporiOra?.repeatEngagementRate || 0}%</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-muted-foreground">Active groups</span>
+                            <span className="font-medium" data-testid="stat-hapori-groups">{tamakiOraData.teHaporiOra?.activeGroupsWithMaori || 0}</span>
+                          </div>
+                        </div>
+                      </Card>
+
+                      <Card className="p-4 space-y-3" data-testid="card-huatau-ora">
+                        <div className="flex items-center gap-2">
+                          <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-violet-500/10 text-violet-600">
+                            <Zap className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="font-semibold text-sm">Huatau Ora</h4>
+                            <p className="text-xs text-muted-foreground">Innovation & Futures</p>
+                          </div>
+                        </div>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-muted-foreground">Rangatahi in innovation</span>
+                            <span className="font-medium" data-testid="stat-huatau-rangatahi">{tamakiOraData.huatauOra?.rangatahiInInnovation || 0}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-muted-foreground">New venture milestones</span>
+                            <span className="font-medium" data-testid="stat-huatau-ventures">{tamakiOraData.huatauOra?.newVentureMilestones || 0}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-muted-foreground">Avg mindset shift</span>
+                            <span className="font-medium" data-testid="stat-huatau-mindset">{tamakiOraData.huatauOra?.averageMindsetShift || 0}</span>
+                          </div>
+                        </div>
+                      </Card>
+                    </div>
+                  </div>
+                </CollapsibleSection>
+              )}
+
+              {/* Section 9: Narrative */}
+              <CollapsibleSection title="Narrative Summary" icon={FileText} testId="section-narrative" defaultOpen={isSectionDefaultOpen("narrative")} key={`narrative-${activeFunder?.id || 'none'}`}>
+                <div className="pt-4 space-y-4">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">Narrative Style:</span>
+                      <div className="flex gap-1 p-1 bg-muted/50 rounded-lg" data-testid="narrative-style-selector">
+                        <Button
+                          variant={narrativeStyle === "compliance" ? "default" : "ghost"}
+                          size="sm"
+                          onClick={() => { setNarrativeStyle("compliance"); setNarrativeData(null); }}
+                          data-testid="style-compliance"
+                        >
+                          <FileText className="w-3.5 h-3.5 mr-1.5" /> Compliance
+                        </Button>
+                        <Button
+                          variant={narrativeStyle === "story" ? "default" : "ghost"}
+                          size="sm"
+                          onClick={() => { setNarrativeStyle("story"); setNarrativeData(null); }}
+                          data-testid="style-story"
+                        >
+                          <Pen className="w-3.5 h-3.5 mr-1.5" /> Story
+                        </Button>
+                      </div>
+                      {activeFunder && (
+                        <Badge variant="secondary" data-testid="badge-funder-style">
+                          {activeFunder.name}: {narrativeStyle}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+
                   {narrativeData ? (
-                    <div className="prose prose-sm dark:prose-invert max-w-none" data-testid="text-narrative">
-                      {narrativeData.split("\n").map((line, i) => {
-                        if (line.startsWith("## ")) return <h3 key={i} className="text-lg font-semibold mt-4 mb-2">{line.replace("## ", "")}</h3>;
-                        if (line.startsWith("- **")) {
-                          const match = line.match(/^- \*\*(.+?)\*\*: (.+)$/);
-                          if (match) return <p key={i} className="ml-4 mb-1"><strong>{match[1]}</strong>: {match[2]}</p>;
-                        }
-                        if (line.startsWith("  > ")) return <blockquote key={i} className="border-l-2 border-primary/30 pl-3 ml-8 italic text-muted-foreground">{line.replace("  > ", "")}</blockquote>;
-                        if (line.startsWith("- ")) return <p key={i} className="ml-4 mb-1">{line}</p>;
-                        if (line.trim()) return <p key={i} className="mb-2">{line}</p>;
-                        return <br key={i} />;
-                      })}
+                    <div className="space-y-6">
+                      <div className="prose prose-sm dark:prose-invert max-w-none" data-testid="text-narrative">
+                        {narrativeData.split("\n").map((line, i) => {
+                          if (line.startsWith("## ")) return <h3 key={i} className="text-lg font-semibold mt-4 mb-2">{line.replace("## ", "")}</h3>;
+                          if (line.startsWith("- **")) {
+                            const match = line.match(/^- \*\*(.+?)\*\*: (.+)$/);
+                            if (match) return <p key={i} className="ml-4 mb-1"><strong>{match[1]}</strong>: {match[2]}</p>;
+                          }
+                          if (line.startsWith("  > ")) return <blockquote key={i} className="border-l-2 border-primary/30 pl-3 ml-8 italic text-muted-foreground">{line.replace("  > ", "")}</blockquote>;
+                          if (line.startsWith("- ")) return <p key={i} className="ml-4 mb-1">{line}</p>;
+                          if (line.trim()) return <p key={i} className="mb-2">{line}</p>;
+                          return <br key={i} />;
+                        })}
+                      </div>
+
+                      <div className="border-t pt-4 space-y-4">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between gap-3">
+                            <Label htmlFor="participant-story" className="flex items-center gap-2">
+                              <Pen className="w-4 h-4 text-primary" />
+                              Participant Story
+                            </Label>
+                            <span className={`text-xs ${countWords(participantStory) > 150 ? "text-destructive" : "text-muted-foreground"}`} data-testid="text-story-word-count">
+                              {countWords(participantStory)}/150 words
+                            </span>
+                          </div>
+                          <Textarea
+                            id="participant-story"
+                            placeholder="Share a real participant story that brings the data to life — a moment of change, growth, or connection..."
+                            value={participantStory}
+                            onChange={(e) => setParticipantStory(e.target.value)}
+                            className="min-h-[100px] resize-y"
+                            data-testid="textarea-participant-story"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between gap-3">
+                            <Label htmlFor="whats-next" className="flex items-center gap-2">
+                              <TrendingUp className="w-4 h-4 text-primary" />
+                              What's Next
+                            </Label>
+                            <span className={`text-xs ${countWords(whatsNext) > 150 ? "text-destructive" : "text-muted-foreground"}`} data-testid="text-next-word-count">
+                              {countWords(whatsNext)}/150 words
+                            </span>
+                          </div>
+                          <Textarea
+                            id="whats-next"
+                            placeholder="Outline upcoming priorities, planned activities, or strategic focus for the next reporting period..."
+                            value={whatsNext}
+                            onChange={(e) => setWhatsNext(e.target.value)}
+                            className="min-h-[100px] resize-y"
+                            data-testid="textarea-whats-next"
+                          />
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <div className="text-center py-6">

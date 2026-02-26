@@ -1249,6 +1249,75 @@ export const insertGmailConnectedAccountSchema = createInsertSchema(gmailConnect
 export type GmailConnectedAccount = typeof gmailConnectedAccounts.$inferSelect;
 export type InsertGmailConnectedAccount = z.infer<typeof insertGmailConnectedAccountSchema>;
 
+// === FUNDERS ===
+
+export const FUNDER_STATUSES = ["active_funder", "in_conversation", "pending_eoi", "completed"] as const;
+export type FunderStatus = typeof FUNDER_STATUSES[number];
+
+export const COMMUNITY_LENS_OPTIONS = ["all", "maori", "pasifika", "maori_pasifika"] as const;
+export type CommunityLens = typeof COMMUNITY_LENS_OPTIONS[number];
+
+export const REPORTING_CADENCES = ["monthly", "quarterly", "annual", "adhoc"] as const;
+export type ReportingCadence = typeof REPORTING_CADENCES[number];
+
+export const NARRATIVE_STYLES = ["compliance", "story"] as const;
+export type NarrativeStyle = typeof NARRATIVE_STYLES[number];
+
+export const FUNDER_DOCUMENT_TYPES = ["contract", "eoi", "framework", "report", "other"] as const;
+export type FunderDocumentType = typeof FUNDER_DOCUMENT_TYPES[number];
+
+export const funders = pgTable("funders", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  organisation: text("organisation"),
+  contactPerson: text("contact_person"),
+  contactEmail: text("contact_email"),
+  contactPhone: text("contact_phone"),
+  status: text("status").notNull().default("in_conversation"),
+  communityLens: text("community_lens").notNull().default("all"),
+  outcomesFramework: text("outcomes_framework"),
+  reportingCadence: text("reporting_cadence").default("quarterly"),
+  narrativeStyle: text("narrative_style").default("compliance"),
+  prioritySections: text("priority_sections").array(),
+  funderTag: text("funder_tag"),
+  contractStart: timestamp("contract_start"),
+  contractEnd: timestamp("contract_end"),
+  nextDeadline: timestamp("next_deadline"),
+  reviewDate: timestamp("review_date"),
+  notes: text("notes"),
+  isDefault: boolean("is_default").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertFunderSchema = createInsertSchema(funders).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type Funder = typeof funders.$inferSelect;
+export type InsertFunder = z.infer<typeof insertFunderSchema>;
+
+export const funderDocuments = pgTable("funder_documents", {
+  id: serial("id").primaryKey(),
+  funderId: integer("funder_id").notNull(),
+  userId: text("user_id").notNull(),
+  fileName: text("file_name").notNull(),
+  documentType: text("document_type").notNull().default("other"),
+  fileData: text("file_data").notNull(),
+  fileSize: integer("file_size"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertFunderDocumentSchema = createInsertSchema(funderDocuments).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type FunderDocument = typeof funderDocuments.$inferSelect;
+export type InsertFunderDocument = z.infer<typeof insertFunderDocumentSchema>;
+
 // Request types
 export type CreateContactRequest = InsertContact;
 export type UpdateContactRequest = Partial<InsertContact>;

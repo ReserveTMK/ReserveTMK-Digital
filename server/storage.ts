@@ -117,6 +117,12 @@ import {
   gmailConnectedAccounts,
   type GmailConnectedAccount,
   type InsertGmailConnectedAccount,
+  funders,
+  funderDocuments,
+  type Funder,
+  type InsertFunder,
+  type FunderDocument,
+  type InsertFunderDocument,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, sql, max, count } from "drizzle-orm";
 
@@ -326,6 +332,19 @@ export interface IStorage {
   updateCommunitySpend(id: number, updates: Partial<InsertCommunitySpend>): Promise<CommunitySpend>;
   deleteCommunitySpend(id: number): Promise<void>;
   getCommunitySpendByProgramme(programmeId: number): Promise<CommunitySpend[]>;
+
+  // Funders
+  getFunders(userId: string): Promise<Funder[]>;
+  getFunder(id: number): Promise<Funder | undefined>;
+  createFunder(data: InsertFunder): Promise<Funder>;
+  updateFunder(id: number, updates: Partial<InsertFunder>): Promise<Funder>;
+  deleteFunder(id: number): Promise<void>;
+
+  // Funder Documents
+  getFunderDocuments(funderId: number): Promise<FunderDocument[]>;
+  createFunderDocument(data: InsertFunderDocument): Promise<FunderDocument>;
+  deleteFunderDocument(id: number): Promise<void>;
+  getFunderDocument(id: number): Promise<FunderDocument | undefined>;
 
   // Auth (re-exported or separate)
   auth: IAuthStorage;
@@ -1390,6 +1409,48 @@ export class DatabaseStorage implements IStorage {
   async getGmailConnectedAccountByEmail(userId: string, email: string): Promise<GmailConnectedAccount | undefined> {
     const [item] = await db.select().from(gmailConnectedAccounts).where(and(eq(gmailConnectedAccounts.userId, userId), eq(gmailConnectedAccounts.email, email)));
     return item;
+  }
+
+  async getFunders(userId: string): Promise<Funder[]> {
+    return db.select().from(funders).where(eq(funders.userId, userId)).orderBy(desc(funders.createdAt));
+  }
+
+  async getFunder(id: number): Promise<Funder | undefined> {
+    const [item] = await db.select().from(funders).where(eq(funders.id, id));
+    return item;
+  }
+
+  async createFunder(data: InsertFunder): Promise<Funder> {
+    const [item] = await db.insert(funders).values(data).returning();
+    return item;
+  }
+
+  async updateFunder(id: number, updates: Partial<InsertFunder>): Promise<Funder> {
+    const [item] = await db.update(funders).set(updates).where(eq(funders.id, id)).returning();
+    return item;
+  }
+
+  async deleteFunder(id: number): Promise<void> {
+    await db.delete(funderDocuments).where(eq(funderDocuments.funderId, id));
+    await db.delete(funders).where(eq(funders.id, id));
+  }
+
+  async getFunderDocuments(funderId: number): Promise<FunderDocument[]> {
+    return db.select().from(funderDocuments).where(eq(funderDocuments.funderId, funderId)).orderBy(desc(funderDocuments.createdAt));
+  }
+
+  async getFunderDocument(id: number): Promise<FunderDocument | undefined> {
+    const [item] = await db.select().from(funderDocuments).where(eq(funderDocuments.id, id));
+    return item;
+  }
+
+  async createFunderDocument(data: InsertFunderDocument): Promise<FunderDocument> {
+    const [item] = await db.insert(funderDocuments).values(data).returning();
+    return item;
+  }
+
+  async deleteFunderDocument(id: number): Promise<void> {
+    await db.delete(funderDocuments).where(eq(funderDocuments.id, id));
   }
 }
 

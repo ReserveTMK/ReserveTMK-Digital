@@ -4,6 +4,7 @@ import {
   impactLogs, impactLogContacts, impactLogGroups, impactTags, impactTaxonomy,
   contacts, groups, groupMembers, events, eventAttendance,
   programmes, programmeEvents, bookings, memberships, mous, venues,
+  milestones, relationshipStageHistory,
 } from "@shared/schema";
 
 export interface ReportFilters {
@@ -14,6 +15,38 @@ export interface ReportFilters {
   taxonomyIds?: number[];
   demographicSegments?: string[];
   funder?: string;
+  communityLens?: "all" | "maori" | "pasifika" | "maori_pasifika";
+}
+
+export const MAORI_ETHNICITIES = ["Māori"];
+
+export const PASIFIKA_ETHNICITIES = [
+  "Samoan", "Tongan", "Cook Islands Māori", "Niuean", "Tokelauan",
+  "Fijian", "Hawaiian", "Tahitian", "Other Polynesian", "Micronesian", "Melanesian",
+];
+
+export async function getCommunityLensContactIds(filters: ReportFilters): Promise<Set<number> | null> {
+  const lens = filters.communityLens;
+  if (!lens || lens === "all") return null;
+
+  let targetEthnicities: string[];
+  if (lens === "maori") {
+    targetEthnicities = MAORI_ETHNICITIES;
+  } else if (lens === "pasifika") {
+    targetEthnicities = PASIFIKA_ETHNICITIES;
+  } else {
+    targetEthnicities = [...MAORI_ETHNICITIES, ...PASIFIKA_ETHNICITIES];
+  }
+
+  const matchingContacts = await db
+    .select({ id: contacts.id })
+    .from(contacts)
+    .where(and(
+      eq(contacts.userId, filters.userId),
+      sql`${contacts.ethnicity} && ${sql`ARRAY[${sql.join(targetEthnicities.map(e => sql`${e}`), sql`, `)}]::text[]`}`,
+    ));
+
+  return new Set(matchingContacts.map(c => c.id));
 }
 
 function parseDate(d: string) { return new Date(d); }
@@ -35,27 +68,57 @@ export async function getEngagementMetrics(filters: ReportFilters) {
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
   const where = confirmedDebriefConditions(filters);
+  const lensContactIds = await getCommunityLensContactIds(filters);
 
-  const uniqueContactsResult = await db
+  let uniqueContactsResult = await db
     .selectDistinct({ contactId: impactLogContacts.contactId })
     .from(impactLogContacts)
     .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
     .where(where);
 
-  const totalInstancesResult = await db
-    .select({ count: count() })
-    .from(impactLogContacts)
-    .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
-    .where(where);
+  if (lensContactIds) {
+    uniqueContactsResult = uniqueContactsResult.filter(r => lensContactIds.has(r.contactId));
+  }
 
-  const newContactsResult = await db
-    .select({ count: count() })
-    .from(contacts)
-    .where(and(
-      eq(contacts.userId, filters.userId),
-      gte(contacts.createdAt, start),
-      lte(contacts.createdAt, end),
-    ));
+  let totalInstancesCount: number;
+  if (lensContactIds) {
+    const allInstances = await db
+      .select({ contactId: impactLogContacts.contactId })
+      .from(impactLogContacts)
+      .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
+      .where(where);
+    totalInstancesCount = allInstances.filter(r => lensContactIds.has(r.contactId)).length;
+  } else {
+    const totalInstancesResult = await db
+      .select({ count: count() })
+      .from(impactLogContacts)
+      .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
+      .where(where);
+    totalInstancesCount = Number(totalInstancesResult[0]?.count || 0);
+  }
+
+  let newContactsCount: number;
+  if (lensContactIds) {
+    const newContactsList = await db
+      .select({ id: contacts.id })
+      .from(contacts)
+      .where(and(
+        eq(contacts.userId, filters.userId),
+        gte(contacts.createdAt, start),
+        lte(contacts.createdAt, end),
+      ));
+    newContactsCount = newContactsList.filter(r => lensContactIds.has(r.id)).length;
+  } else {
+    const newContactsResult = await db
+      .select({ count: count() })
+      .from(contacts)
+      .where(and(
+        eq(contacts.userId, filters.userId),
+        gte(contacts.createdAt, start),
+        lte(contacts.createdAt, end),
+      ));
+    newContactsCount = Number(newContactsResult[0]?.count || 0);
+  }
 
   const activeGroupsResult = await db
     .selectDistinct({ groupId: impactLogGroups.groupId })
@@ -79,7 +142,7 @@ export async function getEngagementMetrics(filters: ReportFilters) {
     ...activeGroupsViaContacts.map(r => r.groupId),
   ]);
 
-  const repeatResult = await db
+  let repeatResult = await db
     .select({
       contactId: impactLogContacts.contactId,
       cnt: count(),
@@ -88,6 +151,10 @@ export async function getEngagementMetrics(filters: ReportFilters) {
     .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
     .where(where)
     .groupBy(impactLogContacts.contactId);
+
+  if (lensContactIds) {
+    repeatResult = repeatResult.filter(r => lensContactIds.has(r.contactId));
+  }
 
   const repeatCount = repeatResult.filter(r => Number(r.cnt) >= 2).length;
 
@@ -148,8 +215,8 @@ export async function getEngagementMetrics(filters: ReportFilters) {
 
   return {
     uniqueContacts: uniqueContactsResult.length,
-    totalEngagementInstances: Number(totalInstancesResult[0]?.count || 0),
-    newContacts: Number(newContactsResult[0]?.count || 0),
+    totalEngagementInstances: totalInstancesCount,
+    newContacts: newContactsCount,
     activeGroups: allGroupIds.size,
     repeatEngagementRate: uniqueContactsResult.length > 0
       ? Math.round((repeatCount / uniqueContactsResult.length) * 100) : 0,
@@ -227,11 +294,13 @@ export async function getDeliveryMetrics(filters: ReportFilters) {
       byClassification: programmesByClassification,
       completed: programmesCompleted,
     },
+    communityLensApplied: false,
   };
 }
 
 export async function getImpactByTaxonomy(filters: ReportFilters) {
   const where = confirmedDebriefConditions(filters);
+  const lensContactIds = await getCommunityLensContactIds(filters);
 
   const confirmedLogIds = await db
     .select({ id: impactLogs.id })
@@ -272,8 +341,10 @@ export async function getImpactByTaxonomy(filters: ReportFilters) {
 
   const contactsByLogMap = new Map<number, number[]>();
   for (const row of contactsByLog) {
+    const cid = row.contactId;
+    if (lensContactIds && !lensContactIds.has(cid)) continue;
     if (!contactsByLogMap.has(row.impactLogId)) contactsByLogMap.set(row.impactLogId, []);
-    contactsByLogMap.get(row.impactLogId)!.push(row.contactId);
+    contactsByLogMap.get(row.impactLogId)!.push(cid);
   }
 
   const quotesByLog = await db
@@ -352,12 +423,19 @@ export async function getImpactByTaxonomy(filters: ReportFilters) {
 
 export async function getOutcomeMovement(filters: ReportFilters) {
   const where = confirmedDebriefConditions(filters);
+  const lensContactIds = await getCommunityLensContactIds(filters);
+  const start = parseDate(filters.startDate);
+  const end = parseDate(filters.endDate);
 
-  const contactIds = await db
+  let contactIds = await db
     .selectDistinct({ contactId: impactLogContacts.contactId })
     .from(impactLogContacts)
     .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
     .where(where);
+
+  if (lensContactIds) {
+    contactIds = contactIds.filter(r => lensContactIds.has(r.contactId));
+  }
 
   if (contactIds.length === 0) {
     return {
@@ -404,6 +482,23 @@ export async function getOutcomeMovement(filters: ReportFilters) {
     if (log.milestones) milestoneCount += log.milestones.length;
   }
 
+  let milestonesFromTable = await db
+    .select()
+    .from(milestones)
+    .where(and(
+      eq(milestones.userId, filters.userId),
+      gte(milestones.createdAt, start),
+      lte(milestones.createdAt, end),
+    ));
+
+  if (lensContactIds) {
+    milestonesFromTable = milestonesFromTable.filter(m =>
+      m.linkedContactId && lensContactIds.has(m.linkedContactId)
+    );
+  }
+
+  const totalMilestoneCount = milestoneCount + milestonesFromTable.length;
+
   return {
     totalContacts: cIds.length,
     contactsWithMetrics: contactMetrics.filter(c => c.metrics && Object.keys(c.metrics as any).length > 0).length,
@@ -417,7 +512,7 @@ export async function getOutcomeMovement(filters: ReportFilters) {
       skill: positivePercent(skillChanges),
       confidence: positivePercent(confidenceChanges),
     },
-    milestoneCount,
+    milestoneCount: totalMilestoneCount,
   };
 }
 
@@ -546,12 +641,14 @@ export async function getValueContribution(filters: ReportFilters) {
       details: mouSummary,
     },
     programmeCosts,
+    communityLensApplied: false,
   };
 }
 
 export async function generateNarrative(
   filters: ReportFilters,
   legacyContext?: { metrics: any; highlights: string[]; reportCount: number } | null,
+  narrativeStyle: "compliance" | "story" = "compliance",
 ) {
   const [engagement, delivery, impact, outcomes, value] = await Promise.all([
     getEngagementMetrics(filters),
@@ -568,52 +665,113 @@ export async function generateNarrative(
   const lm = legacyContext?.metrics;
   const hasLegacy = legacyContext && legacyContext.reportCount > 0 && lm;
 
+  const lens = filters.communityLens;
+  const lensLabel = lens === "maori" ? "Maori (matawaka)" : lens === "pasifika" ? "Pasifika" : lens === "maori_pasifika" ? "Maori and Pasifika" : null;
+
   const sections: string[] = [];
 
-  let engText = `## Engagement Summary\n\nDuring ${periodLabel}`;
-  if (hasLegacy) {
-    engText += ` (combining data from ${legacyContext.reportCount} legacy report${legacyContext.reportCount > 1 ? "s" : ""} with live tracking)`;
-  }
-  engText += `, ${engagement.uniqueContacts} unique individuals were engaged across ${engagement.totalEngagementInstances} interactions.`;
-  if (hasLegacy && lm.foottrafficUnique > 0) {
-    engText += ` Legacy reports recorded ${lm.foottrafficUnique.toLocaleString()} hub foot traffic (unique visitors).`;
-  }
-  engText += ` ${engagement.newContacts} new contacts were added to the network. ${engagement.activeGroups} groups/organisations were actively involved. The repeat engagement rate was ${engagement.repeatEngagementRate}%, with ${engagement.repeatEngagementCount} individuals engaged more than once.`;
-  sections.push(engText);
+  if (narrativeStyle === "story") {
+    let whoText = `## Who Our Community Is\n\n`;
+    if (lensLabel) {
+      whoText += `Focusing on our ${lensLabel} community, `;
+    } else {
+      whoText += `Across our community, `;
+    }
+    whoText += `${engagement.uniqueContacts} people walked through our doors and engaged with us during ${periodLabel}.`;
+    if (hasLegacy) {
+      whoText += ` This builds on a history captured in ${legacyContext.reportCount} legacy report${legacyContext.reportCount > 1 ? "s" : ""}.`;
+    }
+    whoText += ` Among them, ${engagement.newContacts} were new faces joining our network for the first time.`;
+    whoText += ` ${engagement.activeGroups} groups and organisations were part of the journey, and ${engagement.repeatEngagementRate}% of our people came back more than once — showing the depth of connection being built.`;
+    sections.push(whoText);
 
-  const eventTypes = Object.entries(delivery.events.byType).map(([t, c]) => `${c} ${t.toLowerCase()}${c > 1 ? "s" : ""}`).join(", ");
-  let delText = `## Delivery Overview\n\n${delivery.events.total} events were held (${eventTypes || "none recorded"}).`;
-  if (hasLegacy && lm.activationsTotal > 0) {
-    const parts: string[] = [];
-    parts.push(`${lm.activationsTotal} total activations`);
-    if (lm.activationsWorkshops > 0) parts.push(`${lm.activationsWorkshops} workshops`);
-    if (lm.activationsMentoring > 0) parts.push(`${lm.activationsMentoring} mentoring sessions`);
-    if (lm.activationsEvents > 0) parts.push(`${lm.activationsEvents} events`);
-    if (lm.activationsPartnerMeetings > 0) parts.push(`${lm.activationsPartnerMeetings} partner meetings`);
-    delText += ` Legacy reports contributed ${parts.join(", ")}.`;
-  }
-  const combinedBookings = delivery.bookings.total + (hasLegacy ? lm.bookingsTotal || 0 : 0);
-  delText += ` ${combinedBookings} venue bookings were recorded across the period`;
-  if (hasLegacy && lm.bookingsTotal > 0) {
-    delText += ` (${delivery.bookings.total} live, ${lm.bookingsTotal} legacy)`;
-  }
-  delText += ` totalling ${delivery.bookings.communityHours} tracked community hours. ${delivery.programmes.total} programmes ran during this period, with ${delivery.programmes.completed} completing.`;
-  sections.push(delText);
+    let happeningText = `## What's Happening\n\n`;
+    const eventTypes = Object.entries(delivery.events.byType).map(([t, c]) => `${c} ${t.toLowerCase()}${c > 1 ? "s" : ""}`).join(", ");
+    happeningText += `We hosted ${delivery.events.total} events (${eventTypes || "none recorded"})`;
+    if (hasLegacy && lm.activationsTotal > 0) {
+      happeningText += `, alongside ${lm.activationsTotal} activations from our legacy period`;
+    }
+    happeningText += `. ${delivery.bookings.total} venue bookings contributed ${delivery.bookings.communityHours} hours of community activity.`;
+    happeningText += ` ${delivery.programmes.total} programmes were running, with ${delivery.programmes.completed} reaching completion — each one a story of growth and possibility.`;
+    sections.push(happeningText);
 
-  if (topCategories.length > 0) {
-    const catLines = topCategories.map(c => {
-      let line = `- **${c.taxonomyName}**: ${c.debriefCount} debriefs, ${c.uniqueContactsAffected} people affected (impact score: ${c.weightedImpactScore})`;
-      if (c.representativeQuotes.length > 0) {
-        line += `\n  > "${c.representativeQuotes[0]}"`;
+    if (topCategories.length > 0) {
+      let changeText = `## What We're Seeing Change\n\n`;
+      if (lensLabel) {
+        changeText += `Within our ${lensLabel} community, the `;
+      } else {
+        changeText += `The `;
       }
-      return line;
-    }).join("\n");
-    sections.push(`## Impact Highlights\n\nThe top impact areas during this period were:\n${catLines}`);
+      changeText += `most significant shifts are happening in:\n`;
+      changeText += topCategories.map(c => {
+        let line = `- **${c.taxonomyName}**: touching ${c.uniqueContactsAffected} lives across ${c.debriefCount} sessions`;
+        if (c.representativeQuotes.length > 0) {
+          line += `\n  > "${c.representativeQuotes[0]}"`;
+        }
+        return line;
+      }).join("\n");
+      changeText += `\n\n${outcomes.contactsWithMetrics} people have measurable growth tracked — with confidence shifting positively for ${outcomes.positiveMovementPercent.confidence}% of them. ${outcomes.milestoneCount} milestones mark the tangible progress our community is making.`;
+      sections.push(changeText);
+    }
+
+    sections.push(`## [Participant Story]\n\n*[Insert a participant story here — a real example of change, growth, or connection that brings the data to life.]*`);
+
+    sections.push(`## [What's Next]\n\n*[Share what's coming up — upcoming programmes, community goals, or areas of focus for the next period.]*`);
+  } else {
+    let engText = `## Who We Reached\n\nDuring ${periodLabel}`;
+    if (lensLabel) {
+      engText += ` (filtered to ${lensLabel} community)`;
+    }
+    if (hasLegacy) {
+      engText += ` (combining data from ${legacyContext.reportCount} legacy report${legacyContext.reportCount > 1 ? "s" : ""} with live tracking)`;
+    }
+    engText += `, ${engagement.uniqueContacts} unique individuals were engaged across ${engagement.totalEngagementInstances} interactions.`;
+    if (hasLegacy && lm.foottrafficUnique > 0) {
+      engText += ` Legacy reports recorded ${lm.foottrafficUnique.toLocaleString()} hub foot traffic (unique visitors).`;
+    }
+    engText += ` ${engagement.newContacts} new contacts were added to the network. ${engagement.activeGroups} groups/organisations were actively involved. The repeat engagement rate was ${engagement.repeatEngagementRate}%, with ${engagement.repeatEngagementCount} individuals engaged more than once.`;
+    sections.push(engText);
+
+    const eventTypes = Object.entries(delivery.events.byType).map(([t, c]) => `${c} ${t.toLowerCase()}${c > 1 ? "s" : ""}`).join(", ");
+    let delText = `## What We Delivered\n\n${delivery.events.total} events were held (${eventTypes || "none recorded"}).`;
+    if (hasLegacy && lm.activationsTotal > 0) {
+      const parts: string[] = [];
+      parts.push(`${lm.activationsTotal} total activations`);
+      if (lm.activationsWorkshops > 0) parts.push(`${lm.activationsWorkshops} workshops`);
+      if (lm.activationsMentoring > 0) parts.push(`${lm.activationsMentoring} mentoring sessions`);
+      if (lm.activationsEvents > 0) parts.push(`${lm.activationsEvents} events`);
+      if (lm.activationsPartnerMeetings > 0) parts.push(`${lm.activationsPartnerMeetings} partner meetings`);
+      delText += ` Legacy reports contributed ${parts.join(", ")}.`;
+    }
+    const combinedBookings = delivery.bookings.total + (hasLegacy ? lm.bookingsTotal || 0 : 0);
+    delText += ` ${combinedBookings} venue bookings were recorded across the period`;
+    if (hasLegacy && lm.bookingsTotal > 0) {
+      delText += ` (${delivery.bookings.total} live, ${lm.bookingsTotal} legacy)`;
+    }
+    delText += ` totalling ${delivery.bookings.communityHours} tracked community hours. ${delivery.programmes.total} programmes ran during this period, with ${delivery.programmes.completed} completing.`;
+    sections.push(delText);
+
+    if (topCategories.length > 0) {
+      const catLines = topCategories.map(c => {
+        let line = `- **${c.taxonomyName}**: ${c.debriefCount} debriefs, ${c.uniqueContactsAffected} people affected (impact score: ${c.weightedImpactScore})`;
+        if (c.representativeQuotes.length > 0) {
+          line += `\n  > "${c.representativeQuotes[0]}"`;
+        }
+        return line;
+      }).join("\n");
+      let impactHeader = `## What Shifted`;
+      if (lensLabel) impactHeader += ` (${lensLabel})`;
+      sections.push(`${impactHeader}\n\nThe top impact areas during this period were:\n${catLines}`);
+    }
+
+    sections.push(`## Outcome Movement\n\n${outcomes.contactsWithMetrics} of ${outcomes.totalContacts} engaged contacts had tracked metrics. Average scores: mindset ${outcomes.averageChange.mindset}, skill ${outcomes.averageChange.skill}, confidence ${outcomes.averageChange.confidence}. ${outcomes.milestoneCount} milestones were recorded across confirmed debriefs.`);
+
+    sections.push(`## Value & Contribution\n\nTotal revenue from bookings: $${value.revenue.total.toLocaleString()}. ${value.memberships.active} active memberships contributed $${value.memberships.totalRevenue.toLocaleString()}. ${value.mouExchange.active} MOUs delivered $${value.mouExchange.totalInKindValue.toLocaleString()} in in-kind value. Programme costs totalled $${value.programmeCosts.reduce((s, p) => s + p.totalCost, 0).toLocaleString()}.`);
+
+    sections.push(`## [Participant Story]\n\n*[Insert a participant story here — a real example that illustrates the impact described above.]*`);
+
+    sections.push(`## [What's Next]\n\n*[Outline upcoming priorities, planned activities, or strategic focus for the next reporting period.]*`);
   }
-
-  sections.push(`## Outcome Movement\n\n${outcomes.contactsWithMetrics} of ${outcomes.totalContacts} engaged contacts had tracked metrics. Average scores: mindset ${outcomes.averageChange.mindset}, skill ${outcomes.averageChange.skill}, confidence ${outcomes.averageChange.confidence}. ${outcomes.milestoneCount} milestones were recorded across confirmed debriefs.`);
-
-  sections.push(`## Value & Contribution\n\nTotal revenue from bookings: $${value.revenue.total.toLocaleString()}. ${value.memberships.active} active memberships contributed $${value.memberships.totalRevenue.toLocaleString()}. ${value.mouExchange.active} MOUs delivered $${value.mouExchange.totalInKindValue.toLocaleString()} in in-kind value. Programme costs totalled $${value.programmeCosts.reduce((s, p) => s + p.totalCost, 0).toLocaleString()}.`);
 
   if (hasLegacy && legacyContext.highlights.length > 0) {
     const hlLines = legacyContext.highlights.slice(0, 5).map(h => `- ${h}`).join("\n");
@@ -622,12 +780,312 @@ export async function generateNarrative(
 
   return {
     narrative: sections.join("\n\n"),
+    narrativeStyle,
     sections: {
       engagement,
       delivery,
       impact,
       outcomes,
       value,
+    },
+  };
+}
+
+export async function getCommunityComparison(filters: ReportFilters) {
+  const start = parseDate(filters.startDate);
+  const end = parseDate(filters.endDate);
+  const where = confirmedDebriefConditions(filters);
+
+  const maoriIds = await getCommunityLensContactIds({ ...filters, communityLens: "maori" });
+  const pasifikaIds = await getCommunityLensContactIds({ ...filters, communityLens: "pasifika" });
+
+  const allEngagedContacts = await db
+    .selectDistinct({ contactId: impactLogContacts.contactId })
+    .from(impactLogContacts)
+    .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
+    .where(where);
+
+  const allEngagedIds = new Set(allEngagedContacts.map(r => r.contactId));
+
+  const allContactDetails = allEngagedIds.size > 0
+    ? await db
+        .select({ id: contacts.id, age: contacts.age, metrics: contacts.metrics })
+        .from(contacts)
+        .where(and(eq(contacts.userId, filters.userId), inArray(contacts.id, Array.from(allEngagedIds))))
+    : [];
+
+  const newContactsInPeriod = await db
+    .select({ id: contacts.id })
+    .from(contacts)
+    .where(and(
+      eq(contacts.userId, filters.userId),
+      gte(contacts.createdAt, start),
+      lte(contacts.createdAt, end),
+    ));
+  const newContactIds = new Set(newContactsInPeriod.map(c => c.id));
+
+  const businessProgrammes = await db
+    .select({ id: programmes.id, attendees: programmes.attendees })
+    .from(programmes)
+    .where(and(
+      eq(programmes.userId, filters.userId),
+      gte(programmes.startDate, start),
+      lte(programmes.startDate, end),
+    ));
+
+  const contactsInBusinessProgrammes = new Set<number>();
+  for (const p of businessProgrammes) {
+    if (p.attendees) {
+      for (const a of p.attendees) contactsInBusinessProgrammes.add(a);
+    }
+  }
+
+  const allMilestones = await db
+    .select()
+    .from(milestones)
+    .where(and(
+      eq(milestones.userId, filters.userId),
+      gte(milestones.createdAt, start),
+      lte(milestones.createdAt, end),
+    ));
+
+  function computeMetrics(lensIds: Set<number> | null) {
+    if (!lensIds) return { uniqueParticipants: 0, rangatahiUnder25: 0, activeInBusinessProgrammes: 0, confidenceGrowthPercent: 0, milestonesAchieved: 0, newContactsThisPeriod: 0 };
+
+    const engaged = Array.from(allEngagedIds).filter(id => lensIds.has(id));
+    const uniqueParticipants = engaged.length;
+
+    const contactMap = new Map(allContactDetails.map(c => [c.id, c]));
+    let rangatahiUnder25 = 0;
+    let confidencePositive = 0;
+    let confidenceTotal = 0;
+    let activeInBiz = 0;
+
+    for (const id of engaged) {
+      const c = contactMap.get(id);
+      if (c) {
+        if (c.age != null && c.age < 25) rangatahiUnder25++;
+        const m = c.metrics as any;
+        if (m?.confidence != null) {
+          confidenceTotal++;
+          if (m.confidence > 0) confidencePositive++;
+        }
+      }
+      if (contactsInBusinessProgrammes.has(id)) activeInBiz++;
+    }
+
+    const milestonesAchieved = allMilestones.filter(m =>
+      m.linkedContactId && lensIds.has(m.linkedContactId)
+    ).length;
+
+    const newContacts = Array.from(newContactIds).filter(id => lensIds.has(id)).length;
+
+    return {
+      uniqueParticipants,
+      rangatahiUnder25,
+      activeInBusinessProgrammes: activeInBiz,
+      confidenceGrowthPercent: confidenceTotal > 0 ? Math.round((confidencePositive / confidenceTotal) * 100) : 0,
+      milestonesAchieved,
+      newContactsThisPeriod: newContacts,
+    };
+  }
+
+  const maoriMetrics = computeMetrics(maoriIds);
+  const pasifikaMetrics = computeMetrics(pasifikaIds);
+
+  const totalParticipants = maoriMetrics.uniqueParticipants + pasifikaMetrics.uniqueParticipants;
+  const maoriPercent = totalParticipants > 0 ? Math.round((maoriMetrics.uniqueParticipants / totalParticipants) * 100) : 0;
+  const pasifikaPercent = totalParticipants > 0 ? 100 - maoriPercent : 0;
+
+  return {
+    maori: maoriMetrics,
+    pasifika: pasifikaMetrics,
+    communitySplit: {
+      maoriPercent,
+      pasifikaPercent,
+      totalParticipants,
+    },
+  };
+}
+
+export async function getTamakiOraAlignment(filters: ReportFilters) {
+  const maoriFilters = { ...filters, communityLens: "maori" as const };
+  const maoriIds = await getCommunityLensContactIds(maoriFilters);
+  if (!maoriIds || maoriIds.size === 0) {
+    return {
+      whaiRawaOra: { contactsInBusinessProgrammes: 0, fundingMilestones: 0, stageProgressions: 0 },
+      teHaporiOra: { contactsInCommunityEvents: 0, rangatahiCount: 0, repeatEngagementRate: 0, activeGroupsWithMaori: 0 },
+      huatauOra: { rangatahiInInnovation: 0, newVentureMilestones: 0, averageMindsetShift: 0 },
+    };
+  }
+
+  const start = parseDate(filters.startDate);
+  const end = parseDate(filters.endDate);
+  const where = confirmedDebriefConditions(filters);
+
+  const allProgrammes = await db
+    .select({ id: programmes.id, classification: programmes.classification, attendees: programmes.attendees })
+    .from(programmes)
+    .where(and(
+      eq(programmes.userId, filters.userId),
+      gte(programmes.startDate, start),
+      lte(programmes.startDate, end),
+    ));
+
+  const businessClassifications = ["business", "entrepreneurship", "enterprise", "startup"];
+  const innovationClassifications = ["innovation", "youth", "rangatahi", "digital", "technology"];
+
+  let contactsInBusinessProgrammes = 0;
+  let rangatahiInInnovation = 0;
+  const maoriInBizSet = new Set<number>();
+
+  const maoriContactDetails = await db
+    .select({ id: contacts.id, age: contacts.age, metrics: contacts.metrics, relationshipStage: contacts.relationshipStage })
+    .from(contacts)
+    .where(and(
+      eq(contacts.userId, filters.userId),
+      inArray(contacts.id, Array.from(maoriIds)),
+    ));
+  const maoriContactMap = new Map(maoriContactDetails.map(c => [c.id, c]));
+
+  for (const p of allProgrammes) {
+    if (!p.attendees) continue;
+    const isBiz = businessClassifications.some(bc => p.classification.toLowerCase().includes(bc));
+    const isInnovation = innovationClassifications.some(ic => p.classification.toLowerCase().includes(ic));
+
+    for (const attendeeId of p.attendees) {
+      if (!maoriIds.has(attendeeId)) continue;
+      if (isBiz && !maoriInBizSet.has(attendeeId)) {
+        maoriInBizSet.add(attendeeId);
+        contactsInBusinessProgrammes++;
+      }
+      if (isInnovation) {
+        const c = maoriContactMap.get(attendeeId);
+        if (c && c.age != null && c.age < 25) {
+          rangatahiInInnovation++;
+        }
+      }
+    }
+  }
+
+  const allMilestones = await db
+    .select()
+    .from(milestones)
+    .where(and(
+      eq(milestones.userId, filters.userId),
+      gte(milestones.createdAt, start),
+      lte(milestones.createdAt, end),
+    ));
+
+  const fundingTypes = ["funding_secured", "revenue_milestone"];
+  const ventureTypes = ["business_launched", "prototype_completed"];
+
+  let fundingMilestones = 0;
+  let newVentureMilestones = 0;
+  for (const m of allMilestones) {
+    if (!m.linkedContactId || !maoriIds.has(m.linkedContactId)) continue;
+    if (fundingTypes.includes(m.milestoneType)) fundingMilestones++;
+    if (ventureTypes.includes(m.milestoneType)) newVentureMilestones++;
+  }
+
+  const stageHistory = await db
+    .select()
+    .from(relationshipStageHistory)
+    .where(and(
+      eq(relationshipStageHistory.entityType, "contact"),
+      gte(relationshipStageHistory.changedAt, start),
+      lte(relationshipStageHistory.changedAt, end),
+    ));
+
+  let stageProgressions = 0;
+  const stageOrder = ["new", "engaged", "active", "deepening", "partner", "alumni"];
+  for (const sh of stageHistory) {
+    if (!maoriIds.has(sh.entityId)) continue;
+    const prevIdx = sh.previousStage ? stageOrder.indexOf(sh.previousStage) : -1;
+    const newIdx = stageOrder.indexOf(sh.newStage);
+    if (newIdx > prevIdx) stageProgressions++;
+  }
+
+  const eventsInRange = await db
+    .select({ id: events.id })
+    .from(events)
+    .where(and(
+      eq(events.userId, filters.userId),
+      gte(events.startTime, start),
+      lte(events.startTime, end),
+    ));
+
+  const eventIds = eventsInRange.map(e => e.id);
+  let contactsInCommunityEvents = 0;
+  if (eventIds.length > 0) {
+    const attendance = await db
+      .select({ contactId: eventAttendance.contactId })
+      .from(eventAttendance)
+      .where(inArray(eventAttendance.eventId, eventIds));
+
+    const maoriAttendees = new Set<number>();
+    for (const a of attendance) {
+      if (maoriIds.has(a.contactId)) maoriAttendees.add(a.contactId);
+    }
+    contactsInCommunityEvents = maoriAttendees.size;
+  }
+
+  let rangatahiCount = 0;
+  for (const c of maoriContactDetails) {
+    if (c.age != null && c.age < 25) rangatahiCount++;
+  }
+
+  const engagedContacts = await db
+    .select({ contactId: impactLogContacts.contactId, cnt: count() })
+    .from(impactLogContacts)
+    .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
+    .where(where)
+    .groupBy(impactLogContacts.contactId);
+
+  const maoriEngaged = engagedContacts.filter(r => maoriIds.has(r.contactId));
+  const maoriRepeat = maoriEngaged.filter(r => Number(r.cnt) >= 2).length;
+  const repeatEngagementRate = maoriEngaged.length > 0 ? Math.round((maoriRepeat / maoriEngaged.length) * 100) : 0;
+
+  const maoriIdArray = Array.from(maoriIds);
+  let activeGroupsWithMaori = 0;
+  if (maoriIdArray.length > 0) {
+    const groupsWithMaori = await db
+      .selectDistinct({ groupId: groupMembers.groupId })
+      .from(groupMembers)
+      .innerJoin(groups, eq(groupMembers.groupId, groups.id))
+      .where(and(
+        eq(groups.userId, filters.userId),
+        eq(groups.active, true),
+        inArray(groupMembers.contactId, maoriIdArray),
+      ));
+    activeGroupsWithMaori = groupsWithMaori.length;
+  }
+
+  let mindsetValues: number[] = [];
+  for (const c of maoriContactDetails) {
+    const m = c.metrics as any;
+    if (m?.mindset != null) mindsetValues.push(m.mindset);
+  }
+  const averageMindsetShift = mindsetValues.length > 0
+    ? Math.round((mindsetValues.reduce((a, b) => a + b, 0) / mindsetValues.length) * 10) / 10
+    : 0;
+
+  return {
+    whaiRawaOra: {
+      contactsInBusinessProgrammes,
+      fundingMilestones,
+      stageProgressions,
+    },
+    teHaporiOra: {
+      contactsInCommunityEvents,
+      rangatahiCount,
+      repeatEngagementRate,
+      activeGroupsWithMaori,
+    },
+    huatauOra: {
+      rangatahiInInnovation,
+      newVentureMilestones,
+      averageMindsetShift,
     },
   };
 }
@@ -650,6 +1108,7 @@ export async function getFullMonthlyReport(filters: ReportFilters) {
       programmeIds: filters.programmeIds,
       taxonomyIds: filters.taxonomyIds,
       demographicSegments: filters.demographicSegments,
+      communityLens: filters.communityLens,
     },
     engagement,
     delivery,

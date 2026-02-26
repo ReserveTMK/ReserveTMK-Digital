@@ -86,6 +86,7 @@ const navGroups: NavGroup[] = [
     name: "Settings",
     href: "/gmail-import",
     children: [
+      { name: "Funders", href: "/funders", icon: Building2, description: "Manage funding relationships" },
       { name: "Gmail Import", href: "/gmail-import", icon: Mail, description: "Import contacts from email" },
     ],
   },

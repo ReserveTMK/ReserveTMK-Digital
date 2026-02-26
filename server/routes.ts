@@ -6,9 +6,9 @@ import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { openai } from "./replit_integrations/audio/client";
-import { getFullMonthlyReport, generateNarrative, type ReportFilters } from "./reporting";
+import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, type ReportFilters } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups } from "@shared/schema";
+import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql, gte, lte } from "drizzle-orm";
 import { scanGmailEmails, startAutoSync, getGmailOAuth2Client } from "./gmail-import";
@@ -2489,7 +2489,7 @@ Important:
   app.post("/api/reports/generate", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder } = req.body;
+      const { startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder, communityLens } = req.body;
 
       if (!startDate || !endDate) {
         return res.status(400).json({ message: "startDate and endDate are required" });
@@ -2503,6 +2503,7 @@ Important:
         taxonomyIds,
         demographicSegments,
         funder,
+        communityLens,
       };
 
       const report = await getFullMonthlyReport(filters);
@@ -2596,7 +2597,7 @@ Important:
   app.post("/api/reports/narrative", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder } = req.body;
+      const { startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder, communityLens, narrativeStyle } = req.body;
 
       if (!startDate || !endDate) {
         return res.status(400).json({ message: "startDate and endDate are required" });
@@ -2610,7 +2611,10 @@ Important:
         taxonomyIds,
         demographicSegments,
         funder,
+        communityLens,
       };
+
+      const style: "compliance" | "story" = narrativeStyle === "story" ? "story" : "compliance";
 
       let legacyContext: { metrics: any; highlights: string[]; reportCount: number } | null = null;
       try {
@@ -2663,11 +2667,66 @@ Important:
         }
       } catch {}
 
-      const result = await generateNarrative(filters, legacyContext);
+      const result = await generateNarrative(filters, legacyContext, style);
       res.json(result);
     } catch (err: any) {
       console.error("Narrative generation error:", err);
       res.status(500).json({ message: "Failed to generate narrative" });
+    }
+  });
+
+  app.post("/api/reports/community-comparison", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder } = req.body;
+
+      if (!startDate || !endDate) {
+        return res.status(400).json({ message: "startDate and endDate are required" });
+      }
+
+      const filters: ReportFilters = {
+        userId,
+        startDate,
+        endDate,
+        programmeIds,
+        taxonomyIds,
+        demographicSegments,
+        funder,
+      };
+
+      const comparison = await getCommunityComparison(filters);
+      res.json(comparison);
+    } catch (err: any) {
+      console.error("Community comparison error:", err);
+      res.status(500).json({ message: "Failed to generate community comparison" });
+    }
+  });
+
+  app.post("/api/reports/tamaki-ora", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder } = req.body;
+
+      if (!startDate || !endDate) {
+        return res.status(400).json({ message: "startDate and endDate are required" });
+      }
+
+      const filters: ReportFilters = {
+        userId,
+        startDate,
+        endDate,
+        programmeIds,
+        taxonomyIds,
+        demographicSegments,
+        funder,
+        communityLens: "maori",
+      };
+
+      const alignment = await getTamakiOraAlignment(filters);
+      res.json(alignment);
+    } catch (err: any) {
+      console.error("Tamaki Ora alignment error:", err);
+      res.status(500).json({ message: "Failed to generate Tāmaki Ora alignment" });
     }
   });
 
@@ -5610,6 +5669,195 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     } catch (err: any) {
       console.error("AI scoring error:", err);
       res.status(500).json({ message: "Failed to score relationships" });
+    }
+  });
+
+  // === Funders API ===
+
+  app.get("/api/funders", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      let fundersList = await storage.getFunders(userId);
+
+      if (fundersList.length === 0) {
+        const defaults = [
+          {
+            userId,
+            name: "Ngā Mātārae",
+            organisation: "Ngā Mātārae",
+            status: "active_funder" as const,
+            communityLens: "maori" as const,
+            outcomesFramework: "Tāmaki Ora",
+            reportingCadence: "quarterly" as const,
+            narrativeStyle: "compliance" as const,
+            prioritySections: ["engagement", "outcomes", "milestones"],
+            funderTag: "nga-matarae",
+            isDefault: true,
+          },
+          {
+            userId,
+            name: "EDO / Auckland Council",
+            organisation: "Auckland Council",
+            status: "active_funder" as const,
+            communityLens: "all" as const,
+            outcomesFramework: "Auckland Plan",
+            reportingCadence: "quarterly" as const,
+            narrativeStyle: "compliance" as const,
+            prioritySections: ["engagement", "delivery", "value"],
+            funderTag: "edo-auckland-council",
+            isDefault: true,
+          },
+          {
+            userId,
+            name: "Foundation North",
+            organisation: "Foundation North",
+            status: "active_funder" as const,
+            communityLens: "pasifika" as const,
+            outcomesFramework: "Community Wellbeing",
+            reportingCadence: "annual" as const,
+            narrativeStyle: "story" as const,
+            prioritySections: ["engagement", "outcomes", "impact"],
+            funderTag: "foundation-north",
+            isDefault: true,
+          },
+        ];
+
+        for (const def of defaults) {
+          await storage.createFunder(def);
+        }
+        fundersList = await storage.getFunders(userId);
+      }
+
+      res.json(fundersList);
+    } catch (err: any) {
+      console.error("Error fetching funders:", err);
+      res.status(500).json({ message: "Failed to fetch funders" });
+    }
+  });
+
+  app.get("/api/funders/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const funder = await storage.getFunder(id);
+      if (!funder) return res.status(404).json({ message: "Funder not found" });
+      if (funder.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+
+      const docs = await storage.getFunderDocuments(id);
+      res.json({ ...funder, documentCount: docs.length });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch funder" });
+    }
+  });
+
+  app.post("/api/funders", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const body = coerceDateFields(req.body);
+      const input = insertFunderSchema.parse({ ...body, userId });
+      const funder = await storage.createFunder(input);
+      res.status(201).json(funder);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
+      }
+      res.status(500).json({ message: "Failed to create funder" });
+    }
+  });
+
+  app.patch("/api/funders/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getFunder(id);
+      if (!existing) return res.status(404).json({ message: "Funder not found" });
+      if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+
+      const body = coerceDateFields(req.body);
+      const updated = await storage.updateFunder(id, body);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update funder" });
+    }
+  });
+
+  app.delete("/api/funders/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getFunder(id);
+      if (!existing) return res.status(404).json({ message: "Funder not found" });
+      if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+
+      await storage.deleteFunder(id);
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to delete funder" });
+    }
+  });
+
+  app.get("/api/funders/:id/documents", isAuthenticated, async (req, res) => {
+    try {
+      const funderId = parseInt(req.params.id);
+      const funder = await storage.getFunder(funderId);
+      if (!funder) return res.status(404).json({ message: "Funder not found" });
+      if (funder.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+
+      const docs = await storage.getFunderDocuments(funderId);
+      res.json(docs.map(d => ({ ...d, fileData: undefined })));
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch documents" });
+    }
+  });
+
+  app.post("/api/funders/:id/documents", isAuthenticated, async (req, res) => {
+    try {
+      const funderId = parseInt(req.params.id);
+      const userId = (req.user as any).claims.sub;
+      const funder = await storage.getFunder(funderId);
+      if (!funder) return res.status(404).json({ message: "Funder not found" });
+      if (funder.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      const input = insertFunderDocumentSchema.parse({
+        ...req.body,
+        funderId,
+        userId,
+      });
+      const doc = await storage.createFunderDocument(input);
+      res.status(201).json({ ...doc, fileData: undefined });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
+      }
+      res.status(500).json({ message: "Failed to upload document" });
+    }
+  });
+
+  app.get("/api/funder-documents/:docId/download", isAuthenticated, async (req, res) => {
+    try {
+      const docId = parseInt(req.params.docId);
+      const doc = await storage.getFunderDocument(docId);
+      if (!doc) return res.status(404).json({ message: "Document not found" });
+
+      const funder = await storage.getFunder(doc.funderId);
+      if (!funder || funder.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+
+      res.json({ id: doc.id, fileName: doc.fileName, documentType: doc.documentType, fileData: doc.fileData, fileSize: doc.fileSize });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to download document" });
+    }
+  });
+
+  app.delete("/api/funder-documents/:docId", isAuthenticated, async (req, res) => {
+    try {
+      const docId = parseInt(req.params.docId);
+      const doc = await storage.getFunderDocument(docId);
+      if (!doc) return res.status(404).json({ message: "Document not found" });
+
+      const funder = await storage.getFunder(doc.funderId);
+      if (!funder || funder.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+
+      await storage.deleteFunderDocument(docId);
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to delete document" });
     }
   });
 
