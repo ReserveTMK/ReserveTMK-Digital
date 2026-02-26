@@ -1,7 +1,8 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { useContacts, useCreateContact, useDeleteContact } from "@/hooks/use-contacts";
-import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge } from "lucide-react";
-import { useState, useRef, useCallback, useMemo } from "react";
+import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { Link } from "wouter";
 import { format } from "date-fns";
 import {
@@ -68,6 +69,7 @@ export default function Contacts() {
   const [linkGroupSearch, setLinkGroupSearch] = useState("");
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [primaryMergeId, setPrimaryMergeId] = useState<number | null>(null);
+  const [layoutView, setLayoutView] = useState<"list" | "table">("list");
 
   const { data: allGroups } = useQuery<any[]>({ queryKey: ["/api/groups"] });
 
@@ -649,24 +651,44 @@ export default function Contacts() {
 
           {/* View Toggle + Filters */}
           <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-2" data-testid="view-toggle">
-              <Button
-                variant={viewMode === "community" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setViewMode("community")}
-                data-testid="button-view-community"
-              >
-                <Users className="w-4 h-4 mr-1.5" />
-                Community
-              </Button>
-              <Button
-                variant={viewMode === "all" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setViewMode("all")}
-                data-testid="button-view-all"
-              >
-                All Contacts
-              </Button>
+            <div className="flex items-center justify-between gap-2" data-testid="view-toggle">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={viewMode === "community" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setViewMode("community")}
+                  data-testid="button-view-community"
+                >
+                  <Users className="w-4 h-4 mr-1.5" />
+                  Community
+                </Button>
+                <Button
+                  variant={viewMode === "all" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setViewMode("all")}
+                  data-testid="button-view-all"
+                >
+                  All Contacts
+                </Button>
+              </div>
+              <div className="flex items-center gap-1 border rounded-lg p-0.5" data-testid="layout-toggle">
+                <Button
+                  variant={layoutView === "list" ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setLayoutView("list")}
+                  data-testid="button-layout-list"
+                >
+                  <List className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant={layoutView === "table" ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setLayoutView("table")}
+                  data-testid="button-layout-table"
+                >
+                  <Table className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
             <div className="flex flex-col sm:flex-row gap-4">
               <div className="relative flex-1">
@@ -701,7 +723,7 @@ export default function Contacts() {
             </div>
           </div>
 
-          {/* Contacts List */}
+          {/* Contacts List / Table */}
           {isLoading ? (
             <div className="flex justify-center items-center h-64">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -715,6 +737,8 @@ export default function Contacts() {
               <p className="text-muted-foreground mb-6">Try adjusting your filters or add a new member.</p>
               <Button onClick={() => setOpen(true)} variant="outline" data-testid="button-add-member-empty">Add Member</Button>
             </div>
+          ) : layoutView === "table" ? (
+            <ContactsTableView contacts={filteredContacts || []} />
           ) : (
             <div className="space-y-3">
               {(filteredContacts || []).map((contact: any) => (
@@ -848,6 +872,199 @@ export default function Contacts() {
           )}
         </div>
       </main>
+  );
+}
+
+const TABLE_ETHNICITY_OPTIONS = [
+  { group: "Polynesian", options: ["Samoan", "Tongan", "Cook Islands Māori", "Niuean", "Tokelauan", "Fijian", "Hawaiian", "Tahitian", "Māori", "Other Polynesian"] },
+  { group: "Pacific", options: ["Micronesian", "Melanesian"] },
+  { group: "European", options: ["NZ European/Pākehā", "Other European"] },
+  { group: "Asian", options: ["Chinese", "Indian", "Other Asian"] },
+  { group: "Other", options: ["Middle Eastern", "Latin American", "African", "Other"] },
+];
+
+function InlineTextCell({ contactId, field, value, placeholder }: { contactId: number; field: string; value: string; placeholder: string }) {
+  const { toast } = useToast();
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(value || "");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!editing) setText(value || "");
+  }, [value, contactId, editing]);
+
+  const save = async () => {
+    setEditing(false);
+    const trimmed = text.trim();
+    if (trimmed === (value || "")) return;
+    try {
+      const body: Record<string, any> = { [field]: trimmed || null };
+      if (field === "age") {
+        const parsed = parseInt(trimmed);
+        body[field] = trimmed && !isNaN(parsed) ? parsed : null;
+      }
+      await apiRequest("PATCH", `/api/contacts/${contactId}`, body);
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast({ title: `${field.charAt(0).toUpperCase() + field.slice(1)} updated` });
+    } catch {
+      toast({ title: "Failed to update", variant: "destructive" });
+      setText(value || "");
+    }
+  };
+
+  if (!editing) {
+    return (
+      <button
+        className="text-left w-full px-2 py-1 rounded hover:bg-muted/60 transition-colors text-sm truncate cursor-pointer"
+        onClick={() => { setEditing(true); setTimeout(() => inputRef.current?.focus(), 0); }}
+        data-testid={`table-cell-${field}-${contactId}`}
+      >
+        {value || <span className="text-muted-foreground/50">{placeholder}</span>}
+      </button>
+    );
+  }
+
+  return (
+    <Input
+      ref={inputRef}
+      autoFocus
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={save}
+      onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") { setText(value || ""); setEditing(false); } }}
+      className="h-7 text-sm px-2"
+      data-testid={`table-input-${field}-${contactId}`}
+    />
+  );
+}
+
+function InlineEthnicityCell({ contactId, ethnicities }: { contactId: number; ethnicities: string[] }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<string[]>(ethnicities || []);
+  const [saving, setSaving] = useState(false);
+
+  const toggle = (eth: string) => {
+    setSelected(prev => prev.includes(eth) ? prev.filter(e => e !== eth) : [...prev, eth]);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await apiRequest("PATCH", `/api/contacts/${contactId}`, { ethnicity: selected });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast({ title: "Ethnicity updated" });
+      setOpen(false);
+    } catch {
+      toast({ title: "Failed to update ethnicity", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Popover open={open} onOpenChange={(v) => { setOpen(v); if (v) setSelected(ethnicities || []); }}>
+      <PopoverTrigger asChild>
+        <button
+          className="text-left w-full px-2 py-1 rounded hover:bg-muted/60 transition-colors text-sm truncate cursor-pointer group flex items-center gap-1"
+          data-testid={`table-cell-ethnicity-${contactId}`}
+        >
+          {ethnicities?.length > 0 ? (
+            <span className="truncate">{ethnicities.join(", ")}</span>
+          ) : (
+            <span className="text-muted-foreground/50">+ Add</span>
+          )}
+          <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-3" align="start">
+        <div className="space-y-3 max-h-64 overflow-y-auto">
+          {TABLE_ETHNICITY_OPTIONS.map((group) => (
+            <div key={group.group}>
+              <p className="text-xs font-semibold text-muted-foreground mb-1">{group.group}</p>
+              <div className="space-y-1">
+                {group.options.map((eth) => (
+                  <label
+                    key={eth}
+                    className="flex items-center gap-2 cursor-pointer text-sm hover:bg-accent/50 rounded px-1 py-0.5"
+                    data-testid={`table-ethnicity-opt-${eth.toLowerCase().replace(/[\s/]+/g, '-')}-${contactId}`}
+                  >
+                    <Checkbox
+                      checked={selected.includes(eth)}
+                      onCheckedChange={() => toggle(eth)}
+                    />
+                    {eth}
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2 mt-3 pt-2 border-t">
+          <Button variant="ghost" size="sm" onClick={() => setOpen(false)} data-testid={`table-ethnicity-cancel-${contactId}`}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={handleSave} disabled={saving} data-testid={`table-ethnicity-save-${contactId}`}>
+            {saving ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+            Save
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function ContactsTableView({ contacts }: { contacts: any[] }) {
+  return (
+    <div className="bg-card border border-border rounded-xl overflow-hidden" data-testid="contacts-table">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/30">
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">Name</th>
+              <th className="text-left px-3 py-3 font-medium text-muted-foreground whitespace-nowrap">Role</th>
+              <th className="text-left px-3 py-3 font-medium text-muted-foreground whitespace-nowrap min-w-[160px]">Ethnicity</th>
+              <th className="text-left px-3 py-3 font-medium text-muted-foreground whitespace-nowrap w-20">Age</th>
+              <th className="text-left px-3 py-3 font-medium text-muted-foreground whitespace-nowrap">Suburb</th>
+              <th className="text-left px-3 py-3 font-medium text-muted-foreground whitespace-nowrap">Last Active</th>
+            </tr>
+          </thead>
+          <tbody>
+            {contacts.map((contact) => (
+              <tr key={contact.id} className="border-b last:border-b-0 hover:bg-muted/20 transition-colors" data-testid={`table-row-${contact.id}`}>
+                <td className="px-4 py-2">
+                  <Link href={`/contacts/${contact.id}`} className="flex items-center gap-2 transition-colors" data-testid={`table-link-${contact.id}`}>
+                    <div className="w-7 h-7 rounded-md bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
+                      {contact.name[0]}
+                    </div>
+                    <span className="font-medium truncate max-w-[180px]">{contact.name}</span>
+                  </Link>
+                </td>
+                <td className="px-3 py-2">
+                  <Badge variant="outline" className="text-[10px] h-5 px-2" data-testid={`table-role-${contact.id}`}>
+                    {contact.role || "—"}
+                  </Badge>
+                </td>
+                <td className="px-1 py-2">
+                  <InlineEthnicityCell contactId={contact.id} ethnicities={contact.ethnicity || []} />
+                </td>
+                <td className="px-1 py-2">
+                  <InlineTextCell contactId={contact.id} field="age" value={contact.age?.toString() || ""} placeholder="—" />
+                </td>
+                <td className="px-1 py-2">
+                  <InlineTextCell contactId={contact.id} field="suburb" value={contact.suburb || ""} placeholder="—" />
+                </td>
+                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap" data-testid={`table-active-${contact.id}`}>
+                  {(contact.lastActiveDate || contact.lastInteractionDate)
+                    ? format(new Date(contact.lastActiveDate || contact.lastInteractionDate), "MMM d, yyyy")
+                    : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
