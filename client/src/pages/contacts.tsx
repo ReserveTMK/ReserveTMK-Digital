@@ -160,7 +160,6 @@ export default function Contacts() {
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       toast({ title: "Contacts merged successfully" });
       setSelectedContacts(new Set());
-      setEditMode(false);
       setMergeDialogOpen(false);
       setPrimaryMergeId(null);
     },

@@ -5122,7 +5122,12 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
         }
 
         const merged: Partial<typeof contacts.$inferInsert> = {};
-        if (!primary.email && source.email) merged.email = source.email;
+        const primaryEmails = primary.email ? primary.email.split(/,\s*/).map((e: string) => e.trim()).filter(Boolean) : [];
+        const sourceEmails = source.email ? source.email.split(/,\s*/).map((e: string) => e.trim()).filter(Boolean) : [];
+        const allEmails = [...new Set([...primaryEmails, ...sourceEmails])];
+        if (allEmails.length > 0 && allEmails.join(", ") !== (primary.email || "")) {
+          merged.email = allEmails.join(", ");
+        }
         if (!primary.phone && source.phone) merged.phone = source.phone;
         if (!primary.businessName && source.businessName) merged.businessName = source.businessName;
         if (!primary.location && source.location) merged.location = source.location;
