@@ -70,8 +70,20 @@ export default function Contacts() {
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [primaryMergeId, setPrimaryMergeId] = useState<number | null>(null);
   const [layoutView, setLayoutView] = useState<"list" | "table">("list");
+  const [duplicatesOpen, setDuplicatesOpen] = useState(false);
 
   const { data: allGroups } = useQuery<any[]>({ queryKey: ["/api/groups"] });
+  const { data: suggestedDuplicates } = useQuery<{ reason: string; contacts: any[] }[]>({ queryKey: ["/api/contacts/suggested-duplicates"] });
+
+  const dismissDuplicateMutation = useMutation({
+    mutationFn: async ({ id1, id2 }: { id1: number; id2: number }) => {
+      const res = await apiRequest("POST", "/api/contacts/dismiss-duplicate", { id1, id2 });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/suggested-duplicates"] });
+    },
+  });
 
   const deleteContact = useDeleteContact();
 
@@ -381,6 +393,12 @@ export default function Contacts() {
                     <Edit3 className="w-4 h-4 mr-2" />
                     Edit
                   </Button>
+                  {suggestedDuplicates && suggestedDuplicates.length > 0 && (
+                    <Button variant="outline" onClick={() => setDuplicatesOpen(true)} data-testid="button-duplicates-contacts">
+                      <Merge className="w-4 h-4 mr-2" />
+                      Duplicates ({suggestedDuplicates.length})
+                    </Button>
+                  )}
                   <Button variant="outline" onClick={() => autoLinkMutation.mutate()} disabled={autoLinkMutation.isPending} data-testid="button-auto-link">
                     {autoLinkMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Link2 className="w-4 h-4 mr-2" />}
                     Auto-Link
@@ -541,6 +559,67 @@ export default function Contacts() {
                   {mergeMutation.isPending ? "Merging..." : "Merge"}
                 </Button>
               </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={duplicatesOpen} onOpenChange={setDuplicatesOpen}>
+            <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto" data-testid="dialog-duplicates-contacts">
+              <DialogHeader>
+                <DialogTitle data-testid="text-duplicates-title">Suggested Duplicates</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground">These contacts may be duplicates based on name, email, or phone similarity. Review and merge or dismiss.</p>
+              {suggestedDuplicates && suggestedDuplicates.length > 0 ? (
+                <div className="space-y-4 py-2">
+                  {suggestedDuplicates.map((cluster, idx) => (
+                    <div key={idx} className="border rounded-lg p-4 space-y-3" data-testid={`duplicate-cluster-${idx}`}>
+                      <div className="flex items-center justify-between">
+                        <Badge variant="secondary" className="text-xs" data-testid={`duplicate-reason-${idx}`}>{cluster.reason}</Badge>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const ids = cluster.contacts.map((c: any) => c.id);
+                              setSelectedContacts(new Set(ids));
+                              setPrimaryMergeId(ids[0]);
+                              setEditMode(true);
+                              setMergeDialogOpen(true);
+                              setDuplicatesOpen(false);
+                            }}
+                            data-testid={`duplicate-merge-${idx}`}
+                          >
+                            <Merge className="w-3 h-3 mr-1" />
+                            Merge
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => dismissDuplicateMutation.mutate({ id1: cluster.contacts[0].id, id2: cluster.contacts[1].id })}
+                            disabled={dismissDuplicateMutation.isPending}
+                            data-testid={`duplicate-dismiss-${idx}`}
+                          >
+                            <X className="w-3 h-3 mr-1" />
+                            Dismiss
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        {cluster.contacts.map((c: any) => (
+                          <div key={c.id} className="border rounded-md p-3 bg-muted/30 space-y-1" data-testid={`duplicate-contact-${c.id}`}>
+                            <p className="font-medium text-sm truncate">{c.name}</p>
+                            {c.email && <p className="text-xs text-muted-foreground truncate">{c.email}</p>}
+                            {c.phone && <p className="text-xs text-muted-foreground">{c.phone}</p>}
+                            {c.role && <Badge variant="outline" className="text-[10px] h-4 mt-1">{c.role}</Badge>}
+                            {c.businessName && <p className="text-[10px] text-muted-foreground mt-1">{c.businessName}</p>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-center text-muted-foreground py-8" data-testid="text-no-duplicates">No suggested duplicates found.</p>
+              )}
             </DialogContent>
           </Dialog>
 

@@ -303,6 +303,15 @@ export const groupTaxonomyLinks = pgTable("group_taxonomy_links", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const dismissedDuplicates = pgTable("dismissed_duplicates", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId1: integer("entity_id_1").notNull(),
+  entityId2: integer("entity_id_2").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const programmes = pgTable("programmes", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),

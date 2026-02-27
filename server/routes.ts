@@ -8,7 +8,7 @@ import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { openai } from "./replit_integrations/audio/client";
 import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, type ReportFilters } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments } from "@shared/schema";
+import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql, gte, lte } from "drizzle-orm";
 import { scanGmailEmails, startAutoSync, getGmailOAuth2Client } from "./gmail-import";
@@ -182,6 +182,93 @@ export async function registerRoutes(
     const userId = (req.user as any).claims.sub; 
     const contacts = await storage.getContacts(userId);
     res.json(contacts);
+  });
+
+  app.get("/api/contacts/suggested-duplicates", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const allContacts = await storage.getContacts(userId);
+      const dismissed = await db.select().from(dismissedDuplicates).where(and(eq(dismissedDuplicates.userId, userId), eq(dismissedDuplicates.entityType, "contact")));
+      const dismissedSet = new Set(dismissed.map(d => `${Math.min(d.entityId1, d.entityId2)}-${Math.max(d.entityId1, d.entityId2)}`));
+
+      function normalize(s: string | null | undefined): string {
+        return (s || "").toLowerCase().trim().replace(/\s+/g, " ");
+      }
+      function similarity(a: string, b: string): number {
+        if (a === b) return 1;
+        if (!a || !b) return 0;
+        const longer = a.length > b.length ? a : b;
+        const shorter = a.length > b.length ? b : a;
+        if (longer.length === 0) return 1;
+        const costs: number[] = [];
+        for (let i = 0; i <= longer.length; i++) {
+          let lastVal = i;
+          for (let j = 0; j <= shorter.length; j++) {
+            if (i === 0) { costs[j] = j; }
+            else if (j > 0) {
+              let newVal = costs[j - 1];
+              if (longer[i - 1] !== shorter[j - 1]) newVal = Math.min(Math.min(newVal, lastVal), costs[j]) + 1;
+              costs[j - 1] = lastVal;
+              lastVal = newVal;
+            }
+          }
+          if (i > 0) costs[shorter.length] = lastVal;
+        }
+        return (longer.length - costs[shorter.length]) / longer.length;
+      }
+
+      const clusters: { reason: string; contacts: any[] }[] = [];
+      const seen = new Set<string>();
+
+      for (let i = 0; i < allContacts.length; i++) {
+        for (let j = i + 1; j < allContacts.length; j++) {
+          const a = allContacts[i];
+          const b = allContacts[j];
+          const pairKey = `${Math.min(a.id, b.id)}-${Math.max(a.id, b.id)}`;
+          if (dismissedSet.has(pairKey) || seen.has(pairKey)) continue;
+
+          let reason = "";
+          const na = normalize(a.name);
+          const nb = normalize(b.name);
+          if (na && nb && na === nb) {
+            reason = "Same name";
+          } else if (na && nb && similarity(na, nb) >= 0.8) {
+            reason = "Similar names";
+          } else if (a.email && b.email && normalize(a.email) === normalize(b.email)) {
+            reason = "Same email";
+          } else if (a.phone && b.phone && a.phone.replace(/\D/g, "") === b.phone.replace(/\D/g, "") && a.phone.replace(/\D/g, "").length >= 6) {
+            reason = "Same phone";
+          }
+
+          if (reason) {
+            seen.add(pairKey);
+            clusters.push({ reason, contacts: [a, b] });
+          }
+        }
+      }
+
+      res.json(clusters);
+    } catch (err: any) {
+      console.error("Suggested duplicates error:", err);
+      res.status(500).json({ message: "Failed to find duplicates" });
+    }
+  });
+
+  app.post("/api/contacts/dismiss-duplicate", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { id1, id2 } = req.body;
+      if (!id1 || !id2) return res.status(400).json({ message: "id1 and id2 required" });
+      await db.insert(dismissedDuplicates).values({
+        userId,
+        entityType: "contact",
+        entityId1: Math.min(id1, id2),
+        entityId2: Math.max(id1, id2),
+      });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to dismiss duplicate" });
+    }
   });
 
   app.get(api.contacts.get.path, isAuthenticated, async (req, res) => {
@@ -2215,6 +2302,91 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       res.json(densityMap);
     } catch (err: any) {
       res.status(500).json({ message: "Failed to get community density" });
+    }
+  });
+
+  app.get("/api/groups/suggested-duplicates", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const allGroups = await storage.getGroups(userId);
+      const dismissed = await db.select().from(dismissedDuplicates).where(and(eq(dismissedDuplicates.userId, userId), eq(dismissedDuplicates.entityType, "group")));
+      const dismissedSet = new Set(dismissed.map(d => `${Math.min(d.entityId1, d.entityId2)}-${Math.max(d.entityId1, d.entityId2)}`));
+
+      function normalize(s: string | null | undefined): string {
+        return (s || "").toLowerCase().trim().replace(/\s+/g, " ");
+      }
+      function similarity(a: string, b: string): number {
+        if (a === b) return 1;
+        if (!a || !b) return 0;
+        const longer = a.length > b.length ? a : b;
+        const shorter = a.length > b.length ? b : a;
+        if (longer.length === 0) return 1;
+        const costs: number[] = [];
+        for (let i = 0; i <= longer.length; i++) {
+          let lastVal = i;
+          for (let j = 0; j <= shorter.length; j++) {
+            if (i === 0) { costs[j] = j; }
+            else if (j > 0) {
+              let newVal = costs[j - 1];
+              if (longer[i - 1] !== shorter[j - 1]) newVal = Math.min(Math.min(newVal, lastVal), costs[j]) + 1;
+              costs[j - 1] = lastVal;
+              lastVal = newVal;
+            }
+          }
+          if (i > 0) costs[shorter.length] = lastVal;
+        }
+        return (longer.length - costs[shorter.length]) / longer.length;
+      }
+
+      const clusters: { reason: string; groups: any[] }[] = [];
+      const seen = new Set<string>();
+
+      for (let i = 0; i < allGroups.length; i++) {
+        for (let j = i + 1; j < allGroups.length; j++) {
+          const a = allGroups[i];
+          const b = allGroups[j];
+          const pairKey = `${Math.min(a.id, b.id)}-${Math.max(a.id, b.id)}`;
+          if (dismissedSet.has(pairKey) || seen.has(pairKey)) continue;
+
+          let reason = "";
+          const na = normalize(a.name);
+          const nb = normalize(b.name);
+          if (na && nb && na === nb) {
+            reason = "Same name";
+          } else if (na && nb && similarity(na, nb) >= 0.8) {
+            reason = "Similar names";
+          } else if (a.contactEmail && b.contactEmail && normalize(a.contactEmail) === normalize(b.contactEmail)) {
+            reason = "Same email";
+          }
+
+          if (reason) {
+            seen.add(pairKey);
+            clusters.push({ reason, groups: [a, b] });
+          }
+        }
+      }
+
+      res.json(clusters);
+    } catch (err: any) {
+      console.error("Group duplicates error:", err);
+      res.status(500).json({ message: "Failed to find group duplicates" });
+    }
+  });
+
+  app.post("/api/groups/dismiss-duplicate", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { id1, id2 } = req.body;
+      if (!id1 || !id2) return res.status(400).json({ message: "id1 and id2 required" });
+      await db.insert(dismissedDuplicates).values({
+        userId,
+        entityType: "group",
+        entityId1: Math.min(id1, id2),
+        entityId2: Math.max(id1, id2),
+      });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to dismiss duplicate" });
     }
   });
 

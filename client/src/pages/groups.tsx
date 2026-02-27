@@ -75,6 +75,7 @@ export default function Groups() {
   const [bulkTierValue, setBulkTierValue] = useState("");
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [primaryMergeId, setPrimaryMergeId] = useState<number | null>(null);
+  const [duplicatesOpen, setDuplicatesOpen] = useState(false);
   const { toast } = useToast();
 
   const createGroup = useCreateGroup();
@@ -83,6 +84,20 @@ export default function Groups() {
 
   const { data: communityDensity } = useQuery<Record<number, { communityCount: number; totalMembers: number }>>({
     queryKey: ['/api/groups/community-density'],
+  });
+
+  const { data: suggestedDuplicates } = useQuery<{ reason: string; groups: any[] }[]>({
+    queryKey: ['/api/groups/suggested-duplicates'],
+  });
+
+  const dismissDuplicateMutation = useMutation({
+    mutationFn: async ({ id1, id2 }: { id1: number; id2: number }) => {
+      const res = await apiRequest("POST", "/api/groups/dismiss-duplicate", { id1, id2 });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups/suggested-duplicates"] });
+    },
   });
 
   const bulkDeleteMutation = useMutation({
@@ -307,6 +322,12 @@ export default function Groups() {
                     <Edit3 className="w-4 h-4 mr-2" />
                     Edit
                   </Button>
+                  {suggestedDuplicates && suggestedDuplicates.length > 0 && (
+                    <Button variant="outline" onClick={() => setDuplicatesOpen(true)} data-testid="button-duplicates-groups">
+                      <Merge className="w-4 h-4 mr-2" />
+                      Duplicates ({suggestedDuplicates.length})
+                    </Button>
+                  )}
                   <Button onClick={openCreateDialog} data-testid="button-create-group">
                     <Plus className="w-4 h-4 mr-2" />
                     New Group
@@ -578,6 +599,72 @@ export default function Groups() {
                 {mergeMutation.isPending ? "Merging..." : "Merge"}
               </Button>
             </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={duplicatesOpen} onOpenChange={setDuplicatesOpen}>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto" data-testid="dialog-duplicates-groups">
+            <DialogHeader>
+              <DialogTitle data-testid="text-duplicates-groups-title">Suggested Duplicates</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">These groups may be duplicates based on name or email similarity. Review and merge or dismiss.</p>
+            {suggestedDuplicates && suggestedDuplicates.length > 0 ? (
+              <div className="space-y-4 py-2">
+                {suggestedDuplicates.map((cluster, idx) => (
+                  <div key={idx} className="border rounded-lg p-4 space-y-3" data-testid={`duplicate-group-cluster-${idx}`}>
+                    <div className="flex items-center justify-between">
+                      <Badge variant="secondary" className="text-xs" data-testid={`duplicate-group-reason-${idx}`}>{cluster.reason}</Badge>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const ids = cluster.groups.map((g: any) => g.id);
+                            setSelectedGroups(new Set(ids));
+                            setPrimaryMergeId(ids[0]);
+                            setEditMode(true);
+                            setMergeDialogOpen(true);
+                            setDuplicatesOpen(false);
+                          }}
+                          data-testid={`duplicate-group-merge-${idx}`}
+                        >
+                          <Merge className="w-3 h-3 mr-1" />
+                          Merge
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => dismissDuplicateMutation.mutate({ id1: cluster.groups[0].id, id2: cluster.groups[1].id })}
+                          disabled={dismissDuplicateMutation.isPending}
+                          data-testid={`duplicate-group-dismiss-${idx}`}
+                        >
+                          <X className="w-3 h-3 mr-1" />
+                          Dismiss
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      {cluster.groups.map((g: any) => {
+                        const density = communityDensity?.[g.id];
+                        return (
+                          <div key={g.id} className="border rounded-md p-3 bg-muted/30 space-y-1" data-testid={`duplicate-group-${g.id}`}>
+                            <p className="font-medium text-sm truncate">{g.name}</p>
+                            <Badge variant="outline" className="text-[10px] h-4">{g.type}</Badge>
+                            {g.contactEmail && <p className="text-xs text-muted-foreground truncate">{g.contactEmail}</p>}
+                            <div className="flex items-center gap-2 mt-1">
+                              {density && <span className="text-[10px] text-muted-foreground"><Users className="w-3 h-3 inline mr-0.5" />{density.totalMembers} members</span>}
+                              {g.relationshipStage && <Badge variant="secondary" className="text-[9px] h-4 capitalize">{g.relationshipStage}</Badge>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-center text-muted-foreground py-8" data-testid="text-no-group-duplicates">No suggested duplicates found.</p>
+            )}
           </DialogContent>
         </Dialog>
       </main>
