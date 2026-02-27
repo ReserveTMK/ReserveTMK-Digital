@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/beautiful-button";
 import { useGroups, useCreateGroup, useUpdateGroup, useDeleteGroup, useGroupMembers, useAddGroupMember, useRemoveGroupMember, useEnrichGroup, useGroupTaxonomyLinks, useSaveGroupTaxonomyLinks } from "@/hooks/use-groups";
 import { useContacts } from "@/hooks/use-contacts";
 import { useTaxonomy } from "@/hooks/use-taxonomy";
-import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe, Target, History, ChevronDown, Pencil, Edit3, CheckSquare, UserCheck, ArrowRightLeft, Tag, Merge } from "lucide-react";
+import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe, Target, History, ChevronDown, Pencil, Edit3, CheckSquare, UserCheck, ArrowRightLeft, Tag, Merge, List, Table, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { RelationshipStageSelector } from "@/components/relationship-stage-selector";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -70,6 +70,7 @@ export default function Groups() {
   const [selectedGroups, setSelectedGroups] = useState<Set<number>>(new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"community" | "all">("all");
+  const [layoutView, setLayoutView] = useState<"list" | "table">("list");
   const [bulkTierOpen, setBulkTierOpen] = useState(false);
   const [bulkTierValue, setBulkTierValue] = useState("");
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
@@ -316,25 +317,45 @@ export default function Groups() {
           </div>
 
           <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2" data-testid="view-toggle">
-              <Button
-                variant={viewMode === "community" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setViewMode("community")}
-                data-testid="button-view-community"
-              >
-                <UserCheck className="w-4 h-4 mr-2" />
-                Community
-              </Button>
-              <Button
-                variant={viewMode === "all" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setViewMode("all")}
-                data-testid="button-view-all"
-              >
-                <Building2 className="w-4 h-4 mr-2" />
-                All
-              </Button>
+            <div className="flex items-center justify-between gap-2" data-testid="view-toggle">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={viewMode === "community" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setViewMode("community")}
+                  data-testid="button-view-community"
+                >
+                  <UserCheck className="w-4 h-4 mr-2" />
+                  Community
+                </Button>
+                <Button
+                  variant={viewMode === "all" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setViewMode("all")}
+                  data-testid="button-view-all"
+                >
+                  <Building2 className="w-4 h-4 mr-2" />
+                  All
+                </Button>
+              </div>
+              <div className="flex items-center gap-1 border rounded-lg p-0.5" data-testid="layout-toggle">
+                <Button
+                  variant={layoutView === "list" ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setLayoutView("list")}
+                  data-testid="button-layout-list"
+                >
+                  <List className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant={layoutView === "table" ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setLayoutView("table")}
+                  data-testid="button-layout-table"
+                >
+                  <Table className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
@@ -385,6 +406,24 @@ export default function Groups() {
                 )}
               </div>
             </Card>
+          ) : layoutView === "table" ? (
+            <GroupsTableView
+              groups={displayGroups}
+              communityDensity={communityDensity || {}}
+              editMode={editMode}
+              selectedGroups={selectedGroups}
+              toggleGroupSelection={toggleGroupSelection}
+              toggleSelectAll={() => {
+                if (selectedGroups.size === displayGroups.length) {
+                  setSelectedGroups(new Set());
+                } else {
+                  setSelectedGroups(new Set(displayGroups.map((g: Group) => g.id)));
+                }
+              }}
+              onSelect={(group) => setSelectedGroup(group)}
+              onEdit={(group) => openEditDialog(group)}
+              onDelete={(groupId) => setDeleteConfirmId(groupId)}
+            />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {displayGroups.map(renderGroupCard)}
@@ -542,6 +581,219 @@ export default function Groups() {
           </DialogContent>
         </Dialog>
       </main>
+  );
+}
+
+type GroupSortField = "name" | "type" | "members" | "stage" | "tier" | "contact";
+type GroupSortDir = "asc" | "desc";
+
+function GroupSortHeader({ label, field, activeField, dir, onSort, className }: { label: string; field: GroupSortField; activeField: GroupSortField | null; dir: GroupSortDir; onSort: (f: GroupSortField) => void; className?: string }) {
+  const isActive = activeField === field;
+  return (
+    <th className={`text-left text-xs font-medium text-muted-foreground ${className || ""}`}>
+      <button className="flex items-center gap-1 hover:text-foreground transition-colors" onClick={() => onSort(field)} data-testid={`sort-${field}`}>
+        {label}
+        {isActive ? (dir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-40" />}
+      </button>
+    </th>
+  );
+}
+
+const STAGE_COLORS: Record<string, string> = {
+  new: "bg-slate-500/10 text-slate-600 dark:text-slate-400",
+  engaged: "bg-blue-500/10 text-blue-700 dark:text-blue-300",
+  active: "bg-green-500/10 text-green-700 dark:text-green-300",
+  deepening: "bg-purple-500/10 text-purple-700 dark:text-purple-300",
+  partner: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  alumni: "bg-gray-500/10 text-gray-600 dark:text-gray-400",
+};
+
+const TIER_COLORS: Record<string, string> = {
+  support: "bg-blue-500/10 text-blue-700 dark:text-blue-300",
+  collaborate: "bg-green-500/10 text-green-700 dark:text-green-300",
+  mentioned: "bg-slate-500/10 text-slate-600 dark:text-slate-400",
+};
+
+function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, toggleGroupSelection, toggleSelectAll, onSelect, onEdit, onDelete }: {
+  groups: Group[];
+  communityDensity: Record<number, { communityCount: number; totalMembers: number }>;
+  editMode: boolean;
+  selectedGroups: Set<number>;
+  toggleGroupSelection: (id: number) => void;
+  toggleSelectAll: () => void;
+  onSelect: (group: Group) => void;
+  onEdit: (group: Group) => void;
+  onDelete: (groupId: number) => void;
+}) {
+  const [sortField, setSortField] = useState<GroupSortField | null>(null);
+  const [sortDir, setSortDir] = useState<GroupSortDir>("asc");
+
+  const handleSort = (field: GroupSortField) => {
+    if (sortField === field) {
+      if (sortDir === "asc") setSortDir("desc");
+      else { setSortField(null); setSortDir("asc"); }
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  };
+
+  const sortedGroups = useMemo(() => {
+    if (!sortField) return groups;
+    const sorted = [...groups].sort((a, b) => {
+      let av: any, bv: any;
+      switch (sortField) {
+        case "name":
+          av = (a.name || "").toLowerCase();
+          bv = (b.name || "").toLowerCase();
+          break;
+        case "type":
+          av = (a.type || "").toLowerCase();
+          bv = (b.type || "").toLowerCase();
+          break;
+        case "members":
+          av = communityDensity[a.id]?.totalMembers || 0;
+          bv = communityDensity[b.id]?.totalMembers || 0;
+          return sortDir === "asc" ? av - bv : bv - av;
+        case "stage":
+          av = (a.relationshipStage || "").toLowerCase();
+          bv = (b.relationshipStage || "").toLowerCase();
+          break;
+        case "tier":
+          av = (a.relationshipTier || "").toLowerCase();
+          bv = (b.relationshipTier || "").toLowerCase();
+          break;
+        case "contact":
+          av = (a.contactEmail || "").toLowerCase();
+          bv = (b.contactEmail || "").toLowerCase();
+          break;
+      }
+      if (av < bv) return sortDir === "asc" ? -1 : 1;
+      if (av > bv) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+    return sorted;
+  }, [groups, sortField, sortDir, communityDensity]);
+
+  return (
+    <div className="bg-card border border-border rounded-xl overflow-hidden" data-testid="groups-table">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/30">
+              {editMode && (
+                <th className="px-3 py-3 w-10">
+                  <Checkbox
+                    checked={groups.length > 0 && selectedGroups.size === groups.length}
+                    onCheckedChange={toggleSelectAll}
+                    data-testid="table-checkbox-select-all-groups"
+                  />
+                </th>
+              )}
+              <GroupSortHeader label="Name" field="name" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-4" />
+              <GroupSortHeader label="Type" field="type" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
+              <GroupSortHeader label="Members" field="members" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
+              <GroupSortHeader label="Stage" field="stage" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
+              <GroupSortHeader label="Tier" field="tier" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
+              <GroupSortHeader label="Contact" field="contact" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
+              <th className="px-3 py-3 w-20"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedGroups.map((group) => {
+              const density = communityDensity[group.id];
+              const totalMembers = density?.totalMembers || 0;
+              const commCount = density?.communityCount || 0;
+              return (
+                <tr
+                  key={group.id}
+                  className={`border-b last:border-b-0 hover:bg-muted/20 transition-colors ${editMode && selectedGroups.has(group.id) ? "bg-primary/5" : ""}`}
+                  data-testid={`table-row-group-${group.id}`}
+                >
+                  {editMode && (
+                    <td className="px-3 py-2">
+                      <Checkbox
+                        checked={selectedGroups.has(group.id)}
+                        onCheckedChange={() => toggleGroupSelection(group.id)}
+                        data-testid={`table-checkbox-group-${group.id}`}
+                      />
+                    </td>
+                  )}
+                  <td className="px-4 py-2">
+                    <button
+                      className="flex items-center gap-2 transition-colors hover:text-primary text-left"
+                      onClick={() => onSelect(group)}
+                      data-testid={`table-link-group-${group.id}`}
+                    >
+                      <div className="w-7 h-7 rounded-md bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
+                        <Building2 className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="font-medium truncate max-w-[200px]">{group.name}</span>
+                    </button>
+                  </td>
+                  <td className="px-3 py-2">
+                    <Badge className={`text-[10px] h-5 px-2 ${GROUP_TYPE_COLORS[group.type] || ""}`} data-testid={`table-type-group-${group.id}`}>
+                      {group.type}
+                    </Badge>
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs flex items-center gap-1" data-testid={`table-members-group-${group.id}`}>
+                        <Users className="w-3 h-3 text-muted-foreground" />
+                        {totalMembers}
+                      </span>
+                      {commCount > 0 && (
+                        <Badge className="text-[9px] h-4 px-1.5 bg-purple-500/10 text-purple-700 dark:text-purple-300" data-testid={`table-community-group-${group.id}`}>
+                          <UserCheck className="w-2.5 h-2.5 mr-0.5" />
+                          {commCount}
+                        </Badge>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    {group.relationshipStage ? (
+                      <Badge className={`text-[10px] h-5 px-2 capitalize ${STAGE_COLORS[group.relationshipStage] || ""}`} data-testid={`table-stage-group-${group.id}`}>
+                        {group.relationshipStage}
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    {group.relationshipTier ? (
+                      <Badge variant="outline" className={`text-[10px] h-5 px-2 capitalize ${TIER_COLORS[group.relationshipTier] || ""}`} data-testid={`table-tier-group-${group.id}`}>
+                        {group.relationshipTier}
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-xs text-muted-foreground">
+                    {group.contactEmail ? (
+                      <span className="truncate max-w-[160px] block" title={group.contactEmail} data-testid={`table-email-group-${group.id}`}>
+                        {group.contactEmail}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                      <Button size="icon" variant="ghost" onClick={() => onEdit(group)} title="Edit" data-testid={`table-edit-group-${group.id}`}>
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="text-muted-foreground" onClick={() => onDelete(group.id)} title="Delete" data-testid={`table-delete-group-${group.id}`}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
