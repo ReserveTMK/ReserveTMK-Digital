@@ -93,7 +93,6 @@ export default function Groups() {
       queryClient.invalidateQueries({ queryKey: ['/api/groups/community-density'] });
       toast({ title: "Groups deleted", description: `${selectedGroups.size} group(s) deleted successfully` });
       setSelectedGroups(new Set());
-      setEditMode(false);
       setBulkDeleteOpen(false);
     },
     onError: (error) => {
@@ -110,7 +109,6 @@ export default function Groups() {
       queryClient.invalidateQueries({ queryKey: ['/api/groups/community-density'] });
       toast({ title: "Tier updated", description: `${selectedGroups.size} group(s) updated to "${bulkTierValue}"` });
       setSelectedGroups(new Set());
-      setEditMode(false);
       setBulkTierOpen(false);
       setBulkTierValue("");
     },
@@ -130,7 +128,6 @@ export default function Groups() {
       queryClient.invalidateQueries({ queryKey: ["/api/groups/community-density"] });
       toast({ title: "Groups merged successfully" });
       setSelectedGroups(new Set());
-      setEditMode(false);
       setMergeDialogOpen(false);
       setPrimaryMergeId(null);
     },

@@ -84,7 +84,6 @@ export default function Contacts() {
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       toast({ title: "Success", description: `${selectedContacts.size} contact${selectedContacts.size !== 1 ? 's' : ''} deleted successfully` });
       setSelectedContacts(new Set());
-      setEditMode(false);
       setBulkDeleteConfirmOpen(false);
     },
     onError: (err: any) => {
@@ -104,7 +103,6 @@ export default function Contacts() {
       const groupMsg = data?.groupsUpdated ? ` (${data.groupsUpdated} linked group${data.groupsUpdated !== 1 ? 's' : ''} updated)` : '';
       toast({ title: "Success", description: `${selectedContacts.size} contact${selectedContacts.size !== 1 ? 's' : ''} moved successfully${groupMsg}` });
       setSelectedContacts(new Set());
-      setEditMode(false);
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -120,7 +118,6 @@ export default function Contacts() {
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       toast({ title: "Success", description: `${selectedContacts.size} contact${selectedContacts.size !== 1 ? 's' : ''} updated successfully` });
       setSelectedContacts(new Set());
-      setEditMode(false);
       setBulkRoleOpen(false);
       setBulkRoleValue("");
     },
@@ -141,7 +138,6 @@ export default function Contacts() {
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       toast({ title: "Success", description: `${selectedContacts.size} contact${selectedContacts.size !== 1 ? 's' : ''} relationship updated` });
       setSelectedContacts(new Set());
-      setEditMode(false);
       setBulkRelationshipOpen(false);
       setBulkRelationshipValue("");
     },
