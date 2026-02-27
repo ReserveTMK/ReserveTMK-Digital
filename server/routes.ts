@@ -3695,6 +3695,21 @@ Return a JSON object with this exact structure:
     }
   });
 
+  app.patch("/api/groups/:id/community-status", isAuthenticated, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { isCommunity } = req.body;
+      if (typeof isCommunity !== "boolean") return res.status(400).json({ message: "isCommunity must be boolean" });
+      const group = await storage.getGroup(id);
+      if (!group) return res.status(404).json({ message: "Group not found" });
+      if (group.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+      const updated = await storage.updateGroup(id, { isCommunity });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
   app.patch("/api/groups/:id/relationship-tier", isAuthenticated, async (req, res) => {
     try {
       const id = Number(req.params.id);

@@ -280,6 +280,7 @@ export const groups = pgTable("groups", {
   strategicImportance: text("strategic_importance"),
   ecosystemRoles: text("ecosystem_roles").array(),
   importSource: text("import_source"),
+  isCommunity: boolean("is_community").default(false),
   active: boolean("active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

@@ -423,7 +423,6 @@ export default function Groups() {
               onSelect={(group) => setSelectedGroup(group)}
               onEdit={(group) => openEditDialog(group)}
               onDelete={(groupId) => setDeleteConfirmId(groupId)}
-              contacts={(contacts as any[]) || []}
             />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -615,7 +614,7 @@ const TIER_COLORS: Record<string, string> = {
   mentioned: "bg-slate-500/10 text-slate-600 dark:text-slate-400",
 };
 
-function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, toggleGroupSelection, toggleSelectAll, onSelect, onEdit, onDelete, contacts }: {
+function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, toggleGroupSelection, toggleSelectAll, onSelect, onEdit, onDelete }: {
   groups: Group[];
   communityDensity: Record<number, { communityCount: number; totalMembers: number }>;
   editMode: boolean;
@@ -625,31 +624,18 @@ function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, t
   onSelect: (group: Group) => void;
   onEdit: (group: Group) => void;
   onDelete: (groupId: number) => void;
-  contacts: any[];
 }) {
   const [sortField, setSortField] = useState<GroupSortField | null>(null);
   const [sortDir, setSortDir] = useState<GroupSortDir>("asc");
   const { toast } = useToast();
 
-  const pushToCommunityMutation = useMutation({
-    mutationFn: async (groupId: number) => {
-      const membersRes = await fetch(`/api/groups/${groupId}/members`, { credentials: "include" });
-      if (!membersRes.ok) throw new Error("Failed to fetch members");
-      const members: GroupMember[] = await membersRes.json();
-      const nonCommunityIds = members
-        .map((m) => m.contactId)
-        .filter((cid) => {
-          const c = contacts.find((ct: any) => ct.id === cid);
-          return c && !c.isCommunityMember;
-        });
-      if (nonCommunityIds.length === 0) return { updated: 0 };
-      const res = await apiRequest("POST", "/api/contacts/community/bulk-move", { contactIds: nonCommunityIds, isCommunityMember: true });
+  const communityToggleMutation = useMutation({
+    mutationFn: async ({ groupId, isCommunity }: { groupId: number; isCommunity: boolean }) => {
+      const res = await apiRequest("PATCH", `/api/groups/${groupId}/community-status`, { isCommunity });
       return res.json();
     },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/groups/community-density"] });
-      toast({ title: "Pushed to Community", description: `${data.updated || 0} members marked as community` });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -720,6 +706,7 @@ function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, t
               )}
               <GroupSortHeader label="Name" field="name" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-4" />
               <GroupSortHeader label="Type" field="type" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
+              <th className="px-3 py-3 text-xs font-medium text-muted-foreground text-left">Community</th>
               <GroupSortHeader label="Members" field="members" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
               <GroupSortHeader label="Stage" field="stage" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
               <GroupSortHeader label="Tier" field="tier" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
@@ -764,6 +751,28 @@ function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, t
                       {group.type}
                     </Badge>
                   </td>
+                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                    {group.isCommunity ? (
+                      <Badge
+                        className="text-[10px] h-5 px-2 bg-purple-500/15 text-purple-700 dark:text-purple-300 cursor-pointer hover:bg-purple-500/25 transition-colors"
+                        onClick={() => communityToggleMutation.mutate({ groupId: group.id, isCommunity: false })}
+                        data-testid={`table-community-yes-${group.id}`}
+                      >
+                        <UserCheck className="w-3 h-3 mr-1" />
+                        Yes
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] h-5 px-2 cursor-pointer hover:bg-purple-500/10 hover:text-purple-700 hover:border-purple-300 dark:hover:text-purple-300 transition-colors"
+                        onClick={() => communityToggleMutation.mutate({ groupId: group.id, isCommunity: true })}
+                        data-testid={`table-community-add-${group.id}`}
+                      >
+                        <UserPlus className="w-3 h-3 mr-1" />
+                        Add
+                      </Badge>
+                    )}
+                  </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs flex items-center gap-1" data-testid={`table-members-group-${group.id}`}>
@@ -771,24 +780,10 @@ function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, t
                         {totalMembers}
                       </span>
                       {commCount > 0 && (
-                        <Badge className="text-[9px] h-4 px-1.5 bg-purple-500/10 text-purple-700 dark:text-purple-300" data-testid={`table-community-group-${group.id}`}>
+                        <Badge className="text-[9px] h-4 px-1.5 bg-purple-500/10 text-purple-700 dark:text-purple-300" data-testid={`table-community-count-${group.id}`}>
                           <UserCheck className="w-2.5 h-2.5 mr-0.5" />
                           {commCount}
                         </Badge>
-                      )}
-                      {totalMembers > 0 && commCount < totalMembers && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-5 px-1.5 text-[10px] text-purple-600 hover:text-purple-700 hover:bg-purple-500/10 dark:text-purple-400 dark:hover:text-purple-300"
-                          onClick={(e) => { e.stopPropagation(); pushToCommunityMutation.mutate(group.id); }}
-                          disabled={pushToCommunityMutation.isPending}
-                          title={`Add ${totalMembers - commCount} members to community`}
-                          data-testid={`table-push-community-${group.id}`}
-                        >
-                          <UserPlus className="w-3 h-3 mr-0.5" />
-                          Add
-                        </Button>
                       )}
                     </div>
                   </td>
