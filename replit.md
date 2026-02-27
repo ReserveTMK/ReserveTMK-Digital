@@ -31,7 +31,7 @@ PostgreSQL with Drizzle ORM is used. Key tables manage users, contacts, interact
 6.  **Community Lens filtering**: Ethnicity-based audience filtering at the reporting level using contact ethnicity arrays.
 
 ### Features
--   **Reporting Engine**: Comprehensive reporting with 9 sections, community lens filtering, funder profiles, and export options, blending live and legacy data. Includes two narrative styles (compliance/story), benchmark insights, community comparison, and Tāmaki Ora alignment.
+-   **Reporting Engine**: Comprehensive reporting with 9 sections, unified toolbar (community lens + funder profiles in one row), and export options. Legacy data is blended inline into Engagement and Delivery sections (not a separate section). Includes two narrative styles (compliance/story), benchmark insights, community comparison, Tāmaki Ora alignment, and community spend tracking in Delivery.
 -   **Funders Section** (Settings): Manages funding relationships with contact details, key dates, document storage (Base64 in Postgres), outcomes frameworks, and reporting profiles. Drives report generation via funder quick-select.
 -   **Community Lens**: Filters report metrics by ethnicity — Māori, Pasifika, or Māori + Pasifika. Applied to engagement, impact, and outcome sections. Delivery and financial sections remain unfiltered (org-level).
 -   **Funder Profiles**: Quick-select cards on Reports page that pre-set community lens, narrative style, and priority sections. Managed via Funders page under Settings.

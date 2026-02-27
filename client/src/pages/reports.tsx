@@ -422,36 +422,52 @@ export default function Reports() {
     rows.push([]);
 
     if (d.isBlended && d.legacyMetrics) {
-      rows.push(["=== LEGACY DATA (from legacy reports) ==="]);
       rows.push(["Legacy Reports Included", String(d.legacyReportCount || 0)]);
-      rows.push(["Total Activations", String(d.legacyMetrics.activationsTotal || 0)]);
-      rows.push(["Workshops", String(d.legacyMetrics.activationsWorkshops || 0)]);
-      rows.push(["Mentoring Sessions", String(d.legacyMetrics.activationsMentoring || 0)]);
-      rows.push(["Events", String(d.legacyMetrics.activationsEvents || 0)]);
-      rows.push(["Partner Meetings", String(d.legacyMetrics.activationsPartnerMeetings || 0)]);
-      rows.push(["Hub Foot Traffic", String(d.legacyMetrics.foottrafficUnique || 0)]);
-      rows.push(["Legacy Bookings", String(d.legacyMetrics.bookingsTotal || 0)]);
+      rows.push(["Legacy Periods", d.legacyPeriods?.join(", ") || ""]);
       rows.push([]);
     }
 
-    rows.push(["=== ENGAGEMENT (Live) ==="]);
-    rows.push(["Unique Contacts", String(d.engagement?.uniqueContacts || 0)]);
+    rows.push(["=== ENGAGEMENT ==="]);
+    if (d.isBlended && d.legacyMetrics) {
+      rows.push(["Total Reach (legacy + live)", String((d.legacyMetrics.foottrafficUnique || 0) + (d.engagement?.uniqueContacts || 0))]);
+      rows.push(["  Legacy Foot Traffic", String(d.legacyMetrics.foottrafficUnique || 0)]);
+      rows.push(["  Live Unique Contacts", String(d.engagement?.uniqueContacts || 0)]);
+    } else {
+      rows.push(["Unique Contacts", String(d.engagement?.uniqueContacts || 0)]);
+    }
     rows.push(["Total Engagement Instances", String(d.engagement?.totalEngagementInstances || 0)]);
+    rows.push(["Avg Engagements per Contact", String(d.engagement?.uniqueContacts ? Math.round(((d.engagement?.totalEngagementInstances || 0) / d.engagement.uniqueContacts) * 10) / 10 : 0)]);
     rows.push(["New Contacts", String(d.engagement?.newContacts || 0)]);
     rows.push(["Active Groups", String(d.engagement?.activeGroups || 0)]);
     rows.push(["Repeat Engagement Rate", `${d.engagement?.repeatEngagementRate || 0}%`]);
     rows.push([]);
-    rows.push(["=== DELIVERY (Live) ==="]);
-    rows.push(["Total Events", String(d.delivery?.events?.total || 0)]);
+    rows.push(["=== DELIVERY ==="]);
+    if (d.isBlended && d.legacyMetrics) {
+      rows.push(["Events (combined)", String((d.legacyMetrics.activationsEvents || 0) + (d.delivery?.events?.total || 0))]);
+      rows.push(["  Legacy Events", String(d.legacyMetrics.activationsEvents || 0)]);
+      rows.push(["  Live Events", String(d.delivery?.events?.total || 0)]);
+      rows.push(["Bookings (combined)", String((d.legacyMetrics.bookingsTotal || 0) + (d.delivery?.bookings?.total || 0))]);
+      rows.push(["  Legacy Bookings", String(d.legacyMetrics.bookingsTotal || 0)]);
+      rows.push(["  Live Bookings", String(d.delivery?.bookings?.total || 0)]);
+    } else {
+      rows.push(["Total Events", String(d.delivery?.events?.total || 0)]);
+      rows.push(["Total Bookings", String(d.delivery?.bookings?.total || 0)]);
+    }
     if (d.delivery?.events?.byType) {
       for (const [type, count] of Object.entries(d.delivery.events.byType)) {
         rows.push([`  ${type}`, String(count)]);
       }
     }
-    rows.push(["Total Bookings", String(d.delivery?.bookings?.total || 0)]);
     rows.push(["Community Hours", String(d.delivery?.bookings?.communityHours || 0)]);
     rows.push(["Programmes Total", String(d.delivery?.programmes?.total || 0)]);
     rows.push(["Programmes Completed", String(d.delivery?.programmes?.completed || 0)]);
+    rows.push(["Community Spend", `$${d.delivery?.communitySpend || 0}`]);
+    if (d.isBlended && d.legacyMetrics) {
+      rows.push(["Workshops (incl. legacy)", String((d.legacyMetrics.activationsWorkshops || 0) + (d.delivery?.events?.byType?.workshop || 0))]);
+      rows.push(["Mentoring (incl. legacy)", String((d.legacyMetrics.activationsMentoring || 0) + (d.delivery?.events?.byType?.mentoring || 0))]);
+      rows.push(["Partner Meetings (incl. legacy)", String((d.legacyMetrics.activationsPartnerMeetings || 0) + (d.delivery?.events?.byType?.partner_meeting || 0))]);
+      rows.push(["Total Activations (legacy)", String(d.legacyMetrics.activationsTotal || 0)]);
+    };
     rows.push([]);
     rows.push(["=== IMPACT BY TAXONOMY ==="]);
     rows.push(["Category", "Debriefs", "Impact Score", "Contacts Affected"]);
@@ -524,83 +540,74 @@ export default function Reports() {
             <p className="text-muted-foreground mt-1">Generate funder-ready impact reports from your operational data.</p>
           </div>
 
-          <div className="flex flex-wrap gap-1 p-1 bg-muted/50 rounded-lg" data-testid="community-lens-selector">
-            {([
-              { value: "all", label: "All Communities", testId: "lens-all" },
-              { value: "maori", label: "Māori (mātāwaka)", testId: "lens-maori" },
-              { value: "pasifika", label: "Pasifika", testId: "lens-pasifika" },
-              { value: "maori_pasifika", label: "Māori + Pasifika", testId: "lens-maori-pasifika" },
-            ] as const).map((opt) => (
-              <Button
-                key={opt.value}
-                variant={communityLens === opt.value ? "default" : "ghost"}
-                size="sm"
-                onClick={() => { setCommunityLens(opt.value); setGenerated(false); }}
-                data-testid={opt.testId}
-              >
-                {opt.label}
-              </Button>
-            ))}
-          </div>
-
-          {communityLens !== "all" && (
-            <div
-              className="flex items-center justify-between gap-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800"
-              data-testid="banner-community-lens"
-            >
-              <div className="flex items-center gap-2 text-sm font-medium text-amber-900 dark:text-amber-200">
-                <Users className="w-4 h-4 shrink-0" />
-                <span>
-                  Viewing: {communityLens === "maori" ? "Māori (mātāwaka)" : communityLens === "pasifika" ? "Pasifika" : "Māori + Pasifika"} community data only
-                </span>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => { setCommunityLens("all"); setActiveFunder(null); setNarrativeStyle("compliance"); setGenerated(false); }}
-                data-testid="button-reset-lens"
-              >
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
-          )}
-
-          {fundersList && fundersList.length > 0 && (
-            <div data-testid="funder-profile-selector">
-              <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-                <h3 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
-                  <Landmark className="w-4 h-4" /> Funder Profiles
-                </h3>
-                <Link href="/funders">
-                  <Button variant="ghost" size="sm" data-testid="link-manage-funders">
-                    <Settings className="w-4 h-4 mr-1" /> Manage Funders
+          <Card className="p-3" data-testid="report-toolbar">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              <div className="flex flex-wrap gap-1 p-1 bg-muted/50 rounded-lg" data-testid="community-lens-selector">
+                {([
+                  { value: "all", label: "All", testId: "lens-all" },
+                  { value: "maori", label: "Māori (mātāwaka)", testId: "lens-maori" },
+                  { value: "pasifika", label: "Pasifika", testId: "lens-pasifika" },
+                  { value: "maori_pasifika", label: "Māori + Pasifika", testId: "lens-maori-pasifika" },
+                ] as const).map((opt) => (
+                  <Button
+                    key={opt.value}
+                    variant={communityLens === opt.value ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => { setCommunityLens(opt.value); setGenerated(false); }}
+                    data-testid={opt.testId}
+                  >
+                    {opt.label}
                   </Button>
-                </Link>
+                ))}
               </div>
-              <div className="flex flex-wrap gap-2">
-                {fundersList.map((funder) => {
-                  const isActive = activeFunder?.id === funder.id;
-                  return (
-                    <Button
-                      key={funder.id}
-                      variant={isActive ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => handleSelectFunder(funder)}
-                      data-testid={`button-funder-${funder.id}`}
-                    >
-                      <Landmark className="w-4 h-4 mr-1.5" />
-                      {funder.name}
-                      {funder.communityLens && funder.communityLens !== "all" && (
-                        <Badge variant="secondary" className="ml-2 text-xs">
-                          {COMMUNITY_LENS_LABELS[funder.communityLens] || funder.communityLens}
-                        </Badge>
-                      )}
-                    </Button>
-                  );
-                })}
-              </div>
+
+              {communityLens !== "all" && (
+                <Badge
+                  variant="secondary"
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800"
+                  data-testid="banner-community-lens"
+                >
+                  <Users className="w-3 h-3 shrink-0" />
+                  <span className="text-xs">{COMMUNITY_LENS_LABELS[communityLens]} only</span>
+                  <button
+                    onClick={() => { setCommunityLens("all"); setActiveFunder(null); setNarrativeStyle("compliance"); setGenerated(false); }}
+                    className="ml-1 hover:bg-amber-200/50 rounded-full p-0.5"
+                    data-testid="button-reset-lens"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              )}
+
+              {fundersList && fundersList.length > 0 && (
+                <>
+                  <div className="hidden sm:block w-px h-6 bg-border" />
+                  <div className="flex flex-wrap items-center gap-1.5" data-testid="funder-profile-selector">
+                    {fundersList.map((funder) => {
+                      const isActive = activeFunder?.id === funder.id;
+                      return (
+                        <Button
+                          key={funder.id}
+                          variant={isActive ? "default" : "ghost"}
+                          size="sm"
+                          onClick={() => handleSelectFunder(funder)}
+                          data-testid={`button-funder-${funder.id}`}
+                        >
+                          <Landmark className="w-3.5 h-3.5 mr-1" />
+                          {funder.name}
+                        </Button>
+                      );
+                    })}
+                    <Link href="/funders">
+                      <Button variant="ghost" size="icon" data-testid="link-manage-funders">
+                        <Settings className="w-3.5 h-3.5" />
+                      </Button>
+                    </Link>
+                  </div>
+                </>
+              )}
             </div>
-          )}
+          </Card>
 
           <Card className="p-6">
             <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setGenerated(false); }}>
@@ -784,95 +791,28 @@ export default function Reports() {
               </div>
 
               {isBlended && lm && (
-                <div className="flex items-start gap-3 p-4 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800" data-testid="banner-legacy-blend">
-                  <Info className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
-                  <div className="text-sm">
-                    <p className="font-medium text-indigo-900 dark:text-indigo-200">
-                      This report combines data from {reportData.legacyReportCount} legacy report{reportData.legacyReportCount > 1 ? "s" : ""} with live system data
-                    </p>
-                    <p className="text-indigo-700 dark:text-indigo-400 mt-1">
-                      Legacy periods: {reportData.legacyPeriods?.join(", ")}
-                      {reportData.boundaryDate && ` · Boundary: ${format(new Date(reportData.boundaryDate), "MMM d, yyyy")}`}
-                    </p>
-                  </div>
+                <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 text-xs" data-testid="banner-legacy-blend">
+                  <History className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                  <span className="text-indigo-800 dark:text-indigo-300">
+                    Includes {reportData.legacyReportCount} legacy report{reportData.legacyReportCount > 1 ? "s" : ""} · {reportData.legacyPeriods?.join(", ")}
+                  </span>
                 </div>
-              )}
-
-              {isBlended && lm && (
-                <CollapsibleSection title="Legacy Metrics (Historical)" icon={History} testId="section-legacy" defaultOpen={true}>
-                  <div className="pt-4 space-y-4">
-                    <p className="text-sm text-muted-foreground">
-                      Aggregated from {reportData.legacyReportCount} confirmed legacy report{reportData.legacyReportCount > 1 ? "s" : ""} covering the pre-live-tracking period.
-                    </p>
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                      <StatCard icon={Activity} label="Total Activations" value={lm.activationsTotal || 0} color="indigo" testId="stat-legacy-activations" />
-                      <StatCard icon={Users} label="Hub Foot Traffic" value={(lm.foottrafficUnique || 0).toLocaleString()} color="cyan" testId="stat-legacy-foottraffic" />
-                      <StatCard icon={Building2} label="Bookings" value={lm.bookingsTotal || 0} color="orange" testId="stat-legacy-bookings" />
-                      <StatCard icon={CalendarDays} label="Workshops" value={lm.activationsWorkshops || 0} color="blue" testId="stat-legacy-workshops" />
-                      <StatCard icon={Users} label="Mentoring" value={lm.activationsMentoring || 0} color="green" testId="stat-legacy-mentoring" />
-                      <StatCard icon={CalendarDays} label="Events" value={lm.activationsEvents || 0} color="violet" testId="stat-legacy-events" />
-                      <StatCard icon={Handshake} label="Partner Meetings" value={lm.activationsPartnerMeetings || 0} color="amber" testId="stat-legacy-partner" />
-                    </div>
-
-                    {isBlended && (
-                      <div className="border-t pt-4 mt-2">
-                        <h4 className="text-sm font-semibold mb-3">Combined Totals (Legacy + Live)</h4>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                          <StatCard
-                            icon={Activity}
-                            label="Total Activities"
-                            value={(lm.activationsTotal || 0) + (del?.events?.total || 0)}
-                            color="primary"
-                            testId="stat-combined-activities"
-                            subText={`${lm.activationsTotal || 0} legacy + ${del?.events?.total || 0} live`}
-                          />
-                          <StatCard
-                            icon={Building2}
-                            label="Total Bookings"
-                            value={(lm.bookingsTotal || 0) + (del?.bookings?.total || 0)}
-                            color="orange"
-                            testId="stat-combined-bookings"
-                            subText={`${lm.bookingsTotal || 0} legacy + ${del?.bookings?.total || 0} live`}
-                          />
-                          <StatCard
-                            icon={Users}
-                            label="Total Reach"
-                            value={((lm.foottrafficUnique || 0) + (eng?.uniqueContacts || 0)).toLocaleString()}
-                            color="cyan"
-                            testId="stat-combined-reach"
-                            subText={`${(lm.foottrafficUnique || 0).toLocaleString()} legacy + ${eng?.uniqueContacts || 0} live`}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {reportData.legacyHighlights && reportData.legacyHighlights.length > 0 && (
-                      <div className="border-t pt-4 mt-2">
-                        <h4 className="text-sm font-semibold mb-2">Legacy Highlights</h4>
-                        <div className="space-y-1">
-                          {reportData.legacyHighlights.slice(0, 8).map((h: string, i: number) => (
-                            <p key={i} className="text-sm text-muted-foreground flex items-start gap-2">
-                              <span className="text-primary mt-1">•</span>
-                              <span>{h}</span>
-                            </p>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </CollapsibleSection>
               )}
 
               {/* Section 1: Engagement */}
               <CollapsibleSection title="Engagement" icon={Users} testId="section-engagement" defaultOpen={isSectionDefaultOpen("engagement")} key={`engagement-${activeFunder?.id || 'none'}`}>
                 <div className="pt-4 space-y-4">
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                    <StatCard icon={Users} label="Unique Contacts" value={eng?.uniqueContacts || 0} color="primary" testId="stat-unique-contacts" />
+                    {isBlended && lm ? (
+                      <StatCard icon={Users} label="Total Reach" value={((lm.foottrafficUnique || 0) + (eng?.uniqueContacts || 0)).toLocaleString()} color="primary" testId="stat-total-reach" subText={`${(lm.foottrafficUnique || 0).toLocaleString()} legacy + ${eng?.uniqueContacts || 0} live`} />
+                    ) : (
+                      <StatCard icon={Users} label="Unique Contacts" value={eng?.uniqueContacts || 0} color="primary" testId="stat-unique-contacts" />
+                    )}
                     <StatCard icon={Activity} label="Engagements" value={eng?.totalEngagementInstances || 0} color="blue" testId="stat-engagements" />
                     <StatCard icon={Users} label="New Contacts" value={eng?.newContacts || 0} color="green" testId="stat-new-contacts" />
                     <StatCard icon={Building2} label="Active Groups" value={eng?.activeGroups || 0} color="violet" testId="stat-active-groups" />
                     <StatCard icon={TrendingUp} label="Repeat Rate" value={`${eng?.repeatEngagementRate || 0}%`} color="amber" testId="stat-repeat-rate" />
-                    <StatCard icon={Users} label="Repeat Contacts" value={eng?.repeatEngagementCount || 0} color="pink" testId="stat-repeat-contacts" />
+                    <StatCard icon={Activity} label="Avg per Contact" value={eng?.uniqueContacts ? Math.round(((eng?.totalEngagementInstances || 0) / eng.uniqueContacts) * 10) / 10 : 0} color="pink" testId="stat-avg-per-contact" />
                   </div>
 
                   {eng?.demographicBreakdown?.ethnicity && Object.keys(eng.demographicBreakdown.ethnicity).length > 0 && (
@@ -919,13 +859,31 @@ export default function Reports() {
                       <span>Delivery metrics show organisation-level data (not filtered by community lens)</span>
                     </div>
                   )}
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-                    <StatCard icon={CalendarDays} label="Events" value={del?.events?.total || 0} color="blue" testId="stat-events" />
-                    <StatCard icon={Building2} label="Bookings" value={del?.bookings?.total || 0} color="orange" testId="stat-bookings" />
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                    {isBlended && lm ? (
+                      <StatCard icon={CalendarDays} label="Events" value={(lm.activationsEvents || 0) + (del?.events?.total || 0)} color="blue" testId="stat-events" subText={`${lm.activationsEvents || 0} legacy + ${del?.events?.total || 0} live`} />
+                    ) : (
+                      <StatCard icon={CalendarDays} label="Events" value={del?.events?.total || 0} color="blue" testId="stat-events" />
+                    )}
+                    {isBlended && lm ? (
+                      <StatCard icon={Building2} label="Bookings" value={(lm.bookingsTotal || 0) + (del?.bookings?.total || 0)} color="orange" testId="stat-bookings" subText={`${lm.bookingsTotal || 0} legacy + ${del?.bookings?.total || 0} live`} />
+                    ) : (
+                      <StatCard icon={Building2} label="Bookings" value={del?.bookings?.total || 0} color="orange" testId="stat-bookings" />
+                    )}
                     <StatCard icon={Clock} label="Community Hours" value={del?.bookings?.communityHours || 0} color="green" testId="stat-community-hours" />
                     <StatCard icon={Activity} label="Programmes" value={del?.programmes?.total || 0} color="indigo" testId="stat-programmes" />
-                    <StatCard icon={TrendingUp} label="Completed" value={del?.programmes?.completed || 0} color="amber" testId="stat-completed" />
+                    <StatCard icon={TrendingUp} label="Programmes Completed" value={del?.programmes?.completed || 0} color="amber" testId="stat-completed" />
+                    <StatCard icon={DollarSign} label="Community Spend" value={`$${(del?.communitySpend || 0).toLocaleString()}`} color="cyan" testId="stat-community-spend" />
                   </div>
+
+                  {isBlended && lm && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3" data-testid="legacy-delivery-breakdown">
+                      <StatCard icon={Activity} label="Workshops" value={(lm.activationsWorkshops || 0) + (del?.events?.byType?.workshop || 0)} color="slate" testId="stat-workshops" subText="incl. legacy" />
+                      <StatCard icon={Users} label="Mentoring" value={(lm.activationsMentoring || 0) + (del?.events?.byType?.mentoring || 0)} color="slate" testId="stat-mentoring" subText="incl. legacy" />
+                      <StatCard icon={Handshake} label="Partner Meetings" value={(lm.activationsPartnerMeetings || 0) + (del?.events?.byType?.partner_meeting || 0)} color="slate" testId="stat-partner-meetings" subText="incl. legacy" />
+                      <StatCard icon={Activity} label="Total Activations" value={lm.activationsTotal || 0} color="indigo" testId="stat-legacy-activations" subText="legacy only" />
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {del?.events?.byType && Object.keys(del.events.byType).length > 0 && (
@@ -1022,7 +980,7 @@ export default function Reports() {
                     <StatCard icon={Users} label="Contacts Tracked" value={out?.totalContacts || 0} color="primary" testId="stat-tracked-contacts" />
                     <StatCard icon={Activity} label="With Metrics" value={out?.contactsWithMetrics || 0} color="blue" testId="stat-with-metrics" />
                     <StatCard icon={TrendingUp} label="Milestones" value={out?.milestoneCount || 0} color="amber" testId="stat-milestones" />
-                    <StatCard icon={Activity} label="Positive Movement" value={`${out?.positiveMovementPercent?.confidence || 0}%`} color="green" testId="stat-positive-movement" />
+                    <StatCard icon={Activity} label="Avg Positive Movement" value={`${out?.positiveMovementPercent ? Math.round(((out.positiveMovementPercent.mindset || 0) + (out.positiveMovementPercent.skill || 0) + (out.positiveMovementPercent.confidence || 0)) / 3) : 0}%`} color="green" testId="stat-positive-movement" />
                   </div>
 
                   {out && (
@@ -1055,7 +1013,7 @@ export default function Reports() {
                     <StatCard icon={DollarSign} label="Total Revenue" value={`$${val?.revenue?.total?.toLocaleString() || 0}`} color="green" testId="stat-total-revenue" />
                     <StatCard icon={Handshake} label="In-Kind Value" value={`$${val?.inKindValue?.toLocaleString() || 0}`} color="blue" testId="stat-inkind-value" />
                     <StatCard icon={Users} label="Active Memberships" value={val?.memberships?.active || 0} color="violet" testId="stat-memberships" />
-                    <StatCard icon={Handshake} label="Active MOUs" value={val?.mouExchange?.active || 0} color="amber" testId="stat-mous" />
+                    <StatCard icon={Handshake} label="Partnership Agreements" value={val?.mouExchange?.active || 0} color="amber" testId="stat-mous" />
                   </div>
 
                   {val?.revenue?.byPricingTier && Object.keys(val.revenue.byPricingTier).length > 0 && (
@@ -1448,7 +1406,23 @@ export default function Reports() {
                       </div>
                     </div>
                   ) : (
-                    <div className="text-center py-6">
+                    <div className="text-center py-6 space-y-4">
+                      {isBlended && reportData?.legacyHighlights && reportData.legacyHighlights.length > 0 && (
+                        <div className="text-left border rounded-lg p-4 mb-4">
+                          <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                            <History className="w-4 h-4 text-indigo-500" />
+                            Historical Highlights
+                          </h4>
+                          <div className="space-y-1">
+                            {reportData.legacyHighlights.slice(0, 6).map((h: string, i: number) => (
+                              <p key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                                <span className="text-primary mt-1">•</span>
+                                <span>{h}</span>
+                              </p>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       <p className="text-muted-foreground text-sm mb-3">Generate a structured narrative summary based on this report's data.</p>
                       <Button variant="outline" onClick={handleGenerateNarrative} data-testid="button-generate-narrative">
                         <FileText className="w-4 h-4 mr-2" /> Generate Narrative

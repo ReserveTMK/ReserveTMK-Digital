@@ -4,7 +4,7 @@ import {
   impactLogs, impactLogContacts, impactLogGroups, impactTags, impactTaxonomy,
   contacts, groups, groupMembers, events, eventAttendance,
   programmes, programmeEvents, bookings, memberships, mous, venues,
-  milestones, relationshipStageHistory,
+  milestones, relationshipStageHistory, communitySpend,
 } from "@shared/schema";
 
 export interface ReportFilters {
@@ -279,6 +279,19 @@ export async function getDeliveryMetrics(filters: ReportFilters) {
     if (p.status === "completed") programmesCompleted++;
   }
 
+  let communitySpendTotal = 0;
+  try {
+    const spendResult = await db
+      .select({ total: sum(communitySpend.amount) })
+      .from(communitySpend)
+      .where(and(
+        eq(communitySpend.userId, filters.userId),
+        gte(communitySpend.date, start),
+        lte(communitySpend.date, end),
+      ));
+    communitySpendTotal = Math.round(Number(spendResult[0]?.total || 0) * 100) / 100;
+  } catch {}
+
   return {
     events: {
       total: eventsInRange.length,
@@ -294,6 +307,7 @@ export async function getDeliveryMetrics(filters: ReportFilters) {
       byClassification: programmesByClassification,
       completed: programmesCompleted,
     },
+    communitySpend: communitySpendTotal,
     communityLensApplied: false,
   };
 }
