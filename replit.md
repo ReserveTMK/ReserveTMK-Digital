@@ -41,7 +41,7 @@ PostgreSQL with Drizzle ORM is used. Key tables manage users, contacts, interact
 -   **Google Calendar Integration**: Reconciles external events, allows event classification, community member tagging, and debrief logging.
 -   **Programmes Section**: Manages internal events with classification, budget tracking, and Kanban board view with drag-and-drop.
 -   **Bookings/Venue Hire Section**: Manages venue spaces and bookings with Kanban view, double-booking prevention, and quick-add for contacts/groups.
--   **Agreements (Memberships & MOUs)**: Tracks annual memberships, venue hire allocations, and partner agreements.
+-   **Agreements (Memberships & MOUs)**: Tracks year-based annual memberships with standard value vs annual fee (savings tracking), booking allowance, and partner MOUs with actual value vs in-kind value (subsidy tracking). Undo-on-delete with 5s delayed deletion. Default status: active.
 -   **Unified Calendar View**: Displays personal events, programmes, and bookings with color-coding and conflict detection.
 -   **Two-layer CRM (Groups)**: Manages organizations, collectives, and community groups with member management, relationship tiers, and import source tracking.
 -   **Ecosystem View**: Strategic network intelligence with health summaries, relationship tiers, strategic importance, and role tagging.
@@ -49,7 +49,7 @@ PostgreSQL with Drizzle ORM is used. Key tables manage users, contacts, interact
 -   **Legacy Reporting Layer**: Imports historical PDF reports with AI-powered metric extraction, draft/confirmed workflow, and qualitative data extraction.
 -   **Weekly Hub Debriefs**: Aggregates weekly operational summaries, milestones, themes, and sentiment.
 -   **Community Spend Tracking**: Tracks money spent in the community, linking to contacts, groups, programmes, and bookings.
--   **Community Member Management**: Automated classification of community members based on engagement signals, with AI relationship scoring and last active date tracking.
+-   **Community Member Management**: Automated classification of community members based on engagement signals, with AI relationship scoring and last active date tracking. Table view shows Community column with inline Add/Yes toggle badges. Groups detail dialog has "Push All to Community" button and per-member community indicators.
 -   **NZ Timezone Standardization**: All date calculations use Pacific/Auckland timezone with Monday-start weeks.
 
 ### Ethnicity Mapping (Community Lens)

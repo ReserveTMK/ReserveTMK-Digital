@@ -808,6 +808,21 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit }: {
     enabled: open,
   });
 
+  const pushToCommunityMutation = useMutation({
+    mutationFn: async (contactIds: number[]) => {
+      const res = await apiRequest("POST", "/api/contacts/community/bulk-move", { contactIds, isCommunityMember: true });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups/community-density"] });
+      toast({ title: "Pushed to Community", description: `${data.updated || 0} members marked as community` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
   const existingContactIds = new Set((members || []).map((m: GroupMember) => m.contactId));
   const availableContacts = contacts.filter((c) => !existingContactIds.has(c.id));
   const filteredAvailable = availableContacts.filter((c) =>
@@ -1187,6 +1202,31 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit }: {
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <Users className="w-4 h-4" />
                 Members ({members?.length || 0})
+                {(() => {
+                  const memberContactIds = (members || []).map((m: GroupMember) => m.contactId);
+                  const nonCommunityIds = memberContactIds.filter((cid: number) => {
+                    const c = contacts.find((ct: any) => ct.id === cid);
+                    return c && !c.isCommunityMember;
+                  });
+                  if (nonCommunityIds.length === 0) return null;
+                  return (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 text-[10px] px-2 text-purple-700 dark:text-purple-300 border-purple-500/30 hover:bg-purple-500/10"
+                      onClick={() => pushToCommunityMutation.mutate(nonCommunityIds)}
+                      disabled={pushToCommunityMutation.isPending}
+                      data-testid="button-push-all-community"
+                    >
+                      {pushToCommunityMutation.isPending ? (
+                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                      ) : (
+                        <UserCheck className="w-3 h-3 mr-1" />
+                      )}
+                      Push {nonCommunityIds.length} to Community
+                    </Button>
+                  );
+                })()}
               </h3>
               <Popover open={addMemberOpen} onOpenChange={setAddMemberOpen}>
                 <PopoverTrigger asChild>
@@ -1255,33 +1295,51 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit }: {
               </div>
             ) : (
               <div className="space-y-1">
-                {(members || []).map((member: GroupMember) => (
-                  <div
-                    key={member.id}
-                    className="flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-muted/50 group"
-                    data-testid={`row-member-${member.id}`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary shrink-0">
-                        {getContactName(member.contactId)[0]}
-                      </div>
-                      <div className="min-w-0">
-                        <span className="text-sm font-medium truncate block">{getContactName(member.contactId)}</span>
-                      </div>
-                      <Badge variant="secondary" className="text-[10px] shrink-0">{member.role || "Member"}</Badge>
-                    </div>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                      style={{ visibility: "visible" }}
-                      onClick={() => handleRemoveMember(member)}
-                      data-testid={`button-remove-member-${member.id}`}
+                {(members || []).map((member: GroupMember) => {
+                  const memberContact = contacts.find((c: any) => c.id === member.contactId);
+                  const isCommunity = memberContact?.isCommunityMember;
+                  return (
+                    <div
+                      key={member.id}
+                      className="flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-muted/50 group"
+                      data-testid={`row-member-${member.id}`}
                     >
-                      <X className="w-3.5 h-3.5 text-muted-foreground" />
-                    </Button>
-                  </div>
-                ))}
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary shrink-0">
+                          {getContactName(member.contactId)[0]}
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-sm font-medium truncate block">{getContactName(member.contactId)}</span>
+                        </div>
+                        <Badge variant="secondary" className="text-[10px] shrink-0">{member.role || "Member"}</Badge>
+                        {isCommunity ? (
+                          <Badge className="text-[9px] h-4 px-1.5 bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/20 shrink-0" data-testid={`badge-member-community-${member.id}`}>
+                            <UserCheck className="w-2.5 h-2.5" />
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="text-[9px] h-4 px-1.5 cursor-pointer hover:bg-purple-500/10 hover:text-purple-700 dark:hover:text-purple-300 transition-colors shrink-0"
+                            onClick={() => pushToCommunityMutation.mutate([member.contactId])}
+                            data-testid={`button-push-member-community-${member.id}`}
+                          >
+                            <UserCheck className="w-2.5 h-2.5" />
+                          </Badge>
+                        )}
+                      </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                        style={{ visibility: "visible" }}
+                        onClick={() => handleRemoveMember(member)}
+                        data-testid={`button-remove-member-${member.id}`}
+                      >
+                        <X className="w-3.5 h-3.5 text-muted-foreground" />
+                      </Button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

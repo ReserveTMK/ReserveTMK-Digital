@@ -733,7 +733,7 @@ export default function Contacts() {
               <Button onClick={() => setOpen(true)} variant="outline" data-testid="button-add-member-empty">Add Member</Button>
             </div>
           ) : layoutView === "table" ? (
-            <ContactsTableView contacts={filteredContacts || []} allContacts={(contacts as any[]) || []} editMode={editMode} selectedContacts={selectedContacts} toggleContactSelection={toggleContactSelection} toggleSelectAll={toggleSelectAll} />
+            <ContactsTableView contacts={filteredContacts || []} allContacts={(contacts as any[]) || []} editMode={editMode} selectedContacts={selectedContacts} toggleContactSelection={toggleContactSelection} toggleSelectAll={toggleSelectAll} onToggleCommunity={(id, isCommunityMember) => communityStatusMutation.mutate({ id, isCommunityMember })} />
           ) : (
             <div className="space-y-3">
               {(filteredContacts || []).map((contact: any) => (
@@ -1019,7 +1019,7 @@ function InlineEthnicityCell({ contactId, ethnicities, ethnicityCounts }: { cont
   );
 }
 
-type SortField = "name" | "role" | "ethnicity" | "age" | "suburb" | "lastActive";
+type SortField = "name" | "role" | "ethnicity" | "age" | "suburb" | "lastActive" | "community";
 type SortDir = "asc" | "desc";
 
 function SortHeader({ label, field, activeField, dir, onSort, className }: { label: string; field: SortField; activeField: SortField | null; dir: SortDir; onSort: (f: SortField) => void; className?: string }) {
@@ -1042,7 +1042,7 @@ function SortHeader({ label, field, activeField, dir, onSort, className }: { lab
   );
 }
 
-function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, toggleContactSelection, toggleSelectAll }: { contacts: any[]; allContacts: any[]; editMode: boolean; selectedContacts: Set<number>; toggleContactSelection: (id: number) => void; toggleSelectAll: () => void }) {
+function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, toggleContactSelection, toggleSelectAll, onToggleCommunity }: { contacts: any[]; allContacts: any[]; editMode: boolean; selectedContacts: Set<number>; toggleContactSelection: (id: number) => void; toggleSelectAll: () => void; onToggleCommunity: (id: number, isCommunityMember: boolean) => void }) {
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
@@ -1097,6 +1097,10 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
           av = a.lastActiveDate || a.lastInteractionDate || "";
           bv = b.lastActiveDate || b.lastInteractionDate || "";
           break;
+        case "community":
+          av = a.isCommunityMember ? 1 : 0;
+          bv = b.isCommunityMember ? 1 : 0;
+          return sortDir === "asc" ? av - bv : bv - av;
       }
       if (av < bv) return sortDir === "asc" ? -1 : 1;
       if (av > bv) return sortDir === "asc" ? 1 : -1;
@@ -1126,6 +1130,7 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
               <SortHeader label="Age" field="age" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-20" />
               <SortHeader label="Suburb" field="suburb" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
               <SortHeader label="Last Active" field="lastActive" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
+              <SortHeader label="Community" field="community" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-28" />
             </tr>
           </thead>
           <tbody>
@@ -1166,6 +1171,28 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
                   {(contact.lastActiveDate || contact.lastInteractionDate)
                     ? format(new Date(contact.lastActiveDate || contact.lastInteractionDate), "MMM d, yyyy")
                     : "—"}
+                </td>
+                <td className="px-3 py-2">
+                  {contact.isCommunityMember ? (
+                    <Badge
+                      className="text-[10px] h-5 px-2 bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/20 cursor-pointer hover:bg-purple-500/25 transition-colors"
+                      onClick={() => onToggleCommunity(contact.id, false)}
+                      data-testid={`badge-community-${contact.id}`}
+                    >
+                      <UserCheck className="w-3 h-3 mr-1" />
+                      Yes
+                    </Badge>
+                  ) : (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] h-5 px-2 cursor-pointer hover:bg-purple-500/10 hover:text-purple-700 dark:hover:text-purple-300 transition-colors"
+                      onClick={() => onToggleCommunity(contact.id, true)}
+                      data-testid={`button-add-community-${contact.id}`}
+                    >
+                      <Plus className="w-3 h-3 mr-1" />
+                      Add
+                    </Badge>
+                  )}
                 </td>
               </tr>
             ))}
