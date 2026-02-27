@@ -2194,6 +2194,30 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     res.json(groupsList);
   });
 
+  app.get("/api/groups/community-density", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const allGroups = await storage.getGroups(userId);
+      const allContacts = await storage.getContacts(userId);
+
+      const communityContactIds = new Set(
+        allContacts.filter((c: any) => c.isCommunityMember).map((c: any) => c.id)
+      );
+
+      const densityMap: Record<number, { communityCount: number; totalMembers: number }> = {};
+
+      for (const group of allGroups) {
+        const members = await storage.getGroupMembers(group.id);
+        const communityCount = members.filter(m => communityContactIds.has(m.contactId)).length;
+        densityMap[group.id] = { communityCount, totalMembers: members.length };
+      }
+
+      res.json(densityMap);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to get community density" });
+    }
+  });
+
   app.get(api.groups.get.path, isAuthenticated, async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid group ID" });
@@ -4786,30 +4810,6 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   });
 
   // === COMMUNITY MANAGEMENT ===
-
-  app.get("/api/groups/community-density", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      const allGroups = await storage.getGroups(userId);
-      const allContacts = await storage.getContacts(userId);
-
-      const communityContactIds = new Set(
-        allContacts.filter((c: any) => c.isCommunityMember).map((c: any) => c.id)
-      );
-
-      const densityMap: Record<number, { communityCount: number; totalMembers: number }> = {};
-
-      for (const group of allGroups) {
-        const members = await storage.getGroupMembers(group.id);
-        const communityCount = members.filter(m => communityContactIds.has(m.contactId)).length;
-        densityMap[group.id] = { communityCount, totalMembers: members.length };
-      }
-
-      res.json(densityMap);
-    } catch (err: any) {
-      res.status(500).json({ message: "Failed to get community density" });
-    }
-  });
 
   app.get("/api/groups/engagement-metrics", isAuthenticated, async (req, res) => {
     try {

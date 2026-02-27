@@ -423,6 +423,7 @@ export default function Groups() {
               onSelect={(group) => setSelectedGroup(group)}
               onEdit={(group) => openEditDialog(group)}
               onDelete={(groupId) => setDeleteConfirmId(groupId)}
+              contacts={(contacts as any[]) || []}
             />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -614,7 +615,7 @@ const TIER_COLORS: Record<string, string> = {
   mentioned: "bg-slate-500/10 text-slate-600 dark:text-slate-400",
 };
 
-function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, toggleGroupSelection, toggleSelectAll, onSelect, onEdit, onDelete }: {
+function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, toggleGroupSelection, toggleSelectAll, onSelect, onEdit, onDelete, contacts }: {
   groups: Group[];
   communityDensity: Record<number, { communityCount: number; totalMembers: number }>;
   editMode: boolean;
@@ -624,9 +625,36 @@ function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, t
   onSelect: (group: Group) => void;
   onEdit: (group: Group) => void;
   onDelete: (groupId: number) => void;
+  contacts: any[];
 }) {
   const [sortField, setSortField] = useState<GroupSortField | null>(null);
   const [sortDir, setSortDir] = useState<GroupSortDir>("asc");
+  const { toast } = useToast();
+
+  const pushToCommunityMutation = useMutation({
+    mutationFn: async (groupId: number) => {
+      const membersRes = await fetch(`/api/groups/${groupId}/members`, { credentials: "include" });
+      if (!membersRes.ok) throw new Error("Failed to fetch members");
+      const members: GroupMember[] = await membersRes.json();
+      const nonCommunityIds = members
+        .map((m) => m.contactId)
+        .filter((cid) => {
+          const c = contacts.find((ct: any) => ct.id === cid);
+          return c && !c.isCommunityMember;
+        });
+      if (nonCommunityIds.length === 0) return { updated: 0 };
+      const res = await apiRequest("POST", "/api/contacts/community/bulk-move", { contactIds: nonCommunityIds, isCommunityMember: true });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups/community-density"] });
+      toast({ title: "Pushed to Community", description: `${data.updated || 0} members marked as community` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
 
   const handleSort = (field: GroupSortField) => {
     if (sortField === field) {
@@ -747,6 +775,20 @@ function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, t
                           <UserCheck className="w-2.5 h-2.5 mr-0.5" />
                           {commCount}
                         </Badge>
+                      )}
+                      {totalMembers > 0 && commCount < totalMembers && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-5 px-1.5 text-[10px] text-purple-600 hover:text-purple-700 hover:bg-purple-500/10 dark:text-purple-400 dark:hover:text-purple-300"
+                          onClick={(e) => { e.stopPropagation(); pushToCommunityMutation.mutate(group.id); }}
+                          disabled={pushToCommunityMutation.isPending}
+                          title={`Add ${totalMembers - commCount} members to community`}
+                          data-testid={`table-push-community-${group.id}`}
+                        >
+                          <UserPlus className="w-3 h-3 mr-0.5" />
+                          Add
+                        </Button>
                       )}
                     </div>
                   </td>
