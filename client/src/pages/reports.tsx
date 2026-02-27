@@ -1039,19 +1039,19 @@ export default function Reports() {
                           <thead className="bg-muted/50">
                             <tr>
                               <th className="text-left p-3">Membership</th>
-                              <th className="text-right p-3">Allocated</th>
-                              <th className="text-right p-3">Used</th>
-                              <th className="text-right p-3">Usage</th>
+                              <th className="text-right p-3">Value</th>
+                              <th className="text-right p-3">Pays</th>
+                              <th className="text-right p-3">Bookings</th>
                             </tr>
                           </thead>
                           <tbody>
                             {val.memberships.details.map((m: any) => (
                               <tr key={m.id} className="border-t">
-                                <td className="p-3">{m.name}</td>
-                                <td className="text-right p-3">{m.allocatedHours}h</td>
-                                <td className="text-right p-3">{m.usedHours}h</td>
+                                <td className="p-3">{m.name}{m.membershipYear ? ` (${m.membershipYear})` : ""}</td>
+                                <td className="text-right p-3">${(m.standardValue || 0).toFixed(2)}</td>
+                                <td className="text-right p-3">${(m.annualFee || 0).toFixed(2)}</td>
                                 <td className="text-right p-3">
-                                  <Badge variant={m.usagePercent > 80 ? "destructive" : "secondary"}>{m.usagePercent}%</Badge>
+                                  {m.bookingsUsed}/{m.bookingAllowance || 0}
                                 </td>
                               </tr>
                             ))}

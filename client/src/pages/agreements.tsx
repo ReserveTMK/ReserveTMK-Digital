@@ -27,7 +27,8 @@ import { useContacts, useCreateContact } from "@/hooks/use-contacts";
 import { useGroups, useCreateGroup } from "@/hooks/use-groups";
 import { useBookings } from "@/hooks/use-bookings";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useMemo } from "react";
+import { ToastAction } from "@/components/ui/toast";
+import { useState, useMemo, useRef, useCallback, createElement } from "react";
 import {
   Plus,
   Loader2,
@@ -45,6 +46,8 @@ import {
   Handshake,
   ArrowRightLeft,
   Network,
+  Undo2,
+  TrendingDown,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -135,40 +138,40 @@ export default function Agreements() {
     });
   }, [mous, mouSearch, contacts]);
 
+  const [pendingDelete, setPendingDelete] = useState<{ id: number; type: "membership" | "mou" } | null>(null);
+  const pendingDeleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deleteExecuted = useRef(false);
+
   const membershipStats = useMemo(() => {
-    if (!memberships) return { total: 0, active: 0, revenue: 0, hours: 0 };
+    if (!memberships) return { total: 0, active: 0, revenue: 0, valueGiven: 0 };
     const nonExpired = memberships.filter((m) => m.status !== "expired");
     const active = memberships.filter((m) => m.status === "active");
+    const revenue = active.reduce((sum, m) => sum + parseFloat(m.annualFee || "0"), 0);
+    const standardTotal = active.reduce((sum, m) => sum + parseFloat(m.standardValue || "0"), 0);
     return {
       total: nonExpired.length,
       active: active.length,
-      revenue: active.reduce((sum, m) => sum + parseFloat(m.annualFee || "0"), 0),
-      hours: active.reduce((sum, m) => sum + (m.venueHireHours || 0), 0),
+      revenue,
+      valueGiven: Math.max(0, standardTotal - revenue),
     };
   }, [memberships]);
 
   const mouStats = useMemo(() => {
-    if (!mous) return { total: 0, active: 0, inKindValue: 0 };
+    if (!mous) return { total: 0, active: 0, inKindValue: 0, valueGiven: 0 };
     const active = mous.filter((m) => m.status === "active");
+    const inKindTotal = active.reduce((sum, m) => sum + parseFloat(m.inKindValue || "0"), 0);
+    const actualTotal = active.reduce((sum, m) => sum + parseFloat(m.actualValue || "0"), 0);
     return {
       total: mous.length,
       active: active.length,
-      inKindValue: active.reduce((sum, m) => sum + parseFloat(m.inKindValue || "0"), 0),
+      inKindValue: inKindTotal,
+      valueGiven: Math.max(0, actualTotal - inKindTotal),
     };
   }, [mous]);
 
-  const getMembershipHoursUsed = (membershipId: number) => {
+  const getMembershipBookingsUsed = (membershipId: number) => {
     if (!bookings) return 0;
-    return bookings
-      .filter((b) => b.membershipId === membershipId)
-      .reduce((sum, b) => {
-        if (b.startTime && b.endTime) {
-          const [sh, sm] = b.startTime.split(":").map(Number);
-          const [eh, em] = b.endTime.split(":").map(Number);
-          return sum + (eh + em / 60) - (sh + sm / 60);
-        }
-        return sum;
-      }, 0);
+    return bookings.filter((b) => b.membershipId === membershipId).length;
   };
 
   const getMouBookingsCount = (mouId: number) => {
@@ -186,23 +189,60 @@ export default function Agreements() {
     return (allGroups as Group[]).find((g) => g.id === groupId)?.name || null;
   };
 
-  const handleDeleteMembership = async (id: number) => {
-    try {
-      await deleteMembershipMutation.mutateAsync(id);
-      toast({ title: "Deleted", description: "Membership removed successfully" });
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to delete", variant: "destructive" });
+  const handleDeleteWithUndo = useCallback((id: number, type: "membership" | "mou") => {
+    if (pendingDeleteTimer.current) {
+      clearTimeout(pendingDeleteTimer.current);
     }
-  };
+    deleteExecuted.current = false;
+    setPendingDelete({ id, type });
 
-  const handleDeleteMou = async (id: number) => {
-    try {
-      await deleteMouMutation.mutateAsync(id);
-      toast({ title: "Deleted", description: "MOU removed successfully" });
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to delete", variant: "destructive" });
-    }
-  };
+    const timer = setTimeout(async () => {
+      deleteExecuted.current = true;
+      pendingDeleteTimer.current = null;
+      try {
+        if (type === "membership") {
+          await deleteMembershipMutation.mutateAsync(id);
+        } else {
+          await deleteMouMutation.mutateAsync(id);
+        }
+      } catch (err: any) {
+        toast({ title: "Error", description: err.message || "Failed to delete", variant: "destructive" });
+      }
+      setPendingDelete(null);
+    }, 5000);
+
+    pendingDeleteTimer.current = timer;
+
+    toast({
+      title: `${type === "membership" ? "Membership" : "MOU"} deleted`,
+      description: "Click undo to restore",
+      action: createElement(ToastAction, {
+        altText: "Undo delete",
+        onClick: () => {
+          if (deleteExecuted.current) return;
+          if (pendingDeleteTimer.current) {
+            clearTimeout(pendingDeleteTimer.current);
+            pendingDeleteTimer.current = null;
+          }
+          setPendingDelete(null);
+          toast({ title: "Restored", description: `${type === "membership" ? "Membership" : "MOU"} restored` });
+        },
+        "data-testid": "button-undo-delete",
+      }, "Undo"),
+    });
+  }, [deleteMembershipMutation, deleteMouMutation, toast]);
+
+  const visibleMemberships = useMemo(() => {
+    return filteredMemberships.filter(
+      (m) => !(pendingDelete?.type === "membership" && pendingDelete.id === m.id)
+    );
+  }, [filteredMemberships, pendingDelete]);
+
+  const visibleMous = useMemo(() => {
+    return filteredMous.filter(
+      (m) => !(pendingDelete?.type === "mou" && pendingDelete.id === m.id)
+    );
+  }, [filteredMous, pendingDelete]);
 
   const isLoading = membershipsLoading || mousLoading;
 
@@ -254,8 +294,9 @@ export default function Agreements() {
                   <p className="text-2xl font-bold" data-testid="text-stat-annual-revenue">${membershipStats.revenue.toFixed(2)}</p>
                 </Card>
                 <Card className="p-4">
-                  <p className="text-xs text-muted-foreground">Hours Allocated</p>
-                  <p className="text-2xl font-bold" data-testid="text-stat-hours-allocated">{membershipStats.hours}</p>
+                  <p className="text-xs text-muted-foreground">Value Given</p>
+                  <p className="text-2xl font-bold text-green-600 dark:text-green-400" data-testid="text-stat-value-given">${membershipStats.valueGiven.toFixed(2)}</p>
+                  <p className="text-[10px] text-muted-foreground">discount / subsidy</p>
                 </Card>
               </div>
 
@@ -294,10 +335,13 @@ export default function Agreements() {
                 </Card>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {filteredMemberships.map((membership) => {
+                  {visibleMemberships.map((membership) => {
                     const contactName = getContactName(membership.contactId);
                     const groupName = getGroupName((membership as any).groupId);
-                    const hoursUsed = getMembershipHoursUsed(membership.id);
+                    const bookingsUsed = getMembershipBookingsUsed(membership.id);
+                    const stdVal = parseFloat(membership.standardValue || "0");
+                    const fee = parseFloat(membership.annualFee || "0");
+                    const savings = stdVal - fee;
 
                     return (
                       <Card
@@ -317,36 +361,38 @@ export default function Agreements() {
                               <Badge className={PAYMENT_STATUS_BADGE[membership.paymentStatus || "unpaid"] || ""} data-testid={`badge-payment-${membership.id}`}>
                                 {membership.paymentStatus || "unpaid"}
                               </Badge>
+                              {membership.membershipYear && (
+                                <Badge variant="outline" className="text-[10px]" data-testid={`badge-year-${membership.id}`}>
+                                  {membership.membershipYear}
+                                </Badge>
+                              )}
                             </div>
                             <p className="text-sm text-muted-foreground mb-2" data-testid={`text-membership-name-${membership.id}`}>
                               {membership.name}
                             </p>
                             <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                              {stdVal > 0 && (
+                                <span className="flex items-center gap-1" data-testid={`text-membership-value-${membership.id}`}>
+                                  <DollarSign className="w-3 h-3" />
+                                  Value: ${stdVal.toFixed(2)}
+                                </span>
+                              )}
                               <span className="flex items-center gap-1" data-testid={`text-membership-fee-${membership.id}`}>
                                 <DollarSign className="w-3 h-3" />
-                                ${parseFloat(membership.annualFee || "0").toFixed(2)}/yr
+                                Pays: ${fee.toFixed(2)}/yr
                               </span>
-                              <span className="flex items-center gap-1" data-testid={`text-membership-hours-${membership.id}`}>
-                                <Clock className="w-3 h-3" />
-                                {membership.venueHireHours || 0} hrs included
-                              </span>
-                              {(membership.bookingAllowance || 0) > 0 && (
-                                <span className="flex items-center gap-1" data-testid={`text-membership-allowance-${membership.id}`}>
-                                  <Calendar className="w-3 h-3" />
-                                  {membership.bookingAllowance} bookings/{membership.allowancePeriod === "monthly" ? "mo" : "qtr"}
-                                </span>
+                              {savings > 0 && (
+                                <Badge className="bg-green-500/15 text-green-700 dark:text-green-300 text-[10px]" data-testid={`badge-savings-${membership.id}`}>
+                                  <TrendingDown className="w-3 h-3 mr-0.5" />
+                                  Saves ${savings.toFixed(2)}
+                                </Badge>
                               )}
                             </div>
                             <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap mt-1">
-                              <span className="flex items-center gap-1" data-testid={`text-membership-hours-used-${membership.id}`}>
-                                <Users className="w-3 h-3" />
-                                {hoursUsed.toFixed(1)} / {membership.venueHireHours || 0} hrs used
-                              </span>
-                              {membership.startDate && (
-                                <span className="flex items-center gap-1" data-testid={`text-membership-dates-${membership.id}`}>
+                              {(membership.bookingAllowance || 0) > 0 && (
+                                <span className="flex items-center gap-1" data-testid={`text-membership-allowance-${membership.id}`}>
                                   <Calendar className="w-3 h-3" />
-                                  {format(new Date(membership.startDate), "d MMM yyyy")}
-                                  {membership.endDate && ` - ${format(new Date(membership.endDate), "d MMM yyyy")}`}
+                                  {bookingsUsed} / {membership.bookingAllowance} bookings used ({membership.allowancePeriod === "monthly" ? "monthly" : "quarterly"})
                                 </span>
                               )}
                             </div>
@@ -366,7 +412,7 @@ export default function Agreements() {
                                 Edit
                               </DropdownMenuItem>
                               <DropdownMenuItem
-                                onClick={() => handleDeleteMembership(membership.id)}
+                                onClick={() => handleDeleteWithUndo(membership.id, "membership")}
                                 className="text-destructive focus:text-destructive"
                                 data-testid={`button-delete-membership-${membership.id}`}
                               >
@@ -386,7 +432,7 @@ export default function Agreements() {
 
           {activeTab === "mous" && (
             <>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <Card className="p-4">
                   <p className="text-xs text-muted-foreground">Total MOUs</p>
                   <p className="text-2xl font-bold" data-testid="text-stat-total-mous">{mouStats.total}</p>
@@ -398,6 +444,11 @@ export default function Agreements() {
                 <Card className="p-4">
                   <p className="text-xs text-muted-foreground">In-Kind Value</p>
                   <p className="text-2xl font-bold" data-testid="text-stat-inkind-value">${mouStats.inKindValue.toFixed(2)}</p>
+                </Card>
+                <Card className="p-4">
+                  <p className="text-xs text-muted-foreground">Value Given</p>
+                  <p className="text-2xl font-bold text-green-600 dark:text-green-400" data-testid="text-stat-mou-value-given">${mouStats.valueGiven.toFixed(2)}</p>
+                  <p className="text-[10px] text-muted-foreground">subsidy provided</p>
                 </Card>
               </div>
 
@@ -436,10 +487,13 @@ export default function Agreements() {
                 </Card>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {filteredMous.map((mou) => {
+                  {visibleMous.map((mou) => {
                     const contactName = getContactName(mou.contactId);
                     const groupName = getGroupName((mou as any).groupId);
                     const linkedBookings = getMouBookingsCount(mou.id);
+                    const av = parseFloat(mou.actualValue || "0");
+                    const ikv = parseFloat(mou.inKindValue || "0");
+                    const subsidy = av - ikv;
 
                     return (
                       <Card
@@ -484,10 +538,24 @@ export default function Agreements() {
                               </div>
                             )}
                             <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap mt-1">
+                              {av > 0 && (
+                                <span className="flex items-center gap-1" data-testid={`text-mou-actual-value-${mou.id}`}>
+                                  <DollarSign className="w-3 h-3" />
+                                  Actual: ${av.toFixed(2)}
+                                </span>
+                              )}
                               <span className="flex items-center gap-1" data-testid={`text-mou-value-${mou.id}`}>
                                 <DollarSign className="w-3 h-3" />
-                                ${parseFloat(mou.inKindValue || "0").toFixed(2)} in-kind
+                                In-Kind: ${ikv.toFixed(2)}
                               </span>
+                              {subsidy > 0 && (
+                                <Badge className="bg-green-500/15 text-green-700 dark:text-green-300 text-[10px]" data-testid={`badge-mou-subsidy-${mou.id}`}>
+                                  <TrendingDown className="w-3 h-3 mr-0.5" />
+                                  Subsidy: ${subsidy.toFixed(2)}
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap mt-1">
                               {mou.startDate && (
                                 <span className="flex items-center gap-1" data-testid={`text-mou-dates-${mou.id}`}>
                                   <Calendar className="w-3 h-3" />
@@ -522,7 +590,7 @@ export default function Agreements() {
                                 Edit
                               </DropdownMenuItem>
                               <DropdownMenuItem
-                                onClick={() => handleDeleteMou(mou.id)}
+                                onClick={() => handleDeleteWithUndo(mou.id, "mou")}
                                 className="text-destructive focus:text-destructive"
                                 data-testid={`button-delete-mou-${mou.id}`}
                               >
@@ -638,17 +706,14 @@ function MembershipFormDialog({
   const [quickContactName, setQuickContactName] = useState("");
   const [showQuickAddGroup, setShowQuickAddGroup] = useState(false);
   const [quickGroupName, setQuickGroupName] = useState("");
+  const [standardValue, setStandardValue] = useState(membership?.standardValue || "0");
   const [annualFee, setAnnualFee] = useState(membership?.annualFee || "0");
-  const [venueHireHours, setVenueHireHours] = useState((membership?.venueHireHours || 0).toString());
   const [bookingAllowance, setBookingAllowance] = useState((membership?.bookingAllowance || 0).toString());
   const [allowancePeriod, setAllowancePeriod] = useState(membership?.allowancePeriod || "quarterly");
-  const [startDate, setStartDate] = useState(
-    membership?.startDate ? format(new Date(membership.startDate), "yyyy-MM-dd") : ""
+  const [membershipYear, setMembershipYear] = useState(
+    (membership?.membershipYear || new Date().getFullYear()).toString()
   );
-  const [endDate, setEndDate] = useState(
-    membership?.endDate ? format(new Date(membership.endDate), "yyyy-MM-dd") : ""
-  );
-  const [status, setStatus] = useState(membership?.status || "pending");
+  const [status, setStatus] = useState(membership?.status || "active");
   const [paymentStatus, setPaymentStatus] = useState(membership?.paymentStatus || "unpaid");
   const [notes, setNotes] = useState(membership?.notes || "");
 
@@ -693,16 +758,18 @@ function MembershipFormDialog({
 
   const handleSubmit = () => {
     if (!name.trim()) return;
+    const year = parseInt(membershipYear) || new Date().getFullYear();
     const data: any = {
       name: name.trim(),
       contactId: contactId || undefined,
       groupId: groupId || undefined,
+      standardValue: standardValue || "0",
       annualFee: annualFee || "0",
-      venueHireHours: parseInt(venueHireHours) || 0,
       bookingAllowance: parseInt(bookingAllowance) || 0,
       allowancePeriod,
-      startDate: startDate ? new Date(startDate).toISOString() : null,
-      endDate: endDate ? new Date(endDate).toISOString() : null,
+      membershipYear: year,
+      startDate: new Date(`${year}-01-01`).toISOString(),
+      endDate: new Date(`${year}-12-31`).toISOString(),
       status,
       paymentStatus,
       notes: notes.trim() || undefined,
@@ -731,99 +798,6 @@ function MembershipFormDialog({
               placeholder="e.g. Annual Studio Membership"
               data-testid="input-membership-name"
             />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Contact</Label>
-            {contactId && (
-              <div className="flex flex-wrap gap-1.5">
-                <Badge variant="secondary" className="text-xs gap-1 pr-1" data-testid={`badge-membership-contact-${contactId}`}>
-                  {contacts?.find((c) => c.id === contactId)?.name || `Contact #${contactId}`}
-                  <button
-                    onClick={() => setContactId(null)}
-                    className="ml-0.5 transition-colors"
-                    data-testid="button-remove-membership-contact"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </Badge>
-              </div>
-            )}
-            <div className="relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-              <Input
-                value={contactSearch}
-                onChange={(e) => setContactSearch(e.target.value)}
-                placeholder="Search contacts..."
-                className="h-8 text-xs pl-7"
-                data-testid="input-search-membership-contact"
-              />
-            </div>
-            {contactSearch.trim() && (
-              <>
-                {filteredContacts.length > 0 && (
-                  <div className="border border-border rounded-md divide-y divide-border/50 max-h-[150px] overflow-y-auto">
-                    {filteredContacts.map((c) => (
-                      <button
-                        key={c.id}
-                        onClick={() => handleSelectContact(c)}
-                        className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between"
-                        data-testid={`button-select-contact-${c.id}`}
-                      >
-                        <span>{c.name}</span>
-                        <UserPlus className="w-3 h-3 text-muted-foreground" />
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {filteredContacts.length === 0 && !showQuickAddContact && (
-                  <div className="text-xs text-muted-foreground flex items-center justify-between p-2 bg-muted/30 rounded-md">
-                    <span>No contacts found for "{contactSearch}"</span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-6 text-[10px]"
-                      onClick={() => {
-                        setQuickContactName(contactSearch);
-                        setShowQuickAddContact(true);
-                      }}
-                      data-testid="button-quick-add-membership-contact"
-                    >
-                      <Plus className="w-3 h-3 mr-1" />
-                      Quick Add
-                    </Button>
-                  </div>
-                )}
-              </>
-            )}
-            {showQuickAddContact && (
-              <div className="flex items-center gap-2 p-2 bg-primary/5 rounded-md border border-primary/20">
-                <Input
-                  value={quickContactName}
-                  onChange={(e) => setQuickContactName(e.target.value)}
-                  placeholder="Person's name"
-                  className="h-7 text-xs flex-1"
-                  data-testid="input-quick-add-membership-contact-name"
-                />
-                <Button
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={handleQuickAddMembershipContact}
-                  disabled={!quickContactName.trim() || createContact.isPending}
-                  data-testid="button-save-quick-membership-contact"
-                >
-                  {createContact.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add"}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() => setShowQuickAddContact(false)}
-                >
-                  <X className="w-3 h-3" />
-                </Button>
-              </div>
-            )}
           </div>
 
           <div className="space-y-2">
@@ -923,35 +897,136 @@ function MembershipFormDialog({
             )}
           </div>
 
-          <div>
-            <Label>Annual Fee</Label>
+          <div className="space-y-2">
+            <Label>Contact Person</Label>
+            <p className="text-[10px] text-muted-foreground -mt-1">Link a contact if no group, or as the key person for the group</p>
+            {contactId && (
+              <div className="flex flex-wrap gap-1.5">
+                <Badge variant="secondary" className="text-xs gap-1 pr-1" data-testid={`badge-membership-contact-${contactId}`}>
+                  {contacts?.find((c) => c.id === contactId)?.name || `Contact #${contactId}`}
+                  <button
+                    onClick={() => setContactId(null)}
+                    className="ml-0.5 transition-colors"
+                    data-testid="button-remove-membership-contact"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              </div>
+            )}
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
               <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={annualFee}
-                onChange={(e) => setAnnualFee(e.target.value)}
-                className="pl-7"
-                data-testid="input-membership-fee"
+                value={contactSearch}
+                onChange={(e) => setContactSearch(e.target.value)}
+                placeholder="Search contacts..."
+                className="h-8 text-xs pl-7"
+                data-testid="input-search-membership-contact"
               />
             </div>
-          </div>
-
-          <div>
-            <Label>Venue Hire Hours</Label>
-            <Input
-              type="number"
-              min="0"
-              value={venueHireHours}
-              onChange={(e) => setVenueHireHours(e.target.value)}
-              placeholder="Hours of venue hire included"
-              data-testid="input-membership-hours"
-            />
+            {contactSearch.trim() && (
+              <>
+                {filteredContacts.length > 0 && (
+                  <div className="border border-border rounded-md divide-y divide-border/50 max-h-[150px] overflow-y-auto">
+                    {filteredContacts.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => handleSelectContact(c)}
+                        className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between"
+                        data-testid={`button-select-contact-${c.id}`}
+                      >
+                        <span>{c.name}</span>
+                        <UserPlus className="w-3 h-3 text-muted-foreground" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {filteredContacts.length === 0 && !showQuickAddContact && (
+                  <div className="text-xs text-muted-foreground flex items-center justify-between p-2 bg-muted/30 rounded-md">
+                    <span>No contacts found for "{contactSearch}"</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 text-[10px]"
+                      onClick={() => {
+                        setQuickContactName(contactSearch);
+                        setShowQuickAddContact(true);
+                      }}
+                      data-testid="button-quick-add-membership-contact"
+                    >
+                      <Plus className="w-3 h-3 mr-1" />
+                      Quick Add
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+            {showQuickAddContact && (
+              <div className="flex items-center gap-2 p-2 bg-primary/5 rounded-md border border-primary/20">
+                <Input
+                  value={quickContactName}
+                  onChange={(e) => setQuickContactName(e.target.value)}
+                  placeholder="Person's name"
+                  className="h-7 text-xs flex-1"
+                  data-testid="input-quick-add-membership-contact-name"
+                />
+                <Button
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={handleQuickAddMembershipContact}
+                  disabled={!quickContactName.trim() || createContact.isPending}
+                  data-testid="button-save-quick-membership-contact"
+                >
+                  {createContact.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setShowQuickAddContact(false)}
+                >
+                  <X className="w-3 h-3" />
+                </Button>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Standard Value</Label>
+              <p className="text-[10px] text-muted-foreground">Full commercial value</p>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={standardValue}
+                  onChange={(e) => setStandardValue(e.target.value)}
+                  className="pl-7"
+                  data-testid="input-membership-standard-value"
+                />
+              </div>
+            </div>
+            <div>
+              <Label>Annual Fee</Label>
+              <p className="text-[10px] text-muted-foreground">What they pay</p>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={annualFee}
+                  onChange={(e) => setAnnualFee(e.target.value)}
+                  className="pl-7"
+                  data-testid="input-membership-fee"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
             <div>
               <Label>Booking Allowance</Label>
               <Input
@@ -959,12 +1034,12 @@ function MembershipFormDialog({
                 min="0"
                 value={bookingAllowance}
                 onChange={(e) => setBookingAllowance(e.target.value)}
-                placeholder="Free bookings per period"
+                placeholder="Full-day bookings"
                 data-testid="input-membership-booking-allowance"
               />
             </div>
             <div>
-              <Label>Allowance Period</Label>
+              <Label>Period</Label>
               <Select value={allowancePeriod} onValueChange={setAllowancePeriod}>
                 <SelectTrigger data-testid="select-membership-allowance-period">
                   <SelectValue />
@@ -975,26 +1050,18 @@ function MembershipFormDialog({
                 </SelectContent>
               </Select>
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Start Date</Label>
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                data-testid="input-membership-start-date"
-              />
-            </div>
-            <div>
-              <Label>End Date</Label>
-              <Input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                data-testid="input-membership-end-date"
-              />
+              <Label>Year</Label>
+              <Select value={membershipYear} onValueChange={setMembershipYear}>
+                <SelectTrigger data-testid="select-membership-year">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map((y) => (
+                    <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -1086,6 +1153,7 @@ function MouFormDialog({
   const [quickGroupName, setQuickGroupName] = useState("");
   const [providing, setProviding] = useState(mou?.providing || "");
   const [receiving, setReceiving] = useState(mou?.receiving || "");
+  const [actualValue, setActualValue] = useState(mou?.actualValue || "0");
   const [inKindValue, setInKindValue] = useState(mou?.inKindValue || "0");
   const [bookingAllowance, setBookingAllowance] = useState((mou?.bookingAllowance || 0).toString());
   const [allowancePeriod, setAllowancePeriod] = useState(mou?.allowancePeriod || "quarterly");
@@ -1095,7 +1163,7 @@ function MouFormDialog({
   const [endDate, setEndDate] = useState(
     mou?.endDate ? format(new Date(mou.endDate), "yyyy-MM-dd") : ""
   );
-  const [status, setStatus] = useState(mou?.status || "draft");
+  const [status, setStatus] = useState(mou?.status || "active");
   const [notes, setNotes] = useState(mou?.notes || "");
 
   const filteredContacts = useMemo(() => {
@@ -1146,6 +1214,7 @@ function MouFormDialog({
       groupId: groupId || undefined,
       providing: providing.trim() || undefined,
       receiving: receiving.trim() || undefined,
+      actualValue: actualValue || "0",
       inKindValue: inKindValue || "0",
       bookingAllowance: parseInt(bookingAllowance) || 0,
       allowancePeriod,
@@ -1400,20 +1469,38 @@ function MouFormDialog({
             />
           </div>
 
-          <div>
-            <Label>In-Kind Value</Label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={inKindValue}
-                onChange={(e) => setInKindValue(e.target.value)}
-                className="pl-7"
-                placeholder="Estimated annual value"
-                data-testid="input-mou-inkind-value"
-              />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Actual Value</Label>
+              <p className="text-[10px] text-muted-foreground">Full commercial value</p>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={actualValue}
+                  onChange={(e) => setActualValue(e.target.value)}
+                  className="pl-7"
+                  data-testid="input-mou-actual-value"
+                />
+              </div>
+            </div>
+            <div>
+              <Label>In-Kind Value</Label>
+              <p className="text-[10px] text-muted-foreground">What they pay / exchange</p>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={inKindValue}
+                  onChange={(e) => setInKindValue(e.target.value)}
+                  className="pl-7"
+                  data-testid="input-mou-inkind-value"
+                />
+              </div>
             </div>
           </div>
 

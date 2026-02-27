@@ -377,13 +377,15 @@ export const memberships = pgTable("memberships", {
   contactId: integer("contact_id"),
   groupId: integer("group_id"),
   name: text("name").notNull(),
+  standardValue: numeric("standard_value", { precision: 10, scale: 2 }).default("0"),
   annualFee: numeric("annual_fee", { precision: 10, scale: 2 }).default("0"),
   venueHireHours: integer("venue_hire_hours").default(0),
   bookingAllowance: integer("booking_allowance").default(0),
   allowancePeriod: text("allowance_period").default("quarterly"),
+  membershipYear: integer("membership_year"),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
-  status: text("status").notNull().default("pending"),
+  status: text("status").notNull().default("active"),
   paymentStatus: text("payment_status").default("unpaid"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -402,6 +404,7 @@ export const mous = pgTable("mous", {
   partnerName: text("partner_name"),
   providing: text("providing"),
   receiving: text("receiving"),
+  actualValue: numeric("actual_value", { precision: 10, scale: 2 }).default("0"),
   inKindValue: numeric("in_kind_value", { precision: 10, scale: 2 }).default("0"),
   bookingAllowance: integer("booking_allowance").default(0),
   allowancePeriod: text("allowance_period").default("quarterly"),
@@ -1119,7 +1122,7 @@ export const insertMembershipSchema = createInsertSchema(memberships).omit({
   createdAt: true,
   updatedAt: true,
 }).extend({
-  status: z.enum(MEMBERSHIP_STATUSES).default("pending"),
+  status: z.enum(MEMBERSHIP_STATUSES).default("active"),
   paymentStatus: z.enum(PAYMENT_STATUSES).default("unpaid"),
 });
 
@@ -1128,7 +1131,7 @@ export const insertMouSchema = createInsertSchema(mous).omit({
   createdAt: true,
   updatedAt: true,
 }).extend({
-  status: z.enum(MOU_STATUSES).default("draft"),
+  status: z.enum(MOU_STATUSES).default("active"),
 });
 
 export type Membership = typeof memberships.$inferSelect;

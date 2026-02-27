@@ -554,41 +554,36 @@ export async function getValueContribution(filters: ReportFilters) {
     bookingsByTier[b.pricingTier].revenue += amt;
   }
 
+  const startYear = start.getFullYear();
+  const endYear = end.getFullYear();
   const activeMemberships = await db
     .select()
     .from(memberships)
     .where(and(
       eq(memberships.userId, filters.userId),
       eq(memberships.status, "active"),
-      lte(memberships.startDate, end),
-      gte(memberships.endDate, start),
+      gte(memberships.membershipYear, startYear),
+      lte(memberships.membershipYear, endYear),
     ));
 
   let membershipRevenue = 0;
-  let totalAllocatedHours = 0;
+  let totalStandardValue = 0;
   const membershipDetails = [];
 
   for (const m of activeMemberships) {
     membershipRevenue += Number(m.annualFee) || 0;
-    totalAllocatedHours += m.venueHireHours || 0;
+    totalStandardValue += Number(m.standardValue) || 0;
 
     const usedBookings = bookingsInRange.filter(b => b.membershipId === m.id);
-    let usedHours = 0;
-    for (const b of usedBookings) {
-      if (b.startTime && b.endTime) {
-        const [sh, sm] = b.startTime.split(":").map(Number);
-        const [eh, em] = b.endTime.split(":").map(Number);
-        usedHours += (eh * 60 + em - sh * 60 - sm) / 60;
-      }
-    }
 
     membershipDetails.push({
       id: m.id,
       name: m.name,
-      allocatedHours: m.venueHireHours || 0,
-      usedHours: Math.round(usedHours * 10) / 10,
-      usagePercent: (m.venueHireHours || 0) > 0
-        ? Math.round((usedHours / (m.venueHireHours || 1)) * 100) : 0,
+      membershipYear: m.membershipYear,
+      standardValue: Number(m.standardValue) || 0,
+      annualFee: Number(m.annualFee) || 0,
+      bookingAllowance: m.bookingAllowance || 0,
+      bookingsUsed: usedBookings.length,
     });
   }
 
@@ -603,17 +598,21 @@ export async function getValueContribution(filters: ReportFilters) {
     ));
 
   let totalInKindValue = 0;
+  let totalMouActualValue = 0;
   const mouSummary = [];
 
   for (const m of activeMous) {
     const ikv = Number(m.inKindValue) || 0;
+    const av = Number(m.actualValue) || 0;
     totalInKindValue += ikv;
+    totalMouActualValue += av;
     mouSummary.push({
       id: m.id,
       title: m.title,
       partnerName: m.partnerName,
       providing: m.providing,
       receiving: m.receiving,
+      actualValue: av,
       inKindValue: ikv,
     });
   }
@@ -646,12 +645,15 @@ export async function getValueContribution(filters: ReportFilters) {
     memberships: {
       active: activeMemberships.length,
       totalRevenue: Math.round(membershipRevenue * 100) / 100,
-      totalAllocatedHours,
+      totalStandardValue: Math.round(totalStandardValue * 100) / 100,
+      totalValueGiven: Math.round(Math.max(0, totalStandardValue - membershipRevenue) * 100) / 100,
       details: membershipDetails,
     },
     mouExchange: {
       active: activeMous.length,
+      totalActualValue: Math.round(totalMouActualValue * 100) / 100,
       totalInKindValue: Math.round(totalInKindValue * 100) / 100,
+      totalValueGiven: Math.round(Math.max(0, totalMouActualValue - totalInKindValue) * 100) / 100,
       details: mouSummary,
     },
     programmeCosts,
