@@ -1125,12 +1125,12 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
                 </th>
               )}
               <SortHeader label="Name" field="name" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-4" />
+              <SortHeader label="Community" field="community" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-28" />
               <SortHeader label="Role" field="role" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
               <SortHeader label="Ethnicity" field="ethnicity" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[160px]" />
               <SortHeader label="Age" field="age" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-20" />
               <SortHeader label="Suburb" field="suburb" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
               <SortHeader label="Last Active" field="lastActive" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
-              <SortHeader label="Community" field="community" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-28" />
             </tr>
           </thead>
           <tbody>
@@ -1154,25 +1154,6 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
                   </Link>
                 </td>
                 <td className="px-3 py-2">
-                  <Badge variant="outline" className="text-[10px] h-5 px-2" data-testid={`table-role-${contact.id}`}>
-                    {contact.role || "—"}
-                  </Badge>
-                </td>
-                <td className="px-1 py-2">
-                  <InlineEthnicityCell contactId={contact.id} ethnicities={contact.ethnicity || []} ethnicityCounts={ethnicityCounts} />
-                </td>
-                <td className="px-1 py-2">
-                  <InlineTextCell contactId={contact.id} field="age" value={contact.age?.toString() || ""} placeholder="—" />
-                </td>
-                <td className="px-1 py-2">
-                  <InlineTextCell contactId={contact.id} field="suburb" value={contact.suburb || ""} placeholder="—" />
-                </td>
-                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap" data-testid={`table-active-${contact.id}`}>
-                  {(contact.lastActiveDate || contact.lastInteractionDate)
-                    ? format(new Date(contact.lastActiveDate || contact.lastInteractionDate), "MMM d, yyyy")
-                    : "—"}
-                </td>
-                <td className="px-3 py-2">
                   {contact.isCommunityMember ? (
                     <Badge
                       className="text-[10px] h-5 px-2 bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/20 cursor-pointer hover:bg-purple-500/25 transition-colors"
@@ -1193,6 +1174,25 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
                       Add
                     </Badge>
                   )}
+                </td>
+                <td className="px-3 py-2">
+                  <Badge variant="outline" className="text-[10px] h-5 px-2" data-testid={`table-role-${contact.id}`}>
+                    {contact.role || "—"}
+                  </Badge>
+                </td>
+                <td className="px-1 py-2">
+                  <InlineEthnicityCell contactId={contact.id} ethnicities={contact.ethnicity || []} ethnicityCounts={ethnicityCounts} />
+                </td>
+                <td className="px-1 py-2">
+                  <InlineTextCell contactId={contact.id} field="age" value={contact.age?.toString() || ""} placeholder="—" />
+                </td>
+                <td className="px-1 py-2">
+                  <InlineTextCell contactId={contact.id} field="suburb" value={contact.suburb || ""} placeholder="—" />
+                </td>
+                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap" data-testid={`table-active-${contact.id}`}>
+                  {(contact.lastActiveDate || contact.lastInteractionDate)
+                    ? format(new Date(contact.lastActiveDate || contact.lastInteractionDate), "MMM d, yyyy")
+                    : "—"}
                 </td>
               </tr>
             ))}
