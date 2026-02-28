@@ -217,7 +217,19 @@ export default function ContactDetail() {
                   {contact.businessName && (
                     <p className="text-muted-foreground/80 text-base" data-testid="text-business-name">{contact.businessName}</p>
                   )}
-                  <p className="text-muted-foreground text-lg">{contact.role}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-muted-foreground text-lg">{contact.role}</p>
+                    {contact.ventureType && (
+                      <Badge variant="outline" className="text-xs capitalize" data-testid="badge-venture-type">
+                        {contact.ventureType.replace(/_/g, ' ')}
+                      </Badge>
+                    )}
+                    {contact.stage && (
+                      <Badge variant="secondary" className="text-xs capitalize" data-testid="badge-venture-stage">
+                        {contact.stage}
+                      </Badge>
+                    )}
+                  </div>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm text-muted-foreground">
                     {contact.age && <span>{contact.age} years old</span>}
                     <EthnicityQuickEdit contact={contact} />
@@ -1023,6 +1035,8 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
   const [showQuickAddEmail, setShowQuickAddEmail] = useState(false);
   const [quickAddEmailName, setQuickAddEmailName] = useState("");
   const [role, setRole] = useState(contact.role || "Entrepreneur");
+  const [ventureType, setVentureType] = useState(contact.ventureType || "");
+  const [stage, setStage] = useState(contact.stage || "");
   const [age, setAge] = useState(contact.age?.toString() || "");
   const [revenueBand, setRevenueBand] = useState(contact.revenueBand || "");
   const [selectedEthnicities, setSelectedEthnicities] = useState<string[]>(contact.ethnicity || []);
@@ -1064,6 +1078,8 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
       setBusinessName(contact.businessName || "");
       setBusinessSearch(contact.businessName || "");
       setRole(contact.role || "Entrepreneur");
+      setVentureType(contact.ventureType || "");
+      setStage(contact.stage || "");
       setAge(contact.age?.toString() || "");
       setRevenueBand(contact.revenueBand || "");
       setSelectedEthnicities(contact.ethnicity || []);
@@ -1143,6 +1159,8 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
       localBoard: localBoard.trim() || null,
       businessName: businessName.trim() || null,
       role: role,
+      ventureType: ventureType || null,
+      stage: stage || null,
       age: age ? parseInt(age) : null,
       revenueBand: revenueBand || null,
       ethnicity: selectedEthnicities,
@@ -1271,7 +1289,7 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
               />
             </div>
             <div className="space-y-2" ref={businessRef}>
-              <Label htmlFor="edit-business">Business Name</Label>
+              <Label htmlFor="edit-business">Venture / Project</Label>
               <div className="relative">
                 <Input
                   id="edit-business"
@@ -1283,7 +1301,7 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
                     setShowQuickAddBusiness(false);
                   }}
                   onFocus={() => businessSearch && setShowBusinessDropdown(true)}
-                  placeholder="Search or enter business name..."
+                  placeholder="Search or enter venture name..."
                   data-testid="input-edit-business"
                 />
                 {showBusinessDropdown && businessSearch.trim() && (
@@ -1357,13 +1375,56 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Entrepreneur">Entrepreneur</SelectItem>
+                  <SelectItem value="Creative">Creative</SelectItem>
+                  <SelectItem value="Community Leader">Community Leader</SelectItem>
+                  <SelectItem value="Movement Builder">Movement Builder</SelectItem>
                   <SelectItem value="Professional">Professional</SelectItem>
                   <SelectItem value="Innovator">Innovator</SelectItem>
-                  <SelectItem value="Want-trepreneur">Want-trepreneur</SelectItem>
                   <SelectItem value="Rangatahi">Rangatahi</SelectItem>
+                  <SelectItem value="Aspiring">Aspiring</SelectItem>
                   <SelectItem value="Business Owner">Business Owner</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-venture-type">Venture Type</Label>
+              <Select value={ventureType} onValueChange={setVentureType}>
+                <SelectTrigger data-testid="select-edit-venture-type">
+                  <SelectValue placeholder="Select type..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="commercial">Commercial Business</SelectItem>
+                  <SelectItem value="social_enterprise">Social Enterprise</SelectItem>
+                  <SelectItem value="creative_cultural">Creative / Cultural</SelectItem>
+                  <SelectItem value="passion_project">Passion Project</SelectItem>
+                  <SelectItem value="community_initiative">Community Initiative</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2 col-span-2">
+              <Label>Venture Stage</Label>
+              <div className="flex items-center gap-1 p-2 bg-muted/30 rounded-lg border border-border" data-testid="venture-stage-selector">
+                {[
+                  { value: "dreaming", label: "Dreaming", desc: "Has an idea or passion" },
+                  { value: "exploring", label: "Exploring", desc: "Testing & researching" },
+                  { value: "building", label: "Building", desc: "Actively creating" },
+                  { value: "growing", label: "Growing", desc: "Has traction" },
+                  { value: "established", label: "Established", desc: "Sustainable" },
+                ].map((s, i, arr) => (
+                  <div key={s.value} className="flex items-center flex-1">
+                    <button
+                      type="button"
+                      onClick={() => setStage(stage === s.value ? "" : s.value)}
+                      className={`flex flex-col items-center gap-0.5 p-1.5 rounded-md w-full transition-colors ${stage === s.value ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                      data-testid={`button-stage-${s.value}`}
+                    >
+                      <span className="text-[10px] font-semibold">{s.label}</span>
+                      <span className={`text-[8px] ${stage === s.value ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>{s.desc}</span>
+                    </button>
+                    {i < arr.length - 1 && <div className="w-2 h-px bg-border shrink-0" />}
+                  </div>
+                ))}
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-location">Location</Label>
@@ -1449,12 +1510,14 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
               />
             </div>
             <div className="space-y-2 col-span-2">
-              <Label htmlFor="edit-revenue">Revenue Band</Label>
+              <Label htmlFor="edit-revenue">Income Band</Label>
               <Select value={revenueBand} onValueChange={setRevenueBand}>
                 <SelectTrigger data-testid="select-edit-revenue">
-                  <SelectValue placeholder="Select revenue band" />
+                  <SelectValue placeholder="Select income band" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="Koha / Donations">Koha / Donations</SelectItem>
+                  <SelectItem value="Sponsorship">Sponsorship</SelectItem>
                   <SelectItem value="Pre-revenue">Pre-revenue</SelectItem>
                   <SelectItem value="$0-$50k">$0-$50k</SelectItem>
                   <SelectItem value="$50k-$100k">$50k-$100k</SelectItem>

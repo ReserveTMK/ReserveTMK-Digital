@@ -24,6 +24,14 @@ export const MILESTONE_TYPES = [
   "job_created",
   "prototype_completed",
   "revenue_milestone",
+  "brand_launched",
+  "content_published",
+  "community_formed",
+  "sponsorship_secured",
+  "event_hosted",
+  "movement_milestone",
+  "grant_received",
+  "social_impact",
   "other",
 ] as const;
 export type MilestoneType = typeof MILESTONE_TYPES[number];
@@ -36,7 +44,8 @@ export const contacts = pgTable("contacts", {
   name: text("name").notNull(),
   nickname: text("nickname"),
   businessName: text("business_name"),
-  role: text("role").notNull(), // 'Entrepreneur', 'Professional', 'Innovator', 'Want-trepreneur', 'Rangatahi', 'Business Owner'
+  ventureType: text("venture_type"),
+  role: text("role").notNull(), // 'Entrepreneur', 'Creative', 'Community Leader', 'Movement Builder', 'Professional', 'Innovator', 'Rangatahi', 'Aspiring', 'Business Owner'
   email: text("email"),
   phone: text("phone"),
   age: integer("age"),
@@ -54,6 +63,8 @@ export const contacts = pgTable("contacts", {
     systemsInPlace?: number;
     fundingReadiness?: number;
     networkStrength?: number;
+    communityImpact?: number;
+    digitalPresence?: number;
   }>().default({}), 
   notes: text("notes"),
   active: boolean("active").default(true),
@@ -253,6 +264,10 @@ export const GROUP_TYPES = [
   "Community Collective",
   "Whānau Group",
   "Business",
+  "Social Enterprise",
+  "Creative Collective",
+  "Movement",
+  "Cultural Initiative",
   "Resident Company",
   "Partner",
   "Government",

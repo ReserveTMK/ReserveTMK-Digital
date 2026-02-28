@@ -646,18 +646,18 @@ export class DatabaseStorage implements IStorage {
 
   private static readonly DEFAULT_TAXONOMY = [
     { name: 'Hub Engagement', description: 'Track facility usage and programme participation metrics. Physical participation and attendance at Reserve activities.', color: 'blue', sortOrder: 1 },
-    { name: 'Business Progress', description: 'Capture commercial development and revenue outcomes. Tangible business milestones and financial sustainability markers.', color: 'green', sortOrder: 2 },
+    { name: 'Venture Progress', description: 'Capture venture development and economic outcomes. Tangible milestones across businesses, social enterprises, creative projects, and movements.', color: 'green', sortOrder: 2 },
     { name: 'Skills & Capability Growth', description: 'Measure competency development and confidence building. Knowledge acquisition, self-efficacy changes, decision-making improvement.', color: 'purple', sortOrder: 3 },
     { name: 'Network & Ecosystem Connection', description: 'Document relationship formation and ecosystem integration. Introductions, partnerships, mentorship, peer connections established.', color: 'orange', sortOrder: 4 },
     { name: 'Rangatahi Development', description: 'Track youth-specific engagement and outcomes. Participants under 25, youth entrepreneurship development, early-stage ventures.', color: 'pink', sortOrder: 5 },
   ];
 
   private static readonly SEMANTIC_INDICATORS: Record<string, string[]> = {
-    'Hub Engagement': ['registered as member', 'attended workshop', 'came to event', 'used coworking space', 'participated in programme', 'joined session', 'turned up to', 'booked in for', 'regular user'],
-    'Business Progress': ['made first sale', 'got customer', 'launched business', 'registered company', 'earned revenue', 'hired someone', 'secured contract', 'still trading', 'business growing', 'sustainable income', 'wholesale client', 'repeat customer'],
-    'Skills & Capability Growth': ['learned how to', 'now understand', 'figured out how', 'gained confidence', 'feel capable', 'can now do', 'developed skill in', 'understand pricing', 'know how to market', 'improved at', 'making better decisions', 'ready to take next step'],
-    'Network & Ecosystem Connection': ['met someone who', 'introduced to', 'connected with', 'found mentor', 'got referral to', 'partnered with', 'collaborated with', 'supported by', 'linked to', 'now working with', 'relationships with'],
-    'Rangatahi Development': ['young entrepreneur', 'rangatahi participated', 'youth attended', 'first business idea', 'school leaver', 'starting out', 'early career', 'young person', 'student entrepreneur', 'developing mindset'],
+    'Hub Engagement': ['registered as member', 'attended workshop', 'came to event', 'used coworking space', 'participated in programme', 'joined session', 'turned up to', 'booked in for', 'regular user', 'used recording studio', 'booked creative space', 'joined movement group'],
+    'Venture Progress': ['made first sale', 'got customer', 'launched business', 'registered company', 'earned revenue', 'hired someone', 'secured contract', 'still trading', 'business growing', 'sustainable income', 'wholesale client', 'repeat customer', 'launched brand', 'first sponsorship', 'content going viral', 'secured partnership', 'built audience', 'social media growth', 'earned first income', 'grant received', 'movement growing'],
+    'Skills & Capability Growth': ['learned how to', 'now understand', 'figured out how', 'gained confidence', 'feel capable', 'can now do', 'developed skill in', 'understand pricing', 'know how to market', 'improved at', 'making better decisions', 'ready to take next step', 'learned to create content', 'built website', 'designed brand', 'filmed first video', 'built portfolio', 'developed social media strategy'],
+    'Network & Ecosystem Connection': ['met someone who', 'introduced to', 'connected with', 'found mentor', 'got referral to', 'partnered with', 'collaborated with', 'supported by', 'linked to', 'now working with', 'relationships with', 'found sponsor', 'connected with brand', 'partnered with collective'],
+    'Rangatahi Development': ['young entrepreneur', 'rangatahi participated', 'youth attended', 'first business idea', 'school leaver', 'starting out', 'early career', 'young person', 'student entrepreneur', 'developing mindset', 'youth-led initiative', 'young creative', 'digital creator', 'rangatahi movement', 'first brand'],
   };
 
   private async seedDefaultTaxonomy(userId: string): Promise<void> {

@@ -50,6 +50,7 @@ PostgreSQL with Drizzle ORM is used. Key tables manage users, contacts, interact
 -   **Weekly Hub Debriefs**: Aggregates weekly operational summaries, milestones, themes, and sentiment. AI extraction includes community actions (people follow-ups), operational actions (internal hub tasks), and operator reflections (wins/concerns/learnings).
 -   **Community Spend Tracking**: Tracks money spent in the community, linking to contacts, groups, programmes, and bookings.
 -   **Community Member Management**: Automated classification of community members based on engagement signals, with AI relationship scoring and last active date tracking. Table view shows Community column with inline Add/Yes toggle badges. Groups detail dialog has "Push All to Community" button and per-member community indicators.
+-   **Venture Diversity**: Supports diverse venture types beyond commercial businesses — social enterprise, creative/cultural, passion projects, community initiatives. Contacts have `ventureType` field and structured `stage` (dreaming/exploring/building/growing/established). UI labels use venture-agnostic language ("Venture / Project", "Income Band"). Taxonomy uses "Venture Progress" instead of "Business Progress". Expanded role options include Creative, Community Leader, Movement Builder. AI extraction prompt handles diverse venture signals.
 -   **NZ Timezone Standardization**: All date calculations use Pacific/Auckland timezone with Monday-start weeks.
 
 ### Ethnicity Mapping (Community Lens)

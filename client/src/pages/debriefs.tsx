@@ -2058,12 +2058,13 @@ function ReviewView({ id }: { id: number }) {
 
   const METRIC_LABELS: Record<string, string> = {
     mindset: "Mindset",
-    skill: "Skill",
+    skill: "Capability",
     confidence: "Confidence",
-    confidenceScore: "Confidence Score",
-    systemsInPlace: "Systems in Place",
-    fundingReadiness: "Funding Readiness",
-    networkStrength: "Network Strength",
+    systemsInPlace: "Structure & Systems",
+    fundingReadiness: "Sustainability Readiness",
+    networkStrength: "Connection Strength",
+    communityImpact: "Community Impact",
+    digitalPresence: "Digital Presence",
   };
 
   return (

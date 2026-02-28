@@ -613,12 +613,13 @@ export async function registerRoutes(
         - keywords: Array of 3-5 important tags/keywords.
         - metrics: Object with these scores from 1-10 based on the text:
           - mindset: Growth mindset and mental resilience
-          - skill: Technical or business skill level
+          - skill: Capability level (technical, creative, or business skills)
           - confidence: Overall self-confidence demonstrated
-          - confidenceScore: Business confidence and decision-making assurance
-          - systemsInPlace: How well their business systems and processes are established
-          - fundingReadiness: Readiness and preparedness for seeking or managing funding
-          - networkStrength: Quality and strength of their professional network
+          - systemsInPlace: How well their venture systems and processes are established
+          - fundingReadiness: Sustainability readiness — preparedness for funding, revenue, or sustaining their venture
+          - networkStrength: Connection strength — quality of their professional/community network
+          - communityImpact: Evidence of positive community impact or social contribution
+          - digitalPresence: Online presence, content creation, or digital engagement strength
         
         Text: "${text}"
       `;
@@ -635,10 +636,11 @@ export async function registerRoutes(
           mindset: result.metrics?.mindset || 5,
           skill: result.metrics?.skill || 5,
           confidence: result.metrics?.confidence || 5,
-          confidenceScore: result.metrics?.confidenceScore || 5,
           systemsInPlace: result.metrics?.systemsInPlace || 5,
           fundingReadiness: result.metrics?.fundingReadiness || 5,
           networkStrength: result.metrics?.networkStrength || 5,
+          communityImpact: result.metrics?.communityImpact || 5,
+          digitalPresence: result.metrics?.digitalPresence || 5,
         }
       };
 
@@ -1415,17 +1417,17 @@ export async function registerRoutes(
 
 IMPACT TAXONOMY (use these categories for tagging):
 ${taxonomyContext || `- Hub Engagement: Track facility usage and programme participation metrics
-- Business Progress: Capture commercial development and revenue outcomes
+- Venture Progress: Capture venture development and economic outcomes across businesses, social enterprises, creative projects, and movements
 - Skills & Capability Growth: Measure competency development and confidence building
 - Network & Ecosystem Connection: Document relationship formation and ecosystem integration
 - Rangatahi Development: Track youth-specific engagement and outcomes`}
 
 SEMANTIC INDICATORS (phrases/meanings that map to categories):
-Hub Engagement: registered as member, attended workshop, came to event, used coworking space, participated in programme, joined session, turned up to, booked in for, regular user
-Business Progress: made first sale, got customer, launched business, registered company, earned revenue, hired someone, secured contract, still trading, business growing, sustainable income, wholesale client, repeat customer
-Skills & Capability Growth: learned how to, now understand, figured out how, gained confidence, feel capable, can now do, developed skill in, understand pricing, know how to market, improved at, making better decisions, ready to take next step
-Network & Ecosystem Connection: met someone who, introduced to, connected with, found mentor, got referral to, partnered with, collaborated with, supported by, linked to, now working with, relationships with
-Rangatahi Development: young entrepreneur, rangatahi participated, youth attended, first business idea, school leaver, starting out, early career, young person, student entrepreneur, developing mindset
+Hub Engagement: registered as member, attended workshop, came to event, used coworking space, participated in programme, joined session, turned up to, booked in for, regular user, used recording studio, booked creative space, joined movement group
+Venture Progress: made first sale, got customer, launched business, registered company, earned revenue, hired someone, secured contract, still trading, business growing, sustainable income, wholesale client, repeat customer, launched brand, first sponsorship, content going viral, secured partnership, built audience, social media growth, earned first income, grant received, movement growing
+Skills & Capability Growth: learned how to, now understand, figured out how, gained confidence, feel capable, can now do, developed skill in, understand pricing, know how to market, improved at, making better decisions, ready to take next step, learned to create content, built website, designed brand, filmed first video, built portfolio, developed social media strategy
+Network & Ecosystem Connection: met someone who, introduced to, connected with, found mentor, got referral to, partnered with, collaborated with, supported by, linked to, now working with, relationships with, found sponsor, connected with brand, partnered with collective
+Rangatahi Development: young entrepreneur, rangatahi participated, youth attended, first business idea, school leaver, starting out, early career, young person, student entrepreneur, developing mindset, youth-led initiative, young creative, digital creator, rangatahi movement, first brand
 
 KEYWORD DICTIONARY (additional user-configured phrase mappings):
 ${keywordContext || 'No additional keywords configured.'}
@@ -1435,8 +1437,10 @@ CLASSIFICATION LOGIC:
 2. Semantic matching: Match on meaning and context, not just literal keyword presence
 3. Language handling: Support Te Reo Māori terms and New Zealand colloquialisms
 4. Contextual interpretation examples:
-   - "met first customer" → Business Progress + Network & Ecosystem Connection
-   - Confidence statements related to business tasks → Skills & Capability Growth + Business Progress
+   - "met first customer" → Venture Progress + Network & Ecosystem Connection
+   - Confidence statements related to venture tasks → Skills & Capability Growth + Venture Progress
+   - "launched their brand" → Venture Progress + Skills & Capability Growth
+   - "got first sponsorship deal" → Venture Progress + Network & Ecosystem Connection
 5. Priority ordering: Return categories ranked by relevance strength in source text
 
 LANGUAGE NOTES:
@@ -1507,10 +1511,11 @@ Return a JSON object with EXACTLY this structure:
     "mindset": 1-10,
     "skill": 1-10,
     "confidence": 1-10,
-    "confidenceScore": 1-10,
     "systemsInPlace": 1-10,
     "fundingReadiness": 1-10,
-    "networkStrength": 1-10
+    "networkStrength": 1-10,
+    "communityImpact": 1-10,
+    "digitalPresence": 1-10
   }
 }
 
@@ -2560,7 +2565,7 @@ Analyse what this organisation does and match it to the relevant impact categori
 - A confidence score (0-100) reflecting how strongly their work aligns
 - A brief reasoning explaining the connection (1-2 sentences)
 
-If the organisation has no clear social outcome or community impact, match them to "Business Progress" as we are simply supporting their economic development/growth.
+If the organisation has no clear social outcome or community impact, match them to "Venture Progress" as we are simply supporting their economic development/growth.
 
 An organisation can match multiple categories. Only include categories with genuine relevance (confidence >= 40).
 
@@ -2587,7 +2592,7 @@ Important:
 - If you are unsure about the organisation, still provide what you can and note uncertainty in the notes field
 - Format phone numbers in NZ format (+64...)
 - Keep the description factual and professional
-- Every organisation should have at least one kaupapa match — if nothing else fits, use "Business Progress"`;
+- Every organisation should have at least one kaupapa match — if nothing else fits, use "Venture Progress"`;
 
       const raw = await claudeJSON({
         model: "claude-haiku-4-5",
@@ -2619,7 +2624,7 @@ Important:
         }
       }
       if (kaupapa.length === 0) {
-        const fallback = activeCategories.find((c: any) => c.name === "Business Progress");
+        const fallback = activeCategories.find((c: any) => c.name === "Venture Progress" || c.name === "Business Progress");
         if (fallback) {
           kaupapa.push({
             taxonomyId: fallback.id,

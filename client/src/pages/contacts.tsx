@@ -460,10 +460,13 @@ export default function Contacts() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Entrepreneur">Entrepreneur</SelectItem>
+                    <SelectItem value="Creative">Creative</SelectItem>
+                    <SelectItem value="Community Leader">Community Leader</SelectItem>
+                    <SelectItem value="Movement Builder">Movement Builder</SelectItem>
                     <SelectItem value="Professional">Professional</SelectItem>
                     <SelectItem value="Innovator">Innovator</SelectItem>
-                    <SelectItem value="Want-trepreneur">Want-trepreneur</SelectItem>
                     <SelectItem value="Rangatahi">Rangatahi</SelectItem>
+                    <SelectItem value="Aspiring">Aspiring</SelectItem>
                     <SelectItem value="Business Owner">Business Owner</SelectItem>
                   </SelectContent>
                 </Select>
@@ -786,10 +789,13 @@ export default function Contacts() {
                   <SelectContent>
                     <SelectItem value="all">All Roles</SelectItem>
                     <SelectItem value="Entrepreneur">Entrepreneur</SelectItem>
+                    <SelectItem value="Creative">Creative</SelectItem>
+                    <SelectItem value="Community Leader">Community Leader</SelectItem>
+                    <SelectItem value="Movement Builder">Movement Builder</SelectItem>
                     <SelectItem value="Professional">Professional</SelectItem>
                     <SelectItem value="Innovator">Innovator</SelectItem>
-                    <SelectItem value="Want-trepreneur">Want-trepreneur</SelectItem>
                     <SelectItem value="Rangatahi">Rangatahi</SelectItem>
+                    <SelectItem value="Aspiring">Aspiring</SelectItem>
                     <SelectItem value="Business Owner">Business Owner</SelectItem>
                   </SelectContent>
                 </Select>
@@ -875,11 +881,18 @@ export default function Contacts() {
                     </div>
 
                     <div className="flex flex-col items-end gap-1 max-w-[200px] shrink-0">
-                      {contact.role && (
-                        <Badge variant="outline" className="text-[10px] h-5 px-2 shrink-0 hidden sm:inline-flex" data-testid={`badge-role-side-${contact.id}`}>
-                          {contact.role}
-                        </Badge>
-                      )}
+                      <div className="flex items-center gap-1">
+                        {contact.ventureType && (
+                          <Badge variant="secondary" className="text-[10px] h-5 px-1.5 shrink-0 hidden sm:inline-flex capitalize" data-testid={`badge-venture-type-${contact.id}`}>
+                            {contact.ventureType.replace(/_/g, ' ')}
+                          </Badge>
+                        )}
+                        {contact.role && (
+                          <Badge variant="outline" className="text-[10px] h-5 px-2 shrink-0 hidden sm:inline-flex" data-testid={`badge-role-side-${contact.id}`}>
+                            {contact.role}
+                          </Badge>
+                        )}
+                      </div>
                       {(contact.linkedGroupName || contact.businessName) && (
                         <span className="flex items-center gap-1 text-[10px] text-muted-foreground truncate max-w-full" data-testid={`text-group-link-${contact.id}`}>
                           <Building2 className="w-3 h-3 shrink-0" />
@@ -1292,6 +1305,8 @@ const ETHNIC_GROUPS = [
 ];
 
 const REVENUE_BANDS = [
+  "Koha / Donations",
+  "Sponsorship",
   "Pre-revenue",
   "$0-10k",
   "$10k-50k",
@@ -1372,7 +1387,7 @@ function CreateContactDialogContent({ onSuccess }: { onSuccess: () => void }) {
               Manage Groups
             </Link>
           </div>
-          <Input id="businessName" data-testid="input-contact-business" {...form.register("businessName")} placeholder="e.g. organisation, collective, brand" />
+          <Input id="businessName" data-testid="input-contact-business" {...form.register("businessName")} placeholder="e.g. business, brand, collective, movement" />
         </div>
         
         <div className="grid grid-cols-2 gap-4">
@@ -1423,16 +1438,19 @@ function CreateContactDialogContent({ onSuccess }: { onSuccess: () => void }) {
             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <option value="Entrepreneur">Entrepreneur</option>
+            <option value="Creative">Creative</option>
+            <option value="Community Leader">Community Leader</option>
+            <option value="Movement Builder">Movement Builder</option>
             <option value="Professional">Professional</option>
             <option value="Innovator">Innovator</option>
-            <option value="Want-trepreneur">Want-trepreneur</option>
             <option value="Rangatahi">Rangatahi</option>
+            <option value="Aspiring">Aspiring</option>
             <option value="Business Owner">Business Owner</option>
           </select>
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="revenueBand">Revenue Band</Label>
+          <Label htmlFor="revenueBand">Income Band</Label>
           <select
             id="revenueBand"
             {...form.register("revenueBand")}
@@ -1584,9 +1602,10 @@ function parseCSV(text: string): Record<string, string>[] {
     const h = rawHeaders[idx];
     const lower = h.toLowerCase().replace(/[^a-z]/g, "");
     if (lower.includes("name") && !lower.includes("business")) headerMap[idx] = "name";
-    else if (lower.includes("business") || lower.includes("brand") || lower.includes("company")) headerMap[idx] = "businessName";
+    else if (lower.includes("business") || lower.includes("brand") || lower.includes("company") || lower.includes("venture") || lower.includes("project")) headerMap[idx] = "businessName";
     else if (lower.includes("email")) headerMap[idx] = "email";
     else if (lower.includes("phone") || lower.includes("mobile")) headerMap[idx] = "phone";
+    else if (lower.includes("venturetype")) headerMap[idx] = "ventureType";
     else if (lower.includes("role") || lower.includes("type")) headerMap[idx] = "role";
     else if (lower.includes("age")) headerMap[idx] = "age";
     else if (lower.includes("ethnic")) headerMap[idx] = "ethnicity";
@@ -1670,7 +1689,7 @@ function BulkUploadDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
               size="sm"
               onClick={() => {
                 const template = [
-                  "Name,Email,Phone,Role,Business Name,Age,Ethnicity,Location,Tags,Notes",
+                  "Name,Email,Phone,Role,Venture,Age,Ethnicity,Location,Tags,Notes",
                   "Jane Doe,jane@example.com,021 123 4567,Entrepreneur,Doe Designs,28,Māori,Auckland Central,\"startup, design\",First session completed",
                   "John Smith,john@example.com,022 987 6543,Business Owner,Smith & Co,35,\"European, Pacific Peoples\",Mount Wellington,leadership,Referred by Ra",
                 ].join("\n");
