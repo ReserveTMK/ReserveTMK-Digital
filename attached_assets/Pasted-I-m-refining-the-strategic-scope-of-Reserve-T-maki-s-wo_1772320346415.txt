@@ -1,0 +1,94 @@
+I'm refining the strategic scope of Reserve Tāmaki's work based on our Tāmaki Ora funding framework and the reality of economic development in our Māori and Pasifika community.
+
+CONTEXT:
+Reserve Tāmaki is an innovation hub in Tāmaki, Auckland supporting Māori and Pasifika economic agency and entrepreneurship. We've been focused primarily on "business" support, but we're expanding our scope to better align with:
+
+1. Our Tāmaki Ora funding (Māori Outcomes Fund from Auckland Council)
+2. The actual ventures our community is building
+3. A broader definition of economic wellbeing
+
+KEY SHIFT:
+From: Supporting only traditional businesses (registered companies with revenue)
+To: Supporting diverse ventures that create economic agency - including commercial businesses, social enterprises, creative movements, cultural collectives, and community-led initiatives
+
+VENTURE TYPES WE NOW SUPPORT:
+1. Commercial Businesses - registered companies, trading, revenue-generating
+2. Social Enterprises - purpose-driven, some revenue, reinvest profit into mission
+3. Creative/Cultural Movements - brand/content driven, income through sponsorship/grants/partnerships (e.g., street athletes calisthenics collective)
+4. Passion Projects Transitioning - building toward sustainability, testing models
+
+OUR FUNDING ALIGNMENT (Tāmaki Ora):
+We contribute to three outcome areas:
+- Whai Rawa Ora (Economic Wellbeing) - Māori businesses, entrepreneurs, economic agency
+- Huatau Ora (Future Wellbeing) - Digital innovation, rangatahi pathways, intergenerational knowledge
+- Te Hapori Ora (Community Wellbeing) - Whānau connected, community initiatives, rangatahi engagement
+
+REAL EXAMPLE:
+Four young Māori guys (18-23) passionate about calisthenics. They call themselves "street athletes" and want to build a movement. They're developing their brand, creating content, building community, and exploring sponsorship/partnership models. This ISN'T a traditional business, but it IS economic development - they're building digital capability, brand strategy, community leadership, and pathways to income.
+
+CURRENT APP STATE:
+- Two-layer CRM (People & Groups)
+- Debriefs with AI extraction of impact data
+- Impact taxonomy with categories (Hub Engagement, Business Progress, Skills & Capability Growth, Network Connection, Rangatahi Development)
+- Journey tracking (idea → validating → building → established)
+- Programmes, bookings, agreements tracking
+- Calendar integration
+
+THE PROBLEM:
+My app language, taxonomy, and data model are still built around "business" as the primary frame. This creates friction when tracking ventures like the street athletes - they don't fit cleanly into "business progress" metrics, but they're absolutely creating economic and community outcomes.
+
+YOUR TASK:
+Review my app structure and suggest specific improvements to:
+
+1. LANGUAGE & TERMINOLOGY
+   - Where should I replace "business" language with broader "venture/enterprise" language?
+   - What fields need renaming?
+   - How should I describe what we do in UI copy?
+
+2. DATA MODEL ENHANCEMENTS
+   - What new fields should I add to Contacts/Groups?
+   - How should I classify venture types?
+   - What journey stages need adjustment?
+   - What success metrics should I track beyond traditional business metrics?
+
+3. IMPACT TAXONOMY UPDATES
+   - Should I add new impact categories?
+   - What keywords need to be added to existing categories?
+   - How do I capture non-revenue economic outcomes (sponsorships, content reach, community engagement)?
+
+4. DEBRIEF AI EXTRACTION
+   - What additional data points should the AI extract from debriefs?
+   - How should it handle mentions of non-traditional economic progress?
+   - What new milestone types should it recognize?
+
+5. REPORTING & INSIGHTS
+   - How should I report to funders who want to see both traditional business outcomes AND broader economic development?
+   - What dashboards or views would help me see the full picture?
+   - How do I demonstrate impact across all venture types?
+
+6. FEATURE CHANGES OR ADDITIONS
+   - Are there new features that would better serve diverse venture types?
+   - Should tracking or workflows differ by venture type?
+   - What would help me manage this broader scope without drowning in complexity?
+
+CONSTRAINTS:
+- Keep it practical - I'm a small team (2 founders) so can't build overly complex systems
+- Maintain existing functionality - businesses still need proper support
+- Align with Tāmaki Ora reporting requirements
+- Language should resonate with Māori/Pasifika community in Tāmaki (not corporate, not overly academic)
+
+OPTIONAL:
+If it would help your recommendations, I can provide:
+- The full Tāmaki Ora 2025-2027 strategy document (PDF)
+- Our current funding agreement details
+- Our Theory of Change
+- Specific sections of the app you want to see
+
+Please give me specific, actionable recommendations with:
+- Exact field names to add/change
+- Suggested UI copy
+- Data model adjustments
+- Priority order (what to do first vs later)
+- Reasoning tied to either user experience or funder alignment
+
+Focus on changes that make the app more useful for tracking and supporting diverse ventures while still serving traditional businesses well.
