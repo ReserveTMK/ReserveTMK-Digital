@@ -47,7 +47,7 @@ PostgreSQL with Drizzle ORM is used. Key tables manage users, contacts, interact
 -   **Ecosystem View**: Strategic network intelligence with health summaries, relationship tiers, strategic importance, and role tagging.
 -   **Gmail Contact Import**: Scans Gmail headers to auto-create contacts and groups, supporting multi-account sync and AI-powered mapping.
 -   **Legacy Reporting Layer**: Imports historical PDF reports with AI-powered metric extraction, draft/confirmed workflow, and qualitative data extraction.
--   **Weekly Hub Debriefs**: Aggregates weekly operational summaries, milestones, themes, and sentiment.
+-   **Weekly Hub Debriefs**: Aggregates weekly operational summaries, milestones, themes, and sentiment. AI extraction includes community actions (people follow-ups), operational actions (internal hub tasks), and operator reflections (wins/concerns/learnings).
 -   **Community Spend Tracking**: Tracks money spent in the community, linking to contacts, groups, programmes, and bookings.
 -   **Community Member Management**: Automated classification of community members based on engagement signals, with AI relationship scoring and last active date tracking. Table view shows Community column with inline Add/Yes toggle badges. Groups detail dialog has "Push All to Community" button and per-member community indicators.
 -   **NZ Timezone Standardization**: All date calculations use Pacific/Auckland timezone with Monday-start weeks.

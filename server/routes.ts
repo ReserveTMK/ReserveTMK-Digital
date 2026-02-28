@@ -1411,7 +1411,7 @@ export async function registerRoutes(
         `- ${c.name}${c.businessName ? ` (${c.businessName})` : ''} [ID: ${c.id}]`
       ).join('\n');
 
-      const prompt = `You are an impact analysis system for a community development organisation in Aotearoa New Zealand. Analyze the following debrief transcript and extract structured impact data.
+      const prompt = `You are an impact analysis system for Reserve Tāmaki, a Māori and Pasifika entrepreneurship hub in Aotearoa New Zealand. Analyze the following debrief transcript and extract structured data for both community impact tracking and operational management.
 
 IMPACT TAXONOMY (use these categories for tagging):
 ${taxonomyContext || `- Hub Engagement: Track facility usage and programme participation metrics
@@ -1438,6 +1438,10 @@ CLASSIFICATION LOGIC:
    - "met first customer" → Business Progress + Network & Ecosystem Connection
    - Confidence statements related to business tasks → Skills & Capability Growth + Business Progress
 5. Priority ordering: Return categories ranked by relevance strength in source text
+
+LANGUAGE NOTES:
+- Handle te reo Māori: whānau (family), rangatahi (youth), mahi (work), kaupapa (purpose), kōrero (talk/discussion), hui (meeting), wānanga (workshop/learning), aroha (care/compassion), manaaki (hospitality/support), tautoko (support)
+- NZ slang: sorted (arranged), keen as (very interested), sweet (confirmed), stoked (very happy), hard out (enthusiastically), all good (fine/ok), buzzing (excited), choice (great)
 
 KNOWN COMMUNITY MEMBERS:
 ${peopleContext || 'No members in system yet.'}
@@ -1466,6 +1470,25 @@ Return a JSON object with EXACTLY this structure:
       "confidence": 0-100
     }
   ],
+  "communityActions": [
+    {
+      "task": "follow-up or community action needed (introductions, resources to send, workshop registrations, mentoring bookings)",
+      "contactMentioned": "name of person involved or null",
+      "priority": "high" | "medium" | "low"
+    }
+  ],
+  "operationalActions": [
+    {
+      "task": "internal hub task (processes to document, systems to build, admin tasks, marketing needs, financial matters)",
+      "category": "process" | "admin" | "marketing" | "financial" | "capacity" | "partnership",
+      "priority": "high" | "medium" | "low"
+    }
+  ],
+  "reflections": {
+    "wins": ["what worked well in programmes, events, or interactions"],
+    "concerns": ["issues, risks, or problems identified"],
+    "learnings": ["insights about approach, methods, or community needs"]
+  },
   "milestones": ["list of specific achievements or stage movements mentioned"],
   "keyQuotes": ["notable direct quotes from the transcript"],
   "actionItems": [
@@ -1491,7 +1514,7 @@ Return a JSON object with EXACTLY this structure:
   }
 }
 
-Be precise. Only tag impact categories where there is clear evidence in the transcript. Set confidence scores honestly — lower if the evidence is ambiguous.`;
+Be precise. Only tag impact categories where there is clear evidence in the transcript. Set confidence scores honestly — lower if the evidence is ambiguous. For communityActions, focus on follow-ups with specific people. For operationalActions, focus on internal tasks for running the hub.`;
 
       const extraction = await claudeJSON({
         model: "claude-sonnet-4-6",

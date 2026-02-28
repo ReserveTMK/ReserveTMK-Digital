@@ -49,6 +49,8 @@ import {
   CheckCircle,
   RotateCcw,
   ClipboardCheck,
+  Settings,
+  Sparkles,
 } from "lucide-react";
 import {
   Select,
@@ -1689,6 +1691,9 @@ function ReviewView({ id }: { id: number }) {
   const [impactTags, setImpactTags] = useState<any[]>([]);
   const [people, setPeople] = useState<any[]>([]);
   const [metrics, setMetrics] = useState<Record<string, number>>({});
+  const [communityActions, setCommunityActions] = useState<any[]>([]);
+  const [operationalActions, setOperationalActions] = useState<any[]>([]);
+  const [reflections, setReflections] = useState<{ wins: string[]; concerns: string[]; learnings: string[] }>({ wins: [], concerns: [], learnings: [] });
   const [initialized, setInitialized] = useState(false);
 
   const [isRecording, setIsRecording] = useState(false);
@@ -1919,6 +1924,9 @@ function ReviewView({ id }: { id: number }) {
       setImpactTags(extraction.impactTags || []);
       setPeople(extraction.people || []);
       setMetrics(extraction.metrics || {});
+      setCommunityActions(extraction.communityActions || []);
+      setOperationalActions(extraction.operationalActions || []);
+      setReflections(extraction.reflections || { wins: [], concerns: [], learnings: [] });
       setInitialized(true);
     }
   }, [impactLog, extraction, initialized]);
@@ -1932,6 +1940,9 @@ function ReviewView({ id }: { id: number }) {
       impactTags,
       people,
       metrics,
+      communityActions,
+      operationalActions,
+      reflections,
     };
 
     try {
@@ -2753,6 +2764,124 @@ function ReviewView({ id }: { id: number }) {
                     <Plus className="w-3 h-3 mr-1" />
                     Add Action
                   </Button>
+                </div>
+              </Card>
+
+              <Card className="p-5">
+                <h3 className="font-bold font-display mb-3 flex items-center gap-2">
+                  <Users className="w-4 h-4 text-blue-500" />
+                  Community Actions
+                </h3>
+                <p className="text-xs text-muted-foreground mb-3">Follow-ups with people — introductions, resources, bookings</p>
+                {communityActions.length > 0 && (
+                  <div className="space-y-2 mb-3">
+                    {communityActions.map((item: any, i: number) => (
+                      <div key={i} className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-900" data-testid={`community-action-${i}`}>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">{item.task}</p>
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            {item.contactMentioned && <Badge variant="outline" className="text-xs"><Users className="w-3 h-3 mr-1" />{item.contactMentioned}</Badge>}
+                            {item.priority && (
+                              <Badge variant={item.priority === "high" ? "destructive" : "secondary"} className="text-xs capitalize">
+                                {item.priority}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        <Button variant="ghost" size="icon" onClick={() => setCommunityActions(communityActions.filter((_: any, j: number) => j !== i))} data-testid={`button-remove-community-action-${i}`}>
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {communityActions.length === 0 && <p className="text-xs text-muted-foreground italic mb-3">No community actions extracted.</p>}
+              </Card>
+
+              <Card className="p-5">
+                <h3 className="font-bold font-display mb-3 flex items-center gap-2">
+                  <Settings className="w-4 h-4 text-orange-500" />
+                  Operational Actions
+                </h3>
+                <p className="text-xs text-muted-foreground mb-3">Internal hub tasks — processes, admin, marketing, capacity</p>
+                {operationalActions.length > 0 && (
+                  <div className="space-y-2 mb-3">
+                    {operationalActions.map((item: any, i: number) => (
+                      <div key={i} className="flex items-center gap-2 p-2 bg-orange-50 dark:bg-orange-950/20 rounded-lg border border-orange-200 dark:border-orange-900" data-testid={`operational-action-${i}`}>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">{item.task}</p>
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            {item.category && (
+                              <Badge variant="outline" className="text-xs capitalize">{item.category}</Badge>
+                            )}
+                            {item.priority && (
+                              <Badge variant={item.priority === "high" ? "destructive" : "secondary"} className="text-xs capitalize">
+                                {item.priority}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        <Button variant="ghost" size="icon" onClick={() => setOperationalActions(operationalActions.filter((_: any, j: number) => j !== i))} data-testid={`button-remove-operational-action-${i}`}>
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {operationalActions.length === 0 && <p className="text-xs text-muted-foreground italic mb-3">No operational actions extracted.</p>}
+              </Card>
+
+              <Card className="p-5">
+                <h3 className="font-bold font-display mb-3 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-purple-500" />
+                  Operator Reflections
+                </h3>
+                <div className="space-y-4">
+                  <div className="rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900 p-3" data-testid="reflections-wins">
+                    <h4 className="text-xs font-semibold text-green-700 dark:text-green-400 uppercase tracking-wide mb-2">Wins</h4>
+                    {reflections.wins.length > 0 ? (
+                      <ul className="space-y-1">
+                        {reflections.wins.map((w, i) => (
+                          <li key={i} className="flex items-start gap-2 text-sm">
+                            <span className="flex-1">{w}</span>
+                            <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={() => setReflections({ ...reflections, wins: reflections.wins.filter((_, j) => j !== i) })} data-testid={`button-remove-win-${i}`}>
+                              <X className="w-3 h-3" />
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <p className="text-xs text-muted-foreground italic">No wins extracted.</p>}
+                  </div>
+                  <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 p-3" data-testid="reflections-concerns">
+                    <h4 className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-2">Concerns</h4>
+                    {reflections.concerns.length > 0 ? (
+                      <ul className="space-y-1">
+                        {reflections.concerns.map((c, i) => (
+                          <li key={i} className="flex items-start gap-2 text-sm">
+                            <span className="flex-1">{c}</span>
+                            <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={() => setReflections({ ...reflections, concerns: reflections.concerns.filter((_, j) => j !== i) })} data-testid={`button-remove-concern-${i}`}>
+                              <X className="w-3 h-3" />
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <p className="text-xs text-muted-foreground italic">No concerns extracted.</p>}
+                  </div>
+                  <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 p-3" data-testid="reflections-learnings">
+                    <h4 className="text-xs font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wide mb-2">Learnings</h4>
+                    {reflections.learnings.length > 0 ? (
+                      <ul className="space-y-1">
+                        {reflections.learnings.map((l, i) => (
+                          <li key={i} className="flex items-start gap-2 text-sm">
+                            <span className="flex-1">{l}</span>
+                            <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={() => setReflections({ ...reflections, learnings: reflections.learnings.filter((_, j) => j !== i) })} data-testid={`button-remove-learning-${i}`}>
+                              <X className="w-3 h-3" />
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <p className="text-xs text-muted-foreground italic">No learnings extracted.</p>}
+                  </div>
                 </div>
               </Card>
 
