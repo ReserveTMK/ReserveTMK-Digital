@@ -5,7 +5,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { registerAudioRoutes } from "./replit_integrations/audio/routes";
-import { openai } from "./replit_integrations/audio/client";
+import { claudeJSON } from "./replit_integrations/anthropic/client";
 import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, type ReportFilters } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
 import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates } from "@shared/schema";
@@ -623,13 +623,10 @@ export async function registerRoutes(
         Text: "${text}"
       `;
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-5.1",
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
+      const result = await claudeJSON({
+        model: "claude-sonnet-4-6",
+        prompt,
       });
-
-      const result = JSON.parse(response.choices[0].message.content || "{}");
       
       const analysis = {
         summary: result.summary || "No summary generated.",
@@ -1496,14 +1493,11 @@ Return a JSON object with EXACTLY this structure:
 
 Be precise. Only tag impact categories where there is clear evidence in the transcript. Set confidence scores honestly — lower if the evidence is ambiguous.`;
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
+      const extraction = await claudeJSON({
+        model: "claude-sonnet-4-6",
+        prompt,
         temperature: 0.3,
       });
-
-      const extraction = JSON.parse(response.choices[0].message.content || "{}");
 
       if (existingLogId) {
         const existing = await storage.getImpactLog(existingLogId);
@@ -2572,14 +2566,11 @@ Important:
 - Keep the description factual and professional
 - Every organisation should have at least one kaupapa match — if nothing else fits, use "Business Progress"`;
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
+      const raw = await claudeJSON({
+        model: "claude-haiku-4-5",
+        prompt,
         temperature: 0.3,
       });
-
-      const raw = JSON.parse(response.choices[0].message.content || "{}");
       const ALLOWED_FIELDS = ["description", "contactEmail", "contactPhone", "address", "website", "notes"];
       const enrichment: Record<string, any> = {};
       for (const field of ALLOWED_FIELDS) {
@@ -3127,17 +3118,13 @@ Important:
           const pdfText = pdfResult.text || "";
 
           const prompt = buildExtractionPrompt(pdfText);
-          const response = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
-            messages: [{ role: "user", content: prompt }],
-            temperature: 0.2,
-            response_format: { type: "json_object" },
-          });
-
-          const content = response.choices[0]?.message?.content || "{}";
           let parsed: any;
           try {
-            parsed = JSON.parse(content);
+            parsed = await claudeJSON({
+              model: "claude-haiku-4-5",
+              prompt,
+              temperature: 0.2,
+            });
           } catch {
             parsed = { metrics: [] };
           }
@@ -3554,14 +3541,16 @@ Return a JSON object with this exact structure:
   ]
 }`;
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        temperature: 0.3,
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-      });
-
-      const result = JSON.parse(response.choices[0].message.content || '{"suggestions":[]}');
+      let result: any;
+      try {
+        result = await claudeJSON({
+          model: "claude-haiku-4-5",
+          prompt,
+          temperature: 0.3,
+        });
+      } catch {
+        result = { suggestions: [] };
+      }
       res.json(result.suggestions || []);
     } catch (err: any) {
       console.error("Taxonomy suggestions GET error:", err);
@@ -4145,17 +4134,13 @@ Return a JSON object with this exact structure:
 
       const prompt = buildExtractionPrompt(pdfText);
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.2,
-        response_format: { type: "json_object" },
-      });
-
-      const content = response.choices[0]?.message?.content || "{}";
       let parsed: any;
       try {
-        parsed = JSON.parse(content);
+        parsed = await claudeJSON({
+          model: "claude-haiku-4-5",
+          prompt,
+          temperature: 0.2,
+        });
       } catch {
         parsed = { metrics: [] };
       }
@@ -4542,14 +4527,16 @@ Return a JSON object with this exact structure:
 
 Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords max.`;
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        temperature: 0.3,
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-      });
-
-      const result = JSON.parse(response.choices[0].message.content || '{"categorySuggestions":[],"keywordSuggestions":[]}');
+      let result: any;
+      try {
+        result = await claudeJSON({
+          model: "claude-haiku-4-5",
+          prompt,
+          temperature: 0.3,
+        });
+      } catch {
+        result = { categorySuggestions: [], keywordSuggestions: [] };
+      }
       res.json({
         categorySuggestions: result.categorySuggestions || [],
         keywordSuggestions: result.keywordSuggestions || [],

@@ -17,7 +17,7 @@ The project uses a monorepo structure with `client/` (React frontend), `server/`
 Built with React and TypeScript using Vite, the frontend employs Wouter for routing, TanStack React Query for state management, and shadcn/ui for UI components. Styling uses Tailwind CSS. Recharts is used for data visualization. It functions as a PWA with mobile bottom navigation.
 
 ### Backend Architecture
-The backend is an Express.js application with Node.js and TypeScript, providing a RESTful JSON API. Authentication uses Replit Auth (OpenID Connect). AI integrations with OpenAI power speech-to-text, text-to-speech, voice chat, image generation, and interaction analysis. Server-side audio processing uses ffmpeg.
+The backend is an Express.js application with Node.js and TypeScript, providing a RESTful JSON API. Authentication uses Replit Auth (OpenID Connect). Text-based AI features (analysis, extraction, chat, enrichment) use Anthropic Claude via Replit AI Integrations. Audio features (speech-to-text, text-to-speech, voice chat) and image generation remain on OpenAI. Server-side audio processing uses ffmpeg.
 
 ### Database
 PostgreSQL with Drizzle ORM is used. Key tables manage users, contacts, interactions, meetings, events, impact logs, taxonomy, programmes, bookings, groups, funders, funder documents, and reporting data. JSONB columns are used for flexible metrics.
@@ -67,12 +67,24 @@ PostgreSQL with Drizzle ORM is used. Key tables manage users, contacts, interact
 
 ### Required Services
 -   **PostgreSQL Database**: Data storage.
--   **OpenAI API** (via Replit AI Integrations): AI-powered features.
+-   **Anthropic Claude API** (via Replit AI Integrations): Text-based AI features (analysis, extraction, chat, enrichment, taxonomy).
+-   **OpenAI API** (via Replit AI Integrations): Audio features (STT, TTS, voice chat) and image generation.
 -   **Replit Auth (OIDC)**: User authentication.
+
+### AI Model Mapping
+-   **claude-sonnet-4-6**: Interaction analysis, impact extraction, AI chat
+-   **claude-haiku-4-5**: Organisation enrichment, legacy report extraction, taxonomy scan, Gmail domain mapping
+-   **OpenAI (gpt-4o-mini-transcribe)**: Speech-to-text transcription
+-   **OpenAI (gpt-audio)**: Voice chat, text-to-speech
+-   **OpenAI (gpt-image-1)**: Image generation
+-   Anthropic client: `server/replit_integrations/anthropic/client.ts`
+-   OpenAI client (audio only): `server/replit_integrations/audio/client.ts`
 
 ### Required Environment Variables
 -   `DATABASE_URL`
 -   `SESSION_SECRET`
+-   `AI_INTEGRATIONS_ANTHROPIC_API_KEY`
+-   `AI_INTEGRATIONS_ANTHROPIC_BASE_URL`
 -   `AI_INTEGRATIONS_OPENAI_API_KEY`
 -   `AI_INTEGRATIONS_OPENAI_BASE_URL`
 -   `REPL_ID`

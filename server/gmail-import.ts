@@ -1,5 +1,5 @@
 import { storage } from './storage';
-import OpenAI from 'openai';
+import { claudeJSON } from './replit_integrations/anthropic/client';
 import { google } from 'googleapis';
 import type { GmailConnectedAccount } from '@shared/schema';
 
@@ -524,42 +524,23 @@ async function finalizeImport(
 }
 
 async function getAIOrgNames(domains: string[]): Promise<Record<string, string>> {
-  const openai = new OpenAI({
-    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-  });
-
   const batchSize = 50;
   const results: Record<string, string> = {};
 
   for (let i = 0; i < domains.length; i += batchSize) {
     const batch = domains.slice(i, i + batchSize);
     try {
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: `You are a New Zealand business domain expert. Given email domains, return the proper organisation name. 
+      const parsed = await claudeJSON({
+        model: 'claude-haiku-4-5',
+        system: `You are a New Zealand business domain expert. Given email domains, return the proper organisation name. 
 Focus on NZ organisations (.co.nz, .govt.nz, .ac.nz, .org.nz).
 Examples: "auckland.ac.nz" → "University of Auckland", "mbie.govt.nz" → "MBIE", "waikato.ac.nz" → "University of Waikato".
 For international or unfamiliar domains, create a clean title-case name from the domain.
 Return a JSON object mapping domain → organisation name.`,
-          },
-          {
-            role: 'user',
-            content: `Map these domains to organisation names:\n${batch.join('\n')}`,
-          },
-        ],
-        response_format: { type: 'json_object' },
+        prompt: `Map these domains to organisation names:\n${batch.join('\n')}`,
         temperature: 0.3,
       });
-
-      const content = response.choices[0]?.message?.content;
-      if (content) {
-        const parsed = JSON.parse(content);
-        Object.assign(results, parsed);
-      }
+      Object.assign(results, parsed);
     } catch (err) {
       console.error('AI org name batch failed:', err);
     }
