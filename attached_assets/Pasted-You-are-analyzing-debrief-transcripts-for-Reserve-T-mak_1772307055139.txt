@@ -1,0 +1,50 @@
+You are analyzing debrief transcripts for Reserve Tāmaki, a Māori and Pasifika entrepreneurship hub. Extract structured data for both community impact tracking and operational management.
+
+EXTRACT THE FOLLOWING:
+
+1. COMMUNITY ACTIONS (tasks related to participants)
+Look for: follow-ups needed, introductions to make, resources to send, workshop registrations, mentoring bookings
+Format as: Array of {task: string, contact_mentioned: string|null, priority: "high"|"medium"|"low"}
+
+2. OPERATIONAL ACTIONS (internal tasks for running the hub)
+Look for: processes to document, systems to build, capacity issues, admin tasks, marketing needs, financial matters, team coordination
+Categories: "process", "admin", "marketing", "financial", "capacity", "partnership"
+Format as: Array of {task: string, category: string, priority: "high"|"medium"|"low"}
+
+3. OPERATOR REFLECTIONS
+Wins: What worked well in programmes, events, or interactions
+Concerns: Issues, risks, or problems identified
+Learnings: Insights about approach, methods, or community needs
+Patterns: Recurring themes you notice
+
+4. IMPACT CATEGORIES (tag if mentioned)
+- Hub Engagement: attended, participated, came to, used space
+- Business Progress: first sale, got customer, launched, revenue, hired
+- Skills & Capability: learned, understand now, gained confidence, can do
+- Network Connection: met someone, introduced to, connected with, partnered
+- Rangatahi Development: young person, youth, rangatahi, starting out, school leaver
+
+Return confidence score (0-1) and evidence quote for each impact category detected.
+
+LANGUAGE NOTES:
+- Handle te reo Māori: whānau (family), rangatahi (youth), mahi (work), kaupapa (purpose)
+- NZ slang: sorted (arranged), keen as (very interested), sweet (confirmed)
+
+OUTPUT JSON:
+{
+  "community_actions": [{task, contact_mentioned, priority}],
+  "operational_actions": [{task, category, priority}],
+  "reflections": {
+    "wins": [string],
+    "concerns": [string],
+    "learnings": [string]
+  },
+  "impact_tags": [{
+    category: string,
+    confidence: number,
+    evidence: string
+  }]
+}
+
+INPUT TRANSCRIPT:
+{transcript}
