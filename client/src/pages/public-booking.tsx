@@ -1,11 +1,12 @@
 import { Button } from "@/components/ui/beautiful-button";
+import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRoute } from "wouter";
 import {
   Loader2,
@@ -27,6 +28,16 @@ const FOCUS_OPTIONS = [
   "General Catch-up",
   "Other",
 ];
+
+interface MeetingType {
+  id: number;
+  name: string;
+  description: string | null;
+  duration: number;
+  focus: string | null;
+  color: string | null;
+  sortOrder: number | null;
+}
 
 function formatDate(date: Date) {
   return date.toISOString().split("T")[0];
@@ -56,8 +67,9 @@ export default function PublicBookingPage() {
   const [phone, setPhone] = useState("");
   const [focus, setFocus] = useState("");
   const [notes, setNotes] = useState("");
-  const [step, setStep] = useState<"date" | "details" | "confirmed">("date");
+  const [step, setStep] = useState<"type" | "date" | "details" | "confirmed">("type");
   const [bookingResult, setBookingResult] = useState<any>(null);
+  const [selectedMeetingType, setSelectedMeetingType] = useState<MeetingType | null>(null);
 
   const { data: mentorInfo } = useQuery({
     queryKey: ["/api/public/mentoring", userId, "info"],
@@ -78,6 +90,22 @@ export default function PublicBookingPage() {
     },
     enabled: !!userId,
   });
+
+  const { data: meetingTypes, isLoading: meetingTypesLoading } = useQuery<MeetingType[]>({
+    queryKey: ["/api/public/mentoring", userId, "meeting-types"],
+    queryFn: async () => {
+      const res = await fetch(`/api/public/mentoring/${userId}/meeting-types`);
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: !!userId,
+  });
+
+  useEffect(() => {
+    if (meetingTypes && meetingTypes.length === 0 && step === "type") {
+      setStep("date");
+    }
+  }, [meetingTypes, step]);
 
   const { data: slotsData, isLoading: slotsLoading } = useQuery({
     queryKey: ["/api/public/mentoring", userId, "slots", selectedDate],
@@ -122,9 +150,17 @@ export default function PublicBookingPage() {
   }, [weekStart]);
 
   const slotDuration = useMemo(() => {
+    if (selectedMeetingType) return selectedMeetingType.duration;
     if (!availability || (availability as any[]).length === 0) return 30;
     return (availability as any[])[0].slotDuration || 30;
-  }, [availability]);
+  }, [availability, selectedMeetingType]);
+
+  const hasMeetingTypes = meetingTypes && meetingTypes.length > 0;
+
+  const handleSelectMeetingType = (mt: MeetingType) => {
+    setSelectedMeetingType(mt);
+    setStep("date");
+  };
 
   const handleBook = () => {
     if (!name.trim() || !selectedDate || !selectedSlot) return;
@@ -137,6 +173,7 @@ export default function PublicBookingPage() {
       duration: slotDuration,
       focus: focus || undefined,
       notes: notes.trim() || undefined,
+      meetingTypeId: selectedMeetingType?.id || undefined,
     });
   };
 
@@ -150,6 +187,12 @@ export default function PublicBookingPage() {
           <h2 className="text-2xl font-bold mb-2" data-testid="heading-confirmed">Session Booked!</h2>
           <p className="text-muted-foreground mb-6">Your mentoring session with {mentorName} has been scheduled.</p>
           <div className="bg-muted/50 rounded-lg p-4 space-y-2 text-sm text-left">
+            {selectedMeetingType && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Session Type</span>
+                <span className="font-medium" data-testid="text-meeting-type-name">{selectedMeetingType.name}</span>
+              </div>
+            )}
             <div className="flex justify-between">
               <span className="text-muted-foreground">Date</span>
               <span className="font-medium">{new Date(selectedDate + "T00:00").toLocaleDateString("en-NZ", { weekday: "long", day: "numeric", month: "long" })}</span>
@@ -185,8 +228,73 @@ export default function PublicBookingPage() {
           </p>
         </div>
 
+        {step === "type" && (
+          <div className="p-6 space-y-5">
+            <h3 className="font-semibold text-sm flex items-center gap-2">
+              <Clock className="w-4 h-4" /> Select a Session Type
+            </h3>
+            {meetingTypesLoading ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="w-5 h-5 animate-spin" />
+              </div>
+            ) : (
+              <div className="grid gap-3">
+                {meetingTypes?.map((mt) => (
+                  <button
+                    key={mt.id}
+                    onClick={() => handleSelectMeetingType(mt)}
+                    className="flex items-stretch rounded-lg border border-border text-left transition-colors hover:bg-muted/50 overflow-visible"
+                    data-testid={`card-meeting-type-${mt.id}`}
+                  >
+                    <div
+                      className="w-1.5 shrink-0 rounded-l-lg"
+                      style={{ backgroundColor: mt.color || "#3b82f6" }}
+                    />
+                    <div className="flex-1 p-4">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="font-semibold text-sm" data-testid={`text-meeting-type-name-${mt.id}`}>
+                          {mt.name}
+                        </span>
+                        <Badge variant="secondary" data-testid={`badge-duration-${mt.id}`}>
+                          {mt.duration} min
+                        </Badge>
+                      </div>
+                      {mt.description && (
+                        <p className="text-xs text-muted-foreground mt-1" data-testid={`text-meeting-type-desc-${mt.id}`}>
+                          {mt.description}
+                        </p>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {step === "date" && (
           <div className="p-6 space-y-5">
+            {hasMeetingTypes && (
+              <button
+                className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
+                onClick={() => setStep("type")}
+                data-testid="button-back-to-type"
+              >
+                <ChevronLeft className="w-4 h-4" /> Back to session types
+              </button>
+            )}
+
+            {selectedMeetingType && (
+              <div className="bg-muted/50 rounded-lg p-3 text-sm flex items-center gap-2">
+                <div
+                  className="w-2 h-2 rounded-full shrink-0"
+                  style={{ backgroundColor: selectedMeetingType.color || "#3b82f6" }}
+                />
+                <span className="font-medium">{selectedMeetingType.name}</span>
+                <span className="text-muted-foreground">· {selectedMeetingType.duration} min</span>
+              </div>
+            )}
+
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold text-sm flex items-center gap-2">
@@ -196,7 +304,6 @@ export default function PublicBookingPage() {
                   <Button
                     size="icon"
                     variant="ghost"
-                    className="h-7 w-7"
                     onClick={() => setWeekStart(addDays(weekStart, -7))}
                     disabled={weekStart <= new Date()}
                     data-testid="button-prev-week"
@@ -206,7 +313,6 @@ export default function PublicBookingPage() {
                   <Button
                     size="icon"
                     variant="ghost"
-                    className="h-7 w-7"
                     onClick={() => setWeekStart(addDays(weekStart, 7))}
                     data-testid="button-next-week"
                   >
@@ -302,6 +408,12 @@ export default function PublicBookingPage() {
             </button>
 
             <div className="bg-muted/50 rounded-lg p-3 text-sm">
+              {selectedMeetingType && (
+                <div className="mb-1">
+                  <span className="font-medium">{selectedMeetingType.name}</span>
+                  {" · "}
+                </div>
+              )}
               <span className="font-medium">
                 {new Date(selectedDate + "T00:00").toLocaleDateString("en-NZ", { weekday: "long", day: "numeric", month: "long" })}
               </span>

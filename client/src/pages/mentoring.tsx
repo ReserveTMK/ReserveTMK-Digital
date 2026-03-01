@@ -45,7 +45,17 @@ import {
   Settings,
 } from "lucide-react";
 import { useAnalyzeInteraction } from "@/hooks/use-interactions";
-import type { Meeting, MentorAvailability, MentorProfile } from "@shared/schema";
+import type { Meeting, MentorAvailability, MentorProfile, MeetingType } from "@shared/schema";
+
+const COLOR_OPTIONS = [
+  { value: "#22c55e", label: "Green" },
+  { value: "#3b82f6", label: "Blue" },
+  { value: "#8b5cf6", label: "Purple" },
+  { value: "#f59e0b", label: "Amber" },
+  { value: "#ef4444", label: "Red" },
+  { value: "#06b6d4", label: "Cyan" },
+  { value: "#ec4899", label: "Pink" },
+];
 
 const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -133,7 +143,9 @@ function useDeleteAvailability() {
 
 function ScheduleSessionDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const { data: contacts, isLoading: contactsLoading } = useContacts();
+  const { data: mentorProfiles } = useMentorProfiles();
   const createMeeting = useCreateMeeting();
+  const [mentorUserId, setMentorUserId] = useState("");
   const [contactId, setContactId] = useState("");
   const [contactSearch, setContactSearch] = useState("");
   const [date, setDate] = useState("");
@@ -172,9 +184,11 @@ function ScheduleSessionDialog({ open, onOpenChange }: { open: boolean; onOpenCh
       bookingSource: "internal",
       notes: notes || null,
       mentoringFocus: focus || null,
+      ...(mentorUserId ? { mentorUserId } : {}),
     } as any, {
       onSuccess: () => {
         onOpenChange(false);
+        setMentorUserId("");
         setContactId("");
         setContactSearch("");
         setDate("");
@@ -195,6 +209,21 @@ function ScheduleSessionDialog({ open, onOpenChange }: { open: boolean; onOpenCh
           <DialogDescription>Book a 1:1 session with a mentee</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
+          {mentorProfiles && mentorProfiles.length > 0 && (
+            <div className="space-y-2">
+              <Label>Mentor</Label>
+              <Select value={mentorUserId} onValueChange={setMentorUserId}>
+                <SelectTrigger data-testid="select-mentor">
+                  <SelectValue placeholder="Select mentor..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {mentorProfiles.map((p: MentorProfile) => (
+                    <SelectItem key={p.id} value={getMentorBookingId(p)}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="space-y-2">
             <Label>Mentee</Label>
             <Input
@@ -477,15 +506,22 @@ function DebriefDialog({ meeting, contactName, open, onOpenChange }: { meeting: 
   );
 }
 
-function SessionCard({ meeting, contacts, showMentor }: { meeting: Meeting & { mentorName?: string }; contacts: any[]; showMentor?: boolean }) {
+function SessionCard({ meeting, contacts, showMentor, mentorProfiles }: { meeting: Meeting & { mentorName?: string; coMentorName?: string | null }; contacts: any[]; showMentor?: boolean; mentorProfiles?: MentorProfile[] }) {
   const updateMeeting = useUpdateMeeting();
   const deleteMeeting = useDeleteMeeting();
   const [showDebrief, setShowDebrief] = useState(false);
+  const [showCoMentorSelect, setShowCoMentorSelect] = useState(false);
   const contact = contacts?.find((c: any) => c.id === meeting.contactId);
   const config = STATUS_CONFIG[meeting.status] || STATUS_CONFIG.scheduled;
   const StatusIcon = config.icon;
   const isPast = new Date(meeting.startTime) < new Date();
   const hasDebrief = !!meeting.interactionId;
+
+  const handleCoMentorChange = (value: string) => {
+    const coMentorProfileId = value === "none" ? null : parseInt(value);
+    updateMeeting.mutate({ id: meeting.id, coMentorProfileId } as any);
+    setShowCoMentorSelect(false);
+  };
 
   return (
     <>
@@ -497,6 +533,11 @@ function SessionCard({ meeting, contacts, showMentor }: { meeting: Meeting & { m
               {showMentor && meeting.mentorName && (
                 <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
                   <Users className="w-3 h-3 mr-1" /> {meeting.mentorName}
+                </Badge>
+              )}
+              {meeting.coMentorName && (
+                <Badge variant="secondary" className="text-[10px] h-5 px-1.5 bg-purple-500/10 text-purple-700 dark:text-purple-400" data-testid={`badge-co-mentor-${meeting.id}`}>
+                  <UserPlus className="w-3 h-3 mr-1" /> {meeting.coMentorName}
                 </Badge>
               )}
               <Badge className={`text-[10px] h-5 px-1.5 ${config.color}`} variant="outline" data-testid={`badge-status-${meeting.id}`}>
@@ -568,6 +609,35 @@ function SessionCard({ meeting, contacts, showMentor }: { meeting: Meeting & { m
                 Log Debrief
               </Button>
             )}
+            {mentorProfiles && mentorProfiles.length > 0 && meeting.status !== "cancelled" && (
+              showCoMentorSelect ? (
+                <Select
+                  value={meeting.coMentorProfileId ? String(meeting.coMentorProfileId) : "none"}
+                  onValueChange={handleCoMentorChange}
+                >
+                  <SelectTrigger className="h-7 text-xs w-[140px]" data-testid={`select-co-mentor-${meeting.id}`}>
+                    <SelectValue placeholder="Co-mentor..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No co-mentor</SelectItem>
+                    {mentorProfiles.map(p => (
+                      <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-xs h-7"
+                  onClick={() => setShowCoMentorSelect(true)}
+                  data-testid={`button-co-mentor-${meeting.id}`}
+                >
+                  <UserPlus className="w-3 h-3 mr-1" />
+                  {meeting.coMentorProfileId ? "Change" : "Co-mentor"}
+                </Button>
+              )
+            )}
             {(meeting.status === "scheduled" || meeting.status === "confirmed") && (
               <>
                 <Button
@@ -608,10 +678,11 @@ function SessionCard({ meeting, contacts, showMentor }: { meeting: Meeting & { m
 }
 
 function SessionsTab() {
-  const { data: allMentorMeetings, isLoading: allLoading } = useQuery<(Meeting & { mentorName: string })[]>({
+  const { data: allMentorMeetings, isLoading: allLoading } = useQuery<(Meeting & { mentorName: string; coMentorName?: string | null })[]>({
     queryKey: ["/api/meetings/all-mentors"],
   });
   const { data: contacts } = useContacts();
+  const { data: profiles } = useMentorProfiles();
   const [showSchedule, setShowSchedule] = useState(false);
   const [filter, setFilter] = useState("upcoming");
   const [search, setSearch] = useState("");
@@ -737,12 +808,312 @@ function SessionsTab() {
       ) : (
         <div className="space-y-2">
           {filtered.map(m => (
-            <SessionCard key={m.id} meeting={m} contacts={(contacts || []) as any[]} showMentor={mentorFilter === "all" && mentorNames.length > 1} />
+            <SessionCard key={m.id} meeting={m} contacts={(contacts || []) as any[]} showMentor={mentorFilter === "all" && mentorNames.length > 1} mentorProfiles={profiles} />
           ))}
         </div>
       )}
 
       <ScheduleSessionDialog open={showSchedule} onOpenChange={setShowSchedule} />
+    </div>
+  );
+}
+
+function useMeetingTypes() {
+  return useQuery<MeetingType[]>({ queryKey: ["/api/meeting-types"] });
+}
+
+function MeetingTypeDialog({
+  open,
+  onOpenChange,
+  editingType,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  editingType?: MeetingType | null;
+}) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [name, setName] = useState(editingType?.name || "");
+  const [description, setDescription] = useState(editingType?.description || "");
+  const [duration, setDuration] = useState(String(editingType?.duration || 30));
+  const [focus, setFocus] = useState(editingType?.focus || "");
+  const [color, setColor] = useState(editingType?.color || "#3b82f6");
+  const [isActive, setIsActive] = useState(editingType?.isActive ?? true);
+
+  const isEditing = !!editingType;
+
+  const createMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", "/api/meeting-types", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/meeting-types"] });
+      toast({ title: "Meeting type created" });
+      onOpenChange(false);
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("PATCH", `/api/meeting-types/${editingType!.id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/meeting-types"] });
+      toast({ title: "Meeting type updated" });
+      onOpenChange(false);
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const handleSubmit = () => {
+    if (!name.trim()) return;
+    const payload = {
+      name: name.trim(),
+      description: description.trim() || null,
+      duration: parseInt(duration),
+      focus: focus || null,
+      color,
+      isActive,
+    };
+    if (isEditing) {
+      updateMutation.mutate(payload);
+    } else {
+      createMutation.mutate(payload);
+    }
+  };
+
+  const isPending = createMutation.isPending || updateMutation.isPending;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[440px]">
+        <DialogHeader>
+          <DialogTitle>{isEditing ? "Edit Meeting Type" : "Add Meeting Type"}</DialogTitle>
+          <DialogDescription>
+            {isEditing ? "Update this meeting type" : "Create a new meeting type for booking"}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label>Name</Label>
+            <Input
+              placeholder="e.g., Quick Check-in"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              data-testid="input-meeting-type-name"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Description</Label>
+            <Textarea
+              placeholder="Brief description of this meeting type..."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={2}
+              data-testid="input-meeting-type-description"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Duration</Label>
+              <Select value={duration} onValueChange={setDuration}>
+                <SelectTrigger data-testid="select-meeting-type-duration">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="15">15 min</SelectItem>
+                  <SelectItem value="30">30 min</SelectItem>
+                  <SelectItem value="45">45 min</SelectItem>
+                  <SelectItem value="60">60 min</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Focus</Label>
+              <Select value={focus} onValueChange={setFocus}>
+                <SelectTrigger data-testid="select-meeting-type-focus">
+                  <SelectValue placeholder="Select focus..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {FOCUS_OPTIONS.map((f) => (
+                    <SelectItem key={f} value={f}>{f}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Color</Label>
+            <div className="flex items-center gap-2 flex-wrap">
+              {COLOR_OPTIONS.map((c) => (
+                <button
+                  key={c.value}
+                  type="button"
+                  className={`w-8 h-8 rounded-md border-2 transition-all ${
+                    color === c.value ? "border-foreground scale-110" : "border-transparent"
+                  }`}
+                  style={{ backgroundColor: c.value }}
+                  onClick={() => setColor(c.value)}
+                  title={c.label}
+                  data-testid={`color-option-${c.label.toLowerCase()}`}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <Label>Active</Label>
+            <Switch
+              checked={isActive}
+              onCheckedChange={setIsActive}
+              data-testid="switch-meeting-type-active"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={!name.trim() || isPending} data-testid="button-submit-meeting-type">
+            {isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+            {isEditing ? "Save Changes" : "Add Type"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function MeetingTypesSection() {
+  const { data: meetingTypes, isLoading } = useMeetingTypes();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [showDialog, setShowDialog] = useState(false);
+  const [editingType, setEditingType] = useState<MeetingType | null>(null);
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/meeting-types/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/meeting-types"] });
+      toast({ title: "Meeting type deleted" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, ...data }: { id: number } & any) => {
+      const res = await apiRequest("PATCH", `/api/meeting-types/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/meeting-types"] });
+    },
+  });
+
+  const handleEdit = (mt: MeetingType) => {
+    setEditingType(mt);
+    setShowDialog(true);
+  };
+
+  const handleCloseDialog = (v: boolean) => {
+    setShowDialog(v);
+    if (!v) setEditingType(null);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold text-sm">Meeting Types</h3>
+          <p className="text-xs text-muted-foreground">Define different types of sessions people can book</p>
+        </div>
+        <Button size="sm" onClick={() => { setEditingType(null); setShowDialog(true); }} data-testid="button-add-meeting-type">
+          <Plus className="w-4 h-4 mr-1" /> Add Type
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin" /></div>
+      ) : !meetingTypes || meetingTypes.length === 0 ? (
+        <Card className="p-8 text-center">
+          <Settings className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">No meeting types defined yet</p>
+          <p className="text-xs text-muted-foreground mt-1">Add meeting types to offer different session options</p>
+          <Button size="sm" className="mt-3" onClick={() => { setEditingType(null); setShowDialog(true); }}>
+            <Plus className="w-4 h-4 mr-1" /> Add Meeting Type
+          </Button>
+        </Card>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {meetingTypes.map((mt) => (
+            <Card key={mt.id} className="p-4" data-testid={`meeting-type-card-${mt.id}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3 flex-1 min-w-0">
+                  <div
+                    className="w-3 h-3 rounded-full mt-1 shrink-0"
+                    style={{ backgroundColor: mt.color || "#3b82f6" }}
+                    data-testid={`meeting-type-color-${mt.id}`}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="font-medium text-sm">{mt.name}</h4>
+                      <Badge variant="outline" className="text-[10px] h-5">{mt.duration} min</Badge>
+                      {!mt.isActive && (
+                        <Badge variant="outline" className="text-[10px] h-5 bg-muted text-muted-foreground">Inactive</Badge>
+                      )}
+                    </div>
+                    {mt.description && (
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{mt.description}</p>
+                    )}
+                    {mt.focus && (
+                      <Badge variant="secondary" className="text-[10px] h-5 mt-1.5">{mt.focus}</Badge>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1 shrink-0 items-end">
+                  <Switch
+                    checked={mt.isActive ?? true}
+                    onCheckedChange={(checked) => updateMutation.mutate({ id: mt.id, isActive: checked })}
+                    data-testid={`switch-meeting-type-${mt.id}`}
+                  />
+                  <div className="flex gap-1">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => handleEdit(mt)}
+                      data-testid={`button-edit-meeting-type-${mt.id}`}
+                    >
+                      <Settings className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => {
+                        if (confirm(`Delete meeting type "${mt.name}"?`)) {
+                          deleteMutation.mutate(mt.id);
+                        }
+                      }}
+                      data-testid={`button-delete-meeting-type-${mt.id}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {showDialog && (
+        <MeetingTypeDialog
+          open={showDialog}
+          onOpenChange={handleCloseDialog}
+          editingType={editingType}
+        />
+      )}
     </div>
   );
 }
@@ -926,6 +1297,8 @@ function AvailabilityTab() {
       )}
 
       <AddAvailabilityDialog open={showAdd} onOpenChange={setShowAdd} mentorUserId={mentorUserId} />
+
+      <MeetingTypesSection />
     </div>
   );
 }

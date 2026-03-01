@@ -26,6 +26,9 @@ import {
   mentorAvailability,
   type MentorAvailability,
   type InsertMentorAvailability,
+  meetingTypes,
+  type MeetingType,
+  type InsertMeetingType,
   mentorProfiles,
   type MentorProfile,
   type InsertMentorProfile,
@@ -160,6 +163,13 @@ export interface IStorage {
   createMentorAvailability(slot: InsertMentorAvailability): Promise<MentorAvailability>;
   updateMentorAvailability(id: number, updates: Partial<InsertMentorAvailability>): Promise<MentorAvailability>;
   deleteMentorAvailability(id: number): Promise<void>;
+
+  // Meeting Types
+  getMeetingTypes(userId: string): Promise<MeetingType[]>;
+  getMeetingType(id: number): Promise<MeetingType | undefined>;
+  createMeetingType(data: InsertMeetingType): Promise<MeetingType>;
+  updateMeetingType(id: number, updates: Partial<InsertMeetingType>): Promise<MeetingType>;
+  deleteMeetingType(id: number): Promise<void>;
 
   // Mentor Profiles
   getMentorProfiles(userId: string): Promise<MentorProfile[]>;
@@ -561,6 +571,29 @@ export class DatabaseStorage implements IStorage {
 
   async deleteMentorAvailability(id: number): Promise<void> {
     await db.delete(mentorAvailability).where(eq(mentorAvailability.id, id));
+  }
+
+  async getMeetingTypes(userId: string): Promise<MeetingType[]> {
+    return await db.select().from(meetingTypes).where(eq(meetingTypes.userId, userId)).orderBy(meetingTypes.sortOrder);
+  }
+
+  async getMeetingType(id: number): Promise<MeetingType | undefined> {
+    const [result] = await db.select().from(meetingTypes).where(eq(meetingTypes.id, id));
+    return result;
+  }
+
+  async createMeetingType(data: InsertMeetingType): Promise<MeetingType> {
+    const [result] = await db.insert(meetingTypes).values(data).returning();
+    return result;
+  }
+
+  async updateMeetingType(id: number, updates: Partial<InsertMeetingType>): Promise<MeetingType> {
+    const [result] = await db.update(meetingTypes).set(updates).where(eq(meetingTypes.id, id)).returning();
+    return result;
+  }
+
+  async deleteMeetingType(id: number): Promise<void> {
+    await db.delete(meetingTypes).where(eq(meetingTypes.id, id));
   }
 
   async getMentorProfiles(userId: string): Promise<MentorProfile[]> {

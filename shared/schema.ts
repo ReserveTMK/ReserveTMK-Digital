@@ -121,6 +121,9 @@ export const meetings = pgTable("meetings", {
   notes: text("notes"),
   mentoringFocus: text("mentoring_focus"),
   interactionId: integer("interaction_id"),
+  coMentorProfileId: integer("co_mentor_profile_id"),
+  meetingTypeId: integer("meeting_type_id"),
+  googleCalendarEventId: text("google_calendar_event_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -134,6 +137,19 @@ export const mentorAvailability = pgTable("mentor_availability", {
   bufferMinutes: integer("buffer_minutes").default(15),
   isActive: boolean("is_active").default(true),
   maxDailyBookings: integer("max_daily_bookings"),
+});
+
+export const meetingTypes = pgTable("meeting_types", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  duration: integer("duration").notNull().default(30),
+  focus: text("focus"),
+  color: text("color").default("#3b82f6"),
+  isActive: boolean("is_active").default(true),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const mentorProfiles = pgTable("mentor_profiles", {
@@ -1023,6 +1039,13 @@ export const insertMeetingSchema = createInsertSchema(meetings).omit({
 
 export type Meeting = typeof meetings.$inferSelect;
 export type InsertMeeting = z.infer<typeof insertMeetingSchema>;
+
+export const insertMeetingTypeSchema = createInsertSchema(meetingTypes).omit({
+  id: true,
+  createdAt: true,
+});
+export type MeetingType = typeof meetingTypes.$inferSelect;
+export type InsertMeetingType = z.infer<typeof insertMeetingTypeSchema>;
 
 export const insertMentorAvailabilitySchema = createInsertSchema(mentorAvailability).omit({
   id: true,

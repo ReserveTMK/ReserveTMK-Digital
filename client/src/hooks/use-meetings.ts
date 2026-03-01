@@ -34,6 +34,7 @@ export function useCreateMeeting() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.meetings.list.path] });
+      queryClient.invalidateQueries({ queryKey: ["/api/meetings/all-mentors"] });
       toast({ title: "Meeting booked", description: "Meeting scheduled successfully" });
     },
     onError: (error) => {
@@ -63,6 +64,7 @@ export function useUpdateMeeting() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.meetings.list.path] });
+      queryClient.invalidateQueries({ queryKey: ["/api/meetings/all-mentors"] });
       toast({ title: "Updated", description: "Meeting updated successfully" });
     },
     onError: (error) => {
