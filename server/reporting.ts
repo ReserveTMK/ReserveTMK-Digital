@@ -4,7 +4,7 @@ import {
   impactLogs, impactLogContacts, impactLogGroups, impactTags, impactTaxonomy,
   contacts, groups, groupMembers, events, eventAttendance,
   programmes, programmeEvents, bookings, memberships, mous, venues,
-  milestones, relationshipStageHistory, communitySpend,
+  milestones, relationshipStageHistory, communitySpend, meetings, interactions,
 } from "@shared/schema";
 
 export interface ReportFilters {
@@ -1106,13 +1106,106 @@ export async function getTamakiOraAlignment(filters: ReportFilters) {
   };
 }
 
+export async function getMentoringMetrics(filters: ReportFilters) {
+  const start = parseDate(filters.startDate);
+  const end = parseDate(filters.endDate);
+
+  const MENTORING_TYPES = ["mentoring", "catchup", "follow-up"];
+
+  const mentoringMeetings = await db
+    .select()
+    .from(meetings)
+    .where(and(
+      eq(meetings.userId, filters.userId),
+      inArray(meetings.type, MENTORING_TYPES),
+      gte(meetings.startTime, start),
+      lte(meetings.startTime, end),
+    ));
+
+  const deliveredSessions = mentoringMeetings.filter(m => m.status === "completed");
+  const totalSessions = mentoringMeetings.length;
+  const completedSessions = deliveredSessions.length;
+  const totalHours = Math.round(
+    deliveredSessions.reduce((sum, m) => sum + (m.duration || 30), 0) / 60 * 10
+  ) / 10;
+
+  const uniqueMenteeIds = new Set(mentoringMeetings.map(m => m.contactId));
+  const uniqueMentees = uniqueMenteeIds.size;
+
+  const avgSessionsPerMentee = uniqueMentees > 0
+    ? Math.round((totalSessions / uniqueMentees) * 10) / 10
+    : 0;
+
+  const contactIds = Array.from(uniqueMenteeIds);
+  let newMentees = 0;
+  if (contactIds.length > 0) {
+    const allMentoringForContacts = await db
+      .select({
+        contactId: meetings.contactId,
+        firstSession: sql<Date>`MIN(${meetings.startTime})`.as("first_session"),
+      })
+      .from(meetings)
+      .where(and(
+        eq(meetings.userId, filters.userId),
+        inArray(meetings.type, MENTORING_TYPES),
+        inArray(meetings.contactId, contactIds),
+      ))
+      .groupBy(meetings.contactId);
+
+    for (const row of allMentoringForContacts) {
+      const firstDate = new Date(row.firstSession);
+      if (firstDate >= start && firstDate <= end) {
+        newMentees++;
+      }
+    }
+  }
+
+  const bySource: Record<string, number> = {};
+  for (const m of mentoringMeetings) {
+    const source = m.bookingSource || "internal";
+    bySource[source] = (bySource[source] || 0) + 1;
+  }
+
+  const byFocus: Record<string, number> = {};
+  for (const m of mentoringMeetings) {
+    const focus = m.mentoringFocus || "unspecified";
+    byFocus[focus] = (byFocus[focus] || 0) + 1;
+  }
+
+  const completedCount = mentoringMeetings.filter(m => m.status === "completed").length;
+  const cancelledCount = mentoringMeetings.filter(m => m.status === "cancelled").length;
+  const noShowCount = mentoringMeetings.filter(m => m.status === "no-show").length;
+  const resolvedCount = completedCount + cancelledCount + noShowCount;
+  const completionRate = resolvedCount > 0
+    ? Math.round((completedCount / resolvedCount) * 100)
+    : 0;
+
+  const withInteraction = mentoringMeetings.filter(m => m.status === "completed" && m.interactionId != null).length;
+  const debriefRate = completedCount > 0
+    ? Math.round((withInteraction / completedCount) * 100)
+    : 0;
+
+  return {
+    totalSessions,
+    totalHours,
+    uniqueMentees,
+    avgSessionsPerMentee,
+    newMentees,
+    bySource,
+    byFocus,
+    completionRate,
+    debriefRate,
+  };
+}
+
 export async function getFullMonthlyReport(filters: ReportFilters) {
-  const [engagement, delivery, impact, outcomes, value] = await Promise.all([
+  const [engagement, delivery, impact, outcomes, value, mentoring] = await Promise.all([
     getEngagementMetrics(filters),
     getDeliveryMetrics(filters),
     getImpactByTaxonomy(filters),
     getOutcomeMovement(filters),
     getValueContribution(filters),
+    getMentoringMetrics(filters),
   ]);
 
   return {
@@ -1131,5 +1224,6 @@ export async function getFullMonthlyReport(filters: ReportFilters) {
     impact,
     outcomes,
     value,
+    mentoring,
   };
 }

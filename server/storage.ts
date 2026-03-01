@@ -23,6 +23,9 @@ import {
   type Meeting,
   type InsertMeeting,
   type UpdateMeetingRequest,
+  mentorAvailability,
+  type MentorAvailability,
+  type InsertMentorAvailability,
   type Event,
   type InsertEvent,
   type UpdateEventRequest,
@@ -139,6 +142,7 @@ export interface IStorage {
   // Interactions
   getInteractions(contactId: number): Promise<Interaction[]>;
   createInteraction(interaction: InsertInteraction): Promise<Interaction>;
+  deleteInteraction(id: number): Promise<void>;
 
   // Meetings
   getMeetings(userId: string): Promise<Meeting[]>;
@@ -146,6 +150,13 @@ export interface IStorage {
   createMeeting(meeting: InsertMeeting): Promise<Meeting>;
   updateMeeting(id: number, updates: UpdateMeetingRequest): Promise<Meeting>;
   deleteMeeting(id: number): Promise<void>;
+
+  // Mentor Availability
+  getMentorAvailability(userId: string): Promise<MentorAvailability[]>;
+  getMentorAvailabilityById(id: number): Promise<MentorAvailability | undefined>;
+  createMentorAvailability(slot: InsertMentorAvailability): Promise<MentorAvailability>;
+  updateMentorAvailability(id: number, updates: Partial<InsertMentorAvailability>): Promise<MentorAvailability>;
+  deleteMentorAvailability(id: number): Promise<void>;
   
   // Events
   getEvents(userId: string): Promise<Event[]>;
@@ -474,6 +485,10 @@ export class DatabaseStorage implements IStorage {
     return interaction;
   }
 
+  async deleteInteraction(id: number): Promise<void> {
+    await db.delete(interactions).where(eq(interactions.id, id));
+  }
+
   // Meetings
   async getMeetings(userId: string): Promise<Meeting[]> {
     return await db.select()
@@ -503,6 +518,39 @@ export class DatabaseStorage implements IStorage {
 
   async deleteMeeting(id: number): Promise<void> {
     await db.delete(meetings).where(eq(meetings.id, id));
+  }
+
+  // Mentor Availability
+  async getMentorAvailability(userId: string): Promise<MentorAvailability[]> {
+    return await db.select()
+      .from(mentorAvailability)
+      .where(eq(mentorAvailability.userId, userId))
+      .orderBy(mentorAvailability.dayOfWeek);
+  }
+
+  async getMentorAvailabilityById(id: number): Promise<MentorAvailability | undefined> {
+    const [result] = await db.select()
+      .from(mentorAvailability)
+      .where(eq(mentorAvailability.id, id));
+    return result;
+  }
+
+  async createMentorAvailability(slot: InsertMentorAvailability): Promise<MentorAvailability> {
+    const [result] = await db.insert(mentorAvailability).values(slot).returning();
+    return result;
+  }
+
+  async updateMentorAvailability(id: number, updates: Partial<InsertMentorAvailability>): Promise<MentorAvailability> {
+    const [result] = await db
+      .update(mentorAvailability)
+      .set(updates)
+      .where(eq(mentorAvailability.id, id))
+      .returning();
+    return result;
+  }
+
+  async deleteMentorAvailability(id: number): Promise<void> {
+    await db.delete(mentorAvailability).where(eq(mentorAvailability.id, id));
   }
 
   // Events

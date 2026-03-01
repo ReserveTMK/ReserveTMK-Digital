@@ -29,6 +29,8 @@ import ProgrammeEffectivenessPage from "@/pages/programme-effectiveness";
 import CommunitySpend from "@/pages/community-spend";
 import GmailImportPage from "@/pages/gmail-import";
 import FundersPage from "@/pages/funders";
+import MentoringPage from "@/pages/mentoring";
+import PublicBookingPage from "@/pages/public-booking";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -119,6 +121,10 @@ function Router() {
           <ProtectedRoute component={CalendarPage} />
         </Route>
 
+        <Route path="/mentoring">
+          <ProtectedRoute component={MentoringPage} />
+        </Route>
+
         <Route path="/programmes">
           <ProtectedRoute component={Programmes} />
         </Route>
@@ -161,6 +167,10 @@ function Router() {
 
         <Route path="/funders">
           <ProtectedRoute component={FundersPage} />
+        </Route>
+
+        <Route path="/book/:userId">
+          <PublicBookingPage />
         </Route>
 
         <Route component={NotFound} />

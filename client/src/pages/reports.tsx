@@ -529,6 +529,7 @@ export default function Reports() {
   const imp = reportData?.impact;
   const out = reportData?.outcomes;
   const val = reportData?.value;
+  const ment = reportData?.mentoring;
   const lm = reportData?.legacyMetrics;
   const isBlended = reportData?.isBlended;
 
@@ -915,6 +916,56 @@ export default function Reports() {
                       </div>
                     )}
                   </div>
+
+                  {ment && ment.totalSessions > 0 && (
+                    <div className="mt-6 pt-6 border-t" data-testid="subsection-mentoring">
+                      <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                        <Users className="w-4 h-4" /> Mentoring
+                      </h3>
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                        <StatCard icon={CalendarDays} label="Sessions" value={ment.totalSessions} color="purple" testId="stat-mentoring-sessions" />
+                        <StatCard icon={Clock} label="Hours" value={Math.round(ment.totalHours * 10) / 10} color="violet" testId="stat-mentoring-hours" />
+                        <StatCard icon={Users} label="Mentees" value={ment.uniqueMentees} color="indigo" testId="stat-mentoring-mentees" />
+                        <StatCard icon={TrendingUp} label="Avg Sessions/Mentee" value={Math.round(ment.avgSessionsPerMentee * 10) / 10} color="blue" testId="stat-avg-sessions" />
+                        <StatCard icon={Users} label="New Mentees" value={ment.newMentees} color="emerald" testId="stat-new-mentees" />
+                        <StatCard icon={Activity} label="Completion Rate" value={`${Math.round(ment.completionRate)}%`} color="green" testId="stat-completion-rate" />
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        {ment.byFocus && Object.keys(ment.byFocus).length > 0 && (
+                          <div>
+                            <h4 className="text-sm font-semibold mb-3">Sessions by Focus Area</h4>
+                            <ResponsiveContainer width="100%" height={200}>
+                              <BarChart data={Object.entries(ment.byFocus).map(([name, value]) => ({ name, value }))}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-20} textAnchor="end" height={60} />
+                                <YAxis allowDecimals={false} />
+                                <Tooltip />
+                                <Bar dataKey="value" fill="hsl(262, 80%, 50%)" radius={[4, 4, 0, 0]} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        )}
+                        <div className="space-y-3">
+                          {ment.bySource && Object.keys(ment.bySource).length > 0 && (
+                            <div>
+                              <h4 className="text-sm font-semibold mb-2">Booking Source</h4>
+                              <div className="flex gap-3 flex-wrap">
+                                {Object.entries(ment.bySource).map(([source, count]) => (
+                                  <Badge key={source} variant="outline" className="text-xs capitalize">
+                                    {source.replace(/_/g, ' ')}: {count as number}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          <div className="bg-muted/30 rounded-md px-3 py-2 text-xs text-muted-foreground">
+                            Debrief rate: {Math.round(ment.debriefRate)}% of completed sessions have linked transcripts
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </CollapsibleSection>
 

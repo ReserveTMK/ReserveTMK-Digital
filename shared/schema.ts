@@ -113,9 +113,27 @@ export const meetings = pgTable("meetings", {
   description: text("description"),
   startTime: timestamp("start_time").notNull(),
   endTime: timestamp("end_time").notNull(),
-  status: text("status").notNull().default("scheduled"),
+  status: text("status").notNull().default("scheduled"), // scheduled, confirmed, completed, cancelled, no-show
   location: text("location"),
+  type: text("type").default("mentoring"), // mentoring, catchup, follow-up
+  duration: integer("duration").default(30),
+  bookingSource: text("booking_source").default("internal"), // internal, public_link, calendar_import
+  notes: text("notes"),
+  mentoringFocus: text("mentoring_focus"),
+  interactionId: integer("interaction_id"),
   createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const mentorAvailability = pgTable("mentor_availability", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  dayOfWeek: integer("day_of_week").notNull(), // 0=Mon, 6=Sun
+  startTime: text("start_time").notNull(), // "09:00"
+  endTime: text("end_time").notNull(), // "17:00"
+  slotDuration: integer("slot_duration").default(30),
+  bufferMinutes: integer("buffer_minutes").default(15),
+  isActive: boolean("is_active").default(true),
+  maxDailyBookings: integer("max_daily_bookings"),
 });
 
 export const events = pgTable("events", {
@@ -994,6 +1012,13 @@ export const insertMeetingSchema = createInsertSchema(meetings).omit({
 
 export type Meeting = typeof meetings.$inferSelect;
 export type InsertMeeting = z.infer<typeof insertMeetingSchema>;
+
+export const insertMentorAvailabilitySchema = createInsertSchema(mentorAvailability).omit({
+  id: true,
+});
+
+export type MentorAvailability = typeof mentorAvailability.$inferSelect;
+export type InsertMentorAvailability = z.infer<typeof insertMentorAvailabilitySchema>;
 
 export type Event = typeof events.$inferSelect;
 export type InsertEvent = z.infer<typeof insertEventSchema>;

@@ -730,6 +730,255 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  app.post('/api/meetings/:id/debrief', isAuthenticated, async (req, res) => {
+    try {
+      const meetingId = parseInt(req.params.id);
+      const userId = (req.user as any).claims.sub;
+      const meeting = await storage.getMeeting(meetingId);
+      if (!meeting) return res.status(404).json({ message: "Meeting not found" });
+      if (meeting.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      const { transcript, summary, analysis, type } = req.body;
+      if (!transcript && !summary) {
+        return res.status(400).json({ message: "Transcript or summary required" });
+      }
+
+      let interaction;
+      try {
+        interaction = await storage.createInteraction({
+          userId,
+          contactId: meeting.contactId,
+          date: new Date(),
+          type: type || "Mentoring Debrief",
+          transcript: transcript || null,
+          summary: summary || null,
+          analysis: analysis || null,
+          keywords: analysis?.keyInsights || [],
+        });
+      } catch (createErr: any) {
+        console.error("Failed to create interaction for debrief:", createErr);
+        return res.status(500).json({ message: "Failed to create debrief interaction" });
+      }
+
+      try {
+        await storage.updateMeeting(meetingId, {
+          interactionId: interaction.id,
+          status: "completed",
+        });
+      } catch (linkErr: any) {
+        console.error("Failed to link interaction to meeting, rolling back:", linkErr);
+        try { await storage.deleteInteraction(interaction.id); } catch (_) {}
+        return res.status(500).json({ message: "Failed to link debrief to session" });
+      }
+
+      res.json({ meeting: { ...meeting, interactionId: interaction.id, status: "completed" }, interaction });
+    } catch (err: any) {
+      console.error("Debrief error:", err);
+      res.status(500).json({ message: "Failed to log debrief" });
+    }
+  });
+
+  // === Mentor Availability API ===
+
+  app.get('/api/mentor-availability', isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const slots = await storage.getMentorAvailability(userId);
+    res.json(slots);
+  });
+
+  app.post('/api/mentor-availability', isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const slot = await storage.createMentorAvailability({ ...req.body, userId });
+    res.status(201).json(slot);
+  });
+
+  app.patch('/api/mentor-availability/:id', isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const userId = (req.user as any).claims.sub;
+    const existing = await storage.getMentorAvailabilityById(id);
+    if (!existing) return res.status(404).json({ message: "Availability slot not found" });
+    if (existing.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+    const updated = await storage.updateMentorAvailability(id, req.body);
+    res.json(updated);
+  });
+
+  app.delete('/api/mentor-availability/:id', isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const userId = (req.user as any).claims.sub;
+    const existing = await storage.getMentorAvailabilityById(id);
+    if (!existing) return res.status(404).json({ message: "Availability slot not found" });
+    if (existing.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+    await storage.deleteMentorAvailability(id);
+    res.status(204).send();
+  });
+
+  // === Public Booking API (no auth) ===
+
+  app.get('/api/public/mentoring/:userId/availability', async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const slots = await storage.getMentorAvailability(userId);
+      const activeSlots = slots.filter(s => s.isActive);
+      res.json(activeSlots.map(s => ({
+        dayOfWeek: s.dayOfWeek,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        slotDuration: s.slotDuration,
+        bufferMinutes: s.bufferMinutes,
+      })));
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch availability" });
+    }
+  });
+
+  app.get('/api/public/mentoring/:userId/slots', async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { date } = req.query;
+      if (!date || typeof date !== 'string') {
+        return res.status(400).json({ message: "date query parameter required (YYYY-MM-DD)" });
+      }
+
+      const availabilitySlots = await storage.getMentorAvailability(userId);
+      const activeSlots = availabilitySlots.filter(s => s.isActive);
+
+      const targetDate = new Date(date + 'T00:00:00+13:00');
+      const jsDay = targetDate.getDay();
+      const dayOfWeek = jsDay === 0 ? 6 : jsDay - 1;
+
+      const daySlots = activeSlots.filter(s => s.dayOfWeek === dayOfWeek);
+      if (daySlots.length === 0) {
+        return res.json({ date, slots: [] });
+      }
+
+      const existingMeetings = await storage.getMeetings(userId);
+      const dayStart = new Date(date + 'T00:00:00+13:00');
+      const dayEnd = new Date(date + 'T23:59:59+13:00');
+      const dayMeetings = existingMeetings.filter(m => {
+        const mStart = new Date(m.startTime);
+        return mStart >= dayStart && mStart <= dayEnd && m.status !== 'cancelled';
+      });
+
+      const freeSlots: { time: string; endTime: string }[] = [];
+
+      for (const avail of daySlots) {
+        const slotDur = avail.slotDuration || 30;
+        const buffer = avail.bufferMinutes || 15;
+        const [startH, startM] = avail.startTime.split(':').map(Number);
+        const [endH, endM] = avail.endTime.split(':').map(Number);
+        const startMinutes = startH * 60 + startM;
+        const endMinutes = endH * 60 + endM;
+
+        for (let t = startMinutes; t + slotDur <= endMinutes; t += slotDur + buffer) {
+          const slotStart = `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+          const slotEndMin = t + slotDur;
+          const slotEnd = `${String(Math.floor(slotEndMin / 60)).padStart(2, '0')}:${String(slotEndMin % 60).padStart(2, '0')}`;
+
+          const conflict = dayMeetings.some(m => {
+            const mStart = new Date(m.startTime);
+            const mEnd = new Date(m.endTime);
+            const mStartMin = mStart.getHours() * 60 + mStart.getMinutes();
+            const mEndMin = mEnd.getHours() * 60 + mEnd.getMinutes();
+            return t < mEndMin && slotEndMin > mStartMin;
+          });
+
+          if (!conflict) {
+            freeSlots.push({ time: slotStart, endTime: slotEnd });
+          }
+        }
+
+        if (avail.maxDailyBookings) {
+          const existingCount = dayMeetings.filter(m => m.bookingSource === 'public_link').length;
+          if (existingCount >= avail.maxDailyBookings) {
+            return res.json({ date, slots: [] });
+          }
+        }
+      }
+
+      const now = new Date();
+      const filteredSlots = freeSlots.filter(s => {
+        const slotDate = new Date(date + 'T' + s.time + ':00+13:00');
+        return slotDate > now;
+      });
+
+      res.json({ date, slots: filteredSlots });
+    } catch (err) {
+      console.error("Slots error:", err);
+      res.status(500).json({ message: "Failed to fetch slots" });
+    }
+  });
+
+  app.get('/api/public/mentoring/:userId/info', async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { users } = await import("@shared/schema");
+      const result = await db.select().from(users).where(eq(users.id, userId));
+      if (result.length === 0) return res.status(404).json({ message: "Not found" });
+      res.json({ firstName: result[0].firstName, lastName: result[0].lastName });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch info" });
+    }
+  });
+
+  app.post('/api/public/mentoring/:userId/book', async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { name, email, phone, date, time, duration, focus, notes } = req.body;
+
+      if (!name || !date || !time) {
+        return res.status(400).json({ message: "name, date, and time are required" });
+      }
+
+      const slotDuration = duration || 30;
+      const startTime = new Date(date + 'T' + time + ':00+13:00');
+      const endTime = new Date(startTime.getTime() + slotDuration * 60 * 1000);
+
+      let contact;
+      if (email) {
+        const allContacts = await storage.getContacts(userId);
+        contact = allContacts.find((c: any) => c.email && c.email.toLowerCase() === email.toLowerCase());
+      }
+      if (!contact) {
+        contact = await storage.createContact({
+          userId,
+          name,
+          email: email || null,
+          phone: phone || null,
+          role: 'Entrepreneur',
+          active: true,
+        });
+      }
+
+      const meeting = await storage.createMeeting({
+        userId,
+        contactId: contact.id,
+        title: `Mentoring: ${name}`,
+        description: focus || null,
+        startTime,
+        endTime,
+        status: 'scheduled',
+        location: null,
+        type: 'mentoring',
+        duration: slotDuration,
+        bookingSource: 'public_link',
+        notes: notes || null,
+        mentoringFocus: focus || null,
+      });
+
+      res.status(201).json({
+        id: meeting.id,
+        date,
+        time,
+        duration: slotDuration,
+        focus: focus || null,
+        status: meeting.status,
+      });
+    } catch (err) {
+      console.error("Public booking error:", err);
+      res.status(500).json({ message: "Failed to book session" });
+    }
+  });
+
   // === Events API ===
 
   app.get(api.events.list.path, isAuthenticated, async (req, res) => {
