@@ -1,0 +1,488 @@
+Build a complete Projects feature for Reserve Tāmaki to track internal initiatives, campaigns, and work streams.
+
+CONTEXT:
+We need to track projects that aren't programmes, mentoring relationships, or bookings. These are internal Reserve initiatives like marketing campaigns, reporting systems, partnership projects, or development work.
+
+Examples of projects:
+- "Q2 Marketing Campaign"
+- "Tāmaki Ora Impact Report" 
+- "Alumni Network Launch"
+- "Website Redesign"
+- "Street Athletes Partnership"
+
+This is a 2-part implementation: Database first, then UI.
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 1: DATABASE SCHEMA
+
+CREATE TABLE projects (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  
+  -- Basic info
+  name VARCHAR(200) NOT NULL,
+  description TEXT,
+  
+  -- Status tracking
+  status ENUM('planning', 'active', 'on_hold', 'completed', 'cancelled') DEFAULT 'active',
+  
+  -- Timeline
+  start_date DATE,
+  end_date DATE,
+  
+  -- Ownership
+  owner_id INT, -- who's responsible (link to contacts)
+  team_members JSON, -- array of contact_ids involved
+  
+  -- Connections
+  related_group_id INT, -- optional link to venture/group
+  related_contact_ids JSON, -- array of people involved
+  
+  -- Details
+  goals TEXT, -- what we're trying to achieve
+  deliverables TEXT, -- what we're creating
+  notes TEXT, -- ongoing notes and updates
+  
+  -- Metadata
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  created_by INT, -- who created the project
+  
+  -- Foreign keys
+  FOREIGN KEY (owner_id) REFERENCES contacts(id) ON DELETE SET NULL,
+  FOREIGN KEY (related_group_id) REFERENCES groups(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES contacts(id) ON DELETE SET NULL,
+  
+  -- Indexes
+  INDEX idx_status (status),
+  INDEX idx_owner (owner_id),
+  INDEX idx_dates (start_date, end_date)
+);
+
+CREATE TABLE project_updates (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  project_id INT NOT NULL,
+  update_type ENUM('status_change', 'milestone', 'note', 'blocker', 'completed_task') DEFAULT 'note',
+  update_text TEXT,
+  created_by INT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES contacts(id) ON DELETE SET NULL,
+  INDEX idx_project (project_id)
+);
+
+After creating tables, verify with:
+1. DESCRIBE projects;
+2. DESCRIBE project_updates;
+3. Insert test project
+4. SELECT * FROM projects WHERE status = 'active';
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 2: USER INTERFACE
+
+Build 4 views + 1 dashboard widget:
+
+───────────────────────────────────────────────────────────────────────
+VIEW 1: PROJECTS LIST PAGE
+───────────────────────────────────────────────────────────────────────
+
+Add "Projects" to main navigation menu.
+
+Layout:
+┌────────────────────────────────────────────────────────┐
+│ Projects                          [+ New Project]       │
+├────────────────────────────────────────────────────────┤
+│ Filters: [All] [Planning] [Active] [On Hold]          │
+│          [Completed] [Cancelled]                        │
+├────────────────────────────────────────────────────────┤
+│                                                         │
+│ □ Website Redesign                    Status: Active   │
+│   Owner: Kim Jeffrey                  Due: 15 Apr 2026 │
+│   Last updated: 2 days ago                             │
+│                                                         │
+│ □ Q2 Marketing Campaign              Status: Planning  │
+│   Owner: Team                         Due: 30 Jun 2026 │
+│   Last updated: 1 week ago                             │
+│                                                         │
+│ □ Tāmaki Ora Report                  Status: Completed │
+│   Owner: Kim Jeffrey                  Due: 28 Feb 2026 │
+│   Completed: 1 Mar 2026                                │
+│                                                         │
+└────────────────────────────────────────────────────────┘
+
+Display for each project:
+- Checkbox (for future bulk actions)
+- Project name (clickable → goes to detail view)
+- Owner name
+- Status badge with color coding:
+  * Planning: Blue
+  * Active: Green
+  * On Hold: Yellow
+  * Completed: Gray
+  * Cancelled: Red
+- Start/end dates
+- Last updated timestamp
+
+Filters:
+- All projects
+- By status (planning, active, on_hold, completed, cancelled)
+- By owner (dropdown of team members)
+- Search by name (text input)
+
+Sorting:
+- Default: Active projects first, then by most recently updated
+- Allow sort by: name, status, due date, owner
+
+Empty state:
+"No projects yet. Create your first project to get started!"
+
+───────────────────────────────────────────────────────────────────────
+VIEW 2: PROJECT DETAIL PAGE
+───────────────────────────────────────────────────────────────────────
+
+Layout:
+┌────────────────────────────────────────────────────────┐
+│ ← Back to Projects                                      │
+├────────────────────────────────────────────────────────┤
+│ Website Redesign                      [Edit] [Delete]  │
+│ Status: Active        Owner: Kim Jeffrey               │
+├────────────────────────────────────────────────────────┤
+│                                                         │
+│ Timeline:                                              │
+│ Started: 1 Mar 2026    Due: 15 Apr 2026               │
+│                                                         │
+│ Description:                                           │
+│ Redesign Reserve website to better showcase kakano/   │
+│ tipu/ora framework and add public registration forms  │
+│                                                         │
+│ Goals:                                                 │
+│ - Modern, mobile-friendly design                       │
+│ - Clear journey pathways                               │
+│ - Integrated registration forms                        │
+│                                                         │
+│ Deliverables:                                          │
+│ - New website design                                   │
+│ - Public program registration form                     │
+│ - Mentoring application form                           │
+│                                                         │
+│ Team Members:                                          │
+│ • Kim Jeffrey (Owner)                                  │
+│ • Developer (External)                                 │
+│                                                         │
+│ Related To:                                            │
+│ • No linked ventures/contacts                          │
+│ (or show linked groups/contacts if any)                │
+│                                                         │
+├────────────────────────────────────────────────────────┤
+│ Updates & Activity                    [+ Add Update]   │
+├────────────────────────────────────────────────────────┤
+│                                                         │
+│ 2 Mar 2026 - Milestone                                │
+│ Design mockups approved                                │
+│ By: Kim Jeffrey                                        │
+│                                                         │
+│ 28 Feb 2026 - Note                                    │
+│ Met with designer, discussed kakano/tipu/ora visuals  │
+│ By: Kim Jeffrey                                        │
+│                                                         │
+│ 25 Feb 2026 - Status Change                           │
+│ Status changed from Planning → Active                  │
+│ By: Kim Jeffrey                                        │
+│                                                         │
+└────────────────────────────────────────────────────────┘
+
+Show:
+- Full project details (all fields)
+- Timeline with start/end dates
+- Team members list
+- Related ventures/contacts (if linked)
+- Activity feed (from project_updates table, newest first)
+- Quick actions: Edit, Delete (with confirmation), Change Status
+
+Edit button: Goes to edit form (same as create form, pre-filled)
+Delete button: Shows confirmation "Are you sure? This cannot be undone."
+Add Update button: Opens modal for quick update
+
+───────────────────────────────────────────────────────────────────────
+VIEW 3: ADD/EDIT PROJECT FORM
+───────────────────────────────────────────────────────────────────────
+
+Modal or separate page with form:
+
+┌────────────────────────────────────────────────────────┐
+│ New Project                                             │
+├────────────────────────────────────────────────────────┤
+│                                                         │
+│ Project Name *                                          │
+│ [_____________________________________________]        │
+│                                                         │
+│ Description                                            │
+│ [_____________________________________________]        │
+│ [_____________________________________________]        │
+│ [_____________________________________________]        │
+│                                                         │
+│ Status *                                               │
+│ [Planning ▼]                                           │
+│ Options: Planning, Active, On Hold, Completed          │
+│                                                         │
+│ Timeline                                               │
+│ Start Date: [01/03/2026]  End Date: [15/04/2026]      │
+│                                                         │
+│ Owner *                                                │
+│ [Kim Jeffrey ▼]                                        │
+│ (Dropdown of all contacts, or at least team members)   │
+│                                                         │
+│ Team Members (optional)                                │
+│ [Select people... ▼]                                   │
+│ Multi-select dropdown                                  │
+│ Selected: Kim Jeffrey, Developer                       │
+│                                                         │
+│ Goals                                                  │
+│ [_____________________________________________]        │
+│ [_____________________________________________]        │
+│ What we're trying to achieve                           │
+│                                                         │
+│ Deliverables                                           │
+│ [_____________________________________________]        │
+│ [_____________________________________________]        │
+│ What we're creating                                    │
+│                                                         │
+│ Related To (optional)                                  │
+│ Link to venture/group: [Select... ▼]                  │
+│ Link to contacts: [Select... ▼]                       │
+│ Multi-select for contacts                              │
+│                                                         │
+│ Notes                                                  │
+│ [_____________________________________________]        │
+│ [_____________________________________________]        │
+│ [_____________________________________________]        │
+│ Ongoing notes and updates                              │
+│                                                         │
+│          [Cancel]              [Save Project]          │
+│                                                         │
+└────────────────────────────────────────────────────────┘
+
+Validation rules:
+- Project name: Required, max 200 characters
+- Status: Required, default to 'planning'
+- Owner: Required
+- Start/End dates: Optional, but if both provided, end_date must be after start_date
+- All other fields: Optional
+
+On save (create new project):
+1. Insert into projects table
+2. Insert into project_updates table: "Project created" with type 'note'
+3. Set created_by to current user
+4. Redirect to project detail page
+5. Show success message: "Project created successfully!"
+
+On save (edit existing project):
+1. Update projects table
+2. If status changed: Insert into project_updates table with type 'status_change'
+3. Update updated_at timestamp
+4. Redirect to project detail page
+5. Show success message: "Project updated successfully!"
+
+───────────────────────────────────────────────────────────────────────
+VIEW 4: ADD UPDATE MODAL
+───────────────────────────────────────────────────────────────────────
+
+Quick modal from project detail page:
+
+┌──────────────────────────────────────────────┐
+│ Add Update to: Website Redesign              │
+├──────────────────────────────────────────────┤
+│                                              │
+│ Update Type:                                 │
+│ [Note ▼]                                     │
+│ Options: Note, Milestone, Blocker,           │
+│          Completed Task, Status Change       │
+│                                              │
+│ Update:                                      │
+│ [_______________________________]            │
+│ [_______________________________]            │
+│ [_______________________________]            │
+│                                              │
+│         [Cancel]      [Add Update]           │
+│                                              │
+└──────────────────────────────────────────────┘
+
+On submit:
+1. Insert into project_updates table
+2. Set created_by to current user
+3. Update project.updated_at timestamp
+4. Close modal
+5. Refresh activity feed on detail page
+6. Show success: "Update added"
+
+───────────────────────────────────────────────────────────────────────
+VIEW 5: DASHBOARD WIDGET
+───────────────────────────────────────────────────────────────────────
+
+Add to main dashboard (alongside other widgets from Bundle 3):
+
+┌────────────────────────────────────┐
+│ PROJECTS                           │
+│                                    │
+│ Active: 3                          │
+│ Planning: 2                        │
+│                                    │
+│ • Website Redesign (due 15 Apr)   │
+│ • Marketing Campaign (due 30 Jun) │
+│ • Alumni Network (due 15 May)     │
+│                                    │
+│           [View All Projects →]    │
+└────────────────────────────────────┘
+
+Display:
+- Count of active projects
+- Count of planning projects
+- List of 3-5 most urgent active projects (sorted by due date, soonest first)
+- Each project shows: name and due date
+- Link to full projects list
+
+If no active projects:
+"No active projects. Start one!"
+
+═══════════════════════════════════════════════════════════════════════
+
+ADDITIONAL REQUIREMENTS:
+
+1. Mobile Responsive:
+   - List view: Stack project cards
+   - Detail view: Collapse sections on mobile
+   - Forms: Full-width inputs on mobile
+
+2. Color Coding (Status badges):
+   - Planning: #3B82F6 (blue)
+   - Active: #10B981 (green)
+   - On Hold: #F59E0B (yellow/orange)
+   - Completed: #6B7280 (gray)
+   - Cancelled: #EF4444 (red)
+
+3. Timestamps:
+   - Show relative time: "2 days ago", "1 week ago"
+   - On hover: Show full date/time
+   - Auto-update updated_at on any project change
+
+4. Permissions (if applicable):
+   - All team members can view all projects
+   - All team members can create projects
+   - Only project owner (or admin) can edit/delete
+   - All team members can add updates to any project
+
+5. Empty States:
+   - No projects: "No projects yet. Create your first project!"
+   - No updates: "No activity yet. Add an update to track progress."
+   - No team members: "No team members assigned."
+
+6. Success/Error Messages:
+   - Project created: "Project created successfully!"
+   - Project updated: "Project updated successfully!"
+   - Project deleted: "Project deleted successfully."
+   - Update added: "Update added successfully."
+   - Error: "Something went wrong. Please try again."
+
+7. Confirmation Dialogs:
+   - Delete project: "Are you sure you want to delete this project? This cannot be undone."
+   - Cancel form: "You have unsaved changes. Are you sure you want to cancel?"
+
+8. Form Auto-save (optional but nice):
+   - Save to localStorage while editing
+   - Restore if user refreshes page
+   - Clear on successful save or cancel
+
+═══════════════════════════════════════════════════════════════════════
+
+TESTING CHECKLIST:
+
+After building, test the following:
+
+DATABASE:
+□ Projects table created successfully
+□ Project_updates table created successfully
+□ Foreign keys work (links to contacts, groups)
+□ Can insert test project
+□ Can query active projects
+□ Can insert project update
+
+UI - LIST VIEW:
+□ Projects page accessible from navigation
+□ Shows list of all projects
+□ Status filter works (Planning, Active, etc.)
+□ Search works (by name)
+□ Can sort by different fields
+□ "New Project" button works
+□ Click project name → goes to detail
+
+UI - DETAIL VIEW:
+□ Shows full project information
+□ Activity feed displays updates
+□ "Edit" button works
+□ "Delete" button shows confirmation
+□ "Add Update" button opens modal
+□ Can change status
+□ Related ventures/contacts display
+
+UI - FORMS:
+□ Can create new project
+□ Required fields validated (name, owner, status)
+□ Date validation works (end after start)
+□ Team members multi-select works
+□ Related groups/contacts selectable
+□ Can edit existing project
+□ Form pre-fills when editing
+□ Save creates/updates correctly
+
+UI - UPDATES:
+□ Add update modal works
+□ Update types selectable
+□ Update saves to database
+□ Activity feed refreshes
+□ Shows who created update
+
+UI - DASHBOARD:
+□ Projects widget appears
+□ Shows active/planning counts
+□ Lists urgent projects
+□ "View All" link works
+
+FUNCTIONALITY:
+□ Status changes logged to updates table
+□ Owner changes work
+□ Team members save correctly (JSON)
+□ Related links work (groups, contacts)
+□ Timestamps update automatically
+□ Delete removes project and all updates
+□ Empty states show correctly
+
+═══════════════════════════════════════════════════════════════════════
+
+IMPLEMENTATION ORDER:
+
+1. Create database tables (projects, project_updates)
+2. Verify tables with sample data
+3. Build Projects list view with filters
+4. Build Project detail view
+5. Build Add/Edit form
+6. Build Add Update modal
+7. Add Dashboard widget
+8. Test all functionality
+9. Polish UI and add error handling
+10. Final testing
+
+═══════════════════════════════════════════════════════════════════════
+
+Execute this implementation step by step. Show me progress after each major component (database, then each view). Test thoroughly before marking complete.
+
+If you encounter any issues or need clarification on:
+- How to structure team_members JSON
+- How to handle related_contact_ids JSON
+- Date formatting preferences
+- Current user identification
+- Navigation structure
+
+Please ask before proceeding.
+
+Begin with database creation and verify it works before building UI.
