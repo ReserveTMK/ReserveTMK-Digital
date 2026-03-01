@@ -26,6 +26,9 @@ import {
   mentorAvailability,
   type MentorAvailability,
   type InsertMentorAvailability,
+  mentorProfiles,
+  type MentorProfile,
+  type InsertMentorProfile,
   type Event,
   type InsertEvent,
   type UpdateEventRequest,
@@ -157,6 +160,13 @@ export interface IStorage {
   createMentorAvailability(slot: InsertMentorAvailability): Promise<MentorAvailability>;
   updateMentorAvailability(id: number, updates: Partial<InsertMentorAvailability>): Promise<MentorAvailability>;
   deleteMentorAvailability(id: number): Promise<void>;
+
+  // Mentor Profiles
+  getMentorProfiles(userId: string): Promise<MentorProfile[]>;
+  getMentorProfile(id: number): Promise<MentorProfile | undefined>;
+  createMentorProfile(profile: InsertMentorProfile): Promise<MentorProfile>;
+  updateMentorProfile(id: number, updates: Partial<InsertMentorProfile>): Promise<MentorProfile>;
+  deleteMentorProfile(id: number): Promise<void>;
   
   // Events
   getEvents(userId: string): Promise<Event[]>;
@@ -551,6 +561,29 @@ export class DatabaseStorage implements IStorage {
 
   async deleteMentorAvailability(id: number): Promise<void> {
     await db.delete(mentorAvailability).where(eq(mentorAvailability.id, id));
+  }
+
+  async getMentorProfiles(userId: string): Promise<MentorProfile[]> {
+    return await db.select().from(mentorProfiles).where(eq(mentorProfiles.userId, userId)).orderBy(mentorProfiles.name);
+  }
+
+  async getMentorProfile(id: number): Promise<MentorProfile | undefined> {
+    const [result] = await db.select().from(mentorProfiles).where(eq(mentorProfiles.id, id));
+    return result;
+  }
+
+  async createMentorProfile(profile: InsertMentorProfile): Promise<MentorProfile> {
+    const [result] = await db.insert(mentorProfiles).values(profile).returning();
+    return result;
+  }
+
+  async updateMentorProfile(id: number, updates: Partial<InsertMentorProfile>): Promise<MentorProfile> {
+    const [result] = await db.update(mentorProfiles).set(updates).where(eq(mentorProfiles.id, id)).returning();
+    return result;
+  }
+
+  async deleteMentorProfile(id: number): Promise<void> {
+    await db.delete(mentorProfiles).where(eq(mentorProfiles.id, id));
   }
 
   // Events

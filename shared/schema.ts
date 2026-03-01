@@ -136,6 +136,17 @@ export const mentorAvailability = pgTable("mentor_availability", {
   maxDailyBookings: integer("max_daily_bookings"),
 });
 
+export const mentorProfiles = pgTable("mentor_profiles", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  mentorUserId: text("mentor_user_id"),
+  name: text("name").notNull(),
+  email: text("email"),
+  isActive: boolean("is_active").default(true),
+  googleCalendarId: text("google_calendar_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const events = pgTable("events", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
@@ -1019,6 +1030,13 @@ export const insertMentorAvailabilitySchema = createInsertSchema(mentorAvailabil
 
 export type MentorAvailability = typeof mentorAvailability.$inferSelect;
 export type InsertMentorAvailability = z.infer<typeof insertMentorAvailabilitySchema>;
+
+export const insertMentorProfileSchema = createInsertSchema(mentorProfiles).omit({
+  id: true,
+  createdAt: true,
+});
+export type MentorProfile = typeof mentorProfiles.$inferSelect;
+export type InsertMentorProfile = z.infer<typeof insertMentorProfileSchema>;
 
 export type Event = typeof events.$inferSelect;
 export type InsertEvent = z.infer<typeof insertEventSchema>;

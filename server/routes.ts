@@ -8,7 +8,7 @@ import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON } from "./replit_integrations/anthropic/client";
 import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, type ReportFilters } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates } from "@shared/schema";
+import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql, gte, lte } from "drizzle-orm";
 import { scanGmailEmails, startAutoSync, getGmailOAuth2Client } from "./gmail-import";
@@ -654,6 +654,24 @@ export async function registerRoutes(
 
   // === Meetings API ===
 
+  app.get('/api/meetings/all-mentors', isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const profiles = await storage.getMentorProfiles(userId);
+    const mentorUserIds = new Set<string>();
+    mentorUserIds.add(userId);
+    for (const p of profiles) {
+      if (p.mentorUserId) mentorUserIds.add(p.mentorUserId);
+      mentorUserIds.add(`mentor-${p.id}`);
+    }
+    const allMeetings = [];
+    for (const mid of mentorUserIds) {
+      const m = await storage.getMeetings(mid);
+      allMeetings.push(...m.map(mtg => ({ ...mtg, mentorName: profiles.find(p => p.mentorUserId === mid || `mentor-${p.id}` === mid)?.name || 'You' })));
+    }
+    allMeetings.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+    res.json(allMeetings);
+  });
+
   app.get(api.meetings.list.path, isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
     const meetingsList = await storage.getMeetings(userId);
@@ -780,15 +798,83 @@ export async function registerRoutes(
 
   // === Mentor Availability API ===
 
+  async function isMentorOwner(adminUserId: string, targetMentorUserId: string): Promise<boolean> {
+    if (adminUserId === targetMentorUserId) return true;
+    const profiles = await storage.getMentorProfiles(adminUserId);
+    return profiles.some(p => p.mentorUserId === targetMentorUserId || `mentor-${p.id}` === targetMentorUserId);
+  }
+
+  app.get('/api/mentor-profiles', isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    let profiles = await storage.getMentorProfiles(userId);
+    if (profiles.length === 0) {
+      await storage.createMentorProfile({ userId, mentorUserId: userId, name: 'Ra Beazley', email: 'kiaora@reservetmk.co.nz', isActive: true, googleCalendarId: null });
+      await storage.createMentorProfile({ userId, mentorUserId: null, name: 'Kim Beazley', email: 'kim@reservetmk.co.nz', isActive: true, googleCalendarId: null });
+      profiles = await storage.getMentorProfiles(userId);
+    }
+    res.json(profiles);
+  });
+
+  app.post('/api/mentor-profiles', isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const { name, email, mentorUserId, isActive, googleCalendarId } = req.body;
+    if (!name || typeof name !== 'string') return res.status(400).json({ message: "name is required" });
+    const profile = await storage.createMentorProfile({
+      userId,
+      name: name.trim(),
+      email: email || null,
+      mentorUserId: mentorUserId || null,
+      isActive: isActive !== undefined ? isActive : true,
+      googleCalendarId: googleCalendarId || null,
+    });
+    res.status(201).json(profile);
+  });
+
+  app.patch('/api/mentor-profiles/:id', isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const userId = (req.user as any).claims.sub;
+    const existing = await storage.getMentorProfile(id);
+    if (!existing) return res.status(404).json({ message: "Mentor not found" });
+    if (existing.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+    const { name, email, isActive, googleCalendarId } = req.body;
+    const updates: any = {};
+    if (name !== undefined) updates.name = name;
+    if (email !== undefined) updates.email = email;
+    if (isActive !== undefined) updates.isActive = isActive;
+    if (googleCalendarId !== undefined) updates.googleCalendarId = googleCalendarId;
+    const updated = await storage.updateMentorProfile(id, updates);
+    res.json(updated);
+  });
+
+  app.delete('/api/mentor-profiles/:id', isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const userId = (req.user as any).claims.sub;
+    const existing = await storage.getMentorProfile(id);
+    if (!existing) return res.status(404).json({ message: "Mentor not found" });
+    if (existing.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+    await storage.deleteMentorProfile(id);
+    res.status(204).send();
+  });
+
   app.get('/api/mentor-availability', isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
+    const forMentor = req.query.mentorUserId as string | undefined;
+    if (forMentor) {
+      const allowed = await isMentorOwner(userId, forMentor);
+      if (!allowed) return res.status(403).json({ message: "Forbidden" });
+      const slots = await storage.getMentorAvailability(forMentor);
+      return res.json(slots);
+    }
     const slots = await storage.getMentorAvailability(userId);
     res.json(slots);
   });
 
   app.post('/api/mentor-availability', isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
-    const slot = await storage.createMentorAvailability({ ...req.body, userId });
+    const targetUserId = req.body.userId || userId;
+    const allowed = await isMentorOwner(userId, targetUserId);
+    if (!allowed) return res.status(403).json({ message: "Forbidden" });
+    const slot = await storage.createMentorAvailability({ ...req.body, userId: targetUserId });
     res.status(201).json(slot);
   });
 
@@ -797,7 +883,8 @@ export async function registerRoutes(
     const userId = (req.user as any).claims.sub;
     const existing = await storage.getMentorAvailabilityById(id);
     if (!existing) return res.status(404).json({ message: "Availability slot not found" });
-    if (existing.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+    const allowed = await isMentorOwner(userId, existing.userId);
+    if (!allowed) return res.status(403).json({ message: "Forbidden" });
     const updated = await storage.updateMentorAvailability(id, req.body);
     res.json(updated);
   });
@@ -807,7 +894,8 @@ export async function registerRoutes(
     const userId = (req.user as any).claims.sub;
     const existing = await storage.getMentorAvailabilityById(id);
     if (!existing) return res.status(404).json({ message: "Availability slot not found" });
-    if (existing.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+    const allowed = await isMentorOwner(userId, existing.userId);
+    if (!allowed) return res.status(403).json({ message: "Forbidden" });
     await storage.deleteMentorAvailability(id);
     res.status(204).send();
   });
@@ -831,6 +919,27 @@ export async function registerRoutes(
     }
   });
 
+  async function resolveMentorUserId(rawId: string): Promise<{ availabilityUserId: string; googleCalendarId: string | null; ownerUserId: string | null }> {
+    if (rawId.startsWith('mentor-')) {
+      const mentorId = parseInt(rawId.replace('mentor-', ''));
+      const profile = await storage.getMentorProfile(mentorId);
+      if (profile && profile.isActive) {
+        return {
+          availabilityUserId: profile.mentorUserId || `mentor-${profile.id}`,
+          googleCalendarId: profile.googleCalendarId,
+          ownerUserId: profile.userId,
+        };
+      }
+    }
+    const allProfiles = await db.select().from(mentorProfiles).where(and(eq(mentorProfiles.mentorUserId, rawId), eq(mentorProfiles.isActive, true)));
+    const matchingProfile = allProfiles[0];
+    return {
+      availabilityUserId: rawId,
+      googleCalendarId: matchingProfile?.googleCalendarId || null,
+      ownerUserId: matchingProfile?.userId || rawId,
+    };
+  }
+
   app.get('/api/public/mentoring/:userId/slots', async (req, res) => {
     try {
       const { userId } = req.params;
@@ -839,7 +948,8 @@ export async function registerRoutes(
         return res.status(400).json({ message: "date query parameter required (YYYY-MM-DD)" });
       }
 
-      const availabilitySlots = await storage.getMentorAvailability(userId);
+      const resolved = await resolveMentorUserId(userId);
+      const availabilitySlots = await storage.getMentorAvailability(resolved.availabilityUserId);
       const activeSlots = availabilitySlots.filter(s => s.isActive);
 
       const targetDate = new Date(date + 'T00:00:00+13:00');
@@ -851,7 +961,7 @@ export async function registerRoutes(
         return res.json({ date, slots: [] });
       }
 
-      const existingMeetings = await storage.getMeetings(userId);
+      const existingMeetings = await storage.getMeetings(resolved.availabilityUserId);
       const dayStart = new Date(date + 'T00:00:00+13:00');
       const dayEnd = new Date(date + 'T23:59:59+13:00');
       const dayMeetings = existingMeetings.filter(m => {
@@ -911,14 +1021,15 @@ export async function registerRoutes(
         const queryStart = new Date(date + 'T00:00:00' + tzSuffix);
         const queryEnd = new Date(date + 'T23:59:59' + tzSuffix);
 
+        const calId = resolved.googleCalendarId || "primary";
         const freeBusyRes = await calendar.freebusy.query({
           requestBody: {
             timeMin: queryStart.toISOString(),
             timeMax: queryEnd.toISOString(),
-            items: [{ id: "primary" }],
+            items: [{ id: calId }],
           },
         });
-        const busyPeriods = freeBusyRes.data.calendars?.primary?.busy || [];
+        const busyPeriods = freeBusyRes.data.calendars?.[calId]?.busy || [];
         if (busyPeriods.length > 0) {
           filteredSlots = filteredSlots.filter(s => {
             const slotStartUTC = new Date(date + 'T' + s.time + ':00' + tzSuffix);
@@ -944,6 +1055,13 @@ export async function registerRoutes(
   app.get('/api/public/mentoring/:userId/info', async (req, res) => {
     try {
       const { userId } = req.params;
+      if (userId.startsWith('mentor-')) {
+        const mentorId = parseInt(userId.replace('mentor-', ''));
+        const profile = await storage.getMentorProfile(mentorId);
+        if (!profile) return res.status(404).json({ message: "Not found" });
+        const nameParts = profile.name.split(' ');
+        return res.json({ firstName: nameParts[0], lastName: nameParts.slice(1).join(' ') || '' });
+      }
       const { users } = await import("@shared/schema");
       const result = await db.select().from(users).where(eq(users.id, userId));
       if (result.length === 0) return res.status(404).json({ message: "Not found" });
@@ -955,7 +1073,10 @@ export async function registerRoutes(
 
   app.post('/api/public/mentoring/:userId/book', async (req, res) => {
     try {
-      const { userId } = req.params;
+      const rawId = req.params.userId;
+      const resolved = await resolveMentorUserId(rawId);
+      const meetingUserId = resolved.availabilityUserId;
+      const contactOwnerUserId = resolved.ownerUserId || resolved.availabilityUserId;
       const { name, email, phone, date, time, duration, focus, notes } = req.body;
 
       if (!name || !date || !time) {
@@ -968,12 +1089,12 @@ export async function registerRoutes(
 
       let contact;
       if (email) {
-        const allContacts = await storage.getContacts(userId);
+        const allContacts = await storage.getContacts(contactOwnerUserId);
         contact = allContacts.find((c: any) => c.email && c.email.toLowerCase() === email.toLowerCase());
       }
       if (!contact) {
         contact = await storage.createContact({
-          userId,
+          userId: contactOwnerUserId,
           name,
           email: email || null,
           phone: phone || null,
@@ -983,7 +1104,7 @@ export async function registerRoutes(
       }
 
       const meeting = await storage.createMeeting({
-        userId,
+        userId: meetingUserId,
         contactId: contact.id,
         title: `Mentoring: ${name}`,
         description: focus || null,
@@ -1958,15 +2079,18 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
   app.post("/api/mentor-availability/quick-setup", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
-      const existing = await storage.getMentorAvailability(userId);
+      const adminUserId = (req.user as any).claims.sub;
+      const targetUserId = req.body.mentorUserId || adminUserId;
+      const allowed = await isMentorOwner(adminUserId, targetUserId);
+      if (!allowed) return res.status(403).json({ message: "Forbidden" });
+      const existing = await storage.getMentorAvailability(targetUserId);
       if (existing.length > 0) {
         return res.status(400).json({ message: "Availability already configured" });
       }
       const defaults = [];
       for (let day = 0; day <= 4; day++) {
         const slot = await storage.createMentorAvailability({
-          userId,
+          userId: targetUserId,
           dayOfWeek: day,
           startTime: "09:00",
           endTime: "16:00",

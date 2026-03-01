@@ -41,9 +41,11 @@ import {
   CalendarCheck,
   CalendarX,
   Zap,
+  UserPlus,
+  Settings,
 } from "lucide-react";
 import { useAnalyzeInteraction } from "@/hooks/use-interactions";
-import type { Meeting, MentorAvailability } from "@shared/schema";
+import type { Meeting, MentorAvailability, MentorProfile } from "@shared/schema";
 
 const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -68,9 +70,23 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }>
   "no-show": { label: "No-show", color: "bg-orange-500/10 text-orange-700 dark:text-orange-400", icon: UserX },
 };
 
-function useAvailability() {
+function getMentorBookingId(profile: MentorProfile): string {
+  return profile.mentorUserId || `mentor-${profile.id}`;
+}
+
+function useMentorProfiles() {
+  return useQuery<MentorProfile[]>({ queryKey: ["/api/mentor-profiles"] });
+}
+
+function useAvailability(mentorUserId?: string) {
+  const url = mentorUserId ? `/api/mentor-availability?mentorUserId=${mentorUserId}` : "/api/mentor-availability";
   return useQuery<MentorAvailability[]>({
-    queryKey: ["/api/mentor-availability"],
+    queryKey: ["/api/mentor-availability", mentorUserId || "self"],
+    queryFn: async () => {
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch availability");
+      return res.json();
+    },
   });
 }
 
@@ -198,11 +214,11 @@ function ScheduleSessionDialog({ open, onOpenChange }: { open: boolean; onOpenCh
                     className="w-full text-left px-3 py-2 hover:bg-muted text-sm"
                     onClick={() => {
                       setContactId(String(c.id));
-                      setContactSearch(c.name);
+                      setContactSearch("");
                     }}
-                    data-testid={`select-contact-${c.id}`}
+                    data-testid={`option-contact-${c.id}`}
                   >
-                    {c.name} {c.role && <span className="text-muted-foreground">· {c.role}</span>}
+                    {c.name}
                   </button>
                 ))}
               </div>
@@ -230,15 +246,14 @@ function ScheduleSessionDialog({ open, onOpenChange }: { open: boolean; onOpenCh
                   <SelectItem value="30">30 min</SelectItem>
                   <SelectItem value="45">45 min</SelectItem>
                   <SelectItem value="60">60 min</SelectItem>
-                  <SelectItem value="90">90 min</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Focus Area</Label>
+              <Label>Focus</Label>
               <Select value={focus} onValueChange={setFocus}>
                 <SelectTrigger data-testid="select-focus">
-                  <SelectValue placeholder="Select..." />
+                  <SelectValue placeholder="Select focus..." />
                 </SelectTrigger>
                 <SelectContent>
                   {FOCUS_OPTIONS.map(f => (
@@ -249,17 +264,17 @@ function ScheduleSessionDialog({ open, onOpenChange }: { open: boolean; onOpenCh
             </div>
           </div>
           <div className="space-y-2">
-            <Label>Location</Label>
-            <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. The Hub, Zoom, Phone" data-testid="input-location" />
+            <Label>Location (optional)</Label>
+            <Input placeholder="e.g., Reserve TMK office" value={location} onChange={(e) => setLocation(e.target.value)} data-testid="input-location" />
           </div>
           <div className="space-y-2">
-            <Label>Notes</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Prep notes or context..." rows={2} data-testid="input-session-notes" />
+            <Label>Notes (optional)</Label>
+            <Textarea placeholder="Any notes..." value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} data-testid="input-notes" />
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={!contactId || !date || !time || createMeeting.isPending} data-testid="button-schedule-session">
+          <Button onClick={handleSubmit} disabled={!contactId || !date || createMeeting.isPending} data-testid="button-submit-session">
             {createMeeting.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
             Schedule
           </Button>
@@ -269,11 +284,11 @@ function ScheduleSessionDialog({ open, onOpenChange }: { open: boolean; onOpenCh
   );
 }
 
-function AddAvailabilityDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+function AddAvailabilityDialog({ open, onOpenChange, mentorUserId }: { open: boolean; onOpenChange: (v: boolean) => void; mentorUserId?: string }) {
   const createAvailability = useCreateAvailability();
   const [dayOfWeek, setDayOfWeek] = useState("0");
   const [startTime, setStartTime] = useState("09:00");
-  const [endTime, setEndTime] = useState("17:00");
+  const [endTime, setEndTime] = useState("16:00");
   const [slotDuration, setSlotDuration] = useState("30");
   const [bufferMinutes, setBufferMinutes] = useState("15");
 
@@ -285,6 +300,7 @@ function AddAvailabilityDialog({ open, onOpenChange }: { open: boolean; onOpenCh
       slotDuration: parseInt(slotDuration),
       bufferMinutes: parseInt(bufferMinutes),
       isActive: true,
+      ...(mentorUserId ? { userId: mentorUserId } : {}),
     }, {
       onSuccess: () => {
         onOpenChange(false);
@@ -297,7 +313,7 @@ function AddAvailabilityDialog({ open, onOpenChange }: { open: boolean; onOpenCh
       <DialogContent className="sm:max-w-[400px]">
         <DialogHeader>
           <DialogTitle>Add Availability Window</DialogTitle>
-          <DialogDescription>Set when you're available for mentoring</DialogDescription>
+          <DialogDescription>Set when this mentor is available</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-2">
@@ -381,37 +397,21 @@ function DebriefDialog({ meeting, contactName, open, onOpenChange }: { meeting: 
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/meetings"] });
-      toast({ title: "Debrief logged", description: "Session marked as completed with linked transcript" });
+      queryClient.invalidateQueries({ queryKey: ["/api/meetings/all-mentors"] });
+      toast({ title: "Debrief saved", description: "Session linked to interaction record" });
       onOpenChange(false);
-      setTranscript("");
-      setSummary("");
     },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Debrief failed", description: e.message, variant: "destructive" }),
   });
 
-  const handleAnalyzeAndSave = () => {
-    if (!transcript.trim() && !summary.trim()) return;
-    if (transcript.trim()) {
-      analyze.mutate({ text: transcript }, {
-        onSuccess: (data) => {
-          debrief.mutate({
-            transcript,
-            summary: data.summary || summary,
-            analysis: {
-              mindsetScore: data.metrics?.mindset,
-              skillScore: data.metrics?.skill,
-              confidenceScore: data.metrics?.confidence,
-              confidenceScoreMetric: data.metrics?.confidenceScore,
-              systemsInPlaceScore: data.metrics?.systemsInPlace,
-              fundingReadinessScore: data.metrics?.fundingReadiness,
-              networkStrengthScore: data.metrics?.networkStrength,
-              keyInsights: data.keywords,
-            },
-          });
-        },
-      });
-    } else {
-      debrief.mutate({ summary });
+  const handleAnalyzeAndSave = async () => {
+    if (!transcript.trim()) return;
+    try {
+      const analysis = await analyze.mutateAsync({ transcript, contactName });
+      debrief.mutate({ transcript, summary: summary || undefined, analysis });
+    } catch {
+      toast({ title: "Analysis failed", description: "Saving debrief without analysis", variant: "destructive" });
+      debrief.mutate({ transcript, summary: summary || undefined });
     }
   };
 
@@ -424,14 +424,14 @@ function DebriefDialog({ meeting, contactName, open, onOpenChange }: { meeting: 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[520px] max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Log Debrief</DialogTitle>
-          <DialogDescription>Record notes or a transcript for your session with {contactName}</DialogDescription>
+          <DialogTitle>Log Debrief: {contactName}</DialogTitle>
+          <DialogDescription>Record what happened in this mentoring session</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-2">
             <Label>Quick Summary</Label>
             <Textarea
-              placeholder="What happened in this session? Key takeaways, actions..."
+              placeholder="Brief overview of the session..."
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
               rows={3}
@@ -477,7 +477,7 @@ function DebriefDialog({ meeting, contactName, open, onOpenChange }: { meeting: 
   );
 }
 
-function SessionCard({ meeting, contacts }: { meeting: Meeting; contacts: any[] }) {
+function SessionCard({ meeting, contacts, showMentor }: { meeting: Meeting & { mentorName?: string }; contacts: any[]; showMentor?: boolean }) {
   const updateMeeting = useUpdateMeeting();
   const deleteMeeting = useDeleteMeeting();
   const [showDebrief, setShowDebrief] = useState(false);
@@ -492,8 +492,13 @@ function SessionCard({ meeting, contacts }: { meeting: Meeting; contacts: any[] 
       <Card className="p-4" data-testid={`session-card-${meeting.id}`}>
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <h4 className="font-medium text-sm truncate">{contact?.name || "Unknown"}</h4>
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <h4 className="font-medium text-sm truncate">{contact?.name || meeting.title?.replace('Mentoring: ', '') || "Unknown"}</h4>
+              {showMentor && meeting.mentorName && (
+                <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
+                  <Users className="w-3 h-3 mr-1" /> {meeting.mentorName}
+                </Badge>
+              )}
               <Badge className={`text-[10px] h-5 px-1.5 ${config.color}`} variant="outline" data-testid={`badge-status-${meeting.id}`}>
                 <StatusIcon className="w-3 h-3 mr-1" />
                 {config.label}
@@ -603,16 +608,29 @@ function SessionCard({ meeting, contacts }: { meeting: Meeting; contacts: any[] 
 }
 
 function SessionsTab() {
-  const { data: meetingsData, isLoading } = useMeetings();
+  const { data: allMentorMeetings, isLoading: allLoading } = useQuery<(Meeting & { mentorName: string })[]>({
+    queryKey: ["/api/meetings/all-mentors"],
+  });
   const { data: contacts } = useContacts();
   const [showSchedule, setShowSchedule] = useState(false);
   const [filter, setFilter] = useState("upcoming");
   const [search, setSearch] = useState("");
+  const [mentorFilter, setMentorFilter] = useState("all");
 
   const meetings = useMemo(() => {
-    if (!meetingsData) return [];
-    return (meetingsData as Meeting[]).filter(m => m.type === "mentoring" || !m.type);
-  }, [meetingsData]);
+    if (!allMentorMeetings) return [];
+    let list = allMentorMeetings.filter(m => m.type === "mentoring" || !m.type);
+    if (mentorFilter !== "all") {
+      list = list.filter(m => m.mentorName === mentorFilter);
+    }
+    return list;
+  }, [allMentorMeetings, mentorFilter]);
+
+  const mentorNames = useMemo(() => {
+    if (!allMentorMeetings) return [];
+    const names = new Set(allMentorMeetings.map(m => m.mentorName));
+    return Array.from(names).sort();
+  }, [allMentorMeetings]);
 
   const now = new Date();
 
@@ -630,7 +648,7 @@ function SessionsTab() {
       const contactList = (contacts || []) as any[];
       list = list.filter(m => {
         const c = contactList.find((ct: any) => ct.id === m.contactId);
-        return c?.name.toLowerCase().includes(term) || m.mentoringFocus?.toLowerCase().includes(term);
+        return c?.name.toLowerCase().includes(term) || m.mentoringFocus?.toLowerCase().includes(term) || m.mentorName?.toLowerCase().includes(term);
       });
     }
     return list.sort((a, b) => {
@@ -647,7 +665,7 @@ function SessionsTab() {
     return { total, completed, upcoming, uniqueMentees };
   }, [meetings, now]);
 
-  if (isLoading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" /></div>;
+  if (allLoading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" /></div>;
 
   return (
     <div className="space-y-4">
@@ -675,6 +693,19 @@ function SessionsTab() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input placeholder="Search sessions..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-9" data-testid="input-session-search" />
         </div>
+        {mentorNames.length > 1 && (
+          <Select value={mentorFilter} onValueChange={setMentorFilter}>
+            <SelectTrigger className="w-[140px] h-9" data-testid="select-mentor-filter">
+              <SelectValue placeholder="All Mentors" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Mentors</SelectItem>
+              {mentorNames.map(n => (
+                <SelectItem key={n} value={n}>{n}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <div className="flex gap-1">
           {(["upcoming", "past", "cancelled"] as const).map(f => (
             <Button
@@ -706,7 +737,7 @@ function SessionsTab() {
       ) : (
         <div className="space-y-2">
           {filtered.map(m => (
-            <SessionCard key={m.id} meeting={m} contacts={(contacts || []) as any[]} />
+            <SessionCard key={m.id} meeting={m} contacts={(contacts || []) as any[]} showMentor={mentorFilter === "all" && mentorNames.length > 1} />
           ))}
         </div>
       )}
@@ -717,12 +748,22 @@ function SessionsTab() {
 }
 
 function AvailabilityTab() {
-  const { data: availability, isLoading } = useAvailability();
-  const updateAvailability = useUpdateAvailability();
-  const deleteAvailability = useDeleteAvailability();
+  const { data: profiles } = useMentorProfiles();
+  const [selectedMentorId, setSelectedMentorId] = useState<string>("");
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  const selectedProfile = useMemo(() => {
+    if (!profiles || profiles.length === 0) return null;
+    if (!selectedMentorId) return profiles[0];
+    return profiles.find(p => String(p.id) === selectedMentorId) || profiles[0];
+  }, [profiles, selectedMentorId]);
+
+  const mentorUserId = selectedProfile ? getMentorBookingId(selectedProfile) : undefined;
+  const { data: availability, isLoading } = useAvailability(mentorUserId);
+  const updateAvailability = useUpdateAvailability();
+  const deleteAvailability = useDeleteAvailability();
   const [showAdd, setShowAdd] = useState(false);
 
   const { data: calStatus } = useQuery<{ connected: boolean }>({
@@ -731,7 +772,9 @@ function AvailabilityTab() {
 
   const quickSetup = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/mentor-availability/quick-setup");
+      const res = await apiRequest("POST", "/api/mentor-availability/quick-setup", {
+        mentorUserId: mentorUserId,
+      });
       return res.json();
     },
     onSuccess: () => {
@@ -742,26 +785,43 @@ function AvailabilityTab() {
   });
 
   const bookingUrl = useMemo(() => {
-    if (!user) return "";
-    return `${window.location.origin}/book/${(user as any).id}`;
-  }, [user]);
+    if (!selectedProfile) return "";
+    const id = getMentorBookingId(selectedProfile);
+    return `${window.location.origin}/book/${id}`;
+  }, [selectedProfile]);
 
   const copyLink = () => {
     navigator.clipboard.writeText(bookingUrl);
     toast({ title: "Link copied!", description: "Share this link for people to book mentoring sessions" });
   };
 
-  if (isLoading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" /></div>;
+  if (!profiles) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" /></div>;
 
   const slots = (availability || []) as MentorAvailability[];
 
   return (
     <div className="space-y-6">
+      {profiles.length > 1 && (
+        <div className="flex items-center gap-3">
+          <Label className="text-sm font-medium shrink-0">Manage availability for:</Label>
+          <Select value={selectedMentorId || String(profiles[0]?.id)} onValueChange={setSelectedMentorId}>
+            <SelectTrigger className="w-[200px]" data-testid="select-mentor-availability">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {profiles.map(p => (
+                <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       <Card className="p-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <h3 className="font-semibold text-sm">Your Booking Link</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">Share this link so people can book mentoring sessions with you</p>
+            <h3 className="font-semibold text-sm">{selectedProfile?.name}'s Booking Link</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">Share this link so people can book mentoring sessions</p>
           </div>
           <div className="flex items-center gap-2">
             <code className="text-xs bg-muted px-3 py-1.5 rounded-md max-w-[300px] truncate" data-testid="text-booking-url">
@@ -777,33 +837,40 @@ function AvailabilityTab() {
         </div>
       </Card>
 
-      {calStatus?.connected ? (
+      {selectedProfile?.googleCalendarId ? (
         <div className="flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 rounded-md px-3 py-2" data-testid="notice-gcal-connected">
           <CalendarCheck className="w-4 h-4 shrink-0" />
-          <span>Google Calendar connected — your busy times are automatically excluded from available slots</span>
+          <span>Google Calendar ({selectedProfile.googleCalendarId}) synced — busy times are automatically excluded from available slots</span>
+        </div>
+      ) : calStatus?.connected ? (
+        <div className="flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 rounded-md px-3 py-2" data-testid="notice-gcal-connected">
+          <CalendarCheck className="w-4 h-4 shrink-0" />
+          <span>Google Calendar connected (primary) — busy times are automatically excluded. Set a specific calendar in the Mentors tab for more control.</span>
         </div>
       ) : (
         <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded-md px-3 py-2" data-testid="notice-gcal-disconnected">
           <CalendarX className="w-4 h-4 shrink-0" />
-          <span>Google Calendar not connected — connect it to automatically block busy times from your booking slots</span>
+          <span>Google Calendar not connected — connect it to automatically block busy times from booking slots</span>
         </div>
       )}
 
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-semibold text-sm">Weekly Availability</h3>
-          <p className="text-xs text-muted-foreground">Set the times you're available for mentoring each week</p>
+          <p className="text-xs text-muted-foreground">Set the times {selectedProfile?.name} is available for mentoring each week</p>
         </div>
         <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-availability">
           <Plus className="w-4 h-4 mr-1" /> Add Window
         </Button>
       </div>
 
-      {slots.length === 0 ? (
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin" /></div>
+      ) : slots.length === 0 ? (
         <Card className="p-8 text-center">
           <Clock className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">No availability set</p>
-          <p className="text-xs text-muted-foreground mt-1">Add your weekly hours so people can book sessions</p>
+          <p className="text-sm text-muted-foreground">No availability set for {selectedProfile?.name}</p>
+          <p className="text-xs text-muted-foreground mt-1">Add weekly hours so people can book sessions</p>
           <div className="flex justify-center gap-2 mt-3">
             <Button size="sm" variant="outline" onClick={() => setShowAdd(true)}>
               <Plus className="w-4 h-4 mr-1" /> Add manually
@@ -858,7 +925,244 @@ function AvailabilityTab() {
         </div>
       )}
 
-      <AddAvailabilityDialog open={showAdd} onOpenChange={setShowAdd} />
+      <AddAvailabilityDialog open={showAdd} onOpenChange={setShowAdd} mentorUserId={mentorUserId} />
+    </div>
+  );
+}
+
+function AddMentorDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+
+  const create = useMutation({
+    mutationFn: async (data: { name: string; email: string }) => {
+      const res = await apiRequest("POST", "/api/mentor-profiles", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/mentor-profiles"] });
+      toast({ title: "Mentor added" });
+      onOpenChange(false);
+      setName("");
+      setEmail("");
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[400px]">
+        <DialogHeader>
+          <DialogTitle>Add Mentor</DialogTitle>
+          <DialogDescription>Add a new mentor to your roster</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label>Name</Label>
+            <Input placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} data-testid="input-mentor-name" />
+          </div>
+          <div className="space-y-2">
+            <Label>Email</Label>
+            <Input placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} data-testid="input-mentor-email" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={() => create.mutate({ name, email })} disabled={!name.trim() || create.isPending} data-testid="button-submit-mentor">
+            {create.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+            Add Mentor
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function MentorsTab() {
+  const { data: profiles, isLoading } = useMentorProfiles();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [showAdd, setShowAdd] = useState(false);
+  const [editingCalendar, setEditingCalendar] = useState<number | null>(null);
+  const [calendarId, setCalendarId] = useState("");
+
+  const { data: calendars } = useQuery<{ id: string; summary: string; primary: boolean }[]>({
+    queryKey: ["/api/google-calendar/list"],
+  });
+
+  const updateProfile = useMutation({
+    mutationFn: async ({ id, ...data }: { id: number } & any) => {
+      const res = await apiRequest("PATCH", `/api/mentor-profiles/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/mentor-profiles"] });
+      toast({ title: "Mentor updated" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const deleteProfile = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/mentor-profiles/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/mentor-profiles"] });
+      toast({ title: "Mentor removed" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  if (isLoading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" /></div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold text-sm">Mentor Roster</h3>
+          <p className="text-xs text-muted-foreground">Manage who can offer mentoring sessions and their calendar connections</p>
+        </div>
+        <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-mentor">
+          <UserPlus className="w-4 h-4 mr-1" /> Add Mentor
+        </Button>
+      </div>
+
+      <div className="space-y-3">
+        {(profiles || []).map((profile) => {
+          const bookingId = getMentorBookingId(profile);
+          const bookingUrl = `${window.location.origin}/book/${bookingId}`;
+          const isEditingCal = editingCalendar === profile.id;
+
+          return (
+            <Card key={profile.id} className="p-4" data-testid={`mentor-card-${profile.id}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-medium text-sm">{profile.name}</h4>
+                    {profile.isActive ? (
+                      <Badge variant="outline" className="text-[10px] h-5 bg-green-500/10 text-green-700 dark:text-green-400">Active</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[10px] h-5 bg-muted text-muted-foreground">Inactive</Badge>
+                    )}
+                    {profile.mentorUserId ? (
+                      <Badge variant="secondary" className="text-[10px] h-5">Account linked</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[10px] h-5 text-amber-600 border-amber-200">Pending login</Badge>
+                    )}
+                  </div>
+                  {profile.email && (
+                    <p className="text-xs text-muted-foreground">{profile.email}</p>
+                  )}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <code className="text-[11px] bg-muted px-2 py-1 rounded max-w-[260px] truncate">{bookingUrl}</code>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 text-xs"
+                      onClick={() => {
+                        navigator.clipboard.writeText(bookingUrl);
+                        toast({ title: "Link copied!" });
+                      }}
+                      data-testid={`button-copy-mentor-link-${profile.id}`}
+                    >
+                      <Copy className="w-3 h-3 mr-1" /> Copy
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 text-xs"
+                      onClick={() => window.open(bookingUrl, '_blank')}
+                      data-testid={`button-preview-mentor-link-${profile.id}`}
+                    >
+                      <ExternalLink className="w-3 h-3 mr-1" /> Preview
+                    </Button>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    {isEditingCal ? (
+                      <div className="flex items-center gap-2">
+                        <Select value={calendarId} onValueChange={setCalendarId}>
+                          <SelectTrigger className="h-7 text-xs w-[260px]" data-testid={`select-calendar-${profile.id}`}>
+                            <SelectValue placeholder="Select calendar..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">No calendar sync</SelectItem>
+                            {(calendars || []).map(c => (
+                              <SelectItem key={c.id} value={c.id}>
+                                {c.summary} {c.primary ? "(Primary)" : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            updateProfile.mutate({
+                              id: profile.id,
+                              googleCalendarId: calendarId === "none" ? null : calendarId,
+                            });
+                            setEditingCalendar(null);
+                          }}
+                          data-testid={`button-save-calendar-${profile.id}`}
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-xs"
+                          onClick={() => setEditingCalendar(null)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                          setEditingCalendar(profile.id);
+                          setCalendarId(profile.googleCalendarId || "none");
+                        }}
+                        data-testid={`button-edit-calendar-${profile.id}`}
+                      >
+                        <Settings className="w-3 h-3 mr-1" />
+                        {profile.googleCalendarId ? `Calendar: ${profile.googleCalendarId.split('@')[0]}` : "Set Google Calendar"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1 shrink-0">
+                  <Switch
+                    checked={profile.isActive ?? true}
+                    onCheckedChange={(checked) => updateProfile.mutate({ id: profile.id, isActive: checked })}
+                    data-testid={`switch-mentor-active-${profile.id}`}
+                  />
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 text-red-500"
+                    onClick={() => {
+                      if (confirm(`Remove ${profile.name} from the mentor roster?`)) {
+                        deleteProfile.mutate(profile.id);
+                      }
+                    }}
+                    data-testid={`button-delete-mentor-${profile.id}`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+
+      <AddMentorDialog open={showAdd} onOpenChange={setShowAdd} />
     </div>
   );
 }
@@ -875,12 +1179,16 @@ export default function MentoringPage() {
         <TabsList data-testid="mentoring-tabs">
           <TabsTrigger value="sessions" data-testid="tab-sessions">Sessions</TabsTrigger>
           <TabsTrigger value="availability" data-testid="tab-availability">Availability</TabsTrigger>
+          <TabsTrigger value="mentors" data-testid="tab-mentors">Mentors</TabsTrigger>
         </TabsList>
         <TabsContent value="sessions" className="mt-4">
           <SessionsTab />
         </TabsContent>
         <TabsContent value="availability" className="mt-4">
           <AvailabilityTab />
+        </TabsContent>
+        <TabsContent value="mentors" className="mt-4">
+          <MentorsTab />
         </TabsContent>
       </Tabs>
     </div>
