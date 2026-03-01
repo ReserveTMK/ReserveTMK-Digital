@@ -1,0 +1,69 @@
+I need to update my Reserve Tāmaki database schema to support a new journey framework.
+
+CONTEXT:
+We're moving from generic stages (exploring/testing/building/established) to a culturally-grounded Māori framework: kakano (seed/foundation) → tipu (actively growing) → ora (thriving).
+
+We're also expanding from just "businesses" to diverse venture types: commercial businesses, social enterprises, creative movements, and community initiatives.
+
+TASK:
+Update the database schema with the following changes:
+
+1. UPDATE contacts table:
+   - Change engagement_stage ENUM from ('exploring', 'testing', 'building', 'established', 'inactive') to ('kakano', 'tipu', 'ora', 'inactive')
+   - Map old values to new: exploring/testing → kakano, building → tipu, established → ora
+   - Add venture_type ENUM('commercial_business', 'social_enterprise', 'creative_movement', 'community_initiative', 'exploring') DEFAULT 'exploring'
+   - Add what_they_are_building TEXT field
+   - Add stage_progression JSON field to track journey history
+
+2. CREATE mentoring_relationships table:
+   - id (primary key)
+   - contact_id (foreign key to contacts)
+   - group_id (optional foreign key to groups)
+   - status ENUM('application', 'active', 'on_hold', 'graduated', 'ended') DEFAULT 'application'
+   - start_date, end_date
+   - focus_areas TEXT
+   - session_frequency ENUM('weekly', 'fortnightly', 'monthly') DEFAULT 'monthly'
+   - last_session_date, next_session_date
+   - total_sessions INT DEFAULT 0
+   - outcomes_achieved JSON
+   - graduation_notes TEXT
+   - created_at, updated_at timestamps
+
+3. CREATE mentoring_applications table:
+   - id (primary key)
+   - contact_id (foreign key to contacts)
+   - application_date DATE
+   - venture_description TEXT
+   - current_stage ENUM('kakano', 'tipu', 'ora')
+   - what_stuck_on TEXT
+   - what_need_help_with TEXT
+   - already_tried TEXT
+   - why_mentoring TEXT
+   - time_commitment_per_week VARCHAR(50)
+   - can_commit_3_months BOOLEAN
+   - status ENUM('pending', 'accepted', 'deferred', 'declined') DEFAULT 'pending'
+   - reviewed_by VARCHAR(100)
+   - reviewed_date DATE
+   - review_notes TEXT
+   - created_at timestamp
+
+4. VERIFY after migration:
+   - Count contacts by engagement_stage (should show kakano/tipu/ora distribution)
+   - Check for NULL values in engagement_stage
+   - Verify foreign keys work
+   - Test a sample query on new tables
+
+IMPORTANT:
+- Use transactions (START TRANSACTION / COMMIT)
+- Create a backup point before making changes
+- Include rollback script in case of issues
+- Add appropriate indexes for common queries
+
+Please generate the complete SQL migration script with:
+1. Data backup instructions
+2. ALTER and CREATE statements
+3. Data mapping (old stages → new stages)
+4. Verification queries
+5. Rollback script
+
+Show me the SQL first before executing.
