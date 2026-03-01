@@ -132,6 +132,12 @@ import {
   type InsertFunder,
   type FunderDocument,
   type InsertFunderDocument,
+  mentoringRelationships,
+  mentoringApplications,
+  type MentoringRelationship,
+  type InsertMentoringRelationship,
+  type MentoringApplication,
+  type InsertMentoringApplication,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, sql, max, count } from "drizzle-orm";
 
@@ -376,6 +382,25 @@ export interface IStorage {
   createFunderDocument(data: InsertFunderDocument): Promise<FunderDocument>;
   deleteFunderDocument(id: number): Promise<void>;
   getFunderDocument(id: number): Promise<FunderDocument | undefined>;
+
+  // Mentoring Relationships
+  getMentoringRelationships(): Promise<MentoringRelationship[]>;
+  getMentoringRelationship(id: number): Promise<MentoringRelationship | undefined>;
+  getMentoringRelationshipsByContact(contactId: number): Promise<MentoringRelationship[]>;
+  createMentoringRelationship(data: InsertMentoringRelationship): Promise<MentoringRelationship>;
+  updateMentoringRelationship(id: number, updates: Partial<InsertMentoringRelationship>): Promise<MentoringRelationship>;
+  deleteMentoringRelationship(id: number): Promise<void>;
+
+  // Mentoring Applications
+  getMentoringApplications(): Promise<MentoringApplication[]>;
+  getMentoringApplication(id: number): Promise<MentoringApplication | undefined>;
+  getMentoringApplicationsByContact(contactId: number): Promise<MentoringApplication[]>;
+  createMentoringApplication(data: InsertMentoringApplication): Promise<MentoringApplication>;
+  updateMentoringApplication(id: number, updates: Partial<InsertMentoringApplication>): Promise<MentoringApplication>;
+  deleteMentoringApplication(id: number): Promise<void>;
+
+  // Stage Progression
+  appendStageProgression(contactId: number, stage: string, notes?: string): Promise<Contact>;
 
   // Auth (re-exported or separate)
   auth: IAuthStorage;
@@ -1565,6 +1590,78 @@ export class DatabaseStorage implements IStorage {
 
   async deleteFunderDocument(id: number): Promise<void> {
     await db.delete(funderDocuments).where(eq(funderDocuments.id, id));
+  }
+
+  // Mentoring Relationships
+  async getMentoringRelationships(): Promise<MentoringRelationship[]> {
+    return db.select().from(mentoringRelationships).orderBy(desc(mentoringRelationships.createdAt));
+  }
+
+  async getMentoringRelationship(id: number): Promise<MentoringRelationship | undefined> {
+    const [item] = await db.select().from(mentoringRelationships).where(eq(mentoringRelationships.id, id));
+    return item;
+  }
+
+  async getMentoringRelationshipsByContact(contactId: number): Promise<MentoringRelationship[]> {
+    return db.select().from(mentoringRelationships).where(eq(mentoringRelationships.contactId, contactId)).orderBy(desc(mentoringRelationships.createdAt));
+  }
+
+  async createMentoringRelationship(data: InsertMentoringRelationship): Promise<MentoringRelationship> {
+    const [item] = await db.insert(mentoringRelationships).values(data).returning();
+    return item;
+  }
+
+  async updateMentoringRelationship(id: number, updates: Partial<InsertMentoringRelationship>): Promise<MentoringRelationship> {
+    const [item] = await db.update(mentoringRelationships).set({ ...updates, updatedAt: new Date() }).where(eq(mentoringRelationships.id, id)).returning();
+    return item;
+  }
+
+  async deleteMentoringRelationship(id: number): Promise<void> {
+    await db.delete(mentoringRelationships).where(eq(mentoringRelationships.id, id));
+  }
+
+  // Mentoring Applications
+  async getMentoringApplications(): Promise<MentoringApplication[]> {
+    return db.select().from(mentoringApplications).orderBy(desc(mentoringApplications.createdAt));
+  }
+
+  async getMentoringApplication(id: number): Promise<MentoringApplication | undefined> {
+    const [item] = await db.select().from(mentoringApplications).where(eq(mentoringApplications.id, id));
+    return item;
+  }
+
+  async getMentoringApplicationsByContact(contactId: number): Promise<MentoringApplication[]> {
+    return db.select().from(mentoringApplications).where(eq(mentoringApplications.contactId, contactId)).orderBy(desc(mentoringApplications.createdAt));
+  }
+
+  async createMentoringApplication(data: InsertMentoringApplication): Promise<MentoringApplication> {
+    const [item] = await db.insert(mentoringApplications).values(data).returning();
+    return item;
+  }
+
+  async updateMentoringApplication(id: number, updates: Partial<InsertMentoringApplication>): Promise<MentoringApplication> {
+    const [item] = await db.update(mentoringApplications).set(updates).where(eq(mentoringApplications.id, id)).returning();
+    return item;
+  }
+
+  async deleteMentoringApplication(id: number): Promise<void> {
+    await db.delete(mentoringApplications).where(eq(mentoringApplications.id, id));
+  }
+
+  // Stage Progression
+  async appendStageProgression(contactId: number, stage: string, notes?: string): Promise<Contact> {
+    const contact = await this.getContact(contactId);
+    if (!contact) {
+      throw new Error(`Contact ${contactId} not found`);
+    }
+    const existing: Array<{ stage: string; date: string; notes?: string }> = (contact.stageProgression as any) || [];
+    const entry = { stage, date: new Date().toISOString(), ...(notes ? { notes } : {}) };
+    const updated = [...existing, entry];
+    const [result] = await db.update(contacts)
+      .set({ stage, stageProgression: updated, updatedAt: new Date() })
+      .where(eq(contacts.id, contactId))
+      .returning();
+    return result;
   }
 }
 

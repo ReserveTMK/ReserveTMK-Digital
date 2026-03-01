@@ -73,7 +73,9 @@ export const contacts = pgTable("contacts", {
   consentStatus: text("consent_status").default("pending"),
   consentDate: timestamp("consent_date"),
   consentNotes: text("consent_notes"),
-  stage: text("stage"),
+  stage: text("stage"), // kakano, tipu, ora, inactive
+  whatTheyAreBuilding: text("what_they_are_building"),
+  stageProgression: jsonb("stage_progression").$type<Array<{ stage: string; date: string; notes?: string }>>(),
   relationshipStage: text("relationship_stage").default("new"),
   isCommunityMember: boolean("is_community_member").default(false),
   communityMemberOverride: boolean("community_member_override").default(false),
@@ -1411,6 +1413,71 @@ export const insertFunderDocumentSchema = createInsertSchema(funderDocuments).om
 
 export type FunderDocument = typeof funderDocuments.$inferSelect;
 export type InsertFunderDocument = z.infer<typeof insertFunderDocumentSchema>;
+
+// === MENTORING JOURNEY TABLES ===
+
+export const JOURNEY_STAGES = ["kakano", "tipu", "ora", "inactive"] as const;
+export type JourneyStage = typeof JOURNEY_STAGES[number];
+
+export const VENTURE_TYPES = ["commercial_business", "social_enterprise", "creative_movement", "community_initiative", "exploring"] as const;
+export type VentureType = typeof VENTURE_TYPES[number];
+
+export const MENTORING_RELATIONSHIP_STATUSES = ["application", "active", "on_hold", "graduated", "ended"] as const;
+export const SESSION_FREQUENCIES = ["weekly", "fortnightly", "monthly"] as const;
+
+export const mentoringRelationships = pgTable("mentoring_relationships", {
+  id: serial("id").primaryKey(),
+  contactId: integer("contact_id").notNull(),
+  groupId: integer("group_id"),
+  status: text("status").default("application").notNull(),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  focusAreas: text("focus_areas"),
+  sessionFrequency: text("session_frequency").default("monthly"),
+  lastSessionDate: timestamp("last_session_date"),
+  nextSessionDate: timestamp("next_session_date"),
+  totalSessions: integer("total_sessions").default(0),
+  outcomesAchieved: jsonb("outcomes_achieved").$type<string[]>(),
+  graduationNotes: text("graduation_notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertMentoringRelationshipSchema = createInsertSchema(mentoringRelationships).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type MentoringRelationship = typeof mentoringRelationships.$inferSelect;
+export type InsertMentoringRelationship = z.infer<typeof insertMentoringRelationshipSchema>;
+
+export const MENTORING_APPLICATION_STATUSES = ["pending", "accepted", "deferred", "declined"] as const;
+
+export const mentoringApplications = pgTable("mentoring_applications", {
+  id: serial("id").primaryKey(),
+  contactId: integer("contact_id").notNull(),
+  applicationDate: timestamp("application_date").defaultNow(),
+  ventureDescription: text("venture_description"),
+  currentStage: text("current_stage"),
+  whatStuckOn: text("what_stuck_on"),
+  whatNeedHelpWith: text("what_need_help_with"),
+  alreadyTried: text("already_tried"),
+  whyMentoring: text("why_mentoring"),
+  timeCommitmentPerWeek: text("time_commitment_per_week"),
+  canCommit3Months: boolean("can_commit_3_months"),
+  status: text("status").default("pending").notNull(),
+  reviewedBy: text("reviewed_by"),
+  reviewedDate: timestamp("reviewed_date"),
+  reviewNotes: text("review_notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertMentoringApplicationSchema = createInsertSchema(mentoringApplications).omit({
+  id: true,
+  createdAt: true,
+});
+export type MentoringApplication = typeof mentoringApplications.$inferSelect;
+export type InsertMentoringApplication = z.infer<typeof insertMentoringApplicationSchema>;
 
 // Request types
 export type CreateContactRequest = InsertContact;

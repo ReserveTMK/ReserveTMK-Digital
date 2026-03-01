@@ -221,12 +221,23 @@ export default function ContactDetail() {
                     <p className="text-muted-foreground text-lg">{contact.role}</p>
                     {contact.ventureType && (
                       <Badge variant="outline" className="text-xs capitalize" data-testid="badge-venture-type">
-                        {contact.ventureType.replace(/_/g, ' ')}
+                        {({
+                          commercial_business: "Commercial Business",
+                          social_enterprise: "Social Enterprise",
+                          creative_movement: "Creative Movement",
+                          community_initiative: "Community Initiative",
+                          exploring: "Exploring",
+                        } as Record<string, string>)[contact.ventureType] || contact.ventureType.replace(/_/g, ' ')}
                       </Badge>
                     )}
                     {contact.stage && (
                       <Badge variant="secondary" className="text-xs capitalize" data-testid="badge-venture-stage">
-                        {contact.stage}
+                        {({
+                          kakano: "Kākano",
+                          tipu: "Tipu",
+                          ora: "Ora",
+                          inactive: "Inactive",
+                        } as Record<string, string>)[contact.stage] || contact.stage}
                       </Badge>
                     )}
                   </div>
@@ -246,6 +257,11 @@ export default function ContactDetail() {
                       </span>
                     )}
                   </div>
+                  {contact.whatTheyAreBuilding && (
+                    <p className="text-sm text-muted-foreground mt-2" data-testid="text-what-building">
+                      {contact.whatTheyAreBuilding}
+                    </p>
+                  )}
                   <div className="flex flex-wrap gap-2 mt-3">
                     {contact.tags?.map((tag, i) => (
                       <span key={i} className="px-2 py-0.5 bg-secondary rounded-md text-xs font-medium text-secondary-foreground">
@@ -1037,6 +1053,7 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
   const [role, setRole] = useState(contact.role || "Entrepreneur");
   const [ventureType, setVentureType] = useState(contact.ventureType || "");
   const [stage, setStage] = useState(contact.stage || "");
+  const [whatTheyAreBuilding, setWhatTheyAreBuilding] = useState(contact.whatTheyAreBuilding || "");
   const [age, setAge] = useState(contact.age?.toString() || "");
   const [revenueBand, setRevenueBand] = useState(contact.revenueBand || "");
   const [selectedEthnicities, setSelectedEthnicities] = useState<string[]>(contact.ethnicity || []);
@@ -1080,6 +1097,7 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
       setRole(contact.role || "Entrepreneur");
       setVentureType(contact.ventureType || "");
       setStage(contact.stage || "");
+      setWhatTheyAreBuilding(contact.whatTheyAreBuilding || "");
       setAge(contact.age?.toString() || "");
       setRevenueBand(contact.revenueBand || "");
       setSelectedEthnicities(contact.ethnicity || []);
@@ -1161,6 +1179,7 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
       role: role,
       ventureType: ventureType || null,
       stage: stage || null,
+      whatTheyAreBuilding: whatTheyAreBuilding.trim() || null,
       age: age ? parseInt(age) : null,
       revenueBand: revenueBand || null,
       ethnicity: selectedEthnicities,
@@ -1393,23 +1412,22 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
                   <SelectValue placeholder="Select type..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="commercial">Commercial Business</SelectItem>
+                  <SelectItem value="commercial_business">Commercial Business</SelectItem>
                   <SelectItem value="social_enterprise">Social Enterprise</SelectItem>
-                  <SelectItem value="creative_cultural">Creative / Cultural</SelectItem>
-                  <SelectItem value="passion_project">Passion Project</SelectItem>
+                  <SelectItem value="creative_movement">Creative Movement</SelectItem>
                   <SelectItem value="community_initiative">Community Initiative</SelectItem>
+                  <SelectItem value="exploring">Exploring</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2 col-span-2">
-              <Label>Venture Stage</Label>
+              <Label>Journey Stage</Label>
               <div className="flex items-center gap-1 p-2 bg-muted/30 rounded-lg border border-border" data-testid="venture-stage-selector">
                 {[
-                  { value: "dreaming", label: "Dreaming", desc: "Has an idea or passion" },
-                  { value: "exploring", label: "Exploring", desc: "Testing & researching" },
-                  { value: "building", label: "Building", desc: "Actively creating" },
-                  { value: "growing", label: "Growing", desc: "Has traction" },
-                  { value: "established", label: "Established", desc: "Sustainable" },
+                  { value: "kakano", label: "Kākano", desc: "Seed / Foundation" },
+                  { value: "tipu", label: "Tipu", desc: "Growth / Building" },
+                  { value: "ora", label: "Ora", desc: "Thriving / Sustained" },
+                  { value: "inactive", label: "Inactive", desc: "Paused / Stepped back" },
                 ].map((s, i, arr) => (
                   <div key={s.value} className="flex items-center flex-1">
                     <button
@@ -1425,6 +1443,18 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
                   </div>
                 ))}
               </div>
+            </div>
+            <div className="space-y-2 col-span-2">
+              <Label htmlFor="edit-what-building">What they're building</Label>
+              <Textarea
+                id="edit-what-building"
+                value={whatTheyAreBuilding}
+                onChange={(e) => setWhatTheyAreBuilding(e.target.value)}
+                placeholder="Describe what this person is working on..."
+                className="resize-none text-sm"
+                rows={2}
+                data-testid="input-what-building"
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-location">Location</Label>

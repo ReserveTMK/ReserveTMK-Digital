@@ -8,7 +8,7 @@ import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON } from "./replit_integrations/anthropic/client";
 import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, type ReportFilters } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes } from "@shared/schema";
+import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql, gte, lte } from "drizzle-orm";
 import { scanGmailEmails, startAutoSync, getGmailOAuth2Client } from "./gmail-import";
@@ -317,6 +317,9 @@ export async function registerRoutes(
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
 
       const input = api.contacts.update.input.parse(req.body);
+      if (input.stage && input.stage !== existing.stage) {
+        await storage.appendStageProgression(id, input.stage);
+      }
       const updated = await storage.updateContact(id, input);
       res.json(updated);
     } catch (err) {
@@ -6773,6 +6776,186 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       res.status(204).send();
     } catch (err: any) {
       res.status(500).json({ message: "Failed to delete document" });
+    }
+  });
+
+  // === MENTORING RELATIONSHIPS ===
+
+  const verifyContactOwnership = async (contactId: number, userId: string) => {
+    const contact = await storage.getContact(contactId);
+    return contact && contact.userId === userId;
+  };
+
+  app.get("/api/mentoring-relationships", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const all = await storage.getMentoringRelationships();
+      const userContacts = await storage.getContacts(userId);
+      const userContactIds = new Set(userContacts.map(c => c.id));
+      res.json(all.filter(r => userContactIds.has(r.contactId)));
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch mentoring relationships" });
+    }
+  });
+
+  app.post("/api/mentoring-relationships", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const input = insertMentoringRelationshipSchema.parse(req.body);
+      if (!await verifyContactOwnership(input.contactId, userId)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const relationship = await storage.createMentoringRelationship(input);
+      res.status(201).json(relationship);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(500).json({ message: "Failed to create mentoring relationship" });
+    }
+  });
+
+  app.get("/api/mentoring-relationships/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const relationship = await storage.getMentoringRelationship(id);
+      if (!relationship) return res.status(404).json({ message: "Not found" });
+      const userId = (req.user as any).claims.sub;
+      if (!await verifyContactOwnership(relationship.contactId, userId)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      res.json(relationship);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch mentoring relationship" });
+    }
+  });
+
+  app.patch("/api/mentoring-relationships/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getMentoringRelationship(id);
+      if (!existing) return res.status(404).json({ message: "Not found" });
+      const userId = (req.user as any).claims.sub;
+      if (!await verifyContactOwnership(existing.contactId, userId)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const updated = await storage.updateMentoringRelationship(id, req.body);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update mentoring relationship" });
+    }
+  });
+
+  app.delete("/api/mentoring-relationships/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getMentoringRelationship(id);
+      if (!existing) return res.status(404).json({ message: "Not found" });
+      const userId = (req.user as any).claims.sub;
+      if (!await verifyContactOwnership(existing.contactId, userId)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      await storage.deleteMentoringRelationship(id);
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to delete mentoring relationship" });
+    }
+  });
+
+  app.get("/api/contacts/:contactId/mentoring-relationships", isAuthenticated, async (req, res) => {
+    try {
+      const contactId = parseInt(req.params.contactId);
+      const userId = (req.user as any).claims.sub;
+      if (!await verifyContactOwnership(contactId, userId)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const relationships = await storage.getMentoringRelationshipsByContact(contactId);
+      res.json(relationships);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch mentoring relationships" });
+    }
+  });
+
+  // === MENTORING APPLICATIONS ===
+
+  app.get("/api/mentoring-applications", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const all = await storage.getMentoringApplications();
+      const userContacts = await storage.getContacts(userId);
+      const userContactIds = new Set(userContacts.map(c => c.id));
+      res.json(all.filter(a => userContactIds.has(a.contactId)));
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch mentoring applications" });
+    }
+  });
+
+  app.post("/api/mentoring-applications", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const input = insertMentoringApplicationSchema.parse(req.body);
+      if (!await verifyContactOwnership(input.contactId, userId)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const application = await storage.createMentoringApplication(input);
+      res.status(201).json(application);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(500).json({ message: "Failed to create mentoring application" });
+    }
+  });
+
+  app.patch("/api/mentoring-applications/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getMentoringApplication(id);
+      if (!existing) return res.status(404).json({ message: "Not found" });
+      const userId = (req.user as any).claims.sub;
+      if (!await verifyContactOwnership(existing.contactId, userId)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const updated = await storage.updateMentoringApplication(id, req.body);
+      if (!updated) return res.status(404).json({ message: "Not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update mentoring application" });
+    }
+  });
+
+  app.delete("/api/mentoring-applications/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getMentoringApplication(id);
+      if (!existing) return res.status(404).json({ message: "Not found" });
+      const userId = (req.user as any).claims.sub;
+      if (!await verifyContactOwnership(existing.contactId, userId)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      await storage.deleteMentoringApplication(id);
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to delete mentoring application" });
+    }
+  });
+
+  // === STAGE PROGRESSION ===
+
+  const VALID_STAGES = ["kakano", "tipu", "ora", "inactive"];
+
+  app.post("/api/contacts/:id/stage-progression", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getContact(id);
+      if (!existing) return res.status(404).json({ message: "Contact not found" });
+      if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+
+      const { stage, notes } = req.body;
+      if (!stage || !VALID_STAGES.includes(stage)) {
+        return res.status(400).json({ message: "Stage must be one of: kakano, tipu, ora, inactive" });
+      }
+
+      const updated = await storage.appendStageProgression(id, stage, notes);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update stage progression" });
     }
   });
 

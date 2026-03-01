@@ -884,7 +884,13 @@ export default function Contacts() {
                       <div className="flex items-center gap-1">
                         {contact.ventureType && (
                           <Badge variant="secondary" className="text-[10px] h-5 px-1.5 shrink-0 hidden sm:inline-flex capitalize" data-testid={`badge-venture-type-${contact.id}`}>
-                            {contact.ventureType.replace(/_/g, ' ')}
+                            {({
+                              commercial_business: "Commercial Business",
+                              social_enterprise: "Social Enterprise",
+                              creative_movement: "Creative Movement",
+                              community_initiative: "Community Initiative",
+                              exploring: "Exploring",
+                            } as Record<string, string>)[contact.ventureType] || contact.ventureType.replace(/_/g, ' ')}
                           </Badge>
                         )}
                         {contact.role && (

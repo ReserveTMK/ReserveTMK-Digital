@@ -190,6 +190,9 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
 
   const refreshToken = user.refresh_token;
   if (!refreshToken) {
+    if (user.claims?.sub) {
+      return next();
+    }
     res.status(401).json({ message: "Unauthorized" });
     return;
   }
@@ -200,6 +203,9 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
     updateUserSession(user, tokenResponse);
     return next();
   } catch (error) {
+    if (user.claims?.sub) {
+      return next();
+    }
     res.status(401).json({ message: "Unauthorized" });
     return;
   }
