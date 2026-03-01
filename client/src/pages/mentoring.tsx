@@ -38,6 +38,9 @@ import {
   ExternalLink,
   FileText,
   MessageSquare,
+  CalendarCheck,
+  CalendarX,
+  Zap,
 } from "lucide-react";
 import { useAnalyzeInteraction } from "@/hooks/use-interactions";
 import type { Meeting, MentorAvailability } from "@shared/schema";
@@ -719,7 +722,24 @@ function AvailabilityTab() {
   const deleteAvailability = useDeleteAvailability();
   const { user } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
+
+  const { data: calStatus } = useQuery<{ connected: boolean }>({
+    queryKey: ["/api/google-calendar/status"],
+  });
+
+  const quickSetup = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/mentor-availability/quick-setup");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/mentor-availability"] });
+      toast({ title: "Availability set up", description: "Default hours added: Mon–Fri, 9am–4pm" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
 
   const bookingUrl = useMemo(() => {
     if (!user) return "";
@@ -757,6 +777,18 @@ function AvailabilityTab() {
         </div>
       </Card>
 
+      {calStatus?.connected ? (
+        <div className="flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 rounded-md px-3 py-2" data-testid="notice-gcal-connected">
+          <CalendarCheck className="w-4 h-4 shrink-0" />
+          <span>Google Calendar connected — your busy times are automatically excluded from available slots</span>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded-md px-3 py-2" data-testid="notice-gcal-disconnected">
+          <CalendarX className="w-4 h-4 shrink-0" />
+          <span>Google Calendar not connected — connect it to automatically block busy times from your booking slots</span>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-semibold text-sm">Weekly Availability</h3>
@@ -772,9 +804,15 @@ function AvailabilityTab() {
           <Clock className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">No availability set</p>
           <p className="text-xs text-muted-foreground mt-1">Add your weekly hours so people can book sessions</p>
-          <Button size="sm" variant="outline" className="mt-3" onClick={() => setShowAdd(true)}>
-            <Plus className="w-4 h-4 mr-1" /> Set availability
-          </Button>
+          <div className="flex justify-center gap-2 mt-3">
+            <Button size="sm" variant="outline" onClick={() => setShowAdd(true)}>
+              <Plus className="w-4 h-4 mr-1" /> Add manually
+            </Button>
+            <Button size="sm" onClick={() => quickSetup.mutate()} disabled={quickSetup.isPending} data-testid="button-quick-setup">
+              {quickSetup.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Zap className="w-4 h-4 mr-1" />}
+              Quick Setup (Mon–Fri, 9–4)
+            </Button>
+          </div>
         </Card>
       ) : (
         <div className="grid gap-2">

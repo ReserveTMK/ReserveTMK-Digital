@@ -896,10 +896,43 @@ export async function registerRoutes(
       }
 
       const now = new Date();
-      const filteredSlots = freeSlots.filter(s => {
+      let filteredSlots = freeSlots.filter(s => {
         const slotDate = new Date(date + 'T' + s.time + ':00+13:00');
         return slotDate > now;
       });
+
+      try {
+        const { getUncachableGoogleCalendarClient } = await import("./replit_integrations/google-calendar/client");
+        const calendar = await getUncachableGoogleCalendarClient();
+
+        const nzOffset = new Date(date + 'T12:00:00').toLocaleString('en-US', { timeZone: 'Pacific/Auckland', timeZoneName: 'shortOffset' });
+        const offsetMatch = nzOffset.match(/GMT([+-]\d+)/);
+        const tzSuffix = offsetMatch ? `${offsetMatch[1].padStart(3, '0').replace(/^(\+|-)(\d)$/, '$10$2')}:00` : '+13:00';
+        const queryStart = new Date(date + 'T00:00:00' + tzSuffix);
+        const queryEnd = new Date(date + 'T23:59:59' + tzSuffix);
+
+        const freeBusyRes = await calendar.freebusy.query({
+          requestBody: {
+            timeMin: queryStart.toISOString(),
+            timeMax: queryEnd.toISOString(),
+            items: [{ id: "primary" }],
+          },
+        });
+        const busyPeriods = freeBusyRes.data.calendars?.primary?.busy || [];
+        if (busyPeriods.length > 0) {
+          filteredSlots = filteredSlots.filter(s => {
+            const slotStartUTC = new Date(date + 'T' + s.time + ':00' + tzSuffix);
+            const slotEndUTC = new Date(date + 'T' + s.endTime + ':00' + tzSuffix);
+            return !busyPeriods.some((bp: any) => {
+              const bpStart = new Date(bp.start);
+              const bpEnd = new Date(bp.end);
+              return slotStartUTC < bpEnd && slotEndUTC > bpStart;
+            });
+          });
+        }
+      } catch (calErr: any) {
+        console.warn("Google Calendar free/busy check skipped:", calErr.message);
+      }
 
       res.json({ date, slots: filteredSlots });
     } catch (err) {
@@ -1910,6 +1943,43 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     } catch (err: any) {
       console.error("Google Calendar fetch error:", err.message);
       res.status(500).json({ message: "Failed to fetch Google Calendar events: " + err.message });
+    }
+  });
+
+  app.get("/api/google-calendar/status", isAuthenticated, async (req, res) => {
+    try {
+      const { getUncachableGoogleCalendarClient } = await import("./replit_integrations/google-calendar/client");
+      await getUncachableGoogleCalendarClient();
+      res.json({ connected: true });
+    } catch {
+      res.json({ connected: false });
+    }
+  });
+
+  app.post("/api/mentor-availability/quick-setup", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const existing = await storage.getMentorAvailability(userId);
+      if (existing.length > 0) {
+        return res.status(400).json({ message: "Availability already configured" });
+      }
+      const defaults = [];
+      for (let day = 0; day <= 4; day++) {
+        const slot = await storage.createMentorAvailability({
+          userId,
+          dayOfWeek: day,
+          startTime: "09:00",
+          endTime: "16:00",
+          slotDuration: 30,
+          bufferMinutes: 15,
+          isActive: true,
+        });
+        defaults.push(slot);
+      }
+      res.json(defaults);
+    } catch (err: any) {
+      console.error("Quick setup error:", err);
+      res.status(500).json({ message: "Failed to set up availability" });
     }
   });
 
