@@ -27,7 +27,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import type { Meeting, Contact, Event, Programme, Booking } from "@shared/schema";
+import type { Meeting, Contact, Event, Programme, Booking, Project } from "@shared/schema";
 
 const MEETING_STATUS_COLORS: Record<string, string> = {
   scheduled: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
@@ -119,6 +119,26 @@ export default function Dashboard() {
   const { data: mentoringRelationships } = useQuery<any[]>({
     queryKey: ["/api/mentoring-relationships"],
   });
+
+  const { data: projectsData } = useQuery<Project[]>({
+    queryKey: ["/api/projects"],
+  });
+
+  const projectWidget = useMemo(() => {
+    if (!projectsData) return { active: 0, planning: 0, urgent: [] as Project[] };
+    const active = projectsData.filter(p => p.status === "active").length;
+    const planning = projectsData.filter(p => p.status === "planning").length;
+    const urgent = projectsData
+      .filter(p => p.status === "active")
+      .sort((a, b) => {
+        if (!a.endDate && !b.endDate) return 0;
+        if (!a.endDate) return 1;
+        if (!b.endDate) return -1;
+        return new Date(a.endDate).getTime() - new Date(b.endDate).getTime();
+      })
+      .slice(0, 5);
+    return { active, planning, urgent };
+  }, [projectsData]);
 
   const upcomingItems = useMemo(() => {
     const now = new Date();
@@ -765,13 +785,50 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <h3 className="font-display font-semibold" data-testid="text-projects-heading">Projects</h3>
-                  <p className="text-xs text-muted-foreground">Track active ventures</p>
+                  <p className="text-xs text-muted-foreground">Track active initiatives</p>
                 </div>
               </div>
-              <div className="text-center py-8">
-                <Rocket className="w-10 h-10 mx-auto mb-3 text-violet-400 opacity-50" />
-                <p className="text-sm font-medium text-muted-foreground" data-testid="text-projects-coming-soon">Coming soon</p>
-                <p className="text-xs text-muted-foreground mt-1">Track venture progress, milestones and outcomes</p>
+              {projectWidget.active > 0 || projectWidget.planning > 0 ? (
+                <>
+                  <div className="flex items-center gap-4 mb-3">
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant="secondary" className="bg-green-500/15 text-green-700 dark:text-green-300 text-[10px]">Active</Badge>
+                      <span className="text-lg font-bold tabular-nums" data-testid="text-projects-active-count">{projectWidget.active}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant="secondary" className="bg-blue-500/15 text-blue-700 dark:text-blue-300 text-[10px]">Planning</Badge>
+                      <span className="text-lg font-bold tabular-nums" data-testid="text-projects-planning-count">{projectWidget.planning}</span>
+                    </div>
+                  </div>
+                  {projectWidget.urgent.length > 0 && (
+                    <div className="space-y-1.5 max-h-[200px] overflow-y-auto pr-1">
+                      {projectWidget.urgent.map((p) => (
+                        <Link key={p.id} href={`/projects/${p.id}`} data-testid={`project-widget-item-${p.id}`}>
+                          <div className="flex items-center justify-between p-2 rounded-lg bg-muted/40 hover:bg-muted transition-colors cursor-pointer">
+                            <p className="text-sm font-medium truncate flex-1 min-w-0">{p.name}</p>
+                            {p.endDate && (
+                              <span className="text-xs text-muted-foreground shrink-0 ml-2">
+                                due {format(new Date(p.endDate), "d MMM")}
+                              </span>
+                            )}
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-6 text-muted-foreground text-sm">
+                  <Rocket className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                  <p data-testid="text-projects-empty">No active projects. Start one!</p>
+                </div>
+              )}
+              <div className="mt-3 pt-3 border-t border-border">
+                <Link href="/projects">
+                  <Button variant="ghost" size="sm" className="w-full gap-1 text-primary" data-testid="button-view-all-projects">
+                    <Rocket className="w-3.5 h-3.5" /> View All Projects <ArrowRight className="w-3 h-3 ml-auto" />
+                  </Button>
+                </Link>
               </div>
             </Card>
           </div>

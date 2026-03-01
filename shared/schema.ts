@@ -1479,6 +1479,58 @@ export const insertMentoringApplicationSchema = createInsertSchema(mentoringAppl
 export type MentoringApplication = typeof mentoringApplications.$inferSelect;
 export type InsertMentoringApplication = z.infer<typeof insertMentoringApplicationSchema>;
 
+export const PROJECT_STATUSES = ["planning", "active", "on_hold", "completed", "cancelled"] as const;
+export const PROJECT_UPDATE_TYPES = ["status_change", "milestone", "note", "blocker", "completed_task"] as const;
+
+export const projects = pgTable("projects", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  status: text("status").notNull().default("planning"),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  ownerId: integer("owner_id"),
+  teamMembers: jsonb("team_members").$type<number[]>().default([]),
+  relatedGroupId: integer("related_group_id"),
+  relatedContactIds: jsonb("related_contact_ids").$type<number[]>().default([]),
+  goals: text("goals"),
+  deliverables: text("deliverables"),
+  notes: text("notes"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const projectUpdates = pgTable("project_updates", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull(),
+  updateType: text("update_type").notNull().default("note"),
+  updateText: text("update_text"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertProjectSchema = createInsertSchema(projects).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  status: z.enum(PROJECT_STATUSES).default("planning"),
+  name: z.string().min(1).max(200),
+});
+
+export const insertProjectUpdateSchema = createInsertSchema(projectUpdates).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  updateType: z.enum(PROJECT_UPDATE_TYPES).default("note"),
+});
+
+export type Project = typeof projects.$inferSelect;
+export type InsertProject = z.infer<typeof insertProjectSchema>;
+export type ProjectUpdate = typeof projectUpdates.$inferSelect;
+export type InsertProjectUpdate = z.infer<typeof insertProjectUpdateSchema>;
+
 // Request types
 export type CreateContactRequest = InsertContact;
 export type UpdateContactRequest = Partial<InsertContact>;

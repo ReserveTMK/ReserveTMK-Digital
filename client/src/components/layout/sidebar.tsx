@@ -22,6 +22,7 @@ import {
   Activity,
   Mail,
   CalendarClock,
+  Rocket,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "../ui/beautiful-button";
@@ -56,6 +57,7 @@ const navigation: NavItem[] = [
       { name: "Scheduling", href: "/scheduling", icon: CalendarClock },
       { name: "Mentoring", href: "/mentoring", icon: Users },
       { name: "Programmes", href: "/programmes", icon: Layers },
+      { name: "Projects", href: "/projects", icon: Rocket },
       { name: "Bookings", href: "/bookings", icon: Building2 },
       { name: "Agreements", href: "/agreements", icon: Handshake },
     ],

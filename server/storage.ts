@@ -138,6 +138,12 @@ import {
   type InsertMentoringRelationship,
   type MentoringApplication,
   type InsertMentoringApplication,
+  projects,
+  projectUpdates,
+  type Project,
+  type InsertProject,
+  type ProjectUpdate,
+  type InsertProjectUpdate,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, sql, max, count } from "drizzle-orm";
 
@@ -401,6 +407,15 @@ export interface IStorage {
 
   // Stage Progression
   appendStageProgression(contactId: number, stage: string, notes?: string): Promise<Contact>;
+
+  // Projects
+  getProjects(userId: string): Promise<Project[]>;
+  getProject(id: number): Promise<Project | undefined>;
+  createProject(data: InsertProject): Promise<Project>;
+  updateProject(id: number, updates: Partial<InsertProject>): Promise<Project>;
+  deleteProject(id: number): Promise<void>;
+  getProjectUpdates(projectId: number): Promise<ProjectUpdate[]>;
+  createProjectUpdate(data: InsertProjectUpdate): Promise<ProjectUpdate>;
 
   // Auth (re-exported or separate)
   auth: IAuthStorage;
@@ -1646,6 +1661,40 @@ export class DatabaseStorage implements IStorage {
 
   async deleteMentoringApplication(id: number): Promise<void> {
     await db.delete(mentoringApplications).where(eq(mentoringApplications.id, id));
+  }
+
+  // Projects
+  async getProjects(userId: string): Promise<Project[]> {
+    return db.select().from(projects).where(eq(projects.createdBy, userId)).orderBy(desc(projects.updatedAt));
+  }
+
+  async getProject(id: number): Promise<Project | undefined> {
+    const [item] = await db.select().from(projects).where(eq(projects.id, id));
+    return item;
+  }
+
+  async createProject(data: InsertProject): Promise<Project> {
+    const [item] = await db.insert(projects).values(data).returning();
+    return item;
+  }
+
+  async updateProject(id: number, updates: Partial<InsertProject>): Promise<Project> {
+    const [item] = await db.update(projects).set({ ...updates, updatedAt: new Date() }).where(eq(projects.id, id)).returning();
+    return item;
+  }
+
+  async deleteProject(id: number): Promise<void> {
+    await db.delete(projectUpdates).where(eq(projectUpdates.projectId, id));
+    await db.delete(projects).where(eq(projects.id, id));
+  }
+
+  async getProjectUpdates(projectId: number): Promise<ProjectUpdate[]> {
+    return db.select().from(projectUpdates).where(eq(projectUpdates.projectId, projectId)).orderBy(desc(projectUpdates.createdAt));
+  }
+
+  async createProjectUpdate(data: InsertProjectUpdate): Promise<ProjectUpdate> {
+    const [item] = await db.insert(projectUpdates).values(data).returning();
+    return item;
   }
 
   // Stage Progression

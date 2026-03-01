@@ -8,7 +8,7 @@ import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON } from "./replit_integrations/anthropic/client";
 import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, type ReportFilters } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes } from "@shared/schema";
+import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql, gte, lte } from "drizzle-orm";
 import { scanGmailEmails, startAutoSync, getGmailOAuth2Client } from "./gmail-import";
@@ -6956,6 +6956,125 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ message: "Failed to update stage progression" });
+    }
+  });
+
+  // === PROJECTS ===
+
+  app.get("/api/projects", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const items = await storage.getProjects(userId);
+      res.json(items);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch projects" });
+    }
+  });
+
+  app.get("/api/projects/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const item = await storage.getProject(id);
+      if (!item) return res.status(404).json({ message: "Project not found" });
+      const userId = (req.user as any).claims.sub;
+      if (item.createdBy !== userId) return res.status(403).json({ message: "Forbidden" });
+      res.json(item);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch project" });
+    }
+  });
+
+  app.post("/api/projects", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const body = { ...req.body };
+      if (body.startDate) body.startDate = new Date(body.startDate);
+      if (body.endDate) body.endDate = new Date(body.endDate);
+      const validated = insertProjectSchema.parse({ ...body, createdBy: userId });
+      const project = await storage.createProject(validated);
+      await storage.createProjectUpdate({
+        projectId: project.id,
+        updateType: "note",
+        updateText: "Project created",
+        createdBy: userId,
+      });
+      res.status(201).json(project);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to create project" });
+    }
+  });
+
+  app.patch("/api/projects/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getProject(id);
+      if (!existing) return res.status(404).json({ message: "Project not found" });
+      const userId = (req.user as any).claims.sub;
+      if (existing.createdBy !== userId) return res.status(403).json({ message: "Forbidden" });
+      const body = { ...req.body };
+      if (body.startDate) body.startDate = new Date(body.startDate);
+      if (body.endDate) body.endDate = new Date(body.endDate);
+      const validated = insertProjectSchema.partial().parse(body);
+      const updated = await storage.updateProject(id, validated);
+      if (body.status && body.status !== existing.status) {
+        await storage.createProjectUpdate({
+          projectId: id,
+          updateType: "status_change",
+          updateText: `Status changed from ${existing.status} to ${req.body.status}`,
+          createdBy: userId,
+        });
+      }
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to update project" });
+    }
+  });
+
+  app.delete("/api/projects/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getProject(id);
+      if (!existing) return res.status(404).json({ message: "Project not found" });
+      const userId = (req.user as any).claims.sub;
+      if (existing.createdBy !== userId) return res.status(403).json({ message: "Forbidden" });
+      await storage.deleteProject(id);
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to delete project" });
+    }
+  });
+
+  app.get("/api/projects/:id/updates", isAuthenticated, async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const project = await storage.getProject(projectId);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+      const userId = (req.user as any).claims.sub;
+      if (project.createdBy !== userId) return res.status(403).json({ message: "Forbidden" });
+      const updates = await storage.getProjectUpdates(projectId);
+      res.json(updates);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch project updates" });
+    }
+  });
+
+  app.post("/api/projects/:id/updates", isAuthenticated, async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const project = await storage.getProject(projectId);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+      const userId = (req.user as any).claims.sub;
+      if (project.createdBy !== userId) return res.status(403).json({ message: "Forbidden" });
+      const validated = insertProjectUpdateSchema.parse({
+        ...req.body,
+        projectId,
+        createdBy: userId,
+      });
+      const update = await storage.createProjectUpdate(validated);
+      await storage.updateProject(projectId, {});
+      res.status(201).json(update);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to create project update" });
     }
   });
 
