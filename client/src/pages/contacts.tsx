@@ -382,8 +382,8 @@ export default function Contacts() {
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-display font-bold">Community</h1>
-              <p className="text-muted-foreground mt-1">Manage your mentees and network.</p>
+              <h1 className="text-3xl font-display font-bold">People</h1>
+              <p className="text-muted-foreground mt-1">The people in your community</p>
             </div>
             
             <div className="flex items-center gap-2 flex-wrap">
@@ -890,6 +890,7 @@ export default function Contacts() {
                               creative_movement: "Creative Movement",
                               community_initiative: "Community Initiative",
                               exploring: "Exploring",
+                              ecosystem_partner: "Ecosystem Partner",
                             } as Record<string, string>)[contact.ventureType] || contact.ventureType.replace(/_/g, ' ')}
                           </Badge>
                         )}

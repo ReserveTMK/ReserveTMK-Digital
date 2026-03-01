@@ -31,21 +31,6 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend 
 } from "recharts";
 
-function getConsentBadge(status: string | null | undefined) {
-  if (!status || status === "") {
-    return { label: "No consent record", className: "bg-gray-500/15 text-gray-700 dark:text-gray-300" };
-  }
-  switch (status) {
-    case "given":
-      return { label: "Consent: Given", className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" };
-    case "withdrawn":
-      return { label: "Consent: Withdrawn", className: "bg-red-500/15 text-red-700 dark:text-red-300" };
-    case "pending":
-      return { label: "Consent: Pending", className: "bg-amber-500/15 text-amber-700 dark:text-amber-300" };
-    default:
-      return { label: "No consent record", className: "bg-gray-500/15 text-gray-700 dark:text-gray-300" };
-  }
-}
 
 export default function ContactDetail() {
   const [match, params] = useRoute("/contacts/:id");
@@ -58,11 +43,6 @@ export default function ContactDetail() {
     enabled: !!id,
   });
   const { data: actionItems } = useActionItems();
-  const { data: consentRecords } = useQuery({
-    queryKey: ['/api/contacts', id, 'consent'],
-    queryFn: () => fetch(`/api/contacts/${id}/consent`, { credentials: 'include' }).then(r => r.json()),
-    enabled: !!id,
-  });
 
   const { data: activityData, isLoading: activityLoading } = useQuery({
     queryKey: ['/api/contacts', id, 'activity'],
@@ -80,7 +60,6 @@ export default function ContactDetail() {
   const [selectedGroupRole, setSelectedGroupRole] = useState("Member");
   const [showQuickAddGroup, setShowQuickAddGroup] = useState(false);
   const [quickAddGroupName, setQuickAddGroupName] = useState("");
-  const [consentDialogOpen, setConsentDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [stageHistoryOpen, setStageHistoryOpen] = useState(false);
 
@@ -169,17 +148,7 @@ export default function ContactDetail() {
     });
   });
 
-  (consentRecords || []).forEach((record: any) => {
-    timelineItems.push({
-      date: new Date(record.createdAt),
-      type: 'consent',
-      data: record,
-    });
-  });
-
   timelineItems.sort((a, b) => b.date.getTime() - a.date.getTime());
-
-  const consentBadge = getConsentBadge(contact.consentStatus);
 
   return (
     <>
@@ -227,6 +196,7 @@ export default function ContactDetail() {
                           creative_movement: "Creative Movement",
                           community_initiative: "Community Initiative",
                           exploring: "Exploring",
+                          ecosystem_partner: "Ecosystem Partner",
                         } as Record<string, string>)[contact.ventureType] || contact.ventureType.replace(/_/g, ' ')}
                       </Badge>
                     )}
@@ -268,25 +238,6 @@ export default function ContactDetail() {
                         #{tag}
                       </span>
                     ))}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 mt-3">
-                    <Badge
-                      variant="secondary"
-                      className={`text-xs ${consentBadge.className}`}
-                      data-testid="badge-consent-status"
-                    >
-                      <Shield className="w-3 h-3 mr-1" />
-                      {consentBadge.label}
-                    </Badge>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setConsentDialogOpen(true)}
-                      data-testid="button-record-consent"
-                    >
-                      <Shield className="w-3.5 h-3.5 mr-1" />
-                      Record Consent
-                    </Button>
                   </div>
                   <div className="mt-4">
                     <RelationshipStageSelector
@@ -726,11 +677,6 @@ export default function ContactDetail() {
         onOpenChange={setEditDialogOpen}
         contact={contact}
       />
-      <RecordConsentDialog
-        open={consentDialogOpen}
-        onOpenChange={setConsentDialogOpen}
-        contactId={id}
-      />
     </>
   );
 }
@@ -740,7 +686,6 @@ function TimelineCard({ item }: { item: { date: Date; type: string; data: any } 
     impact_log: { icon: FileText, color: "text-violet-500", label: "Impact Log" },
     action_item: { icon: CheckSquare, color: "text-blue-500", label: "Action Item" },
     interaction: { icon: Calendar, color: "text-emerald-500", label: "Interaction" },
-    consent: { icon: Shield, color: "text-amber-500", label: "Consent Record" },
   };
 
   const config = iconMap[item.type] || iconMap.interaction;
@@ -1417,6 +1362,7 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
                   <SelectItem value="creative_movement">Creative Movement</SelectItem>
                   <SelectItem value="community_initiative">Community Initiative</SelectItem>
                   <SelectItem value="exploring">Exploring</SelectItem>
+                  <SelectItem value="ecosystem_partner">Ecosystem Partner</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1425,7 +1371,7 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
               <div className="flex items-center gap-1 p-2 bg-muted/30 rounded-lg border border-border" data-testid="venture-stage-selector">
                 {[
                   { value: "kakano", label: "Kākano", desc: "Seed / Foundation" },
-                  { value: "tipu", label: "Tipu", desc: "Growth / Building" },
+                  { value: "tipu", label: "Tipu", desc: "Actively Growing" },
                   { value: "ora", label: "Ora", desc: "Thriving / Sustained" },
                   { value: "inactive", label: "Inactive", desc: "Paused / Stepped back" },
                 ].map((s, i, arr) => (
@@ -1618,69 +1564,6 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
   );
 }
 
-function RecordConsentDialog({ open, onOpenChange, contactId }: { open: boolean; onOpenChange: (v: boolean) => void; contactId: number }) {
-  const [action, setAction] = useState("given");
-  const [notes, setNotes] = useState("");
-
-  const mutation = useMutation({
-    mutationFn: (data: { action: string; notes: string }) =>
-      apiRequest('POST', `/api/contacts/${contactId}/consent`, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/contacts', contactId, 'consent'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
-      setAction("given");
-      setNotes("");
-      onOpenChange(false);
-    },
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    mutation.mutate({ action, notes });
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[400px]">
-        <DialogHeader>
-          <DialogTitle>Record Consent</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 py-2">
-          <div className="space-y-2">
-            <Label htmlFor="consent-status">Consent Status</Label>
-            <Select value={action} onValueChange={setAction}>
-              <SelectTrigger data-testid="select-consent-status">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="given">Given</SelectItem>
-                <SelectItem value="withdrawn">Withdrawn</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="consent-notes">Notes</Label>
-            <Textarea
-              id="consent-notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Optional notes about this consent record..."
-              className="resize-none"
-              rows={3}
-              data-testid="input-consent-notes"
-            />
-          </div>
-          <DialogFooter>
-            <Button type="submit" isLoading={mutation.isPending} className="w-full" data-testid="button-submit-consent">
-              Save Consent Record
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 function LogInteractionDialog({ contactId }: { contactId: number }) {
   const [isRecording, setIsRecording] = useState(false);

@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { formatTimeSlot } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -131,8 +132,8 @@ export default function Programmes() {
     const hasEndDate = p.endDate && format(new Date(p.endDate), "yyyy-MM-dd") !== format(new Date(p.startDate), "yyyy-MM-dd");
     const timeStr = p.startTime
       ? p.endTime
-        ? `${p.startTime} - ${p.endTime}`
-        : p.startTime
+        ? `${formatTimeSlot(p.startTime)} - ${formatTimeSlot(p.endTime)}`
+        : formatTimeSlot(p.startTime)
       : null;
 
     if (hasEndDate) {

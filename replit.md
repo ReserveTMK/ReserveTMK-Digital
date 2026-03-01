@@ -36,9 +36,10 @@ PostgreSQL is used as the database, integrated with Drizzle ORM. The schema incl
 -   **Scheduling System**: A Calendly-like tool for managing availability, meeting types, and booking links for various meeting purposes, integrated with Google Calendar sync.
 -   **Public Booking Page**: A public-facing interface allowing external users to book time, designed to be mobile-first and branded.
 -   **Mentoring System**: Manages 1:1 mentoring sessions, leveraging the scheduling system for availability. It includes session lifecycle management, debrief logging with AI analysis, co-mentor support, and integration with Google Calendar. Mentoring relationships and applications tables track the full mentoring journey lifecycle from application through graduation.
--   **Journey Framework**: Culturally-grounded Māori stage progression: kākano (seed/foundation) → tipu (growth/building) → ora (thriving/sustained). Replaces the old exploring/testing/building/established stages. Stage changes are tracked in `stageProgression` JSONB history on contacts. Venture types: commercial_business, social_enterprise, creative_movement, community_initiative, exploring. Contacts also have `whatTheyAreBuilding` text field.
+-   **Journey Framework**: Culturally-grounded Māori stage progression: kākano (seed/foundation) → tipu (actively growing) → ora (thriving/sustained). Replaces the old exploring/testing/building/established stages. Stage changes are tracked in `stageProgression` JSONB history on contacts. Venture types: commercial_business, social_enterprise, creative_movement, community_initiative, exploring, ecosystem_partner. Contacts also have `whatTheyAreBuilding` text field.
 -   **NZ Timezone Standardization**: All date and time calculations are standardized to Pacific/Auckland timezone with Monday-start weeks.
 -   **Community Member Management**: Automates classification of community members based on engagement signals, with AI relationship scoring and last active date tracking.
+-   **UI Terminology**: Navigation uses "People" (not "Community") for contacts section. All time displays use 12-hour format (AM/PM). Consent features have been removed from contact detail. Shared `formatTimeSlot` utility in `client/src/lib/utils.ts` converts "HH:MM" to "h:mm AM/PM".
 
 ## External Dependencies
 

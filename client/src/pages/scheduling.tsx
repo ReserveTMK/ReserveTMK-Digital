@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { formatTimeSlot } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -695,7 +696,7 @@ function AvailabilitySection() {
                       {daySlots.map(slot => (
                         <div key={slot.id} className="flex items-center gap-2">
                           <Badge variant="outline" className="text-xs">
-                            {slot.startTime} \u2013 {slot.endTime}
+                            {formatTimeSlot(slot.startTime)} \u2013 {formatTimeSlot(slot.endTime)}
                           </Badge>
                           <span className="text-[10px] text-muted-foreground">
                             {slot.slotDuration}min slots \u00b7 {slot.bufferMinutes}min buffer

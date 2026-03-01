@@ -43,7 +43,7 @@ const navigation: NavItem[] = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Calendar", href: "/calendar", icon: CalendarCheck },
   {
-    name: "Community", href: "/contacts", icon: Users,
+    name: "People", href: "/contacts", icon: Users,
     children: [
       { name: "People", href: "/contacts", icon: Users },
       { name: "Groups", href: "/groups", icon: Network },
@@ -86,7 +86,7 @@ const navigation: NavItem[] = [
 const bottomNavItems: NavItem[] = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Calendar", href: "/calendar", icon: CalendarCheck },
-  { name: "Community", href: "/contacts", icon: Users },
+  { name: "People", href: "/contacts", icon: Users },
   { name: "Tracking", href: "/debriefs", icon: Activity },
 ];
 

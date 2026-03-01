@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { formatTimeSlot } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -300,7 +301,7 @@ export default function PublicBookingPage() {
             </div>
             <div className="flex justify-between gap-2 flex-wrap">
               <span className="text-muted-foreground">Time</span>
-              <span className="font-medium">{selectedSlot}</span>
+              <span className="font-medium">{selectedSlot ? formatTimeSlot(selectedSlot) : ""}</span>
             </div>
             <div className="flex justify-between gap-2 flex-wrap">
               <span className="text-muted-foreground">Duration</span>
@@ -541,7 +542,7 @@ export default function PublicBookingPage() {
                           }`}
                           data-testid={`slot-${slot.time}`}
                         >
-                          {slot.time}
+                          {formatTimeSlot(slot.time)}
                         </button>
                       ))}
                     </div>
@@ -583,7 +584,7 @@ export default function PublicBookingPage() {
                   {new Date(selectedDate + "T00:00").toLocaleDateString("en-NZ", { weekday: "long", day: "numeric", month: "long" })}
                 </span>
                 {" at "}
-                <span className="font-medium">{selectedSlot}</span>
+                <span className="font-medium">{selectedSlot ? formatTimeSlot(selectedSlot) : ""}</span>
                 {" · "}
                 <span className="text-muted-foreground">{slotDuration} min</span>
               </div>
