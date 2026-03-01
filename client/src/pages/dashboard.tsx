@@ -7,9 +7,10 @@ import { useImpactLogs } from "@/hooks/use-impact-logs";
 import { useAuth } from "@/hooks/use-auth";
 import { useProgrammes } from "@/hooks/use-programmes";
 import { useBookings, useVenues } from "@/hooks/use-bookings";
-import { Users, Activity, TrendingUp, Calendar as CalendarIcon, ArrowRight, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, PartyPopper, Mic, FileText, Building2, Layers, BookOpen, AlertTriangle, ClipboardCheck, SkipForward, ListChecks, Info } from "lucide-react";
+import { Users, Activity, TrendingUp, Calendar as CalendarIcon, ArrowRight, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, PartyPopper, Mic, FileText, Building2, Layers, BookOpen, AlertTriangle, ClipboardCheck, SkipForward, ListChecks, Info, Rocket, Sprout, TreePine, Sun, Eye } from "lucide-react";
 import { Link, useLocation } from "wouter";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, isBefore } from "date-fns";
+import { format, startOfMonth, endOfMonth, startOfDay, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, addDays, isToday, isBefore, isAfter } from "date-fns";
+import { formatTimeSlot } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -114,6 +115,132 @@ export default function Dashboard() {
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 5);
   }, [impactLogs]);
+
+  const { data: mentoringRelationships } = useQuery<any[]>({
+    queryKey: ["/api/mentoring-relationships"],
+  });
+
+  const upcomingItems = useMemo(() => {
+    const now = new Date();
+    const todayStart = startOfDay(now);
+    const weekEnd = addDays(now, 7);
+    const items: { date: string; name: string; time: string; type: string; typeColor: string; id: string }[] = [];
+
+    meetings?.forEach((m: Meeting) => {
+      const d = new Date(m.startTime);
+      if (m.status !== "cancelled" && isAfter(d, now) && isBefore(d, weekEnd)) {
+        items.push({
+          date: format(d, "yyyy-MM-dd"),
+          name: m.title,
+          time: format(d, "h:mm a"),
+          type: "Meeting",
+          typeColor: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
+          id: `meeting-${m.id}`,
+        });
+      }
+    });
+
+    events?.forEach((ev: Event) => {
+      const d = new Date(ev.startTime);
+      if (isAfter(d, now) && isBefore(d, weekEnd)) {
+        items.push({
+          date: format(d, "yyyy-MM-dd"),
+          name: ev.name,
+          time: format(d, "h:mm a"),
+          type: ev.type || "Event",
+          typeColor: "bg-violet-500/15 text-violet-700 dark:text-violet-300",
+          id: `event-${ev.id}`,
+        });
+      }
+    });
+
+    (programmes as Programme[] | undefined)?.forEach((p) => {
+      if (p.status === "cancelled" || !p.startDate) return;
+      const d = new Date(p.startDate);
+      if (!isBefore(d, todayStart) && isBefore(d, weekEnd)) {
+        items.push({
+          date: format(d, "yyyy-MM-dd"),
+          name: p.name,
+          time: p.startTime ? formatTimeSlot(p.startTime) : "All day",
+          type: "Programme",
+          typeColor: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300",
+          id: `prog-${p.id}`,
+        });
+      }
+    });
+
+    (bookings as Booking[] | undefined)?.forEach((b) => {
+      if (b.status === "cancelled" || !b.startDate) return;
+      const d = new Date(b.startDate);
+      if (!isBefore(d, todayStart) && isBefore(d, weekEnd)) {
+        items.push({
+          date: format(d, "yyyy-MM-dd"),
+          name: b.title,
+          time: b.startTime ? formatTimeSlot(b.startTime) : "TBC",
+          type: "Booking",
+          typeColor: "bg-orange-500/15 text-orange-700 dark:text-orange-300",
+          id: `book-${b.id}`,
+        });
+      }
+    });
+
+    items.sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
+    const grouped = new Map<string, typeof items>();
+    items.forEach((item) => {
+      if (!grouped.has(item.date)) grouped.set(item.date, []);
+      grouped.get(item.date)!.push(item);
+    });
+    return grouped;
+  }, [meetings, events, programmes, bookings]);
+
+  const debriefAttention = useMemo(() => {
+    const items: { id: number; name: string; date: string; status: string; statusColor: string; link: string }[] = [];
+
+    (debriefQueue || []).forEach((item: any) => {
+      items.push({
+        id: item.id,
+        name: item.name,
+        date: item.startTime ? format(new Date(item.startTime), "d MMM") : "",
+        status: item.queueStatus === "overdue" ? "Overdue" : "Needs Debrief",
+        statusColor: item.queueStatus === "overdue"
+          ? "bg-red-500/15 text-red-700 dark:text-red-300"
+          : "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+        link: `/debriefs?tab=calendar&reconcile=${item.id}`,
+      });
+    });
+
+    (impactLogs as any[] || [])
+      .filter((l: any) => l.status !== "confirmed")
+      .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 5)
+      .forEach((l: any) => {
+        items.push({
+          id: l.id,
+          name: l.title || "Untitled debrief",
+          date: l.createdAt ? format(new Date(l.createdAt), "d MMM") : "",
+          status: l.status === "draft" ? "Draft" : l.status === "reviewed" ? "Reviewed" : "Pending",
+          statusColor: l.status === "draft"
+            ? "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300"
+            : "bg-blue-500/15 text-blue-700 dark:text-blue-300",
+          link: `/debriefs/${l.id}`,
+        });
+      });
+
+    return items.slice(0, 6);
+  }, [debriefQueue, impactLogs]);
+
+  const journeySnapshot = useMemo(() => {
+    const kakano = contacts?.filter((c: any) => c.stage === "kakano").length || 0;
+    const tipu = contacts?.filter((c: any) => c.stage === "tipu").length || 0;
+    const ora = contacts?.filter((c: any) => c.stage === "ora").length || 0;
+    const inactive = contacts?.filter((c: any) => c.stage === "inactive").length || 0;
+    const activeMentoring = mentoringRelationships?.filter((r: any) => r.status === "active").length || 0;
+    const thirtyDaysAgo = addDays(new Date(), -30);
+    const recentInteractionCount = interactions?.filter(
+      (i: any) => new Date(i.date || i.createdAt) >= thirtyDaysAgo
+    ).length || 0;
+    return { kakano, tipu, ora, inactive, activeMentoring, recentInteractionCount };
+  }, [contacts, mentoringRelationships, interactions]);
 
   const calendarDays = useMemo(() => {
     const start = startOfMonth(currentMonth);
@@ -475,6 +602,180 @@ export default function Dashboard() {
             </Card>
           )}
 
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+            <Card className="p-4 md:p-6" data-testid="card-upcoming-events">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 rounded-lg bg-blue-500/10">
+                  <CalendarIcon className="w-5 h-5 text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="font-display font-semibold" data-testid="text-upcoming-heading">Upcoming Events</h3>
+                  <p className="text-xs text-muted-foreground">Next 7 days</p>
+                </div>
+              </div>
+              {upcomingItems.size > 0 ? (
+                <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1">
+                  {Array.from(upcomingItems.entries()).map(([dateKey, dayItems]) => (
+                    <div key={dateKey}>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5" data-testid={`text-upcoming-date-${dateKey}`}>
+                        {format(new Date(dateKey + "T12:00:00"), "EEEE, d MMM")}
+                      </p>
+                      <div className="space-y-1.5">
+                        {dayItems.map((item) => (
+                          <div key={item.id} className="flex items-center gap-2 p-2 rounded-lg bg-muted/40" data-testid={`upcoming-item-${item.id}`}>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{item.name}</p>
+                              <span className="text-xs text-muted-foreground">{item.time}</span>
+                            </div>
+                            <Badge variant="secondary" className={`text-[10px] shrink-0 ${item.typeColor}`}>
+                              {item.type}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6 text-muted-foreground text-sm">
+                  <CalendarIcon className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                  <p>Nothing scheduled in the next 7 days</p>
+                </div>
+              )}
+              <div className="mt-3 pt-3 border-t border-border">
+                <Link href="/calendar">
+                  <Button variant="ghost" size="sm" className="w-full gap-1 text-primary" data-testid="button-quick-add-event">
+                    <CalendarIcon className="w-3.5 h-3.5" /> View Calendar <ArrowRight className="w-3 h-3 ml-auto" />
+                  </Button>
+                </Link>
+              </div>
+            </Card>
+
+            <Card className="p-4 md:p-6" data-testid="card-debriefs-attention">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 rounded-lg bg-amber-500/10">
+                  <ClipboardCheck className="w-5 h-5 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="font-display font-semibold" data-testid="text-debriefs-attention-heading">Debriefs Needing Attention</h3>
+                  <p className="text-xs text-muted-foreground">{debriefAttention.length} item{debriefAttention.length !== 1 ? "s" : ""}</p>
+                </div>
+              </div>
+              {debriefAttention.length > 0 ? (
+                <div className="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
+                  {debriefAttention.map((item) => (
+                    <Link key={item.id} href={item.link} data-testid={`debrief-attention-${item.id}`}>
+                      <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/40 hover:bg-muted transition-colors cursor-pointer">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{item.name}</p>
+                          <span className="text-xs text-muted-foreground">{item.date}</span>
+                        </div>
+                        <Badge variant="secondary" className={`text-[10px] shrink-0 ${item.statusColor}`}>
+                          {item.status}
+                        </Badge>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6 text-muted-foreground text-sm">
+                  <ClipboardCheck className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                  <p>All caught up!</p>
+                </div>
+              )}
+              <div className="mt-3 pt-3 border-t border-border">
+                <Link href="/debriefs">
+                  <Button variant="ghost" size="sm" className="w-full gap-1 text-primary" data-testid="button-quick-debrief">
+                    <Mic className="w-3.5 h-3.5" /> Quick Debrief <ArrowRight className="w-3 h-3 ml-auto" />
+                  </Button>
+                </Link>
+              </div>
+            </Card>
+
+            <Card className="p-4 md:p-6" data-testid="card-community-snapshot">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 rounded-lg bg-emerald-500/10">
+                  <Sprout className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div>
+                  <h3 className="font-display font-semibold" data-testid="text-snapshot-heading">Community Snapshot</h3>
+                  <p className="text-xs text-muted-foreground">Journey stages</p>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 p-2.5 rounded-lg bg-amber-500/5 border border-amber-200/50 dark:border-amber-800/30" data-testid="snapshot-kakano">
+                  <div className="p-1.5 rounded-md bg-amber-500/10">
+                    <Sprout className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold">Kākano</p>
+                    <p className="text-[11px] text-muted-foreground">Seed / Foundation</p>
+                  </div>
+                  <span className="text-lg font-bold tabular-nums" data-testid="text-kakano-count">{journeySnapshot.kakano}</span>
+                </div>
+                <div className="flex items-center gap-3 p-2.5 rounded-lg bg-emerald-500/5 border border-emerald-200/50 dark:border-emerald-800/30" data-testid="snapshot-tipu">
+                  <div className="p-1.5 rounded-md bg-emerald-500/10">
+                    <TreePine className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold">Tipu</p>
+                    <p className="text-[11px] text-muted-foreground">Actively Growing</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-lg font-bold tabular-nums" data-testid="text-tipu-count">{journeySnapshot.tipu}</span>
+                    {journeySnapshot.activeMentoring > 0 && (
+                      <p className="text-[10px] text-emerald-600 dark:text-emerald-400" data-testid="text-tipu-mentoring">{journeySnapshot.activeMentoring} in mentoring</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-2.5 rounded-lg bg-blue-500/5 border border-blue-200/50 dark:border-blue-800/30" data-testid="snapshot-ora">
+                  <div className="p-1.5 rounded-md bg-blue-500/10">
+                    <Sun className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold">Ora</p>
+                    <p className="text-[11px] text-muted-foreground">Thriving / Sustained</p>
+                  </div>
+                  <span className="text-lg font-bold tabular-nums" data-testid="text-ora-count">{journeySnapshot.ora}</span>
+                </div>
+                {journeySnapshot.inactive > 0 && (
+                  <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/40" data-testid="snapshot-inactive">
+                    <div className="p-1.5 rounded-md bg-muted">
+                      <Eye className="w-4 h-4 text-muted-foreground" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-muted-foreground">Inactive</p>
+                    </div>
+                    <span className="text-lg font-bold tabular-nums text-muted-foreground" data-testid="text-inactive-count">{journeySnapshot.inactive}</span>
+                  </div>
+                )}
+              </div>
+              <div className="mt-3 pt-3 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <Activity className="w-3.5 h-3.5" />
+                  <span data-testid="text-recent-interactions-count">{journeySnapshot.recentInteractionCount} interactions</span> in last 30 days
+                </span>
+              </div>
+            </Card>
+
+            <Card className="p-4 md:p-6" data-testid="card-projects">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 rounded-lg bg-violet-500/10">
+                  <Rocket className="w-5 h-5 text-violet-600" />
+                </div>
+                <div>
+                  <h3 className="font-display font-semibold" data-testid="text-projects-heading">Projects</h3>
+                  <p className="text-xs text-muted-foreground">Track active ventures</p>
+                </div>
+              </div>
+              <div className="text-center py-8">
+                <Rocket className="w-10 h-10 mx-auto mb-3 text-violet-400 opacity-50" />
+                <p className="text-sm font-medium text-muted-foreground" data-testid="text-projects-coming-soon">Coming soon</p>
+                <p className="text-xs text-muted-foreground mt-1">Track venture progress, milestones and outcomes</p>
+              </div>
+            </Card>
+          </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-4">
               <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -701,7 +1002,7 @@ export default function Dashboard() {
                               {prog.startTime && (
                                 <span className="flex items-center gap-1">
                                   <Clock className="w-3 h-3" />
-                                  {prog.startTime}{prog.endTime ? ` - ${prog.endTime}` : ""}
+                                  {formatTimeSlot(prog.startTime)}{prog.endTime ? ` - ${formatTimeSlot(prog.endTime)}` : ""}
                                 </span>
                               )}
                               {prog.location && (
@@ -739,7 +1040,7 @@ export default function Dashboard() {
                                 {bk.startTime && (
                                   <span className="flex items-center gap-1">
                                     <Clock className="w-3 h-3" />
-                                    {bk.startTime}{bk.endTime ? ` - ${bk.endTime}` : ""}
+                                    {formatTimeSlot(bk.startTime)}{bk.endTime ? ` - ${formatTimeSlot(bk.endTime)}` : ""}
                                   </span>
                                 )}
                                 {venueName && (
