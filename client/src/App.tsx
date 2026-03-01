@@ -30,6 +30,7 @@ import CommunitySpend from "@/pages/community-spend";
 import GmailImportPage from "@/pages/gmail-import";
 import FundersPage from "@/pages/funders";
 import MentoringPage from "@/pages/mentoring";
+import SchedulingPage from "@/pages/scheduling";
 import PublicBookingPage from "@/pages/public-booking";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -119,6 +120,10 @@ function Router() {
 
         <Route path="/calendar">
           <ProtectedRoute component={CalendarPage} />
+        </Route>
+
+        <Route path="/scheduling">
+          <ProtectedRoute component={SchedulingPage} />
         </Route>
 
         <Route path="/mentoring">

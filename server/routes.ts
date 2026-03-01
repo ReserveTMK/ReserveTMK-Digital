@@ -1280,12 +1280,12 @@ export async function registerRoutes(
         const profile = await storage.getMentorProfile(mentorId);
         if (!profile) return res.status(404).json({ message: "Not found" });
         const nameParts = profile.name.split(' ');
-        return res.json({ firstName: nameParts[0], lastName: nameParts.slice(1).join(' ') || '' });
+        return res.json({ firstName: nameParts[0], lastName: nameParts.slice(1).join(' ') || '', orgName: 'ReserveTMK' });
       }
       const { users } = await import("@shared/schema");
       const result = await db.select().from(users).where(eq(users.id, userId));
       if (result.length === 0) return res.status(404).json({ message: "Not found" });
-      res.json({ firstName: result[0].firstName, lastName: result[0].lastName });
+      res.json({ firstName: result[0].firstName, lastName: result[0].lastName, orgName: 'ReserveTMK' });
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch info" });
     }

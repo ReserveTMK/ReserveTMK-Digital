@@ -15,13 +15,13 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { useMeetings, useCreateMeeting, useUpdateMeeting, useDeleteMeeting } from "@/hooks/use-meetings";
+import { useCreateMeeting, useUpdateMeeting, useDeleteMeeting } from "@/hooks/use-meetings";
 import { useContacts } from "@/hooks/use-contacts";
-import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useState, useMemo } from "react";
+import { Link } from "wouter";
 import {
   Plus,
   Loader2,
@@ -32,33 +32,19 @@ import {
   CheckCircle2,
   XCircle,
   UserX,
-  Copy,
   Link2,
   Trash2,
   ExternalLink,
   FileText,
   MessageSquare,
-  CalendarCheck,
-  CalendarX,
-  Zap,
   UserPlus,
   Settings,
-  Pencil,
+  CalendarClock,
+  Copy,
+  ArrowRight,
 } from "lucide-react";
 import { useAnalyzeInteraction } from "@/hooks/use-interactions";
-import type { Meeting, MentorAvailability, MentorProfile, MeetingType } from "@shared/schema";
-
-const COLOR_OPTIONS = [
-  { value: "#22c55e", label: "Green" },
-  { value: "#3b82f6", label: "Blue" },
-  { value: "#8b5cf6", label: "Purple" },
-  { value: "#f59e0b", label: "Amber" },
-  { value: "#ef4444", label: "Red" },
-  { value: "#06b6d4", label: "Cyan" },
-  { value: "#ec4899", label: "Pink" },
-];
-
-const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+import type { Meeting, MentorProfile } from "@shared/schema";
 
 const FOCUS_OPTIONS = [
   "Venture Planning",
@@ -87,59 +73,6 @@ function getMentorBookingId(profile: MentorProfile): string {
 
 function useMentorProfiles() {
   return useQuery<MentorProfile[]>({ queryKey: ["/api/mentor-profiles"] });
-}
-
-function useAvailability(mentorUserId?: string) {
-  const url = mentorUserId ? `/api/mentor-availability?mentorUserId=${mentorUserId}` : "/api/mentor-availability";
-  return useQuery<MentorAvailability[]>({
-    queryKey: ["/api/mentor-availability", mentorUserId || "self"],
-    queryFn: async () => {
-      const res = await fetch(url, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch availability");
-      return res.json();
-    },
-  });
-}
-
-function useCreateAvailability() {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-  return useMutation({
-    mutationFn: async (data: any) => {
-      const res = await apiRequest("POST", "/api/mentor-availability", data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/mentor-availability"] });
-      toast({ title: "Availability added" });
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
-}
-
-function useUpdateAvailability() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, ...data }: { id: number } & any) => {
-      const res = await apiRequest("PATCH", `/api/mentor-availability/${id}`, data);
-      return res.json();
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/mentor-availability"] }),
-  });
-}
-
-function useDeleteAvailability() {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-  return useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/mentor-availability/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/mentor-availability"] });
-      toast({ title: "Slot removed" });
-    },
-  });
 }
 
 function ScheduleSessionDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
@@ -307,112 +240,6 @@ function ScheduleSessionDialog({ open, onOpenChange }: { open: boolean; onOpenCh
           <Button onClick={handleSubmit} disabled={!contactId || !date || createMeeting.isPending} data-testid="button-submit-session">
             {createMeeting.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
             Schedule
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function AvailabilityDialog({ open, onOpenChange, mentorUserId, editSlot }: { open: boolean; onOpenChange: (v: boolean) => void; mentorUserId?: string; editSlot?: MentorAvailability | null }) {
-  const createAvailability = useCreateAvailability();
-  const updateAvailability = useUpdateAvailability();
-  const isEditing = !!editSlot;
-  const [dayOfWeek, setDayOfWeek] = useState(editSlot ? String(editSlot.dayOfWeek) : "0");
-  const [startTime, setStartTime] = useState(editSlot?.startTime || "09:00");
-  const [endTime, setEndTime] = useState(editSlot?.endTime || "15:00");
-  const [slotDuration, setSlotDuration] = useState(editSlot ? String(editSlot.slotDuration) : "60");
-  const [bufferMinutes, setBufferMinutes] = useState(editSlot ? String(editSlot.bufferMinutes) : "15");
-
-  const handleSubmit = () => {
-    const data = {
-      dayOfWeek: parseInt(dayOfWeek),
-      startTime,
-      endTime,
-      slotDuration: parseInt(slotDuration),
-      bufferMinutes: parseInt(bufferMinutes),
-      isActive: true,
-      ...(mentorUserId ? { userId: mentorUserId } : {}),
-    };
-    if (isEditing && editSlot) {
-      updateAvailability.mutate({ id: editSlot.id, ...data }, {
-        onSuccess: () => onOpenChange(false),
-      });
-    } else {
-      createAvailability.mutate(data, {
-        onSuccess: () => onOpenChange(false),
-      });
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[400px]">
-        <DialogHeader>
-          <DialogTitle>{isEditing ? "Edit Availability Window" : "Add Availability Window"}</DialogTitle>
-          <DialogDescription>{isEditing ? "Update this availability slot" : "Set when this mentor is available"}</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 py-2">
-          <div className="space-y-2">
-            <Label>Day</Label>
-            <Select value={dayOfWeek} onValueChange={setDayOfWeek}>
-              <SelectTrigger data-testid="select-day">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {DAY_NAMES.map((d, i) => (
-                  <SelectItem key={i} value={String(i)}>{d}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>Start Time</Label>
-              <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} data-testid="input-avail-start" />
-            </div>
-            <div className="space-y-2">
-              <Label>End Time</Label>
-              <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} data-testid="input-avail-end" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>Slot Duration</Label>
-              <Select value={slotDuration} onValueChange={setSlotDuration}>
-                <SelectTrigger data-testid="select-slot-duration">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="15">15 min</SelectItem>
-                  <SelectItem value="30">30 min</SelectItem>
-                  <SelectItem value="45">45 min</SelectItem>
-                  <SelectItem value="60">60 min</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Buffer Between</Label>
-              <Select value={bufferMinutes} onValueChange={setBufferMinutes}>
-                <SelectTrigger data-testid="select-buffer">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0">No buffer</SelectItem>
-                  <SelectItem value="5">5 min</SelectItem>
-                  <SelectItem value="10">10 min</SelectItem>
-                  <SelectItem value="15">15 min</SelectItem>
-                  <SelectItem value="30">30 min</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={createAvailability.isPending || updateAvailability.isPending} data-testid="button-add-availability">
-            {(createAvailability.isPending || updateAvailability.isPending) ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-            {isEditing ? "Update" : "Add"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -826,527 +653,6 @@ function SessionsTab() {
   );
 }
 
-function useMeetingTypes() {
-  return useQuery<MeetingType[]>({ queryKey: ["/api/meeting-types"] });
-}
-
-function MeetingTypeDialog({
-  open,
-  onOpenChange,
-  editingType,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  editingType?: MeetingType | null;
-}) {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-  const [name, setName] = useState(editingType?.name || "");
-  const [description, setDescription] = useState(editingType?.description || "");
-  const [duration, setDuration] = useState(String(editingType?.duration || 30));
-  const [focus, setFocus] = useState(editingType?.focus || "");
-  const [color, setColor] = useState(editingType?.color || "#3b82f6");
-  const [isActive, setIsActive] = useState(editingType?.isActive ?? true);
-
-  const isEditing = !!editingType;
-
-  const createMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const res = await apiRequest("POST", "/api/meeting-types", data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/meeting-types"] });
-      toast({ title: "Meeting type created" });
-      onOpenChange(false);
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const res = await apiRequest("PATCH", `/api/meeting-types/${editingType!.id}`, data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/meeting-types"] });
-      toast({ title: "Meeting type updated" });
-      onOpenChange(false);
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
-
-  const handleSubmit = () => {
-    if (!name.trim()) return;
-    const payload = {
-      name: name.trim(),
-      description: description.trim() || null,
-      duration: parseInt(duration),
-      focus: focus || null,
-      color,
-      isActive,
-    };
-    if (isEditing) {
-      updateMutation.mutate(payload);
-    } else {
-      createMutation.mutate(payload);
-    }
-  };
-
-  const isPending = createMutation.isPending || updateMutation.isPending;
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[440px]">
-        <DialogHeader>
-          <DialogTitle>{isEditing ? "Edit Meeting Type" : "Add Meeting Type"}</DialogTitle>
-          <DialogDescription>
-            {isEditing ? "Update this meeting type" : "Create a new meeting type for booking"}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 py-2">
-          <div className="space-y-2">
-            <Label>Name</Label>
-            <Input
-              placeholder="e.g., Quick Check-in"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              data-testid="input-meeting-type-name"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Description</Label>
-            <Textarea
-              placeholder="Brief description of this meeting type..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={2}
-              data-testid="input-meeting-type-description"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>Duration</Label>
-              <Select value={duration} onValueChange={setDuration}>
-                <SelectTrigger data-testid="select-meeting-type-duration">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="15">15 min</SelectItem>
-                  <SelectItem value="30">30 min</SelectItem>
-                  <SelectItem value="45">45 min</SelectItem>
-                  <SelectItem value="60">60 min</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Focus</Label>
-              <Select value={focus} onValueChange={setFocus}>
-                <SelectTrigger data-testid="select-meeting-type-focus">
-                  <SelectValue placeholder="Select focus..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {FOCUS_OPTIONS.map((f) => (
-                    <SelectItem key={f} value={f}>{f}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Color</Label>
-            <div className="flex items-center gap-2 flex-wrap">
-              {COLOR_OPTIONS.map((c) => (
-                <button
-                  key={c.value}
-                  type="button"
-                  className={`w-8 h-8 rounded-md border-2 transition-all ${
-                    color === c.value ? "border-foreground scale-110" : "border-transparent"
-                  }`}
-                  style={{ backgroundColor: c.value }}
-                  onClick={() => setColor(c.value)}
-                  title={c.label}
-                  data-testid={`color-option-${c.label.toLowerCase()}`}
-                />
-              ))}
-            </div>
-          </div>
-          <div className="flex items-center justify-between">
-            <Label>Active</Label>
-            <Switch
-              checked={isActive}
-              onCheckedChange={setIsActive}
-              data-testid="switch-meeting-type-active"
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={!name.trim() || isPending} data-testid="button-submit-meeting-type">
-            {isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-            {isEditing ? "Save Changes" : "Add Type"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function MeetingTypesSection() {
-  const { data: meetingTypes, isLoading } = useMeetingTypes();
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-  const [showDialog, setShowDialog] = useState(false);
-  const [editingType, setEditingType] = useState<MeetingType | null>(null);
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/meeting-types/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/meeting-types"] });
-      toast({ title: "Meeting type deleted" });
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, ...data }: { id: number } & any) => {
-      const res = await apiRequest("PATCH", `/api/meeting-types/${id}`, data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/meeting-types"] });
-    },
-  });
-
-  const handleEdit = (mt: MeetingType) => {
-    setEditingType(mt);
-    setShowDialog(true);
-  };
-
-  const handleCloseDialog = (v: boolean) => {
-    setShowDialog(v);
-    if (!v) setEditingType(null);
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="font-semibold text-sm">Meeting Types</h3>
-          <p className="text-xs text-muted-foreground">Define different types of sessions people can book</p>
-        </div>
-        <Button size="sm" onClick={() => { setEditingType(null); setShowDialog(true); }} data-testid="button-add-meeting-type">
-          <Plus className="w-4 h-4 mr-1" /> Add Type
-        </Button>
-      </div>
-
-      {isLoading ? (
-        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin" /></div>
-      ) : !meetingTypes || meetingTypes.length === 0 ? (
-        <Card className="p-8 text-center">
-          <Settings className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">No meeting types defined yet</p>
-          <p className="text-xs text-muted-foreground mt-1">Add meeting types to offer different session options</p>
-          <Button size="sm" className="mt-3" onClick={() => { setEditingType(null); setShowDialog(true); }}>
-            <Plus className="w-4 h-4 mr-1" /> Add Meeting Type
-          </Button>
-        </Card>
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {meetingTypes.map((mt) => (
-            <Card key={mt.id} className="p-4" data-testid={`meeting-type-card-${mt.id}`}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3 flex-1 min-w-0">
-                  <div
-                    className="w-3 h-3 rounded-full mt-1 shrink-0"
-                    style={{ backgroundColor: mt.color || "#3b82f6" }}
-                    data-testid={`meeting-type-color-${mt.id}`}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="font-medium text-sm">{mt.name}</h4>
-                      <Badge variant="outline" className="text-[10px] h-5">{mt.duration} min</Badge>
-                      {!mt.isActive && (
-                        <Badge variant="outline" className="text-[10px] h-5 bg-muted text-muted-foreground">Inactive</Badge>
-                      )}
-                    </div>
-                    {mt.description && (
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{mt.description}</p>
-                    )}
-                    {mt.focus && (
-                      <Badge variant="secondary" className="text-[10px] h-5 mt-1.5">{mt.focus}</Badge>
-                    )}
-                  </div>
-                </div>
-                <div className="flex flex-col gap-1 shrink-0 items-end">
-                  <Switch
-                    checked={mt.isActive ?? true}
-                    onCheckedChange={(checked) => updateMutation.mutate({ id: mt.id, isActive: checked })}
-                    data-testid={`switch-meeting-type-${mt.id}`}
-                  />
-                  <div className="flex gap-1">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => handleEdit(mt)}
-                      data-testid={`button-edit-meeting-type-${mt.id}`}
-                    >
-                      <Settings className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => {
-                        if (confirm(`Delete meeting type "${mt.name}"?`)) {
-                          deleteMutation.mutate(mt.id);
-                        }
-                      }}
-                      data-testid={`button-delete-meeting-type-${mt.id}`}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {showDialog && (
-        <MeetingTypeDialog
-          open={showDialog}
-          onOpenChange={handleCloseDialog}
-          editingType={editingType}
-        />
-      )}
-    </div>
-  );
-}
-
-function AvailabilityTab() {
-  const { data: profiles } = useMentorProfiles();
-  const [selectedMentorId, setSelectedMentorId] = useState<string>("");
-  const { user } = useAuth();
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-
-  const selectedProfile = useMemo(() => {
-    if (!profiles || profiles.length === 0) return null;
-    if (!selectedMentorId) return profiles[0];
-    return profiles.find(p => String(p.id) === selectedMentorId) || profiles[0];
-  }, [profiles, selectedMentorId]);
-
-  const mentorUserId = selectedProfile ? getMentorBookingId(selectedProfile) : undefined;
-  const { data: availability, isLoading } = useAvailability(mentorUserId);
-  const updateAvailability = useUpdateAvailability();
-  const deleteAvailability = useDeleteAvailability();
-  const [showAdd, setShowAdd] = useState(false);
-  const [editingSlot, setEditingSlot] = useState<MentorAvailability | null>(null);
-
-  const { data: calStatus } = useQuery<{ connected: boolean }>({
-    queryKey: ["/api/google-calendar/status"],
-  });
-
-  const quickSetup = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/mentor-availability/quick-setup", {
-        mentorUserId: mentorUserId,
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/mentor-availability"] });
-      toast({ title: "Availability set up", description: "Default hours added: Mon–Fri, 9am–3pm" });
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
-
-  const quickSetupAll = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/mentor-availability/quick-setup-all");
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/mentor-availability"] });
-      toast({ title: "All mentors set up", description: data.message || "Mon–Fri, 9am–3pm applied to all mentors" });
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
-
-  const bookingUrl = useMemo(() => {
-    if (!selectedProfile) return "";
-    const id = getMentorBookingId(selectedProfile);
-    return `${window.location.origin}/book/${id}`;
-  }, [selectedProfile]);
-
-  const copyLink = () => {
-    navigator.clipboard.writeText(bookingUrl);
-    toast({ title: "Link copied!", description: "Share this link for people to book mentoring sessions" });
-  };
-
-  if (!profiles) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" /></div>;
-
-  const slots = (availability || []) as MentorAvailability[];
-
-  return (
-    <div className="space-y-6">
-      {profiles.length > 1 && (
-        <div className="flex items-center gap-3">
-          <Label className="text-sm font-medium shrink-0">Manage availability for:</Label>
-          <Select value={selectedMentorId || String(profiles[0]?.id)} onValueChange={setSelectedMentorId}>
-            <SelectTrigger className="w-[200px]" data-testid="select-mentor-availability">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {profiles.map(p => (
-                <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-
-      <Card className="p-4">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div>
-            <h3 className="font-semibold text-sm">{selectedProfile?.name}'s Booking Link</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">Share this link so people can book mentoring sessions</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <code className="text-xs bg-muted px-3 py-1.5 rounded-md max-w-[300px] truncate" data-testid="text-booking-url">
-              {bookingUrl}
-            </code>
-            <Button size="sm" variant="outline" onClick={copyLink} data-testid="button-copy-link">
-              <Copy className="w-4 h-4 mr-1" /> Copy
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => window.open(bookingUrl, '_blank')} data-testid="button-preview-link">
-              <ExternalLink className="w-4 h-4 mr-1" /> Preview
-            </Button>
-          </div>
-        </div>
-      </Card>
-
-      {selectedProfile?.googleCalendarId ? (
-        <div className="flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 rounded-md px-3 py-2" data-testid="notice-gcal-connected">
-          <CalendarCheck className="w-4 h-4 shrink-0" />
-          <span>Google Calendar ({selectedProfile.googleCalendarId}) synced — busy times are automatically excluded from available slots</span>
-        </div>
-      ) : calStatus?.connected ? (
-        <div className="flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 rounded-md px-3 py-2" data-testid="notice-gcal-connected">
-          <CalendarCheck className="w-4 h-4 shrink-0" />
-          <span>Google Calendar connected (primary) — busy times are automatically excluded. Set a specific calendar in the Mentors tab for more control.</span>
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded-md px-3 py-2" data-testid="notice-gcal-disconnected">
-          <CalendarX className="w-4 h-4 shrink-0" />
-          <span>Google Calendar not connected — connect it to automatically block busy times from booking slots</span>
-        </div>
-      )}
-
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="font-semibold text-sm">Weekly Availability</h3>
-          <p className="text-xs text-muted-foreground">Set the times {selectedProfile?.name} is available for mentoring each week</p>
-        </div>
-        <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-add-availability">
-          <Plus className="w-4 h-4 mr-1" /> Add Window
-        </Button>
-      </div>
-
-      {isLoading ? (
-        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin" /></div>
-      ) : slots.length === 0 ? (
-        <Card className="p-8 text-center">
-          <Clock className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">No availability set for {selectedProfile?.name}</p>
-          <p className="text-xs text-muted-foreground mt-1">Add weekly hours so people can book sessions</p>
-          <div className="flex justify-center gap-2 mt-3 flex-wrap">
-            <Button size="sm" variant="outline" onClick={() => setShowAdd(true)}>
-              <Plus className="w-4 h-4 mr-1" /> Add manually
-            </Button>
-            <Button size="sm" onClick={() => quickSetup.mutate()} disabled={quickSetup.isPending} data-testid="button-quick-setup">
-              {quickSetup.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Zap className="w-4 h-4 mr-1" />}
-              Quick Setup (Mon–Fri, 9–3)
-            </Button>
-            {profiles && profiles.length > 1 && (
-              <Button size="sm" variant="outline" onClick={() => quickSetupAll.mutate()} disabled={quickSetupAll.isPending} data-testid="button-quick-setup-all">
-                {quickSetupAll.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Users className="w-4 h-4 mr-1" />}
-                Set All Mentors (Mon–Fri, 9–3)
-              </Button>
-            )}
-          </div>
-        </Card>
-      ) : (
-        <div className="grid gap-2">
-          {DAY_NAMES.map((day, dayIdx) => {
-            const daySlots = slots.filter(s => s.dayOfWeek === dayIdx);
-            if (daySlots.length === 0) return null;
-            return (
-              <Card key={dayIdx} className="p-3" data-testid={`availability-day-${dayIdx}`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="font-medium text-sm w-24">{day}</span>
-                    <div className="flex flex-wrap gap-2">
-                      {daySlots.map(slot => (
-                        <div key={slot.id} className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-xs">
-                            {slot.startTime} – {slot.endTime}
-                          </Badge>
-                          <span className="text-[10px] text-muted-foreground">
-                            {slot.slotDuration}min slots · {slot.bufferMinutes}min buffer
-                          </span>
-                          <Switch
-                            checked={slot.isActive ?? true}
-                            onCheckedChange={(checked) => updateAvailability.mutate({ id: slot.id, isActive: checked })}
-                            data-testid={`switch-active-${slot.id}`}
-                          />
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-6 w-6"
-                            onClick={() => setEditingSlot(slot)}
-                            data-testid={`button-edit-avail-${slot.id}`}
-                          >
-                            <Pencil className="w-3 h-3" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-6 w-6"
-                            onClick={() => deleteAvailability.mutate(slot.id)}
-                            data-testid={`button-delete-avail-${slot.id}`}
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      )}
-
-      <AvailabilityDialog open={showAdd} onOpenChange={setShowAdd} mentorUserId={mentorUserId} />
-      {editingSlot && (
-        <AvailabilityDialog
-          open={!!editingSlot}
-          onOpenChange={(v) => { if (!v) setEditingSlot(null); }}
-          mentorUserId={mentorUserId}
-          editSlot={editingSlot}
-        />
-      )}
-
-      <MeetingTypesSection />
-    </div>
-  );
-}
-
 function AddMentorDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -1587,22 +893,27 @@ function MentorsTab() {
 export default function MentoringPage() {
   return (
     <div className="max-w-5xl mx-auto space-y-6 p-4">
-      <div>
-        <h1 className="text-2xl font-bold" data-testid="heading-mentoring">Mentoring</h1>
-        <p className="text-muted-foreground text-sm">Schedule and manage 1:1 mentoring sessions</p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold" data-testid="heading-mentoring">Mentoring</h1>
+          <p className="text-muted-foreground text-sm">Schedule and manage 1:1 mentoring sessions</p>
+        </div>
+        <Link href="/scheduling">
+          <Button variant="outline" size="sm" data-testid="link-to-scheduling">
+            <CalendarClock className="w-4 h-4 mr-1" />
+            Manage availability & booking types
+            <ArrowRight className="w-4 h-4 ml-1" />
+          </Button>
+        </Link>
       </div>
 
       <Tabs defaultValue="sessions">
         <TabsList data-testid="mentoring-tabs">
           <TabsTrigger value="sessions" data-testid="tab-sessions">Sessions</TabsTrigger>
-          <TabsTrigger value="availability" data-testid="tab-availability">Availability</TabsTrigger>
           <TabsTrigger value="mentors" data-testid="tab-mentors">Mentors</TabsTrigger>
         </TabsList>
         <TabsContent value="sessions" className="mt-4">
           <SessionsTab />
-        </TabsContent>
-        <TabsContent value="availability" className="mt-4">
-          <AvailabilityTab />
         </TabsContent>
         <TabsContent value="mentors" className="mt-4">
           <MentorsTab />

@@ -21,6 +21,7 @@ import {
   DollarSign,
   Activity,
   Mail,
+  CalendarClock,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "../ui/beautiful-button";
@@ -52,6 +53,7 @@ const navigation: NavItem[] = [
   {
     name: "Delivery", href: "/programmes", icon: Layers,
     children: [
+      { name: "Scheduling", href: "/scheduling", icon: CalendarClock },
       { name: "Mentoring", href: "/mentoring", icon: Users },
       { name: "Programmes", href: "/programmes", icon: Layers },
       { name: "Bookings", href: "/bookings", icon: Building2 },
