@@ -2330,9 +2330,9 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
           userId: targetUserId,
           dayOfWeek: day,
           startTime: "09:00",
-          endTime: "16:00",
-          slotDuration: 30,
-          bufferMinutes: 15,
+          endTime: "15:00",
+          slotDuration: 60,
+          bufferMinutes: 0,
           isActive: true,
         });
         defaults.push(slot);
@@ -2341,6 +2341,39 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     } catch (err: any) {
       console.error("Quick setup error:", err);
       res.status(500).json({ message: "Failed to set up availability" });
+    }
+  });
+
+  app.post("/api/mentor-availability/quick-setup-all", isAuthenticated, async (req, res) => {
+    try {
+      const adminUserId = (req.user as any).claims.sub;
+      const profiles = await storage.getMentorProfiles(adminUserId);
+      if (profiles.length === 0) {
+        return res.status(400).json({ message: "No mentor profiles found" });
+      }
+
+      let setupCount = 0;
+      for (const profile of profiles) {
+        const mentorId = profile.mentorUserId || `mentor-${profile.id}`;
+        const existing = await storage.getMentorAvailability(mentorId);
+        if (existing.length > 0) continue;
+        for (let day = 0; day <= 4; day++) {
+          await storage.createMentorAvailability({
+            userId: mentorId,
+            dayOfWeek: day,
+            startTime: "09:00",
+            endTime: "15:00",
+            slotDuration: 60,
+            bufferMinutes: 0,
+            isActive: true,
+          });
+        }
+        setupCount++;
+      }
+      res.json({ message: `Availability set for ${setupCount} mentor(s) — Mon–Fri, 9am–3pm`, setupCount });
+    } catch (err: any) {
+      console.error("Quick setup all error:", err);
+      res.status(500).json({ message: "Failed to set up availability for all mentors" });
     }
   });
 

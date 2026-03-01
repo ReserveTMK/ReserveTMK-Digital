@@ -43,6 +43,7 @@ import {
   Zap,
   UserPlus,
   Settings,
+  Pencil,
 } from "lucide-react";
 import { useAnalyzeInteraction } from "@/hooks/use-interactions";
 import type { Meeting, MentorAvailability, MentorProfile, MeetingType } from "@shared/schema";
@@ -313,16 +314,18 @@ function ScheduleSessionDialog({ open, onOpenChange }: { open: boolean; onOpenCh
   );
 }
 
-function AddAvailabilityDialog({ open, onOpenChange, mentorUserId }: { open: boolean; onOpenChange: (v: boolean) => void; mentorUserId?: string }) {
+function AvailabilityDialog({ open, onOpenChange, mentorUserId, editSlot }: { open: boolean; onOpenChange: (v: boolean) => void; mentorUserId?: string; editSlot?: MentorAvailability | null }) {
   const createAvailability = useCreateAvailability();
-  const [dayOfWeek, setDayOfWeek] = useState("0");
-  const [startTime, setStartTime] = useState("09:00");
-  const [endTime, setEndTime] = useState("16:00");
-  const [slotDuration, setSlotDuration] = useState("30");
-  const [bufferMinutes, setBufferMinutes] = useState("15");
+  const updateAvailability = useUpdateAvailability();
+  const isEditing = !!editSlot;
+  const [dayOfWeek, setDayOfWeek] = useState(editSlot ? String(editSlot.dayOfWeek) : "0");
+  const [startTime, setStartTime] = useState(editSlot?.startTime || "09:00");
+  const [endTime, setEndTime] = useState(editSlot?.endTime || "15:00");
+  const [slotDuration, setSlotDuration] = useState(editSlot ? String(editSlot.slotDuration) : "60");
+  const [bufferMinutes, setBufferMinutes] = useState(editSlot ? String(editSlot.bufferMinutes) : "15");
 
   const handleSubmit = () => {
-    createAvailability.mutate({
+    const data = {
       dayOfWeek: parseInt(dayOfWeek),
       startTime,
       endTime,
@@ -330,19 +333,24 @@ function AddAvailabilityDialog({ open, onOpenChange, mentorUserId }: { open: boo
       bufferMinutes: parseInt(bufferMinutes),
       isActive: true,
       ...(mentorUserId ? { userId: mentorUserId } : {}),
-    }, {
-      onSuccess: () => {
-        onOpenChange(false);
-      },
-    });
+    };
+    if (isEditing && editSlot) {
+      updateAvailability.mutate({ id: editSlot.id, ...data }, {
+        onSuccess: () => onOpenChange(false),
+      });
+    } else {
+      createAvailability.mutate(data, {
+        onSuccess: () => onOpenChange(false),
+      });
+    }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[400px]">
         <DialogHeader>
-          <DialogTitle>Add Availability Window</DialogTitle>
-          <DialogDescription>Set when this mentor is available</DialogDescription>
+          <DialogTitle>{isEditing ? "Edit Availability Window" : "Add Availability Window"}</DialogTitle>
+          <DialogDescription>{isEditing ? "Update this availability slot" : "Set when this mentor is available"}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-2">
@@ -402,9 +410,9 @@ function AddAvailabilityDialog({ open, onOpenChange, mentorUserId }: { open: boo
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={createAvailability.isPending} data-testid="button-add-availability">
-            {createAvailability.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-            Add
+          <Button onClick={handleSubmit} disabled={createAvailability.isPending || updateAvailability.isPending} data-testid="button-add-availability">
+            {(createAvailability.isPending || updateAvailability.isPending) ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+            {isEditing ? "Update" : "Add"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1136,6 +1144,7 @@ function AvailabilityTab() {
   const updateAvailability = useUpdateAvailability();
   const deleteAvailability = useDeleteAvailability();
   const [showAdd, setShowAdd] = useState(false);
+  const [editingSlot, setEditingSlot] = useState<MentorAvailability | null>(null);
 
   const { data: calStatus } = useQuery<{ connected: boolean }>({
     queryKey: ["/api/google-calendar/status"],
@@ -1150,7 +1159,19 @@ function AvailabilityTab() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/mentor-availability"] });
-      toast({ title: "Availability set up", description: "Default hours added: Mon–Fri, 9am–4pm" });
+      toast({ title: "Availability set up", description: "Default hours added: Mon–Fri, 9am–3pm" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const quickSetupAll = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/mentor-availability/quick-setup-all");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/mentor-availability"] });
+      toast({ title: "All mentors set up", description: data.message || "Mon–Fri, 9am–3pm applied to all mentors" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -1242,14 +1263,20 @@ function AvailabilityTab() {
           <Clock className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">No availability set for {selectedProfile?.name}</p>
           <p className="text-xs text-muted-foreground mt-1">Add weekly hours so people can book sessions</p>
-          <div className="flex justify-center gap-2 mt-3">
+          <div className="flex justify-center gap-2 mt-3 flex-wrap">
             <Button size="sm" variant="outline" onClick={() => setShowAdd(true)}>
               <Plus className="w-4 h-4 mr-1" /> Add manually
             </Button>
             <Button size="sm" onClick={() => quickSetup.mutate()} disabled={quickSetup.isPending} data-testid="button-quick-setup">
               {quickSetup.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Zap className="w-4 h-4 mr-1" />}
-              Quick Setup (Mon–Fri, 9–4)
+              Quick Setup (Mon–Fri, 9–3)
             </Button>
+            {profiles && profiles.length > 1 && (
+              <Button size="sm" variant="outline" onClick={() => quickSetupAll.mutate()} disabled={quickSetupAll.isPending} data-testid="button-quick-setup-all">
+                {quickSetupAll.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Users className="w-4 h-4 mr-1" />}
+                Set All Mentors (Mon–Fri, 9–3)
+              </Button>
+            )}
           </div>
         </Card>
       ) : (
@@ -1280,6 +1307,15 @@ function AvailabilityTab() {
                             size="icon"
                             variant="ghost"
                             className="h-6 w-6"
+                            onClick={() => setEditingSlot(slot)}
+                            data-testid={`button-edit-avail-${slot.id}`}
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6"
                             onClick={() => deleteAvailability.mutate(slot.id)}
                             data-testid={`button-delete-avail-${slot.id}`}
                           >
@@ -1296,7 +1332,15 @@ function AvailabilityTab() {
         </div>
       )}
 
-      <AddAvailabilityDialog open={showAdd} onOpenChange={setShowAdd} mentorUserId={mentorUserId} />
+      <AvailabilityDialog open={showAdd} onOpenChange={setShowAdd} mentorUserId={mentorUserId} />
+      {editingSlot && (
+        <AvailabilityDialog
+          open={!!editingSlot}
+          onOpenChange={(v) => { if (!v) setEditingSlot(null); }}
+          mentorUserId={mentorUserId}
+          editSlot={editingSlot}
+        />
+      )}
 
       <MeetingTypesSection />
     </div>
