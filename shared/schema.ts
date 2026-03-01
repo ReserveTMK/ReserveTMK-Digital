@@ -1480,13 +1480,16 @@ export type MentoringApplication = typeof mentoringApplications.$inferSelect;
 export type InsertMentoringApplication = z.infer<typeof insertMentoringApplicationSchema>;
 
 export const PROJECT_STATUSES = ["planning", "active", "on_hold", "completed", "cancelled"] as const;
+export const PROJECT_TYPES = ["operational", "delivery"] as const;
 export const PROJECT_UPDATE_TYPES = ["status_change", "milestone", "note", "blocker", "completed_task"] as const;
+export const PROJECT_TASK_STATUSES = ["pending", "in_progress", "completed", "cancelled"] as const;
 
 export const projects = pgTable("projects", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description"),
   status: text("status").notNull().default("planning"),
+  projectType: text("project_type").notNull().default("operational"),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
   ownerId: integer("owner_id"),
@@ -1510,12 +1513,26 @@ export const projectUpdates = pgTable("project_updates", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const projectTasks = pgTable("project_tasks", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  status: text("status").notNull().default("pending"),
+  assigneeId: integer("assignee_id"),
+  deadline: timestamp("deadline"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const insertProjectSchema = createInsertSchema(projects).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 }).extend({
   status: z.enum(PROJECT_STATUSES).default("planning"),
+  projectType: z.enum(PROJECT_TYPES).default("operational"),
   name: z.string().min(1).max(200),
 });
 
@@ -1526,10 +1543,21 @@ export const insertProjectUpdateSchema = createInsertSchema(projectUpdates).omit
   updateType: z.enum(PROJECT_UPDATE_TYPES).default("note"),
 });
 
+export const insertProjectTaskSchema = createInsertSchema(projectTasks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  status: z.enum(PROJECT_TASK_STATUSES).default("pending"),
+  title: z.string().min(1).max(500),
+});
+
 export type Project = typeof projects.$inferSelect;
 export type InsertProject = z.infer<typeof insertProjectSchema>;
 export type ProjectUpdate = typeof projectUpdates.$inferSelect;
 export type InsertProjectUpdate = z.infer<typeof insertProjectUpdateSchema>;
+export type ProjectTask = typeof projectTasks.$inferSelect;
+export type InsertProjectTask = z.infer<typeof insertProjectTaskSchema>;
 
 // Request types
 export type CreateContactRequest = InsertContact;

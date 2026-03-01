@@ -140,10 +140,13 @@ import {
   type InsertMentoringApplication,
   projects,
   projectUpdates,
+  projectTasks,
   type Project,
   type InsertProject,
   type ProjectUpdate,
   type InsertProjectUpdate,
+  type ProjectTask,
+  type InsertProjectTask,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, sql, max, count } from "drizzle-orm";
 
@@ -416,6 +419,12 @@ export interface IStorage {
   deleteProject(id: number): Promise<void>;
   getProjectUpdates(projectId: number): Promise<ProjectUpdate[]>;
   createProjectUpdate(data: InsertProjectUpdate): Promise<ProjectUpdate>;
+  getProjectTasks(projectId: number): Promise<ProjectTask[]>;
+  getAllProjectTasks(userId: string): Promise<ProjectTask[]>;
+  getProjectTask(id: number): Promise<ProjectTask | undefined>;
+  createProjectTask(data: InsertProjectTask): Promise<ProjectTask>;
+  updateProjectTask(id: number, updates: Partial<InsertProjectTask>): Promise<ProjectTask>;
+  deleteProjectTask(id: number): Promise<void>;
 
   // Auth (re-exported or separate)
   auth: IAuthStorage;
@@ -1684,6 +1693,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteProject(id: number): Promise<void> {
+    await db.delete(projectTasks).where(eq(projectTasks.projectId, id));
     await db.delete(projectUpdates).where(eq(projectUpdates.projectId, id));
     await db.delete(projects).where(eq(projects.id, id));
   }
@@ -1695,6 +1705,36 @@ export class DatabaseStorage implements IStorage {
   async createProjectUpdate(data: InsertProjectUpdate): Promise<ProjectUpdate> {
     const [item] = await db.insert(projectUpdates).values(data).returning();
     return item;
+  }
+
+  async getProjectTasks(projectId: number): Promise<ProjectTask[]> {
+    return db.select().from(projectTasks).where(eq(projectTasks.projectId, projectId)).orderBy(projectTasks.sortOrder, projectTasks.createdAt);
+  }
+
+  async getAllProjectTasks(userId: string): Promise<ProjectTask[]> {
+    const userProjects = await db.select({ id: projects.id }).from(projects).where(eq(projects.createdBy, userId));
+    if (userProjects.length === 0) return [];
+    const projectIds = userProjects.map(p => p.id);
+    return db.select().from(projectTasks).where(sql`${projectTasks.projectId} = ANY(${projectIds})`);
+  }
+
+  async getProjectTask(id: number): Promise<ProjectTask | undefined> {
+    const [item] = await db.select().from(projectTasks).where(eq(projectTasks.id, id));
+    return item;
+  }
+
+  async createProjectTask(data: InsertProjectTask): Promise<ProjectTask> {
+    const [item] = await db.insert(projectTasks).values(data).returning();
+    return item;
+  }
+
+  async updateProjectTask(id: number, updates: Partial<InsertProjectTask>): Promise<ProjectTask> {
+    const [item] = await db.update(projectTasks).set({ ...updates, updatedAt: new Date() }).where(eq(projectTasks.id, id)).returning();
+    return item;
+  }
+
+  async deleteProjectTask(id: number): Promise<void> {
+    await db.delete(projectTasks).where(eq(projectTasks.id, id));
   }
 
   // Stage Progression

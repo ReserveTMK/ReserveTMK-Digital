@@ -18,7 +18,7 @@ The frontend is built with React and TypeScript using Vite. It employs Wouter fo
 The backend is an Express.js application developed with Node.js and TypeScript, exposing a RESTful JSON API. Authentication is managed via Replit Auth (OpenID Connect). Text-based AI functionalities, such as analysis, extraction, chat, and enrichment, are powered by Anthropic Claude through Replit AI Integrations. Audio features (speech-to-text, text-to-speech, voice chat) and image generation are handled by OpenAI. Server-side audio processing relies on ffmpeg.
 
 ### Database
-PostgreSQL is used as the database, integrated with Drizzle ORM. The schema includes tables for users, contacts, interactions, meetings, events, impact logs, taxonomy, programmes, bookings, groups, funders, funder documents, projects, project_updates, and reporting data. JSONB columns are leveraged for flexible metric storage.
+PostgreSQL is used as the database, integrated with Drizzle ORM. The schema includes tables for users, contacts, interactions, meetings, events, impact logs, taxonomy, programmes, bookings, groups, funders, funder documents, projects, project_updates, project_tasks, and reporting data. JSONB columns are leveraged for flexible metric storage.
 
 ### Key Design Decisions
 1.  **Shared API Contracts**: Zod schemas ensure type safety and consistency across both frontend and backend.
@@ -39,7 +39,7 @@ PostgreSQL is used as the database, integrated with Drizzle ORM. The schema incl
 -   **Journey Framework**: Culturally-grounded Māori stage progression: kākano (seed/foundation) → tipu (actively growing) → ora (thriving/sustained). Replaces the old exploring/testing/building/established stages. Stage changes are tracked in `stageProgression` JSONB history on contacts. Venture types: commercial_business, social_enterprise, creative_movement, community_initiative, exploring, ecosystem_partner. Contacts also have `whatTheyAreBuilding` text field.
 -   **NZ Timezone Standardization**: All date and time calculations are standardized to Pacific/Auckland timezone with Monday-start weeks.
 -   **Community Member Management**: Automates classification of community members based on engagement signals, with AI relationship scoring and last active date tracking.
--   **Projects**: Tracks internal initiatives, campaigns, and work streams (e.g. marketing campaigns, partnership projects, development work). Projects have statuses (planning/active/on_hold/completed/cancelled), owners (linked to contacts), team members (JSONB array of contact IDs), related groups/contacts, goals, deliverables, and notes. Project updates provide an activity feed with types: note, milestone, blocker, completed_task, status_change. Dashboard widget shows active/planning counts and urgent projects sorted by due date.
+-   **Projects**: Tracks internal initiatives with AI-powered task extraction. Two project types: Operational (internal ops) and Delivery (programme/service delivery). Creation flow: name project → pick type → voice debrief or text input → AI extracts tasks → review/edit → save. Uses Claude Sonnet for task extraction from freeform text/transcripts. Tasks have: title, description, status (pending/in_progress/completed/cancelled), assignee (linked to contacts), deadline, sort order. Project detail page features inline task management (checkbox completion, assignee dropdown, deadline picker, manual add, voice/text debrief to add more tasks). Project updates provide an activity feed with types: note, milestone, blocker, completed_task, status_change. Dashboard widget shows active/planning counts, pending task count, and urgent projects with per-project task counts.
 -   **UI Terminology**: Navigation uses "People" (not "Community") for contacts section. All time displays use 12-hour format (AM/PM). Consent features have been removed from contact detail. Shared `formatTimeSlot` utility in `client/src/lib/utils.ts` converts "HH:MM" to "h:mm AM/PM".
 
 ## External Dependencies
@@ -51,7 +51,7 @@ PostgreSQL is used as the database, integrated with Drizzle ORM. The schema incl
 -   **Replit Auth (OIDC)**: Handles user authentication and authorization.
 
 ### AI Model Mapping
--   **claude-sonnet-4-6**: For interaction analysis, impact extraction, and AI chat.
+-   **claude-sonnet-4-6**: For interaction analysis, impact extraction, AI chat, and project task extraction.
 -   **claude-haiku-4-5**: For organisation enrichment, legacy report extraction, taxonomy scanning, and Gmail domain mapping.
 -   **OpenAI (gpt-4o-mini-transcribe)**: For speech-to-text transcription.
 -   **OpenAI (gpt-audio)**: For voice chat and text-to-speech.

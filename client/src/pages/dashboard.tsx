@@ -27,7 +27,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import type { Meeting, Contact, Event, Programme, Booking, Project } from "@shared/schema";
+import type { Meeting, Contact, Event, Programme, Booking, Project, ProjectTask } from "@shared/schema";
 
 const MEETING_STATUS_COLORS: Record<string, string> = {
   scheduled: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
@@ -124,21 +124,36 @@ export default function Dashboard() {
     queryKey: ["/api/projects"],
   });
 
+  const { data: allTasks } = useQuery<ProjectTask[]>({
+    queryKey: ["/api/projects", "all-tasks"],
+  });
+
   const projectWidget = useMemo(() => {
-    if (!projectsData) return { active: 0, planning: 0, urgent: [] as Project[] };
+    if (!projectsData) return { active: 0, planning: 0, pendingTasks: 0, urgent: [] as (Project & { pendingTaskCount: number })[] };
     const active = projectsData.filter(p => p.status === "active").length;
     const planning = projectsData.filter(p => p.status === "planning").length;
+    const pendingTasks = (allTasks ?? []).filter(t => t.status === "pending" || t.status === "in_progress").length;
+
+    const taskCountsByProject = new Map<number, number>();
+    (allTasks ?? []).forEach(t => {
+      if (t.status === "pending" || t.status === "in_progress") {
+        taskCountsByProject.set(t.projectId, (taskCountsByProject.get(t.projectId) ?? 0) + 1);
+      }
+    });
+
     const urgent = projectsData
-      .filter(p => p.status === "active")
+      .filter(p => p.status === "active" || p.status === "planning")
+      .map(p => ({ ...p, pendingTaskCount: taskCountsByProject.get(p.id) ?? 0 }))
       .sort((a, b) => {
+        if (b.pendingTaskCount !== a.pendingTaskCount) return b.pendingTaskCount - a.pendingTaskCount;
         if (!a.endDate && !b.endDate) return 0;
         if (!a.endDate) return 1;
         if (!b.endDate) return -1;
         return new Date(a.endDate).getTime() - new Date(b.endDate).getTime();
       })
       .slice(0, 5);
-    return { active, planning, urgent };
-  }, [projectsData]);
+    return { active, planning, pendingTasks, urgent };
+  }, [projectsData, allTasks]);
 
   const upcomingItems = useMemo(() => {
     const now = new Date();
@@ -799,6 +814,12 @@ export default function Dashboard() {
                       <Badge variant="secondary" className="bg-blue-500/15 text-blue-700 dark:text-blue-300 text-[10px]">Planning</Badge>
                       <span className="text-lg font-bold tabular-nums" data-testid="text-projects-planning-count">{projectWidget.planning}</span>
                     </div>
+                    {projectWidget.pendingTasks > 0 && (
+                      <div className="flex items-center gap-1.5">
+                        <Badge variant="secondary" className="bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px]">Tasks</Badge>
+                        <span className="text-lg font-bold tabular-nums" data-testid="text-projects-pending-tasks">{projectWidget.pendingTasks}</span>
+                      </div>
+                    )}
                   </div>
                   {projectWidget.urgent.length > 0 && (
                     <div className="space-y-1.5 max-h-[200px] overflow-y-auto pr-1">
@@ -806,11 +827,18 @@ export default function Dashboard() {
                         <Link key={p.id} href={`/projects/${p.id}`} data-testid={`project-widget-item-${p.id}`}>
                           <div className="flex items-center justify-between p-2 rounded-lg bg-muted/40 hover:bg-muted transition-colors cursor-pointer">
                             <p className="text-sm font-medium truncate flex-1 min-w-0">{p.name}</p>
-                            {p.endDate && (
-                              <span className="text-xs text-muted-foreground shrink-0 ml-2">
-                                due {format(new Date(p.endDate), "d MMM")}
-                              </span>
-                            )}
+                            <div className="flex items-center gap-2 shrink-0 ml-2">
+                              {p.pendingTaskCount > 0 && (
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0" data-testid={`text-task-count-${p.id}`}>
+                                  <ListChecks className="w-3 h-3 mr-0.5" />{p.pendingTaskCount}
+                                </Badge>
+                              )}
+                              {p.endDate && (
+                                <span className="text-xs text-muted-foreground">
+                                  due {format(new Date(p.endDate), "d MMM")}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </Link>
                       ))}

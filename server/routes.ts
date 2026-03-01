@@ -8,7 +8,7 @@ import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON } from "./replit_integrations/anthropic/client";
 import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, type ReportFilters } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes } from "@shared/schema";
+import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, sql, gte, lte } from "drizzle-orm";
 import { scanGmailEmails, startAutoSync, getGmailOAuth2Client } from "./gmail-import";
@@ -7075,6 +7075,137 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       res.status(201).json(update);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Failed to create project update" });
+    }
+  });
+
+  app.get("/api/projects/all-tasks", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const tasks = await storage.getAllProjectTasks(userId);
+      res.json(tasks);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to get all tasks" });
+    }
+  });
+
+  app.get("/api/projects/:id/tasks", isAuthenticated, async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const project = await storage.getProject(projectId);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+      const userId = (req.user as any).claims.sub;
+      if (project.createdBy !== userId) return res.status(403).json({ message: "Forbidden" });
+      const tasks = await storage.getProjectTasks(projectId);
+      res.json(tasks);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to get project tasks" });
+    }
+  });
+
+  app.post("/api/projects/:id/tasks", isAuthenticated, async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const project = await storage.getProject(projectId);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+      const userId = (req.user as any).claims.sub;
+      if (project.createdBy !== userId) return res.status(403).json({ message: "Forbidden" });
+      const body = { ...req.body, projectId };
+      if (body.deadline) body.deadline = new Date(body.deadline);
+      const validated = insertProjectTaskSchema.parse(body);
+      const task = await storage.createProjectTask(validated);
+      await storage.updateProject(projectId, {});
+      res.status(201).json(task);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to create project task" });
+    }
+  });
+
+  app.patch("/api/projects/tasks/:taskId", isAuthenticated, async (req, res) => {
+    try {
+      const taskId = parseInt(req.params.taskId);
+      const task = await storage.getProjectTask(taskId);
+      if (!task) return res.status(404).json({ message: "Task not found" });
+      const project = await storage.getProject(task.projectId);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+      const userId = (req.user as any).claims.sub;
+      if (project.createdBy !== userId) return res.status(403).json({ message: "Forbidden" });
+      const body = { ...req.body };
+      delete body.projectId;
+      if (body.deadline) body.deadline = new Date(body.deadline);
+      const validated = insertProjectTaskSchema.partial().parse(body);
+      const updated = await storage.updateProjectTask(taskId, validated);
+      await storage.updateProject(task.projectId, {});
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to update task" });
+    }
+  });
+
+  app.delete("/api/projects/tasks/:taskId", isAuthenticated, async (req, res) => {
+    try {
+      const taskId = parseInt(req.params.taskId);
+      const task = await storage.getProjectTask(taskId);
+      if (!task) return res.status(404).json({ message: "Task not found" });
+      const project = await storage.getProject(task.projectId);
+      if (!project) return res.status(404).json({ message: "Project not found" });
+      const userId = (req.user as any).claims.sub;
+      if (project.createdBy !== userId) return res.status(403).json({ message: "Forbidden" });
+      await storage.deleteProjectTask(taskId);
+      await storage.updateProject(task.projectId, {});
+      res.status(204).end();
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to delete task" });
+    }
+  });
+
+  app.post("/api/projects/extract-tasks", isAuthenticated, async (req, res) => {
+    try {
+      const { text, projectName } = req.body;
+      if (!text || typeof text !== "string" || text.trim().length < 5) {
+        return res.status(400).json({ message: "Please provide some text to extract tasks from" });
+      }
+
+      const result = await claudeJSON({
+        model: "claude-sonnet-4-6",
+        system: `You are a project management assistant for Reserve Tāmaki, a Māori and Pasifika community development organisation in Tāmaki Makaurau (Auckland), Aotearoa New Zealand. You extract actionable tasks from voice debriefs, meeting notes, and freeform text.
+
+You understand Te Reo Māori terms (whānau, rangatahi, kaitiaki, mahi, kaupapa, etc.) and NZ business context.
+
+Extract clear, specific, actionable tasks. Each task should be something one person can do. Break down vague items into concrete steps where possible.`,
+        prompt: `Analyze this text and extract all actionable tasks:
+
+"""
+${text.trim()}
+"""
+
+${projectName ? `The project is called "${projectName}".` : "Also suggest a short project name and brief description based on the content."}
+
+Return JSON in this exact format:
+{
+  ${projectName ? "" : '"suggestedName": "short project name",\n  "suggestedDescription": "one sentence description",\n  '}"tasks": [
+    {
+      "title": "Clear actionable task title",
+      "description": "Brief context or details (optional, can be null)",
+      "priority": "high" | "medium" | "low"
+    }
+  ]
+}
+
+Rules:
+- Extract every actionable item, no matter how small
+- Task titles should be clear and start with a verb (e.g. "Set up...", "Contact...", "Review...")
+- Priority: high = urgent/deadline-driven, medium = important but flexible, low = nice to have
+- If the text mentions deadlines, include them in the task description
+- If the text mentions people by name, include them in the task description
+- Return at least 1 task, even if the text is vague`,
+        temperature: 0.2,
+        maxTokens: 4096,
+      });
+
+      res.json(result);
+    } catch (err: any) {
+      console.error("Task extraction error:", err);
+      res.status(500).json({ message: err.message || "Failed to extract tasks" });
     }
   });
 
