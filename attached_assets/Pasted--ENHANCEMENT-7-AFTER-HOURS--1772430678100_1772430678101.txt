@@ -1,0 +1,329 @@
+═══════════════════════════════════════════════════════════════════════
+
+ENHANCEMENT 7: AFTER-HOURS BOOKING PACK AUTO-SEND
+
+For bookings happening outside staffed hours, automatically send venue instructions closer to booking time.
+
+───────────────────────────────────────────────────────────────────────
+DATABASE ADDITIONS
+───────────────────────────────────────────────────────────────────────
+
+ALTER TABLE bookings
+ADD COLUMN IF NOT EXISTS is_after_hours BOOLEAN DEFAULT FALSE,
+ADD COLUMN IF NOT EXISTS auto_instructions_sent BOOLEAN DEFAULT FALSE,
+ADD COLUMN IF NOT EXISTS auto_instructions_sent_at TIMESTAMP NULL;
+
+-- Define staffed hours (adjust to your actual hours)
+CREATE TABLE IF NOT EXISTS operating_hours (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  day_of_week ENUM('monday','tuesday','wednesday','thursday','friday','saturday','sunday') NOT NULL,
+  open_time TIME,
+  close_time TIME,
+  is_staffed BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY (day_of_week)
+);
+
+-- Insert default staffed hours (Monday-Friday 9am-5pm)
+INSERT INTO operating_hours (day_of_week, open_time, close_time, is_staffed) VALUES
+('monday', '09:00:00', '17:00:00', TRUE),
+('tuesday', '09:00:00', '17:00:00', TRUE),
+('wednesday', '09:00:00', '17:00:00', TRUE),
+('thursday', '09:00:00', '17:00:00', TRUE),
+('friday', '09:00:00', '17:00:00', TRUE),
+('saturday', NULL, NULL, FALSE),
+('sunday', NULL, NULL, FALSE);
+
+───────────────────────────────────────────────────────────────────────
+AFTER-HOURS DETECTION
+───────────────────────────────────────────────────────────────────────
+
+When booking is confirmed (moved to Confirmed status or Accept clicked):
+
+FUNCTION: is_after_hours(booking_date, start_time)
+
+-- Get day of week for booking
+day_name = DAYNAME(booking_date); -- Returns 'Monday', 'Tuesday', etc
+day_lower = LOWER(day_name);
+
+-- Check operating hours for that day
+SELECT is_staffed, open_time, close_time 
+FROM operating_hours 
+WHERE day_of_week = [day_lower];
+
+-- Determine if after hours
+IF is_staffed == FALSE:
+  RETURN TRUE; -- Weekend/unstaffed day
+  
+IF start_time < open_time OR start_time >= close_time:
+  RETURN TRUE; -- Before opening or after closing
+  
+RETURN FALSE; -- During staffed hours
+
+-- Update booking
+UPDATE bookings 
+SET is_after_hours = [result]
+WHERE id = [booking_id];
+
+───────────────────────────────────────────────────────────────────────
+SCHEDULED AUTO-SEND (Time-based Trigger)
+───────────────────────────────────────────────────────────────────────
+
+Set up scheduled job (cron) that runs every hour:
+
+JOB: send_after_hours_booking_packs
+
+SELECT * FROM bookings
+WHERE status = 'confirmed'
+AND is_after_hours = TRUE
+AND auto_instructions_sent = FALSE
+AND booking_date >= CURDATE()
+AND TIMESTAMP(booking_date, start_time) <= DATE_ADD(NOW(), INTERVAL 4 HOUR);
+-- Send 4 hours before booking starts (adjust timing as needed)
+
+FOR EACH booking found:
+
+1. Gather venue instructions (same as confirmation email)
+2. Send reminder email via Gmail
+
+EMAIL TEMPLATE:
+---
+Subject: Reminder: Your booking at Reserve Tāmaki [TODAY/TOMORROW]
+
+Hi [contact_name],
+
+Your booking at Reserve Tāmaki is coming up!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BOOKING REMINDER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Venue: [venue_name]
+Date: [TODAY/TOMORROW], [date]
+Time: [start_time] - [end_time]
+[If TODAY:] Starting in [X] hours
+[If TOMORROW:] Tomorrow at [start_time]
+
+This is an after-hours booking. Our team won't be on-site, so here's everything you need:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ACCESS INFORMATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[All venue_instructions type = 'access']
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ARRIVAL INSTRUCTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[All venue_instructions type = 'arrival']
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WHAT'S INCLUDED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[All venue_instructions type = 'general']
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BEFORE YOU LEAVE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[All venue_instructions type = 'departure']
+
+IMPORTANT: Please lock up securely when you leave.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+NEED HELP?
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[All venue_instructions type = 'emergency']
+
+Note: This is an unstaffed booking. For emergencies only, contact the number above.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+See you soon (virtually)!
+
+Ngā mihi,
+Reserve Tāmaki Team
+---
+
+3. Update tracking
+UPDATE bookings 
+SET auto_instructions_sent = TRUE,
+    auto_instructions_sent_at = NOW()
+WHERE id = [booking_id];
+
+4. Log action in booking notes/history
+
+TIMING OPTIONS (configurable in settings):
+- 4 hours before: Good for same-day bookings
+- 1 day before: Good for next-day bookings  
+- 2 hours before: Last-minute reminder
+
+Recommendation: Send 4 hours before OR 8am on day of booking (whichever is later)
+
+───────────────────────────────────────────────────────────────────────
+MANUAL TRIGGER BUTTON
+───────────────────────────────────────────────────────────────────────
+
+On booking detail page, add button:
+
+IF status == 'confirmed':
+
+┌────────────────────────────────────────────────────────────┐
+│ VENUE INSTRUCTIONS                                         │
+│                                                             │
+│ [If is_after_hours == TRUE:]                               │
+│ ⚠️  After-Hours Booking                                     │
+│ This booking is outside staffed hours.                     │
+│                                                             │
+│ [If auto_instructions_sent == TRUE:]                       │
+│ ✓ Auto-reminder sent on [auto_instructions_sent_at]       │
+│ [Resend Instructions Now]                                  │
+│                                                             │
+│ [If auto_instructions_sent == FALSE:]                      │
+│ Auto-reminder scheduled for [calculated_time]              │
+│ [Send Instructions Now]                                    │
+│                                                             │
+│ [If is_after_hours == FALSE:]                              │
+│ Staffed booking - instructions sent in confirmation       │
+│ [Resend Confirmation & Instructions]                       │
+│                                                             │
+└────────────────────────────────────────────────────────────┘
+
+BUTTON: [Send Instructions Now]
+
+On click:
+1. Show confirmation: "Send booking pack to [contact_name]?"
+2. If confirmed:
+   - Send same email as auto-send (venue instructions reminder)
+   - Mark auto_instructions_sent = TRUE
+   - Mark auto_instructions_sent_at = NOW()
+   - Show success: "Booking pack sent to [email]"
+3. Button changes to: [Resend Instructions Now]
+
+This allows staff to:
+- Send booking pack immediately (don't wait for scheduled send)
+- Resend if client lost email
+- Override timing if needed
+
+───────────────────────────────────────────────────────────────────────
+SETTINGS: CONFIGURE AUTO-SEND
+───────────────────────────────────────────────────────────────────────
+
+Add to Settings > Bookings configuration:
+
+┌────────────────────────────────────────────────────────────┐
+│ AFTER-HOURS BOOKING SETTINGS                              │
+│                                                             │
+│ Auto-send booking pack for unstaffed bookings:             │
+│ ☑ Enabled                                                  │
+│                                                             │
+│ Send timing:                                               │
+│ ○ 1 day before booking                                     │
+│ ● 4 hours before booking                                   │
+│ ○ 2 hours before booking                                   │
+│ ○ 8am on day of booking (if booking after 10am)           │
+│ ○ Custom: [___] hours before                              │
+│                                                             │
+│ Operating Hours (when staff are on-site):                  │
+│                                                             │
+│ Monday:    [09:00 ▼] to [17:00 ▼]  ☑ Staffed             │
+│ Tuesday:   [09:00 ▼] to [17:00 ▼]  ☑ Staffed             │
+│ Wednesday: [09:00 ▼] to [17:00 ▼]  ☑ Staffed             │
+│ Thursday:  [09:00 ▼] to [17:00 ▼]  ☑ Staffed             │
+│ Friday:    [09:00 ▼] to [17:00 ▼]  ☑ Staffed             │
+│ Saturday:  Unstaffed                ☐ Staffed             │
+│ Sunday:    Unstaffed                ☐ Staffed             │
+│                                                             │
+│ Bookings outside these hours will be flagged as           │
+│ "after-hours" and receive auto-reminders.                  │
+│                                                             │
+│                    [Save Settings]                         │
+│                                                             │
+└────────────────────────────────────────────────────────────┘
+
+───────────────────────────────────────────────────────────────────────
+BOOKING LIST/KANBAN: VISUAL INDICATOR
+───────────────────────────────────────────────────────────────────────
+
+In Kanban view or list view, show after-hours indicator:
+
+┌─────────────────────────────────────────┐
+│ Sarah Johnson - Boardroom               │
+│ Sat, 15 Mar • 10:00 AM - 2:00 PM        │
+│ 🌙 After Hours                          │
+│ [If sent:] ✓ Auto-reminder sent         │
+│ [If not sent:] Reminder at 6:00 AM      │
+└─────────────────────────────────────────┘
+
+Visual cues:
+- 🌙 icon for after-hours bookings
+- Badge color: Orange/yellow for after-hours
+- Checkmark when auto-reminder sent
+
+───────────────────────────────────────────────────────────────────────
+NOTIFICATION TO STAFF
+───────────────────────────────────────────────────────────────────────
+
+When auto-reminder sends, optionally notify staff:
+
+Internal notification or email:
+---
+Subject: Auto-reminder sent for after-hours booking
+
+Booking pack automatically sent to:
+• Sarah Johnson (Boardroom)
+• Saturday, 15 March at 10:00 AM
+• Sent at: 6:00 AM (4 hours before)
+
+This booking is outside staffed hours. No on-site support needed.
+
+[View Booking]
+---
+
+This keeps staff informed without requiring action.
+
+═══════════════════════════════════════════════════════════════════════
+
+TESTING CHECKLIST (ENHANCEMENT 7):
+
+AFTER-HOURS DETECTION:
+□ operating_hours table created and populated
+□ Weekend bookings flagged as after-hours
+□ Before/after staffed hours flagged correctly
+□ During staffed hours NOT flagged as after-hours
+□ is_after_hours field updates on confirmation
+
+AUTO-SEND TIMING:
+□ Scheduled job runs every hour
+□ Finds bookings within send window (4 hours before)
+□ Only sends to confirmed, after-hours bookings
+□ Email sends via Gmail successfully
+□ auto_instructions_sent flag updates
+□ Timestamp recorded
+
+MANUAL SEND BUTTON:
+□ Button shows on confirmed bookings
+□ "Send Instructions Now" works immediately
+□ Email sends with all venue instructions
+□ Button changes to "Resend" after sending
+□ Can send multiple times if needed
+□ Works for both after-hours and staffed bookings
+
+SETTINGS CONFIGURATION:
+□ Can enable/disable auto-send
+□ Can adjust send timing (1 day, 4 hours, 2 hours, etc)
+□ Can configure operating hours per day
+□ Can toggle staffed/unstaffed per day
+□ Settings save and apply to new bookings
+
+VISUAL INDICATORS:
+□ After-hours bookings show 🌙 icon in list/Kanban
+□ Reminder status displays (sent/scheduled)
+□ After-hours badge color distinct
+□ Booking detail shows after-hours status clearly
+
+EMAIL CONTENT:
+□ Reminder email includes all instruction types
+□ Emphasizes unstaffed/after-hours nature
+□ Emergency contacts highlighted
+□ Timing language correct (TODAY/TOMORROW/IN X HOURS)
+□ Locks/security emphasized
+
+═══════════════════════════════════════════════════════════════════════
