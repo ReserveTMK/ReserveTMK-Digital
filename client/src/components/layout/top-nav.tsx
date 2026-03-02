@@ -20,6 +20,7 @@ import {
   Settings,
   Mail,
   Rocket,
+  CalendarClock,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useRef, useEffect } from "react";
@@ -89,6 +90,7 @@ const navGroups: NavGroup[] = [
     name: "Settings",
     href: "/gmail-import",
     children: [
+      { name: "Mentor Meetings & Availability", href: "/scheduling", icon: CalendarClock, description: "Manage availability & booking types" },
       { name: "Funders", href: "/funders", icon: Building2, description: "Manage funding relationships" },
       { name: "Gmail Import", href: "/gmail-import", icon: Mail, description: "Import contacts from email" },
     ],

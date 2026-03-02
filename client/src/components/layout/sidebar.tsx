@@ -54,7 +54,6 @@ const navigation: NavItem[] = [
   {
     name: "Delivery", href: "/programmes", icon: Layers,
     children: [
-      { name: "Scheduling", href: "/scheduling", icon: CalendarClock },
       { name: "Mentoring", href: "/mentoring", icon: Users },
       { name: "Programmes", href: "/programmes", icon: Layers },
       { name: "Projects", href: "/projects", icon: Rocket },
@@ -80,6 +79,7 @@ const navigation: NavItem[] = [
   {
     name: "Settings", href: "/gmail-import", icon: Settings,
     children: [
+      { name: "Mentor Meetings & Availability", href: "/scheduling", icon: CalendarClock },
       { name: "Gmail Import", href: "/gmail-import", icon: Mail },
     ],
   },

@@ -896,11 +896,6 @@ export default function MentoringPage() {
           <h1 className="text-2xl font-bold" data-testid="heading-mentoring">Mentoring</h1>
           <p className="text-muted-foreground text-sm">Schedule and manage 1:1 mentoring sessions</p>
         </div>
-        <Link href="/scheduling">
-          <Button variant="outline" size="icon" data-testid="link-to-scheduling">
-            <Settings className="w-4 h-4" />
-          </Button>
-        </Link>
       </div>
 
       <Tabs defaultValue="sessions">
