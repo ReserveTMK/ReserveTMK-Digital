@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { Venue, Booking, BookingPricingDefaults } from "@shared/schema";
+import type { Venue, Booking, BookingPricingDefaults, RegularBooker, VenueInstruction } from "@shared/schema";
 
 export function useVenues() {
   return useQuery<Venue[]>({ queryKey: ['/api/venues'] });
@@ -61,5 +61,55 @@ export function useUpdateBookingPricingDefaults() {
     mutationFn: (data: { fullDayRate?: string; halfDayRate?: string }) =>
       apiRequest('PUT', '/api/booking-pricing-defaults', data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/booking-pricing-defaults'] }),
+  });
+}
+
+export function useRegularBookers() {
+  return useQuery<RegularBooker[]>({ queryKey: ['/api/regular-bookers'] });
+}
+
+export function useCreateRegularBooker() {
+  return useMutation({
+    mutationFn: (data: any) => apiRequest('POST', '/api/regular-bookers', data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/regular-bookers'] }),
+  });
+}
+
+export function useUpdateRegularBooker() {
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => apiRequest('PATCH', `/api/regular-bookers/${id}`, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/regular-bookers'] }),
+  });
+}
+
+export function useDeleteRegularBooker() {
+  return useMutation({
+    mutationFn: (id: number) => apiRequest('DELETE', `/api/regular-bookers/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/regular-bookers'] }),
+  });
+}
+
+export function useVenueInstructions() {
+  return useQuery<VenueInstruction[]>({ queryKey: ['/api/venue-instructions'] });
+}
+
+export function useCreateVenueInstruction() {
+  return useMutation({
+    mutationFn: (data: any) => apiRequest('POST', '/api/venue-instructions', data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/venue-instructions'] }),
+  });
+}
+
+export function useUpdateVenueInstruction() {
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => apiRequest('PATCH', `/api/venue-instructions/${id}`, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/venue-instructions'] }),
+  });
+}
+
+export function useDeleteVenueInstruction() {
+  return useMutation({
+    mutationFn: (id: number) => apiRequest('DELETE', `/api/venue-instructions/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/venue-instructions'] }),
   });
 }

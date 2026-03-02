@@ -1,0 +1,709 @@
+import { useParams, useLocation } from "wouter";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useVenues } from "@/hooks/use-bookings";
+import { useContacts } from "@/hooks/use-contacts";
+import { useToast } from "@/hooks/use-toast";
+import { useState } from "react";
+import { Button } from "@/components/ui/beautiful-button";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  ArrowLeft,
+  Calendar,
+  Clock,
+  DollarSign,
+  Users,
+  MapPin,
+  CheckCircle2,
+  XCircle,
+  Send,
+  RefreshCw,
+  Loader2,
+  CircleDashed,
+  Ban,
+  FileText,
+  Mail,
+  Package,
+  Star,
+  Eye,
+  AlertCircle,
+} from "lucide-react";
+import { format } from "date-fns";
+import type { Booking, Contact, Venue, RegularBooker, Survey } from "@shared/schema";
+
+const STATUS_BADGE_STYLES: Record<string, string> = {
+  enquiry: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300",
+  confirmed: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
+  completed: "bg-green-500/15 text-green-700 dark:text-green-300",
+  cancelled: "bg-gray-500/15 text-gray-700 dark:text-gray-300",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  enquiry: "Enquiry",
+  confirmed: "Confirmed",
+  completed: "Completed",
+  cancelled: "Cancelled",
+};
+
+const PRICING_LABELS: Record<string, string> = {
+  full_price: "Full Price",
+  discounted: "Discounted",
+  free_koha: "Free / Koha",
+};
+
+const DURATION_LABELS: Record<string, string> = {
+  hourly: "Hourly",
+  half_day: "Half Day",
+  full_day: "Full Day",
+};
+
+function formatTimeSlot(time: string) {
+  const [h, m] = time.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const displayHour = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${displayHour}:${m.toString().padStart(2, "0")} ${period}`;
+}
+
+export default function BookingDetail() {
+  const params = useParams<{ id: string }>();
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const bookingId = parseInt(params.id || "0");
+
+  const [declineOpen, setDeclineOpen] = useState(false);
+  const [declineReason, setDeclineReason] = useState("");
+  const [surveyResponseOpen, setSurveyResponseOpen] = useState(false);
+
+  const { data: booking, isLoading: bookingLoading } = useQuery<Booking>({
+    queryKey: ['/api/bookings', bookingId],
+    enabled: bookingId > 0,
+  });
+
+  const { data: venues } = useVenues();
+  const { data: contacts } = useContacts();
+
+  const { data: regularBooker } = useQuery<RegularBooker | null>({
+    queryKey: ['/api/regular-bookers/by-contact', booking?.bookerId],
+    enabled: !!booking?.bookerId,
+  });
+
+  const { data: survey } = useQuery<Survey | null>({
+    queryKey: ['/api/bookings', bookingId, 'survey'],
+    enabled: bookingId > 0,
+  });
+
+  const acceptMutation = useMutation({
+    mutationFn: () => apiRequest('POST', `/api/bookings/${bookingId}/accept`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
+      toast({ title: "Booking Accepted", description: "Booking has been confirmed and confirmation email sent." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const declineMutation = useMutation({
+    mutationFn: (reason: string) => apiRequest('POST', `/api/bookings/${bookingId}/decline`, { reason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
+      setDeclineOpen(false);
+      setDeclineReason("");
+      toast({ title: "Booking Declined", description: "Booking has been cancelled." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const completeMutation = useMutation({
+    mutationFn: () => apiRequest('POST', `/api/bookings/${bookingId}/complete`),
+    onSuccess: async (res) => {
+      const data = await res.json();
+      queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/bookings', bookingId, 'survey'] });
+      toast({
+        title: "Booking Completed",
+        description: data.surveyDecision || "Booking marked as completed.",
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const resendMutation = useMutation({
+    mutationFn: () => apiRequest('POST', `/api/bookings/${bookingId}/resend-confirmation`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
+      toast({ title: "Sent", description: "Confirmation email resent successfully." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const sendSurveyMutation = useMutation({
+    mutationFn: () => apiRequest('POST', `/api/bookings/${bookingId}/send-survey`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/bookings', bookingId, 'survey'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
+      toast({ title: "Survey Sent", description: "Post-booking survey has been sent." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  if (bookingLoading) {
+    return (
+      <div className="flex justify-center items-center py-20">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!booking) {
+    return (
+      <main className="flex-1 p-4 md:p-8 overflow-y-auto">
+        <div className="max-w-4xl mx-auto">
+          <Card className="p-12 text-center">
+            <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <h2 className="text-lg font-semibold mb-2" data-testid="text-booking-not-found">Booking Not Found</h2>
+            <p className="text-muted-foreground mb-4">This booking doesn't exist or you don't have access to it.</p>
+            <Button onClick={() => setLocation("/bookings")} data-testid="button-back-bookings">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to Bookings
+            </Button>
+          </Card>
+        </div>
+      </main>
+    );
+  }
+
+  const venue = venues?.find((v: Venue) => v.id === booking.venueId);
+  const bookerContact = booking.bookerId ? contacts?.find((c: Contact) => c.id === booking.bookerId) : null;
+
+  const formatDate = (d: Date | string | null | undefined) => {
+    if (!d) return null;
+    return format(new Date(d), "d MMM yyyy");
+  };
+
+  const amount = parseFloat(booking.amount || "0");
+  const discountPct = parseFloat(booking.discountPercentage || "0");
+  const discountAmt = parseFloat(booking.discountAmount || "0");
+
+  const StatusIcon = booking.status === "enquiry" ? CircleDashed
+    : booking.status === "confirmed" ? CheckCircle2
+    : booking.status === "completed" ? CheckCircle2
+    : Ban;
+
+  return (
+    <>
+      <main className="flex-1 p-4 md:p-8 overflow-y-auto">
+        <div className="max-w-4xl mx-auto space-y-6">
+          <div className="flex items-center gap-3 flex-wrap">
+            <Button variant="ghost" size="icon" onClick={() => setLocation("/bookings")} data-testid="button-back">
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-3 flex-wrap">
+                <h1 className="text-2xl font-display font-bold" data-testid="text-booking-header">
+                  {booking.title || venue?.name || "Booking"}
+                </h1>
+                <Badge className={STATUS_BADGE_STYLES[booking.status] || ""} data-testid="badge-booking-status">
+                  <StatusIcon className="w-3 h-3 mr-1" />
+                  {STATUS_LABELS[booking.status] || booking.status}
+                </Badge>
+              </div>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Booking #{booking.id}
+                {booking.createdAt && ` — Created ${formatDate(booking.createdAt)}`}
+              </p>
+            </div>
+          </div>
+
+          {booking.status === "enquiry" && (
+            <Card className="p-4 border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-900/10">
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex-1">
+                  <h3 className="font-semibold text-sm" data-testid="text-action-required">Action Required</h3>
+                  <p className="text-sm text-muted-foreground">This booking enquiry is awaiting your decision.</p>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    variant="outline"
+                    onClick={() => setDeclineOpen(true)}
+                    disabled={declineMutation.isPending}
+                    data-testid="button-decline-booking"
+                  >
+                    {declineMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <XCircle className="w-4 h-4 mr-2" />}
+                    Decline
+                  </Button>
+                  <Button
+                    onClick={() => acceptMutation.mutate()}
+                    disabled={acceptMutation.isPending}
+                    data-testid="button-accept-booking"
+                  >
+                    {acceptMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+                    Accept Booking
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {booking.status === "confirmed" && (
+            <Card className="p-4 border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10">
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex-1">
+                  <h3 className="font-semibold text-sm" data-testid="text-confirmed-status">Booking Confirmed</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {booking.confirmationSent ? "Confirmation email has been sent." : "Confirmation email not yet sent."}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    variant="outline"
+                    onClick={() => resendMutation.mutate()}
+                    disabled={resendMutation.isPending}
+                    data-testid="button-resend-confirmation"
+                  >
+                    {resendMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                    Resend Confirmation
+                  </Button>
+                  <Button
+                    onClick={() => completeMutation.mutate()}
+                    disabled={completeMutation.isPending}
+                    data-testid="button-complete-booking"
+                  >
+                    {completeMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+                    Mark as Completed
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card className="p-5 space-y-4">
+              <h2 className="font-semibold text-base flex items-center gap-2" data-testid="text-section-details">
+                <Calendar className="w-4 h-4 text-muted-foreground" />
+                Booking Details
+              </h2>
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between gap-2">
+                  <span className="text-muted-foreground">Venue</span>
+                  <span className="font-medium flex items-center gap-1" data-testid="text-venue-name">
+                    <MapPin className="w-3 h-3" />
+                    {venue?.name || "Unknown"}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-muted-foreground">Classification</span>
+                  <Badge variant="outline" data-testid="text-classification">{booking.classification}</Badge>
+                </div>
+                {booking.startDate && (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Date</span>
+                    <span className="font-medium" data-testid="text-booking-date">
+                      {formatDate(booking.startDate)}
+                      {booking.endDate && booking.isMultiDay && ` — ${formatDate(booking.endDate)}`}
+                    </span>
+                  </div>
+                )}
+                {booking.tbcMonth && booking.tbcYear && (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Date</span>
+                    <span className="font-medium" data-testid="text-booking-tbc-date">TBC — {booking.tbcMonth} {booking.tbcYear}</span>
+                  </div>
+                )}
+                {booking.startTime && (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Time</span>
+                    <span className="font-medium flex items-center gap-1" data-testid="text-booking-time">
+                      <Clock className="w-3 h-3" />
+                      {formatTimeSlot(booking.startTime)}
+                      {booking.endTime && ` — ${formatTimeSlot(booking.endTime)}`}
+                    </span>
+                  </div>
+                )}
+                {booking.durationType && (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Duration Type</span>
+                    <span className="font-medium" data-testid="text-duration-type">{DURATION_LABELS[booking.durationType] || booking.durationType}</span>
+                  </div>
+                )}
+                {booking.attendeeCount && (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Attendees</span>
+                    <span className="font-medium" data-testid="text-attendee-count">{booking.attendeeCount}</span>
+                  </div>
+                )}
+                {booking.bookingSource && booking.bookingSource !== "manual" && (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Source</span>
+                    <Badge variant="outline" data-testid="text-booking-source">{booking.bookingSource}</Badge>
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            <Card className="p-5 space-y-4">
+              <h2 className="font-semibold text-base flex items-center gap-2" data-testid="text-section-client">
+                <Users className="w-4 h-4 text-muted-foreground" />
+                Client Information
+              </h2>
+              <div className="space-y-3 text-sm">
+                {bookerContact ? (
+                  <>
+                    <div className="flex justify-between gap-2">
+                      <span className="text-muted-foreground">Contact</span>
+                      <span className="font-medium" data-testid="text-booker-name">{bookerContact.name}</span>
+                    </div>
+                    {bookerContact.email && (
+                      <div className="flex justify-between gap-2">
+                        <span className="text-muted-foreground">Email</span>
+                        <span className="font-medium" data-testid="text-booker-email">{bookerContact.email}</span>
+                      </div>
+                    )}
+                    {bookerContact.phone && (
+                      <div className="flex justify-between gap-2">
+                        <span className="text-muted-foreground">Phone</span>
+                        <span className="font-medium" data-testid="text-booker-phone">{bookerContact.phone}</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-muted-foreground italic" data-testid="text-no-booker">No booker contact assigned</p>
+                )}
+                {regularBooker && (
+                  <>
+                    <div className="border-t border-border pt-3 mt-3">
+                      <Badge variant="outline" className="mb-2 bg-blue-500/10 text-blue-700 dark:text-blue-300" data-testid="badge-regular-booker">
+                        Regular Booker
+                      </Badge>
+                    </div>
+                    {regularBooker.organizationName && (
+                      <div className="flex justify-between gap-2">
+                        <span className="text-muted-foreground">Organization</span>
+                        <span className="font-medium" data-testid="text-org-name">{regularBooker.organizationName}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between gap-2">
+                      <span className="text-muted-foreground">Pricing Tier</span>
+                      <Badge variant="secondary" data-testid="text-booker-tier">
+                        {PRICING_LABELS[regularBooker.pricingTier] || regularBooker.pricingTier}
+                      </Badge>
+                    </div>
+                  </>
+                )}
+              </div>
+            </Card>
+
+            <Card className="p-5 space-y-4">
+              <h2 className="font-semibold text-base flex items-center gap-2" data-testid="text-section-pricing">
+                <DollarSign className="w-4 h-4 text-muted-foreground" />
+                Pricing Breakdown
+              </h2>
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between gap-2">
+                  <span className="text-muted-foreground">Pricing Tier</span>
+                  <Badge
+                    variant={booking.pricingTier === "full_price" ? "default" : booking.pricingTier === "discounted" ? "outline" : "secondary"}
+                    className={booking.pricingTier === "free_koha" ? "bg-green-500/15 text-green-700 dark:text-green-300" : ""}
+                    data-testid="badge-pricing-tier"
+                  >
+                    {PRICING_LABELS[booking.pricingTier] || booking.pricingTier}
+                  </Badge>
+                </div>
+                {booking.rateType && (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Rate Type</span>
+                    <span className="font-medium" data-testid="text-rate-type">
+                      {booking.rateType === "community" ? "Community (20% off)" : "Standard"}
+                    </span>
+                  </div>
+                )}
+                {discountPct > 0 && (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Discount</span>
+                    <span className="font-medium text-green-600 dark:text-green-400" data-testid="text-discount">{discountPct}%</span>
+                  </div>
+                )}
+                {discountAmt > 0 && (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Discount Amount</span>
+                    <span className="font-medium text-green-600 dark:text-green-400" data-testid="text-discount-amount">-${discountAmt.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between gap-2 border-t border-border pt-2">
+                  <span className="font-semibold">Total (excl. GST)</span>
+                  <span className="font-bold text-base" data-testid="text-total-amount">${amount.toFixed(2)}</span>
+                </div>
+                {booking.usePackageCredit && (
+                  <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                    <Package className="w-3 h-3" />
+                    <span className="text-xs" data-testid="text-package-credit">Using package credit</span>
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            {regularBooker?.hasBookingPackage && (
+              <Card className="p-5 space-y-4">
+                <h2 className="font-semibold text-base flex items-center gap-2" data-testid="text-section-package">
+                  <Package className="w-4 h-4 text-muted-foreground" />
+                  Booking Package
+                </h2>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Total Bookings</span>
+                    <span className="font-medium" data-testid="text-package-total">{regularBooker.packageTotalBookings || 0}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Used</span>
+                    <span className="font-medium" data-testid="text-package-used">{regularBooker.packageUsedBookings || 0}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Remaining</span>
+                    <span className="font-bold" data-testid="text-package-remaining">
+                      {(regularBooker.packageTotalBookings || 0) - (regularBooker.packageUsedBookings || 0)}
+                    </span>
+                  </div>
+                  {regularBooker.packageExpiresAt && (
+                    <div className="flex justify-between gap-2">
+                      <span className="text-muted-foreground">Expires</span>
+                      <span className="font-medium" data-testid="text-package-expiry">{formatDate(regularBooker.packageExpiresAt)}</span>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )}
+          </div>
+
+          {booking.specialRequests && (
+            <Card className="p-5 space-y-2">
+              <h2 className="font-semibold text-base flex items-center gap-2" data-testid="text-section-requests">
+                <FileText className="w-4 h-4 text-muted-foreground" />
+                Special Requests
+              </h2>
+              <p className="text-sm whitespace-pre-wrap" data-testid="text-special-requests">{booking.specialRequests}</p>
+            </Card>
+          )}
+
+          {booking.notes && (
+            <Card className="p-5 space-y-2">
+              <h2 className="font-semibold text-base flex items-center gap-2" data-testid="text-section-notes">
+                <FileText className="w-4 h-4 text-muted-foreground" />
+                Notes
+              </h2>
+              <p className="text-sm whitespace-pre-wrap" data-testid="text-notes">{booking.notes}</p>
+            </Card>
+          )}
+
+          {booking.description && (
+            <Card className="p-5 space-y-2">
+              <h2 className="font-semibold text-base flex items-center gap-2">
+                <FileText className="w-4 h-4 text-muted-foreground" />
+                Description
+              </h2>
+              <p className="text-sm whitespace-pre-wrap" data-testid="text-description">{booking.description}</p>
+            </Card>
+          )}
+
+          {booking.status === "completed" && (
+            <Card className="p-5 space-y-4">
+              <h2 className="font-semibold text-base flex items-center gap-2" data-testid="text-section-survey">
+                <Star className="w-4 h-4 text-muted-foreground" />
+                Post-Booking Survey
+              </h2>
+              {survey ? (
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Status</span>
+                    <Badge
+                      variant={survey.status === "completed" ? "default" : "outline"}
+                      className={survey.status === "completed" ? "bg-green-500/15 text-green-700 dark:text-green-300" : ""}
+                      data-testid="badge-survey-status"
+                    >
+                      {survey.status === "completed" ? "Completed" : survey.status === "sent" ? "Sent" : survey.status === "pending" ? "Pending" : "Expired"}
+                    </Badge>
+                  </div>
+                  {survey.sentAt && (
+                    <div className="flex justify-between gap-2">
+                      <span className="text-muted-foreground">Sent At</span>
+                      <span className="font-medium" data-testid="text-survey-sent">{formatDate(survey.sentAt)}</span>
+                    </div>
+                  )}
+                  {survey.completedAt && (
+                    <div className="flex justify-between gap-2">
+                      <span className="text-muted-foreground">Completed At</span>
+                      <span className="font-medium" data-testid="text-survey-completed">{formatDate(survey.completedAt)}</span>
+                    </div>
+                  )}
+                  {survey.status === "completed" && survey.responses && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setSurveyResponseOpen(true)}
+                      data-testid="button-view-survey-response"
+                    >
+                      <Eye className="w-4 h-4 mr-2" />
+                      View Response
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground" data-testid="text-no-survey">No survey has been sent for this booking.</p>
+                  {bookerContact?.email && (
+                    <Button
+                      variant="outline"
+                      onClick={() => sendSurveyMutation.mutate()}
+                      disabled={sendSurveyMutation.isPending}
+                      data-testid="button-send-survey"
+                    >
+                      {sendSurveyMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+                      Send Survey Now
+                    </Button>
+                  )}
+                </div>
+              )}
+            </Card>
+          )}
+
+          {booking.status === "cancelled" && (
+            <Card className="p-5 border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/10">
+              <div className="flex items-center gap-2">
+                <Ban className="w-5 h-5 text-muted-foreground" />
+                <div>
+                  <h3 className="font-semibold text-sm" data-testid="text-cancelled-status">Booking Cancelled</h3>
+                  <p className="text-sm text-muted-foreground">This booking has been declined or cancelled.</p>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {(booking.confirmedAt || booking.completedAt) && (
+            <Card className="p-5 space-y-3">
+              <h2 className="font-semibold text-base flex items-center gap-2">
+                <Clock className="w-4 h-4 text-muted-foreground" />
+                Timeline
+              </h2>
+              <div className="space-y-2 text-sm">
+                {booking.createdAt && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <div className="w-2 h-2 rounded-full bg-gray-400" />
+                    Created on {formatDate(booking.createdAt)}
+                  </div>
+                )}
+                {booking.confirmedAt && (
+                  <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                    <div className="w-2 h-2 rounded-full bg-blue-500" />
+                    Confirmed on {formatDate(booking.confirmedAt)}
+                    {booking.confirmationSent && (
+                      <Badge variant="secondary" className="text-[10px]">
+                        <Mail className="w-2.5 h-2.5 mr-0.5" />
+                        Email sent
+                      </Badge>
+                    )}
+                  </div>
+                )}
+                {booking.completedAt && (
+                  <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                    <div className="w-2 h-2 rounded-full bg-green-500" />
+                    Completed on {formatDate(booking.completedAt)}
+                  </div>
+                )}
+              </div>
+            </Card>
+          )}
+        </div>
+      </main>
+
+      <Dialog open={declineOpen} onOpenChange={setDeclineOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Decline Booking</DialogTitle>
+            <DialogDescription>
+              Provide a reason for declining this booking. The booking will be cancelled.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            placeholder="Reason for declining (optional)"
+            value={declineReason}
+            onChange={(e) => setDeclineReason(e.target.value)}
+            className="min-h-[80px]"
+            data-testid="input-decline-reason"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeclineOpen(false)} data-testid="button-cancel-decline">Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={() => declineMutation.mutate(declineReason)}
+              disabled={declineMutation.isPending}
+              data-testid="button-confirm-decline"
+            >
+              {declineMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <XCircle className="w-4 h-4 mr-2" />}
+              Decline Booking
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={surveyResponseOpen} onOpenChange={setSurveyResponseOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Survey Response</DialogTitle>
+            <DialogDescription>
+              Responses from the post-booking survey.
+            </DialogDescription>
+          </DialogHeader>
+          {survey?.questions && survey?.responses && (
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+              {survey.questions.map((q) => {
+                const response = survey.responses?.find((r) => r.questionId === q.id);
+                return (
+                  <div key={q.id} className="space-y-1">
+                    <p className="text-sm font-medium" data-testid={`text-survey-question-${q.id}`}>{q.question}</p>
+                    {response ? (
+                      <div className="text-sm text-muted-foreground" data-testid={`text-survey-answer-${q.id}`}>
+                        {q.type === "rating" ? (
+                          <div className="flex items-center gap-1">
+                            {Array.from({ length: q.scale || 5 }, (_, i) => (
+                              <Star
+                                key={i}
+                                className={`w-4 h-4 ${i < Number(response.answer) ? "text-yellow-500 fill-yellow-500" : "text-gray-300"}`}
+                              />
+                            ))}
+                            <span className="ml-2">{String(response.answer)}/{q.scale || 5}</span>
+                          </div>
+                        ) : q.type === "yes_no" ? (
+                          <span>{response.answer === true || response.answer === "true" ? "Yes" : "No"}</span>
+                        ) : (
+                          <p className="whitespace-pre-wrap">{String(response.answer)}</p>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground italic">No response</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}

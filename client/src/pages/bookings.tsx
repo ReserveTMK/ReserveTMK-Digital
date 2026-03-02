@@ -25,6 +25,14 @@ import {
   useDeleteBooking,
   useBookingPricingDefaults,
   useUpdateBookingPricingDefaults,
+  useRegularBookers,
+  useCreateRegularBooker,
+  useUpdateRegularBooker,
+  useDeleteRegularBooker,
+  useVenueInstructions,
+  useCreateVenueInstruction,
+  useUpdateVenueInstruction,
+  useDeleteVenueInstruction,
 } from "@/hooks/use-bookings";
 import { useContacts, useCreateContact } from "@/hooks/use-contacts";
 import { useGroups, useCreateGroup } from "@/hooks/use-groups";
@@ -56,7 +64,13 @@ import {
   Ban,
   CircleDashed,
   MapPin,
+  FileText,
+  Package,
+  ArrowUp,
+  ArrowDown,
+  ExternalLink,
 } from "lucide-react";
+import { useLocation } from "wouter";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -64,7 +78,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
-import { BOOKING_CLASSIFICATIONS, BOOKING_STATUSES, PRICING_TIERS, DURATION_TYPES, RATE_TYPES, COMMUNITY_DISCOUNT, type Booking, type Venue, type Contact } from "@shared/schema";
+import { BOOKING_CLASSIFICATIONS, BOOKING_STATUSES, PRICING_TIERS, DURATION_TYPES, RATE_TYPES, COMMUNITY_DISCOUNT, INSTRUCTION_TYPES, REGULAR_BOOKER_STATUSES, PAYMENT_TERMS, type Booking, type Venue, type Contact, type RegularBooker, type VenueInstruction } from "@shared/schema";
 import { MetricCard } from "@/components/ui/metric-card";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 
@@ -152,6 +166,7 @@ export default function Bookings() {
   const updateMutation = useUpdateBooking();
   const deleteMutation = useDeleteBooking();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   const [search, setSearch] = useState("");
   const [classFilter, setClassFilter] = useState<string>("all");
@@ -160,6 +175,8 @@ export default function Bookings() {
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
   const [venueDialogOpen, setVenueDialogOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "kanban">("kanban");
+  const [regularBookersOpen, setRegularBookersOpen] = useState(false);
+  const [venueInstructionsOpen, setVenueInstructionsOpen] = useState(false);
 
   const filtered = useMemo(() => {
     if (!bookings) return [];
@@ -347,6 +364,14 @@ export default function Bookings() {
                   List
                 </Button>
               </div>
+              <Button variant="outline" onClick={() => setRegularBookersOpen(true)} data-testid="button-manage-regular-bookers">
+                <Users className="w-4 h-4 mr-2" />
+                Regular Bookers
+              </Button>
+              <Button variant="outline" onClick={() => setVenueInstructionsOpen(true)} data-testid="button-manage-venue-instructions">
+                <FileText className="w-4 h-4 mr-2" />
+                Instructions
+              </Button>
               <Button variant="outline" onClick={() => setVenueDialogOpen(true)} data-testid="button-manage-venues">
                 <Building2 className="w-4 h-4 mr-2" />
                 Manage Venues
@@ -507,6 +532,9 @@ export default function Bookings() {
                                               </Button>
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end">
+                                              <DropdownMenuItem onClick={() => setLocation(`/bookings/${booking.id}`)} data-testid={`kanban-view-${booking.id}`}>
+                                                <ExternalLink className="w-4 h-4 mr-2" /> View Details
+                                              </DropdownMenuItem>
                                               <DropdownMenuItem onClick={() => setEditBooking(booking)} data-testid={`kanban-edit-${booking.id}`}>
                                                 <Pencil className="w-4 h-4 mr-2" /> Edit
                                               </DropdownMenuItem>
@@ -683,6 +711,10 @@ export default function Bookings() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => setLocation(`/bookings/${booking.id}`)} data-testid={`button-view-booking-${booking.id}`}>
+                                <ExternalLink className="w-4 h-4 mr-2" />
+                                View Details
+                              </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => setEditBooking(booking)} data-testid={`button-edit-booking-${booking.id}`}>
                                 <Pencil className="w-4 h-4 mr-2" />
                                 Edit
@@ -762,6 +794,17 @@ export default function Bookings() {
           }
         }}
         pricingPending={updatePricingMutation.isPending}
+      />
+
+      <RegularBookersDialog
+        open={regularBookersOpen}
+        onOpenChange={setRegularBookersOpen}
+        contacts={contacts || []}
+      />
+
+      <VenueInstructionsDialog
+        open={venueInstructionsOpen}
+        onOpenChange={setVenueInstructionsOpen}
       />
     </>
   );
@@ -1666,6 +1709,891 @@ function BookingFormDialog({
           >
             {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             {booking ? "Save Changes" : "Create Booking"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+const TIER_BADGE_COLORS: Record<string, string> = {
+  full_price: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
+  discounted: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+  free_koha: "bg-green-500/15 text-green-700 dark:text-green-300",
+};
+
+const ACCOUNT_STATUS_COLORS: Record<string, string> = {
+  active: "bg-green-500/15 text-green-700 dark:text-green-300",
+  inactive: "bg-gray-500/15 text-gray-700 dark:text-gray-300",
+  suspended: "bg-red-500/15 text-red-700 dark:text-red-300",
+};
+
+const INSTRUCTION_TYPE_LABELS: Record<string, string> = {
+  access: "Access",
+  arrival: "Arrival",
+  departure: "Departure",
+  emergency: "Emergency",
+  general: "General",
+};
+
+const INSTRUCTION_TYPE_COLORS: Record<string, string> = {
+  access: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
+  arrival: "bg-green-500/15 text-green-700 dark:text-green-300",
+  departure: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+  emergency: "bg-red-500/15 text-red-700 dark:text-red-300",
+  general: "bg-gray-500/15 text-gray-700 dark:text-gray-300",
+};
+
+function RegularBookersDialog({
+  open,
+  onOpenChange,
+  contacts,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  contacts: Contact[];
+}) {
+  const { data: regularBookers, isLoading } = useRegularBookers();
+  const createMutation = useCreateRegularBooker();
+  const updateMutation = useUpdateRegularBooker();
+  const deleteMutation = useDeleteRegularBooker();
+  const { toast } = useToast();
+
+  const [editingBooker, setEditingBooker] = useState<RegularBooker | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+
+  const getContactName = (contactId: number) => {
+    return contacts.find(c => c.id === contactId)?.name || `Contact #${contactId}`;
+  };
+
+  const handleDelete = async (id: number) => {
+    try {
+      await deleteMutation.mutateAsync(id);
+      toast({ title: "Deleted", description: "Regular booker removed" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to delete", variant: "destructive" });
+    }
+  };
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle data-testid="text-regular-bookers-title">Regular Bookers</DialogTitle>
+            <DialogDescription>Manage regular bookers with pricing tiers and booking packages.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-end">
+              <Button
+                onClick={() => { setEditingBooker(null); setFormOpen(true); }}
+                data-testid="button-add-regular-booker"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add Regular Booker
+              </Button>
+            </div>
+
+            {isLoading ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              </div>
+            ) : !regularBookers?.length ? (
+              <div className="text-center py-8">
+                <Users className="w-10 h-10 text-muted-foreground mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground" data-testid="text-no-regular-bookers">No regular bookers yet.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {regularBookers.map((booker) => (
+                  <Card key={booker.id} className="p-4" data-testid={`card-regular-booker-${booker.id}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className="font-medium text-sm" data-testid={`text-booker-name-${booker.id}`}>
+                            {getContactName(booker.contactId)}
+                          </span>
+                          {booker.organizationName && (
+                            <span className="text-xs text-muted-foreground">({booker.organizationName})</span>
+                          )}
+                          <Badge className={TIER_BADGE_COLORS[booker.pricingTier] || ""} data-testid={`badge-booker-tier-${booker.id}`}>
+                            {PRICING_LABELS[booker.pricingTier] || booker.pricingTier}
+                          </Badge>
+                          <Badge className={ACCOUNT_STATUS_COLORS[booker.accountStatus] || ""} data-testid={`badge-booker-status-${booker.id}`}>
+                            {booker.accountStatus}
+                          </Badge>
+                        </div>
+
+                        <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                          <span data-testid={`text-booker-email-${booker.id}`}>{booker.billingEmail}</span>
+                          {booker.billingPhone && <span>{booker.billingPhone}</span>}
+                        </div>
+
+                        {booker.pricingTier === "discounted" && parseFloat(booker.discountPercentage || "0") > 0 && (
+                          <p className="text-xs text-muted-foreground mt-1" data-testid={`text-booker-discount-${booker.id}`}>
+                            Discount: {booker.discountPercentage}%
+                          </p>
+                        )}
+
+                        {booker.hasBookingPackage && (
+                          <div className="flex items-center gap-2 mt-2" data-testid={`text-booker-package-${booker.id}`}>
+                            <Package className="w-3.5 h-3.5 text-muted-foreground" />
+                            <span className="text-xs">
+                              Package: {booker.packageUsedBookings}/{booker.packageTotalBookings} used
+                            </span>
+                            {booker.packageExpiresAt && (
+                              <span className="text-xs text-muted-foreground">
+                                (expires {format(new Date(booker.packageExpiresAt), "d MMM yyyy")})
+                              </span>
+                            )}
+                            {booker.packageTotalBookings && booker.packageUsedBookings !== null && booker.packageUsedBookings !== undefined && (
+                              <Badge variant="secondary" className="text-[10px]">
+                                {(booker.packageTotalBookings || 0) - (booker.packageUsedBookings || 0)} remaining
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+
+                        {booker.kohaMouNotes && (
+                          <p className="text-xs text-muted-foreground mt-1 italic">{booker.kohaMouNotes}</p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => { setEditingBooker(booker); setFormOpen(true); }}
+                          data-testid={`button-edit-regular-booker-${booker.id}`}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDelete(booker.id)}
+                          data-testid={`button-delete-regular-booker-${booker.id}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <RegularBookerFormDialog
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        booker={editingBooker}
+        contacts={contacts}
+        onSubmit={async (data) => {
+          try {
+            if (editingBooker) {
+              await updateMutation.mutateAsync({ id: editingBooker.id, data });
+              toast({ title: "Updated", description: "Regular booker updated" });
+            } else {
+              await createMutation.mutateAsync(data);
+              toast({ title: "Created", description: "Regular booker added" });
+            }
+            setFormOpen(false);
+            setEditingBooker(null);
+          } catch (err: any) {
+            toast({ title: "Error", description: err.message || "Failed to save", variant: "destructive" });
+          }
+        }}
+        isPending={createMutation.isPending || updateMutation.isPending}
+      />
+    </>
+  );
+}
+
+function RegularBookerFormDialog({
+  open,
+  onOpenChange,
+  booker,
+  contacts,
+  onSubmit,
+  isPending,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  booker: RegularBooker | null;
+  contacts: Contact[];
+  onSubmit: (data: any) => Promise<void>;
+  isPending: boolean;
+}) {
+  const [contactId, setContactId] = useState<number | null>(booker?.contactId || null);
+  const [contactSearch, setContactSearch] = useState("");
+  const [organizationName, setOrganizationName] = useState(booker?.organizationName || "");
+  const [billingEmail, setBillingEmail] = useState(booker?.billingEmail || "");
+  const [billingAddress, setBillingAddress] = useState(booker?.billingAddress || "");
+  const [billingPhone, setBillingPhone] = useState(booker?.billingPhone || "");
+  const [pricingTier, setPricingTier] = useState(booker?.pricingTier || "full_price");
+  const [discountPercentage, setDiscountPercentage] = useState(booker?.discountPercentage || "0");
+  const [kohaMouNotes, setKohaMouNotes] = useState(booker?.kohaMouNotes || "");
+  const [hasBookingPackage, setHasBookingPackage] = useState(booker?.hasBookingPackage || false);
+  const [packageTotalBookings, setPackageTotalBookings] = useState(booker?.packageTotalBookings?.toString() || "0");
+  const [packageUsedBookings, setPackageUsedBookings] = useState(booker?.packageUsedBookings?.toString() || "0");
+  const [packageExpiresAt, setPackageExpiresAt] = useState(
+    booker?.packageExpiresAt ? format(new Date(booker.packageExpiresAt), "yyyy-MM-dd") : ""
+  );
+  const [loginEmail, setLoginEmail] = useState(booker?.loginEmail || "");
+  const [accountStatus, setAccountStatus] = useState(booker?.accountStatus || "active");
+  const [paymentTerms, setPaymentTerms] = useState(booker?.paymentTerms || "immediate");
+  const [notes, setNotes] = useState(booker?.notes || "");
+  const [usualBookingNeeds, setUsualBookingNeeds] = useState(booker?.usualBookingNeeds || "");
+
+  useState(() => {
+    if (booker) {
+      setContactId(booker.contactId);
+      setOrganizationName(booker.organizationName || "");
+      setBillingEmail(booker.billingEmail || "");
+      setBillingAddress(booker.billingAddress || "");
+      setBillingPhone(booker.billingPhone || "");
+      setPricingTier(booker.pricingTier || "full_price");
+      setDiscountPercentage(booker.discountPercentage || "0");
+      setKohaMouNotes(booker.kohaMouNotes || "");
+      setHasBookingPackage(booker.hasBookingPackage || false);
+      setPackageTotalBookings(booker.packageTotalBookings?.toString() || "0");
+      setPackageUsedBookings(booker.packageUsedBookings?.toString() || "0");
+      setPackageExpiresAt(booker.packageExpiresAt ? format(new Date(booker.packageExpiresAt), "yyyy-MM-dd") : "");
+      setLoginEmail(booker.loginEmail || "");
+      setAccountStatus(booker.accountStatus || "active");
+      setPaymentTerms(booker.paymentTerms || "immediate");
+      setNotes(booker.notes || "");
+      setUsualBookingNeeds(booker.usualBookingNeeds || "");
+    }
+  });
+
+  const filteredContacts = useMemo(() => {
+    if (!contactSearch.trim()) return [];
+    const term = contactSearch.toLowerCase();
+    return contacts.filter(c => c.name.toLowerCase().includes(term)).slice(0, 8);
+  }, [contacts, contactSearch]);
+
+  const handleSubmit = () => {
+    if (!contactId || !billingEmail.trim()) return;
+    onSubmit({
+      contactId,
+      organizationName: organizationName.trim() || null,
+      billingEmail: billingEmail.trim(),
+      billingAddress: billingAddress.trim() || null,
+      billingPhone: billingPhone.trim() || null,
+      pricingTier,
+      discountPercentage: pricingTier === "discounted" ? discountPercentage : "0",
+      kohaMouNotes: pricingTier === "free_koha" ? kohaMouNotes.trim() : null,
+      hasBookingPackage,
+      packageTotalBookings: hasBookingPackage ? parseInt(packageTotalBookings) || 0 : 0,
+      packageUsedBookings: hasBookingPackage ? parseInt(packageUsedBookings) || 0 : 0,
+      packageExpiresAt: hasBookingPackage && packageExpiresAt ? new Date(packageExpiresAt).toISOString() : null,
+      loginEmail: loginEmail.trim() || null,
+      accountStatus,
+      paymentTerms,
+      notes: notes.trim() || null,
+      usualBookingNeeds: usualBookingNeeds.trim() || null,
+    });
+  };
+
+  const PAYMENT_TERM_LABELS: Record<string, string> = {
+    immediate: "Immediate",
+    net_7: "Net 7 days",
+    net_14: "Net 14 days",
+    net_30: "Net 30 days",
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle data-testid="text-booker-form-title">
+            {booker ? "Edit Regular Booker" : "Add Regular Booker"}
+          </DialogTitle>
+          <DialogDescription>
+            {booker ? "Update regular booker details." : "Set up a new regular booker with pricing and billing details."}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Contact *</Label>
+            {contactId && (
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="text-xs gap-1 pr-1" data-testid="badge-selected-booker-contact">
+                  {contacts.find(c => c.id === contactId)?.name || `Contact #${contactId}`}
+                  {!booker && (
+                    <button onClick={() => setContactId(null)} className="ml-0.5" type="button">
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </Badge>
+              </div>
+            )}
+            {!contactId && (
+              <>
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                  <Input
+                    value={contactSearch}
+                    onChange={(e) => setContactSearch(e.target.value)}
+                    placeholder="Search contacts..."
+                    className="pl-7"
+                    data-testid="input-search-booker-contact"
+                  />
+                </div>
+                {filteredContacts.length > 0 && (
+                  <div className="border border-border rounded-md divide-y divide-border/50 max-h-[150px] overflow-y-auto">
+                    {filteredContacts.map(c => (
+                      <button
+                        key={c.id}
+                        onClick={() => {
+                          setContactId(c.id);
+                          setContactSearch("");
+                          if (!billingEmail && c.email) setBillingEmail(c.email);
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-xs flex items-center justify-between"
+                        type="button"
+                        data-testid={`button-select-booker-contact-${c.id}`}
+                      >
+                        <span>{c.name}</span>
+                        <span className="text-muted-foreground">{c.email || ""}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          <div>
+            <Label>Organisation Name</Label>
+            <Input
+              value={organizationName}
+              onChange={(e) => setOrganizationName(e.target.value)}
+              placeholder="e.g. Tāmaki Community Trust"
+              data-testid="input-booker-org-name"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Billing Email *</Label>
+              <Input
+                type="email"
+                value={billingEmail}
+                onChange={(e) => setBillingEmail(e.target.value)}
+                placeholder="billing@example.com"
+                data-testid="input-booker-billing-email"
+              />
+            </div>
+            <div>
+              <Label>Billing Phone</Label>
+              <Input
+                value={billingPhone}
+                onChange={(e) => setBillingPhone(e.target.value)}
+                placeholder="Phone number"
+                data-testid="input-booker-billing-phone"
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label>Billing Address</Label>
+            <Textarea
+              value={billingAddress}
+              onChange={(e) => setBillingAddress(e.target.value)}
+              placeholder="Full billing address"
+              className="resize-none"
+              data-testid="input-booker-billing-address"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Pricing Tier</Label>
+              <Select value={pricingTier} onValueChange={setPricingTier}>
+                <SelectTrigger data-testid="select-booker-pricing-tier">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PRICING_TIERS.map(t => (
+                    <SelectItem key={t} value={t}>{PRICING_LABELS[t]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Account Status</Label>
+              <Select value={accountStatus} onValueChange={setAccountStatus}>
+                <SelectTrigger data-testid="select-booker-account-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {REGULAR_BOOKER_STATUSES.map(s => (
+                    <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {pricingTier === "discounted" && (
+            <div>
+              <Label>Discount Percentage (%)</Label>
+              <Input
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                value={discountPercentage}
+                onChange={(e) => setDiscountPercentage(e.target.value)}
+                data-testid="input-booker-discount-pct"
+              />
+            </div>
+          )}
+
+          {pricingTier === "free_koha" && (
+            <div>
+              <Label>Koha / MOU Notes</Label>
+              <Textarea
+                value={kohaMouNotes}
+                onChange={(e) => setKohaMouNotes(e.target.value)}
+                placeholder="Details about the koha or MOU arrangement..."
+                className="resize-none"
+                data-testid="input-booker-koha-notes"
+              />
+            </div>
+          )}
+
+          <div>
+            <Label>Payment Terms</Label>
+            <Select value={paymentTerms} onValueChange={setPaymentTerms}>
+              <SelectTrigger data-testid="select-booker-payment-terms">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PAYMENT_TERMS.map(t => (
+                  <SelectItem key={t} value={t}>{PAYMENT_TERM_LABELS[t] || t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-3 border-t pt-4">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-semibold">Booking Package</Label>
+              <Switch
+                checked={hasBookingPackage}
+                onCheckedChange={setHasBookingPackage}
+                data-testid="switch-booker-has-package"
+              />
+            </div>
+            {hasBookingPackage && (
+              <div className="space-y-3 pl-1">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Total Bookings</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={packageTotalBookings}
+                      onChange={(e) => setPackageTotalBookings(e.target.value)}
+                      data-testid="input-booker-package-total"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Used Bookings</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={packageUsedBookings}
+                      onChange={(e) => setPackageUsedBookings(e.target.value)}
+                      data-testid="input-booker-package-used"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Package Expires</Label>
+                  <Input
+                    type="date"
+                    value={packageExpiresAt}
+                    onChange={(e) => setPackageExpiresAt(e.target.value)}
+                    data-testid="input-booker-package-expires"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-3 border-t pt-4">
+            <Label className="text-sm font-semibold">Portal Access</Label>
+            <div>
+              <Label className="text-xs text-muted-foreground">Login Email</Label>
+              <Input
+                type="email"
+                value={loginEmail}
+                onChange={(e) => setLoginEmail(e.target.value)}
+                placeholder="Portal login email"
+                data-testid="input-booker-login-email"
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label>Usual Booking Needs</Label>
+            <Textarea
+              value={usualBookingNeeds}
+              onChange={(e) => setUsualBookingNeeds(e.target.value)}
+              placeholder="e.g. Weekly rehearsal space, monthly meetings..."
+              className="resize-none"
+              data-testid="input-booker-usual-needs"
+            />
+          </div>
+
+          <div>
+            <Label>Notes</Label>
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Any additional notes..."
+              className="resize-none"
+              data-testid="input-booker-notes"
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-booker-form">
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={isPending || !contactId || !billingEmail.trim()}
+            data-testid="button-save-regular-booker"
+          >
+            {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            {booker ? "Save Changes" : "Add Booker"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function VenueInstructionsDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { data: instructions, isLoading } = useVenueInstructions();
+  const createMutation = useCreateVenueInstruction();
+  const updateMutation = useUpdateVenueInstruction();
+  const deleteMutation = useDeleteVenueInstruction();
+  const { toast } = useToast();
+
+  const [editingInstruction, setEditingInstruction] = useState<VenueInstruction | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+
+  const groupedInstructions = useMemo(() => {
+    if (!instructions) return {};
+    const groups: Record<string, VenueInstruction[]> = {};
+    INSTRUCTION_TYPES.forEach(type => { groups[type] = []; });
+    instructions
+      .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0))
+      .forEach(inst => {
+        if (!groups[inst.instructionType]) groups[inst.instructionType] = [];
+        groups[inst.instructionType].push(inst);
+      });
+    return groups;
+  }, [instructions]);
+
+  const handleToggleActive = async (inst: VenueInstruction) => {
+    try {
+      await updateMutation.mutateAsync({ id: inst.id, data: { isActive: !inst.isActive } });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to toggle", variant: "destructive" });
+    }
+  };
+
+  const handleMoveOrder = async (inst: VenueInstruction, direction: "up" | "down") => {
+    const typeInstructions = groupedInstructions[inst.instructionType] || [];
+    const currentIndex = typeInstructions.findIndex(i => i.id === inst.id);
+    const swapIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (swapIndex < 0 || swapIndex >= typeInstructions.length) return;
+
+    const swapInst = typeInstructions[swapIndex];
+    try {
+      await Promise.all([
+        updateMutation.mutateAsync({ id: inst.id, data: { displayOrder: swapInst.displayOrder } }),
+        updateMutation.mutateAsync({ id: swapInst.id, data: { displayOrder: inst.displayOrder } }),
+      ]);
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to reorder", variant: "destructive" });
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    try {
+      await deleteMutation.mutateAsync(id);
+      toast({ title: "Deleted", description: "Instruction removed" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to delete", variant: "destructive" });
+    }
+  };
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle data-testid="text-venue-instructions-title">Venue Instructions</DialogTitle>
+            <DialogDescription>Manage instructions that are sent to bookers with their confirmation emails.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-end">
+              <Button
+                onClick={() => { setEditingInstruction(null); setFormOpen(true); }}
+                data-testid="button-add-venue-instruction"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add Instruction
+              </Button>
+            </div>
+
+            {isLoading ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              </div>
+            ) : !instructions?.length ? (
+              <div className="text-center py-8">
+                <FileText className="w-10 h-10 text-muted-foreground mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground" data-testid="text-no-instructions">No venue instructions yet.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {INSTRUCTION_TYPES.map(type => {
+                  const typeInstructions = groupedInstructions[type] || [];
+                  if (typeInstructions.length === 0) return null;
+                  return (
+                    <div key={type} data-testid={`instruction-group-${type}`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge className={INSTRUCTION_TYPE_COLORS[type] || ""}>
+                          {INSTRUCTION_TYPE_LABELS[type]}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">({typeInstructions.length})</span>
+                      </div>
+                      <div className="space-y-1.5">
+                        {typeInstructions.map((inst, index) => (
+                          <Card
+                            key={inst.id}
+                            className={`p-3 ${!inst.isActive ? "opacity-50" : ""}`}
+                            data-testid={`card-instruction-${inst.id}`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium" data-testid={`text-instruction-title-${inst.id}`}>
+                                  {inst.title || "Untitled"}
+                                </p>
+                                {inst.content && (
+                                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{inst.content}</p>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-0.5 shrink-0">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  disabled={index === 0}
+                                  onClick={() => handleMoveOrder(inst, "up")}
+                                  data-testid={`button-instruction-up-${inst.id}`}
+                                >
+                                  <ArrowUp className="w-3.5 h-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  disabled={index === typeInstructions.length - 1}
+                                  onClick={() => handleMoveOrder(inst, "down")}
+                                  data-testid={`button-instruction-down-${inst.id}`}
+                                >
+                                  <ArrowDown className="w-3.5 h-3.5" />
+                                </Button>
+                                <Switch
+                                  checked={inst.isActive ?? true}
+                                  onCheckedChange={() => handleToggleActive(inst)}
+                                  data-testid={`switch-instruction-active-${inst.id}`}
+                                />
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => { setEditingInstruction(inst); setFormOpen(true); }}
+                                  data-testid={`button-edit-instruction-${inst.id}`}
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleDelete(inst.id)}
+                                  data-testid={`button-delete-instruction-${inst.id}`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                                </Button>
+                              </div>
+                            </div>
+                          </Card>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <VenueInstructionFormDialog
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        instruction={editingInstruction}
+        onSubmit={async (data) => {
+          try {
+            if (editingInstruction) {
+              await updateMutation.mutateAsync({ id: editingInstruction.id, data });
+              toast({ title: "Updated", description: "Instruction updated" });
+            } else {
+              await createMutation.mutateAsync(data);
+              toast({ title: "Created", description: "Instruction added" });
+            }
+            setFormOpen(false);
+            setEditingInstruction(null);
+          } catch (err: any) {
+            toast({ title: "Error", description: err.message || "Failed to save", variant: "destructive" });
+          }
+        }}
+        isPending={createMutation.isPending || updateMutation.isPending}
+      />
+    </>
+  );
+}
+
+function VenueInstructionFormDialog({
+  open,
+  onOpenChange,
+  instruction,
+  onSubmit,
+  isPending,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  instruction: VenueInstruction | null;
+  onSubmit: (data: any) => Promise<void>;
+  isPending: boolean;
+}) {
+  const [instructionType, setInstructionType] = useState(instruction?.instructionType || "general");
+  const [title, setTitle] = useState(instruction?.title || "");
+  const [content, setContent] = useState(instruction?.content || "");
+  const [displayOrder, setDisplayOrder] = useState(instruction?.displayOrder?.toString() || "0");
+
+  useState(() => {
+    if (instruction) {
+      setInstructionType(instruction.instructionType);
+      setTitle(instruction.title || "");
+      setContent(instruction.content || "");
+      setDisplayOrder(instruction.displayOrder?.toString() || "0");
+    }
+  });
+
+  const handleSubmit = () => {
+    if (!title.trim()) return;
+    onSubmit({
+      instructionType,
+      title: title.trim(),
+      content: content.trim() || null,
+      displayOrder: parseInt(displayOrder) || 0,
+      isActive: true,
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle data-testid="text-instruction-form-title">
+            {instruction ? "Edit Instruction" : "Add Instruction"}
+          </DialogTitle>
+          <DialogDescription>
+            {instruction ? "Update the venue instruction." : "Add a new instruction for venue bookings."}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div>
+            <Label>Type *</Label>
+            <Select value={instructionType} onValueChange={setInstructionType}>
+              <SelectTrigger data-testid="select-instruction-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {INSTRUCTION_TYPES.map(t => (
+                  <SelectItem key={t} value={t} className="capitalize">{INSTRUCTION_TYPE_LABELS[t]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label>Title *</Label>
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Building Access Instructions"
+              data-testid="input-instruction-title"
+            />
+          </div>
+
+          <div>
+            <Label>Content</Label>
+            <Textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Detailed instructions for the booker..."
+              className="resize-none min-h-[100px]"
+              data-testid="input-instruction-content"
+            />
+          </div>
+
+          <div>
+            <Label>Display Order</Label>
+            <Input
+              type="number"
+              min="0"
+              value={displayOrder}
+              onChange={(e) => setDisplayOrder(e.target.value)}
+              data-testid="input-instruction-order"
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-instruction-form">
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={isPending || !title.trim()}
+            data-testid="button-save-instruction"
+          >
+            {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            {instruction ? "Save Changes" : "Add Instruction"}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -8,7 +8,8 @@ import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON } from "./replit_integrations/anthropic/client";
 import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, type ReportFilters } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes } from "@shared/schema";
+import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys } from "@shared/schema";
+import crypto from "crypto";
 import { db } from "./db";
 import { eq, and, sql, gte, lte } from "drizzle-orm";
 import { scanGmailEmails, startAutoSync, getGmailOAuth2Client } from "./gmail-import";
@@ -3010,6 +3011,355 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     const { fullDayRate, halfDayRate } = req.body;
     const result = await storage.upsertBookingPricingDefaults(userId, { fullDayRate, halfDayRate });
     res.json(result);
+  });
+
+  // === Venue Instructions API ===
+  app.get("/api/venue-instructions", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const instructions = await storage.getVenueInstructions(userId);
+    res.json(instructions);
+  });
+
+  app.post("/api/venue-instructions", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const data = insertVenueInstructionSchema.parse({ ...req.body, userId });
+      const instruction = await storage.createVenueInstruction(data);
+      res.json(instruction);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/venue-instructions/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getVenueInstructions(userId);
+      if (!existing.find(i => i.id === id)) return res.status(403).json({ message: "Forbidden" });
+      const instruction = await storage.updateVenueInstruction(id, req.body);
+      res.json(instruction);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/venue-instructions/:id", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const id = parseInt(req.params.id);
+    const existing = await storage.getVenueInstructions(userId);
+    if (!existing.find(i => i.id === id)) return res.status(403).json({ message: "Forbidden" });
+    await storage.deleteVenueInstruction(id);
+    res.json({ success: true });
+  });
+
+  // === Regular Bookers API ===
+  app.get("/api/regular-bookers", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const bookers = await storage.getRegularBookers(userId);
+    res.json(bookers);
+  });
+
+  app.get("/api/regular-bookers/:id", isAuthenticated, async (req, res) => {
+    const booker = await storage.getRegularBooker(parseInt(req.params.id));
+    if (!booker) return res.status(404).json({ message: "Regular booker not found" });
+    res.json(booker);
+  });
+
+  app.get("/api/regular-bookers/by-contact/:contactId", isAuthenticated, async (req, res) => {
+    const booker = await storage.getRegularBookerByContactId(parseInt(req.params.contactId));
+    res.json(booker || null);
+  });
+
+  app.post("/api/regular-bookers", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const data = insertRegularBookerSchema.parse({ ...req.body, userId });
+      const booker = await storage.createRegularBooker(data);
+      res.json(booker);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/regular-bookers/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getRegularBooker(id);
+      if (!existing || existing.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+      const { userId: _, ...updates } = req.body;
+      const booker = await storage.updateRegularBooker(id, updates);
+      res.json(booker);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/regular-bookers/:id", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const id = parseInt(req.params.id);
+    const existing = await storage.getRegularBooker(id);
+    if (!existing || existing.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+    await storage.deleteRegularBooker(id);
+    res.json({ success: true });
+  });
+
+  // === Booking Workflow Actions ===
+  const DEFAULT_SURVEY_QUESTIONS = [
+    { id: 1, type: "rating", question: "How would you rate your overall experience?", scale: 5, required: true },
+    { id: 2, type: "rating", question: "How clean and well-maintained was the space?", scale: 5, required: true },
+    { id: 3, type: "yes_no", question: "Did you have everything you needed?", required: true },
+    { id: 4, type: "text", question: "What could we improve?", required: false },
+    { id: 5, type: "yes_no", question: "Would you book with us again?", required: true },
+    { id: 6, type: "text", question: "Any other feedback?", required: false },
+    { id: 7, type: "testimonial", question: "Would you like to share a testimonial? (optional)", required: false, consent: true, subtext: "By submitting, you give us permission to share publicly." },
+  ];
+
+  app.post("/api/bookings/:id/accept", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const bookingId = parseInt(req.params.id);
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+      if (booking.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      const updated = await storage.updateBooking(bookingId, {
+        status: "confirmed",
+        confirmedBy: booking.bookerId || undefined,
+        confirmedAt: new Date(),
+      } as any);
+
+      if (booking.bookerId) {
+        const regularBooker = await storage.getRegularBookerByContactId(booking.bookerId);
+        if (regularBooker && regularBooker.hasBookingPackage && booking.usePackageCredit) {
+          await storage.updateRegularBooker(regularBooker.id, {
+            packageUsedBookings: (regularBooker.packageUsedBookings || 0) + 1,
+          } as any);
+        }
+      }
+
+      let emailSent = false;
+      try {
+        const { sendBookingConfirmationEmail } = await import("./email");
+        await sendBookingConfirmationEmail(booking, userId);
+        await storage.updateBooking(bookingId, {
+          confirmationSent: true,
+          instructionsSent: true,
+        } as any);
+        emailSent = true;
+      } catch (emailErr: any) {
+        console.error("Failed to send confirmation email:", emailErr.message);
+      }
+
+      res.json({ success: true, booking: updated, emailSent });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/bookings/:id/decline", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const bookingId = parseInt(req.params.id);
+      const { reason } = req.body;
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+      if (booking.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      const updated = await storage.updateBooking(bookingId, {
+        status: "cancelled",
+        notes: booking.notes ? `${booking.notes}\n\nDeclined: ${reason || "No reason given"}` : `Declined: ${reason || "No reason given"}`,
+      } as any);
+
+      res.json({ success: true, booking: updated });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/bookings/:id/complete", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const bookingId = parseInt(req.params.id);
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+      if (booking.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      await storage.updateBooking(bookingId, {
+        status: "completed",
+        completedBy: booking.bookerId || undefined,
+        completedAt: new Date(),
+      } as any);
+
+      let shouldSendSurvey = false;
+      let surveyCreated = false;
+      let isOneOff = true;
+      let isFirstBooking = true;
+
+      if (booking.bookerId) {
+        const regularBooker = await storage.getRegularBookerByContactId(booking.bookerId);
+        isOneOff = !regularBooker || regularBooker.accountStatus !== "active";
+
+        const allBookings = await storage.getBookings(userId);
+        const previousCompleted = allBookings.filter(
+          b => b.bookerId === booking.bookerId && b.status === "completed" && b.id !== bookingId
+        );
+        isFirstBooking = previousCompleted.length === 0;
+      }
+
+      shouldSendSurvey = isOneOff || isFirstBooking;
+
+      if (shouldSendSurvey && booking.bookerId) {
+        const contact = await storage.getContact(booking.bookerId);
+        if (contact?.email) {
+          const surveyToken = crypto.randomUUID();
+          const survey = await storage.createSurvey({
+            userId,
+            surveyType: "post_booking",
+            relatedId: bookingId,
+            contactId: booking.bookerId,
+            questions: DEFAULT_SURVEY_QUESTIONS,
+            status: "pending",
+            manuallyTriggered: false,
+            surveyToken,
+          });
+
+          try {
+            const { sendSurveyEmail } = await import("./email");
+            await sendSurveyEmail(contact.email, contact.name || contact.email, booking.startDate, surveyToken);
+            await storage.updateSurvey(survey.id, { status: "sent", sentAt: new Date() } as any);
+            await storage.updateBooking(bookingId, { postSurveySent: true, isFirstBooking } as any);
+            surveyCreated = true;
+          } catch (emailErr: any) {
+            console.error("Failed to send survey email:", emailErr.message);
+            surveyCreated = true;
+          }
+        }
+      }
+
+      res.json({
+        success: true,
+        surveyDecision: shouldSendSurvey
+          ? surveyCreated ? "Survey sent" : "Survey created but email failed"
+          : "Survey skipped (regular booker, not first booking)",
+        isOneOff,
+        isFirstBooking,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/bookings/:id/resend-confirmation", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const bookingId = parseInt(req.params.id);
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+      if (booking.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      const { sendBookingConfirmationEmail } = await import("./email");
+      await sendBookingConfirmationEmail(booking, userId);
+      await storage.updateBooking(bookingId, { confirmationSent: true, instructionsSent: true } as any);
+
+      res.json({ success: true, message: "Confirmation email resent" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // === Surveys API ===
+  app.get("/api/surveys", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const surveyList = await storage.getSurveys(userId);
+    res.json(surveyList);
+  });
+
+  app.get("/api/bookings/:id/survey", isAuthenticated, async (req, res) => {
+    const survey = await storage.getSurveyByBookingId(parseInt(req.params.id));
+    res.json(survey || null);
+  });
+
+  app.post("/api/bookings/:id/send-survey", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const bookingId = parseInt(req.params.id);
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+      if (booking.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+      if (!booking.bookerId) return res.status(400).json({ message: "Booking has no booker contact" });
+
+      const contact = await storage.getContact(booking.bookerId);
+      if (!contact?.email) return res.status(400).json({ message: "Contact has no email" });
+
+      const existingSurvey = await storage.getSurveyByBookingId(bookingId);
+      if (existingSurvey) {
+        return res.status(400).json({ message: "Survey already exists for this booking" });
+      }
+
+      const surveyToken = crypto.randomUUID();
+      const survey = await storage.createSurvey({
+        userId,
+        surveyType: "post_booking",
+        relatedId: bookingId,
+        contactId: booking.bookerId,
+        questions: DEFAULT_SURVEY_QUESTIONS,
+        status: "pending",
+        manuallyTriggered: true,
+        triggeredBy: booking.bookerId,
+        surveyToken,
+      });
+
+      try {
+        const { sendSurveyEmail } = await import("./email");
+        await sendSurveyEmail(contact.email, contact.name || contact.email, booking.startDate, surveyToken);
+        await storage.updateSurvey(survey.id, { status: "sent", sentAt: new Date() } as any);
+        await storage.updateBooking(bookingId, { postSurveySent: true } as any);
+      } catch (emailErr: any) {
+        console.error("Failed to send survey email:", emailErr.message);
+      }
+
+      res.json({ success: true, survey });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // === Public Survey Routes (no auth) ===
+  app.get("/api/public/survey/:token", async (req, res) => {
+    try {
+      const survey = await storage.getSurveyByToken(req.params.token);
+      if (!survey) return res.status(404).json({ message: "Survey not found" });
+      if (survey.status === "completed") return res.json({ ...survey, alreadyCompleted: true });
+      if (survey.status === "expired") return res.status(410).json({ message: "Survey has expired" });
+      res.json(survey);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/public/survey/:token/submit", async (req, res) => {
+    try {
+      const survey = await storage.getSurveyByToken(req.params.token);
+      if (!survey) return res.status(404).json({ message: "Survey not found" });
+      if (survey.status === "completed") return res.status(400).json({ message: "Survey already completed" });
+
+      const { responses } = req.body;
+      if (!responses || !Array.isArray(responses)) {
+        return res.status(400).json({ message: "Responses are required" });
+      }
+
+      const updated = await storage.updateSurvey(survey.id, {
+        responses,
+        status: "completed",
+        completedAt: new Date(),
+      } as any);
+
+      res.json({ success: true, message: "Thank you for your feedback!" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
   });
 
   // === Groups API ===

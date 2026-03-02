@@ -436,8 +436,112 @@ export const bookings = pgTable("bookings", {
   mouId: integer("mou_id"),
   funderTags: text("funder_tags").array(),
   notes: text("notes"),
+  specialRequests: text("special_requests"),
+  confirmationSent: boolean("confirmation_sent").default(false),
+  instructionsSent: boolean("instructions_sent").default(false),
+  postSurveySent: boolean("post_survey_sent").default(false),
+  bookingSource: text("booking_source").default("manual"),
+  confirmedBy: integer("confirmed_by"),
+  confirmedAt: timestamp("confirmed_at"),
+  completedBy: integer("completed_by"),
+  completedAt: timestamp("completed_at"),
+  isFirstBooking: boolean("is_first_booking").default(false),
+  discountPercentage: numeric("discount_percentage", { precision: 5, scale: 2 }).default("0"),
+  discountAmount: numeric("discount_amount", { precision: 10, scale: 2 }).default("0"),
+  usePackageCredit: boolean("use_package_credit").default(false),
+  xeroInvoiceId: text("xero_invoice_id"),
+  xeroInvoiceNumber: text("xero_invoice_number"),
+  xeroInvoiceStatus: text("xero_invoice_status"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const BOOKING_SOURCES = ["manual", "regular_booker_calendar", "public_inquiry"] as const;
+export type BookingSource = typeof BOOKING_SOURCES[number];
+
+export const REGULAR_BOOKER_STATUSES = ["active", "inactive", "suspended"] as const;
+export type RegularBookerStatus = typeof REGULAR_BOOKER_STATUSES[number];
+
+export const PAYMENT_TERMS = ["immediate", "net_7", "net_14", "net_30"] as const;
+export type PaymentTerms = typeof PAYMENT_TERMS[number];
+
+export const regularBookers = pgTable("regular_bookers", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  contactId: integer("contact_id").notNull(),
+  organizationName: text("organization_name"),
+  billingEmail: text("billing_email").notNull(),
+  billingAddress: text("billing_address"),
+  billingPhone: text("billing_phone"),
+  pricingTier: text("pricing_tier").notNull().default("full_price"),
+  discountPercentage: numeric("discount_percentage", { precision: 5, scale: 2 }).default("0"),
+  kohaMouNotes: text("koha_mou_notes"),
+  hasBookingPackage: boolean("has_booking_package").default(false),
+  packageTotalBookings: integer("package_total_bookings").default(0),
+  packageUsedBookings: integer("package_used_bookings").default(0),
+  packageExpiresAt: timestamp("package_expires_at"),
+  loginEmail: text("login_email"),
+  loginToken: text("login_token"),
+  loginTokenExpiry: timestamp("login_token_expiry"),
+  loginEnabled: boolean("login_enabled").default(false),
+  canViewCalendar: boolean("can_view_calendar").default(true),
+  canSelfBook: boolean("can_self_book").default(true),
+  xeroContactId: text("xero_contact_id"),
+  paymentTerms: text("payment_terms").default("immediate"),
+  accountStatus: text("account_status").notNull().default("active"),
+  notes: text("notes"),
+  usualBookingNeeds: text("usual_booking_needs"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const INSTRUCTION_TYPES = ["access", "arrival", "departure", "emergency", "general"] as const;
+export type InstructionType = typeof INSTRUCTION_TYPES[number];
+
+export const venueInstructions = pgTable("venue_instructions", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  instructionType: text("instruction_type").notNull(),
+  title: text("title"),
+  content: text("content"),
+  isActive: boolean("is_active").default(true),
+  displayOrder: integer("display_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const SURVEY_TYPES = ["post_booking"] as const;
+export type SurveyType = typeof SURVEY_TYPES[number];
+
+export const SURVEY_STATUSES = ["pending", "sent", "completed", "expired"] as const;
+export type SurveyStatus = typeof SURVEY_STATUSES[number];
+
+export const surveys = pgTable("surveys", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  surveyType: text("survey_type").notNull().default("post_booking"),
+  relatedId: integer("related_id"),
+  contactId: integer("contact_id"),
+  questions: jsonb("questions").$type<Array<{
+    id: number;
+    type: string;
+    question: string;
+    scale?: number;
+    required: boolean;
+    consent?: boolean;
+    subtext?: string;
+  }>>().default([]),
+  responses: jsonb("responses").$type<Array<{
+    questionId: number;
+    answer: string | number | boolean;
+  }>>(),
+  sentAt: timestamp("sent_at"),
+  completedAt: timestamp("completed_at"),
+  status: text("status").notNull().default("pending"),
+  manuallyTriggered: boolean("manually_triggered").default(false),
+  triggeredBy: integer("triggered_by"),
+  surveyToken: text("survey_token"),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const MEMBERSHIP_STATUSES = ["active", "expired", "pending"] as const;
@@ -1206,6 +1310,41 @@ export const insertBookingPricingDefaultsSchema = createInsertSchema(bookingPric
 
 export type BookingPricingDefaults = typeof bookingPricingDefaults.$inferSelect;
 export type InsertBookingPricingDefaults = z.infer<typeof insertBookingPricingDefaultsSchema>;
+
+export const insertRegularBookerSchema = createInsertSchema(regularBookers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  pricingTier: z.enum(PRICING_TIERS).default("full_price"),
+  accountStatus: z.enum(REGULAR_BOOKER_STATUSES).default("active"),
+  paymentTerms: z.enum(PAYMENT_TERMS).default("immediate"),
+});
+
+export type RegularBooker = typeof regularBookers.$inferSelect;
+export type InsertRegularBooker = z.infer<typeof insertRegularBookerSchema>;
+
+export const insertVenueInstructionSchema = createInsertSchema(venueInstructions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  instructionType: z.enum(INSTRUCTION_TYPES),
+});
+
+export type VenueInstruction = typeof venueInstructions.$inferSelect;
+export type InsertVenueInstruction = z.infer<typeof insertVenueInstructionSchema>;
+
+export const insertSurveySchema = createInsertSchema(surveys).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  surveyType: z.enum(SURVEY_TYPES).default("post_booking"),
+  status: z.enum(SURVEY_STATUSES).default("pending"),
+});
+
+export type Survey = typeof surveys.$inferSelect;
+export type InsertSurvey = z.infer<typeof insertSurveySchema>;
 
 export const PAYMENT_STATUSES = ["unpaid", "paid", "partial", "refunded"] as const;
 export type PaymentStatus = typeof PAYMENT_STATUSES[number];

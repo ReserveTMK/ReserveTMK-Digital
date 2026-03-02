@@ -147,6 +147,15 @@ import {
   type InsertProjectUpdate,
   type ProjectTask,
   type InsertProjectTask,
+  regularBookers,
+  venueInstructions,
+  surveys,
+  type RegularBooker,
+  type InsertRegularBooker,
+  type VenueInstruction,
+  type InsertVenueInstruction,
+  type Survey,
+  type InsertSurvey,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, sql, max, count } from "drizzle-orm";
 
@@ -291,6 +300,29 @@ export interface IStorage {
   // Booking Pricing Defaults
   getBookingPricingDefaults(userId: string): Promise<BookingPricingDefaults | undefined>;
   upsertBookingPricingDefaults(userId: string, data: { fullDayRate?: string; halfDayRate?: string }): Promise<BookingPricingDefaults>;
+
+  // Regular Bookers
+  getRegularBookers(userId: string): Promise<RegularBooker[]>;
+  getRegularBooker(id: number): Promise<RegularBooker | undefined>;
+  getRegularBookerByContactId(contactId: number): Promise<RegularBooker | undefined>;
+  getRegularBookerByLoginEmail(email: string): Promise<RegularBooker | undefined>;
+  getRegularBookerByToken(token: string): Promise<RegularBooker | undefined>;
+  createRegularBooker(data: InsertRegularBooker): Promise<RegularBooker>;
+  updateRegularBooker(id: number, updates: Partial<InsertRegularBooker>): Promise<RegularBooker>;
+  deleteRegularBooker(id: number): Promise<void>;
+
+  // Venue Instructions
+  getVenueInstructions(userId: string): Promise<VenueInstruction[]>;
+  createVenueInstruction(data: InsertVenueInstruction): Promise<VenueInstruction>;
+  updateVenueInstruction(id: number, updates: Partial<InsertVenueInstruction>): Promise<VenueInstruction>;
+  deleteVenueInstruction(id: number): Promise<void>;
+
+  // Surveys
+  getSurveys(userId: string): Promise<Survey[]>;
+  getSurveyByToken(token: string): Promise<Survey | undefined>;
+  getSurveyByBookingId(bookingId: number): Promise<Survey | undefined>;
+  createSurvey(data: InsertSurvey): Promise<Survey>;
+  updateSurvey(id: number, updates: Partial<InsertSurvey>): Promise<Survey>;
 
   // Memberships
   getMemberships(userId: string): Promise<Membership[]>;
@@ -1133,6 +1165,89 @@ export class DatabaseStorage implements IStorage {
       .values({ userId, fullDayRate: data.fullDayRate || "0", halfDayRate: data.halfDayRate || "0" })
       .returning();
     return created;
+  }
+
+  // Regular Bookers
+  async getRegularBookers(userId: string): Promise<RegularBooker[]> {
+    return await db.select().from(regularBookers).where(eq(regularBookers.userId, userId)).orderBy(desc(regularBookers.createdAt));
+  }
+
+  async getRegularBooker(id: number): Promise<RegularBooker | undefined> {
+    const [booker] = await db.select().from(regularBookers).where(eq(regularBookers.id, id));
+    return booker;
+  }
+
+  async getRegularBookerByContactId(contactId: number): Promise<RegularBooker | undefined> {
+    const [booker] = await db.select().from(regularBookers).where(eq(regularBookers.contactId, contactId));
+    return booker;
+  }
+
+  async getRegularBookerByLoginEmail(email: string): Promise<RegularBooker | undefined> {
+    const [booker] = await db.select().from(regularBookers).where(eq(regularBookers.loginEmail, email));
+    return booker;
+  }
+
+  async getRegularBookerByToken(token: string): Promise<RegularBooker | undefined> {
+    const [booker] = await db.select().from(regularBookers).where(eq(regularBookers.loginToken, token));
+    return booker;
+  }
+
+  async createRegularBooker(data: InsertRegularBooker): Promise<RegularBooker> {
+    const [booker] = await db.insert(regularBookers).values(data).returning();
+    return booker;
+  }
+
+  async updateRegularBooker(id: number, updates: Partial<InsertRegularBooker>): Promise<RegularBooker> {
+    const [booker] = await db.update(regularBookers).set({ ...updates, updatedAt: new Date() }).where(eq(regularBookers.id, id)).returning();
+    return booker;
+  }
+
+  async deleteRegularBooker(id: number): Promise<void> {
+    await db.delete(regularBookers).where(eq(regularBookers.id, id));
+  }
+
+  // Venue Instructions
+  async getVenueInstructions(userId: string): Promise<VenueInstruction[]> {
+    return await db.select().from(venueInstructions).where(eq(venueInstructions.userId, userId)).orderBy(venueInstructions.instructionType, venueInstructions.displayOrder);
+  }
+
+  async createVenueInstruction(data: InsertVenueInstruction): Promise<VenueInstruction> {
+    const [instruction] = await db.insert(venueInstructions).values(data).returning();
+    return instruction;
+  }
+
+  async updateVenueInstruction(id: number, updates: Partial<InsertVenueInstruction>): Promise<VenueInstruction> {
+    const [instruction] = await db.update(venueInstructions).set({ ...updates, updatedAt: new Date() }).where(eq(venueInstructions.id, id)).returning();
+    return instruction;
+  }
+
+  async deleteVenueInstruction(id: number): Promise<void> {
+    await db.delete(venueInstructions).where(eq(venueInstructions.id, id));
+  }
+
+  // Surveys
+  async getSurveys(userId: string): Promise<Survey[]> {
+    return await db.select().from(surveys).where(eq(surveys.userId, userId)).orderBy(desc(surveys.createdAt));
+  }
+
+  async getSurveyByToken(token: string): Promise<Survey | undefined> {
+    const [survey] = await db.select().from(surveys).where(eq(surveys.surveyToken, token));
+    return survey;
+  }
+
+  async getSurveyByBookingId(bookingId: number): Promise<Survey | undefined> {
+    const [survey] = await db.select().from(surveys).where(and(eq(surveys.surveyType, "post_booking"), eq(surveys.relatedId, bookingId)));
+    return survey;
+  }
+
+  async createSurvey(data: InsertSurvey): Promise<Survey> {
+    const [survey] = await db.insert(surveys).values(data).returning();
+    return survey;
+  }
+
+  async updateSurvey(id: number, updates: Partial<InsertSurvey>): Promise<Survey> {
+    const [survey] = await db.update(surveys).set(updates).where(eq(surveys.id, id)).returning();
+    return survey;
   }
 
   // Memberships
