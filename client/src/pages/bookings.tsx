@@ -84,7 +84,6 @@ import { BOOKING_CLASSIFICATIONS, BOOKING_STATUSES, PRICING_TIERS, DURATION_TYPE
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MetricCard } from "@/components/ui/metric-card";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
-import { MeetingTypesSection } from "@/components/meeting-types-section";
 
 const CLASSIFICATION_COLORS: Record<string, string> = {
   "Workshop": "bg-blue-500/15 text-blue-700 dark:text-blue-300",
@@ -786,18 +785,14 @@ export default function Bookings() {
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Booking Settings</DialogTitle>
-            <DialogDescription>Configure meeting types, venues, and bookers</DialogDescription>
+            <DialogDescription>Configure venues and bookers</DialogDescription>
           </DialogHeader>
-          <Tabs defaultValue="meeting-types">
+          <Tabs defaultValue="regular-bookers">
             <TabsList className="flex-wrap">
-              <TabsTrigger value="meeting-types" data-testid="tab-booking-meeting-types">Meeting Types</TabsTrigger>
               <TabsTrigger value="regular-bookers" data-testid="tab-booking-regular-bookers">Regular Bookers</TabsTrigger>
               <TabsTrigger value="venue-instructions" data-testid="tab-booking-venue-instructions">Venue Instructions</TabsTrigger>
               <TabsTrigger value="venues" data-testid="tab-booking-venues">Venues</TabsTrigger>
             </TabsList>
-            <TabsContent value="meeting-types" className="mt-4">
-              <MeetingTypesSection category="meeting" />
-            </TabsContent>
             <TabsContent value="regular-bookers" className="mt-4">
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">Manage regular bookers with pricing tiers, booking packages, and linked agreements.</p>
