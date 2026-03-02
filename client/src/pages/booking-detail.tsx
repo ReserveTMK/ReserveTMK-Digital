@@ -1,7 +1,8 @@
+import { getAgreementAllowanceUsage, getPeriodLabel } from "@/lib/utils";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useVenues } from "@/hooks/use-bookings";
+import { useVenues, useBookings } from "@/hooks/use-bookings";
 import { useContacts } from "@/hooks/use-contacts";
 import { useMemberships, useMous } from "@/hooks/use-memberships";
 import { useToast } from "@/hooks/use-toast";
@@ -94,6 +95,7 @@ export default function BookingDetail() {
   const { data: contacts } = useContacts();
   const { data: allMemberships } = useMemberships();
   const { data: allMous } = useMous();
+  const { data: allBookings } = useBookings();
 
   const { data: regularBooker } = useQuery<RegularBooker | null>({
     queryKey: ['/api/regular-bookers/by-contact', booking?.bookerId],
@@ -403,12 +405,14 @@ export default function BookingDetail() {
                         <span className="font-medium" data-testid="text-org-name">{regularBooker.organizationName}</span>
                       </div>
                     )}
-                    <div className="flex justify-between gap-2">
-                      <span className="text-muted-foreground">Pricing Tier</span>
-                      <Badge variant="secondary" data-testid="text-booker-tier">
-                        {PRICING_LABELS[regularBooker.pricingTier] || regularBooker.pricingTier}
-                      </Badge>
-                    </div>
+                    {!(regularBooker.membershipId || regularBooker.mouId) && (
+                      <div className="flex justify-between gap-2">
+                        <span className="text-muted-foreground">Pricing Tier</span>
+                        <Badge variant="secondary" data-testid="text-booker-tier">
+                          {PRICING_LABELS[regularBooker.pricingTier] || regularBooker.pricingTier}
+                        </Badge>
+                      </div>
+                    )}
                   </>
                 )}
                 {(() => {
@@ -430,32 +434,78 @@ export default function BookingDetail() {
                           {isFromBooking ? "Booking Agreement" : "Booker's Agreement"}
                         </span>
                       </div>
-                      {membership && (
-                        <div className="bg-muted/50 rounded-md p-3 text-xs space-y-1">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-[10px]">Membership</Badge>
-                            <span className="font-medium">{membership.name}</span>
+                      {membership && (() => {
+                        const period = membership.allowancePeriod || "quarterly";
+                        const periodLabel = getPeriodLabel(period);
+                        const used = getAgreementAllowanceUsage(allBookings, "membership", membership.id, period);
+                        const remaining = membership.bookingAllowance ? Math.max(0, membership.bookingAllowance - used) : null;
+                        return (
+                          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-3 text-xs space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-[10px] bg-blue-100 dark:bg-blue-800 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700">Membership</Badge>
+                              <span className="font-medium">{membership.name}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-muted-foreground">Pricing:</span>
+                              <Badge variant="secondary" className="text-[10px]">
+                                {membership.annualFee && parseFloat(membership.annualFee) > 0 ? "Per Membership" : "Free / Koha"}
+                              </Badge>
+                            </div>
+                            {membership.annualFee && membership.standardValue && (
+                              <p className="text-muted-foreground">
+                                Fee: ${membership.annualFee} / year (standard: ${membership.standardValue})
+                              </p>
+                            )}
+                            {membership.bookingAllowance ? (
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <Calendar className="w-3 h-3 text-blue-500" />
+                                <span className="text-muted-foreground">
+                                  {used}/{membership.bookingAllowance} used this {periodLabel}
+                                </span>
+                                {remaining !== null && (
+                                  <Badge variant="secondary" className={`text-[10px] ${remaining === 0 ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300" : ""}`}>
+                                    {remaining} remaining
+                                  </Badge>
+                                )}
+                              </div>
+                            ) : null}
                           </div>
-                          {membership.bookingAllowance && (
-                            <p className="text-muted-foreground">
-                              Allowance: {membership.bookingAllowance} bookings ({membership.allowancePeriod || "quarterly"})
-                            </p>
-                          )}
-                        </div>
-                      )}
-                      {mou && (
-                        <div className="bg-muted/50 rounded-md p-3 text-xs space-y-1">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-[10px]">MOU</Badge>
-                            <span className="font-medium">{mou.title}</span>
+                        );
+                      })()}
+                      {mou && (() => {
+                        const period = mou.allowancePeriod || "quarterly";
+                        const periodLabel = getPeriodLabel(period);
+                        const used = getAgreementAllowanceUsage(allBookings, "mou", mou.id, period);
+                        const remaining = mou.bookingAllowance ? Math.max(0, mou.bookingAllowance - used) : null;
+                        return (
+                          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-3 text-xs space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-[10px] bg-blue-100 dark:bg-blue-800 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700">MOU</Badge>
+                              <span className="font-medium">{mou.title}</span>
+                            </div>
+                            {mou.partnerName && (
+                              <p className="text-muted-foreground">Partner: {mou.partnerName}</p>
+                            )}
+                            <div className="flex items-center gap-2">
+                              <span className="text-muted-foreground">Pricing:</span>
+                              <Badge variant="secondary" className="text-[10px]">Free / Koha (from MOU)</Badge>
+                            </div>
+                            {mou.bookingAllowance ? (
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <Calendar className="w-3 h-3 text-blue-500" />
+                                <span className="text-muted-foreground">
+                                  {used}/{mou.bookingAllowance} used this {periodLabel}
+                                </span>
+                                {remaining !== null && (
+                                  <Badge variant="secondary" className={`text-[10px] ${remaining === 0 ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300" : ""}`}>
+                                    {remaining} remaining
+                                  </Badge>
+                                )}
+                              </div>
+                            ) : null}
                           </div>
-                          {mou.bookingAllowance && (
-                            <p className="text-muted-foreground">
-                              Allowance: {mou.bookingAllowance} bookings ({mou.allowancePeriod || "quarterly"})
-                            </p>
-                          )}
-                        </div>
-                      )}
+                        );
+                      })()}
                     </div>
                   );
                 })()}
@@ -470,13 +520,18 @@ export default function BookingDetail() {
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between gap-2">
                   <span className="text-muted-foreground">Pricing Tier</span>
-                  <Badge
-                    variant={booking.pricingTier === "full_price" ? "default" : booking.pricingTier === "discounted" ? "outline" : "secondary"}
-                    className={booking.pricingTier === "free_koha" ? "bg-green-500/15 text-green-700 dark:text-green-300" : ""}
-                    data-testid="badge-pricing-tier"
-                  >
-                    {PRICING_LABELS[booking.pricingTier] || booking.pricingTier}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant={booking.pricingTier === "full_price" ? "default" : booking.pricingTier === "discounted" ? "outline" : "secondary"}
+                      className={booking.pricingTier === "free_koha" ? "bg-green-500/15 text-green-700 dark:text-green-300" : ""}
+                      data-testid="badge-pricing-tier"
+                    >
+                      {PRICING_LABELS[booking.pricingTier] || booking.pricingTier}
+                    </Badge>
+                    {(booking.membershipId || booking.mouId) && (
+                      <span className="text-[10px] text-blue-600 dark:text-blue-400">via agreement</span>
+                    )}
+                  </div>
                 </div>
                 {booking.rateType && (
                   <div className="flex justify-between gap-2">
@@ -511,7 +566,7 @@ export default function BookingDetail() {
               </div>
             </Card>
 
-            {regularBooker?.hasBookingPackage && (
+            {regularBooker?.hasBookingPackage && !(regularBooker?.membershipId || regularBooker?.mouId) && (
               <Card className="p-5 space-y-4">
                 <h2 className="font-semibold text-base flex items-center gap-2" data-testid="text-section-package">
                   <Package className="w-4 h-4 text-muted-foreground" />

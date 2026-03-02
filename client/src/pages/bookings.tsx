@@ -1,3 +1,4 @@
+import { getAgreementAllowanceUsage, getPeriodLabel } from "@/lib/utils";
 import { Button } from "@/components/ui/beautiful-button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -1145,6 +1146,7 @@ function BookingFormDialog({
   const { data: allMemberships } = useMemberships();
   const { data: allMous } = useMous();
   const { data: regularBookers } = useRegularBookers();
+  const { data: bookings } = useBookings();
   const activeMemberships = useMemo(() => (allMemberships || []).filter(m => m.status === "active"), [allMemberships]);
   const activeMous = useMemo(() => (allMous || []).filter(m => m.status === "active"), [allMous]);
 
@@ -1717,10 +1719,54 @@ function BookingFormDialog({
                   </div>
                 )}
               </div>
-              {agreementAutoPopulated && (membershipId || mouId) && (
-                <p className="text-[10px] text-muted-foreground mt-1" data-testid="text-agreement-auto-populated">
-                  Auto-linked from regular booker agreement
-                </p>
+              {(membershipId || mouId) && (
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-2.5 text-xs space-y-1.5 mt-2" data-testid="text-agreement-auto-populated">
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                    <span className="font-medium text-blue-700 dark:text-blue-300">
+                      {agreementAutoPopulated ? "Auto-linked from regular booker agreement" : "Agreement linked"}
+                    </span>
+                  </div>
+                  {(() => {
+                    const m = membershipId ? activeMemberships.find(ms => ms.id === membershipId) : null;
+                    const mou = mouId ? activeMous.find(ms => ms.id === mouId) : null;
+                    const agreement = m || mou;
+                    if (!agreement) return null;
+                    const allowance = (agreement as any).bookingAllowance;
+                    const period = (agreement as any).allowancePeriod || "quarterly";
+                    const periodLabel = getPeriodLabel(period);
+                    const type = membershipId ? "membership" as const : "mou" as const;
+                    const id = (membershipId || mouId)!;
+                    const used = getAgreementAllowanceUsage(bookings, type, id, period);
+                    const remaining = allowance ? Math.max(0, allowance - used) : null;
+                    return (
+                      <div className="pl-5 space-y-1">
+                        <p className="text-muted-foreground font-medium">{m ? m.name : (mou as any)?.title}</p>
+                        {m && (
+                          <p className="text-muted-foreground">
+                            Pricing: {m.annualFee && parseFloat(m.annualFee) > 0 ? "Per Membership" : "Free / Koha"}
+                          </p>
+                        )}
+                        {mou && (
+                          <p className="text-muted-foreground">Pricing: Free / Koha (from MOU)</p>
+                        )}
+                        {allowance && (
+                          <div className="flex items-center gap-2 pt-0.5">
+                            <Calendar className="w-3 h-3 text-blue-500" />
+                            <span className="text-muted-foreground">
+                              {used}/{allowance} used this {periodLabel}
+                            </span>
+                            {remaining !== null && (
+                              <Badge variant="secondary" className={`text-[10px] ${remaining === 0 ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300" : ""}`}>
+                                {remaining} remaining
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
               )}
             </div>
           )}
@@ -1798,6 +1844,7 @@ function RegularBookersDialog({
   const { toast } = useToast();
   const { data: allMemberships } = useMemberships();
   const { data: allMous } = useMous();
+  const { data: allBookings } = useBookings();
 
   const [editingBooker, setEditingBooker] = useState<RegularBooker | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -1869,20 +1916,24 @@ function RegularBookersDialog({
                           {booker.organizationName && (
                             <span className="text-xs text-muted-foreground">({booker.organizationName})</span>
                           )}
-                          <Badge className={TIER_BADGE_COLORS[booker.pricingTier] || ""} data-testid={`badge-booker-tier-${booker.id}`}>
-                            {PRICING_LABELS[booker.pricingTier] || booker.pricingTier}
-                          </Badge>
                           <Badge className={ACCOUNT_STATUS_COLORS[booker.accountStatus] || ""} data-testid={`badge-booker-status-${booker.id}`}>
                             {booker.accountStatus}
                           </Badge>
                           {(() => {
                             const agreement = getAgreementLabel(booker);
-                            return agreement ? (
-                              <Badge variant="outline" className="text-[10px] gap-1" data-testid={`badge-booker-agreement-${booker.id}`}>
-                                <FileText className="w-3 h-3" />
-                                {agreement.type}: {agreement.name}
+                            if (agreement) {
+                              return (
+                                <Badge variant="outline" className="text-[10px] gap-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800" data-testid={`badge-booker-agreement-${booker.id}`}>
+                                  <FileText className="w-3 h-3" />
+                                  {agreement.type}: {agreement.name}
+                                </Badge>
+                              );
+                            }
+                            return (
+                              <Badge className={TIER_BADGE_COLORS[booker.pricingTier] || ""} data-testid={`badge-booker-tier-${booker.id}`}>
+                                {PRICING_LABELS[booker.pricingTier] || booker.pricingTier}
                               </Badge>
-                            ) : null;
+                            );
                           })()}
                         </div>
 
@@ -1891,34 +1942,65 @@ function RegularBookersDialog({
                           {booker.billingPhone && <span>{booker.billingPhone}</span>}
                         </div>
 
-                        {booker.pricingTier === "discounted" && parseFloat(booker.discountPercentage || "0") > 0 && (
-                          <p className="text-xs text-muted-foreground mt-1" data-testid={`text-booker-discount-${booker.id}`}>
-                            Discount: {booker.discountPercentage}%
-                          </p>
-                        )}
-
-                        {booker.hasBookingPackage && (
-                          <div className="flex items-center gap-2 mt-2" data-testid={`text-booker-package-${booker.id}`}>
-                            <Package className="w-3.5 h-3.5 text-muted-foreground" />
-                            <span className="text-xs">
-                              Package: {booker.packageUsedBookings}/{booker.packageTotalBookings} used
-                            </span>
-                            {booker.packageExpiresAt && (
-                              <span className="text-xs text-muted-foreground">
-                                (expires {format(new Date(booker.packageExpiresAt), "d MMM yyyy")})
-                              </span>
-                            )}
-                            {booker.packageTotalBookings && booker.packageUsedBookings !== null && booker.packageUsedBookings !== undefined && (
-                              <Badge variant="secondary" className="text-[10px]">
-                                {(booker.packageTotalBookings || 0) - (booker.packageUsedBookings || 0)} remaining
-                              </Badge>
-                            )}
-                          </div>
-                        )}
-
-                        {booker.kohaMouNotes && (
-                          <p className="text-xs text-muted-foreground mt-1 italic">{booker.kohaMouNotes}</p>
-                        )}
+                        {(() => {
+                          const agreement = getAgreementLabel(booker);
+                          if (agreement) {
+                            const m = booker.membershipId ? allMemberships?.find(ms => ms.id === booker.membershipId) : null;
+                            const mou = booker.mouId ? allMous?.find(ms => ms.id === booker.mouId) : null;
+                            const allowance = m?.bookingAllowance || mou?.bookingAllowance;
+                            const period = m?.allowancePeriod || mou?.allowancePeriod || "quarterly";
+                            const used = booker.membershipId
+                              ? getAgreementAllowanceUsage(allBookings, "membership", booker.membershipId, period)
+                              : booker.mouId
+                                ? getAgreementAllowanceUsage(allBookings, "mou", booker.mouId, period)
+                                : 0;
+                            const remaining = allowance ? Math.max(0, allowance - used) : null;
+                            if (allowance) {
+                              return (
+                                <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground flex-wrap">
+                                  <Calendar className="w-3.5 h-3.5" />
+                                  <span>{used}/{allowance} used this {getPeriodLabel(period)}</span>
+                                  {remaining !== null && (
+                                    <Badge variant="secondary" className={`text-[10px] ${remaining === 0 ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300" : ""}`}>
+                                      {remaining} remaining
+                                    </Badge>
+                                  )}
+                                </div>
+                              );
+                            }
+                            return null;
+                          }
+                          return (
+                            <>
+                              {booker.pricingTier === "discounted" && parseFloat(booker.discountPercentage || "0") > 0 && (
+                                <p className="text-xs text-muted-foreground mt-1" data-testid={`text-booker-discount-${booker.id}`}>
+                                  Discount: {booker.discountPercentage}%
+                                </p>
+                              )}
+                              {booker.hasBookingPackage && (
+                                <div className="flex items-center gap-2 mt-2" data-testid={`text-booker-package-${booker.id}`}>
+                                  <Package className="w-3.5 h-3.5 text-muted-foreground" />
+                                  <span className="text-xs">
+                                    Package: {booker.packageUsedBookings}/{booker.packageTotalBookings} used
+                                  </span>
+                                  {booker.packageExpiresAt && (
+                                    <span className="text-xs text-muted-foreground">
+                                      (expires {format(new Date(booker.packageExpiresAt), "d MMM yyyy")})
+                                    </span>
+                                  )}
+                                  {booker.packageTotalBookings && booker.packageUsedBookings !== null && booker.packageUsedBookings !== undefined && (
+                                    <Badge variant="secondary" className="text-[10px]">
+                                      {(booker.packageTotalBookings || 0) - (booker.packageUsedBookings || 0)} remaining
+                                    </Badge>
+                                  )}
+                                </div>
+                              )}
+                              {booker.kohaMouNotes && (
+                                <p className="text-xs text-muted-foreground mt-1 italic">{booker.kohaMouNotes}</p>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
 
                       <div className="flex items-center gap-1">
@@ -2014,11 +2096,28 @@ function RegularBookerFormDialog({
 
   const { data: allMemberships } = useMemberships();
   const { data: allMous } = useMous();
+  const { data: allBookings } = useBookings();
   const activeMemberships = useMemo(() => (allMemberships || []).filter(m => m.status === "active"), [allMemberships]);
   const activeMous = useMemo(() => (allMous || []).filter(m => m.status === "active"), [allMous]);
 
   const linkedMembership = useMemo(() => allMemberships?.find(m => m.id === linkedMembershipId), [allMemberships, linkedMembershipId]);
   const linkedMou = useMemo(() => allMous?.find(m => m.id === linkedMouId), [allMous, linkedMouId]);
+  const hasLinkedAgreement = !!(linkedMembershipId || linkedMouId);
+
+  const agreementUsage = useMemo(() => {
+    if (!hasLinkedAgreement) return null;
+    const agreement = linkedMembership || linkedMou;
+    if (!agreement) return null;
+    const allowance = (agreement as any).bookingAllowance;
+    const period = (agreement as any).allowancePeriod || "quarterly";
+    if (!allowance) return null;
+    const type = linkedMembershipId ? "membership" as const : "mou" as const;
+    const id = (linkedMembershipId || linkedMouId)!;
+    const used = getAgreementAllowanceUsage(allBookings, type, id, period);
+    const remaining = Math.max(0, allowance - used);
+    const periodLabel = getPeriodLabel(period);
+    return { allowance, used, remaining, period, periodLabel };
+  }, [hasLinkedAgreement, linkedMembership, linkedMou, linkedMembershipId, linkedMouId, allBookings]);
 
   useState(() => {
     if (booker) {
@@ -2188,72 +2287,15 @@ function RegularBookerFormDialog({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Pricing Tier</Label>
-              <Select value={pricingTier} onValueChange={setPricingTier}>
-                <SelectTrigger data-testid="select-booker-pricing-tier">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PRICING_TIERS.map(t => (
-                    <SelectItem key={t} value={t}>{PRICING_LABELS[t]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Account Status</Label>
-              <Select value={accountStatus} onValueChange={setAccountStatus}>
-                <SelectTrigger data-testid="select-booker-account-status">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {REGULAR_BOOKER_STATUSES.map(s => (
-                    <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {pricingTier === "discounted" && (
-            <div>
-              <Label>Discount Percentage (%)</Label>
-              <Input
-                type="number"
-                min="0"
-                max="100"
-                step="0.01"
-                value={discountPercentage}
-                onChange={(e) => setDiscountPercentage(e.target.value)}
-                data-testid="input-booker-discount-pct"
-              />
-            </div>
-          )}
-
-          {pricingTier === "free_koha" && (
-            <div>
-              <Label>Koha / MOU Notes</Label>
-              <Textarea
-                value={kohaMouNotes}
-                onChange={(e) => setKohaMouNotes(e.target.value)}
-                placeholder="Details about the koha or MOU arrangement..."
-                className="resize-none"
-                data-testid="input-booker-koha-notes"
-              />
-            </div>
-          )}
-
           <div>
-            <Label>Payment Terms</Label>
-            <Select value={paymentTerms} onValueChange={setPaymentTerms}>
-              <SelectTrigger data-testid="select-booker-payment-terms">
+            <Label>Account Status</Label>
+            <Select value={accountStatus} onValueChange={setAccountStatus}>
+              <SelectTrigger data-testid="select-booker-account-status">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {PAYMENT_TERMS.map(t => (
-                  <SelectItem key={t} value={t}>{PAYMENT_TERM_LABELS[t] || t}</SelectItem>
+                {REGULAR_BOOKER_STATUSES.map(s => (
+                  <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -2262,6 +2304,7 @@ function RegularBookerFormDialog({
           {(activeMemberships.length > 0 || activeMous.length > 0) && (
             <div className="space-y-3 border-t pt-4">
               <Label className="text-sm font-semibold">Linked Agreement</Label>
+              <p className="text-xs text-muted-foreground">Link to a membership or MOU to auto-manage pricing and booking allowances.</p>
               <div className="grid grid-cols-2 gap-3">
                 {activeMemberships.length > 0 && (
                   <div>
@@ -2309,77 +2352,182 @@ function RegularBookerFormDialog({
                 )}
               </div>
               {(linkedMembership || linkedMou) && (
-                <div className="bg-muted/50 rounded-md p-3 text-xs space-y-1">
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-3 text-xs space-y-2" data-testid="section-agreement-summary">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                    <span className="font-medium text-blue-700 dark:text-blue-300">Pricing and allowances managed by this agreement</span>
+                  </div>
                   {linkedMembership && (
-                    <>
+                    <div className="space-y-1.5 pl-5">
                       <p className="font-medium">{linkedMembership.name}</p>
-                      {linkedMembership.bookingAllowance && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">Pricing tier:</span>
+                        <Badge variant="secondary" className="text-[10px]">
+                          {linkedMembership.annualFee && parseFloat(linkedMembership.annualFee) > 0 ? "Per Membership" : "Free / Koha"}
+                        </Badge>
+                      </div>
+                      {linkedMembership.annualFee && linkedMembership.standardValue && (
                         <p className="text-muted-foreground">
-                          Allowance: {linkedMembership.bookingAllowance} bookings ({linkedMembership.allowancePeriod || "quarterly"})
+                          Fee: ${linkedMembership.annualFee} / year (standard value: ${linkedMembership.standardValue})
                         </p>
                       )}
-                    </>
+                    </div>
                   )}
                   {linkedMou && (
-                    <>
+                    <div className="space-y-1.5 pl-5">
                       <p className="font-medium">{linkedMou.title}</p>
-                      {linkedMou.bookingAllowance && (
-                        <p className="text-muted-foreground">
-                          Allowance: {linkedMou.bookingAllowance} bookings ({linkedMou.allowancePeriod || "quarterly"})
-                        </p>
+                      {linkedMou.partnerName && (
+                        <p className="text-muted-foreground">Partner: {linkedMou.partnerName}</p>
                       )}
-                    </>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">Pricing tier:</span>
+                        <Badge variant="secondary" className="text-[10px]">Free / Koha (from MOU)</Badge>
+                      </div>
+                    </div>
+                  )}
+                  {agreementUsage && (
+                    <div className="pl-5 pt-1 border-t border-blue-200/50 dark:border-blue-700/50 mt-2">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-3.5 h-3.5 text-blue-500" />
+                        <span className="text-muted-foreground">
+                          Allowance: {agreementUsage.used}/{agreementUsage.allowance} used this {agreementUsage.periodLabel}
+                        </span>
+                        <Badge variant="secondary" className={`text-[10px] ${agreementUsage.remaining === 0 ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300" : ""}`}>
+                          {agreementUsage.remaining} remaining
+                        </Badge>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
             </div>
           )}
 
-          <div className="space-y-3 border-t pt-4">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-semibold">Booking Package</Label>
-              <Switch
-                checked={hasBookingPackage}
-                onCheckedChange={setHasBookingPackage}
-                data-testid="switch-booker-has-package"
-              />
-            </div>
-            {hasBookingPackage && (
-              <div className="space-y-3 pl-1">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Total Bookings</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      value={packageTotalBookings}
-                      onChange={(e) => setPackageTotalBookings(e.target.value)}
-                      data-testid="input-booker-package-total"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Used Bookings</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      value={packageUsedBookings}
-                      onChange={(e) => setPackageUsedBookings(e.target.value)}
-                      data-testid="input-booker-package-used"
-                    />
-                  </div>
+          {!hasLinkedAgreement && (
+            <div className="space-y-4 border-t pt-4">
+              <Label className="text-sm font-semibold">Pricing & Packages</Label>
+              <p className="text-xs text-muted-foreground">Set pricing manually when no agreement is linked.</p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Pricing Tier</Label>
+                  <Select value={pricingTier} onValueChange={setPricingTier}>
+                    <SelectTrigger data-testid="select-booker-pricing-tier">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PRICING_TIERS.map(t => (
+                        <SelectItem key={t} value={t}>{PRICING_LABELS[t]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
-                  <Label className="text-xs text-muted-foreground">Package Expires</Label>
-                  <Input
-                    type="date"
-                    value={packageExpiresAt}
-                    onChange={(e) => setPackageExpiresAt(e.target.value)}
-                    data-testid="input-booker-package-expires"
-                  />
+                  <Label>Payment Terms</Label>
+                  <Select value={paymentTerms} onValueChange={setPaymentTerms}>
+                    <SelectTrigger data-testid="select-booker-payment-terms">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PAYMENT_TERMS.map(t => (
+                        <SelectItem key={t} value={t}>{PAYMENT_TERM_LABELS[t] || t}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
-            )}
-          </div>
+
+              {pricingTier === "discounted" && (
+                <div>
+                  <Label>Discount Percentage (%)</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={discountPercentage}
+                    onChange={(e) => setDiscountPercentage(e.target.value)}
+                    data-testid="input-booker-discount-pct"
+                  />
+                </div>
+              )}
+
+              {pricingTier === "free_koha" && (
+                <div>
+                  <Label>Koha / MOU Notes</Label>
+                  <Textarea
+                    value={kohaMouNotes}
+                    onChange={(e) => setKohaMouNotes(e.target.value)}
+                    placeholder="Details about the koha or MOU arrangement..."
+                    className="resize-none"
+                    data-testid="input-booker-koha-notes"
+                  />
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-semibold">Prepaid Booking Package</Label>
+                  <Switch
+                    checked={hasBookingPackage}
+                    onCheckedChange={setHasBookingPackage}
+                    data-testid="switch-booker-has-package"
+                  />
+                </div>
+                {hasBookingPackage && (
+                  <div className="space-y-3 pl-1">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Total Bookings</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={packageTotalBookings}
+                          onChange={(e) => setPackageTotalBookings(e.target.value)}
+                          data-testid="input-booker-package-total"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Used Bookings</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={packageUsedBookings}
+                          onChange={(e) => setPackageUsedBookings(e.target.value)}
+                          data-testid="input-booker-package-used"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Package Expires</Label>
+                      <Input
+                        type="date"
+                        value={packageExpiresAt}
+                        onChange={(e) => setPackageExpiresAt(e.target.value)}
+                        data-testid="input-booker-package-expires"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {hasLinkedAgreement && (
+            <div>
+              <Label>Payment Terms</Label>
+              <Select value={paymentTerms} onValueChange={setPaymentTerms}>
+                <SelectTrigger data-testid="select-booker-payment-terms">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_TERMS.map(t => (
+                    <SelectItem key={t} value={t}>{PAYMENT_TERM_LABELS[t] || t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className="space-y-3 border-t pt-4">
             <Label className="text-sm font-semibold">Portal Access</Label>
