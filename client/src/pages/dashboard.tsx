@@ -67,13 +67,6 @@ export default function Dashboard() {
     boundaryDate: string | null;
   }>({ queryKey: ["/api/dashboard/blended-stats"] });
 
-  const { data: relationshipStages } = useQuery<{
-    contactCounts: Record<string, number>;
-    groupCounts: Record<string, number>;
-  }>({
-    queryKey: ["/api/dashboard/relationship-stages"],
-  });
-
   const { data: trendData } = useQuery<{
     trendData: Array<{
       quarterLabel: string;
@@ -420,95 +413,6 @@ export default function Dashboard() {
             />
           </div>
 
-          {hasLegacy && (
-            <Card className="p-3 md:p-4" data-testid="card-legacy-info">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-2 rounded-lg bg-blue-500/10 shrink-0">
-                  <Info className="w-4 h-4 text-blue-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-muted-foreground" data-testid="text-legacy-info">
-                    Historical data from <span className="font-semibold text-foreground">{blendedStats!.legacy.reportCount}</span> legacy reports included
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2" data-testid="legacy-metric-badges">
-                {blendedStats!.legacy.totalActivations > 0 && (
-                  <Badge variant="secondary" className="text-xs" data-testid="badge-legacy-activations">
-                    {blendedStats!.legacy.totalActivations.toLocaleString()} activations
-                  </Badge>
-                )}
-                {blendedStats!.legacy.totalFoottraffic > 0 && (
-                  <Badge variant="secondary" className="text-xs" data-testid="badge-legacy-foottraffic">
-                    {blendedStats!.legacy.totalFoottraffic.toLocaleString()} foot traffic
-                  </Badge>
-                )}
-                {blendedStats!.legacy.totalBookings > 0 && (
-                  <Badge variant="secondary" className="text-xs" data-testid="badge-legacy-bookings">
-                    {blendedStats!.legacy.totalBookings.toLocaleString()} bookings
-                  </Badge>
-                )}
-                {blendedStats!.legacy.totalHours > 0 && (
-                  <Badge variant="secondary" className="text-xs" data-testid="badge-legacy-hours">
-                    {blendedStats!.legacy.totalHours.toLocaleString()} hours
-                  </Badge>
-                )}
-                {blendedStats!.legacy.totalRevenue > 0 && (
-                  <Badge variant="secondary" className="text-xs" data-testid="badge-legacy-revenue">
-                    ${blendedStats!.legacy.totalRevenue.toLocaleString()} revenue
-                  </Badge>
-                )}
-                {blendedStats!.legacy.totalInKind > 0 && (
-                  <Badge variant="secondary" className="text-xs" data-testid="badge-legacy-inkind">
-                    ${blendedStats!.legacy.totalInKind.toLocaleString()} in-kind
-                  </Badge>
-                )}
-              </div>
-            </Card>
-          )}
-
-          <div className="grid grid-cols-1 gap-4 md:gap-6">
-            <Card className="p-4 md:p-6" data-testid="card-relationship-stages">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 rounded-lg bg-blue-500/10">
-                  <Users className="w-5 h-5 text-blue-600" />
-                </div>
-                <div>
-                  <h3 className="font-display font-semibold" data-testid="text-stages-heading">Relationship Stages</h3>
-                  <p className="text-xs text-muted-foreground">Contacts by engagement level</p>
-                </div>
-              </div>
-              {relationshipStages ? (
-                <div className="space-y-2">
-                  {["new", "engaged", "active", "deepening", "partner", "alumni"].map((stage) => {
-                    const count = relationshipStages.contactCounts[stage] || 0;
-                    const totalContacts = Object.values(relationshipStages.contactCounts).reduce((a, b) => a + b, 0);
-                    const pct = totalContacts > 0 ? (count / totalContacts) * 100 : 0;
-                    return (
-                      <div key={stage} className="flex items-center gap-3" data-testid={`row-stage-${stage}`}>
-                        <span className="text-xs text-muted-foreground w-20 capitalize">{stage}</span>
-                        <div className="flex-1 bg-muted rounded-full h-2 overflow-hidden">
-                          <div
-                            className="bg-primary h-full rounded-full transition-all"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                        <span className="text-xs font-medium w-8 text-right" data-testid={`text-stage-count-${stage}`}>
-                          {count}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {[1, 2, 3].map((i) => (
-                    <Skeleton key={i} className="h-4 w-full" />
-                  ))}
-                </div>
-              )}
-            </Card>
-          </div>
 
           {debriefQueue && debriefQueue.length > 0 && (
             <Card className="border-l-4 border-l-orange-500 p-4 md:p-6" data-testid="card-debrief-queue">
