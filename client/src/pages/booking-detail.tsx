@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useVenues } from "@/hooks/use-bookings";
 import { useContacts } from "@/hooks/use-contacts";
+import { useMemberships, useMous } from "@/hooks/use-memberships";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import { Button } from "@/components/ui/beautiful-button";
@@ -91,6 +92,8 @@ export default function BookingDetail() {
 
   const { data: venues } = useVenues();
   const { data: contacts } = useContacts();
+  const { data: allMemberships } = useMemberships();
+  const { data: allMous } = useMous();
 
   const { data: regularBooker } = useQuery<RegularBooker | null>({
     queryKey: ['/api/regular-bookers/by-contact', booking?.bookerId],
@@ -408,6 +411,54 @@ export default function BookingDetail() {
                     </div>
                   </>
                 )}
+                {(() => {
+                  const bookingMembershipId = booking?.membershipId;
+                  const bookingMouId = booking?.mouId;
+                  const bookerMembershipId = regularBooker?.membershipId;
+                  const bookerMouId = regularBooker?.mouId;
+                  const membershipId = bookingMembershipId || bookerMembershipId;
+                  const mouId = bookingMouId || bookerMouId;
+                  const membership = membershipId ? allMemberships?.find(m => m.id === membershipId) : null;
+                  const mou = mouId ? allMous?.find(m => m.id === mouId) : null;
+                  const isFromBooking = !!(bookingMembershipId || bookingMouId);
+                  if (!membership && !mou) return null;
+                  return (
+                    <div className="border-t border-border pt-3 mt-3 space-y-2" data-testid="section-agreement-info">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-3.5 h-3.5 text-muted-foreground" />
+                        <span className="text-xs font-semibold">
+                          {isFromBooking ? "Booking Agreement" : "Booker's Agreement"}
+                        </span>
+                      </div>
+                      {membership && (
+                        <div className="bg-muted/50 rounded-md p-3 text-xs space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-[10px]">Membership</Badge>
+                            <span className="font-medium">{membership.name}</span>
+                          </div>
+                          {membership.bookingAllowance && (
+                            <p className="text-muted-foreground">
+                              Allowance: {membership.bookingAllowance} bookings ({membership.allowancePeriod || "quarterly"})
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {mou && (
+                        <div className="bg-muted/50 rounded-md p-3 text-xs space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-[10px]">MOU</Badge>
+                            <span className="font-medium">{mou.title}</span>
+                          </div>
+                          {mou.bookingAllowance && (
+                            <p className="text-muted-foreground">
+                              Allowance: {mou.bookingAllowance} bookings ({mou.allowancePeriod || "quarterly"})
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </Card>
 

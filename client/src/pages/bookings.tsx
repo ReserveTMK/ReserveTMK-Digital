@@ -69,6 +69,7 @@ import {
   ArrowUp,
   ArrowDown,
   ExternalLink,
+  Settings,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import {
@@ -364,18 +365,28 @@ export default function Bookings() {
                   List
                 </Button>
               </div>
-              <Button variant="outline" onClick={() => setRegularBookersOpen(true)} data-testid="button-manage-regular-bookers">
-                <Users className="w-4 h-4 mr-2" />
-                Regular Bookers
-              </Button>
-              <Button variant="outline" onClick={() => setVenueInstructionsOpen(true)} data-testid="button-manage-venue-instructions">
-                <FileText className="w-4 h-4 mr-2" />
-                Instructions
-              </Button>
-              <Button variant="outline" onClick={() => setVenueDialogOpen(true)} data-testid="button-manage-venues">
-                <Building2 className="w-4 h-4 mr-2" />
-                Manage Venues
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" data-testid="button-bookings-settings">
+                    <Settings className="w-4 h-4 mr-2" />
+                    Settings
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setRegularBookersOpen(true)} data-testid="menu-item-regular-bookers">
+                    <Users className="w-4 h-4 mr-2" />
+                    Regular Bookers
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setVenueInstructionsOpen(true)} data-testid="menu-item-venue-instructions">
+                    <FileText className="w-4 h-4 mr-2" />
+                    Venue Instructions
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setVenueDialogOpen(true)} data-testid="menu-item-manage-venues">
+                    <Building2 className="w-4 h-4 mr-2" />
+                    Manage Venues
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button className="shadow-lg" onClick={() => setCreateOpen(true)} data-testid="button-create-booking">
                 <Plus className="w-4 h-4 mr-2" />
                 New Booking
@@ -1129,11 +1140,34 @@ function BookingFormDialog({
   const [quickGroupName, setQuickGroupName] = useState("");
   const [membershipId, setMembershipId] = useState<number | null>(booking?.membershipId || null);
   const [mouId, setMouId] = useState<number | null>(booking?.mouId || null);
+  const [agreementAutoPopulated, setAgreementAutoPopulated] = useState(false);
 
   const { data: allMemberships } = useMemberships();
   const { data: allMous } = useMous();
+  const { data: regularBookers } = useRegularBookers();
   const activeMemberships = useMemo(() => (allMemberships || []).filter(m => m.status === "active"), [allMemberships]);
   const activeMous = useMemo(() => (allMous || []).filter(m => m.status === "active"), [allMous]);
+
+  const handleBookerSelected = useCallback((contactId: number) => {
+    setBookerId(contactId);
+    setBookerSearch("");
+    setAgreementAutoPopulated(false);
+    const rb = regularBookers?.find(r => r.contactId === contactId);
+    if (rb) {
+      if (rb.membershipId) {
+        setMembershipId(rb.membershipId);
+        setMouId(null);
+        setAgreementAutoPopulated(true);
+      } else if (rb.mouId) {
+        setMouId(rb.mouId);
+        setMembershipId(null);
+        setAgreementAutoPopulated(true);
+      } else {
+        setMembershipId(null);
+        setMouId(null);
+      }
+    }
+  }, [regularBookers]);
 
   const MONTHS = [
     "January", "February", "March", "April", "May", "June",
@@ -1251,10 +1285,7 @@ function BookingFormDialog({
                     {filteredBookerContacts.map((c) => (
                       <button
                         key={c.id}
-                        onClick={() => {
-                          setBookerId(c.id);
-                          setBookerSearch("");
-                        }}
+                        onClick={() => handleBookerSelected(c.id)}
                         className="w-full text-left px-3 py-1.5 text-xs flex items-center justify-between"
                         type="button"
                         data-testid={`button-select-booker-${c.id}`}
@@ -1647,6 +1678,7 @@ function BookingFormDialog({
                       onValueChange={(v) => {
                         setMembershipId(v === "none" ? null : parseInt(v));
                         if (v !== "none") setMouId(null);
+                        setAgreementAutoPopulated(false);
                       }}
                     >
                       <SelectTrigger data-testid="select-booking-membership">
@@ -1669,6 +1701,7 @@ function BookingFormDialog({
                       onValueChange={(v) => {
                         setMouId(v === "none" ? null : parseInt(v));
                         if (v !== "none") setMembershipId(null);
+                        setAgreementAutoPopulated(false);
                       }}
                     >
                       <SelectTrigger data-testid="select-booking-mou">
@@ -1684,6 +1717,11 @@ function BookingFormDialog({
                   </div>
                 )}
               </div>
+              {agreementAutoPopulated && (membershipId || mouId) && (
+                <p className="text-[10px] text-muted-foreground mt-1" data-testid="text-agreement-auto-populated">
+                  Auto-linked from regular booker agreement
+                </p>
+              )}
             </div>
           )}
 
@@ -1758,9 +1796,23 @@ function RegularBookersDialog({
   const updateMutation = useUpdateRegularBooker();
   const deleteMutation = useDeleteRegularBooker();
   const { toast } = useToast();
+  const { data: allMemberships } = useMemberships();
+  const { data: allMous } = useMous();
 
   const [editingBooker, setEditingBooker] = useState<RegularBooker | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+
+  const getAgreementLabel = (booker: RegularBooker) => {
+    if (booker.membershipId) {
+      const m = allMemberships?.find(ms => ms.id === booker.membershipId);
+      return m ? { type: "Membership", name: m.name } : null;
+    }
+    if (booker.mouId) {
+      const m = allMous?.find(ms => ms.id === booker.mouId);
+      return m ? { type: "MOU", name: m.title } : null;
+    }
+    return null;
+  };
 
   const getContactName = (contactId: number) => {
     return contacts.find(c => c.id === contactId)?.name || `Contact #${contactId}`;
@@ -1823,6 +1875,15 @@ function RegularBookersDialog({
                           <Badge className={ACCOUNT_STATUS_COLORS[booker.accountStatus] || ""} data-testid={`badge-booker-status-${booker.id}`}>
                             {booker.accountStatus}
                           </Badge>
+                          {(() => {
+                            const agreement = getAgreementLabel(booker);
+                            return agreement ? (
+                              <Badge variant="outline" className="text-[10px] gap-1" data-testid={`badge-booker-agreement-${booker.id}`}>
+                                <FileText className="w-3 h-3" />
+                                {agreement.type}: {agreement.name}
+                              </Badge>
+                            ) : null;
+                          })()}
                         </div>
 
                         <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
@@ -1948,6 +2009,16 @@ function RegularBookerFormDialog({
   const [paymentTerms, setPaymentTerms] = useState(booker?.paymentTerms || "immediate");
   const [notes, setNotes] = useState(booker?.notes || "");
   const [usualBookingNeeds, setUsualBookingNeeds] = useState(booker?.usualBookingNeeds || "");
+  const [linkedMembershipId, setLinkedMembershipId] = useState<number | null>(booker?.membershipId || null);
+  const [linkedMouId, setLinkedMouId] = useState<number | null>(booker?.mouId || null);
+
+  const { data: allMemberships } = useMemberships();
+  const { data: allMous } = useMous();
+  const activeMemberships = useMemo(() => (allMemberships || []).filter(m => m.status === "active"), [allMemberships]);
+  const activeMous = useMemo(() => (allMous || []).filter(m => m.status === "active"), [allMous]);
+
+  const linkedMembership = useMemo(() => allMemberships?.find(m => m.id === linkedMembershipId), [allMemberships, linkedMembershipId]);
+  const linkedMou = useMemo(() => allMous?.find(m => m.id === linkedMouId), [allMous, linkedMouId]);
 
   useState(() => {
     if (booker) {
@@ -1968,6 +2039,8 @@ function RegularBookerFormDialog({
       setPaymentTerms(booker.paymentTerms || "immediate");
       setNotes(booker.notes || "");
       setUsualBookingNeeds(booker.usualBookingNeeds || "");
+      setLinkedMembershipId(booker.membershipId || null);
+      setLinkedMouId(booker.mouId || null);
     }
   });
 
@@ -1992,6 +2065,8 @@ function RegularBookerFormDialog({
       packageTotalBookings: hasBookingPackage ? parseInt(packageTotalBookings) || 0 : 0,
       packageUsedBookings: hasBookingPackage ? parseInt(packageUsedBookings) || 0 : 0,
       packageExpiresAt: hasBookingPackage && packageExpiresAt ? new Date(packageExpiresAt).toISOString() : null,
+      membershipId: linkedMembershipId || null,
+      mouId: linkedMouId || null,
       loginEmail: loginEmail.trim() || null,
       accountStatus,
       paymentTerms,
@@ -2183,6 +2258,82 @@ function RegularBookerFormDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {(activeMemberships.length > 0 || activeMous.length > 0) && (
+            <div className="space-y-3 border-t pt-4">
+              <Label className="text-sm font-semibold">Linked Agreement</Label>
+              <div className="grid grid-cols-2 gap-3">
+                {activeMemberships.length > 0 && (
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Membership</Label>
+                    <Select
+                      value={linkedMembershipId?.toString() || "none"}
+                      onValueChange={(v) => {
+                        setLinkedMembershipId(v === "none" ? null : parseInt(v));
+                        if (v !== "none") setLinkedMouId(null);
+                      }}
+                    >
+                      <SelectTrigger data-testid="select-booker-membership">
+                        <SelectValue placeholder="None" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        {activeMemberships.map((m) => (
+                          <SelectItem key={m.id} value={m.id.toString()}>{m.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                {activeMous.length > 0 && (
+                  <div>
+                    <Label className="text-xs text-muted-foreground">MOU</Label>
+                    <Select
+                      value={linkedMouId?.toString() || "none"}
+                      onValueChange={(v) => {
+                        setLinkedMouId(v === "none" ? null : parseInt(v));
+                        if (v !== "none") setLinkedMembershipId(null);
+                      }}
+                    >
+                      <SelectTrigger data-testid="select-booker-mou">
+                        <SelectValue placeholder="None" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        {activeMous.map((m) => (
+                          <SelectItem key={m.id} value={m.id.toString()}>{m.title}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+              {(linkedMembership || linkedMou) && (
+                <div className="bg-muted/50 rounded-md p-3 text-xs space-y-1">
+                  {linkedMembership && (
+                    <>
+                      <p className="font-medium">{linkedMembership.name}</p>
+                      {linkedMembership.bookingAllowance && (
+                        <p className="text-muted-foreground">
+                          Allowance: {linkedMembership.bookingAllowance} bookings ({linkedMembership.allowancePeriod || "quarterly"})
+                        </p>
+                      )}
+                    </>
+                  )}
+                  {linkedMou && (
+                    <>
+                      <p className="font-medium">{linkedMou.title}</p>
+                      {linkedMou.bookingAllowance && (
+                        <p className="text-muted-foreground">
+                          Allowance: {linkedMou.bookingAllowance} bookings ({linkedMou.allowancePeriod || "quarterly"})
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="space-y-3 border-t pt-4">
             <div className="flex items-center justify-between">

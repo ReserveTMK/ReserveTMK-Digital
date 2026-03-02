@@ -486,6 +486,8 @@ export const regularBookers = pgTable("regular_bookers", {
   loginEnabled: boolean("login_enabled").default(false),
   canViewCalendar: boolean("can_view_calendar").default(true),
   canSelfBook: boolean("can_self_book").default(true),
+  membershipId: integer("membership_id"),
+  mouId: integer("mou_id"),
   xeroContactId: text("xero_contact_id"),
   paymentTerms: text("payment_terms").default("immediate"),
   accountStatus: text("account_status").notNull().default("active"),
