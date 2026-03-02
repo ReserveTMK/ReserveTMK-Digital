@@ -15,14 +15,14 @@ function getMentorBookingId(profile: MentorProfile): string {
   return profile.mentorUserId || `mentor-${profile.id}`;
 }
 
-function useAllMentoringAvailability(profiles: MentorProfile[] | undefined) {
+function useAllAvailabilityByCategory(profiles: MentorProfile[] | undefined, category: string) {
   return useQuery<MentorAvailability[]>({
-    queryKey: [AVAIL_KEY, "all-mentors-mentoring"],
+    queryKey: [AVAIL_KEY, "all-mentors", category],
     queryFn: async () => {
       if (!profiles || profiles.length === 0) return [];
       const fetches = profiles.map(async (profile) => {
         const mentorId = getMentorBookingId(profile);
-        const res = await fetch(`${AVAIL_KEY}?mentorUserId=${mentorId}&category=mentoring`, { credentials: "include" });
+        const res = await fetch(`${AVAIL_KEY}?mentorUserId=${mentorId}&category=${category}`, { credentials: "include" });
         if (!res.ok) return [];
         return res.json();
       });
@@ -37,7 +37,7 @@ function invalidateAvailability(queryClient: ReturnType<typeof useQueryClient>) 
   queryClient.invalidateQueries({ queryKey: [AVAIL_KEY] });
 }
 
-export function MentoringAvailabilitySetup() {
+export function AvailabilityDayToggles({ category = "mentoring" }: { category?: string }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -45,7 +45,7 @@ export function MentoringAvailabilitySetup() {
     queryKey: ["/api/mentor-profiles"],
   });
 
-  const { data: allAvailability, isLoading: availLoading } = useAllMentoringAvailability(profiles);
+  const { data: allAvailability, isLoading: availLoading } = useAllAvailabilityByCategory(profiles, category);
 
   const createSlot = useMutation({
     mutationFn: async (data: { userId: string; dayOfWeek: number }) => {
@@ -57,7 +57,7 @@ export function MentoringAvailabilitySetup() {
         slotDuration: 30,
         bufferMinutes: 15,
         isActive: true,
-        category: "mentoring",
+        category,
       });
       return res.json();
     },
@@ -79,7 +79,7 @@ export function MentoringAvailabilitySetup() {
         mentorUserId,
         startTime: "09:00",
         endTime: "16:00",
-        category: "mentoring",
+        category,
       });
       return res.json();
     },
@@ -97,18 +97,21 @@ export function MentoringAvailabilitySetup() {
   if (!profiles || profiles.length === 0) {
     return (
       <div className="text-center py-6 text-sm text-muted-foreground" data-testid="text-no-mentors">
-        No mentors added yet. Add mentors in the Mentors tab first.
+        {category === "meeting"
+          ? "No staff added yet. Add mentor profiles first to configure meeting availability."
+          : "No mentors added yet. Add mentors in the Mentors tab first."}
       </div>
     );
   }
 
   const availability = allAvailability || [];
   const isPending = createSlot.isPending || deleteSlots.isPending;
+  const sessionLabel = category === "meeting" ? "meetings" : "mentoring sessions";
 
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground" data-testid="text-availability-desc">
-        Toggle which days each mentor is available for mentoring sessions. Each active day defaults to 9am\u20134pm.
+        Toggle which days each mentor is available for {sessionLabel}. Each active day defaults to 9am\u20134pm.
       </p>
 
       <div className="space-y-3">
@@ -185,3 +188,5 @@ export function MentoringAvailabilitySetup() {
     </div>
   );
 }
+
+export { AvailabilityDayToggles as MentoringAvailabilitySetup };

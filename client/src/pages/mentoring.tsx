@@ -44,7 +44,7 @@ import {
 import { useAnalyzeInteraction } from "@/hooks/use-interactions";
 import { MeetingTypesSection } from "@/components/meeting-types-section";
 import { MentoringOnboardingSetup } from "@/components/mentoring-onboarding-setup";
-import { MentoringAvailabilitySetup } from "@/components/mentoring-availability-setup";
+import { AvailabilityDayToggles } from "@/components/mentoring-availability-setup";
 import type { Meeting, MentorProfile } from "@shared/schema";
 
 const FOCUS_OPTIONS = [
@@ -924,7 +924,7 @@ export default function MentoringPage() {
               <TabsTrigger value="onboarding" data-testid="tab-settings-onboarding">Onboarding</TabsTrigger>
             </TabsList>
             <TabsContent value="availability" className="mt-4">
-              <MentoringAvailabilitySetup />
+              <AvailabilityDayToggles category="mentoring" />
             </TabsContent>
             <TabsContent value="meeting-types" className="mt-4">
               <MeetingTypesSection category="mentoring" />

@@ -63,9 +63,9 @@ const navGroups: NavGroup[] = [
     href: "/programmes",
     children: [
       { name: "Mentoring", href: "/mentoring", icon: Users, description: "1:1 sessions & scheduling" },
+      { name: "Bookings", href: "/bookings", icon: Building2, description: "Venue hire & spaces" },
       { name: "Programmes", href: "/programmes", icon: Layers, description: "Workshops & activations" },
       { name: "Projects", href: "/projects", icon: Rocket, description: "Initiatives & work streams" },
-      { name: "Bookings", href: "/bookings", icon: Building2, description: "Venue hire & spaces" },
       { name: "Agreements", href: "/agreements", icon: Handshake, description: "Memberships & MOUs" },
     ],
   },

@@ -81,8 +81,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import { BOOKING_CLASSIFICATIONS, BOOKING_STATUSES, PRICING_TIERS, DURATION_TYPES, RATE_TYPES, COMMUNITY_DISCOUNT, INSTRUCTION_TYPES, REGULAR_BOOKER_STATUSES, PAYMENT_TERMS, type Booking, type Venue, type Contact, type RegularBooker, type VenueInstruction } from "@shared/schema";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MetricCard } from "@/components/ui/metric-card";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
+import { MeetingTypesSection } from "@/components/meeting-types-section";
+import { AvailabilityDayToggles } from "@/components/mentoring-availability-setup";
 
 const CLASSIFICATION_COLORS: Record<string, string> = {
   "Workshop": "bg-blue-500/15 text-blue-700 dark:text-blue-300",
@@ -179,6 +182,7 @@ export default function Bookings() {
   const [viewMode, setViewMode] = useState<"list" | "kanban">("kanban");
   const [regularBookersOpen, setRegularBookersOpen] = useState(false);
   const [venueInstructionsOpen, setVenueInstructionsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const filtered = useMemo(() => {
     if (!bookings) return [];
@@ -366,28 +370,14 @@ export default function Bookings() {
                   List
                 </Button>
               </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" data-testid="button-bookings-settings">
-                    <Settings className="w-4 h-4 mr-2" />
-                    Settings
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setRegularBookersOpen(true)} data-testid="menu-item-regular-bookers">
-                    <Users className="w-4 h-4 mr-2" />
-                    Regular Bookers
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setVenueInstructionsOpen(true)} data-testid="menu-item-venue-instructions">
-                    <FileText className="w-4 h-4 mr-2" />
-                    Venue Instructions
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setVenueDialogOpen(true)} data-testid="menu-item-manage-venues">
-                    <Building2 className="w-4 h-4 mr-2" />
-                    Manage Venues
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setSettingsOpen(true)}
+                data-testid="button-bookings-settings"
+              >
+                <Settings className="w-5 h-5" />
+              </Button>
               <Button className="shadow-lg" onClick={() => setCreateOpen(true)} data-testid="button-create-booking">
                 <Plus className="w-4 h-4 mr-2" />
                 New Booking
@@ -792,6 +782,69 @@ export default function Bookings() {
           pricingDefaults={pricingDefaults}
         />
       )}
+
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Booking Settings</DialogTitle>
+            <DialogDescription>Configure availability, meeting types, venues, and bookers</DialogDescription>
+          </DialogHeader>
+          <Tabs defaultValue="availability">
+            <TabsList className="flex-wrap">
+              <TabsTrigger value="availability" data-testid="tab-booking-availability">Availability</TabsTrigger>
+              <TabsTrigger value="meeting-types" data-testid="tab-booking-meeting-types">Meeting Types</TabsTrigger>
+              <TabsTrigger value="regular-bookers" data-testid="tab-booking-regular-bookers">Regular Bookers</TabsTrigger>
+              <TabsTrigger value="venue-instructions" data-testid="tab-booking-venue-instructions">Venue Instructions</TabsTrigger>
+              <TabsTrigger value="venues" data-testid="tab-booking-venues">Venues</TabsTrigger>
+            </TabsList>
+            <TabsContent value="availability" className="mt-4">
+              <AvailabilityDayToggles category="meeting" />
+            </TabsContent>
+            <TabsContent value="meeting-types" className="mt-4">
+              <MeetingTypesSection category="meeting" />
+            </TabsContent>
+            <TabsContent value="regular-bookers" className="mt-4">
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">Manage regular bookers with pricing tiers, booking packages, and linked agreements.</p>
+                <Button
+                  variant="outline"
+                  onClick={() => { setSettingsOpen(false); setRegularBookersOpen(true); }}
+                  data-testid="button-open-regular-bookers"
+                >
+                  <Users className="w-4 h-4 mr-2" />
+                  Manage Regular Bookers
+                </Button>
+              </div>
+            </TabsContent>
+            <TabsContent value="venue-instructions" className="mt-4">
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">Configure instructions sent to bookers with their confirmation emails.</p>
+                <Button
+                  variant="outline"
+                  onClick={() => { setSettingsOpen(false); setVenueInstructionsOpen(true); }}
+                  data-testid="button-open-venue-instructions"
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  Manage Venue Instructions
+                </Button>
+              </div>
+            </TabsContent>
+            <TabsContent value="venues" className="mt-4">
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">Add, edit, or remove venues and configure default pricing.</p>
+                <Button
+                  variant="outline"
+                  onClick={() => { setSettingsOpen(false); setVenueDialogOpen(true); }}
+                  data-testid="button-open-manage-venues"
+                >
+                  <Building2 className="w-4 h-4 mr-2" />
+                  Manage Venues
+                </Button>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
 
       <VenueManagementDialog
         open={venueDialogOpen}
