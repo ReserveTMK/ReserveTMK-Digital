@@ -1,0 +1,603 @@
+Enhance the existing Reserve Tāmaki Bookings system with targeted improvements to calendar booking, automation, and survey logic.
+
+CONTEXT:
+We have a working bookings system with:
+- Kanban/list views with Enquiry → Confirmed → Completed workflow
+- Three pricing tiers (Full Price, Discounted, Free/Koha)
+- Regular booker profiles with packages and agreement-linked pricing
+- Venue instructions sent via Gmail on Accept
+- Post-booking surveys
+- Venues management
+- Metrics dashboard
+
+WHAT WE'RE ADDING:
+1. Regular booker calendar view for self-service date selection
+2. Enhanced survey logic (smart triggers for one-off/first-time only)
+3. Manual survey trigger button
+4. Package usage visibility for regular bookers
+5. Combined confirmation + reminder email
+6. Improved conflict checking across bookings + programmes
+
+═══════════════════════════════════════════════════════════════════════
+
+ENHANCEMENT 1: REGULAR BOOKER CALENDAR VIEW
+
+Add calendar-based booking for regular bookers logged into their portal.
+
+───────────────────────────────────────────────────────────────────────
+DATABASE ADDITIONS
+───────────────────────────────────────────────────────────────────────
+
+-- Add field to track booking source
+ALTER TABLE bookings
+ADD COLUMN IF NOT EXISTS booking_source ENUM('manual_staff', 'regular_booker_portal', 'public_enquiry') DEFAULT 'manual_staff';
+
+-- Add field to track if survey already sent (for smart logic)
+ALTER TABLE bookings
+ADD COLUMN IF NOT EXISTS is_first_booking_for_contact BOOLEAN DEFAULT FALSE;
+
+───────────────────────────────────────────────────────────────────────
+REGULAR BOOKER PORTAL: CALENDAR VIEW
+───────────────────────────────────────────────────────────────────────
+
+Add new route: `/booker/calendar`
+
+Accessible when regular booker logs into their portal.
+
+CALENDAR INTERFACE:
+
+┌────────────────────────────────────────────────────────────┐
+│ Book a Space                                               │
+│                                                             │
+│ Select Venue:                                              │
+│ [Boardroom ▼]                                              │
+│ Options: All active venues from venues table               │
+│                                                             │
+├────────────────────────────────────────────────────────────┤
+│ MARCH 2026                            [< Previous] [Next >]│
+├────────────────────────────────────────────────────────────┤
+│ Mon   Tue   Wed   Thu   Fri   Sat   Sun                   │
+│                              1     2                       │
+│ 3     4     5     6     7     8     9                      │
+│ 10    11    12    13    14    15    16                     │
+│       ✓     ✓     ✗     ✓     ✗     ✗                      │
+│ 17    18    19    20    21    22    23                     │
+│ ✓     ✓     ✓     ○     ✓     ✗     ✗                      │
+│ 24    25    26    27    28    29    30                     │
+│ ✓     ✓     ✓     ✓     ✓     ✗     ✗                      │
+│ 31                                                         │
+│ ✓                                                          │
+│                                                             │
+│ Legend:                                                    │
+│ ✓ Available  ✗ Booked  ○ Your booking  ◐ Partially booked │
+│                                                             │
+└────────────────────────────────────────────────────────────┘
+
+AVAILABILITY LOGIC:
+
+Query existing bookings for selected venue:
+
+SELECT booking_date, start_time, end_time 
+FROM bookings 
+WHERE venue_id = [selected_venue]
+AND status IN ('confirmed', 'enquiry') -- Exclude cancelled/completed
+AND booking_date >= CURDATE()
+ORDER BY booking_date, start_time;
+
+For each date:
+1. No bookings → ✓ Available (all day)
+2. Some bookings → Check if any gaps
+   - Full day booked (8am-5pm) → ✗ Booked
+   - Partial bookings → ◐ Partially booked (show available slots)
+3. User's own booking → ○ Your booking
+
+Also check programmes table for conflicts:
+SELECT programme_date, start_time, end_time, venue
+FROM programmes
+WHERE venue = [selected_venue]
+AND programme_date >= CURDATE()
+AND status = 'scheduled';
+
+Mark dates with programmes as booked or partially booked.
+
+───────────────────────────────────────────────────────────────────────
+CLICK DATE → SHOW TIME SLOTS
+───────────────────────────────────────────────────────────────────────
+
+When user clicks available/partial date:
+
+┌────────────────────────────────────────────────────────────┐
+│ Book Boardroom - Wed, 11 March 2026                       │
+├────────────────────────────────────────────────────────────┤
+│                                                             │
+│ Available Times:                                           │
+│ [Shows only slots not conflicting with existing bookings]  │
+│                                                             │
+│ ○ 8:00 AM - 12:00 PM (Half Day)                           │
+│ ○ 9:00 AM - 12:00 PM (3 hours)                            │
+│ ○ 1:00 PM - 5:00 PM (Half Day)                            │
+│ ● 2:00 PM - 5:00 PM (3 hours) ← Selected                  │
+│ ○ Custom time                                              │
+│                                                             │
+│ [If custom:]                                               │
+│ Start: [2:00 PM ▼]  End: [5:00 PM ▼]                      │
+│                                                             │
+│ Duration Type:                                             │
+│ ● Hourly  ○ Half Day  ○ Full Day                          │
+│ (Auto-selected based on time chosen)                       │
+│                                                             │
+│ YOUR PRICING                                               │
+│ ────────────────────────────────────────────────────────── │
+│                                                             │
+│ [If linked to agreement (Membership/MOU):]                 │
+│ ┌──────────────────────────────────────────┐              │
+│ │ Using: Community MOU Agreement            │              │
+│ │ Pricing: Free (Koha)                      │              │
+│ │ Allowance: 3/5 used this quarter          │              │
+│ │ This booking will use 1 allowance         │              │
+│ └──────────────────────────────────────────┘              │
+│                                                             │
+│ [If prepaid package:]                                      │
+│ ┌──────────────────────────────────────────┐              │
+│ │ Prepaid Package: 7 of 10 remaining        │              │
+│ │ ☑ Use booking from package                │              │
+│ │ Cost: $0 (using package credit)           │              │
+│ └──────────────────────────────────────────┘              │
+│                                                             │
+│ [If regular discount:]                                     │
+│ Standard Rate: $50/hour × 3 hours = $150                   │
+│ Your Discount (20%): -$30                                  │
+│ Total: $120 + GST                                          │
+│                                                             │
+│ [If full price:]                                           │
+│ Rate: $50/hour × 3 hours                                   │
+│ Total: $150 + GST                                          │
+│                                                             │
+│ Booking Type:                                              │
+│ [Meeting ▼]                                                │
+│ Options from booking_types                                 │
+│                                                             │
+│ Special Requests:                                          │
+│ [_______________________________]                          │
+│                                                             │
+│ Notes:                                                     │
+│ Your booking will be sent to Reserve team for             │
+│ confirmation. You'll receive an email within 24 hours.     │
+│                                                             │
+│          [Cancel]      [Submit Booking Request]            │
+│                                                             │
+└────────────────────────────────────────────────────────────┘
+
+SUBMISSION LOGIC:
+
+1. Create booking with status = 'enquiry'
+2. Set booking_source = 'regular_booker_portal'
+3. Auto-populate booker details from regular_booker record
+4. Apply pricing based on:
+   - Check for linked agreement (membership/MOU) first
+   - Then check for prepaid package
+   - Then apply regular booker discount
+   - Finally fall back to standard pricing
+5. Send notification to staff (existing logic)
+6. Show confirmation to user
+
+═══════════════════════════════════════════════════════════════════════
+
+ENHANCEMENT 2: SMART SURVEY LOGIC
+
+Update post-booking survey to only send to one-off bookers OR first-time bookings.
+
+───────────────────────────────────────────────────────────────────────
+UPDATE COMPLETE WORKFLOW
+───────────────────────────────────────────────────────────────────────
+
+When booking moved to "Completed":
+
+CURRENT: Auto-sends survey to everyone
+NEW: Smart logic to determine if survey should send
+
+FUNCTION: should_send_survey(booking_id)
+
+-- Get booking details
+SELECT contact_id FROM bookings WHERE id = [booking_id];
+
+-- Check 1: Is this contact a regular booker?
+SELECT COUNT(*) AS is_regular 
+FROM regular_bookers 
+WHERE contact_id = [contact_id] AND account_status = 'active';
+
+-- Check 2: How many completed bookings does this contact have?
+SELECT COUNT(*) AS completed_count
+FROM bookings 
+WHERE contact_id = [contact_id]
+AND status = 'completed'
+AND id != [booking_id]; -- Exclude current booking
+
+-- Decision tree:
+IF is_regular == 0:
+  RETURN TRUE; -- One-off booker, always send survey
+  
+IF is_regular > 0 AND completed_count == 0:
+  -- First booking for this regular booker
+  UPDATE bookings SET is_first_booking_for_contact = TRUE WHERE id = [booking_id];
+  RETURN TRUE; -- Send survey for first booking
+  
+IF is_regular > 0 AND completed_count > 0:
+  RETURN FALSE; -- Regular booker, not first booking, skip survey
+
+-- Check 3: Already sent survey for this booking?
+SELECT post_survey_sent FROM bookings WHERE id = [booking_id];
+IF post_survey_sent == TRUE:
+  RETURN FALSE; -- Already sent, don't send again
+
+RETURN should_send;
+
+IF should_send == TRUE:
+  -- Send survey (existing logic)
+  -- Mark post_survey_sent = TRUE
+ELSE:
+  -- Log: "Survey skipped - regular booker, not first booking"
+
+───────────────────────────────────────────────────────────────────────
+DISPLAY SURVEY STATUS
+───────────────────────────────────────────────────────────────────────
+
+On booking detail page, show survey status:
+
+IF status == 'completed':
+
+  IF post_survey_sent == TRUE:
+    ┌────────────────────────────────────────┐
+    │ POST-BOOKING SURVEY                    │
+    │ ✓ Sent on [date]                       │
+    │ [View Response] [Resend Survey]        │
+    └────────────────────────────────────────┘
+  
+  ELSE IF should_send_survey == FALSE:
+    ┌────────────────────────────────────────┐
+    │ POST-BOOKING SURVEY                    │
+    │ Not sent (regular booker, not first)   │
+    │ [Send Survey Now]                      │
+    └────────────────────────────────────────┘
+  
+  ELSE:
+    ┌────────────────────────────────────────┐
+    │ POST-BOOKING SURVEY                    │
+    │ Pending (will send within 24 hours)    │
+    │ [Send Survey Now]                      │
+    └────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════
+
+ENHANCEMENT 3: MANUAL SURVEY TRIGGER
+
+Add button to manually send survey regardless of automatic logic.
+
+───────────────────────────────────────────────────────────────────────
+ADD MANUAL TRIGGER BUTTON
+───────────────────────────────────────────────────────────────────────
+
+On booking detail page (when status = confirmed or completed):
+
+Add button: [Send Survey Now]
+
+On click:
+
+1. Show confirmation dialog:
+   "Send post-booking survey to [contact_name]?"
+   [Cancel] [Send Survey]
+
+2. If confirmed:
+   - Create/send survey (use existing survey logic)
+   - Mark in surveys table: manually_triggered = TRUE, triggered_by = [staff_user_id]
+   - Update bookings: post_survey_sent = TRUE
+   - Show success: "Survey sent to [email]"
+   - Log action in booking notes/history
+
+3. Button changes to: [Resend Survey]
+
+This overrides automatic logic - staff can manually send survey to anyone, including regular bookers who wouldn't normally get one.
+
+───────────────────────────────────────────────────────────────────────
+UPDATE SURVEYS TABLE
+───────────────────────────────────────────────────────────────────────
+
+ALTER TABLE surveys
+ADD COLUMN IF NOT EXISTS manually_triggered BOOLEAN DEFAULT FALSE,
+ADD COLUMN IF NOT EXISTS triggered_by INT,
+ADD FOREIGN KEY (triggered_by) REFERENCES contacts(id) ON DELETE SET NULL;
+
+This tracks whether survey was auto-sent or manually triggered by staff.
+
+═══════════════════════════════════════════════════════════════════════
+
+ENHANCEMENT 4: PACKAGE VISIBILITY FOR REGULAR BOOKERS
+
+Show package status prominently in regular booker portal.
+
+───────────────────────────────────────────────────────────────────────
+DASHBOARD WIDGET
+───────────────────────────────────────────────────────────────────────
+
+On regular booker portal dashboard (top of page):
+
+IF has_booking_package == TRUE:
+
+┌────────────────────────────────────────────────────────────┐
+│ YOUR BOOKING PACKAGE                                       │
+│                                                             │
+│ [████████░░] 7 of 10 bookings remaining                    │
+│                                                             │
+│ Package Details:                                           │
+│ • Total: 10 bookings                                       │
+│ • Used: 3 bookings                                         │
+│ • Remaining: 7 bookings                                    │
+│ • Expires: 30 June 2026 (119 days left)                   │
+│                                                             │
+│ Recent Usage:                                              │
+│ • 1 Mar 2026 - Boardroom (3 hours)                        │
+│ • 8 Mar 2026 - Workshop Space (4 hours)                   │
+│ • 15 Mar 2026 - Boardroom (Half Day)                      │
+│                                                             │
+└────────────────────────────────────────────────────────────┘
+
+Alerts:
+- If expires < 30 days: ⚠️ "Package expires in [X] days. Book your remaining sessions!"
+- If remaining == 0: ✓ "Package complete. Contact us to purchase another."
+- If expired: ⚠️ "Package expired. [X] bookings unused."
+
+Query for package usage:
+
+SELECT COUNT(*) AS used
+FROM bookings
+WHERE regular_booker_id = [booker_id]
+AND use_package_credit = TRUE
+AND status IN ('confirmed', 'completed');
+
+UPDATE regular_bookers SET package_used_bookings = [used];
+
+═══════════════════════════════════════════════════════════════════════
+
+ENHANCEMENT 5: COMBINED CONFIRMATION + REMINDER EMAIL
+
+Update "Accept" workflow to send venue instructions in confirmation email.
+
+───────────────────────────────────────────────────────────────────────
+UPDATE ACCEPT WORKFLOW
+───────────────────────────────────────────────────────────────────────
+
+CURRENT: Accept sends confirmation via Gmail
+NEW: Include all venue instructions in the confirmation email
+
+When booking moved to "Confirmed" (or Accept button clicked):
+
+1. Gather all active venue_instructions (existing table)
+
+SELECT instruction_type, title, content 
+FROM venue_instructions 
+WHERE is_active = TRUE 
+ORDER BY instruction_type, display_order;
+
+2. Build comprehensive email
+
+EMAIL TEMPLATE (sent via Gmail as current):
+---
+Subject: Booking Confirmed - Reserve Tāmaki [Venue] on [Date]
+
+Hi [contact_name],
+
+Your venue hire is confirmed! 🎉
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BOOKING DETAILS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Venue: [venue_name]
+Date: [day_name], [date] ← Add countdown: (TOMORROW / IN 3 DAYS)
+Time: [start_time] - [end_time] ([duration_type])
+Type: [booking_type]
+
+[Pricing display based on tier]
+[If agreement:] Using: [agreement_name] - [pricing_info]
+[If package:] Using package credit ([remaining] remaining)
+[If discount:] Discount ([X]%): -$[amount]
+Total: $[amount] + GST [or $0 if koha/package]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ACCESS INFORMATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Loop through venue_instructions WHERE type = 'access']
+[title]
+[content]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ARRIVAL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Location:
+Reserve Tāmaki Hub
+133a Line Road, Glen Innes, Auckland 1072
+Free parking available
+
+[Loop through venue_instructions WHERE type = 'arrival']
+[content]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WHAT'S INCLUDED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Loop through venue_instructions WHERE type = 'general']
+[content]
+
+[If special_requests exist:]
+Your Special Requests:
+- [request_1]
+- [request_2]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BEFORE YOU LEAVE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Loop through venue_instructions WHERE type = 'departure']
+[content]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EMERGENCY CONTACTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Loop through venue_instructions WHERE type = 'emergency']
+[content]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Questions or need to make changes?
+Reply to this email or call 021 022 98172
+
+See you [on date]!
+
+Ngā mihi,
+Reserve Tāmaki Team
+---
+
+3. This replaces separate confirmation + reminder emails
+4. Everything the booker needs is in one comprehensive email
+5. Existing Gmail integration handles sending
+
+═══════════════════════════════════════════════════════════════════════
+
+ENHANCEMENT 6: IMPROVED CONFLICT CHECKING
+
+Already checking venues, enhance to show conflicts clearly.
+
+───────────────────────────────────────────────────────────────────────
+CONFLICT DISPLAY
+───────────────────────────────────────────────────────────────────────
+
+When creating/editing booking in staff interface:
+
+After selecting venue + date + time, run conflict check:
+
+-- Check bookings
+SELECT * FROM bookings 
+WHERE venue_id = [selected_venue]
+AND booking_date = [selected_date]
+AND status IN ('confirmed', 'enquiry')
+AND (
+  (start_time < [selected_end_time] AND end_time > [selected_start_time])
+);
+
+-- Check programmes
+SELECT * FROM programmes
+WHERE venue = [selected_venue]
+AND programme_date = [selected_date]
+AND status = 'scheduled'
+AND (
+  (start_time < [selected_end_time] AND end_time > [selected_start_time])
+);
+
+IF conflicts found:
+┌────────────────────────────────────────────┐
+│ ⚠️  CONFLICT DETECTED                      │
+│                                            │
+│ [If booking conflict:]                     │
+│ Boardroom already booked:                  │
+│ • 9:00 AM - 12:00 PM                      │
+│ • By: Sarah Johnson (Meeting)              │
+│ • Status: Confirmed                        │
+│                                            │
+│ [If programme conflict:]                   │
+│ Workshop scheduled:                        │
+│ • Brand Strategy Workshop                  │
+│ • 1:00 PM - 4:00 PM                       │
+│ • 15 registered                            │
+│                                            │
+│ Available times today:                     │
+│ • 8:00 AM - 9:00 AM                       │
+│ • 12:00 PM - 1:00 PM                      │
+│ • 4:00 PM onwards                          │
+│                                            │
+│ [Change Time] [Override & Book Anyway]     │
+└────────────────────────────────────────────┘
+
+This prevents double-booking and shows what's conflicting.
+
+═══════════════════════════════════════════════════════════════════════
+
+TESTING CHECKLIST:
+
+CALENDAR VIEW:
+□ Regular booker can access /booker/calendar
+□ Venues dropdown populated from active venues
+□ Calendar shows current/future months
+□ Availability correctly marked (available/booked/partial)
+□ Clicking available date shows time slots
+□ Time slots filtered by existing bookings + programmes
+□ Selected time auto-determines duration type
+□ Pricing displays correctly based on tier/agreement/package
+□ Can submit booking request
+□ Booking created with source = 'regular_booker_portal'
+
+SMART SURVEY LOGIC:
+□ One-off booker (not regular) → survey sends
+□ Regular booker, first booking → survey sends, is_first_booking flagged
+□ Regular booker, 2nd+ booking → survey skipped
+□ Survey status displays correctly on booking detail
+□ Can view survey response when completed
+
+MANUAL SURVEY TRIGGER:
+□ "Send Survey Now" button appears on confirmed/completed bookings
+□ Click shows confirmation dialog
+□ Survey sends immediately
+□ manually_triggered = TRUE in surveys table
+□ Can send to anyone regardless of automatic logic
+
+PACKAGE VISIBILITY:
+□ Dashboard shows package widget if has_booking_package = TRUE
+□ Progress bar displays correctly
+□ Used/remaining counts accurate
+□ Recent usage list shows last 3 bookings with package credit
+□ Expiry warning shows when < 30 days
+□ Package depleted message shows when remaining == 0
+
+COMBINED EMAIL:
+□ Accept sends comprehensive email via Gmail
+□ All venue instruction types included
+□ Pricing displays with tier/discount/agreement
+□ Countdown shows (tomorrow/in X days)
+□ Special requests included if any
+□ Email readable and well-formatted
+
+CONFLICT CHECKING:
+□ Detects booking vs booking conflicts
+□ Detects booking vs programme conflicts
+□ Shows conflict details
+□ Suggests available times
+□ Can override if intentional
+
+═══════════════════════════════════════════════════════════════════════
+
+IMPLEMENTATION ORDER:
+
+1. Enhancement 2: Smart survey logic (affects existing workflow)
+2. Enhancement 3: Manual survey trigger button
+3. Enhancement 4: Package visibility widget
+4. Enhancement 5: Combined email template
+5. Enhancement 6: Improved conflict display
+6. Enhancement 1: Regular booker calendar view (most complex)
+7. Full end-to-end testing
+
+═══════════════════════════════════════════════════════════════════════
+
+NOTES FOR REPLIT:
+
+- Work with EXISTING tables: bookings, regular_bookers, venues, venue_instructions, surveys
+- Use EXISTING Gmail integration for emails
+- Use EXISTING Kanban/list views (don't rebuild)
+- Use EXISTING pricing logic (tiers, agreements, packages)
+- ENHANCE workflows, don't replace them
+- Keep existing UI patterns and styling
+
+Start with database additions (ALTER TABLE commands) then build features incrementally.
+
+If you need clarification on:
+- Existing table structures
+- Current email sending mechanism
+- Portal authentication
+- Existing UI components
+
+Please ask before proceeding.
