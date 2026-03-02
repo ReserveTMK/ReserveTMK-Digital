@@ -451,6 +451,9 @@ export const bookings = pgTable("bookings", {
   discountPercentage: numeric("discount_percentage", { precision: 5, scale: 2 }).default("0"),
   discountAmount: numeric("discount_amount", { precision: 10, scale: 2 }).default("0"),
   usePackageCredit: boolean("use_package_credit").default(false),
+  isAfterHours: boolean("is_after_hours").default(false),
+  autoInstructionsSent: boolean("auto_instructions_sent").default(false),
+  autoInstructionsSentAt: timestamp("auto_instructions_sent_at"),
   xeroInvoiceId: text("xero_invoice_id"),
   xeroInvoiceNumber: text("xero_invoice_number"),
   xeroInvoiceStatus: text("xero_invoice_status"),
@@ -1314,6 +1317,41 @@ export const insertBookingPricingDefaultsSchema = createInsertSchema(bookingPric
 
 export type BookingPricingDefaults = typeof bookingPricingDefaults.$inferSelect;
 export type InsertBookingPricingDefaults = z.infer<typeof insertBookingPricingDefaultsSchema>;
+
+export const DAYS_OF_WEEK = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
+export type DayOfWeek = typeof DAYS_OF_WEEK[number];
+
+export const operatingHours = pgTable("operating_hours", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  dayOfWeek: text("day_of_week").notNull(),
+  openTime: text("open_time"),
+  closeTime: text("close_time"),
+  isStaffed: boolean("is_staffed").default(true),
+});
+
+export const insertOperatingHoursSchema = createInsertSchema(operatingHours).omit({
+  id: true,
+});
+
+export type OperatingHours = typeof operatingHours.$inferSelect;
+export type InsertOperatingHours = z.infer<typeof insertOperatingHoursSchema>;
+
+export const afterHoursSettings = pgTable("after_hours_settings", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  autoSendEnabled: boolean("auto_send_enabled").default(true),
+  sendTimingHours: integer("send_timing_hours").default(4),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertAfterHoursSettingsSchema = createInsertSchema(afterHoursSettings).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type AfterHoursSettings = typeof afterHoursSettings.$inferSelect;
+export type InsertAfterHoursSettings = z.infer<typeof insertAfterHoursSettingsSchema>;
 
 export const insertRegularBookerSchema = createInsertSchema(regularBookers).omit({
   id: true,

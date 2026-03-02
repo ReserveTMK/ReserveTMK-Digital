@@ -3261,10 +3261,36 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       if (!booking) return res.status(404).json({ message: "Booking not found" });
       if (booking.userId !== userId) return res.status(403).json({ message: "Forbidden" });
 
+      let afterHoursFlag = false;
+      try {
+        const opHours = await storage.getOperatingHours(userId);
+        const hours = opHours.length > 0 ? opHours : await storage.seedDefaultOperatingHours(userId);
+        const bookingDate = booking.startDate ? new Date(booking.startDate) : new Date();
+        const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+        const dayName = dayNames[bookingDate.getDay()];
+        const dayConfig = hours.find(h => h.dayOfWeek === dayName);
+        if (dayConfig) {
+          if (!dayConfig.isStaffed) {
+            afterHoursFlag = true;
+          } else if (booking.startTime && dayConfig.openTime && dayConfig.closeTime) {
+            const startMins = parseTimeToMinutes(booking.startTime);
+            const endMins = booking.endTime ? parseTimeToMinutes(booking.endTime) : startMins;
+            const openMins = parseTimeToMinutes(dayConfig.openTime);
+            const closeMins = parseTimeToMinutes(dayConfig.closeTime);
+            if (startMins < openMins || startMins >= closeMins || endMins > closeMins) {
+              afterHoursFlag = true;
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Failed to check after-hours:", e);
+      }
+
       const updated = await storage.updateBooking(bookingId, {
         status: "confirmed",
         confirmedBy: booking.bookerId || undefined,
         confirmedAt: new Date(),
+        isAfterHours: afterHoursFlag,
       } as any);
 
       if (booking.bookerId) {
@@ -3289,7 +3315,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         console.error("Failed to send confirmation email:", emailErr.message);
       }
 
-      res.json({ success: true, booking: updated, emailSent });
+      res.json({ success: true, booking: updated, emailSent, isAfterHours: afterHoursFlag });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -8088,6 +8114,140 @@ Rules:
       res.status(500).json({ message: "Failed to fetch bookings" });
     }
   });
+
+  app.get("/api/operating-hours", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      let hours = await storage.getOperatingHours(userId);
+      if (hours.length === 0) {
+        hours = await storage.seedDefaultOperatingHours(userId);
+      }
+      res.json(hours);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch operating hours" });
+    }
+  });
+
+  app.put("/api/operating-hours", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { hours } = req.body;
+      if (!Array.isArray(hours)) return res.status(400).json({ message: "hours array required" });
+      const validDays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+      const validated = hours.filter((h: any) => validDays.includes(h.dayOfWeek)).map((h: any) => ({
+        dayOfWeek: h.dayOfWeek,
+        openTime: h.isStaffed ? (h.openTime || "09:00") : null,
+        closeTime: h.isStaffed ? (h.closeTime || "17:00") : null,
+        isStaffed: !!h.isStaffed,
+      }));
+      const result = await storage.upsertOperatingHours(userId, validated);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update operating hours" });
+    }
+  });
+
+  app.get("/api/after-hours-settings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const settings = await storage.getAfterHoursSettings(userId);
+      res.json(settings || { autoSendEnabled: true, sendTimingHours: 4 });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch after-hours settings" });
+    }
+  });
+
+  app.put("/api/after-hours-settings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { autoSendEnabled, sendTimingHours } = req.body;
+      const result = await storage.upsertAfterHoursSettings(userId, { autoSendEnabled, sendTimingHours });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update after-hours settings" });
+    }
+  });
+
+  app.post("/api/bookings/:id/send-instructions", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const bookingId = parseInt(req.params.id);
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+      if (booking.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      if (booking.isAfterHours) {
+        const { sendAfterHoursReminderEmail } = await import("./email");
+        await sendAfterHoursReminderEmail(booking, userId);
+      } else {
+        const { sendBookingConfirmationEmail } = await import("./email");
+        await sendBookingConfirmationEmail(booking, userId);
+      }
+
+      await storage.updateBooking(bookingId, {
+        autoInstructionsSent: true,
+        autoInstructionsSentAt: new Date(),
+      } as any);
+
+      res.json({ success: true, message: "Instructions sent" });
+    } catch (err: any) {
+      console.error("Failed to send instructions:", err);
+      res.status(500).json({ message: err.message || "Failed to send instructions" });
+    }
+  });
+
+  async function runAfterHoursAutoSend() {
+    try {
+      const allBookings = await db.select().from(bookings).where(
+        and(
+          eq(bookings.status, "confirmed"),
+          eq(bookings.isAfterHours, true),
+          eq(bookings.autoInstructionsSent, false),
+        )
+      );
+
+      const now = new Date();
+      const nzNow = new Date(now.toLocaleString("en-US", { timeZone: "Pacific/Auckland" }));
+
+      for (const booking of allBookings) {
+        if (!booking.startDate) continue;
+        const bookingDate = new Date(new Date(booking.startDate).toLocaleString("en-US", { timeZone: "Pacific/Auckland" }));
+        const todayNz = new Date(nzNow.getFullYear(), nzNow.getMonth(), nzNow.getDate());
+        if (bookingDate < todayNz) continue;
+
+        const settings = await storage.getAfterHoursSettings(booking.userId);
+        if (settings && !settings.autoSendEnabled) continue;
+
+        const sendHoursBefore = settings?.sendTimingHours || 4;
+        const bookingStartTime = booking.startTime || "09:00";
+        const [bh, bm] = bookingStartTime.split(":").map(Number);
+        const bookingDateTime = new Date(bookingDate.getFullYear(), bookingDate.getMonth(), bookingDate.getDate(), bh, bm);
+
+        const sendAt = new Date(bookingDateTime.getTime() - sendHoursBefore * 60 * 60 * 1000);
+        const eightAm = new Date(bookingDate.getFullYear(), bookingDate.getMonth(), bookingDate.getDate(), 8, 0);
+        const effectiveSendAt = sendAt > eightAm ? sendAt : eightAm;
+
+        if (nzNow >= effectiveSendAt) {
+          try {
+            const { sendAfterHoursReminderEmail } = await import("./email");
+            await sendAfterHoursReminderEmail(booking, booking.userId);
+            await storage.updateBooking(booking.id, {
+              autoInstructionsSent: true,
+              autoInstructionsSentAt: new Date(),
+            } as any);
+            console.log(`After-hours reminder sent for booking ${booking.id}`);
+          } catch (emailErr) {
+            console.error(`Failed to send after-hours reminder for booking ${booking.id}:`, emailErr);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("After-hours auto-send error:", err);
+    }
+  }
+
+  setInterval(runAfterHoursAutoSend, 30 * 60 * 1000);
+  setTimeout(runAfterHoursAutoSend, 10000);
 
   startAutoSync();
 

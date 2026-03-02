@@ -40,7 +40,8 @@ import { useGroups, useCreateGroup } from "@/hooks/use-groups";
 import { useMemberships, useMous } from "@/hooks/use-memberships";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import {
   Plus,
   Loader2,
@@ -72,6 +73,7 @@ import {
   ArrowDown,
   ExternalLink,
   Settings,
+  Moon,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import {
@@ -81,7 +83,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
-import { BOOKING_CLASSIFICATIONS, BOOKING_STATUSES, PRICING_TIERS, DURATION_TYPES, RATE_TYPES, COMMUNITY_DISCOUNT, INSTRUCTION_TYPES, REGULAR_BOOKER_STATUSES, PAYMENT_TERMS, type Booking, type Venue, type Contact, type RegularBooker, type VenueInstruction } from "@shared/schema";
+import { BOOKING_CLASSIFICATIONS, BOOKING_STATUSES, PRICING_TIERS, DURATION_TYPES, RATE_TYPES, COMMUNITY_DISCOUNT, INSTRUCTION_TYPES, REGULAR_BOOKER_STATUSES, PAYMENT_TERMS, DAYS_OF_WEEK, type Booking, type Venue, type Contact, type RegularBooker, type VenueInstruction, type OperatingHours } from "@shared/schema";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MetricCard } from "@/components/ui/metric-card";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
@@ -521,9 +523,17 @@ export default function Bookings() {
                                               <p className="text-[10px] text-muted-foreground truncate mt-0.5">
                                                 {getBookingGroupName(booking.bookerGroupId) ? getVenueName(booking.venueId) : ""}
                                               </p>
-                                              <Badge className={`${CLASSIFICATION_COLORS[booking.classification] || ""} text-[10px] mt-1`}>
-                                                {booking.classification}
-                                              </Badge>
+                                              <div className="flex items-center gap-1 mt-1 flex-wrap">
+                                                <Badge className={`${CLASSIFICATION_COLORS[booking.classification] || ""} text-[10px]`}>
+                                                  {booking.classification}
+                                                </Badge>
+                                                {booking.isAfterHours && (
+                                                  <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800" data-testid={`badge-after-hours-${booking.id}`}>
+                                                    <Moon className="w-2.5 h-2.5 mr-0.5" />
+                                                    After Hours
+                                                  </Badge>
+                                                )}
+                                              </div>
                                             </div>
                                           </div>
                                           <DropdownMenu>
@@ -627,6 +637,12 @@ export default function Bookings() {
                               <Badge className={CLASSIFICATION_COLORS[booking.classification] || ""} data-testid={`badge-classification-${booking.id}`}>
                                 {booking.classification}
                               </Badge>
+                              {booking.isAfterHours && (
+                                <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800" data-testid={`badge-after-hours-list-${booking.id}`}>
+                                  <Moon className="w-2.5 h-2.5 mr-0.5" />
+                                  After Hours
+                                </Badge>
+                              )}
                             </div>
                             {bookingGroupName && (
                               <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
@@ -793,6 +809,7 @@ export default function Bookings() {
               <TabsTrigger value="regular-bookers" data-testid="tab-booking-regular-bookers">Regular Bookers</TabsTrigger>
               <TabsTrigger value="venue-instructions" data-testid="tab-booking-venue-instructions">Venue Instructions</TabsTrigger>
               <TabsTrigger value="venues" data-testid="tab-booking-venues">Venues</TabsTrigger>
+              <TabsTrigger value="after-hours" data-testid="tab-booking-after-hours">After Hours</TabsTrigger>
             </TabsList>
             <TabsContent value="regular-bookers" className="mt-4">
               <div className="space-y-3">
@@ -833,6 +850,9 @@ export default function Bookings() {
                 </Button>
               </div>
             </TabsContent>
+            <TabsContent value="after-hours" className="mt-4">
+              <AfterHoursSettingsTab />
+            </TabsContent>
           </Tabs>
         </DialogContent>
       </Dialog>
@@ -863,6 +883,183 @@ export default function Bookings() {
         onOpenChange={setVenueInstructionsOpen}
       />
     </>
+  );
+}
+
+const DAY_LABELS: Record<string, string> = {
+  monday: "Monday", tuesday: "Tuesday", wednesday: "Wednesday",
+  thursday: "Thursday", friday: "Friday", saturday: "Saturday", sunday: "Sunday",
+};
+
+function AfterHoursSettingsTab() {
+  const { toast } = useToast();
+  const { data: operatingHoursData, isLoading: hoursLoading } = useQuery<OperatingHours[]>({
+    queryKey: ['/api/operating-hours'],
+  });
+  const { data: afterHoursData, isLoading: settingsLoading } = useQuery<{ autoSendEnabled: boolean; sendTimingHours: number }>({
+    queryKey: ['/api/after-hours-settings'],
+  });
+
+  const [hours, setHours] = useState<Array<{ dayOfWeek: string; openTime: string | null; closeTime: string | null; isStaffed: boolean }>>([]);
+  const [autoSendEnabled, setAutoSendEnabled] = useState(true);
+  const [sendTimingHours, setSendTimingHours] = useState(4);
+  const [initialized, setInitialized] = useState(false);
+
+  useEffect(() => {
+    if (!initialized && operatingHoursData && operatingHoursData.length > 0) {
+      setHours(DAYS_OF_WEEK.map(day => {
+        const existing = operatingHoursData.find(h => h.dayOfWeek === day);
+        return {
+          dayOfWeek: day,
+          openTime: existing?.openTime || null,
+          closeTime: existing?.closeTime || null,
+          isStaffed: existing?.isStaffed ?? !["saturday", "sunday"].includes(day),
+        };
+      }));
+      setInitialized(true);
+    } else if (!initialized && operatingHoursData && operatingHoursData.length === 0) {
+      setHours(DAYS_OF_WEEK.map(day => ({
+        dayOfWeek: day,
+        openTime: ["saturday", "sunday"].includes(day) ? null : "09:00",
+        closeTime: ["saturday", "sunday"].includes(day) ? null : "17:00",
+        isStaffed: !["saturday", "sunday"].includes(day),
+      })));
+      setInitialized(true);
+    }
+  }, [operatingHoursData, initialized]);
+
+  useEffect(() => {
+    if (afterHoursData) {
+      setAutoSendEnabled(afterHoursData.autoSendEnabled ?? true);
+      setSendTimingHours(afterHoursData.sendTimingHours ?? 4);
+    }
+  }, [afterHoursData]);
+
+  const saveHoursMutation = useMutation({
+    mutationFn: () => apiRequest('PUT', '/api/operating-hours', { hours }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/operating-hours'] });
+      toast({ title: "Saved", description: "Operating hours updated" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const saveSettingsMutation = useMutation({
+    mutationFn: () => apiRequest('PUT', '/api/after-hours-settings', { autoSendEnabled, sendTimingHours }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/after-hours-settings'] });
+      toast({ title: "Saved", description: "After-hours settings updated" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  function handleSave() {
+    saveHoursMutation.mutate();
+    saveSettingsMutation.mutate();
+  }
+
+  function handleQuickSetup() {
+    setHours(DAYS_OF_WEEK.map(day => ({
+      dayOfWeek: day,
+      openTime: ["saturday", "sunday"].includes(day) ? null : "09:00",
+      closeTime: ["saturday", "sunday"].includes(day) ? null : "17:00",
+      isStaffed: !["saturday", "sunday"].includes(day),
+    })));
+  }
+
+  function updateDay(dayOfWeek: string, field: string, value: any) {
+    setHours(prev => prev.map(h => h.dayOfWeek === dayOfWeek ? { ...h, [field]: value } : h));
+  }
+
+  if (hoursLoading || settingsLoading) {
+    return <div className="flex justify-center p-8"><Loader2 className="w-6 h-6 animate-spin" /></div>;
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="font-semibold text-sm mb-1">Auto-Send Reminders</h3>
+        <p className="text-xs text-muted-foreground mb-3">Automatically send venue instructions before after-hours bookings.</p>
+        <div className="flex items-center gap-3">
+          <Switch
+            checked={autoSendEnabled}
+            onCheckedChange={setAutoSendEnabled}
+            data-testid="switch-auto-send"
+          />
+          <span className="text-sm">{autoSendEnabled ? "Enabled" : "Disabled"}</span>
+        </div>
+        {autoSendEnabled && (
+          <div className="mt-3">
+            <Label className="text-xs">Send reminder</Label>
+            <Select value={String(sendTimingHours)} onValueChange={(v) => setSendTimingHours(Number(v))}>
+              <SelectTrigger className="w-48 mt-1" data-testid="select-send-timing">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="24">1 day before</SelectItem>
+                <SelectItem value="4">4 hours before</SelectItem>
+                <SelectItem value="2">2 hours before</SelectItem>
+                <SelectItem value="0">8am on day of booking</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="font-semibold text-sm">Operating Hours</h3>
+            <p className="text-xs text-muted-foreground">Bookings outside these hours are flagged as after-hours.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={handleQuickSetup} data-testid="button-quick-setup">
+            Quick Setup
+          </Button>
+        </div>
+        <div className="space-y-2">
+          {hours.map(h => (
+            <div key={h.dayOfWeek} className="flex items-center gap-3 text-sm" data-testid={`row-${h.dayOfWeek}`}>
+              <span className="w-24 font-medium">{DAY_LABELS[h.dayOfWeek]}</span>
+              <Switch
+                checked={h.isStaffed}
+                onCheckedChange={(v) => updateDay(h.dayOfWeek, 'isStaffed', v)}
+                data-testid={`switch-staffed-${h.dayOfWeek}`}
+              />
+              {h.isStaffed ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="time"
+                    value={h.openTime || "09:00"}
+                    onChange={(e) => updateDay(h.dayOfWeek, 'openTime', e.target.value)}
+                    className="w-28 h-8 text-xs"
+                    data-testid={`input-open-${h.dayOfWeek}`}
+                  />
+                  <span className="text-muted-foreground">to</span>
+                  <Input
+                    type="time"
+                    value={h.closeTime || "17:00"}
+                    onChange={(e) => updateDay(h.dayOfWeek, 'closeTime', e.target.value)}
+                    className="w-28 h-8 text-xs"
+                    data-testid={`input-close-${h.dayOfWeek}`}
+                  />
+                </div>
+              ) : (
+                <span className="text-xs text-muted-foreground">Unstaffed - all bookings are after-hours</span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <Button
+        onClick={handleSave}
+        disabled={saveHoursMutation.isPending || saveSettingsMutation.isPending}
+        data-testid="button-save-after-hours"
+      >
+        {(saveHoursMutation.isPending || saveSettingsMutation.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+        Save Settings
+      </Button>
+    </div>
   );
 }
 

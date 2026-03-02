@@ -247,6 +247,136 @@ export async function sendBookingConfirmationEmail(booking: Booking, userId: str
   await sendEmail(contact.email, subject, htmlBody);
 }
 
+export async function sendAfterHoursReminderEmail(booking: Booking, userId: string): Promise<void> {
+  if (!booking.bookerId) throw new Error("Booking has no booker contact");
+
+  const contact = await storage.getContact(booking.bookerId);
+  if (!contact?.email) throw new Error("Contact has no email address");
+
+  const venues = await storage.getVenues(userId);
+  const venue = venues.find(v => v.id === booking.venueId);
+  const instructions = await storage.getVenueInstructions(userId);
+  const grouped = groupInstructions(instructions);
+
+  const clientName = contact.name || contact.email;
+  const venueName = venue?.name || "Reserve Tamaki Space";
+  const dateStr = formatDate(booking.startDate);
+  const startStr = formatTime(booking.startTime);
+  const endStr = formatTime(booking.endTime);
+  const countdown = getCountdownText(booking.startDate);
+  const durationLabel = getDurationLabel(booking);
+  const durationText = durationLabel ? ` (${durationLabel})` : "";
+
+  const countdownBadge = countdown
+    ? `<span style="display:inline-block;background:#fef3c7;color:#92400e;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;margin-left:8px;">${countdown}</span>`
+    : "";
+
+  const afterHoursNotice = `
+    <tr><td style="padding:15px 30px;">
+      <table width="100%" style="background:#fef3c7;border-radius:6px;border:1px solid #fde68a;" cellpadding="0" cellspacing="0">
+        <tr><td style="padding:15px;">
+          <p style="margin:0 0 5px;font-size:14px;font-weight:600;color:#92400e;">After-Hours Booking - Important</p>
+          <p style="margin:0;font-size:14px;color:#78350f;line-height:1.5;">Your booking is outside our regular staffed hours. The building will be unstaffed during your visit, so please read the access and departure instructions carefully. You will be responsible for locking up when you leave.</p>
+        </td></tr>
+      </table>
+    </td></tr>`;
+
+  const arrivalSection = `
+    <tr><td style="padding:20px 30px 5px;background:#f8f9fa;border-left:4px solid #f59e0b;">
+      <h3 style="margin:0;color:#92400e;font-size:14px;text-transform:uppercase;letter-spacing:1px;">Arrival</h3>
+    </td></tr>
+    <tr><td style="padding:10px 30px 20px;background:#f8f9fa;border-left:4px solid #f59e0b;">
+      <p style="margin:0 0 5px;color:#374151;font-size:14px;line-height:1.6;">
+        <strong>Reserve Tamaki Hub</strong><br>
+        133a Line Road, Glen Innes, Auckland 1072<br>
+        <span style="color:#6b7280;">Free parking available</span>
+      </p>
+      ${(grouped["arrival"] || []).map(i => {
+        const heading = i.title ? `<strong>${i.title}</strong><br>` : "";
+        return `<p style="margin:8px 0 0;color:#374151;font-size:14px;line-height:1.6;">${heading}${(i.content || "").replace(/\n/g, "<br>")}</p>`;
+      }).join("")}
+    </td></tr>
+  `;
+
+  function buildAfterHoursSection(title: string, insts: VenueInstruction[]): string {
+    if (!insts || insts.length === 0) return "";
+    const items = insts.map(i => {
+      const heading = i.title ? `<strong>${i.title}</strong><br>` : "";
+      return `${heading}${(i.content || "").replace(/\n/g, "<br>")}`;
+    }).join("<br><br>");
+
+    return `
+      <tr><td style="padding:20px 30px 5px;background:#f8f9fa;border-left:4px solid #f59e0b;">
+        <h3 style="margin:0;color:#92400e;font-size:14px;text-transform:uppercase;letter-spacing:1px;">${title}</h3>
+      </td></tr>
+      <tr><td style="padding:10px 30px 20px;background:#f8f9fa;border-left:4px solid #f59e0b;">
+        <p style="margin:0;color:#374151;font-size:14px;line-height:1.6;">${items}</p>
+      </td></tr>
+    `;
+  }
+
+  const departureInstructions = grouped["departure"] || [];
+  const lockUpReminder = `
+    <tr><td style="padding:15px 30px;">
+      <table width="100%" style="background:#fef2f2;border-radius:6px;border:1px solid #fecaca;" cellpadding="0" cellspacing="0">
+        <tr><td style="padding:15px;">
+          <p style="margin:0 0 5px;font-size:14px;font-weight:600;color:#991b1b;">Before You Leave - Please Lock Up</p>
+          <p style="margin:0;font-size:14px;color:#7f1d1d;line-height:1.5;">As this is an after-hours booking, please make sure all doors are locked, lights are off, and the building is secured before you leave.</p>
+        </td></tr>
+      </table>
+    </td></tr>`;
+
+  const htmlBody = `
+<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:20px auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+  <tr><td style="padding:30px;background:#92400e;text-align:center;">
+    <h1 style="margin:0;color:#ffffff;font-size:22px;">After-Hours Booking Reminder</h1>
+    <p style="margin:8px 0 0;color:#fde68a;font-size:14px;">Reserve Tamaki</p>
+  </td></tr>
+
+  <tr><td style="padding:25px 30px 10px;">
+    <p style="margin:0;font-size:16px;color:#111827;">Hi ${clientName},</p>
+    <p style="margin:10px 0;font-size:14px;color:#374151;">Just a reminder about your upcoming after-hours booking. Here's everything you need to know for your visit.</p>
+  </td></tr>
+
+  <tr><td style="padding:10px 30px;">
+    <table width="100%" style="background:#eff6ff;border-radius:6px;padding:15px;" cellpadding="0" cellspacing="0">
+      <tr><td style="padding:15px;">
+        <h3 style="margin:0 0 10px;color:#1e40af;">Booking Details</h3>
+        <p style="margin:5px 0;"><strong>Space:</strong> ${venueName}</p>
+        <p style="margin:5px 0;"><strong>Date:</strong> ${dateStr}${countdownBadge}</p>
+        <p style="margin:5px 0;"><strong>Time:</strong> ${startStr} - ${endStr}${durationText}</p>
+      </td></tr>
+    </table>
+  </td></tr>
+
+  ${afterHoursNotice}
+
+  ${buildAfterHoursSection("Access Information", grouped["access"] || [])}
+  ${arrivalSection}
+  ${buildAfterHoursSection("What's Included", grouped["general"] || [])}
+  ${lockUpReminder}
+  ${buildAfterHoursSection("Departure Checklist", departureInstructions)}
+  ${buildAfterHoursSection("Emergency Contacts", grouped["emergency"] || [])}
+
+  <tr><td style="padding:25px 30px;">
+    <p style="margin:0;font-size:14px;color:#374151;">Questions or need help?<br>Call <strong>021 022 98172</strong> (may have limited availability after hours)</p>
+    <p style="margin:15px 0 0;font-size:14px;color:#374151;">Nga mihi,<br><strong>Reserve Tamaki Team</strong></p>
+  </td></tr>
+
+  <tr><td style="padding:15px 30px;background:#f9fafb;text-align:center;">
+    <p style="margin:0;font-size:12px;color:#9ca3af;">Reserve Tamaki Hub - 133a Line Road, Glen Innes, Auckland 1072</p>
+  </td></tr>
+</table>
+</body>
+</html>`;
+
+  const subject = `After-Hours Reminder - Reserve Tamaki ${venueName} ${countdown === "TODAY" ? "Today" : countdown === "TOMORROW" ? "Tomorrow" : dateStr}`;
+  await sendEmail(contact.email, subject, htmlBody);
+}
+
 export async function sendSurveyEmail(
   contactEmail: string,
   contactName: string,

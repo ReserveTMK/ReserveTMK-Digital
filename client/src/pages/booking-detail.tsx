@@ -39,6 +39,7 @@ import {
   Star,
   Eye,
   AlertCircle,
+  Moon,
 } from "lucide-react";
 import { format } from "date-fns";
 import type { Booking, Contact, Venue, RegularBooker, Survey } from "@shared/schema";
@@ -152,6 +153,17 @@ export default function BookingDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
       toast({ title: "Sent", description: "Confirmation email resent successfully." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const sendInstructionsMutation = useMutation({
+    mutationFn: () => apiRequest('POST', `/api/bookings/${bookingId}/send-instructions`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
+      toast({ title: "Sent", description: "Venue instructions sent successfully." });
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -296,6 +308,58 @@ export default function BookingDetail() {
                     Mark as Completed
                   </Button>
                 </div>
+              </div>
+            </Card>
+          )}
+
+          {booking.status === "confirmed" && (
+            <Card className={`p-4 ${booking.isAfterHours ? "border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/10" : "border-gray-200 dark:border-gray-800"}`}>
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex-1">
+                  <h3 className="font-semibold text-sm flex items-center gap-2" data-testid="text-instructions-status">
+                    {booking.isAfterHours ? (
+                      <>
+                        <Moon className="w-4 h-4 text-amber-600" />
+                        After-Hours Booking
+                      </>
+                    ) : (
+                      <>
+                        <Mail className="w-4 h-4 text-muted-foreground" />
+                        Venue Instructions
+                      </>
+                    )}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    {booking.isAfterHours ? (
+                      booking.autoInstructionsSent ? (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5 inline mr-1 text-green-600" />
+                          After-hours reminder sent {booking.autoInstructionsSentAt ? `on ${format(new Date(booking.autoInstructionsSentAt), "d MMM, h:mm a")}` : ""}
+                        </>
+                      ) : (
+                        "After-hours reminder will be sent automatically before the booking"
+                      )
+                    ) : (
+                      "Instructions were included with the confirmation email"
+                    )}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => sendInstructionsMutation.mutate()}
+                  disabled={sendInstructionsMutation.isPending}
+                  data-testid="button-send-instructions"
+                >
+                  {sendInstructionsMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : booking.autoInstructionsSent ? (
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                  ) : (
+                    <Send className="w-4 h-4 mr-2" />
+                  )}
+                  {booking.autoInstructionsSent ? "Resend Instructions" : "Send Instructions Now"}
+                </Button>
               </div>
             </Card>
           )}

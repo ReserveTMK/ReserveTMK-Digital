@@ -113,6 +113,13 @@ import {
   type CommunitySpend,
   type InsertCommunitySpend,
   bookingPricingDefaults,
+  operatingHours,
+  afterHoursSettings,
+  type OperatingHours,
+  type InsertOperatingHours,
+  type AfterHoursSettings,
+  type InsertAfterHoursSettings,
+  DAYS_OF_WEEK,
   type BookingPricingDefaults,
   gmailImportHistory,
   gmailExclusions,
@@ -303,6 +310,12 @@ export interface IStorage {
   // Booking Pricing Defaults
   getBookingPricingDefaults(userId: string): Promise<BookingPricingDefaults | undefined>;
   upsertBookingPricingDefaults(userId: string, data: { fullDayRate?: string; halfDayRate?: string }): Promise<BookingPricingDefaults>;
+
+  getOperatingHours(userId: string): Promise<OperatingHours[]>;
+  upsertOperatingHours(userId: string, data: { dayOfWeek: string; openTime: string | null; closeTime: string | null; isStaffed: boolean }[]): Promise<OperatingHours[]>;
+  seedDefaultOperatingHours(userId: string): Promise<OperatingHours[]>;
+  getAfterHoursSettings(userId: string): Promise<AfterHoursSettings | undefined>;
+  upsertAfterHoursSettings(userId: string, data: { autoSendEnabled?: boolean; sendTimingHours?: number }): Promise<AfterHoursSettings>;
 
   // Regular Bookers
   getRegularBookers(userId: string): Promise<RegularBooker[]>;
@@ -1173,6 +1186,69 @@ export class DatabaseStorage implements IStorage {
     }
     const [created] = await db.insert(bookingPricingDefaults)
       .values({ userId, fullDayRate: data.fullDayRate || "0", halfDayRate: data.halfDayRate || "0" })
+      .returning();
+    return created;
+  }
+
+  async getOperatingHours(userId: string): Promise<OperatingHours[]> {
+    return await db.select().from(operatingHours).where(eq(operatingHours.userId, userId));
+  }
+
+  async upsertOperatingHours(userId: string, data: { dayOfWeek: string; openTime: string | null; closeTime: string | null; isStaffed: boolean }[]): Promise<OperatingHours[]> {
+    const existing = await this.getOperatingHours(userId);
+    const results: OperatingHours[] = [];
+    for (const day of data) {
+      const found = existing.find(e => e.dayOfWeek === day.dayOfWeek);
+      if (found) {
+        const [updated] = await db.update(operatingHours)
+          .set({ openTime: day.openTime, closeTime: day.closeTime, isStaffed: day.isStaffed })
+          .where(eq(operatingHours.id, found.id))
+          .returning();
+        results.push(updated);
+      } else {
+        const [created] = await db.insert(operatingHours)
+          .values({ userId, dayOfWeek: day.dayOfWeek, openTime: day.openTime, closeTime: day.closeTime, isStaffed: day.isStaffed })
+          .returning();
+        results.push(created);
+      }
+    }
+    return results;
+  }
+
+  async seedDefaultOperatingHours(userId: string): Promise<OperatingHours[]> {
+    const existing = await this.getOperatingHours(userId);
+    if (existing.length > 0) return existing;
+    const defaults = DAYS_OF_WEEK.map(day => ({
+      userId,
+      dayOfWeek: day,
+      openTime: ["saturday", "sunday"].includes(day) ? null : "09:00",
+      closeTime: ["saturday", "sunday"].includes(day) ? null : "17:00",
+      isStaffed: !["saturday", "sunday"].includes(day),
+    }));
+    const results: OperatingHours[] = [];
+    for (const d of defaults) {
+      const [created] = await db.insert(operatingHours).values(d).returning();
+      results.push(created);
+    }
+    return results;
+  }
+
+  async getAfterHoursSettings(userId: string): Promise<AfterHoursSettings | undefined> {
+    const [settings] = await db.select().from(afterHoursSettings).where(eq(afterHoursSettings.userId, userId));
+    return settings;
+  }
+
+  async upsertAfterHoursSettings(userId: string, data: { autoSendEnabled?: boolean; sendTimingHours?: number }): Promise<AfterHoursSettings> {
+    const existing = await this.getAfterHoursSettings(userId);
+    if (existing) {
+      const [updated] = await db.update(afterHoursSettings)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(afterHoursSettings.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(afterHoursSettings)
+      .values({ userId, autoSendEnabled: data.autoSendEnabled ?? true, sendTimingHours: data.sendTimingHours ?? 4 })
       .returning();
     return created;
   }
