@@ -47,6 +47,34 @@ function formatTime(time: string | null | undefined): string {
   return `${h12}:${m} ${ampm}`;
 }
 
+function getCountdownText(date: Date | string | null | undefined): string {
+  if (!date) return "";
+  const now = new Date();
+  const nzNow = new Date(now.toLocaleString("en-US", { timeZone: "Pacific/Auckland" }));
+  const bookingDate = new Date(date);
+  const nzBooking = new Date(bookingDate.toLocaleString("en-US", { timeZone: "Pacific/Auckland" }));
+  nzNow.setHours(0, 0, 0, 0);
+  nzBooking.setHours(0, 0, 0, 0);
+  const diffMs = nzBooking.getTime() - nzNow.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return "TODAY";
+  if (diffDays === 1) return "TOMORROW";
+  if (diffDays > 1 && diffDays <= 14) return `IN ${diffDays} DAYS`;
+  return "";
+}
+
+function getDurationLabel(booking: Booking): string {
+  if (booking.durationType === "full_day") return "Full Day";
+  if (booking.durationType === "half_day") return "Half Day";
+  if (booking.startTime && booking.endTime) {
+    const [sh, sm] = booking.startTime.split(":").map(Number);
+    const [eh, em] = booking.endTime.split(":").map(Number);
+    const hours = (eh * 60 + em - sh * 60 - sm) / 60;
+    if (hours > 0) return `${hours} hour${hours !== 1 ? "s" : ""}`;
+  }
+  return "";
+}
+
 function groupInstructions(instructions: VenueInstruction[]): Record<string, VenueInstruction[]> {
   const groups: Record<string, VenueInstruction[]> = {};
   for (const inst of instructions) {
@@ -92,10 +120,16 @@ export async function sendBookingConfirmationEmail(booking: Booking, userId: str
   }
 
   const clientName = contact.name || contact.email;
-  const venueName = venue?.name || "Reserve Tāmaki Space";
+  const venueName = venue?.name || "Reserve T\u0101maki Space";
   const dateStr = formatDate(booking.startDate);
   const startStr = formatTime(booking.startTime);
   const endStr = formatTime(booking.endTime);
+  const countdown = getCountdownText(booking.startDate);
+  const countdownBadge = countdown
+    ? `<span style="display:inline-block;background:#fef3c7;color:#92400e;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;margin-left:8px;">${countdown}</span>`
+    : "";
+  const durationLabel = getDurationLabel(booking);
+  const durationText = durationLabel ? ` (${durationLabel})` : "";
 
   let pricingHtml = "";
   if (regularBooker?.pricingTier === "free_koha") {
@@ -129,8 +163,35 @@ export async function sendBookingConfirmationEmail(booking: Booking, userId: str
   }
 
   const specialRequestsHtml = booking.specialRequests
-    ? `<tr><td style="padding:10px 30px;"><p style="margin:0;"><strong>Your Special Requests:</strong><br>${booking.specialRequests.replace(/\n/g, "<br>")}</p></td></tr>`
+    ? `
+    <tr><td style="padding:15px 30px;">
+      <table width="100%" style="background:#fefce8;border-radius:6px;border:1px solid #fde68a;" cellpadding="0" cellspacing="0">
+        <tr><td style="padding:12px 15px;">
+          <p style="margin:0 0 5px;font-size:13px;font-weight:600;color:#92400e;">Your Special Requests</p>
+          <p style="margin:0;font-size:14px;color:#374151;">${booking.specialRequests.replace(/\n/g, "<br>")}</p>
+        </td></tr>
+      </table>
+    </td></tr>`
     : "";
+
+  const classificationText = booking.classification ? `<p style="margin:5px 0;"><strong>Type:</strong> ${booking.classification}</p>` : "";
+
+  const arrivalSection = `
+    <tr><td style="padding:20px 30px 5px;background:#f8f9fa;border-left:4px solid #2563eb;">
+      <h3 style="margin:0;color:#1e40af;font-size:14px;text-transform:uppercase;letter-spacing:1px;">Arrival</h3>
+    </td></tr>
+    <tr><td style="padding:10px 30px 20px;background:#f8f9fa;border-left:4px solid #2563eb;">
+      <p style="margin:0 0 5px;color:#374151;font-size:14px;line-height:1.6;">
+        <strong>Reserve T\u0101maki Hub</strong><br>
+        133a Line Road, Glen Innes, Auckland 1072<br>
+        <span style="color:#6b7280;">Free parking available</span>
+      </p>
+      ${(grouped["arrival"] || []).map(i => {
+        const heading = i.title ? `<strong>${i.title}</strong><br>` : "";
+        return `<p style="margin:8px 0 0;color:#374151;font-size:14px;line-height:1.6;">${heading}${(i.content || "").replace(/\n/g, "<br>")}</p>`;
+      }).join("")}
+    </td></tr>
+  `;
 
   const htmlBody = `
 <!DOCTYPE html>
@@ -139,7 +200,7 @@ export async function sendBookingConfirmationEmail(booking: Booking, userId: str
 <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:20px auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
   <tr><td style="padding:30px;background:#1e40af;text-align:center;">
     <h1 style="margin:0;color:#ffffff;font-size:22px;">Booking Confirmed!</h1>
-    <p style="margin:8px 0 0;color:#bfdbfe;font-size:14px;">Reserve Tāmaki</p>
+    <p style="margin:8px 0 0;color:#bfdbfe;font-size:14px;">Reserve T\u0101maki</p>
   </td></tr>
 
   <tr><td style="padding:25px 30px 10px;">
@@ -152,8 +213,9 @@ export async function sendBookingConfirmationEmail(booking: Booking, userId: str
       <tr><td style="padding:15px;">
         <h3 style="margin:0 0 10px;color:#1e40af;">Booking Details</h3>
         <p style="margin:5px 0;"><strong>Space:</strong> ${venueName}</p>
-        <p style="margin:5px 0;"><strong>Date:</strong> ${dateStr}</p>
-        <p style="margin:5px 0;"><strong>Time:</strong> ${startStr} - ${endStr}</p>
+        <p style="margin:5px 0;"><strong>Date:</strong> ${dateStr}${countdownBadge}</p>
+        <p style="margin:5px 0;"><strong>Time:</strong> ${startStr} - ${endStr}${durationText}</p>
+        ${classificationText}
         ${pricingHtml}
         ${packageHtml}
       </td></tr>
@@ -163,14 +225,14 @@ export async function sendBookingConfirmationEmail(booking: Booking, userId: str
   ${specialRequestsHtml}
 
   ${buildInstructionSection("Access Information", grouped["access"] || [])}
-  ${buildInstructionSection("Arrival", grouped["arrival"] || [])}
+  ${arrivalSection}
   ${buildInstructionSection("What's Included", grouped["general"] || [])}
   ${buildInstructionSection("Before You Leave", grouped["departure"] || [])}
   ${buildInstructionSection("Emergency Contacts", grouped["emergency"] || [])}
 
   <tr><td style="padding:25px 30px;">
     <p style="margin:0;font-size:14px;color:#374151;">Questions or need to make changes?<br>Reply to this email or call <strong>021 022 98172</strong></p>
-    <p style="margin:15px 0 0;font-size:14px;color:#374151;">See you on ${dateStr}!</p>
+    <p style="margin:15px 0 0;font-size:14px;color:#374151;">See you ${countdown === "TOMORROW" ? "tomorrow" : countdown === "TODAY" ? "today" : `on ${dateStr}`}!</p>
     <p style="margin:15px 0 0;font-size:14px;color:#374151;">Ng\u0101 mihi,<br><strong>Reserve T\u0101maki Team</strong></p>
   </td></tr>
 
@@ -233,4 +295,43 @@ export async function sendSurveyEmail(
 
   const subject = "How was your experience at Reserve T\u0101maki?";
   await sendEmail(contactEmail, subject, htmlBody);
+}
+
+export async function sendBookerLoginEmail(
+  email: string,
+  name: string,
+  loginUrl: string
+): Promise<void> {
+  const htmlBody = `
+<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:20px auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+  <tr><td style="padding:30px;background:#1e40af;text-align:center;">
+    <h1 style="margin:0;color:#ffffff;font-size:22px;">Your Booking Portal Login</h1>
+    <p style="margin:8px 0 0;color:#bfdbfe;font-size:14px;">Reserve T\u0101maki</p>
+  </td></tr>
+
+  <tr><td style="padding:25px 30px;">
+    <p style="margin:0;font-size:16px;color:#111827;">Hi ${name},</p>
+    <p style="margin:10px 0;font-size:14px;color:#374151;">Click the button below to access your booking portal. This link is valid for 24 hours.</p>
+
+    <div style="text-align:center;margin:25px 0;">
+      <a href="${loginUrl}" style="display:inline-block;padding:14px 32px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:6px;font-size:16px;font-weight:600;">Access Booking Portal</a>
+    </div>
+
+    <p style="margin:10px 0;font-size:14px;color:#374151;">From the portal you can view venue availability, submit booking requests, and check your package status.</p>
+    <p style="margin:10px 0;font-size:12px;color:#9ca3af;">If you didn't request this link, you can safely ignore this email.</p>
+    <p style="margin:15px 0 0;font-size:14px;color:#374151;">Ng\u0101 mihi,<br><strong>Reserve T\u0101maki Team</strong></p>
+  </td></tr>
+
+  <tr><td style="padding:15px 30px;background:#f9fafb;text-align:center;">
+    <p style="margin:0;font-size:12px;color:#9ca3af;">Reserve T\u0101maki Hub &bull; 133a Line Road, Glen Innes, Auckland 1072</p>
+  </td></tr>
+</table>
+</body>
+</html>`;
+
+  const subject = "Your Reserve T\u0101maki Booking Portal Login";
+  await sendEmail(email, subject, htmlBody);
 }

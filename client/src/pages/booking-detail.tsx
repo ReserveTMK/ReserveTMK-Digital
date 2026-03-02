@@ -658,20 +658,37 @@ export default function BookingDetail() {
                       <span className="font-medium" data-testid="text-survey-completed">{formatDate(survey.completedAt)}</span>
                     </div>
                   )}
-                  {survey.status === "completed" && survey.responses && (
-                    <Button
-                      variant="outline"
-                      onClick={() => setSurveyResponseOpen(true)}
-                      data-testid="button-view-survey-response"
-                    >
-                      <Eye className="w-4 h-4 mr-2" />
-                      View Response
-                    </Button>
-                  )}
+                  <div className="flex gap-2 flex-wrap">
+                    {survey.status === "completed" && survey.responses && (
+                      <Button
+                        variant="outline"
+                        onClick={() => setSurveyResponseOpen(true)}
+                        data-testid="button-view-survey-response"
+                      >
+                        <Eye className="w-4 h-4 mr-2" />
+                        View Response
+                      </Button>
+                    )}
+                    {survey.status !== "completed" && bookerContact?.email && (
+                      <Button
+                        variant="outline"
+                        onClick={() => sendSurveyMutation.mutate()}
+                        disabled={sendSurveyMutation.isPending}
+                        data-testid="button-resend-survey"
+                      >
+                        {sendSurveyMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                        Resend Survey
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <p className="text-sm text-muted-foreground" data-testid="text-no-survey">No survey has been sent for this booking.</p>
+                  <p className="text-sm text-muted-foreground" data-testid="text-no-survey">
+                    {booking.postSurveySent === false && regularBooker
+                      ? "Not sent (regular booker, not first booking)"
+                      : "No survey has been sent for this booking."}
+                  </p>
                   {bookerContact?.email && (
                     <Button
                       variant="outline"

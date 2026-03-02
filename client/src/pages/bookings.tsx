@@ -39,7 +39,8 @@ import { useContacts, useCreateContact } from "@/hooks/use-contacts";
 import { useGroups, useCreateGroup } from "@/hooks/use-groups";
 import { useMemberships, useMous } from "@/hooks/use-memberships";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Plus,
   Loader2,
@@ -1185,6 +1186,34 @@ function BookingFormDialog({
   const [membershipId, setMembershipId] = useState<number | null>(booking?.membershipId || null);
   const [mouId, setMouId] = useState<number | null>(booking?.mouId || null);
   const [agreementAutoPopulated, setAgreementAutoPopulated] = useState(false);
+  const [conflictOverride, setConflictOverride] = useState(false);
+
+  const conflictQueryEnabled = !isTBC && !!venueId && !!startDate && !!startTime && !!endTime;
+  const { data: conflictData, isLoading: conflictLoading } = useQuery<{
+    conflicts: { type: string; id: number; title: string; date: string; time: string }[];
+    availableSlots: { startTime: string; endTime: string }[];
+  }>({
+    queryKey: ['/api/venue-conflicts', venueId, startDate, startTime, endTime, booking?.id],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        venueId,
+        startDate,
+        startTime,
+        endTime,
+        ...(booking?.id ? { excludeBookingId: booking.id.toString() } : {}),
+      });
+      const res = await fetch(`/api/venue-conflicts?${params}`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to check conflicts');
+      return res.json();
+    },
+    enabled: conflictQueryEnabled,
+  });
+
+  const hasConflicts = (conflictData?.conflicts?.length ?? 0) > 0;
+
+  useEffect(() => {
+    setConflictOverride(false);
+  }, [venueId, startDate, startTime, endTime]);
 
   const { data: allMemberships } = useMemberships();
   const { data: allMous } = useMous();
@@ -1279,6 +1308,7 @@ function BookingFormDialog({
       membershipId: membershipId || null,
       mouId: mouId || null,
       notes: notes.trim() || undefined,
+      ...(conflictOverride ? { conflictOverride: true } : {}),
     };
     onSubmit(data);
   };
@@ -1646,6 +1676,74 @@ function BookingFormDialog({
             )}
           </div>
 
+          {conflictQueryEnabled && hasConflicts && (
+            <Card className="border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-900/20 p-3 space-y-3" data-testid="conflict-warning">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span className="text-sm font-semibold text-amber-700 dark:text-amber-300" data-testid="text-conflict-detected">Conflict Detected</span>
+              </div>
+              <div className="space-y-1.5 pl-6">
+                {conflictData!.conflicts.map((c) => (
+                  <div key={`${c.type}-${c.id}`} className="flex items-center gap-2 text-xs" data-testid={`conflict-item-${c.type}-${c.id}`}>
+                    <Badge variant="secondary" className="text-[10px]">{c.type === "booking" ? "Booking" : "Programme"}</Badge>
+                    <span className="text-muted-foreground">{c.title || "Untitled"}</span>
+                    <span className="text-muted-foreground">{c.time}</span>
+                  </div>
+                ))}
+              </div>
+              {conflictData!.availableSlots.length > 0 && (
+                <div className="pl-6 space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground" data-testid="text-available-times-label">Available times today:</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {conflictData!.availableSlots.map((slot) => (
+                      <Badge
+                        key={`${slot.startTime}-${slot.endTime}`}
+                        variant="outline"
+                        className="text-[10px] cursor-pointer"
+                        data-testid={`badge-available-slot-${slot.startTime}`}
+                        onClick={() => {
+                          setStartTime(slot.startTime);
+                          setEndTime(slot.endTime);
+                          setConflictOverride(false);
+                        }}
+                      >
+                        <Clock className="w-3 h-3 mr-1" />
+                        {formatTimeSlot(slot.startTime)} - {formatTimeSlot(slot.endTime)}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {!conflictOverride ? (
+                <div className="pl-6">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700"
+                    onClick={() => setConflictOverride(true)}
+                    data-testid="button-override-conflict"
+                  >
+                    Override & Book Anyway
+                  </Button>
+                </div>
+              ) : (
+                <div className="pl-6 flex items-center gap-2">
+                  <Badge variant="secondary" className="text-[10px] bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300" data-testid="badge-override-active">
+                    <CheckCircle2 className="w-3 h-3 mr-1" />
+                    Override active
+                  </Badge>
+                </div>
+              )}
+            </Card>
+          )}
+
+          {conflictQueryEnabled && conflictLoading && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground py-1" data-testid="conflict-loading">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Checking for conflicts...
+            </div>
+          )}
+
           <div className="space-y-3">
             <Label className="text-sm font-semibold">Pricing (GST Exclusive)</Label>
             <div className="grid grid-cols-3 gap-3">
@@ -1831,7 +1929,7 @@ function BookingFormDialog({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={isPending || !classification || !venueId}
+            disabled={isPending || !classification || !venueId || (hasConflicts && !conflictOverride)}
             data-testid="button-save-booking"
           >
             {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}

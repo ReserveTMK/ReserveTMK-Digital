@@ -36,6 +36,7 @@ import ProjectDetailPage from "@/pages/project-detail";
 import ProjectsPage from "@/pages/projects";
 import BookingDetailPage from "@/pages/booking-detail";
 import PublicSurveyPage from "@/pages/public-survey";
+import BookerPortalPage from "@/pages/booker-portal";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -196,6 +197,14 @@ function Router() {
 
         <Route path="/survey/:token">
           <PublicSurveyPage />
+        </Route>
+
+        <Route path="/booker/login">
+          <BookerPortalPage />
+        </Route>
+
+        <Route path="/booker/portal/:token">
+          <BookerPortalPage />
         </Route>
 
         <Route component={NotFound} />

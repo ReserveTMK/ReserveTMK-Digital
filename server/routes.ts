@@ -2989,7 +2989,57 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         });
       }
 
-      res.json({ conflicts });
+      const occupiedIntervals: { start: number; end: number }[] = [];
+      for (const b of allBookings) {
+        if (excludeBookingId && b.id === parseInt(excludeBookingId as string)) continue;
+        if (b.status === "cancelled") continue;
+        if (b.venueId !== parseInt(venueId as string)) continue;
+        if (!datesOverlap(startDate as string, startDate as string, b.startDate, b.endDate || b.startDate)) continue;
+        if (b.startTime && b.endTime) {
+          occupiedIntervals.push({ start: parseTimeToMinutes(b.startTime), end: parseTimeToMinutes(b.endTime) });
+        }
+      }
+      for (const p of programmes) {
+        if (p.status === "cancelled") continue;
+        if (!datesOverlap(startDate as string, startDate as string, p.startDate, p.endDate || p.startDate)) continue;
+        if (p.startTime && p.endTime) {
+          occupiedIntervals.push({ start: parseTimeToMinutes(p.startTime), end: parseTimeToMinutes(p.endTime) });
+        }
+      }
+
+      occupiedIntervals.sort((a, b) => a.start - b.start);
+
+      const dayStart = parseTimeToMinutes("08:00");
+      const dayEnd = parseTimeToMinutes("17:00");
+      const availableSlots: { startTime: string; endTime: string }[] = [];
+      let cursor = dayStart;
+      for (const interval of occupiedIntervals) {
+        if (interval.start < dayStart) {
+          cursor = Math.max(cursor, interval.end);
+          continue;
+        }
+        if (interval.start > dayEnd) break;
+        if (interval.start > cursor) {
+          const slotEnd = Math.min(interval.start, dayEnd);
+          if (slotEnd > cursor) {
+            const sh = Math.floor(cursor / 60).toString().padStart(2, "0");
+            const sm = (cursor % 60).toString().padStart(2, "0");
+            const eh = Math.floor(slotEnd / 60).toString().padStart(2, "0");
+            const em = (slotEnd % 60).toString().padStart(2, "0");
+            availableSlots.push({ startTime: `${sh}:${sm}`, endTime: `${eh}:${em}` });
+          }
+        }
+        cursor = Math.max(cursor, interval.end);
+      }
+      if (cursor < dayEnd) {
+        const sh = Math.floor(cursor / 60).toString().padStart(2, "0");
+        const sm = (cursor % 60).toString().padStart(2, "0");
+        const eh = Math.floor(dayEnd / 60).toString().padStart(2, "0");
+        const em = (dayEnd % 60).toString().padStart(2, "0");
+        availableSlots.push({ startTime: `${sh}:${sm}`, endTime: `${eh}:${em}` });
+      }
+
+      res.json({ conflicts, availableSlots });
     } catch (err) {
       throw err;
     }
@@ -2998,10 +3048,12 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.post(api.bookings.create.path, isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
+      const conflictOverride = req.body.conflictOverride === true;
       const body = coerceDateFields({ ...req.body, userId });
+      delete body.conflictOverride;
       const input = api.bookings.create.input.parse(body);
 
-      if (input.startDate && input.venueId) {
+      if (input.startDate && input.venueId && !conflictOverride) {
         const allBookings = await storage.getBookings(userId);
         const programmes = await storage.getProgrammes(userId);
         for (const b of allBookings) {
@@ -7712,6 +7764,328 @@ Rules:
     } catch (err: any) {
       console.error("Task extraction error:", err);
       res.status(500).json({ message: err.message || "Failed to extract tasks" });
+    }
+  });
+
+  // === Booker Portal API (Public - token-based auth) ===
+
+  app.post("/api/booker/login", async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email || typeof email !== "string") {
+        return res.json({ success: true, message: "Login link sent" });
+      }
+
+      const booker = await storage.getRegularBookerByLoginEmail(email.trim().toLowerCase());
+      if (booker && booker.loginEnabled) {
+        const token = crypto.randomUUID();
+        const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        await storage.updateRegularBooker(booker.id, {
+          loginToken: token,
+          loginTokenExpiry: expiry,
+        } as any);
+
+        const baseUrl = process.env.REPLIT_DEV_DOMAIN
+          ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+          : process.env.REPL_SLUG
+          ? `https://${process.env.REPL_SLUG}.replit.app`
+          : "https://app.reservetmk.co.nz";
+        const loginUrl = `${baseUrl}/booker/portal/${token}`;
+
+        const contact = await storage.getContact(booker.contactId);
+        const name = contact?.name || booker.organizationName || "there";
+
+        try {
+          const { sendBookerLoginEmail } = await import("./email");
+          await sendBookerLoginEmail(email.trim(), name, loginUrl);
+        } catch (emailErr) {
+          console.error("Failed to send booker login email:", emailErr);
+        }
+      }
+
+      res.json({ success: true, message: "Login link sent" });
+    } catch (err: any) {
+      console.error("Booker login error:", err);
+      res.json({ success: true, message: "Login link sent" });
+    }
+  });
+
+  app.get("/api/booker/auth/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const booker = await storage.getRegularBookerByToken(token);
+      if (!booker || !booker.loginTokenExpiry || new Date(booker.loginTokenExpiry) < new Date()) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+      }
+
+      const newToken = crypto.randomUUID();
+      await storage.updateRegularBooker(booker.id, {
+        loginToken: newToken,
+        loginTokenExpiry: new Date(Date.now() + 4 * 60 * 60 * 1000),
+      } as any);
+
+      const contact = await storage.getContact(booker.contactId);
+      const contactGroups = await storage.getContactGroups(booker.contactId);
+      let linkedGroupId: number | null = null;
+      let linkedGroupName: string | null = null;
+      if (contactGroups.length > 0) {
+        const group = await storage.getGroup(contactGroups[0].groupId);
+        if (group) {
+          linkedGroupId = group.id;
+          linkedGroupName = group.name;
+        }
+      }
+
+      let membership = null;
+      if (booker.membershipId) {
+        membership = await storage.getMembership(booker.membershipId);
+      }
+      let mou = null;
+      if (booker.mouId) {
+        mou = await storage.getMou(booker.mouId);
+      }
+
+      res.json({
+        booker: { ...booker, loginToken: newToken },
+        contact,
+        linkedGroupId,
+        linkedGroupName,
+        membership,
+        mou,
+        userId: booker.userId,
+        token: newToken,
+      });
+    } catch (err: any) {
+      console.error("Booker auth error:", err);
+      res.status(500).json({ message: "Authentication failed" });
+    }
+  });
+
+  app.get("/api/booker/venues/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const booker = await storage.getRegularBookerByToken(token);
+      if (!booker || !booker.loginTokenExpiry || new Date(booker.loginTokenExpiry) < new Date()) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+      }
+
+      const allVenues = await storage.getVenues(booker.userId);
+      const activeVenues = allVenues.filter(v => v.active);
+      res.json(activeVenues);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch venues" });
+    }
+  });
+
+  app.get("/api/booker/availability/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const booker = await storage.getRegularBookerByToken(token);
+      if (!booker || !booker.loginTokenExpiry || new Date(booker.loginTokenExpiry) < new Date()) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+      }
+
+      const venueId = parseInt(req.query.venueId as string);
+      const month = req.query.month as string;
+      if (!venueId || !month) {
+        return res.status(400).json({ message: "venueId and month required" });
+      }
+
+      const [yearStr, monthStr] = month.split("-");
+      const year = parseInt(yearStr);
+      const mon = parseInt(monthStr) - 1;
+      const monthStart = new Date(year, mon, 1);
+      const monthEnd = new Date(year, mon + 1, 0, 23, 59, 59);
+
+      const allBookings = await storage.getBookings(booker.userId);
+      const venueBookings = allBookings.filter(b => {
+        if (b.venueId !== venueId) return false;
+        if (b.status === "cancelled") return false;
+        if (!b.startDate) return false;
+        const sd = new Date(b.startDate);
+        return sd >= monthStart && sd <= monthEnd;
+      });
+
+      const dates: Record<string, { status: string; bookings: { startTime: string | null; endTime: string | null; title: string | null; isYours: boolean }[] }> = {};
+
+      const daysInMonth = new Date(year, mon + 1, 0).getDate();
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${year}-${String(mon + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+        dates[dateStr] = { status: "available", bookings: [] };
+      }
+
+      for (const booking of venueBookings) {
+        const sd = new Date(booking.startDate!);
+        const dateStr = `${sd.getFullYear()}-${String(sd.getMonth() + 1).padStart(2, "0")}-${String(sd.getDate()).padStart(2, "0")}`;
+        if (!dates[dateStr]) continue;
+
+        const isYours = booking.bookerId === booker.contactId;
+        dates[dateStr].bookings.push({
+          startTime: booking.startTime,
+          endTime: booking.endTime,
+          title: isYours ? (booking.title || booking.classification) : "Booked",
+          isYours,
+        });
+      }
+
+      for (const [dateStr, info] of Object.entries(dates)) {
+        if (info.bookings.length === 0) {
+          info.status = "available";
+        } else {
+          const hasYours = info.bookings.some(b => b.isYours);
+          const totalMinutesCovered = info.bookings.reduce((acc, b) => {
+            const start = b.startTime ? parseTimeToMinutes(b.startTime) : 480;
+            const end = b.endTime ? parseTimeToMinutes(b.endTime) : 1020;
+            return acc + (end - start);
+          }, 0);
+          const businessDayMinutes = 540;
+
+          if (hasYours) {
+            info.status = "yours";
+          } else if (totalMinutesCovered >= businessDayMinutes) {
+            info.status = "booked";
+          } else {
+            info.status = "partial";
+          }
+        }
+      }
+
+      res.json({ dates });
+    } catch (err: any) {
+      console.error("Booker availability error:", err);
+      res.status(500).json({ message: "Failed to fetch availability" });
+    }
+  });
+
+  app.post("/api/booker/book/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const booker = await storage.getRegularBookerByToken(token);
+      if (!booker || !booker.loginTokenExpiry || new Date(booker.loginTokenExpiry) < new Date()) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+      }
+
+      const { venueId, startDate, startTime, endTime, classification, specialRequests, usePackageCredit } = req.body;
+      if (!venueId || !startDate || !startTime || !endTime || !classification) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      const allBookings = await storage.getBookings(booker.userId);
+      const conflicting = allBookings.filter(b => {
+        if (b.venueId !== venueId || b.status === "cancelled") return false;
+        if (!b.startDate) return false;
+        const bDate = new Date(b.startDate).toISOString().split("T")[0];
+        const reqDate = new Date(startDate).toISOString().split("T")[0];
+        if (bDate !== reqDate) return false;
+        const bStart = parseTimeToMinutes(b.startTime || "08:00");
+        const bEnd = parseTimeToMinutes(b.endTime || "17:00");
+        const rStart = parseTimeToMinutes(startTime);
+        const rEnd = parseTimeToMinutes(endTime);
+        return bStart < rEnd && rStart < bEnd;
+      });
+      if (conflicting.length > 0) {
+        return res.status(409).json({
+          message: "Time slot conflicts with existing booking",
+          conflicts: conflicting.map(c => ({
+            title: c.title || c.classification,
+            startTime: c.startTime,
+            endTime: c.endTime,
+          })),
+        });
+      }
+
+      const contactGroups = await storage.getContactGroups(booker.contactId);
+      let bookerGroupId: number | null = null;
+      if (contactGroups.length > 0) {
+        bookerGroupId = contactGroups[0].groupId;
+      }
+
+      const startMinutes = parseTimeToMinutes(startTime);
+      const endMinutes = parseTimeToMinutes(endTime);
+      const durationHours = (endMinutes - startMinutes) / 60;
+      let durationType = "hourly";
+      if (durationHours >= 8) durationType = "full_day";
+      else if (durationHours >= 4) durationType = "half_day";
+
+      let pricingTier = booker.pricingTier || "full_price";
+      let amount = "0";
+      let membershipId: number | null = booker.membershipId || null;
+      let mouId: number | null = booker.mouId || null;
+      let discountPercentage = booker.discountPercentage || "0";
+      let shouldUsePackageCredit = usePackageCredit === true;
+
+      if (booker.membershipId || booker.mouId) {
+        pricingTier = "free_koha";
+        amount = "0";
+      } else if (shouldUsePackageCredit && booker.hasBookingPackage) {
+        const remaining = (booker.packageTotalBookings || 0) - (booker.packageUsedBookings || 0);
+        if (remaining > 0) {
+          pricingTier = "free_koha";
+          amount = "0";
+          await storage.updateRegularBooker(booker.id, {
+            packageUsedBookings: (booker.packageUsedBookings || 0) + 1,
+          } as any);
+        }
+      } else {
+        const defaults = await storage.getBookingPricingDefaults(booker.userId);
+        if (defaults) {
+          if (durationType === "full_day") {
+            amount = defaults.fullDayRate || "0";
+          } else if (durationType === "half_day") {
+            amount = defaults.halfDayRate || "0";
+          } else {
+            const hourlyRate = parseFloat(defaults.fullDayRate || "0") / 8;
+            amount = String((hourlyRate * durationHours).toFixed(2));
+          }
+        }
+        if (pricingTier === "discounted" && parseFloat(discountPercentage) > 0) {
+          const disc = parseFloat(discountPercentage) / 100;
+          amount = String((parseFloat(amount) * (1 - disc)).toFixed(2));
+        }
+      }
+
+      const booking = await storage.createBooking({
+        userId: booker.userId,
+        venueId,
+        title: `${classification} - Portal Booking`,
+        classification,
+        status: "enquiry",
+        startDate: new Date(startDate),
+        startTime,
+        endTime,
+        durationType,
+        pricingTier,
+        amount,
+        bookerId: booker.contactId,
+        bookerGroupId,
+        membershipId,
+        mouId,
+        specialRequests: specialRequests || null,
+        bookingSource: "regular_booker_portal",
+        usePackageCredit: shouldUsePackageCredit,
+        discountPercentage,
+      } as any);
+
+      res.json(booking);
+    } catch (err: any) {
+      console.error("Booker booking error:", err);
+      res.status(500).json({ message: err.message || "Failed to create booking" });
+    }
+  });
+
+  app.get("/api/booker/bookings/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const booker = await storage.getRegularBookerByToken(token);
+      if (!booker || !booker.loginTokenExpiry || new Date(booker.loginTokenExpiry) < new Date()) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+      }
+
+      const allBookings = await storage.getBookings(booker.userId);
+      const myBookings = allBookings.filter(b => b.bookerId === booker.contactId);
+      res.json(myBookings);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch bookings" });
     }
   });
 
