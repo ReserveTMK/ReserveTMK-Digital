@@ -706,12 +706,12 @@ function AvailabilitySection() {
             </Button>
             <Button size="sm" onClick={() => quickSetup.mutate()} disabled={quickSetup.isPending} data-testid="button-quick-setup">
               {quickSetup.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Zap className="w-4 h-4 mr-1" />}
-              Quick Setup (Mon\u2013Fri, 9\u20134)
+              Quick Setup (Mon–Fri, 9–4)
             </Button>
             {profiles && profiles.length > 1 && (
               <Button size="sm" variant="outline" onClick={() => quickSetupAll.mutate()} disabled={quickSetupAll.isPending} data-testid="button-quick-setup-all">
                 {quickSetupAll.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Users className="w-4 h-4 mr-1" />}
-                Set All (Mon\u2013Fri, 9\u20134)
+                Set All (Mon–Fri, 9–4)
               </Button>
             )}
           </div>
@@ -730,10 +730,10 @@ function AvailabilitySection() {
                       {daySlots.map(slot => (
                         <div key={slot.id} className="flex items-center gap-2">
                           <Badge variant="outline" className="text-xs">
-                            {formatTimeSlot(slot.startTime)} \u2013 {formatTimeSlot(slot.endTime)}
+                            {formatTimeSlot(slot.startTime)} {"\u2013"} {formatTimeSlot(slot.endTime)}
                           </Badge>
                           <span className="text-[10px] text-muted-foreground">
-                            {slot.slotDuration}min slots \u00b7 {slot.bufferMinutes}min buffer
+                            {slot.slotDuration}min slots {"\u00b7"} {slot.bufferMinutes}min buffer
                           </span>
                           <Switch
                             checked={slot.isActive ?? true}
