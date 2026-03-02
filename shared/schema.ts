@@ -473,7 +473,8 @@ export type PaymentTerms = typeof PAYMENT_TERMS[number];
 export const regularBookers = pgTable("regular_bookers", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
-  contactId: integer("contact_id").notNull(),
+  contactId: integer("contact_id"),
+  groupId: integer("group_id"),
   organizationName: text("organization_name"),
   billingEmail: text("billing_email").notNull(),
   billingAddress: text("billing_address"),
@@ -500,6 +501,17 @@ export const regularBookers = pgTable("regular_bookers", {
   usualBookingNeeds: text("usual_booking_needs"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const bookerLinks = pgTable("booker_links", {
+  id: serial("id").primaryKey(),
+  regularBookerId: integer("regular_booker_id").notNull(),
+  token: text("token").notNull(),
+  tokenExpiry: timestamp("token_expiry"),
+  enabled: boolean("enabled").default(true),
+  label: text("label"),
+  createdAt: timestamp("created_at").defaultNow(),
+  lastAccessedAt: timestamp("last_accessed_at"),
 });
 
 export const INSTRUCTION_TYPES = ["access", "arrival", "departure", "emergency", "general"] as const;
@@ -1388,6 +1400,13 @@ export const insertRegularBookerSchema = createInsertSchema(regularBookers).omit
 
 export type RegularBooker = typeof regularBookers.$inferSelect;
 export type InsertRegularBooker = z.infer<typeof insertRegularBookerSchema>;
+
+export const insertBookerLinkSchema = createInsertSchema(bookerLinks).omit({
+  id: true,
+  createdAt: true,
+});
+export type BookerLink = typeof bookerLinks.$inferSelect;
+export type InsertBookerLink = z.infer<typeof insertBookerLinkSchema>;
 
 export const insertVenueInstructionSchema = createInsertSchema(venueInstructions).omit({
   id: true,

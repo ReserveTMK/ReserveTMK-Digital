@@ -55,6 +55,7 @@ import {
   Users,
   X,
   Copy,
+  Building,
   Building2,
   CheckCircle2,
   BarChart3,
@@ -86,7 +87,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
-import { BOOKING_CLASSIFICATIONS, BOOKING_STATUSES, PRICING_TIERS, DURATION_TYPES, RATE_TYPES, COMMUNITY_DISCOUNT, INSTRUCTION_TYPES, REGULAR_BOOKER_STATUSES, PAYMENT_TERMS, DAYS_OF_WEEK, type Booking, type Venue, type Contact, type RegularBooker, type VenueInstruction, type OperatingHours } from "@shared/schema";
+import { BOOKING_CLASSIFICATIONS, BOOKING_STATUSES, PRICING_TIERS, DURATION_TYPES, RATE_TYPES, COMMUNITY_DISCOUNT, INSTRUCTION_TYPES, REGULAR_BOOKER_STATUSES, PAYMENT_TERMS, DAYS_OF_WEEK, type Booking, type Venue, type Contact, type RegularBooker, type VenueInstruction, type OperatingHours, type Group } from "@shared/schema";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MetricCard } from "@/components/ui/metric-card";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
@@ -895,6 +896,7 @@ export default function Bookings() {
         open={regularBookersOpen}
         onOpenChange={setRegularBookersOpen}
         contacts={contacts || []}
+        groups={allGroups || []}
       />
 
       <VenueInstructionsDialog
@@ -2340,10 +2342,12 @@ function RegularBookersDialog({
   open,
   onOpenChange,
   contacts,
+  groups,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   contacts: Contact[];
+  groups: Group[];
 }) {
   const { data: regularBookers, isLoading } = useRegularBookers();
   const createMutation = useCreateRegularBooker();
@@ -2369,8 +2373,18 @@ function RegularBookersDialog({
     return null;
   };
 
-  const getContactName = (contactId: number) => {
-    return contacts.find(c => c.id === contactId)?.name || `Contact #${contactId}`;
+  const getBookerDisplayName = (booker: RegularBooker) => {
+    const contactName = booker.contactId ? contacts.find(c => c.id === booker.contactId)?.name : null;
+    const groupName = booker.groupId ? groups.find(g => g.id === booker.groupId)?.name : null;
+    if (contactName && groupName) return contactName;
+    if (groupName) return groupName;
+    if (contactName) return contactName;
+    return booker.organizationName || `Booker #${booker.id}`;
+  };
+
+  const getBookerGroupName = (booker: RegularBooker) => {
+    if (!booker.groupId) return null;
+    return groups.find(g => g.id === booker.groupId)?.name || null;
   };
 
   const handleDelete = async (id: number) => {
@@ -2419,11 +2433,24 @@ function RegularBookersDialog({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-1">
                           <span className="font-medium text-sm" data-testid={`text-booker-name-${booker.id}`}>
-                            {getContactName(booker.contactId)}
+                            {getBookerDisplayName(booker)}
                           </span>
-                          {booker.organizationName && (
-                            <span className="text-xs text-muted-foreground">({booker.organizationName})</span>
-                          )}
+                          {(() => {
+                            const gName = getBookerGroupName(booker);
+                            const hasContact = !!booker.contactId;
+                            if (gName && hasContact) {
+                              return (
+                                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <Building className="w-3 h-3" />
+                                  {gName}
+                                </span>
+                              );
+                            }
+                            if (!gName && booker.organizationName) {
+                              return <span className="text-xs text-muted-foreground">({booker.organizationName})</span>;
+                            }
+                            return null;
+                          })()}
                           <Badge className={ACCOUNT_STATUS_COLORS[booker.accountStatus] || ""} data-testid={`badge-booker-status-${booker.id}`}>
                             {booker.accountStatus}
                           </Badge>
@@ -2543,6 +2570,7 @@ function RegularBookersDialog({
         onOpenChange={setFormOpen}
         booker={editingBooker}
         contacts={contacts}
+        groups={groups}
         onSubmit={async (data) => {
           try {
             if (editingBooker) {
@@ -2569,6 +2597,7 @@ function RegularBookerFormDialog({
   onOpenChange,
   booker,
   contacts,
+  groups,
   onSubmit,
   isPending,
 }: {
@@ -2576,11 +2605,14 @@ function RegularBookerFormDialog({
   onOpenChange: (open: boolean) => void;
   booker: RegularBooker | null;
   contacts: Contact[];
+  groups: Group[];
   onSubmit: (data: any) => Promise<void>;
   isPending: boolean;
 }) {
+  const { toast } = useToast();
   const [contactId, setContactId] = useState<number | null>(booker?.contactId || null);
-  const [contactSearch, setContactSearch] = useState("");
+  const [groupId, setGroupId] = useState<number | null>(booker?.groupId || null);
+  const [bookerSearch, setBookerSearch] = useState("");
   const [organizationName, setOrganizationName] = useState(booker?.organizationName || "");
   const [billingEmail, setBillingEmail] = useState(booker?.billingEmail || "");
   const [billingAddress, setBillingAddress] = useState(booker?.billingAddress || "");
@@ -2608,6 +2640,47 @@ function RegularBookerFormDialog({
   const activeMemberships = useMemo(() => (allMemberships || []).filter(m => m.status === "active"), [allMemberships]);
   const activeMous = useMemo(() => (allMous || []).filter(m => m.status === "active"), [allMous]);
 
+  const { data: bookerLinksData } = useQuery<any[]>({
+    queryKey: ['/api/regular-bookers', booker?.id, 'links'],
+    queryFn: async () => {
+      if (!booker?.id) return [];
+      const res = await fetch(`/api/regular-bookers/${booker.id}/links`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!booker?.id,
+  });
+
+  const generateLinkMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/regular-bookers/${booker!.id}/links`, { label: "Portal link" });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/regular-bookers', booker?.id, 'links'] });
+      if (data.portalUrl) {
+        navigator.clipboard.writeText(data.portalUrl).then(() => {
+          toast({ title: "Link generated and copied" });
+        }).catch(() => {
+          toast({ title: "Link generated", description: data.portalUrl });
+        });
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to generate link", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteLinkMutation = useMutation({
+    mutationFn: async (linkId: number) => {
+      await apiRequest("DELETE", `/api/booker-links/${linkId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/regular-bookers', booker?.id, 'links'] });
+      toast({ title: "Link removed" });
+    },
+  });
+
   const linkedMembership = useMemo(() => allMemberships?.find(m => m.id === linkedMembershipId), [allMemberships, linkedMembershipId]);
   const linkedMou = useMemo(() => allMous?.find(m => m.id === linkedMouId), [allMous, linkedMouId]);
   const hasLinkedAgreement = !!(linkedMembershipId || linkedMouId);
@@ -2627,9 +2700,10 @@ function RegularBookerFormDialog({
     return { allowance, used, remaining, period, periodLabel };
   }, [hasLinkedAgreement, linkedMembership, linkedMou, linkedMembershipId, linkedMouId, allBookings]);
 
-  useState(() => {
+  useEffect(() => {
     if (booker) {
-      setContactId(booker.contactId);
+      setContactId(booker.contactId || null);
+      setGroupId(booker.groupId || null);
       setOrganizationName(booker.organizationName || "");
       setBillingEmail(booker.billingEmail || "");
       setBillingAddress(booker.billingAddress || "");
@@ -2648,19 +2722,74 @@ function RegularBookerFormDialog({
       setUsualBookingNeeds(booker.usualBookingNeeds || "");
       setLinkedMembershipId(booker.membershipId || null);
       setLinkedMouId(booker.mouId || null);
+    } else {
+      setContactId(null);
+      setGroupId(null);
+      setOrganizationName("");
+      setBillingEmail("");
+      setBillingAddress("");
+      setBillingPhone("");
+      setPricingTier("full_price");
+      setDiscountPercentage("0");
+      setKohaMouNotes("");
+      setHasBookingPackage(false);
+      setPackageTotalBookings("0");
+      setPackageUsedBookings("0");
+      setPackageExpiresAt("");
+      setLoginEmail("");
+      setAccountStatus("active");
+      setPaymentTerms("immediate");
+      setNotes("");
+      setUsualBookingNeeds("");
+      setLinkedMembershipId(null);
+      setLinkedMouId(null);
     }
-  });
+    setBookerSearch("");
+  }, [booker]);
 
-  const filteredContacts = useMemo(() => {
-    if (!contactSearch.trim()) return [];
-    const term = contactSearch.toLowerCase();
-    return contacts.filter(c => c.name.toLowerCase().includes(term)).slice(0, 8);
-  }, [contacts, contactSearch]);
+  const searchResults = useMemo(() => {
+    if (!bookerSearch.trim()) return [];
+    const term = bookerSearch.toLowerCase();
+    const people = contacts.filter(c => c.name.toLowerCase().includes(term)).slice(0, 5).map(c => ({
+      id: c.id,
+      name: c.name,
+      detail: c.email || "",
+      type: "person" as const,
+      data: c,
+    }));
+    const grps = groups.filter(g => g.name.toLowerCase().includes(term)).slice(0, 5).map(g => ({
+      id: g.id,
+      name: g.name,
+      detail: g.type || "Organisation",
+      type: "group" as const,
+      data: g,
+    }));
+    return [...people, ...grps].slice(0, 8);
+  }, [contacts, groups, bookerSearch]);
+
+  const selectBookerResult = (item: { id: number; type: "person" | "group"; data: any }) => {
+    if (item.type === "person") {
+      setContactId(item.id);
+      const c = item.data;
+      if (!billingEmail && c.email) setBillingEmail(c.email);
+      if (!billingPhone && c.phone) setBillingPhone(c.phone);
+    } else {
+      setGroupId(item.id);
+      const g = item.data;
+      if (!organizationName) setOrganizationName(g.name || "");
+      if (!billingEmail && g.contactEmail) setBillingEmail(g.contactEmail);
+      if (!billingPhone && g.contactPhone) setBillingPhone(g.contactPhone);
+      if (!billingAddress && g.address) setBillingAddress(g.address);
+    }
+    setBookerSearch("");
+  };
 
   const handleSubmit = () => {
-    if (!contactId || !billingEmail.trim()) return;
+    if (!billingEmail.trim()) return;
+    if (!contactId && !groupId) return;
     onSubmit({
-      contactId,
+      contactId: contactId || null,
+      groupId: groupId || null,
       organizationName: organizationName.trim() || null,
       billingEmail: billingEmail.trim(),
       billingAddress: billingAddress.trim() || null,
@@ -2689,6 +2818,10 @@ function RegularBookerFormDialog({
     net_30: "Net 30 days",
   };
 
+  const selectedContact = contactId ? contacts.find(c => c.id === contactId) : null;
+  const selectedGroup = groupId ? groups.find(g => g.id === groupId) : null;
+  const hasBookerSelection = !!(contactId || groupId);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
@@ -2703,52 +2836,61 @@ function RegularBookerFormDialog({
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label className="text-sm font-semibold">Contact *</Label>
-            {contactId && (
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary" className="text-xs gap-1 pr-1" data-testid="badge-selected-booker-contact">
-                  {contacts.find(c => c.id === contactId)?.name || `Contact #${contactId}`}
-                  {!booker && (
-                    <button onClick={() => setContactId(null)} className="ml-0.5" type="button">
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
+            <Label className="text-sm font-semibold">Booker *</Label>
+            <p className="text-xs text-muted-foreground">Search for a person or group</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              {selectedContact && (
+                <Badge variant="secondary" className="text-xs gap-1 pr-1" data-testid="badge-selected-booker-person">
+                  <Users className="w-3 h-3 mr-0.5" />
+                  {selectedContact.name}
+                  <button onClick={() => setContactId(null)} className="ml-0.5" type="button">
+                    <X className="w-3 h-3" />
+                  </button>
                 </Badge>
+              )}
+              {selectedGroup && (
+                <Badge variant="outline" className="text-xs gap-1 pr-1" data-testid="badge-selected-booker-group">
+                  <Building className="w-3 h-3 mr-0.5" />
+                  {selectedGroup.name}
+                  <button onClick={() => setGroupId(null)} className="ml-0.5" type="button">
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              )}
+            </div>
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <Input
+                value={bookerSearch}
+                onChange={(e) => setBookerSearch(e.target.value)}
+                placeholder="Search people or groups..."
+                className="pl-7"
+                data-testid="input-search-booker"
+              />
+            </div>
+            {searchResults.length > 0 && (
+              <div className="border border-border rounded-md divide-y divide-border/50 max-h-[180px] overflow-y-auto">
+                {searchResults.map(item => (
+                  <button
+                    key={`${item.type}-${item.id}`}
+                    onClick={() => selectBookerResult(item)}
+                    className="w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-muted/50"
+                    type="button"
+                    data-testid={`button-select-booker-${item.type}-${item.id}`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      {item.type === "person" ? <Users className="w-3 h-3 text-muted-foreground" /> : <Building className="w-3 h-3 text-muted-foreground" />}
+                      {item.name}
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-muted-foreground">{item.detail}</span>
+                      <Badge variant={item.type === "person" ? "secondary" : "outline"} className="text-[9px] px-1">
+                        {item.type === "person" ? "Person" : "Group"}
+                      </Badge>
+                    </span>
+                  </button>
+                ))}
               </div>
-            )}
-            {!contactId && (
-              <>
-                <div className="relative">
-                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                  <Input
-                    value={contactSearch}
-                    onChange={(e) => setContactSearch(e.target.value)}
-                    placeholder="Search contacts..."
-                    className="pl-7"
-                    data-testid="input-search-booker-contact"
-                  />
-                </div>
-                {filteredContacts.length > 0 && (
-                  <div className="border border-border rounded-md divide-y divide-border/50 max-h-[150px] overflow-y-auto">
-                    {filteredContacts.map(c => (
-                      <button
-                        key={c.id}
-                        onClick={() => {
-                          setContactId(c.id);
-                          setContactSearch("");
-                          if (!billingEmail && c.email) setBillingEmail(c.email);
-                        }}
-                        className="w-full text-left px-3 py-1.5 text-xs flex items-center justify-between"
-                        type="button"
-                        data-testid={`button-select-booker-contact-${c.id}`}
-                      >
-                        <span>{c.name}</span>
-                        <span className="text-muted-foreground">{c.email || ""}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </>
             )}
           </div>
 
@@ -2757,7 +2899,7 @@ function RegularBookerFormDialog({
             <Input
               value={organizationName}
               onChange={(e) => setOrganizationName(e.target.value)}
-              placeholder="e.g. Tāmaki Community Trust"
+              placeholder="e.g. Tamaki Community Trust"
               data-testid="input-booker-org-name"
             />
           </div>
@@ -3049,6 +3191,59 @@ function RegularBookerFormDialog({
                 data-testid="input-booker-login-email"
               />
             </div>
+            {booker && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-muted-foreground">Portal Links</Label>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => generateLinkMutation.mutate()}
+                    disabled={generateLinkMutation.isPending}
+                    data-testid="button-generate-portal-link"
+                  >
+                    {generateLinkMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Link2 className="w-3 h-3 mr-1" />}
+                    Generate Link
+                  </Button>
+                </div>
+                {bookerLinksData && bookerLinksData.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {bookerLinksData.map((link: any) => (
+                        <div key={link.id} className="flex items-center gap-2 text-xs p-2 rounded border bg-muted/30">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono truncate text-muted-foreground">{link.token.slice(0, 12)}...</span>
+                              {link.label && <Badge variant="secondary" className="text-[9px]">{link.label}</Badge>}
+                            </div>
+                            <div className="text-muted-foreground mt-0.5">
+                              Created {format(new Date(link.createdAt), "d MMM yyyy")}
+                              {link.lastAccessedAt && ` | Last used ${format(new Date(link.lastAccessedAt), "d MMM")}`}
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => navigator.clipboard.writeText(link.portalUrl).then(() => toast({ title: "Link copied" }))}
+                            data-testid={`button-copy-link-${link.id}`}
+                          >
+                            <Copy className="w-3 h-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => deleteLinkMutation.mutate(link.id)}
+                            data-testid={`button-delete-link-${link.id}`}
+                          >
+                            <Trash2 className="w-3 h-3 text-destructive" />
+                          </Button>
+                        </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground italic">No portal links generated yet</p>
+                )}
+              </div>
+            )}
           </div>
 
           <div>
@@ -3080,7 +3275,7 @@ function RegularBookerFormDialog({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={isPending || !contactId || !billingEmail.trim()}
+            disabled={isPending || !hasBookerSelection || !billingEmail.trim()}
             data-testid="button-save-regular-booker"
           >
             {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}

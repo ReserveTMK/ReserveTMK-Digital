@@ -123,6 +123,9 @@ import {
   xeroSettings,
   type XeroSettings,
   type InsertXeroSettings,
+  bookerLinks,
+  type BookerLink,
+  type InsertBookerLink,
   type BookingPricingDefaults,
   gmailImportHistory,
   gmailExclusions,
@@ -329,6 +332,13 @@ export interface IStorage {
   getRegularBooker(id: number): Promise<RegularBooker | undefined>;
   getRegularBookerByContactId(contactId: number): Promise<RegularBooker | undefined>;
   getRegularBookerByLoginEmail(email: string): Promise<RegularBooker | undefined>;
+
+  getBookerLinks(regularBookerId: number): Promise<BookerLink[]>;
+  createBookerLink(data: InsertBookerLink): Promise<BookerLink>;
+  deleteBookerLink(id: number): Promise<void>;
+  getBookerByLinkToken(token: string): Promise<{ booker: RegularBooker; link: BookerLink } | undefined>;
+  updateBookerLinkAccess(id: number): Promise<void>;
+  updateBookerLinkToken(id: number, token: string, expiry: Date): Promise<BookerLink>;
   getRegularBookerByToken(token: string): Promise<RegularBooker | undefined>;
   createRegularBooker(data: InsertRegularBooker): Promise<RegularBooker>;
   updateRegularBooker(id: number, updates: Partial<InsertRegularBooker>): Promise<RegularBooker>;
@@ -1320,7 +1330,38 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteRegularBooker(id: number): Promise<void> {
+    await db.delete(bookerLinks).where(eq(bookerLinks.regularBookerId, id));
     await db.delete(regularBookers).where(eq(regularBookers.id, id));
+  }
+
+  async getBookerLinks(regularBookerId: number): Promise<BookerLink[]> {
+    return await db.select().from(bookerLinks).where(eq(bookerLinks.regularBookerId, regularBookerId)).orderBy(desc(bookerLinks.createdAt));
+  }
+
+  async createBookerLink(data: InsertBookerLink): Promise<BookerLink> {
+    const [link] = await db.insert(bookerLinks).values(data).returning();
+    return link;
+  }
+
+  async deleteBookerLink(id: number): Promise<void> {
+    await db.delete(bookerLinks).where(eq(bookerLinks.id, id));
+  }
+
+  async getBookerByLinkToken(token: string): Promise<{ booker: RegularBooker; link: BookerLink } | undefined> {
+    const [link] = await db.select().from(bookerLinks).where(eq(bookerLinks.token, token));
+    if (!link) return undefined;
+    const [booker] = await db.select().from(regularBookers).where(eq(regularBookers.id, link.regularBookerId));
+    if (!booker) return undefined;
+    return { booker, link };
+  }
+
+  async updateBookerLinkAccess(id: number): Promise<void> {
+    await db.update(bookerLinks).set({ lastAccessedAt: new Date() }).where(eq(bookerLinks.id, id));
+  }
+
+  async updateBookerLinkToken(id: number, token: string, expiry: Date): Promise<BookerLink> {
+    const [link] = await db.update(bookerLinks).set({ token, tokenExpiry: expiry }).where(eq(bookerLinks.id, id)).returning();
+    return link;
   }
 
   // Venue Instructions

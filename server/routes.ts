@@ -8,7 +8,7 @@ import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON } from "./replit_integrations/anthropic/client";
 import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, type ReportFilters } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys } from "@shared/schema";
+import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks } from "@shared/schema";
 import crypto from "crypto";
 import { db } from "./db";
 import { eq, and, sql, gte, lte } from "drizzle-orm";
@@ -3240,6 +3240,69 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     if (!existing || existing.userId !== userId) return res.status(403).json({ message: "Forbidden" });
     await storage.deleteRegularBooker(id);
     res.json({ success: true });
+  });
+
+  app.get("/api/regular-bookers/:id/links", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const id = parseInt(req.params.id);
+      const booker = await storage.getRegularBooker(id);
+      if (!booker || booker.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+      const links = await storage.getBookerLinks(id);
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.REPL_SLUG
+        ? `https://${process.env.REPL_SLUG}.replit.app`
+        : "https://app.reservetmk.co.nz";
+      const linksWithUrls = links.map(l => ({ ...l, portalUrl: `${baseUrl}/booker/portal/${l.token}` }));
+      res.json(linksWithUrls);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/regular-bookers/:id/links", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const id = parseInt(req.params.id);
+      const booker = await storage.getRegularBooker(id);
+      if (!booker || booker.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      const token = crypto.randomUUID();
+      const label = req.body.label || "Portal link";
+      const link = await storage.createBookerLink({
+        regularBookerId: id,
+        token,
+        enabled: true,
+        label,
+      });
+
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.REPL_SLUG
+        ? `https://${process.env.REPL_SLUG}.replit.app`
+        : "https://app.reservetmk.co.nz";
+      const portalUrl = `${baseUrl}/booker/portal/${token}`;
+
+      res.json({ ...link, portalUrl });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/booker-links/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const id = parseInt(req.params.id);
+      const links = await db.select().from(bookerLinks).where(eq(bookerLinks.id, id));
+      if (!links.length) return res.status(404).json({ message: "Link not found" });
+      const booker = await storage.getRegularBooker(links[0].regularBookerId);
+      if (!booker || booker.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+      await storage.deleteBookerLink(id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   // === Booking Workflow Actions ===
@@ -7822,10 +7885,13 @@ Rules:
       if (booker && booker.loginEnabled) {
         const token = crypto.randomUUID();
         const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
-        await storage.updateRegularBooker(booker.id, {
-          loginToken: token,
-          loginTokenExpiry: expiry,
-        } as any);
+        await storage.createBookerLink({
+          regularBookerId: booker.id,
+          token,
+          tokenExpiry: expiry,
+          enabled: true,
+          label: "Email login link",
+        });
 
         const baseUrl = process.env.REPLIT_DEV_DOMAIN
           ? `https://${process.env.REPLIT_DEV_DOMAIN}`
@@ -7834,7 +7900,7 @@ Rules:
           : "https://app.reservetmk.co.nz";
         const loginUrl = `${baseUrl}/booker/portal/${token}`;
 
-        const contact = await storage.getContact(booker.contactId);
+        const contact = booker.contactId ? await storage.getContact(booker.contactId) : null;
         const name = contact?.name || booker.organizationName || "there";
 
         try {
@@ -7855,26 +7921,36 @@ Rules:
   app.get("/api/booker/auth/:token", async (req, res) => {
     try {
       const { token } = req.params;
-      const booker = await storage.getRegularBookerByToken(token);
-      if (!booker || !booker.loginTokenExpiry || new Date(booker.loginTokenExpiry) < new Date()) {
+      const result = await storage.getBookerByLinkToken(token);
+      if (!result) {
         return res.status(401).json({ message: "Invalid or expired token" });
+      }
+      const { booker, link } = result;
+      if (link.tokenExpiry && new Date(link.tokenExpiry) < new Date()) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+      }
+      if (!link.enabled) {
+        return res.status(401).json({ message: "This link has been disabled" });
       }
 
       const newToken = crypto.randomUUID();
-      await storage.updateRegularBooker(booker.id, {
-        loginToken: newToken,
-        loginTokenExpiry: new Date(Date.now() + 4 * 60 * 60 * 1000),
-      } as any);
+      await storage.updateBookerLinkToken(link.id, newToken, new Date(Date.now() + 4 * 60 * 60 * 1000));
+      await storage.updateBookerLinkAccess(link.id);
 
-      const contact = await storage.getContact(booker.contactId);
-      const contactGroups = await storage.getContactGroups(booker.contactId);
-      let linkedGroupId: number | null = null;
+      const contact = booker.contactId ? await storage.getContact(booker.contactId) : null;
+      let linkedGroupId: number | null = booker.groupId || null;
       let linkedGroupName: string | null = null;
-      if (contactGroups.length > 0) {
-        const group = await storage.getGroup(contactGroups[0].groupId);
-        if (group) {
-          linkedGroupId = group.id;
-          linkedGroupName = group.name;
+      if (booker.groupId) {
+        const group = await storage.getGroup(booker.groupId);
+        if (group) linkedGroupName = group.name;
+      } else if (booker.contactId) {
+        const contactGroups = await storage.getContactGroups(booker.contactId);
+        if (contactGroups.length > 0) {
+          const group = await storage.getGroup(contactGroups[0].groupId);
+          if (group) {
+            linkedGroupId = group.id;
+            linkedGroupName = group.name;
+          }
         }
       }
 
@@ -7906,10 +7982,11 @@ Rules:
   app.get("/api/booker/venues/:token", async (req, res) => {
     try {
       const { token } = req.params;
-      const booker = await storage.getRegularBookerByToken(token);
-      if (!booker || !booker.loginTokenExpiry || new Date(booker.loginTokenExpiry) < new Date()) {
+      const linkResult = await storage.getBookerByLinkToken(token);
+      if (!linkResult || (linkResult.link.tokenExpiry && new Date(linkResult.link.tokenExpiry) < new Date()) || !linkResult.link.enabled) {
         return res.status(401).json({ message: "Invalid or expired token" });
       }
+      const booker = linkResult.booker;
 
       const allVenues = await storage.getVenues(booker.userId);
       const activeVenues = allVenues.filter(v => v.active);
@@ -7922,10 +7999,11 @@ Rules:
   app.get("/api/booker/availability/:token", async (req, res) => {
     try {
       const { token } = req.params;
-      const booker = await storage.getRegularBookerByToken(token);
-      if (!booker || !booker.loginTokenExpiry || new Date(booker.loginTokenExpiry) < new Date()) {
+      const linkResult = await storage.getBookerByLinkToken(token);
+      if (!linkResult || (linkResult.link.tokenExpiry && new Date(linkResult.link.tokenExpiry) < new Date()) || !linkResult.link.enabled) {
         return res.status(401).json({ message: "Invalid or expired token" });
       }
+      const booker = linkResult.booker;
 
       const venueId = parseInt(req.query.venueId as string);
       const month = req.query.month as string;
@@ -8002,10 +8080,11 @@ Rules:
   app.post("/api/booker/book/:token", async (req, res) => {
     try {
       const { token } = req.params;
-      const booker = await storage.getRegularBookerByToken(token);
-      if (!booker || !booker.loginTokenExpiry || new Date(booker.loginTokenExpiry) < new Date()) {
+      const linkResult = await storage.getBookerByLinkToken(token);
+      if (!linkResult || (linkResult.link.tokenExpiry && new Date(linkResult.link.tokenExpiry) < new Date()) || !linkResult.link.enabled) {
         return res.status(401).json({ message: "Invalid or expired token" });
       }
+      const booker = linkResult.booker;
 
       const { venueId, startDate, startTime, endTime, classification, specialRequests, usePackageCredit } = req.body;
       if (!venueId || !startDate || !startTime || !endTime || !classification) {
@@ -8118,10 +8197,11 @@ Rules:
   app.get("/api/booker/bookings/:token", async (req, res) => {
     try {
       const { token } = req.params;
-      const booker = await storage.getRegularBookerByToken(token);
-      if (!booker || !booker.loginTokenExpiry || new Date(booker.loginTokenExpiry) < new Date()) {
+      const linkResult = await storage.getBookerByLinkToken(token);
+      if (!linkResult || (linkResult.link.tokenExpiry && new Date(linkResult.link.tokenExpiry) < new Date()) || !linkResult.link.enabled) {
         return res.status(401).json({ message: "Invalid or expired token" });
       }
+      const booker = linkResult.booker;
 
       const allBookings = await storage.getBookings(booker.userId);
       const myBookings = allBookings.filter(b => b.bookerId === booker.contactId);
@@ -8388,6 +8468,29 @@ Rules:
   setTimeout(runAfterHoursAutoSend, 10000);
 
   startAutoSync();
+
+  (async () => {
+    try {
+      const allBookers = await db.select().from(regularBookers);
+      for (const booker of allBookers) {
+        if (booker.loginToken) {
+          const existingLinks = await storage.getBookerLinks(booker.id);
+          const tokenExists = existingLinks.some(l => l.token === booker.loginToken);
+          if (!tokenExists) {
+            await storage.createBookerLink({
+              regularBookerId: booker.id,
+              token: booker.loginToken,
+              tokenExpiry: booker.loginTokenExpiry || undefined,
+              enabled: true,
+              label: "Migrated portal link",
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Booker link migration error:", err);
+    }
+  })();
 
   return httpServer;
 }
