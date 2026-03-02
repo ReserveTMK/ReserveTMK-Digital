@@ -39,9 +39,7 @@ import {
   MessageSquare,
   UserPlus,
   Settings,
-  CalendarClock,
   Copy,
-  ArrowRight,
 } from "lucide-react";
 import { useAnalyzeInteraction } from "@/hooks/use-interactions";
 import type { Meeting, MentorProfile } from "@shared/schema";
@@ -899,10 +897,8 @@ export default function MentoringPage() {
           <p className="text-muted-foreground text-sm">Schedule and manage 1:1 mentoring sessions</p>
         </div>
         <Link href="/scheduling">
-          <Button variant="outline" size="sm" data-testid="link-to-scheduling">
-            <CalendarClock className="w-4 h-4 mr-1" />
-            Manage availability & booking types
-            <ArrowRight className="w-4 h-4 ml-1" />
+          <Button variant="outline" size="icon" data-testid="link-to-scheduling">
+            <Settings className="w-4 h-4" />
           </Button>
         </Link>
       </div>
