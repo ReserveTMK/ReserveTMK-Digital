@@ -82,6 +82,7 @@ type ExtractedTask = {
   title: string;
   description?: string;
   priority: string;
+  group: string;
   included: boolean;
 };
 
@@ -118,6 +119,7 @@ function CreateProjectDialog({
   const [isExtracting, setIsExtracting] = useState(false);
   const [suggestedDescription, setSuggestedDescription] = useState("");
   const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskGroup, setNewTaskGroup] = useState("");
 
   const [isSaving, setIsSaving] = useState(false);
 
@@ -137,6 +139,7 @@ function CreateProjectDialog({
     setIsExtracting(false);
     setSuggestedDescription("");
     setNewTaskTitle("");
+    setNewTaskGroup("");
     setIsSaving(false);
     chunksRef.current = [];
     if (timerRef.current) clearInterval(timerRef.current);
@@ -217,6 +220,7 @@ function CreateProjectDialog({
         title: t.title,
         description: t.description || "",
         priority: t.priority || "medium",
+        group: t.group || "Other",
         included: true,
       }));
       setTasks(extracted);
@@ -243,9 +247,15 @@ function CreateProjectDialog({
     setTasks((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const existingGroups = useMemo(() => {
+    const groups = new Set<string>();
+    tasks.forEach((t) => { if (t.group) groups.add(t.group); });
+    return Array.from(groups).sort();
+  }, [tasks]);
+
   const addManualTask = () => {
     if (!newTaskTitle.trim()) return;
-    setTasks((prev) => [...prev, { title: newTaskTitle.trim(), description: "", priority: "medium", included: true }]);
+    setTasks((prev) => [...prev, { title: newTaskTitle.trim(), description: "", priority: "medium", group: newTaskGroup || "Other", included: true }]);
     setNewTaskTitle("");
   };
 
@@ -273,6 +283,7 @@ function CreateProjectDialog({
           title: includedTasks[i].title,
           description: includedTasks[i].description,
           sortOrder: i,
+          taskGroup: includedTasks[i].group || undefined,
         });
       }
 
@@ -476,44 +487,64 @@ function CreateProjectDialog({
                 <p className="text-muted-foreground text-sm">No tasks were extracted. Add tasks manually below.</p>
               </Card>
             ) : (
-              <div className="space-y-2 max-h-[40vh] overflow-y-auto">
-                {tasks.map((task, index) => (
-                  <div
-                    key={index}
-                    className={`flex items-start gap-3 p-3 rounded-md border border-border ${
-                      task.included ? "bg-background" : "bg-muted/50 opacity-60"
-                    }`}
-                    data-testid={`task-row-${index}`}
-                  >
-                    <Checkbox
-                      checked={task.included}
-                      onCheckedChange={() => toggleTask(index)}
-                      className="mt-0.5"
-                      data-testid={`checkbox-task-${index}`}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <Input
-                        value={task.title}
-                        onChange={(e) => updateTaskTitle(index, e.target.value)}
-                        className="border-0 bg-transparent focus-visible:ring-0 font-medium text-sm"
-                        data-testid={`input-task-title-${index}`}
-                      />
-                      {task.description && (
-                        <p className="text-xs text-muted-foreground mt-1 px-3">{task.description}</p>
-                      )}
+              <div className="space-y-3 max-h-[40vh] overflow-y-auto">
+                {(() => {
+                  const grouped = new Map<string, { task: ExtractedTask; index: number }[]>();
+                  tasks.forEach((task, index) => {
+                    const g = task.group || "Other";
+                    if (!grouped.has(g)) grouped.set(g, []);
+                    grouped.get(g)!.push({ task, index });
+                  });
+                  return Array.from(grouped.entries()).map(([groupName, groupTasks]) => (
+                    <div key={groupName} className="space-y-1.5" data-testid={`task-group-${groupName}`}>
+                      <div className="flex items-center gap-2 px-1">
+                        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground" data-testid={`text-group-name-${groupName}`}>
+                          {groupName}
+                        </h4>
+                        <Badge variant="secondary" className="text-[10px]" data-testid={`badge-group-count-${groupName}`}>
+                          {groupTasks.length}
+                        </Badge>
+                      </div>
+                      {groupTasks.map(({ task, index }) => (
+                        <div
+                          key={index}
+                          className={`flex items-start gap-3 p-3 rounded-md border border-border ${
+                            task.included ? "bg-background" : "bg-muted/50 opacity-60"
+                          }`}
+                          data-testid={`task-row-${index}`}
+                        >
+                          <Checkbox
+                            checked={task.included}
+                            onCheckedChange={() => toggleTask(index)}
+                            className="mt-0.5"
+                            data-testid={`checkbox-task-${index}`}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <Input
+                              value={task.title}
+                              onChange={(e) => updateTaskTitle(index, e.target.value)}
+                              className="border-0 bg-transparent focus-visible:ring-0 font-medium text-sm"
+                              data-testid={`input-task-title-${index}`}
+                            />
+                            {task.description && (
+                              <p className="text-xs text-muted-foreground mt-1 px-3">{task.description}</p>
+                            )}
+                          </div>
+                          <Badge variant="secondary" className={`text-[10px] shrink-0 ${
+                            task.priority === "high" ? "bg-red-500/15 text-red-700 dark:text-red-300" :
+                            task.priority === "low" ? "bg-gray-500/15 text-gray-600 dark:text-gray-400" :
+                            "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                          }`}>
+                            {task.priority}
+                          </Badge>
+                          <Button variant="ghost" size="icon" onClick={() => removeTask(index)} data-testid={`button-remove-task-${index}`}>
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
                     </div>
-                    <Badge variant="secondary" className={`text-[10px] shrink-0 ${
-                      task.priority === "high" ? "bg-red-500/15 text-red-700 dark:text-red-300" :
-                      task.priority === "low" ? "bg-gray-500/15 text-gray-600 dark:text-gray-400" :
-                      "bg-amber-500/15 text-amber-700 dark:text-amber-300"
-                    }`}>
-                      {task.priority}
-                    </Badge>
-                    <Button variant="ghost" size="icon" onClick={() => removeTask(index)} data-testid={`button-remove-task-${index}`}>
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
-                ))}
+                  ));
+                })()}
               </div>
             )}
 
@@ -523,8 +554,20 @@ function CreateProjectDialog({
                 onChange={(e) => setNewTaskTitle(e.target.value)}
                 placeholder="Add a task manually..."
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addManualTask(); } }}
+                className="flex-1"
                 data-testid="input-add-task"
               />
+              <Select value={newTaskGroup} onValueChange={setNewTaskGroup}>
+                <SelectTrigger className="w-[140px]" data-testid="select-task-group">
+                  <SelectValue placeholder="Group" />
+                </SelectTrigger>
+                <SelectContent>
+                  {existingGroups.filter((g) => g !== "Other").map((g) => (
+                    <SelectItem key={g} value={g} data-testid={`select-group-option-${g}`}>{g}</SelectItem>
+                  ))}
+                  <SelectItem value="Other" data-testid="select-group-option-other">Other</SelectItem>
+                </SelectContent>
+              </Select>
               <Button variant="outline" onClick={addManualTask} disabled={!newTaskTitle.trim()} data-testid="button-add-task">
                 <Plus className="w-4 h-4" />
               </Button>
@@ -553,14 +596,32 @@ function CreateProjectDialog({
                 <span className="font-medium" data-testid="text-review-task-count">{includedCount}</span>
               </div>
               {includedCount > 0 && (
-                <ul className="space-y-1">
-                  {tasks.filter((t) => t.included).map((t, i) => (
-                    <li key={i} className="flex items-center gap-2 text-sm">
-                      <Check className="w-3 h-3 text-green-600 dark:text-green-400 shrink-0" />
-                      <span data-testid={`text-review-task-${i}`}>{t.title}</span>
-                    </li>
-                  ))}
-                </ul>
+                <div className="space-y-2">
+                  {(() => {
+                    const included = tasks.filter((t) => t.included);
+                    const grouped = new Map<string, ExtractedTask[]>();
+                    included.forEach((t) => {
+                      const g = t.group || "Other";
+                      if (!grouped.has(g)) grouped.set(g, []);
+                      grouped.get(g)!.push(t);
+                    });
+                    return Array.from(grouped.entries()).map(([groupName, groupTasks]) => (
+                      <div key={groupName}>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1" data-testid={`text-review-group-${groupName}`}>
+                          {groupName} ({groupTasks.length})
+                        </p>
+                        <ul className="space-y-1">
+                          {groupTasks.map((t, i) => (
+                            <li key={i} className="flex items-center gap-2 text-sm">
+                              <Check className="w-3 h-3 text-green-600 dark:text-green-400 shrink-0" />
+                              <span data-testid={`text-review-task-${groupName}-${i}`}>{t.title}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ));
+                  })()}
+                </div>
               )}
             </Card>
           </div>

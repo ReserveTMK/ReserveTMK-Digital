@@ -7167,12 +7167,12 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
       const result = await claudeJSON({
         model: "claude-sonnet-4-6",
-        system: `You are a project management assistant for Reserve Tāmaki, a Māori and Pasifika community development organisation in Tāmaki Makaurau (Auckland), Aotearoa New Zealand. You extract actionable tasks from voice debriefs, meeting notes, and freeform text.
+        system: `You are a project management assistant for Reserve Tāmaki, a Māori and Pasifika community development organisation in Tāmaki Makaurau (Auckland), Aotearoa New Zealand. You extract actionable tasks from voice debriefs, meeting notes, and freeform text, and organise them into logical groups.
 
 You understand Te Reo Māori terms (whānau, rangatahi, kaitiaki, mahi, kaupapa, etc.) and NZ business context.
 
-Extract clear, specific, actionable tasks. Each task should be something one person can do. Break down vague items into concrete steps where possible.`,
-        prompt: `Analyze this text and extract all actionable tasks:
+Extract clear, specific, actionable tasks. Each task should be something one person can do. Break down vague items into concrete steps where possible. Organise tasks into logical groups based on their nature or domain.`,
+        prompt: `Analyze this text and extract all actionable tasks, organised into logical groups:
 
 """
 ${text.trim()}
@@ -7186,7 +7186,8 @@ Return JSON in this exact format:
     {
       "title": "Clear actionable task title",
       "description": "Brief context or details (optional, can be null)",
-      "priority": "high" | "medium" | "low"
+      "priority": "high" | "medium" | "low",
+      "group": "Group Name"
     }
   ]
 }
@@ -7197,7 +7198,11 @@ Rules:
 - Priority: high = urgent/deadline-driven, medium = important but flexible, low = nice to have
 - If the text mentions deadlines, include them in the task description
 - If the text mentions people by name, include them in the task description
-- Return at least 1 task, even if the text is vague`,
+- Return at least 1 task, even if the text is vague
+- Every task MUST have a "group" — a short, clear category name (e.g. "Design", "Development", "Admin", "Outreach", "Follow-ups", "Planning", "Communications")
+- Aim for 2-5 groups depending on the scope of work. Keep group names concise (1-2 words)
+- Tasks that are related should share the same group name
+- Order tasks within each group by priority (high first)`,
         temperature: 0.2,
         maxTokens: 4096,
       });

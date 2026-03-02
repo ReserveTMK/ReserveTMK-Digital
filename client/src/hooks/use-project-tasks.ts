@@ -11,7 +11,7 @@ export function useProjectTasks(projectId: number | undefined) {
 
 export function useCreateProjectTask() {
   return useMutation({
-    mutationFn: async ({ projectId, ...data }: { projectId: number; title: string; description?: string; status?: string; assigneeId?: number; deadline?: string; sortOrder?: number }) => {
+    mutationFn: async ({ projectId, ...data }: { projectId: number; title: string; description?: string; status?: string; assigneeId?: number; deadline?: string; sortOrder?: number; taskGroup?: string }) => {
       const res = await apiRequest("POST", `/api/projects/${projectId}/tasks`, data);
       return res.json();
     },
@@ -26,7 +26,7 @@ export function useCreateProjectTask() {
 
 export function useUpdateProjectTask() {
   return useMutation({
-    mutationFn: async ({ taskId, projectId, ...data }: { taskId: number; projectId: number; title?: string; description?: string; status?: string; assigneeId?: number | null; deadline?: string | null; sortOrder?: number }) => {
+    mutationFn: async ({ taskId, projectId, ...data }: { taskId: number; projectId: number; title?: string; description?: string; status?: string; assigneeId?: number | null; deadline?: string | null; sortOrder?: number; taskGroup?: string | null }) => {
       const res = await apiRequest("PATCH", `/api/projects/tasks/${taskId}`, data);
       return res.json();
     },
@@ -60,7 +60,7 @@ export function useExtractTasks() {
       return res.json() as Promise<{
         suggestedName?: string;
         suggestedDescription?: string;
-        tasks: Array<{ title: string; description?: string; priority: string }>;
+        tasks: Array<{ title: string; description?: string; priority: string; group?: string }>;
       }>;
     },
   });

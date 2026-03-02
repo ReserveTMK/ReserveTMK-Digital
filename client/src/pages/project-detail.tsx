@@ -363,7 +363,7 @@ function AddDebriefDialog({
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcript, setTranscript] = useState("");
-  const [extractedTasks, setExtractedTasks] = useState<Array<{ title: string; description?: string; priority: string; included: boolean }>>([]);
+  const [extractedTasks, setExtractedTasks] = useState<Array<{ title: string; description?: string; priority: string; group?: string; included: boolean }>>([]);
   const [step, setStep] = useState<"input" | "review" | "saving">("input");
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -474,6 +474,7 @@ function AddDebriefDialog({
           projectId,
           title: task.title,
           description: task.description || undefined,
+          taskGroup: task.group || undefined,
         });
       }
       toast({ title: "Success", description: `${tasksToCreate.length} task(s) added to project.` });
@@ -575,48 +576,70 @@ function AddDebriefDialog({
           </div>
         )}
 
-        {step === "review" && (
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              {extractedTasks.length} task(s) extracted. Select which to add:
-            </p>
-            <div className="space-y-2 max-h-[40vh] overflow-y-auto">
-              {extractedTasks.map((task, i) => (
-                <div
-                  key={i}
-                  className="flex items-start gap-3 p-3 rounded-md border border-border"
-                  data-testid={`card-extracted-task-${i}`}
-                >
-                  <Checkbox
-                    checked={task.included}
-                    onCheckedChange={(checked) => {
-                      const updated = [...extractedTasks];
-                      updated[i] = { ...updated[i], included: !!checked };
-                      setExtractedTasks(updated);
-                    }}
-                    data-testid={`checkbox-extracted-task-${i}`}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <Input
-                      value={task.title}
-                      onChange={(e) => {
-                        const updated = [...extractedTasks];
-                        updated[i] = { ...updated[i], title: e.target.value };
-                        setExtractedTasks(updated);
-                      }}
-                      className="font-medium"
-                      data-testid={`input-extracted-task-title-${i}`}
-                    />
-                    {task.description && (
-                      <p className="text-xs text-muted-foreground mt-1">{task.description}</p>
-                    )}
-                  </div>
-                  <Badge variant="secondary" className="shrink-0">{task.priority}</Badge>
-                </div>
-              ))}
+        {step === "review" && (() => {
+          const groupedExtracted: Record<string, Array<{ task: typeof extractedTasks[0]; index: number }>> = {};
+          extractedTasks.forEach((task, i) => {
+            const groupName = task.group || "Other";
+            if (!groupedExtracted[groupName]) groupedExtracted[groupName] = [];
+            groupedExtracted[groupName].push({ task, index: i });
+          });
+          const groupNames = Object.keys(groupedExtracted).sort((a, b) => a === "Other" ? 1 : b === "Other" ? -1 : a.localeCompare(b));
+
+          return (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                {extractedTasks.length} task(s) extracted. Select which to add:
+              </p>
+              <div className="space-y-4 max-h-[40vh] overflow-y-auto">
+                {groupNames.map((groupName) => {
+                  const items = groupedExtracted[groupName];
+                  const includedCount = items.filter((item) => item.task.included).length;
+                  return (
+                    <div key={groupName} className="space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide" data-testid={`text-extracted-group-${groupName}`}>{groupName}</p>
+                        <Badge variant="secondary" className="text-xs">{includedCount} of {items.length}</Badge>
+                      </div>
+                      {items.map(({ task, index: i }) => (
+                        <div
+                          key={i}
+                          className="flex items-start gap-3 p-3 rounded-md border border-border"
+                          data-testid={`card-extracted-task-${i}`}
+                        >
+                          <Checkbox
+                            checked={task.included}
+                            onCheckedChange={(checked) => {
+                              const updated = [...extractedTasks];
+                              updated[i] = { ...updated[i], included: !!checked };
+                              setExtractedTasks(updated);
+                            }}
+                            data-testid={`checkbox-extracted-task-${i}`}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <Input
+                              value={task.title}
+                              onChange={(e) => {
+                                const updated = [...extractedTasks];
+                                updated[i] = { ...updated[i], title: e.target.value };
+                                setExtractedTasks(updated);
+                              }}
+                              className="font-medium"
+                              data-testid={`input-extracted-task-title-${i}`}
+                            />
+                            {task.description && (
+                              <p className="text-xs text-muted-foreground mt-1">{task.description}</p>
+                            )}
+                          </div>
+                          <Badge variant="secondary" className="shrink-0">{task.priority}</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {step === "saving" && (
           <div className="py-8 text-center">
@@ -824,16 +847,22 @@ function TaskSection({
   const { data: tasks, isLoading } = useProjectTasks(projectId);
   const createTask = useCreateProjectTask();
   const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskGroup, setNewTaskGroup] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
   const [debriefOpen, setDebriefOpen] = useState(false);
+
+  const existingGroups = Array.from(
+    new Set((tasks || []).map((t) => t.taskGroup).filter((g): g is string => !!g))
+  ).sort();
 
   const handleAddTask = () => {
     if (!newTaskTitle.trim()) return;
     createTask.mutate(
-      { projectId, title: newTaskTitle.trim() },
+      { projectId, title: newTaskTitle.trim(), taskGroup: (newTaskGroup && newTaskGroup !== "__none__") ? newTaskGroup : undefined },
       {
         onSuccess: () => {
           setNewTaskTitle("");
+          setNewTaskGroup("");
           setShowAddForm(false);
         },
         onError: (err: any) => {
@@ -843,18 +872,25 @@ function TaskSection({
     );
   };
 
-  const incompleteTasks = (tasks || [])
-    .filter((t) => t.status !== "completed")
-    .sort((a, b) => {
+  const sortTasks = (taskList: ProjectTask[]) =>
+    [...taskList].sort((a, b) => {
       if (a.deadline && b.deadline) return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
       if (a.deadline) return -1;
       if (b.deadline) return 1;
       return a.sortOrder - b.sortOrder;
     });
 
-  const completedTasks = (tasks || []).filter((t) => t.status === "completed");
-  const totalTasks = (tasks || []).length;
-  const completedCount = completedTasks.length;
+  const allTasks = tasks || [];
+  const totalTasks = allTasks.length;
+  const completedCount = allTasks.filter((t) => t.status === "completed").length;
+
+  const groupedTasks: Record<string, ProjectTask[]> = {};
+  allTasks.forEach((task) => {
+    const groupName = task.taskGroup || "Other";
+    if (!groupedTasks[groupName]) groupedTasks[groupName] = [];
+    groupedTasks[groupName].push(task);
+  });
+  const groupNames = Object.keys(groupedTasks).sort((a, b) => a === "Other" ? 1 : b === "Other" ? -1 : a.localeCompare(b));
 
   return (
     <div className="space-y-4">
@@ -898,45 +934,82 @@ function TaskSection({
             <Skeleton key={i} className="h-14" />
           ))}
         </div>
+      ) : totalTasks === 0 && !showAddForm ? (
+        <Card className="p-6 text-center">
+          <p className="text-sm text-muted-foreground" data-testid="text-no-tasks">
+            No tasks yet. Add tasks manually or use voice/text debrief.
+          </p>
+        </Card>
       ) : (
-        <div className="space-y-2">
-          {incompleteTasks.map((task) => (
-            <TaskRow key={task.id} task={task} projectId={projectId} contacts={contacts} />
-          ))}
+        <div className="space-y-4">
+          {groupNames.map((groupName) => {
+            const groupTasks = groupedTasks[groupName];
+            const groupIncomplete = sortTasks(groupTasks.filter((t) => t.status !== "completed"));
+            const groupCompleted = groupTasks.filter((t) => t.status === "completed");
+            const groupTotal = groupTasks.length;
+            const groupCompletedCount = groupCompleted.length;
+
+            return (
+              <div key={groupName} className="space-y-2" data-testid={`section-task-group-${groupName}`}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-semibold" data-testid={`text-group-heading-${groupName}`}>{groupName}</p>
+                  <Badge variant="secondary" className="text-xs" data-testid={`badge-group-progress-${groupName}`}>
+                    {groupCompletedCount} of {groupTotal} complete
+                  </Badge>
+                </div>
+                <div className="w-full bg-muted rounded-full h-1.5">
+                  <div
+                    className="bg-primary rounded-full h-1.5 transition-all"
+                    style={{ width: `${groupTotal > 0 ? (groupCompletedCount / groupTotal) * 100 : 0}%` }}
+                  />
+                </div>
+                <div className="space-y-2">
+                  {groupIncomplete.map((task) => (
+                    <TaskRow key={task.id} task={task} projectId={projectId} contacts={contacts} />
+                  ))}
+                  {groupCompleted.map((task) => (
+                    <TaskRow key={task.id} task={task} projectId={projectId} contacts={contacts} />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
 
           {showAddForm && (
-            <div className="flex items-center gap-2 p-3 rounded-md border border-border" data-testid="form-add-task">
+            <div className="space-y-2 p-3 rounded-md border border-border" data-testid="form-add-task">
+              <div className="flex items-center gap-2">
+                <Input
+                  value={newTaskTitle}
+                  onChange={(e) => setNewTaskTitle(e.target.value)}
+                  placeholder="Task title..."
+                  onKeyDown={(e) => { if (e.key === "Enter") handleAddTask(); if (e.key === "Escape") { setShowAddForm(false); setNewTaskTitle(""); setNewTaskGroup(""); } }}
+                  autoFocus
+                  data-testid="input-new-task-title"
+                />
+                <Button size="sm" onClick={handleAddTask} disabled={createTask.isPending || !newTaskTitle.trim()} data-testid="button-save-new-task">
+                  {createTask.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Add"}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => { setShowAddForm(false); setNewTaskTitle(""); setNewTaskGroup(""); }} data-testid="button-cancel-new-task">
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+              <Select value={newTaskGroup} onValueChange={setNewTaskGroup}>
+                <SelectTrigger data-testid="select-new-task-group" className="w-full">
+                  <SelectValue placeholder="Group (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">No group</SelectItem>
+                  {existingGroups.map((g) => (
+                    <SelectItem key={g} value={g}>{g}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Input
-                value={newTaskTitle}
-                onChange={(e) => setNewTaskTitle(e.target.value)}
-                placeholder="Task title..."
-                onKeyDown={(e) => { if (e.key === "Enter") handleAddTask(); if (e.key === "Escape") { setShowAddForm(false); setNewTaskTitle(""); } }}
-                autoFocus
-                data-testid="input-new-task-title"
+                value={newTaskGroup === "__none__" ? "" : newTaskGroup}
+                onChange={(e) => setNewTaskGroup(e.target.value)}
+                placeholder="Or type a new group name..."
+                data-testid="input-new-task-group"
               />
-              <Button size="sm" onClick={handleAddTask} disabled={createTask.isPending || !newTaskTitle.trim()} data-testid="button-save-new-task">
-                {createTask.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Add"}
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => { setShowAddForm(false); setNewTaskTitle(""); }} data-testid="button-cancel-new-task">
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
-          )}
-
-          {!showAddForm && incompleteTasks.length === 0 && completedTasks.length === 0 && (
-            <Card className="p-6 text-center">
-              <p className="text-sm text-muted-foreground" data-testid="text-no-tasks">
-                No tasks yet. Add tasks manually or use voice/text debrief.
-              </p>
-            </Card>
-          )}
-
-          {completedTasks.length > 0 && (
-            <div className="space-y-2 mt-4">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Completed</p>
-              {completedTasks.map((task) => (
-                <TaskRow key={task.id} task={task} projectId={projectId} contacts={contacts} />
-              ))}
             </div>
           )}
         </div>

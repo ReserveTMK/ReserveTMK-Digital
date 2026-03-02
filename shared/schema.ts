@@ -1521,6 +1521,7 @@ export const projectTasks = pgTable("project_tasks", {
   status: text("status").notNull().default("pending"),
   assigneeId: integer("assignee_id"),
   deadline: timestamp("deadline"),
+  taskGroup: text("task_group"),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
