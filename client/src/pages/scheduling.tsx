@@ -559,24 +559,29 @@ function AvailabilitySection() {
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/mentor-availability/quick-setup", {
         mentorUserId: mentorUserId,
+        startTime: "09:00",
+        endTime: "16:00"
       });
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/mentor-availability"] });
-      toast({ title: "Availability set up", description: "Default hours added: Mon\u2013Fri, 9am\u20133pm" });
+      toast({ title: "Availability set up", description: "Default hours added: Mon\u2013Fri, 9am\u20134pm" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
   const quickSetupAll = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/mentor-availability/quick-setup-all");
+      const res = await apiRequest("POST", "/api/mentor-availability/quick-setup-all", {
+        startTime: "09:00",
+        endTime: "16:00"
+      });
       return res.json();
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/mentor-availability"] });
-      toast({ title: "All set up", description: data.message || "Mon\u2013Fri, 9am\u20133pm applied to all" });
+      toast({ title: "All set up", description: data.message || "Mon\u2013Fri, 9am\u20134pm applied to all" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -701,12 +706,12 @@ function AvailabilitySection() {
             </Button>
             <Button size="sm" onClick={() => quickSetup.mutate()} disabled={quickSetup.isPending} data-testid="button-quick-setup">
               {quickSetup.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Zap className="w-4 h-4 mr-1" />}
-              Quick Setup (Mon\u2013Fri, 9\u20133)
+              Quick Setup (Mon\u2013Fri, 9\u20134)
             </Button>
             {profiles && profiles.length > 1 && (
               <Button size="sm" variant="outline" onClick={() => quickSetupAll.mutate()} disabled={quickSetupAll.isPending} data-testid="button-quick-setup-all">
                 {quickSetupAll.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Users className="w-4 h-4 mr-1" />}
-                Set All (Mon\u2013Fri, 9\u20133)
+                Set All (Mon\u2013Fri, 9\u20134)
               </Button>
             )}
           </div>

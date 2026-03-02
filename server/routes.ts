@@ -2328,13 +2328,15 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       if (existing.length > 0) {
         return res.status(400).json({ message: "Availability already configured" });
       }
+      const startTime = req.body.startTime || "09:00";
+      const endTime = req.body.endTime || "16:00";
       const defaults = [];
       for (let day = 0; day <= 4; day++) {
         const slot = await storage.createMentorAvailability({
           userId: targetUserId,
           dayOfWeek: day,
-          startTime: "09:00",
-          endTime: "15:00",
+          startTime,
+          endTime,
           slotDuration: 60,
           bufferMinutes: 0,
           isActive: true,
@@ -2356,6 +2358,8 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         return res.status(400).json({ message: "No mentor profiles found" });
       }
 
+      const startTime = req.body.startTime || "09:00";
+      const endTime = req.body.endTime || "16:00";
       let setupCount = 0;
       for (const profile of profiles) {
         const mentorId = profile.mentorUserId || `mentor-${profile.id}`;
@@ -2365,8 +2369,8 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
           await storage.createMentorAvailability({
             userId: mentorId,
             dayOfWeek: day,
-            startTime: "09:00",
-            endTime: "15:00",
+            startTime,
+            endTime,
             slotDuration: 60,
             bufferMinutes: 0,
             isActive: true,
@@ -2374,7 +2378,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         }
         setupCount++;
       }
-      res.json({ message: `Availability set for ${setupCount} mentor(s) — Mon–Fri, 9am–3pm`, setupCount });
+      res.json({ message: `Availability set for ${setupCount} mentor(s) — Mon\u2013Fri, 9am\u20134pm`, setupCount });
     } catch (err: any) {
       console.error("Quick setup all error:", err);
       res.status(500).json({ message: "Failed to set up availability for all mentors" });
