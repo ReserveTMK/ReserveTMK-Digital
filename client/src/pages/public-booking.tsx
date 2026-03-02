@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState, useMemo, useEffect } from "react";
 import { useRoute } from "wouter";
@@ -18,6 +19,8 @@ import {
   ChevronRight,
   AlertCircle,
   Globe,
+  Users,
+  Coffee,
 } from "lucide-react";
 
 const FOCUS_OPTIONS = [
@@ -40,7 +43,20 @@ interface MeetingType {
   focus: string | null;
   color: string | null;
   sortOrder: number | null;
+  category?: string | null;
 }
+
+interface OnboardingQuestion {
+  id: number;
+  question: string;
+  fieldType: string | null;
+  options: string[] | null;
+  isRequired: boolean | null;
+  sortOrder: number | null;
+}
+
+type Pathway = "mentoring" | "meeting";
+type StepId = "pathway" | "info" | "onboarding" | "type" | "date" | "details" | "confirmed";
 
 function formatDate(date: Date) {
   return date.toISOString().split("T")[0];
@@ -56,21 +72,8 @@ function getInitials(first?: string, last?: string) {
   return ((first?.[0] || "") + (last?.[0] || "")).toUpperCase() || "?";
 }
 
-type StepId = "type" | "date" | "details" | "confirmed";
-
-function StepProgress({ currentStep, hasMeetingTypes }: { currentStep: StepId; hasMeetingTypes: boolean }) {
-  const steps = hasMeetingTypes
-    ? [
-        { id: "type" as const, label: "What" },
-        { id: "date" as const, label: "When" },
-        { id: "details" as const, label: "Details" },
-      ]
-    : [
-        { id: "date" as const, label: "When" },
-        { id: "details" as const, label: "Details" },
-      ];
-
-  const stepOrder: StepId[] = steps.map((s) => s.id);
+function StepProgress({ currentStep, steps }: { currentStep: StepId; steps: { id: StepId; label: string }[] }) {
+  const stepOrder = steps.map((s) => s.id);
   const currentIndex = stepOrder.indexOf(currentStep);
 
   return (
@@ -81,9 +84,7 @@ function StepProgress({ currentStep, hasMeetingTypes }: { currentStep: StepId; h
         return (
           <div key={s.id} className="flex items-center gap-2">
             {i > 0 && (
-              <div
-                className={`w-6 sm:w-8 h-px ${isCompleted ? "bg-primary" : "bg-border"}`}
-              />
+              <div className={`w-6 sm:w-8 h-px ${isCompleted ? "bg-primary" : "bg-border"}`} />
             )}
             <div className="flex items-center gap-1.5">
               <div
@@ -98,11 +99,7 @@ function StepProgress({ currentStep, hasMeetingTypes }: { currentStep: StepId; h
               >
                 {isCompleted ? <Check className="w-3.5 h-3.5" /> : i + 1}
               </div>
-              <span
-                className={`text-xs font-medium hidden sm:inline ${
-                  isCurrent ? "text-foreground" : "text-muted-foreground"
-                }`}
-              >
+              <span className={`text-xs font-medium hidden sm:inline ${isCurrent ? "text-foreground" : "text-muted-foreground"}`}>
                 {s.label}
               </span>
             </div>
@@ -117,6 +114,18 @@ export default function PublicBookingPage() {
   const [, params] = useRoute("/book/:userId");
   const userId = params?.userId || "";
 
+  const [pathway, setPathway] = useState<Pathway | null>(null);
+  const [step, setStep] = useState<StepId>("pathway");
+  const [isReturningMentee, setIsReturningMentee] = useState(false);
+  const [menteeChecked, setMenteeChecked] = useState(false);
+
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [focus, setFocus] = useState("");
+  const [notes, setNotes] = useState("");
+  const [onboardingAnswers, setOnboardingAnswers] = useState<Record<string, any>>({});
+
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [selectedSlot, setSelectedSlot] = useState<string>("");
   const [weekStart, setWeekStart] = useState(() => {
@@ -125,15 +134,8 @@ export default function PublicBookingPage() {
     const diff = d.getDate() - day + (day === 0 ? -6 : 1);
     return new Date(d.setDate(diff));
   });
-
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [focus, setFocus] = useState("");
-  const [notes, setNotes] = useState("");
-  const [step, setStep] = useState<StepId>("type");
-  const [bookingResult, setBookingResult] = useState<any>(null);
   const [selectedMeetingType, setSelectedMeetingType] = useState<MeetingType | null>(null);
+  const [bookingResult, setBookingResult] = useState<any>(null);
 
   const { data: mentorInfo, isError: mentorError, isLoading: mentorLoading } = useQuery({
     queryKey: ["/api/public/mentoring", userId, "info"],
@@ -146,35 +148,66 @@ export default function PublicBookingPage() {
   });
 
   const { data: availability, isLoading: availabilityLoading } = useQuery({
-    queryKey: ["/api/public/mentoring", userId, "availability"],
+    queryKey: ["/api/public/mentoring", userId, "availability", pathway],
     queryFn: async () => {
-      const res = await fetch(`/api/public/mentoring/${userId}/availability`);
+      const categoryParam = pathway ? `?category=${pathway}` : "";
+      const res = await fetch(`/api/public/mentoring/${userId}/availability${categoryParam}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
-    enabled: !!userId,
+    enabled: !!userId && !!pathway,
   });
 
   const { data: meetingTypes, isLoading: meetingTypesLoading } = useQuery<MeetingType[]>({
-    queryKey: ["/api/public/mentoring", userId, "meeting-types"],
+    queryKey: ["/api/public/mentoring", userId, "meeting-types", pathway],
     queryFn: async () => {
-      const res = await fetch(`/api/public/mentoring/${userId}/meeting-types`);
+      const categoryParam = pathway ? `?category=${pathway}` : "";
+      const res = await fetch(`/api/public/mentoring/${userId}/meeting-types${categoryParam}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
-    enabled: !!userId,
+    enabled: !!userId && !!pathway,
   });
 
-  useEffect(() => {
-    if (meetingTypes && meetingTypes.length === 0 && step === "type") {
-      setStep("date");
-    }
-  }, [meetingTypes, step]);
+  const { data: onboardingQuestions } = useQuery<OnboardingQuestion[]>({
+    queryKey: ["/api/public/mentoring", userId, "onboarding-questions"],
+    queryFn: async () => {
+      const res = await fetch(`/api/public/mentoring/${userId}/onboarding-questions`);
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: !!userId && pathway === "mentoring",
+  });
+
+  const checkMenteeMutation = useMutation({
+    mutationFn: async (checkEmail: string) => {
+      const res = await fetch(`/api/public/mentoring/${userId}/check-mentee?email=${encodeURIComponent(checkEmail)}`);
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    onSuccess: (data: { isReturning: boolean; contactName?: string }) => {
+      setIsReturningMentee(data.isReturning);
+      setMenteeChecked(true);
+      if (data.isReturning) {
+        if (data.contactName) setName(data.contactName);
+        const hasMeetingTypes = meetingTypes && meetingTypes.length > 0;
+        setStep(hasMeetingTypes ? "type" : "date");
+      } else {
+        if (onboardingQuestions && onboardingQuestions.length > 0) {
+          setStep("onboarding");
+        } else {
+          const hasMeetingTypes = meetingTypes && meetingTypes.length > 0;
+          setStep(hasMeetingTypes ? "type" : "date");
+        }
+      }
+    },
+  });
 
   const { data: slotsData, isLoading: slotsLoading } = useQuery({
-    queryKey: ["/api/public/mentoring", userId, "slots", selectedDate],
+    queryKey: ["/api/public/mentoring", userId, "slots", selectedDate, pathway],
     queryFn: async () => {
-      const res = await fetch(`/api/public/mentoring/${userId}/slots?date=${selectedDate}`);
+      const categoryParam = pathway ? `&category=${pathway}` : "";
+      const res = await fetch(`/api/public/mentoring/${userId}/slots?date=${selectedDate}${categoryParam}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
@@ -221,6 +254,49 @@ export default function PublicBookingPage() {
 
   const hasMeetingTypes = meetingTypes && meetingTypes.length > 0;
 
+  const currentSteps = useMemo((): { id: StepId; label: string }[] => {
+    if (!pathway) return [];
+    if (pathway === "mentoring") {
+      const steps: { id: StepId; label: string }[] = [{ id: "info", label: "You" }];
+      if (!isReturningMentee && !menteeChecked && onboardingQuestions && onboardingQuestions.length > 0) {
+        steps.push({ id: "onboarding", label: "About" });
+      }
+      if (!isReturningMentee && menteeChecked && !isReturningMentee && onboardingQuestions && onboardingQuestions.length > 0) {
+        steps.push({ id: "onboarding", label: "About" });
+      }
+      if (hasMeetingTypes) steps.push({ id: "type", label: "Session" });
+      steps.push({ id: "date", label: "When" });
+      return steps;
+    }
+    return [
+      { id: "info", label: "You" },
+      ...(hasMeetingTypes ? [{ id: "type" as StepId, label: "Session" }] : []),
+      { id: "date", label: "When" },
+    ];
+  }, [pathway, isReturningMentee, menteeChecked, hasMeetingTypes, onboardingQuestions]);
+
+  const handleSelectPathway = (p: Pathway) => {
+    setPathway(p);
+    setStep("info");
+  };
+
+  const handleInfoContinue = () => {
+    if (!name.trim()) return;
+    if (pathway === "mentoring" && email.trim()) {
+      checkMenteeMutation.mutate(email.trim());
+    } else {
+      if (pathway === "mentoring" && onboardingQuestions && onboardingQuestions.length > 0) {
+        setStep("onboarding");
+      } else {
+        setStep(hasMeetingTypes ? "type" : "date");
+      }
+    }
+  };
+
+  const handleOnboardingContinue = () => {
+    setStep(hasMeetingTypes ? "type" : "date");
+  };
+
   const handleSelectMeetingType = (mt: MeetingType) => {
     setSelectedMeetingType(mt);
     setStep("date");
@@ -238,6 +314,8 @@ export default function PublicBookingPage() {
       focus: focus || undefined,
       notes: notes.trim() || undefined,
       meetingTypeId: selectedMeetingType?.id || undefined,
+      pathway: pathway,
+      onboardingAnswers: pathway === "mentoring" && !isReturningMentee ? onboardingAnswers : undefined,
     });
   };
 
@@ -251,7 +329,11 @@ export default function PublicBookingPage() {
     setNotes("");
     setSelectedMeetingType(null);
     setBookingResult(null);
-    setStep(hasMeetingTypes ? "type" : "date");
+    setPathway(null);
+    setIsReturningMentee(false);
+    setMenteeChecked(false);
+    setOnboardingAnswers({});
+    setStep("pathway");
   };
 
   const mentorName = mentorInfo ? `${mentorInfo.firstName || ""} ${mentorInfo.lastName || ""}`.trim() : "";
@@ -289,9 +371,13 @@ export default function PublicBookingPage() {
             Your time with {mentorName || "them"} is confirmed
           </p>
           <div className="bg-muted/50 rounded-lg p-4 space-y-2 text-sm text-left">
+            <div className="flex justify-between gap-2 flex-wrap">
+              <span className="text-muted-foreground">Type</span>
+              <span className="font-medium">{pathway === "mentoring" ? "Mentoring" : "Meeting / Hui"}</span>
+            </div>
             {selectedMeetingType && (
               <div className="flex justify-between gap-2 flex-wrap">
-                <span className="text-muted-foreground">Session Type</span>
+                <span className="text-muted-foreground">Session</span>
                 <span className="font-medium" data-testid="text-meeting-type-name">{selectedMeetingType.name}</span>
               </div>
             )}
@@ -307,12 +393,6 @@ export default function PublicBookingPage() {
               <span className="text-muted-foreground">Duration</span>
               <span className="font-medium">{slotDuration} minutes</span>
             </div>
-            {focus && (
-              <div className="flex justify-between gap-2 flex-wrap">
-                <span className="text-muted-foreground">Focus</span>
-                <span className="font-medium">{focus}</span>
-              </div>
-            )}
           </div>
           <div className="mt-5 p-3 bg-muted/30 rounded-lg text-left">
             <p className="text-xs font-semibold text-muted-foreground mb-1">What happens next</p>
@@ -320,12 +400,7 @@ export default function PublicBookingPage() {
               {mentorName || "They"} will receive your booking and may reach out to confirm details. Keep an eye on your email or phone for any updates.
             </p>
           </div>
-          <Button
-            variant="outline"
-            className="w-full mt-5"
-            onClick={handleBookAnother}
-            data-testid="button-book-another"
-          >
+          <Button variant="outline" className="w-full mt-5" onClick={handleBookAnother} data-testid="button-book-another">
             Book another time
           </Button>
         </Card>
@@ -371,23 +446,178 @@ export default function PublicBookingPage() {
             )}
             <div className="min-w-0">
               <h1 className="text-lg font-bold truncate" data-testid="heading-booking">
-                {mentorName ? `Book a Time with ${mentorName}` : "Book a Time"}
+                {step === "pathway"
+                  ? mentorName ? `Book a Time with ${mentorName}` : "Book a Time"
+                  : pathway === "mentoring"
+                  ? "Mentoring Session"
+                  : "Meeting / Hui"
+                }
               </h1>
             </div>
           </div>
           <p className="text-sm text-muted-foreground mt-2" data-testid="text-greeting">
-            Nau mai, haere mai — let's book a time to connect
-          </p>
-          <p className="text-xs text-muted-foreground mt-1" data-testid="text-subtitle">
-            Pick a time that works — whether it's a catch-up, a hui, or anything in between
+            {step === "pathway"
+              ? "Nau mai, haere mai \u2014 how would you like to connect?"
+              : pathway === "mentoring"
+              ? "Work 1:1 with a mentor on your venture"
+              : "Book a catch-up or general meeting"
+            }
           </p>
         </div>
 
-        <StepProgress currentStep={step} hasMeetingTypes={!!hasMeetingTypes} />
+        {step !== "pathway" && step !== "confirmed" && currentSteps.length > 0 && (
+          <StepProgress currentStep={step} steps={currentSteps} />
+        )}
 
         <div className="flex-1">
+          {step === "pathway" && (
+            <div className="p-5 sm:p-6 step-animate">
+              <h3 className="font-semibold text-sm mb-4" data-testid="heading-pathway-choice">What are you looking for?</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  onClick={() => handleSelectPathway("mentoring")}
+                  className="flex flex-col items-center gap-3 p-6 rounded-lg border-2 border-border hover:border-primary hover:bg-primary/5 transition-all text-center min-h-[140px]"
+                  data-testid="button-pathway-mentoring"
+                >
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Users className="w-6 h-6 text-primary" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-sm">Mentoring</h4>
+                    <p className="text-xs text-muted-foreground mt-1">Work 1:1 with a mentor on your venture or goals</p>
+                  </div>
+                </button>
+                <button
+                  onClick={() => handleSelectPathway("meeting")}
+                  className="flex flex-col items-center gap-3 p-6 rounded-lg border-2 border-border hover:border-primary hover:bg-primary/5 transition-all text-center min-h-[140px]"
+                  data-testid="button-pathway-meeting"
+                >
+                  <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center">
+                    <Coffee className="w-6 h-6 text-amber-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-sm">Meeting / Hui</h4>
+                    <p className="text-xs text-muted-foreground mt-1">Book a catch-up, hui, or general meeting</p>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === "info" && (
+            <div className="p-5 sm:p-6 space-y-4 step-animate">
+              <button
+                className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-[44px]"
+                onClick={() => { setPathway(null); setStep("pathway"); }}
+                data-testid="button-back-to-pathway"
+              >
+                <ChevronLeft className="w-4 h-4" /> Back
+              </button>
+              <h3 className="font-semibold text-sm" data-testid="heading-info">Tell us about yourself</h3>
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label>Your Name *</Label>
+                  <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" data-testid="input-book-name" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Email {pathway === "mentoring" ? "*" : ""}</Label>
+                  <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com" data-testid="input-book-email" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Phone</Label>
+                  <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+64..." data-testid="input-book-phone" />
+                </div>
+                {pathway === "meeting" && (
+                  <div className="space-y-2">
+                    <Label>What's this about?</Label>
+                    <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Brief description of what you'd like to discuss..." data-testid="input-book-notes" />
+                  </div>
+                )}
+              </div>
+              {checkMenteeMutation.isError && (
+                <p className="text-sm text-red-500">Something went wrong checking your details. Please try again.</p>
+              )}
+            </div>
+          )}
+
+          {step === "onboarding" && (
+            <div className="p-5 sm:p-6 space-y-4 step-animate">
+              <button
+                className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-[44px]"
+                onClick={() => setStep("info")}
+                data-testid="button-back-to-info"
+              >
+                <ChevronLeft className="w-4 h-4" /> Back
+              </button>
+              <div>
+                <h3 className="font-semibold text-sm" data-testid="heading-onboarding">A few things before we start</h3>
+                <p className="text-xs text-muted-foreground mt-1">This helps us match you with the right mentor and prepare for your first session</p>
+              </div>
+              <div className="space-y-4">
+                {onboardingQuestions?.map((q) => (
+                  <div key={q.id} className="space-y-2">
+                    <Label>{q.question} {q.isRequired ? "*" : ""}</Label>
+                    {q.fieldType === "textarea" && (
+                      <Textarea
+                        value={onboardingAnswers[String(q.id)] || ""}
+                        onChange={(e) => setOnboardingAnswers(prev => ({ ...prev, [String(q.id)]: e.target.value }))}
+                        rows={2}
+                        data-testid={`input-onboarding-${q.id}`}
+                      />
+                    )}
+                    {q.fieldType === "text" && (
+                      <Input
+                        value={onboardingAnswers[String(q.id)] || ""}
+                        onChange={(e) => setOnboardingAnswers(prev => ({ ...prev, [String(q.id)]: e.target.value }))}
+                        data-testid={`input-onboarding-${q.id}`}
+                      />
+                    )}
+                    {q.fieldType === "select" && q.options && (
+                      <Select
+                        value={onboardingAnswers[String(q.id)] || ""}
+                        onValueChange={(v) => setOnboardingAnswers(prev => ({ ...prev, [String(q.id)]: v }))}
+                      >
+                        <SelectTrigger data-testid={`select-onboarding-${q.id}`}>
+                          <SelectValue placeholder="Select..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {q.options.map((opt) => (
+                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {q.fieldType === "boolean" && (
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          checked={onboardingAnswers[String(q.id)] === true}
+                          onCheckedChange={(v) => setOnboardingAnswers(prev => ({ ...prev, [String(q.id)]: v }))}
+                          data-testid={`switch-onboarding-${q.id}`}
+                        />
+                        <span className="text-sm text-muted-foreground">{onboardingAnswers[String(q.id)] ? "Yes" : "No"}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {step === "type" && (
             <div className="p-5 sm:p-6 space-y-5 step-animate">
+              <button
+                className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-[44px]"
+                onClick={() => {
+                  if (pathway === "mentoring" && !isReturningMentee && onboardingQuestions && onboardingQuestions.length > 0) {
+                    setStep("onboarding");
+                  } else {
+                    setStep("info");
+                  }
+                }}
+                data-testid="button-back-to-prev"
+              >
+                <ChevronLeft className="w-4 h-4" /> Back
+              </button>
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <Clock className="w-4 h-4" /> Select a Session Type
               </h3>
@@ -401,26 +631,17 @@ export default function PublicBookingPage() {
                     <button
                       key={mt.id}
                       onClick={() => handleSelectMeetingType(mt)}
-                      className="flex items-stretch rounded-md border border-border text-left transition-colors hover-elevate min-h-[44px]"
+                      className="flex items-stretch rounded-md border border-border text-left transition-colors hover:bg-muted min-h-[44px]"
                       data-testid={`card-meeting-type-${mt.id}`}
                     >
-                      <div
-                        className="w-1.5 shrink-0 rounded-l-md"
-                        style={{ backgroundColor: mt.color || "#3b82f6" }}
-                      />
+                      <div className="w-1.5 shrink-0 rounded-l-md" style={{ backgroundColor: mt.color || "#3b82f6" }} />
                       <div className="flex-1 p-4">
                         <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <span className="font-semibold text-sm" data-testid={`text-meeting-type-name-${mt.id}`}>
-                            {mt.name}
-                          </span>
-                          <Badge variant="secondary" data-testid={`badge-duration-${mt.id}`}>
-                            {mt.duration} min
-                          </Badge>
+                          <span className="font-semibold text-sm" data-testid={`text-meeting-type-name-${mt.id}`}>{mt.name}</span>
+                          <Badge variant="secondary" data-testid={`badge-duration-${mt.id}`}>{mt.duration} min</Badge>
                         </div>
                         {mt.description && (
-                          <p className="text-xs text-muted-foreground mt-1" data-testid={`text-meeting-type-desc-${mt.id}`}>
-                            {mt.description}
-                          </p>
+                          <p className="text-xs text-muted-foreground mt-1" data-testid={`text-meeting-type-desc-${mt.id}`}>{mt.description}</p>
                         )}
                       </div>
                     </button>
@@ -432,24 +653,27 @@ export default function PublicBookingPage() {
 
           {step === "date" && (
             <div className="p-5 sm:p-6 space-y-5 step-animate">
-              {hasMeetingTypes && (
-                <button
-                  className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-[44px]"
-                  onClick={() => setStep("type")}
-                  data-testid="button-back-to-type"
-                >
-                  <ChevronLeft className="w-4 h-4" /> Back to session types
-                </button>
-              )}
+              <button
+                className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-[44px]"
+                onClick={() => {
+                  if (hasMeetingTypes) {
+                    setStep("type");
+                  } else if (pathway === "mentoring" && !isReturningMentee && onboardingQuestions && onboardingQuestions.length > 0) {
+                    setStep("onboarding");
+                  } else {
+                    setStep("info");
+                  }
+                }}
+                data-testid="button-back"
+              >
+                <ChevronLeft className="w-4 h-4" /> Back
+              </button>
 
               {selectedMeetingType && (
                 <div className="bg-muted/50 rounded-md p-3 text-sm flex items-center gap-2">
-                  <div
-                    className="w-2 h-2 rounded-full shrink-0"
-                    style={{ backgroundColor: selectedMeetingType.color || "#3b82f6" }}
-                  />
+                  <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: selectedMeetingType.color || "#3b82f6" }} />
                   <span className="font-medium">{selectedMeetingType.name}</span>
-                  <span className="text-muted-foreground">· {selectedMeetingType.duration} min</span>
+                  <span className="text-muted-foreground">{"\u00b7"} {selectedMeetingType.duration} min</span>
                 </div>
               )}
 
@@ -459,21 +683,10 @@ export default function PublicBookingPage() {
                     <Calendar className="w-4 h-4" /> Select a Date
                   </h3>
                   <div className="flex gap-1">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => setWeekStart(addDays(weekStart, -7))}
-                      disabled={weekStart <= new Date()}
-                      data-testid="button-prev-week"
-                    >
+                    <Button size="icon" variant="ghost" onClick={() => setWeekStart(addDays(weekStart, -7))} disabled={weekStart <= new Date()} data-testid="button-prev-week">
                       <ChevronLeft className="w-4 h-4" />
                     </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => setWeekStart(addDays(weekStart, 7))}
-                      data-testid="button-next-week"
-                    >
+                    <Button size="icon" variant="ghost" onClick={() => setWeekStart(addDays(weekStart, 7))} data-testid="button-next-week">
                       <ChevronRight className="w-4 h-4" />
                     </Button>
                   </div>
@@ -485,15 +698,11 @@ export default function PublicBookingPage() {
                     const dow = jsDay === 0 ? 6 : jsDay - 1;
                     const isAvailable = availableDays.has(dow) && d >= new Date(new Date().toDateString());
                     const isSelected = selectedDate === dateStr;
-
                     return (
                       <button
                         key={i}
                         disabled={!isAvailable}
-                        onClick={() => {
-                          setSelectedDate(dateStr);
-                          setSelectedSlot("");
-                        }}
+                        onClick={() => { setSelectedDate(dateStr); setSelectedSlot(""); }}
                         className={`flex flex-col items-center p-2 rounded-md text-sm transition-colors min-h-[44px] ${
                           isSelected
                             ? "bg-primary text-primary-foreground"
@@ -522,13 +731,9 @@ export default function PublicBookingPage() {
                     <Clock className="w-4 h-4" /> Available Times
                   </h3>
                   {slotsLoading ? (
-                    <div className="flex justify-center py-4">
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                    </div>
+                    <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin" /></div>
                   ) : !slotsData?.slots?.length ? (
-                    <p className="text-sm text-muted-foreground text-center py-4" data-testid="text-no-times">
-                      No times available right now
-                    </p>
+                    <p className="text-sm text-muted-foreground text-center py-4" data-testid="text-no-times">No times available right now</p>
                   ) : (
                     <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                       {(slotsData.slots as any[]).map((slot: any) => (
@@ -551,13 +756,11 @@ export default function PublicBookingPage() {
               )}
 
               {availabilityLoading && (
-                <div className="flex justify-center py-4">
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                </div>
+                <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin" /></div>
               )}
               {!availabilityLoading && availability && (availability as any[]).length === 0 && (
                 <p className="text-sm text-muted-foreground text-center py-4" data-testid="text-no-availability">
-                  No times available right now — get in touch directly
+                  No times available right now {"\u2014"} get in touch directly
                 </p>
               )}
             </div>
@@ -577,7 +780,7 @@ export default function PublicBookingPage() {
                 {selectedMeetingType && (
                   <div className="mb-1">
                     <span className="font-medium">{selectedMeetingType.name}</span>
-                    {" · "}
+                    {" \u00b7 "}
                   </div>
                 )}
                 <span className="font-medium">
@@ -585,41 +788,49 @@ export default function PublicBookingPage() {
                 </span>
                 {" at "}
                 <span className="font-medium">{selectedSlot ? formatTimeSlot(selectedSlot) : ""}</span>
-                {" · "}
+                {" \u00b7 "}
                 <span className="text-muted-foreground">{slotDuration} min</span>
               </div>
 
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  <Label>Your Name *</Label>
-                  <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" data-testid="input-book-name" />
+              {pathway === "meeting" && (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label>What would you like to discuss?</Label>
+                    <Select value={focus} onValueChange={setFocus}>
+                      <SelectTrigger data-testid="select-book-focus">
+                        <SelectValue placeholder="Select a topic..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {FOCUS_OPTIONS.map(f => (
+                          <SelectItem key={f} value={f}>{f}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Email</Label>
-                  <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com" data-testid="input-book-email" />
+              )}
+
+              {pathway === "mentoring" && (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label>Focus area</Label>
+                    <Select value={focus} onValueChange={setFocus}>
+                      <SelectTrigger data-testid="select-book-focus">
+                        <SelectValue placeholder="What would you like to work on?" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {FOCUS_OPTIONS.filter(f => f !== "General Catch-up").map(f => (
+                          <SelectItem key={f} value={f}>{f}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Anything else?</Label>
+                    <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Any specific topics or questions you'd like to cover..." data-testid="input-book-notes" />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Phone</Label>
-                  <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+64..." data-testid="input-book-phone" />
-                </div>
-                <div className="space-y-2">
-                  <Label>What would you like to discuss?</Label>
-                  <Select value={focus} onValueChange={setFocus}>
-                    <SelectTrigger data-testid="select-book-focus">
-                      <SelectValue placeholder="Select a topic..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {FOCUS_OPTIONS.map(f => (
-                        <SelectItem key={f} value={f}>{f}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Any additional notes?</Label>
-                  <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Tell us a bit about yourself or what you'd like help with..." data-testid="input-book-notes" />
-                </div>
-              </div>
+              )}
 
               {bookMutation.isError && (
                 <p className="text-sm text-red-500">{(bookMutation.error as any)?.message || "Something went wrong"}</p>
@@ -627,6 +838,32 @@ export default function PublicBookingPage() {
             </div>
           )}
         </div>
+
+        {step === "info" && (
+          <div className="sticky bottom-0 z-10 p-4 border-t bg-background sm:static sm:border-0 sm:bg-transparent sm:px-6 sm:pb-6 sm:pt-0">
+            <Button
+              className="w-full"
+              disabled={!name.trim() || (pathway === "mentoring" && !email.trim()) || checkMenteeMutation.isPending}
+              onClick={handleInfoContinue}
+              data-testid="button-continue-info"
+            >
+              {checkMenteeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Continue
+            </Button>
+          </div>
+        )}
+
+        {step === "onboarding" && (
+          <div className="sticky bottom-0 z-10 p-4 border-t bg-background sm:static sm:border-0 sm:bg-transparent sm:px-6 sm:pb-6 sm:pt-0">
+            <Button
+              className="w-full"
+              onClick={handleOnboardingContinue}
+              data-testid="button-continue-onboarding"
+            >
+              Continue
+            </Button>
+          </div>
+        )}
 
         {step === "date" && (
           <div className="sticky bottom-0 z-10 p-4 border-t bg-background sm:static sm:border-0 sm:bg-transparent sm:px-6 sm:pb-6 sm:pt-0">

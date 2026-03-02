@@ -42,6 +42,8 @@ import {
   Copy,
 } from "lucide-react";
 import { useAnalyzeInteraction } from "@/hooks/use-interactions";
+import { MeetingTypesSection } from "@/components/meeting-types-section";
+import { MentoringOnboardingSetup } from "@/components/mentoring-onboarding-setup";
 import type { Meeting, MentorProfile } from "@shared/schema";
 
 const FOCUS_OPTIONS = [
@@ -889,6 +891,8 @@ function MentorsTab() {
 }
 
 export default function MentoringPage() {
+  const [showSettings, setShowSettings] = useState(false);
+
   return (
     <div className="max-w-5xl mx-auto space-y-6 p-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -896,7 +900,35 @@ export default function MentoringPage() {
           <h1 className="text-2xl font-bold" data-testid="heading-mentoring">Mentoring</h1>
           <p className="text-muted-foreground text-sm">Schedule and manage 1:1 mentoring sessions</p>
         </div>
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={() => setShowSettings(true)}
+          data-testid="button-mentoring-settings"
+        >
+          <Settings className="w-5 h-5" />
+        </Button>
       </div>
+
+      <Dialog open={showSettings} onOpenChange={setShowSettings}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Mentoring Settings</DialogTitle>
+          </DialogHeader>
+          <Tabs defaultValue="meeting-types">
+            <TabsList>
+              <TabsTrigger value="meeting-types" data-testid="tab-settings-meeting-types">Meeting Types</TabsTrigger>
+              <TabsTrigger value="onboarding" data-testid="tab-settings-onboarding">Onboarding</TabsTrigger>
+            </TabsList>
+            <TabsContent value="meeting-types" className="mt-4">
+              <MeetingTypesSection category="mentoring" />
+            </TabsContent>
+            <TabsContent value="onboarding" className="mt-4">
+              <MentoringOnboardingSetup />
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
 
       <Tabs defaultValue="sessions">
         <TabsList data-testid="mentoring-tabs">

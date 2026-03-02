@@ -156,6 +156,9 @@ import {
   type InsertVenueInstruction,
   type Survey,
   type InsertSurvey,
+  mentoringOnboardingQuestions,
+  type MentoringOnboardingQuestion,
+  type InsertMentoringOnboardingQuestion,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, sql, max, count } from "drizzle-orm";
 
@@ -439,6 +442,13 @@ export interface IStorage {
   createMentoringApplication(data: InsertMentoringApplication): Promise<MentoringApplication>;
   updateMentoringApplication(id: number, updates: Partial<InsertMentoringApplication>): Promise<MentoringApplication>;
   deleteMentoringApplication(id: number): Promise<void>;
+
+  // Mentoring Onboarding Questions
+  getMentoringOnboardingQuestions(userId: string): Promise<MentoringOnboardingQuestion[]>;
+  getMentoringOnboardingQuestion(id: number): Promise<MentoringOnboardingQuestion | undefined>;
+  createMentoringOnboardingQuestion(data: InsertMentoringOnboardingQuestion): Promise<MentoringOnboardingQuestion>;
+  updateMentoringOnboardingQuestion(id: number, updates: Partial<InsertMentoringOnboardingQuestion>): Promise<MentoringOnboardingQuestion>;
+  deleteMentoringOnboardingQuestion(id: number): Promise<void>;
 
   // Stage Progression
   appendStageProgression(contactId: number, stage: string, notes?: string): Promise<Contact>;
@@ -1785,6 +1795,30 @@ export class DatabaseStorage implements IStorage {
 
   async deleteMentoringApplication(id: number): Promise<void> {
     await db.delete(mentoringApplications).where(eq(mentoringApplications.id, id));
+  }
+
+  // Mentoring Onboarding Questions
+  async getMentoringOnboardingQuestions(userId: string): Promise<MentoringOnboardingQuestion[]> {
+    return db.select().from(mentoringOnboardingQuestions).where(eq(mentoringOnboardingQuestions.userId, userId)).orderBy(mentoringOnboardingQuestions.sortOrder);
+  }
+
+  async getMentoringOnboardingQuestion(id: number): Promise<MentoringOnboardingQuestion | undefined> {
+    const [item] = await db.select().from(mentoringOnboardingQuestions).where(eq(mentoringOnboardingQuestions.id, id));
+    return item;
+  }
+
+  async createMentoringOnboardingQuestion(data: InsertMentoringOnboardingQuestion): Promise<MentoringOnboardingQuestion> {
+    const [item] = await db.insert(mentoringOnboardingQuestions).values(data).returning();
+    return item;
+  }
+
+  async updateMentoringOnboardingQuestion(id: number, updates: Partial<InsertMentoringOnboardingQuestion>): Promise<MentoringOnboardingQuestion> {
+    const [item] = await db.update(mentoringOnboardingQuestions).set(updates).where(eq(mentoringOnboardingQuestions.id, id)).returning();
+    return item;
+  }
+
+  async deleteMentoringOnboardingQuestion(id: number): Promise<void> {
+    await db.delete(mentoringOnboardingQuestions).where(eq(mentoringOnboardingQuestions.id, id));
   }
 
   // Projects

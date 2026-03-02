@@ -139,6 +139,7 @@ export const mentorAvailability = pgTable("mentor_availability", {
   bufferMinutes: integer("buffer_minutes").default(15),
   isActive: boolean("is_active").default(true),
   maxDailyBookings: integer("max_daily_bookings"),
+  category: text("category").default("mentoring"),
 });
 
 export const meetingTypes = pgTable("meeting_types", {
@@ -151,6 +152,7 @@ export const meetingTypes = pgTable("meeting_types", {
   color: text("color").default("#3b82f6"),
   isActive: boolean("is_active").default(true),
   sortOrder: integer("sort_order").default(0),
+  category: text("category").default("mentoring"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -1606,6 +1608,7 @@ export const mentoringApplications = pgTable("mentoring_applications", {
   whyMentoring: text("why_mentoring"),
   timeCommitmentPerWeek: text("time_commitment_per_week"),
   canCommit3Months: boolean("can_commit_3_months"),
+  onboardingAnswers: jsonb("onboarding_answers"),
   status: text("status").default("pending").notNull(),
   reviewedBy: text("reviewed_by"),
   reviewedDate: timestamp("reviewed_date"),
@@ -1732,3 +1735,22 @@ export type AnalyzeInteractionResponse = {
 export type ContactResponse = Contact & {
   interactions?: Interaction[];
 };
+
+export const mentoringOnboardingQuestions = pgTable("mentoring_onboarding_questions", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  question: text("question").notNull(),
+  fieldType: text("field_type").default("textarea"),
+  options: text("options").array(),
+  isRequired: boolean("is_required").default(true),
+  sortOrder: integer("sort_order").default(0),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertMentoringOnboardingQuestionSchema = createInsertSchema(mentoringOnboardingQuestions).omit({
+  id: true,
+  createdAt: true,
+});
+export type MentoringOnboardingQuestion = typeof mentoringOnboardingQuestions.$inferSelect;
+export type InsertMentoringOnboardingQuestion = z.infer<typeof insertMentoringOnboardingQuestionSchema>;

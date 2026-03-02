@@ -4,7 +4,6 @@ import { Badge } from "@/components/ui/badge";
 import { formatTimeSlot } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -19,6 +18,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState, useMemo } from "react";
 import {
   Plus,
@@ -31,38 +31,14 @@ import {
   CalendarCheck,
   CalendarX,
   Zap,
-  Settings,
   Pencil,
   CalendarClock,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import type { MentorAvailability, MentorProfile, MeetingType } from "@shared/schema";
-
-const COLOR_OPTIONS = [
-  { value: "#22c55e", label: "Green" },
-  { value: "#3b82f6", label: "Blue" },
-  { value: "#8b5cf6", label: "Purple" },
-  { value: "#f59e0b", label: "Amber" },
-  { value: "#ef4444", label: "Red" },
-  { value: "#06b6d4", label: "Cyan" },
-  { value: "#ec4899", label: "Pink" },
-];
+import type { MentorAvailability, MentorProfile } from "@shared/schema";
 
 const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-
-const FOCUS_OPTIONS = [
-  "Venture Planning",
-  "Brand & Identity",
-  "Funding & Sustainability",
-  "Digital & Content",
-  "Skills & Capability",
-  "Networking & Connections",
-  "Goal Setting",
-  "General Catch-up",
-  "Follow-up",
-  "Other",
-];
 
 function getMentorBookingId(profile: MentorProfile): string {
   return profile.mentorUserId || `mentor-${profile.id}`;
@@ -72,10 +48,13 @@ function useMentorProfiles() {
   return useQuery<MentorProfile[]>({ queryKey: ["/api/mentor-profiles"] });
 }
 
-function useAvailability(mentorUserId?: string) {
-  const url = mentorUserId ? `/api/mentor-availability?mentorUserId=${mentorUserId}` : "/api/mentor-availability";
+function useAvailability(mentorUserId?: string, category?: string) {
+  const params = new URLSearchParams();
+  if (mentorUserId) params.set("mentorUserId", mentorUserId);
+  if (category) params.set("category", category);
+  const url = `/api/mentor-availability${params.toString() ? `?${params.toString()}` : ""}`;
   return useQuery<MentorAvailability[]>({
-    queryKey: ["/api/mentor-availability", mentorUserId || "self"],
+    queryKey: ["/api/mentor-availability", mentorUserId || "self", category || "all"],
     queryFn: async () => {
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch availability");
@@ -125,11 +104,7 @@ function useDeleteAvailability() {
   });
 }
 
-function useMeetingTypes() {
-  return useQuery<MeetingType[]>({ queryKey: ["/api/meeting-types"] });
-}
-
-function AvailabilityDialog({ open, onOpenChange, mentorUserId, editSlot }: { open: boolean; onOpenChange: (v: boolean) => void; mentorUserId?: string; editSlot?: MentorAvailability | null }) {
+function AvailabilityDialog({ open, onOpenChange, mentorUserId, editSlot, category }: { open: boolean; onOpenChange: (v: boolean) => void; mentorUserId?: string; editSlot?: MentorAvailability | null; category?: string }) {
   const createAvailability = useCreateAvailability();
   const updateAvailability = useUpdateAvailability();
   const isEditing = !!editSlot;
@@ -148,6 +123,7 @@ function AvailabilityDialog({ open, onOpenChange, mentorUserId, editSlot }: { op
       bufferMinutes: parseInt(bufferMinutes),
       isActive: true,
       ...(mentorUserId ? { userId: mentorUserId } : {}),
+      ...(category ? { category } : {}),
     };
     if (isEditing && editSlot) {
       updateAvailability.mutate({ id: editSlot.id, ...data }, {
@@ -235,303 +211,7 @@ function AvailabilityDialog({ open, onOpenChange, mentorUserId, editSlot }: { op
   );
 }
 
-function MeetingTypeDialog({
-  open,
-  onOpenChange,
-  editingType,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  editingType?: MeetingType | null;
-}) {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-  const [name, setName] = useState(editingType?.name || "");
-  const [description, setDescription] = useState(editingType?.description || "");
-  const [duration, setDuration] = useState(String(editingType?.duration || 30));
-  const [focus, setFocus] = useState(editingType?.focus || "");
-  const [color, setColor] = useState(editingType?.color || "#3b82f6");
-  const [isActive, setIsActive] = useState(editingType?.isActive ?? true);
-
-  const isEditing = !!editingType;
-
-  const createMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const res = await apiRequest("POST", "/api/meeting-types", data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/meeting-types"] });
-      toast({ title: "Meeting type created" });
-      onOpenChange(false);
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const res = await apiRequest("PATCH", `/api/meeting-types/${editingType!.id}`, data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/meeting-types"] });
-      toast({ title: "Meeting type updated" });
-      onOpenChange(false);
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
-
-  const handleSubmit = () => {
-    if (!name.trim()) return;
-    const payload = {
-      name: name.trim(),
-      description: description.trim() || null,
-      duration: parseInt(duration),
-      focus: focus || null,
-      color,
-      isActive,
-    };
-    if (isEditing) {
-      updateMutation.mutate(payload);
-    } else {
-      createMutation.mutate(payload);
-    }
-  };
-
-  const isPending = createMutation.isPending || updateMutation.isPending;
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[440px]">
-        <DialogHeader>
-          <DialogTitle>{isEditing ? "Edit Meeting Type" : "Add Meeting Type"}</DialogTitle>
-          <DialogDescription>
-            {isEditing ? "Update this meeting type" : "Create a new meeting type for booking"}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 py-2">
-          <div className="space-y-2">
-            <Label>Name</Label>
-            <Input
-              placeholder="e.g., Quick Check-in"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              data-testid="input-meeting-type-name"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Description</Label>
-            <Textarea
-              placeholder="Brief description of this meeting type..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={2}
-              data-testid="input-meeting-type-description"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>Duration</Label>
-              <Select value={duration} onValueChange={setDuration}>
-                <SelectTrigger data-testid="select-meeting-type-duration">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="15">15 min</SelectItem>
-                  <SelectItem value="30">30 min</SelectItem>
-                  <SelectItem value="45">45 min</SelectItem>
-                  <SelectItem value="60">60 min</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Focus</Label>
-              <Select value={focus} onValueChange={setFocus}>
-                <SelectTrigger data-testid="select-meeting-type-focus">
-                  <SelectValue placeholder="Select focus..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {FOCUS_OPTIONS.map((f) => (
-                    <SelectItem key={f} value={f}>{f}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Color</Label>
-            <div className="flex items-center gap-2 flex-wrap">
-              {COLOR_OPTIONS.map((c) => (
-                <button
-                  key={c.value}
-                  type="button"
-                  className={`w-8 h-8 rounded-md border-2 transition-all ${
-                    color === c.value ? "border-foreground scale-110" : "border-transparent"
-                  }`}
-                  style={{ backgroundColor: c.value }}
-                  onClick={() => setColor(c.value)}
-                  title={c.label}
-                  data-testid={`color-option-${c.label.toLowerCase()}`}
-                />
-              ))}
-            </div>
-          </div>
-          <div className="flex items-center justify-between">
-            <Label>Active</Label>
-            <Switch
-              checked={isActive}
-              onCheckedChange={setIsActive}
-              data-testid="switch-meeting-type-active"
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={!name.trim() || isPending} data-testid="button-submit-meeting-type">
-            {isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-            {isEditing ? "Save Changes" : "Add Type"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function MeetingTypesSection() {
-  const { data: meetingTypes, isLoading } = useMeetingTypes();
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-  const [showDialog, setShowDialog] = useState(false);
-  const [editingType, setEditingType] = useState<MeetingType | null>(null);
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/meeting-types/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/meeting-types"] });
-      toast({ title: "Meeting type deleted" });
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, ...data }: { id: number } & any) => {
-      const res = await apiRequest("PATCH", `/api/meeting-types/${id}`, data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/meeting-types"] });
-    },
-  });
-
-  const handleEdit = (mt: MeetingType) => {
-    setEditingType(mt);
-    setShowDialog(true);
-  };
-
-  const handleCloseDialog = (v: boolean) => {
-    setShowDialog(v);
-    if (!v) setEditingType(null);
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="font-semibold text-sm">Meeting Types</h3>
-          <p className="text-xs text-muted-foreground">Define different types of sessions people can book</p>
-        </div>
-        <Button size="sm" onClick={() => { setEditingType(null); setShowDialog(true); }} data-testid="button-add-meeting-type">
-          <Plus className="w-4 h-4 mr-1" /> Add Type
-        </Button>
-      </div>
-
-      {isLoading ? (
-        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin" /></div>
-      ) : !meetingTypes || meetingTypes.length === 0 ? (
-        <Card className="p-8 text-center">
-          <Settings className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">No meeting types defined yet</p>
-          <p className="text-xs text-muted-foreground mt-1">Add meeting types to offer different session options</p>
-          <Button size="sm" className="mt-3" onClick={() => { setEditingType(null); setShowDialog(true); }}>
-            <Plus className="w-4 h-4 mr-1" /> Add Meeting Type
-          </Button>
-        </Card>
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {meetingTypes.map((mt) => (
-            <Card key={mt.id} className="p-4" data-testid={`meeting-type-card-${mt.id}`}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3 flex-1 min-w-0">
-                  <div
-                    className="w-3 h-3 rounded-full mt-1 shrink-0"
-                    style={{ backgroundColor: mt.color || "#3b82f6" }}
-                    data-testid={`meeting-type-color-${mt.id}`}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="font-medium text-sm">{mt.name}</h4>
-                      <Badge variant="outline" className="text-[10px] h-5">{mt.duration} min</Badge>
-                      {!mt.isActive && (
-                        <Badge variant="outline" className="text-[10px] h-5 bg-muted text-muted-foreground">Inactive</Badge>
-                      )}
-                    </div>
-                    {mt.description && (
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{mt.description}</p>
-                    )}
-                    {mt.focus && (
-                      <Badge variant="secondary" className="text-[10px] h-5 mt-1.5">{mt.focus}</Badge>
-                    )}
-                  </div>
-                </div>
-                <div className="flex flex-col gap-1 shrink-0 items-end">
-                  <Switch
-                    checked={mt.isActive ?? true}
-                    onCheckedChange={(checked) => updateMutation.mutate({ id: mt.id, isActive: checked })}
-                    data-testid={`switch-meeting-type-${mt.id}`}
-                  />
-                  <div className="flex gap-1">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => handleEdit(mt)}
-                      data-testid={`button-edit-meeting-type-${mt.id}`}
-                    >
-                      <Settings className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => {
-                        if (confirm(`Delete meeting type "${mt.name}"?`)) {
-                          deleteMutation.mutate(mt.id);
-                        }
-                      }}
-                      data-testid={`button-delete-meeting-type-${mt.id}`}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {showDialog && (
-        <MeetingTypeDialog
-          open={showDialog}
-          onOpenChange={handleCloseDialog}
-          editingType={editingType}
-        />
-      )}
-    </div>
-  );
-}
-
-function AvailabilitySection() {
+function AvailabilitySection({ category }: { category: string }) {
   const { data: profiles } = useMentorProfiles();
   const [selectedMentorId, setSelectedMentorId] = useState<string>("");
   const { user } = useAuth();
@@ -545,7 +225,7 @@ function AvailabilitySection() {
   }, [profiles, selectedMentorId]);
 
   const mentorUserId = selectedProfile ? getMentorBookingId(selectedProfile) : undefined;
-  const { data: availability, isLoading } = useAvailability(mentorUserId);
+  const { data: availability, isLoading } = useAvailability(mentorUserId, category);
   const updateAvailability = useUpdateAvailability();
   const deleteAvailability = useDeleteAvailability();
   const [showAdd, setShowAdd] = useState(false);
@@ -560,7 +240,8 @@ function AvailabilitySection() {
       const res = await apiRequest("POST", "/api/mentor-availability/quick-setup", {
         mentorUserId: mentorUserId,
         startTime: "09:00",
-        endTime: "16:00"
+        endTime: "16:00",
+        category,
       });
       return res.json();
     },
@@ -575,7 +256,8 @@ function AvailabilitySection() {
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/mentor-availability/quick-setup-all", {
         startTime: "09:00",
-        endTime: "16:00"
+        endTime: "16:00",
+        category,
       });
       return res.json();
     },
@@ -767,13 +449,14 @@ function AvailabilitySection() {
         </div>
       )}
 
-      <AvailabilityDialog open={showAdd} onOpenChange={setShowAdd} mentorUserId={mentorUserId} />
+      <AvailabilityDialog open={showAdd} onOpenChange={setShowAdd} mentorUserId={mentorUserId} category={category} />
       {editingSlot && (
         <AvailabilityDialog
           open={!!editingSlot}
           onOpenChange={(v) => { if (!v) setEditingSlot(null); }}
           mentorUserId={mentorUserId}
           editSlot={editingSlot}
+          category={category}
         />
       )}
     </div>
@@ -781,19 +464,26 @@ function AvailabilitySection() {
 }
 
 export default function SchedulingPage() {
+  const [category, setCategory] = useState<string>("mentoring");
+
   return (
     <div className="max-w-5xl mx-auto space-y-6 p-4">
       <div>
         <h1 className="text-2xl font-bold" data-testid="heading-scheduling">
           <CalendarClock className="w-6 h-6 inline-block mr-2 align-text-bottom" />
-          Scheduling
+          Availability
         </h1>
-        <p className="text-muted-foreground text-sm">Manage your availability and booking types. Share your booking link so people can find a time.</p>
+        <p className="text-muted-foreground text-sm">Manage weekly availability for mentors and staff</p>
       </div>
 
-      <AvailabilitySection />
+      <Tabs value={category} onValueChange={setCategory}>
+        <TabsList data-testid="tabs-category">
+          <TabsTrigger value="mentoring" data-testid="tab-mentoring">Mentoring</TabsTrigger>
+          <TabsTrigger value="meeting" data-testid="tab-meeting">Meeting</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
-      <MeetingTypesSection />
+      <AvailabilitySection category={category} />
     </div>
   );
 }

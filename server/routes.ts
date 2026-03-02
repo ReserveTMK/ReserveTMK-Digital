@@ -997,13 +997,16 @@ export async function registerRoutes(
   app.get('/api/mentor-availability', isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
     const forMentor = req.query.mentorUserId as string | undefined;
+    const category = req.query.category as string | undefined;
     if (forMentor) {
       const allowed = await isMentorOwner(userId, forMentor);
       if (!allowed) return res.status(403).json({ message: "Forbidden" });
-      const slots = await storage.getMentorAvailability(forMentor);
+      let slots = await storage.getMentorAvailability(forMentor);
+      if (category) slots = slots.filter(s => s.category === category);
       return res.json(slots);
     }
-    const slots = await storage.getMentorAvailability(userId);
+    let slots = await storage.getMentorAvailability(userId);
+    if (category) slots = slots.filter(s => s.category === category);
     res.json(slots);
   });
 
@@ -1043,17 +1046,21 @@ export async function registerRoutes(
   app.get('/api/meeting-types', isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
+      const category = req.query.category as string | undefined;
       let types = await storage.getMeetingTypes(userId);
       if (types.length === 0) {
         const defaults = [
-          { userId, name: 'Quick Chat', description: 'A brief check-in or introduction', duration: 15, focus: 'general', color: '#22c55e', isActive: true, sortOrder: 0 },
-          { userId, name: 'Standard Session', description: 'A regular mentoring session', duration: 30, focus: 'mentoring', color: '#3b82f6', isActive: true, sortOrder: 1 },
-          { userId, name: 'Deep Dive', description: 'An in-depth working session', duration: 60, focus: 'strategy', color: '#8b5cf6', isActive: true, sortOrder: 2 },
+          { userId, name: 'Quick Chat', description: 'A brief check-in or introduction', duration: 15, focus: 'general', color: '#22c55e', isActive: true, sortOrder: 0, category: 'mentoring' },
+          { userId, name: 'Standard Session', description: 'A regular mentoring session', duration: 30, focus: 'mentoring', color: '#3b82f6', isActive: true, sortOrder: 1, category: 'mentoring' },
+          { userId, name: 'Deep Dive', description: 'An in-depth working session', duration: 60, focus: 'strategy', color: '#8b5cf6', isActive: true, sortOrder: 2, category: 'mentoring' },
         ];
         for (const d of defaults) {
           await storage.createMeetingType(d);
         }
         types = await storage.getMeetingTypes(userId);
+      }
+      if (category) {
+        types = types.filter(t => t.category === category);
       }
       res.json(types);
     } catch (err: any) {
@@ -1108,10 +1115,14 @@ export async function registerRoutes(
   app.get('/api/public/mentoring/:userId/meeting-types', async (req, res) => {
     try {
       const { userId } = req.params;
+      const category = req.query.category as string | undefined;
       const resolved = await resolveMentorUserId(userId);
       const ownerUserId = resolved.ownerUserId || resolved.availabilityUserId;
       const types = await storage.getMeetingTypes(ownerUserId);
-      const activeTypes = types.filter(t => t.isActive);
+      let activeTypes = types.filter(t => t.isActive);
+      if (category) {
+        activeTypes = activeTypes.filter(t => t.category === category);
+      }
       res.json(activeTypes.map(t => ({
         id: t.id,
         name: t.name,
@@ -1120,6 +1131,7 @@ export async function registerRoutes(
         focus: t.focus,
         color: t.color,
         sortOrder: t.sortOrder,
+        category: t.category,
       })));
     } catch (err: any) {
       res.status(500).json({ message: "Failed to fetch meeting types" });
@@ -1129,14 +1141,19 @@ export async function registerRoutes(
   app.get('/api/public/mentoring/:userId/availability', async (req, res) => {
     try {
       const { userId } = req.params;
+      const category = req.query.category as string | undefined;
       const slots = await storage.getMentorAvailability(userId);
-      const activeSlots = slots.filter(s => s.isActive);
+      let activeSlots = slots.filter(s => s.isActive);
+      if (category) {
+        activeSlots = activeSlots.filter(s => s.category === category);
+      }
       res.json(activeSlots.map(s => ({
         dayOfWeek: s.dayOfWeek,
         startTime: s.startTime,
         endTime: s.endTime,
         slotDuration: s.slotDuration,
         bufferMinutes: s.bufferMinutes,
+        category: s.category,
       })));
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch availability" });
@@ -1167,14 +1184,17 @@ export async function registerRoutes(
   app.get('/api/public/mentoring/:userId/slots', async (req, res) => {
     try {
       const { userId } = req.params;
-      const { date } = req.query;
+      const { date, category } = req.query;
       if (!date || typeof date !== 'string') {
         return res.status(400).json({ message: "date query parameter required (YYYY-MM-DD)" });
       }
 
       const resolved = await resolveMentorUserId(userId);
       const availabilitySlots = await storage.getMentorAvailability(resolved.availabilityUserId);
-      const activeSlots = availabilitySlots.filter(s => s.isActive);
+      let activeSlots = availabilitySlots.filter(s => s.isActive);
+      if (category && typeof category === 'string') {
+        activeSlots = activeSlots.filter(s => s.category === category);
+      }
 
       const targetDate = new Date(date + 'T00:00:00+13:00');
       const jsDay = targetDate.getDay();
@@ -1301,7 +1321,7 @@ export async function registerRoutes(
       const resolved = await resolveMentorUserId(rawId);
       const meetingUserId = resolved.availabilityUserId;
       const contactOwnerUserId = resolved.ownerUserId || resolved.availabilityUserId;
-      const { name, email, phone, date, time, duration, focus, notes, meetingTypeId } = req.body;
+      const { name, email, phone, date, time, duration, focus, notes, meetingTypeId, pathway, onboardingAnswers } = req.body;
 
       if (!name || !date || !time) {
         return res.status(400).json({ message: "name, date, and time are required" });
@@ -1312,11 +1332,13 @@ export async function registerRoutes(
       const endTime = new Date(startTime.getTime() + slotDuration * 60 * 1000);
 
       let contact;
+      let isNewContact = false;
       if (email) {
         const allContacts = await storage.getContacts(contactOwnerUserId);
         contact = allContacts.find((c: any) => c.email && c.email.toLowerCase() === email.toLowerCase());
       }
       if (!contact) {
+        isNewContact = true;
         contact = await storage.createContact({
           userId: contactOwnerUserId,
           name,
@@ -1327,22 +1349,37 @@ export async function registerRoutes(
         });
       }
 
+      const meetingType = (pathway === 'meeting') ? 'catchup' : 'mentoring';
+      const meetingTitle = (pathway === 'meeting') ? `Meeting: ${name}` : `Mentoring: ${name}`;
+
       const meeting = await storage.createMeeting({
         userId: meetingUserId,
         contactId: contact.id,
-        title: `Mentoring: ${name}`,
+        title: meetingTitle,
         description: focus || null,
         startTime,
         endTime,
         status: 'scheduled',
         location: null,
-        type: 'mentoring',
+        type: meetingType,
         duration: slotDuration,
         bookingSource: 'public_link',
         notes: notes || null,
         mentoringFocus: focus || null,
         meetingTypeId: meetingTypeId ? parseInt(meetingTypeId) : undefined,
       });
+
+      if (pathway === 'mentoring' && isNewContact && onboardingAnswers) {
+        try {
+          await storage.createMentoringApplication({
+            contactId: contact.id,
+            onboardingAnswers: onboardingAnswers,
+            status: 'pending',
+          });
+        } catch (appErr) {
+          console.warn("Failed to create mentoring application:", appErr);
+        }
+      }
 
       // Create Google Calendar event asynchronously
       (async () => {
@@ -1371,6 +1408,44 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Public booking error:", err);
       res.status(500).json({ message: "Failed to book session" });
+    }
+  });
+
+  app.get('/api/public/mentoring/:userId/check-mentee', async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const email = req.query.email as string;
+      if (!email) return res.status(400).json({ message: "email query parameter required" });
+      const resolved = await resolveMentorUserId(userId);
+      const ownerUserId = resolved.ownerUserId || resolved.availabilityUserId;
+      const allContacts = await storage.getContacts(ownerUserId);
+      const contact = allContacts.find((c: any) => c.email && c.email.toLowerCase() === email.toLowerCase());
+      if (!contact) return res.json({ isReturning: false });
+      const relationships = await storage.getMentoringRelationshipsByContact(contact.id);
+      const hasActive = relationships.some((r: any) => r.status === 'active' || r.status === 'on_hold');
+      res.json({ isReturning: hasActive, contactName: contact.name });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to check mentee status" });
+    }
+  });
+
+  app.get('/api/public/mentoring/:userId/onboarding-questions', async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const resolved = await resolveMentorUserId(userId);
+      const ownerUserId = resolved.ownerUserId || resolved.availabilityUserId;
+      const questions = await storage.getMentoringOnboardingQuestions(ownerUserId);
+      const activeQuestions = questions.filter(q => q.isActive);
+      res.json(activeQuestions.map(q => ({
+        id: q.id,
+        question: q.question,
+        fieldType: q.fieldType,
+        options: q.options,
+        isRequired: q.isRequired,
+        sortOrder: q.sortOrder,
+      })));
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch onboarding questions" });
     }
   });
 
@@ -2324,9 +2399,11 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const targetUserId = req.body.mentorUserId || adminUserId;
       const allowed = await isMentorOwner(adminUserId, targetUserId);
       if (!allowed) return res.status(403).json({ message: "Forbidden" });
+      const category = req.body.category || "mentoring";
       const existing = await storage.getMentorAvailability(targetUserId);
-      if (existing.length > 0) {
-        return res.status(400).json({ message: "Availability already configured" });
+      const categoryExisting = existing.filter(s => s.category === category);
+      if (categoryExisting.length > 0) {
+        return res.status(400).json({ message: "Availability already configured for this category" });
       }
       const startTime = req.body.startTime || "09:00";
       const endTime = req.body.endTime || "16:00";
@@ -2340,6 +2417,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
           slotDuration: 60,
           bufferMinutes: 0,
           isActive: true,
+          category,
         });
         defaults.push(slot);
       }
@@ -2358,13 +2436,15 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         return res.status(400).json({ message: "No mentor profiles found" });
       }
 
+      const category = req.body.category || "mentoring";
       const startTime = req.body.startTime || "09:00";
       const endTime = req.body.endTime || "16:00";
       let setupCount = 0;
       for (const profile of profiles) {
         const mentorId = profile.mentorUserId || `mentor-${profile.id}`;
         const existing = await storage.getMentorAvailability(mentorId);
-        if (existing.length > 0) continue;
+        const categoryExisting = existing.filter(s => s.category === category);
+        if (categoryExisting.length > 0) continue;
         for (let day = 0; day <= 4; day++) {
           await storage.createMentorAvailability({
             userId: mentorId,
@@ -2374,11 +2454,12 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
             slotDuration: 60,
             bufferMinutes: 0,
             isActive: true,
+            category,
           });
         }
         setupCount++;
       }
-      res.json({ message: `Availability set for ${setupCount} mentor(s) — Mon\u2013Fri, 9am\u20134pm`, setupCount });
+      res.json({ message: `Availability set for ${setupCount} mentor(s) \u2014 Mon\u2013Fri, 9am\u20134pm`, setupCount });
     } catch (err: any) {
       console.error("Quick setup all error:", err);
       res.status(500).json({ message: "Failed to set up availability for all mentors" });
@@ -7287,6 +7368,72 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       res.status(204).send();
     } catch (err: any) {
       res.status(500).json({ message: "Failed to delete mentoring application" });
+    }
+  });
+
+  // === MENTORING ONBOARDING QUESTIONS ===
+
+  app.get("/api/mentoring-onboarding-questions", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const questions = await storage.getMentoringOnboardingQuestions(userId);
+      if (questions.length === 0) {
+        const defaults = [
+          { userId, question: "Tell us about what you're building", fieldType: "textarea", isRequired: true, sortOrder: 0, isActive: true },
+          { userId, question: "What are you stuck on?", fieldType: "textarea", isRequired: true, sortOrder: 1, isActive: true },
+          { userId, question: "What do you need help with?", fieldType: "textarea", isRequired: true, sortOrder: 2, isActive: true },
+          { userId, question: "What have you already tried?", fieldType: "textarea", isRequired: false, sortOrder: 3, isActive: true },
+          { userId, question: "Why are you looking for mentoring?", fieldType: "textarea", isRequired: true, sortOrder: 4, isActive: true },
+          { userId, question: "How many hours per week can you commit?", fieldType: "select", options: ["1-2 hours", "3-5 hours", "5-10 hours", "10+ hours"], isRequired: true, sortOrder: 5, isActive: true },
+          { userId, question: "Can you commit to 3 months?", fieldType: "boolean", isRequired: true, sortOrder: 6, isActive: true },
+        ];
+        for (const d of defaults) {
+          await storage.createMentoringOnboardingQuestion(d as any);
+        }
+        const seeded = await storage.getMentoringOnboardingQuestions(userId);
+        return res.json(seeded);
+      }
+      res.json(questions);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch onboarding questions" });
+    }
+  });
+
+  app.post("/api/mentoring-onboarding-questions", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const created = await storage.createMentoringOnboardingQuestion({ ...req.body, userId });
+      res.status(201).json(created);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to create onboarding question" });
+    }
+  });
+
+  app.patch("/api/mentoring-onboarding-questions/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getMentoringOnboardingQuestion(id);
+      if (!existing) return res.status(404).json({ message: "Not found" });
+      const userId = (req.user as any).claims.sub;
+      if (existing.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+      const updated = await storage.updateMentoringOnboardingQuestion(id, req.body);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update onboarding question" });
+    }
+  });
+
+  app.delete("/api/mentoring-onboarding-questions/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getMentoringOnboardingQuestion(id);
+      if (!existing) return res.status(404).json({ message: "Not found" });
+      const userId = (req.user as any).claims.sub;
+      if (existing.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+      await storage.deleteMentoringOnboardingQuestion(id);
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to delete onboarding question" });
     }
   });
 

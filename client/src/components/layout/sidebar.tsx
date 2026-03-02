@@ -79,7 +79,7 @@ const navigation: NavItem[] = [
   {
     name: "Settings", href: "/gmail-import", icon: Settings,
     children: [
-      { name: "Mentor Meetings & Availability", href: "/scheduling", icon: CalendarClock },
+      { name: "Availability", href: "/scheduling", icon: CalendarClock },
       { name: "Gmail Import", href: "/gmail-import", icon: Mail },
     ],
   },
