@@ -396,7 +396,6 @@ export default function Dashboard() {
             <MetricCard
               title="Impact Debriefs"
               value={(impactLogs as any[])?.length || 0}
-              subtext={hasLegacy && blendedStats!.legacy.totalActivations > 0 ? `incl. ${blendedStats!.legacy.totalActivations.toLocaleString()} legacy activations` : undefined}
               icon={<Mic className="w-5 h-5" />}
               color="green"
               data-testid="metric-debriefs"
@@ -413,7 +412,6 @@ export default function Dashboard() {
             <MetricCard
               title="Total Events"
               value={events?.length || 0}
-              subtext={hasLegacy && blendedStats!.legacy.totalBookings > 0 ? `incl. ${blendedStats!.legacy.totalBookings.toLocaleString()} legacy bookings` : undefined}
               icon={<CalendarIcon className="w-5 h-5" />}
               color="blue"
               data-testid="metric-total-events"
