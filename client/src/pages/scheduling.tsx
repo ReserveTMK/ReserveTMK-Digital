@@ -34,6 +34,8 @@ import {
   Settings,
   Pencil,
   CalendarClock,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import type { MentorAvailability, MentorProfile, MeetingType } from "@shared/schema";
 
@@ -590,6 +592,20 @@ function AvailabilitySection() {
     toast({ title: "Link copied!", description: "Share this link for people to book sessions" });
   };
 
+  const handlePrevMentor = () => {
+    if (!profiles || profiles.length <= 1) return;
+    const currentIndex = profiles.findIndex(p => String(p.id) === selectedMentorId);
+    const prevIndex = (currentIndex - 1 + profiles.length) % profiles.length;
+    setSelectedMentorId(String(profiles[prevIndex].id));
+  };
+
+  const handleNextMentor = () => {
+    if (!profiles || profiles.length <= 1) return;
+    const currentIndex = profiles.findIndex(p => String(p.id) === selectedMentorId);
+    const nextIndex = (currentIndex + 1) % profiles.length;
+    setSelectedMentorId(String(profiles[nextIndex].id));
+  };
+
   if (!profiles) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" /></div>;
 
   const slots = (availability || []) as MentorAvailability[];
@@ -599,16 +615,29 @@ function AvailabilitySection() {
       {profiles.length > 1 && (
         <div className="flex items-center gap-3">
           <Label className="text-sm font-medium shrink-0">Manage availability for:</Label>
-          <Select value={selectedMentorId || String(profiles[0]?.id)} onValueChange={setSelectedMentorId}>
-            <SelectTrigger className="w-[200px]" data-testid="select-mentor-availability">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {profiles.map(p => (
-                <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              onClick={handlePrevMentor}
+              data-testid="button-prev-mentor"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <div className="px-4 py-1.5 bg-background border rounded-md min-w-[160px] text-center text-sm font-medium">
+              {selectedProfile?.name}
+            </div>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              onClick={handleNextMentor}
+              data-testid="button-next-mentor"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       )}
 
