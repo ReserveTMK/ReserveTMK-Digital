@@ -1,0 +1,1091 @@
+Build a complete Venue Hire Bookings & Automation system for Reserve Tāmaki with workflows, calendar booking, and flexible pricing.
+
+CONTEXT:
+We venue hire our space (rooms, hot desks) to individuals and organizations. Currently managing bookings manually with limited automation.
+
+KEY REQUIREMENTS:
+1. Automated workflow: Inquiry → Confirmed → Completed → Invoiced
+2. Regular bookers can view calendar and select dates
+3. Regular bookers can see remaining bookings (if prepaid packages)
+4. Post-survey only for: one-off bookers OR first-time bookings
+5. Manual survey trigger (send survey on demand)
+6. Venue hire instructions + reminder sent together in confirmation
+7. Regular booker pricing tiers: Full Paying, Community Discount, Koha/MOU
+
+This is a 5-part implementation:
+- Part 1: Database updates for workflows, pricing tiers, and booking packages
+- Part 2: Accept/Decline workflow with automated emails (instructions + reminder combined)
+- Part 3: Smart post-booking survey system (one-off or first-timers only)
+- Part 4: Regular booker calendar + booking management
+- Part 5: Xero integration with tiered pricing
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 1: DATABASE UPDATES
+
+Update bookings table and create supporting tables:
+
+ALTER TABLE bookings
+ADD COLUMN IF NOT EXISTS status ENUM('inquiry', 'confirmed', 'completed', 'cancelled') DEFAULT 'inquiry',
+ADD COLUMN IF NOT EXISTS confirmation_sent BOOLEAN DEFAULT FALSE,
+ADD COLUMN IF NOT EXISTS instructions_sent BOOLEAN DEFAULT FALSE,
+ADD COLUMN IF NOT EXISTS post_survey_sent BOOLEAN DEFAULT FALSE,
+ADD COLUMN IF NOT EXISTS xero_invoice_id VARCHAR(100),
+ADD COLUMN IF NOT EXISTS xero_invoice_number VARCHAR(50),
+ADD COLUMN IF NOT EXISTS xero_invoice_status ENUM('draft', 'submitted', 'authorised', 'paid') DEFAULT 'draft',
+ADD COLUMN IF NOT EXISTS booking_source ENUM('manual', 'regular_booker_calendar', 'public_inquiry') DEFAULT 'manual',
+ADD COLUMN IF NOT EXISTS confirmed_by INT,
+ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMP,
+ADD COLUMN IF NOT EXISTS completed_by INT,
+ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP,
+ADD COLUMN IF NOT EXISTS is_first_booking BOOLEAN DEFAULT FALSE;
+
+-- Add foreign keys
+ALTER TABLE bookings
+ADD FOREIGN KEY (confirmed_by) REFERENCES contacts(id) ON DELETE SET NULL,
+ADD FOREIGN KEY (completed_by) REFERENCES contacts(id) ON DELETE SET NULL;
+
+-- Regular bookers with pricing tiers and booking packages
+CREATE TABLE IF NOT EXISTS regular_bookers (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  contact_id INT NOT NULL,
+  
+  -- Organization details
+  organization_name VARCHAR(200),
+  billing_email VARCHAR(200) NOT NULL,
+  billing_address TEXT,
+  billing_phone VARCHAR(50),
+  
+  -- Pricing tier
+  pricing_tier ENUM('full_paying', 'community_discount', 'koha_mou') NOT NULL DEFAULT 'full_paying',
+  discount_percentage DECIMAL(5,2) DEFAULT 0.00, -- e.g., 20.00 for 20% off
+  koha_mou_notes TEXT, -- Notes for koha/MOU arrangements
+  
+  -- Prepaid booking packages
+  has_booking_package BOOLEAN DEFAULT FALSE,
+  package_total_bookings INT DEFAULT 0, -- e.g., bought 10 bookings
+  package_used_bookings INT DEFAULT 0, -- e.g., used 3 bookings
+  package_remaining AS (package_total_bookings - package_used_bookings) STORED,
+  package_expires_at DATE,
+  
+  -- Account access
+  login_email VARCHAR(200),
+  login_enabled BOOLEAN DEFAULT FALSE,
+  can_view_calendar BOOLEAN DEFAULT TRUE,
+  can_self_book BOOLEAN DEFAULT TRUE,
+  
+  -- Xero integration
+  xero_contact_id VARCHAR(100),
+  payment_terms ENUM('immediate', 'net_7', 'net_14', 'net_30') DEFAULT 'immediate',
+  
+  -- Status
+  account_status ENUM('active', 'inactive', 'suspended') DEFAULT 'active',
+  
+  -- Notes
+  notes TEXT,
+  usual_booking_needs TEXT,
+  
+  -- Metadata
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  
+  FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE,
+  INDEX idx_pricing_tier (pricing_tier),
+  INDEX idx_account_status (account_status),
+  INDEX idx_login_email (login_email)
+);
+
+-- Venue hire instructions (reusable templates)
+CREATE TABLE IF NOT EXISTS venue_instructions (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  instruction_type ENUM('access', 'arrival', 'departure', 'emergency', 'general') NOT NULL,
+  title VARCHAR(200),
+  content TEXT,
+  is_active BOOLEAN DEFAULT TRUE,
+  display_order INT DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_type (instruction_type),
+  INDEX idx_active (is_active)
+);
+
+-- Surveys table (if not exists from Bundle 10)
+CREATE TABLE IF NOT EXISTS surveys (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  survey_type ENUM('post_booking', 'mentoring_onboarding', '3_month', '6_month', 'exit') NOT NULL,
+  related_id INT, -- booking_id for post_booking surveys
+  contact_id INT, -- who we're surveying
+  
+  -- Survey data
+  questions JSON,
+  responses JSON,
+  
+  -- Status
+  sent_at TIMESTAMP,
+  completed_at TIMESTAMP,
+  status ENUM('pending', 'sent', 'completed', 'expired') DEFAULT 'pending',
+  
+  -- Manual trigger tracking
+  manually_triggered BOOLEAN DEFAULT FALSE,
+  triggered_by INT, -- staff member who manually sent it
+  
+  -- Metadata
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  
+  FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE,
+  FOREIGN KEY (triggered_by) REFERENCES contacts(id) ON DELETE SET NULL,
+  INDEX idx_type (survey_type),
+  INDEX idx_status (status),
+  INDEX idx_related (related_id)
+);
+
+-- Insert default venue instructions
+INSERT INTO venue_instructions (instruction_type, title, content, display_order) VALUES
+('access', 'Entry Codes', 'Entry Code: 1234\nLockbox Code: 5678\nThe lockbox is located by the main entrance on Line Road.', 1),
+('access', 'WiFi', 'Network: Reserve_Guest\nPassword: ReserveGuest2026', 2),
+('arrival', 'Arrival Instructions', 'Enter via main entrance on Line Road. Free parking available on the street. The space will be set up and ready for you.', 1),
+('departure', 'Departure Checklist', 'Please leave the space as you found it:\n• Turn off lights\n• Close windows\n• Lock doors\n• Leave key in lockbox\n• Take all rubbish with you', 1),
+('emergency', 'Emergency Contacts', 'Reserve Team: 021 022 98172\nFire/Ambulance/Police: 111\nFirst Aid kit located in kitchen', 1),
+('general', 'What\'s Included', 'Your booking includes:\n• High-speed WiFi\n• Projector and screen\n• Whiteboard and markers\n• Tea/coffee facilities\n• Access to kitchen\n• Air conditioning/heating', 1);
+
+VERIFICATION:
+1. DESCRIBE bookings;
+2. DESCRIBE regular_bookers;
+3. DESCRIBE venue_instructions;
+4. DESCRIBE surveys;
+5. SELECT * FROM venue_instructions;
+6. Test: Insert test regular booker with each pricing tier
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 2: ACCEPT/DECLINE WORKFLOW WITH COMBINED INSTRUCTIONS
+
+Build automated booking confirmation with venue instructions and reminder in one email.
+
+───────────────────────────────────────────────────────────────────────
+UI UPDATE: BOOKING DETAIL PAGE
+───────────────────────────────────────────────────────────────────────
+
+Enhance booking detail page with status-based actions:
+
+┌────────────────────────────────────────────────────────────┐
+│ Booking #1234                                              │
+│ Status: INQUIRY                          [Accept] [Decline]│
+├────────────────────────────────────────────────────────────┤
+│                                                             │
+│ Client: Sarah Johnson                                      │
+│ Type: Regular Booker (Community Discount - 20% off)       │
+│ Contact: sarah@example.com | 021 987 6543                 │
+│                                                             │
+│ Booking Details:                                           │
+│ • Space: Meeting Room                                      │
+│ • Date: 15 March 2026                                      │
+│ • Time: 9:00 AM - 12:00 PM (3 hours)                      │
+│ • Standard Rate: $50/hour = $150                          │
+│ • Discount (20%): -$30                                     │
+│ • Total: $120 + GST                                        │
+│                                                             │
+│ Package Status: 7 bookings remaining (from 10)            │
+│                                                             │
+│ Special Requests:                                          │
+│ • Projector needed                                         │
+│ • 10 chairs setup                                          │
+│                                                             │
+└────────────────────────────────────────────────────────────┘
+
+For Koha/MOU bookings:
+┌────────────────────────────────────────────────────────────┐
+│ Type: Regular Booker (Koha/MOU)                           │
+│ Arrangement: Community partnership - no charge            │
+│ MOU Notes: Street Athletes - 4 free bookings/month        │
+│                                                             │
+│ • Total: $0 (Koha/MOU)                                     │
+└────────────────────────────────────────────────────────────┘
+
+───────────────────────────────────────────────────────────────────────
+WORKFLOW 1: ACCEPT BOOKING
+───────────────────────────────────────────────────────────────────────
+
+When [Accept Booking] clicked:
+
+STEP 1: Update booking record
+UPDATE bookings SET
+  status = 'confirmed',
+  confirmed_by = [current_user_id],
+  confirmed_at = NOW(),
+  updated_at = NOW()
+WHERE id = [booking_id];
+
+STEP 2: If regular booker with package, decrement remaining
+If contact is regular_booker AND has_booking_package = TRUE:
+
+UPDATE regular_bookers SET
+  package_used_bookings = package_used_bookings + 1
+WHERE contact_id = [contact_id];
+
+-- Verify remaining
+SELECT package_remaining FROM regular_bookers WHERE contact_id = [contact_id];
+-- Display: "7 bookings remaining"
+
+STEP 3: Gather all venue instructions
+SELECT title, content 
+FROM venue_instructions 
+WHERE is_active = TRUE 
+ORDER BY instruction_type, display_order;
+
+STEP 4: Send combined confirmation email (instructions + reminder)
+
+EMAIL TEMPLATE:
+---
+To: [client_email]
+Subject: Booking Confirmed - Reserve Tāmaki [Space Name] on [Date]
+
+Hi [client_name],
+
+Your venue hire booking is confirmed! 🎉
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BOOKING DETAILS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Space: [space_name]
+Date: [day], [date] (TOMORROW/IN 3 DAYS) ← Dynamic based on booking_date
+Time: [start_time] - [end_time] ([duration] hours)
+
+[If regular booker with discount:]
+Rate: $[standard_rate]/hour
+Discount ([discount_percentage]%): -$[discount_amount]
+Total: $[discounted_total] + GST
+
+[If koha/MOU:]
+Arrangement: Koha/MOU (No charge)
+[koha_mou_notes]
+
+[If regular booker with package:]
+Package Status: [remaining] bookings remaining
+
+[If standard/one-off:]
+Total: $[total_amount] + GST
+Invoice: Will be emailed separately
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ACCESS INFORMATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Loop through venue_instructions where type = 'access']
+[title]
+[content]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ARRIVAL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Location:
+Reserve Tāmaki Hub
+133a Line Road, Glen Innes, Auckland 1072
+Free parking available on Line Road
+
+[Loop through venue_instructions where type = 'arrival']
+[content]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WHAT'S INCLUDED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Loop through venue_instructions where type = 'general']
+[content]
+
+Your Special Requests:
+[If special_requests exist, list them]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BEFORE YOU LEAVE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Loop through venue_instructions where type = 'departure']
+[content]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EMERGENCY CONTACTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Loop through venue_instructions where type = 'emergency']
+[content]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Questions or need to make changes?
+Reply to this email or call 021 022 98172
+
+See you [on date]!
+
+Ngā mihi,
+Reserve Tāmaki Team
+
+---
+
+STEP 5: Update tracking flags
+UPDATE bookings SET
+  confirmation_sent = TRUE,
+  instructions_sent = TRUE
+WHERE id = [booking_id];
+
+STEP 6: Add to calendar
+Create calendar event:
+- Title: "Venue Hire: [client_name] - [space_name]"
+- Start: [booking_date] [start_time]
+- End: [booking_date] [end_time]
+- Location: "Reserve Tāmaki, 133a Line Road, Glen Innes"
+- Description: "[client_name]\n[phone]\n[special_requests]\n[pricing_tier if regular]"
+
+STEP 7: Generate Xero invoice (see Part 5)
+Only if pricing_tier != 'koha_mou'
+Apply discount if community_discount tier
+
+STEP 8: Show success message
+"Booking confirmed! Email sent to [client_email] with all venue instructions."
+
+───────────────────────────────────────────────────────────────────────
+WORKFLOW 2: MARK AS COMPLETED
+───────────────────────────────────────────────────────────────────────
+
+After booking date passes, show [Mark as Completed] button.
+
+When clicked:
+
+STEP 1: Update booking
+UPDATE bookings SET
+  status = 'completed',
+  completed_by = [current_user_id],
+  completed_at = NOW()
+WHERE id = [booking_id];
+
+STEP 2: Update contact interaction
+UPDATE contacts SET
+  last_interaction = NOW()
+WHERE id = [contact_id];
+
+STEP 3: Check if survey should be sent
+Survey logic (SMART):
+
+-- Check if one-off booker (not in regular_bookers table)
+SELECT COUNT(*) FROM regular_bookers WHERE contact_id = [contact_id];
+is_one_off = (count == 0)
+
+-- Check if first booking for this contact
+SELECT COUNT(*) FROM bookings 
+WHERE contact_id = [contact_id] 
+AND status = 'completed' 
+AND id != [current_booking_id];
+is_first_booking = (count == 0)
+
+-- Send survey ONLY if one-off OR first booking
+should_send_survey = (is_one_off OR is_first_booking)
+
+IF should_send_survey:
+  -- Create and send survey (see Part 3)
+  -- Mark booking: is_first_booking = TRUE if applicable
+ELSE:
+  -- Skip survey for regular bookers (after first booking)
+  -- Show: "Survey skipped (regular booker, not first booking)"
+
+STEP 4: Show confirmation
+"Booking marked as completed. [Survey sent/Survey skipped]"
+
+───────────────────────────────────────────────────────────────────────
+MANUAL ACTIONS
+───────────────────────────────────────────────────────────────────────
+
+Add these buttons to booking detail page (when confirmed or completed):
+
+[Resend Confirmation & Instructions]
+- Resends the full email with all venue details
+- Updates confirmation_sent timestamp
+- Use case: Client lost email, needs codes again
+
+[Send Survey Now]
+- Manually trigger survey regardless of booking status
+- Creates survey record with manually_triggered = TRUE
+- Use case: Want feedback even from regular booker
+
+Implementation:
+
+Button: [Send Survey Now]
+On click:
+1. Create survey (see Part 3)
+2. SET manually_triggered = TRUE, triggered_by = [current_user_id]
+3. Send immediately
+4. Show: "Survey sent to [client_email]"
+5. Log action in booking notes/history
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 3: SMART POST-BOOKING SURVEY SYSTEM
+
+Only send surveys to one-off bookers OR first-time bookings.
+
+───────────────────────────────────────────────────────────────────────
+SURVEY QUESTIONS (Post-Booking)
+───────────────────────────────────────────────────────────────────────
+
+{
+  "questions": [
+    {
+      "id": 1,
+      "type": "rating",
+      "question": "How would you rate your overall experience?",
+      "scale": 5,
+      "required": true
+    },
+    {
+      "id": 2,
+      "type": "rating",
+      "question": "How clean and well-maintained was the space?",
+      "scale": 5,
+      "required": true
+    },
+    {
+      "id": 3,
+      "type": "yes_no",
+      "question": "Did you have everything you needed?",
+      "required": true
+    },
+    {
+      "id": 4,
+      "type": "text",
+      "question": "What could we improve?",
+      "required": false
+    },
+    {
+      "id": 5,
+      "type": "yes_no",
+      "question": "Would you book with us again?",
+      "required": true
+    },
+    {
+      "id": 6,
+      "type": "text",
+      "question": "Any other feedback?",
+      "required": false
+    },
+    {
+      "id": 7,
+      "type": "testimonial",
+      "question": "Would you like to share a testimonial? (optional)",
+      "required": false,
+      "consent": true,
+      "subtext": "By submitting, you give us permission to share publicly."
+    }
+  ]
+}
+
+───────────────────────────────────────────────────────────────────────
+SURVEY TRIGGER LOGIC (SMART)
+───────────────────────────────────────────────────────────────────────
+
+When booking marked as 'completed' OR manually triggered:
+
+FUNCTION: should_send_automatic_survey(contact_id, booking_id)
+
+-- Check 1: Is this a one-off booker?
+SELECT COUNT(*) AS is_regular 
+FROM regular_bookers 
+WHERE contact_id = [contact_id] AND account_status = 'active';
+
+-- Check 2: How many completed bookings does this contact have?
+SELECT COUNT(*) AS previous_bookings
+FROM bookings 
+WHERE contact_id = [contact_id] 
+AND status = 'completed'
+AND id != [booking_id]; -- exclude current booking
+
+-- Decision logic
+IF is_regular == 0: 
+  RETURN TRUE; -- One-off booker, always send survey
+
+IF is_regular > 0 AND previous_bookings == 0:
+  RETURN TRUE; -- Regular booker's first booking, send survey
+
+IF is_regular > 0 AND previous_bookings > 0:
+  RETURN FALSE; -- Regular booker with previous bookings, skip survey
+
+-- Manual override
+IF manually_triggered == TRUE:
+  RETURN TRUE; -- Staff clicked "Send Survey Now", always send
+
+END FUNCTION
+
+───────────────────────────────────────────────────────────────────────
+SEND SURVEY
+───────────────────────────────────────────────────────────────────────
+
+IF should_send_survey OR manually_triggered:
+
+STEP 1: Create survey record
+INSERT INTO surveys (
+  survey_type,
+  related_id,
+  contact_id,
+  questions,
+  status,
+  manually_triggered,
+  triggered_by
+) VALUES (
+  'post_booking',
+  [booking_id],
+  [contact_id],
+  [questions_json],
+  'pending',
+  [TRUE if manual, FALSE if auto],
+  [user_id if manual, NULL if auto]
+);
+
+STEP 2: Generate unique survey link
+survey_token = generate_unique_token(); -- e.g., UUID
+survey_url = https://app.reservetmk.co.nz/survey/[survey_token]
+
+STEP 3: Send email
+
+EMAIL TEMPLATE:
+---
+To: [client_email]
+Subject: How was your experience at Reserve Tāmaki?
+
+Hi [client_name],
+
+Thanks for using our space on [booking_date]!
+
+We'd love to hear about your experience. It'll only take 2 minutes.
+
+[TAKE SURVEY]
+→ [survey_url]
+
+Your feedback helps us improve and helps other whānau find great spaces.
+
+Ngā mihi,
+Reserve Tāmaki Team
+
+P.S. If you had a great experience, we'd love a testimonial!
+---
+
+STEP 4: Update tracking
+UPDATE bookings SET
+  post_survey_sent = TRUE
+WHERE id = [booking_id];
+
+UPDATE surveys SET
+  sent_at = NOW(),
+  status = 'sent'
+WHERE id = [survey_id];
+
+───────────────────────────────────────────────────────────────────────
+SURVEY DISPLAY IN BOOKING DETAIL
+───────────────────────────────────────────────────────────────────────
+
+Show survey status on booking detail page:
+
+IF booking completed AND survey sent:
+┌────────────────────────────────────────────────────────────┐
+│ POST-BOOKING SURVEY                                        │
+│                                                             │
+│ Status: Sent on 16 Mar 2026                               │
+│ [If completed:] ✓ Completed on 17 Mar 2026               │
+│ [If not completed:] Awaiting response                     │
+│                                                             │
+│ [View Survey Response] [Resend Survey]                    │
+│                                                             │
+└────────────────────────────────────────────────────────────┘
+
+IF booking completed AND no survey sent (regular booker, not first):
+┌────────────────────────────────────────────────────────────┐
+│ POST-BOOKING SURVEY                                        │
+│                                                             │
+│ Survey not sent (regular booker, not first booking)       │
+│                                                             │
+│ [Send Survey Now]                                          │
+│                                                             │
+└────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 4: REGULAR BOOKER CALENDAR & BOOKING MANAGEMENT
+
+Allow regular bookers to view calendar and make bookings.
+
+───────────────────────────────────────────────────────────────────────
+REGULAR BOOKER LOGIN & DASHBOARD
+───────────────────────────────────────────────────────────────────────
+
+Login page: https://app.reservetmk.co.nz/booker/login
+
+After login, show dashboard:
+
+┌────────────────────────────────────────────────────────────┐
+│ RESERVE TĀMAKI - Regular Booker Portal                     │
+│                                                             │
+│ Welcome back, Sarah! (Local Business Ltd)                 │
+│ Pricing Tier: Community Discount (20% off)                │
+│                                                             │
+│ [If package:] Package Status: 7 bookings remaining        │
+│ [If package expires:] Expires: 30 Jun 2026                │
+│                                                             │
+├────────────────────────────────────────────────────────────┤
+│ [View Calendar & Book] [My Bookings] [Invoices] [Profile] │
+├────────────────────────────────────────────────────────────┤
+│                                                             │
+│ UPCOMING BOOKINGS                                          │
+│                                                             │
+│ Meeting Room - Thu, 15 Mar 2026                            │
+│ 9:00 AM - 12:00 PM (3 hours)                              │
+│ Status: Confirmed                                          │
+│ [View Details] [Cancel]                                    │
+│                                                             │
+│ Meeting Room - Fri, 22 Mar 2026                            │
+│ 2:00 PM - 5:00 PM (3 hours)                               │
+│ Status: Inquiry (awaiting confirmation)                    │
+│ [View Details]                                             │
+│                                                             │
+│              [+ New Booking Request]                       │
+│                                                             │
+└────────────────────────────────────────────────────────────┘
+
+───────────────────────────────────────────────────────────────────────
+VIEW CALENDAR & BOOK
+───────────────────────────────────────────────────────────────────────
+
+Calendar view showing availability:
+
+┌────────────────────────────────────────────────────────────┐
+│ Book Space                                                 │
+│                                                             │
+│ Select Space:                                              │
+│ [Meeting Room ▼]                                           │
+│ Options: Meeting Room, Hot Desk, Large Room                │
+│                                                             │
+├────────────────────────────────────────────────────────────┤
+│ MARCH 2026                            [< Previous] [Next >]│
+├────────────────────────────────────────────────────────────┤
+│ Mon   Tue   Wed   Thu   Fri   Sat   Sun                   │
+│                              1     2                       │
+│ 3     4     5     6     7     8     9                      │
+│ 10    11    12    13    14    15    16                     │
+│       ✓     ✓     ✗     ✓     ✗     ✗                      │
+│ 17    18    19    20    21    22    23                     │
+│ ✓     ✓     ✓     ✓     ✓     ✗     ✗                      │
+│ 24    25    26    27    28    29    30                     │
+│ ✓     ✓     ✓     ✓     ✓     ✗     ✗                      │
+│ 31                                                         │
+│ ✓                                                          │
+│                                                             │
+│ Legend:                                                    │
+│ ✓ Available  ✗ Booked  ○ Your booking                     │
+│                                                             │
+└────────────────────────────────────────────────────────────┘
+
+Click on available date:
+
+┌────────────────────────────────────────────────────────────┐
+│ Book Meeting Room - Wed, 11 March 2026                    │
+├────────────────────────────────────────────────────────────┤
+│                                                             │
+│ Available Times:                                           │
+│ ○ 8:00 AM - 12:00 PM (4 hours)                            │
+│ ○ 9:00 AM - 12:00 PM (3 hours)                            │
+│ ○ 1:00 PM - 5:00 PM (4 hours)                             │
+│ ● 2:00 PM - 5:00 PM (3 hours) ← Selected                  │
+│ ○ Custom time                                              │
+│                                                             │
+│ [If custom selected:]                                      │
+│ Start: [2:00 PM ▼]  End: [5:00 PM ▼]                      │
+│                                                             │
+│ Pricing:                                                   │
+│ Standard Rate: $50/hour                                    │
+│ Duration: 3 hours = $150                                   │
+│ Your Discount (20%): -$30                                  │
+│ Total: $120 + GST                                          │
+│                                                             │
+│ [If package:]                                              │
+│ ☐ Use booking from package (7 remaining)                  │
+│ [If checked:] Total: $0 (using package credit)            │
+│                                                             │
+│ Special Requests:                                          │
+│ [_________________________________]                        │
+│ e.g., Projector, extra chairs, setup needs                │
+│                                                             │
+│ Notes:                                                     │
+│ Your booking request will be confirmed within 24 hours.   │
+│ You'll receive an email with access codes and details.    │
+│                                                             │
+│          [Cancel]      [Submit Booking Request]            │
+│                                                             │
+└────────────────────────────────────────────────────────────┘
+
+───────────────────────────────────────────────────────────────────────
+CALENDAR AVAILABILITY LOGIC
+───────────────────────────────────────────────────────────────────────
+
+When loading calendar:
+
+STEP 1: Get all existing bookings for selected space
+SELECT booking_date, start_time, end_time 
+FROM bookings 
+WHERE space_name = [selected_space]
+AND status IN ('confirmed', 'inquiry')
+AND booking_date >= CURDATE()
+ORDER BY booking_date, start_time;
+
+STEP 2: Mark dates as available/booked
+For each date in calendar:
+- If no bookings: ✓ Available (all day)
+- If some bookings: Check times
+  - If full day booked: ✗ Booked
+  - If partial: ✓ Available (show available time slots)
+- If own booking: ○ Your booking
+
+STEP 3: When date clicked, show available time slots
+Common time slots:
+- 8:00 AM - 12:00 PM (4 hours)
+- 9:00 AM - 12:00 PM (3 hours)
+- 1:00 PM - 5:00 PM (4 hours)
+- 2:00 PM - 5:00 PM (3 hours)
+- Full day: 8:00 AM - 5:00 PM
+- Custom
+
+Filter out slots that conflict with existing bookings.
+
+───────────────────────────────────────────────────────────────────────
+SUBMIT BOOKING REQUEST
+───────────────────────────────────────────────────────────────────────
+
+When [Submit Booking Request] clicked:
+
+STEP 1: Calculate pricing based on tier
+pricing_tier = get_regular_booker_tier(contact_id)
+
+IF pricing_tier == 'full_paying':
+  total = hours * hourly_rate
+  
+IF pricing_tier == 'community_discount':
+  discount_pct = get_discount_percentage(contact_id) -- e.g., 20
+  subtotal = hours * hourly_rate
+  discount = subtotal * (discount_pct / 100)
+  total = subtotal - discount
+  
+IF pricing_tier == 'koha_mou':
+  total = 0
+  invoice_notes = "Koha/MOU arrangement - no charge"
+
+STEP 2: Check if using booking package
+IF use_package_credit == TRUE AND has_booking_package == TRUE:
+  -- Don't charge, use package credit
+  -- Package will be decremented when booking confirmed
+  total = 0
+  booking_notes = "Using prepaid package credit"
+
+STEP 3: Create booking record
+INSERT INTO bookings (
+  contact_id,
+  space_name,
+  booking_date,
+  start_time,
+  end_time,
+  hours,
+  hourly_rate,
+  discount_percentage,
+  discount_amount,
+  total_amount,
+  special_requests,
+  status,
+  booking_source,
+  pricing_tier,
+  use_package_credit
+) VALUES (
+  [contact_id],
+  [space],
+  [date],
+  [start],
+  [end],
+  [hours],
+  [rate],
+  [discount_pct],
+  [discount_amt],
+  [total],
+  [requests],
+  'inquiry', -- Awaiting staff confirmation
+  'regular_booker_calendar',
+  [tier],
+  [use_package]
+);
+
+STEP 4: Notify Reserve team
+Send email to staff:
+---
+Subject: New Booking Request from Regular Booker
+
+[client_name] ([organization]) has requested a booking:
+
+Space: [space]
+Date: [date]
+Time: [start] - [end]
+Duration: [hours] hours
+
+Pricing:
+Tier: [tier_name]
+[If discount:] Discount: [pct]%
+Total: $[total] + GST
+
+[If package:] Using package credit ([remaining] remaining after this)
+
+Special Requests: [requests]
+
+[View & Confirm Booking] (link to booking detail)
+---
+
+STEP 5: Show confirmation to user
+┌────────────────────────────────────────────┐
+│ ✓ Booking Request Submitted!               │
+│                                            │
+│ Your booking request has been sent to the  │
+│ Reserve team for confirmation.             │
+│                                            │
+│ You'll receive an email within 24 hours    │
+│ with confirmation and access details.      │
+│                                            │
+│ Booking Details:                           │
+│ • [Space]                                  │
+│ • [Date] at [Time]                         │
+│ • [Duration] hours                         │
+│ • Total: $[amount] + GST                   │
+│                                            │
+│ [View My Bookings] [Book Another]          │
+└────────────────────────────────────────────┘
+
+───────────────────────────────────────────────────────────────────────
+PACKAGE TRACKING DISPLAY
+───────────────────────────────────────────────────────────────────────
+
+Show package status prominently:
+
+┌────────────────────────────────────────────────────────────┐
+│ YOUR BOOKING PACKAGE                                       │
+│                                                             │
+│ [████████░░] 7 of 10 bookings remaining                    │
+│                                                             │
+│ Used: 3 bookings                                           │
+│ Remaining: 7 bookings                                      │
+│ Expires: 30 June 2026                                      │
+│                                                             │
+│ Recent Usage:                                              │
+│ • 1 Mar 2026 - Meeting Room (3 hours)                     │
+│ • 8 Mar 2026 - Hot Desk (4 hours)                         │
+│ • 15 Mar 2026 - Meeting Room (3 hours)                    │
+│                                                             │
+└────────────────────────────────────────────────────────────┘
+
+When package close to expiring (< 30 days):
+⚠️ Your package expires in 22 days. Book your remaining sessions!
+
+When package fully used:
+✓ Package complete (10/10 used). Contact us to purchase another package.
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 5: XERO INTEGRATION WITH TIERED PRICING
+
+Auto-generate invoices with correct pricing based on tier.
+
+───────────────────────────────────────────────────────────────────────
+XERO SETUP (Same as before)
+───────────────────────────────────────────────────────────────────────
+
+1. Connect to Xero via OAuth 2.0
+2. Store tokens securely
+3. Configure in Settings
+4. Test connection
+
+(Detailed setup in original prompt remains same)
+
+───────────────────────────────────────────────────────────────────────
+INVOICE GENERATION WITH PRICING TIERS
+───────────────────────────────────────────────────────────────────────
+
+Triggered when booking status changes to 'confirmed':
+
+STEP 1: Check if invoice needed
+pricing_tier = get_regular_booker_tier(contact_id)
+use_package = booking.use_package_credit
+
+IF pricing_tier == 'koha_mou' OR use_package == TRUE:
+  -- Skip invoice generation
+  -- Log: "No invoice needed (Koha/MOU or package credit)"
+  RETURN
+  
+-- Otherwise, generate invoice
+
+STEP 2: Calculate line items based on tier
+base_amount = hours * hourly_rate
+
+IF pricing_tier == 'full_paying':
+  line_items = [
+    {
+      "Description": "Space rental: [space] on [date] ([hours] hours at $[rate]/hr)",
+      "Quantity": [hours],
+      "UnitAmount": [hourly_rate],
+      "AccountCode": "200",
+      "TaxType": "OUTPUT2"
+    }
+  ]
+  
+IF pricing_tier == 'community_discount':
+  discount_pct = get_discount_percentage(contact_id)
+  discount_amt = base_amount * (discount_pct / 100)
+  
+  line_items = [
+    {
+      "Description": "Space rental: [space] on [date] ([hours] hours at $[rate]/hr)",
+      "Quantity": [hours],
+      "UnitAmount": [hourly_rate],
+      "AccountCode": "200",
+      "TaxType": "OUTPUT2"
+    },
+    {
+      "Description": "Community discount ([discount_pct]%)",
+      "Quantity": 1,
+      "UnitAmount": -[discount_amt], // Negative amount
+      "AccountCode": "200",
+      "TaxType": "OUTPUT2"
+    }
+  ]
+
+STEP 3: Create invoice in Xero
+Xero API: POST /api.xro/2.0/Invoices
+{
+  "Type": "ACCREC",
+  "Contact": {
+    "ContactID": "[xero_contact_id]"
+  },
+  "Date": "[today]",
+  "DueDate": "[based on payment_terms]",
+  "LineAmountTypes": "Exclusive",
+  "LineItems": [line_items],
+  "Reference": "Booking #[booking_id]",
+  "Status": "SUBMITTED"
+}
+
+STEP 4: Save invoice details
+UPDATE bookings SET
+  xero_invoice_id = '[InvoiceID]',
+  xero_invoice_number = '[InvoiceNumber]',
+  xero_invoice_status = 'submitted'
+WHERE id = [booking_id];
+
+STEP 5: Display in booking detail
+┌────────────────────────────────────────────────────────────┐
+│ INVOICE                                                    │
+│                                                             │
+│ [If koha/mou:]                                             │
+│ No invoice (Koha/MOU arrangement)                          │
+│                                                             │
+│ [If package credit:]                                       │
+│ No invoice (using prepaid package credit)                  │
+│                                                             │
+│ [If invoiced:]                                             │
+│ Xero Invoice: INV-2026-123                                 │
+│ Amount: $120.00 (incl GST) [after 20% discount]           │
+│ Status: Submitted                                          │
+│ Due: 22 Mar 2026                                           │
+│ [View in Xero]                                             │
+│                                                             │
+└────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════
+
+TESTING CHECKLIST:
+
+DATABASE:
+□ bookings table updated with all new fields
+□ regular_bookers table created with pricing_tier field
+□ venue_instructions table created and populated
+□ surveys table created with manual trigger fields
+□ All foreign keys working
+
+PRICING TIERS:
+□ Can create regular booker with each tier (full, discount, koha)
+□ Discount percentage saves and displays correctly
+□ Koha/MOU notes save
+□ Tier displays on booking detail page
+
+BOOKING PACKAGES:
+□ Can set package (total bookings)
+□ Used bookings increments on confirmation
+□ Remaining calculates correctly
+□ Package status displays on dashboard
+□ Can use package credit when booking
+□ Invoice skips when using package credit
+
+ACCEPT WORKFLOW:
+□ Accept button confirms booking
+□ Combined email sends (instructions + reminder)
+□ All venue instructions included
+□ Codes display correctly
+□ Pricing shows with discount if applicable
+□ Package decrements if applicable
+□ Calendar event creates
+
+SURVEY LOGIC:
+□ Survey sends for one-off booker
+□ Survey sends for regular booker's first booking
+□ Survey SKIPS for regular booker's 2nd+ booking
+□ Manual "Send Survey Now" always works
+□ Manual trigger flags correctly
+□ Survey response saves
+
+REGULAR BOOKER CALENDAR:
+□ Login works
+□ Dashboard shows package status
+□ Calendar displays availability correctly
+□ Booked dates marked
+□ Available times show when date clicked
+□ Can select time and submit request
+□ Pricing calculates with discount
+□ Option to use package credit works
+□ Booking creates with correct source
+
+XERO INTEGRATION:
+□ Connection works
+□ Invoice generates for full_paying tier
+□ Invoice generates with discount line for community_discount
+□ Invoice SKIPS for koha_mou tier
+□ Invoice SKIPS when using package credit
+□ Invoice details save to booking
+
+MANUAL TRIGGERS:
+□ "Resend Confirmation" works
+□ "Send Survey Now" works regardless of status
+□ Manual trigger flags in survey record
+
+═══════════════════════════════════════════════════════════════════════
+
+IMPLEMENTATION ORDER:
+
+1. Part 1: Database updates and venue instructions
+2. Part 2: Accept workflow with combined email
+3. Part 2: Manual action buttons (resend, manual survey)
+4. Part 3: Smart survey logic implementation
+5. Part 3: Manual survey trigger
+6. Part 4: Regular booker login and dashboard
+7. Part 4: Calendar view with availability
+8. Part 4: Booking request form
+9. Part 4: Package tracking and display
+10. Part 5: Xero connection setup
+11. Part 5: Invoice generation with tiered pricing
+12. Full end-to-end testing
+
+═══════════════════════════════════════════════════════════════════════
+
+Execute this implementation step by step. Show progress after each part.
+
+If you need clarification on:
+- Current bookings table structure
+- Space types and pricing
+- Email configuration
+- Xero account setup
+- Login/authentication system
+
+Please ask before proceeding.
+
+Start with Part 1 (database updates) and verify before building workflows.
