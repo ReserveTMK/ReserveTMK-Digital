@@ -814,16 +814,16 @@ export default function Projects() {
       </div>
 
       {isLoading ? (
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Card key={i} className="p-4 space-y-3">
-              <Skeleton className="h-5 w-3/4" />
-              <Skeleton className="h-4 w-1/2" />
-              <Skeleton className="h-3 w-full" />
-              <Skeleton className="h-3 w-2/3" />
-            </Card>
+        <Card className="divide-y divide-border">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="p-3 flex items-center gap-4">
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-4 w-24 ml-auto" />
+            </div>
           ))}
-        </div>
+        </Card>
       ) : filtered.length === 0 ? (
         <Card className="p-8 text-center" data-testid="empty-state">
           <Rocket className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
@@ -840,64 +840,63 @@ export default function Projects() {
           )}
         </Card>
       ) : (
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+        <Card className="divide-y divide-border">
           {filtered.map((project) => (
             <Link key={project.id} href={`/projects/${project.id}`}>
-              <Card
-                className="p-4 space-y-2 cursor-pointer hover-elevate"
+              <div
+                className="flex items-center gap-3 p-3 md:p-4 cursor-pointer hover:bg-muted/50 transition-colors"
                 data-testid={`card-project-${project.id}`}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <h3 className="font-medium text-sm leading-snug line-clamp-2" data-testid={`text-project-name-${project.id}`}>
-                    {project.name}
-                  </h3>
-                  <div className="flex items-center gap-1 shrink-0 flex-wrap">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-sm truncate" data-testid={`text-project-name-${project.id}`}>
+                      {project.name}
+                    </span>
                     <Badge
                       variant="secondary"
-                      className={`text-[10px] ${typeColors[(project as any).projectType || "operational"]}`}
+                      className={`text-[10px] shrink-0 ${typeColors[(project as any).projectType || "operational"]}`}
                       data-testid={`badge-type-${project.id}`}
                     >
                       {typeLabels[(project as any).projectType || "operational"]}
                     </Badge>
                     <Badge
                       variant="secondary"
-                      className={`text-[10px] ${statusColors[project.status ?? "planning"]}`}
+                      className={`text-[10px] shrink-0 ${statusColors[project.status ?? "planning"]}`}
                       data-testid={`badge-status-${project.id}`}
                     >
                       {statusLabels[project.status ?? "planning"]}
                     </Badge>
                   </div>
+                  {project.description && (
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">
+                      {project.description}
+                    </p>
+                  )}
                 </div>
 
                 {project.ownerId && (
-                  <p className="text-xs text-muted-foreground" data-testid={`text-owner-${project.id}`}>
-                    Owner: {contactMap.get(project.ownerId) ?? "Unknown"}
-                  </p>
+                  <span className="text-xs text-muted-foreground shrink-0 hidden md:block" data-testid={`text-owner-${project.id}`}>
+                    {contactMap.get(project.ownerId) ?? "Unknown"}
+                  </span>
                 )}
 
-                {(project.startDate || project.endDate) && (
-                  <p className="text-xs text-muted-foreground">
-                    {project.startDate && format(new Date(project.startDate), "d MMM yyyy")}
-                    {project.startDate && project.endDate && " — "}
-                    {project.endDate && format(new Date(project.endDate), "d MMM yyyy")}
-                  </p>
-                )}
-
-                {project.description && (
-                  <p className="text-xs text-muted-foreground line-clamp-2">
-                    {project.description}
-                  </p>
+                {project.endDate && (
+                  <span className="text-xs text-muted-foreground shrink-0 hidden md:block">
+                    Due {format(new Date(project.endDate), "d MMM")}
+                  </span>
                 )}
 
                 {project.updatedAt && (
-                  <p className="text-[11px] text-muted-foreground/70" data-testid={`text-updated-${project.id}`}>
-                    Updated {formatDistanceToNow(new Date(project.updatedAt), { addSuffix: true })}
-                  </p>
+                  <span className="text-[11px] text-muted-foreground/70 shrink-0 hidden sm:block" data-testid={`text-updated-${project.id}`}>
+                    {formatDistanceToNow(new Date(project.updatedAt), { addSuffix: true })}
+                  </span>
                 )}
-              </Card>
+
+                <ChevronRight className="w-4 h-4 text-muted-foreground/50 shrink-0" />
+              </div>
             </Link>
           ))}
-        </div>
+        </Card>
       )}
 
       <CreateProjectDialog
