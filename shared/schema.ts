@@ -1353,6 +1353,29 @@ export const insertAfterHoursSettingsSchema = createInsertSchema(afterHoursSetti
 export type AfterHoursSettings = typeof afterHoursSettings.$inferSelect;
 export type InsertAfterHoursSettings = z.infer<typeof insertAfterHoursSettingsSchema>;
 
+export const xeroSettings = pgTable("xero_settings", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  xeroClientId: text("xero_client_id"),
+  xeroClientSecret: text("xero_client_secret"),
+  xeroTenantId: text("xero_tenant_id"),
+  accessToken: text("access_token"),
+  refreshToken: text("refresh_token"),
+  tokenExpiresAt: timestamp("token_expires_at"),
+  connected: boolean("connected").default(false),
+  connectedAt: timestamp("connected_at"),
+  organisationName: text("organisation_name"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertXeroSettingsSchema = createInsertSchema(xeroSettings).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type XeroSettings = typeof xeroSettings.$inferSelect;
+export type InsertXeroSettings = z.infer<typeof insertXeroSettingsSchema>;
+
 export const insertRegularBookerSchema = createInsertSchema(regularBookers).omit({
   id: true,
   createdAt: true,

@@ -40,6 +40,8 @@ import {
   Eye,
   AlertCircle,
   Moon,
+  Receipt,
+  ExternalLink,
 } from "lucide-react";
 import { format } from "date-fns";
 import type { Booking, Contact, Venue, RegularBooker, Survey } from "@shared/schema";
@@ -362,6 +364,10 @@ export default function BookingDetail() {
                 </Button>
               </div>
             </Card>
+          )}
+
+          {(booking.status === "confirmed" || booking.status === "completed") && (
+            <XeroInvoiceCard booking={booking} />
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -892,5 +898,122 @@ export default function BookingDetail() {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+const INVOICE_STATUS_STYLES: Record<string, string> = {
+  draft: "bg-gray-500/15 text-gray-700 dark:text-gray-300",
+  submitted: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
+  authorised: "bg-purple-500/15 text-purple-700 dark:text-purple-300",
+  paid: "bg-green-500/15 text-green-700 dark:text-green-300",
+  voided: "bg-red-500/15 text-red-700 dark:text-red-300",
+};
+
+function XeroInvoiceCard({ booking }: { booking: Booking }) {
+  const { toast } = useToast();
+
+  const { data: xeroStatus } = useQuery<{ connected: boolean }>({
+    queryKey: ['/api/xero/status'],
+  });
+
+  const generateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/bookings/${booking.id}/generate-invoice`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      if (data.skipped) {
+        toast({ title: "No invoice needed", description: data.reason });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['/api/bookings', booking.id] });
+        toast({ title: "Invoice generated", description: `Invoice ${data.invoiceNumber} created in Xero` });
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to generate invoice", description: err.message, variant: "destructive" });
+    },
+  });
+
+  if (!xeroStatus?.connected) return null;
+
+  const amount = parseFloat(booking.amount || "0");
+  const isSkipped = booking.pricingTier === "free_koha" || booking.usePackageCredit || amount <= 0;
+
+  if (booking.xeroInvoiceId) {
+    return (
+      <Card className="p-4 border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex-1">
+            <h3 className="font-semibold text-sm flex items-center gap-2" data-testid="text-xero-invoice-heading">
+              <Receipt className="w-4 h-4 text-blue-600" />
+              Xero Invoice
+            </h3>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-sm font-medium" data-testid="text-xero-invoice-number">{booking.xeroInvoiceNumber}</span>
+              {booking.xeroInvoiceStatus && (
+                <Badge className={INVOICE_STATUS_STYLES[booking.xeroInvoiceStatus] || ""} data-testid="badge-xero-invoice-status">
+                  {booking.xeroInvoiceStatus}
+                </Badge>
+              )}
+            </div>
+          </div>
+          <a
+            href={`https://go.xero.com/AccountsReceivable/View.aspx?InvoiceID=${booking.xeroInvoiceId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Button variant="outline" size="sm" data-testid="button-view-in-xero">
+              <ExternalLink className="w-4 h-4 mr-2" />
+              View in Xero
+            </Button>
+          </a>
+        </div>
+      </Card>
+    );
+  }
+
+  if (isSkipped) {
+    const reason = booking.pricingTier === "free_koha" ? "Koha / free booking"
+      : booking.usePackageCredit ? "Package credit used"
+      : "No charge amount";
+    return (
+      <Card className="p-4">
+        <div className="flex items-center gap-3">
+          <Receipt className="w-4 h-4 text-muted-foreground" />
+          <div>
+            <p className="text-sm font-medium" data-testid="text-no-invoice-needed">No invoice needed</p>
+            <p className="text-xs text-muted-foreground">{reason}</p>
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex-1">
+          <h3 className="font-semibold text-sm flex items-center gap-2">
+            <Receipt className="w-4 h-4 text-muted-foreground" />
+            Xero Invoice
+          </h3>
+          <p className="text-sm text-muted-foreground">No invoice generated yet</p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => generateMutation.mutate()}
+          disabled={generateMutation.isPending}
+          data-testid="button-generate-invoice"
+        >
+          {generateMutation.isPending ? (
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          ) : (
+            <Receipt className="w-4 h-4 mr-2" />
+          )}
+          Generate Invoice
+        </Button>
+      </div>
+    </Card>
   );
 }

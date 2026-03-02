@@ -120,6 +120,9 @@ import {
   type AfterHoursSettings,
   type InsertAfterHoursSettings,
   DAYS_OF_WEEK,
+  xeroSettings,
+  type XeroSettings,
+  type InsertXeroSettings,
   type BookingPricingDefaults,
   gmailImportHistory,
   gmailExclusions,
@@ -316,6 +319,10 @@ export interface IStorage {
   seedDefaultOperatingHours(userId: string): Promise<OperatingHours[]>;
   getAfterHoursSettings(userId: string): Promise<AfterHoursSettings | undefined>;
   upsertAfterHoursSettings(userId: string, data: { autoSendEnabled?: boolean; sendTimingHours?: number }): Promise<AfterHoursSettings>;
+
+  getXeroSettings(userId: string): Promise<XeroSettings | undefined>;
+  upsertXeroSettings(userId: string, data: Partial<InsertXeroSettings>): Promise<XeroSettings>;
+  deleteXeroSettings(userId: string): Promise<void>;
 
   // Regular Bookers
   getRegularBookers(userId: string): Promise<RegularBooker[]>;
@@ -1251,6 +1258,30 @@ export class DatabaseStorage implements IStorage {
       .values({ userId, autoSendEnabled: data.autoSendEnabled ?? true, sendTimingHours: data.sendTimingHours ?? 4 })
       .returning();
     return created;
+  }
+
+  async getXeroSettings(userId: string): Promise<XeroSettings | undefined> {
+    const [settings] = await db.select().from(xeroSettings).where(eq(xeroSettings.userId, userId));
+    return settings;
+  }
+
+  async upsertXeroSettings(userId: string, data: Partial<InsertXeroSettings>): Promise<XeroSettings> {
+    const existing = await this.getXeroSettings(userId);
+    if (existing) {
+      const [updated] = await db.update(xeroSettings)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(xeroSettings.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(xeroSettings)
+      .values({ userId, ...data } as any)
+      .returning();
+    return created;
+  }
+
+  async deleteXeroSettings(userId: string): Promise<void> {
+    await db.delete(xeroSettings).where(eq(xeroSettings.userId, userId));
   }
 
   // Regular Bookers

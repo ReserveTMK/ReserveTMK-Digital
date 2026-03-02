@@ -3315,7 +3315,23 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         console.error("Failed to send confirmation email:", emailErr.message);
       }
 
-      res.json({ success: true, booking: updated, emailSent, isAfterHours: afterHoursFlag });
+      let invoiceGenerated = false;
+      let invoiceNumber = "";
+      try {
+        const xeroSettings = await storage.getXeroSettings(userId);
+        if (xeroSettings?.connected) {
+          const { generateXeroInvoice } = await import("./xero");
+          const invoiceResult = await generateXeroInvoice(userId, bookingId);
+          if (invoiceResult) {
+            invoiceGenerated = true;
+            invoiceNumber = invoiceResult.invoiceNumber;
+          }
+        }
+      } catch (invoiceErr: any) {
+        console.error("Auto-invoice generation failed:", invoiceErr.message);
+      }
+
+      res.json({ success: true, booking: updated, emailSent, isAfterHours: afterHoursFlag, invoiceGenerated, invoiceNumber });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -8193,6 +8209,128 @@ Rules:
     } catch (err: any) {
       console.error("Failed to send instructions:", err);
       res.status(500).json({ message: err.message || "Failed to send instructions" });
+    }
+  });
+
+  app.post("/api/xero/save-credentials", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { xeroClientId, xeroClientSecret } = req.body;
+      if (!xeroClientId || !xeroClientSecret) {
+        return res.status(400).json({ message: "Client ID and Client Secret are required" });
+      }
+      await storage.upsertXeroSettings(userId, { xeroClientId, xeroClientSecret });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/xero/connect", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const settings = await storage.getXeroSettings(userId);
+      if (!settings?.xeroClientId || !settings?.xeroClientSecret) {
+        return res.status(400).json({ message: "Xero credentials not configured. Save your Client ID and Secret first." });
+      }
+      const { getXeroAuthUrl, createOAuthState } = await import("./xero");
+      const state = createOAuthState(userId);
+      const authUrl = getXeroAuthUrl(settings, state);
+      res.json({ authUrl });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/xero/callback", async (req, res) => {
+    try {
+      const { code, state } = req.query;
+      if (!code || !state) {
+        return res.status(400).send("Missing code or state parameter");
+      }
+      const { exchangeCodeForTokens, validateOAuthState } = await import("./xero");
+      const userId = validateOAuthState(state as string);
+      if (!userId) {
+        return res.redirect("/bookings?xero=error&message=" + encodeURIComponent("Invalid or expired OAuth state"));
+      }
+      await exchangeCodeForTokens(userId, code as string);
+      res.redirect("/bookings?xero=connected");
+    } catch (err: any) {
+      console.error("Xero callback error:", err);
+      res.redirect("/bookings?xero=error&message=" + encodeURIComponent(err.message));
+    }
+  });
+
+  app.get("/api/xero/status", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const settings = await storage.getXeroSettings(userId);
+      if (!settings) {
+        return res.json({ connected: false, hasCredentials: false });
+      }
+      res.json({
+        connected: settings.connected || false,
+        hasCredentials: !!(settings.xeroClientId && settings.xeroClientSecret),
+        organisationName: settings.organisationName || null,
+        connectedAt: settings.connectedAt || null,
+        tokenExpiresAt: settings.tokenExpiresAt || null,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/xero/disconnect", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const settings = await storage.getXeroSettings(userId);
+      if (settings) {
+        await storage.upsertXeroSettings(userId, {
+          connected: false,
+          accessToken: null,
+          refreshToken: null,
+          xeroTenantId: null,
+          organisationName: null,
+          connectedAt: null,
+          tokenExpiresAt: null,
+        } as any);
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/xero/sync-contact/:contactId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const contactId = parseInt(req.params.contactId);
+      const { syncContactToXero } = await import("./xero");
+      const xeroContactId = await syncContactToXero(userId, contactId);
+      res.json({ success: true, xeroContactId });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bookings/:id/generate-invoice", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const bookingId = parseInt(req.params.id);
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+      if (booking.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      const { generateXeroInvoice } = await import("./xero");
+      const result = await generateXeroInvoice(userId, bookingId);
+      if (result) {
+        res.json({ success: true, ...result });
+      } else {
+        res.json({ success: true, skipped: true, reason: "No invoice needed (koha/package credit/zero amount)" });
+      }
+    } catch (err: any) {
+      console.error("Failed to generate invoice:", err);
+      res.status(500).json({ message: err.message || "Failed to generate invoice" });
     }
   });
 

@@ -74,6 +74,9 @@ import {
   ExternalLink,
   Settings,
   Moon,
+  Receipt,
+  Link2,
+  Unlink,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import {
@@ -533,6 +536,12 @@ export default function Bookings() {
                                                     After Hours
                                                   </Badge>
                                                 )}
+                                                {booking.xeroInvoiceId && (
+                                                  <Badge variant="outline" className={`text-[10px] ${booking.xeroInvoiceStatus === "paid" ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800" : "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800"}`} data-testid={`badge-xero-invoice-${booking.id}`}>
+                                                    <Receipt className="w-2.5 h-2.5 mr-0.5" />
+                                                    {booking.xeroInvoiceStatus || "invoiced"}
+                                                  </Badge>
+                                                )}
                                               </div>
                                             </div>
                                           </div>
@@ -641,6 +650,12 @@ export default function Bookings() {
                                 <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800" data-testid={`badge-after-hours-list-${booking.id}`}>
                                   <Moon className="w-2.5 h-2.5 mr-0.5" />
                                   After Hours
+                                </Badge>
+                              )}
+                              {booking.xeroInvoiceId && (
+                                <Badge variant="outline" className={`text-[10px] ${booking.xeroInvoiceStatus === "paid" ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800" : "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800"}`} data-testid={`badge-xero-invoice-list-${booking.id}`}>
+                                  <Receipt className="w-2.5 h-2.5 mr-0.5" />
+                                  {booking.xeroInvoiceStatus || "invoiced"}
                                 </Badge>
                               )}
                             </div>
@@ -810,6 +825,7 @@ export default function Bookings() {
               <TabsTrigger value="venue-instructions" data-testid="tab-booking-venue-instructions">Venue Instructions</TabsTrigger>
               <TabsTrigger value="venues" data-testid="tab-booking-venues">Venues</TabsTrigger>
               <TabsTrigger value="after-hours" data-testid="tab-booking-after-hours">After Hours</TabsTrigger>
+              <TabsTrigger value="xero" data-testid="tab-booking-xero">Xero</TabsTrigger>
             </TabsList>
             <TabsContent value="regular-bookers" className="mt-4">
               <div className="space-y-3">
@@ -852,6 +868,9 @@ export default function Bookings() {
             </TabsContent>
             <TabsContent value="after-hours" className="mt-4">
               <AfterHoursSettingsTab />
+            </TabsContent>
+            <TabsContent value="xero" className="mt-4">
+              <XeroSettingsTab />
             </TabsContent>
           </Tabs>
         </DialogContent>
@@ -1058,6 +1077,157 @@ function AfterHoursSettingsTab() {
       >
         {(saveHoursMutation.isPending || saveSettingsMutation.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
         Save Settings
+      </Button>
+    </div>
+  );
+}
+
+function XeroSettingsTab() {
+  const { toast } = useToast();
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+
+  const { data: xeroStatus, isLoading } = useQuery<{
+    connected: boolean;
+    hasCredentials: boolean;
+    organisationName: string | null;
+    connectedAt: string | null;
+    tokenExpiresAt: string | null;
+  }>({
+    queryKey: ['/api/xero/status'],
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/xero/save-credentials", {
+        xeroClientId: clientId,
+        xeroClientSecret: clientSecret,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/xero/status'] });
+      toast({ title: "Credentials saved" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to save", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const connectMutation = useMutation({
+    mutationFn: async () => {
+      if (!xeroStatus?.hasCredentials) {
+        await apiRequest("POST", "/api/xero/save-credentials", {
+          xeroClientId: clientId,
+          xeroClientSecret: clientSecret,
+        });
+      }
+      const res = await apiRequest("GET", "/api/xero/connect");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      if (data.authUrl) {
+        window.location.href = data.authUrl;
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to connect", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const disconnectMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/xero/disconnect");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/xero/status'] });
+      toast({ title: "Xero disconnected" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to disconnect", description: err.message, variant: "destructive" });
+    },
+  });
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div>;
+  }
+
+  if (xeroStatus?.connected) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 p-4 rounded-lg border bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800">
+          <Link2 className="h-5 w-5 text-green-600" />
+          <div className="flex-1">
+            <p className="font-medium text-green-800 dark:text-green-200" data-testid="text-xero-org-name">
+              Connected to {xeroStatus.organisationName || "Xero"}
+            </p>
+            {xeroStatus.connectedAt && (
+              <p className="text-xs text-green-600 dark:text-green-400">
+                Connected {new Date(xeroStatus.connectedAt).toLocaleDateString("en-NZ")}
+              </p>
+            )}
+          </div>
+          <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300 dark:bg-green-900 dark:text-green-200" data-testid="badge-xero-connected">Connected</Badge>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Invoices will be automatically generated in Xero when bookings are accepted. Bookings with koha, package credits, or zero amounts are skipped.
+        </p>
+        <Button
+          variant="outline"
+          onClick={() => disconnectMutation.mutate()}
+          disabled={disconnectMutation.isPending}
+          data-testid="button-xero-disconnect"
+        >
+          {disconnectMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Unlink className="h-4 w-4 mr-2" />}
+          Disconnect Xero
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Connect to Xero to automatically generate invoices when bookings are confirmed. You'll need to create a Xero app first.
+      </p>
+      <div className="p-3 rounded-lg border bg-muted/50 text-sm space-y-2">
+        <p className="font-medium">Setup instructions:</p>
+        <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+          <li>Go to <a href="https://developer.xero.com/app/manage" target="_blank" rel="noopener noreferrer" className="text-primary underline">developer.xero.com</a> and create a new app</li>
+          <li>Set the app type to "Web app"</li>
+          <li>Add the redirect URI: <code className="text-xs bg-background px-1 py-0.5 rounded">{window.location.origin}/api/xero/callback</code></li>
+          <li>Copy the Client ID and Client Secret below</li>
+        </ol>
+      </div>
+      <div className="space-y-3">
+        <div>
+          <label className="text-sm font-medium">Client ID</label>
+          <Input
+            value={clientId}
+            onChange={(e) => setClientId(e.target.value)}
+            placeholder="Enter your Xero Client ID"
+            data-testid="input-xero-client-id"
+          />
+        </div>
+        <div>
+          <label className="text-sm font-medium">Client Secret</label>
+          <Input
+            type="password"
+            value={clientSecret}
+            onChange={(e) => setClientSecret(e.target.value)}
+            placeholder="Enter your Xero Client Secret"
+            data-testid="input-xero-client-secret"
+          />
+        </div>
+      </div>
+      <Button
+        onClick={() => connectMutation.mutate()}
+        disabled={(!clientId || !clientSecret) && !xeroStatus?.hasCredentials || connectMutation.isPending}
+        data-testid="button-xero-connect"
+      >
+        {connectMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Link2 className="h-4 w-4 mr-2" />}
+        Save & Connect to Xero
       </Button>
     </div>
   );
