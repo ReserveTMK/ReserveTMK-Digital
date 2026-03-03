@@ -299,7 +299,7 @@ export function MentoringOnboardingSetup() {
                     </p>
                   )}
                 </div>
-                <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
                   <div className="flex flex-col">
                     <Button
                       size="icon"
@@ -320,16 +320,24 @@ export function MentoringOnboardingSetup() {
                       <ArrowDown className="w-3.5 h-3.5" />
                     </Button>
                   </div>
-                  <Switch
-                    checked={q.isRequired ?? true}
-                    onCheckedChange={(checked) => patchMutation.mutate({ id: q.id, isRequired: checked })}
-                    data-testid={`switch-required-${q.id}`}
-                  />
-                  <Switch
-                    checked={q.isActive ?? true}
-                    onCheckedChange={(checked) => patchMutation.mutate({ id: q.id, isActive: checked })}
-                    data-testid={`switch-active-${q.id}`}
-                  />
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-muted-foreground">Required</span>
+                      <Switch
+                        checked={q.isRequired ?? true}
+                        onCheckedChange={(checked) => patchMutation.mutate({ id: q.id, isRequired: checked })}
+                        data-testid={`switch-required-${q.id}`}
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-muted-foreground">Active</span>
+                      <Switch
+                        checked={q.isActive ?? true}
+                        onCheckedChange={(checked) => patchMutation.mutate({ id: q.id, isActive: checked })}
+                        data-testid={`switch-active-${q.id}`}
+                      />
+                    </div>
+                  </div>
                   <Button
                     size="icon"
                     variant="ghost"

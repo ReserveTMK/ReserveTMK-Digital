@@ -934,6 +934,141 @@ export async function registerRoutes(
     }
   });
 
+  app.get('/api/meetings/debrief-summaries', isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const profiles = await storage.getMentorProfiles(userId);
+      const mentorUserIds = new Set<string>();
+      mentorUserIds.add(userId);
+      profiles.forEach(p => {
+        if (p.mentorUserId) mentorUserIds.add(p.mentorUserId);
+        mentorUserIds.add(`mentor-${p.id}`);
+      });
+
+      let allMeetings: any[] = [];
+      for (const mid of mentorUserIds) {
+        const m = await storage.getMeetings(mid);
+        allMeetings.push(...m);
+      }
+
+      const debriefed = allMeetings.filter(m => m.interactionId && (m.type === "mentoring" || !m.type));
+      const summaries: Record<number, any> = {};
+
+      const userContacts = await storage.getContacts(userId);
+      const userContactIds = new Set(userContacts.map(c => c.id));
+
+      for (const meeting of debriefed) {
+        if (!userContactIds.has(meeting.contactId)) continue;
+        const interaction = await storage.getInteraction(meeting.interactionId!);
+        if (interaction && userContactIds.has(interaction.contactId)) {
+          summaries[meeting.id] = {
+            meetingId: meeting.id,
+            mindsetScore: interaction.analysis?.mindsetScore,
+            skillScore: interaction.analysis?.skillScore,
+            confidenceScore: interaction.analysis?.confidenceScore,
+            keyInsights: interaction.analysis?.keyInsights || [],
+            summary: interaction.summary,
+          };
+        }
+      }
+
+      res.json(summaries);
+    } catch (err: any) {
+      console.error("Debrief summaries error:", err);
+      res.status(500).json({ message: "Failed to fetch debrief summaries" });
+    }
+  });
+
+  app.get('/api/mentoring-relationships/enriched', isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const all = await storage.getMentoringRelationships();
+      const userContacts = await storage.getContacts(userId);
+      const userContactIds = new Set(userContacts.map(c => c.id));
+      const filtered = all.filter(r => userContactIds.has(r.contactId));
+
+      const profiles = await storage.getMentorProfiles(userId);
+      const mentorUserIds = new Set<string>();
+      mentorUserIds.add(userId);
+      profiles.forEach(p => {
+        if (p.mentorUserId) mentorUserIds.add(p.mentorUserId);
+        mentorUserIds.add(`mentor-${p.id}`);
+      });
+
+      let allMeetings: any[] = [];
+      for (const mid of mentorUserIds) {
+        const m = await storage.getMeetings(mid);
+        allMeetings.push(...m.filter(mt => mt.type === "mentoring" || !mt.type));
+      }
+
+      const enriched = filtered.map(r => {
+        const contact = userContacts.find(c => c.id === r.contactId);
+        const sessions = allMeetings.filter(m => m.contactId === r.contactId);
+        const completedSessions = sessions.filter(s => s.status === "completed");
+        const upcomingSessions = sessions.filter(s => new Date(s.startTime) >= new Date() && s.status !== "cancelled");
+        const lastSession = completedSessions.sort((a: any, b: any) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())[0];
+
+        return {
+          ...r,
+          contactName: contact?.name || "Unknown",
+          contactEmail: contact?.email,
+          stage: contact?.stage,
+          ventureType: contact?.ventureType,
+          whatTheyAreBuilding: contact?.whatTheyAreBuilding,
+          completedSessionCount: completedSessions.length,
+          upcomingSessionCount: upcomingSessions.length,
+          totalSessionCount: sessions.filter(s => s.status !== "cancelled").length,
+          lastSessionDate: lastSession ? lastSession.startTime : null,
+          lastSessionFocus: lastSession ? lastSession.mentoringFocus : null,
+          recentSessionIds: completedSessions.slice(0, 5).map((s: any) => s.id),
+        };
+      });
+
+      res.json(enriched);
+    } catch (err: any) {
+      console.error("Enriched relationships error:", err);
+      res.status(500).json({ message: "Failed to fetch enriched relationships" });
+    }
+  });
+
+  app.post('/api/mentoring-applications/:id/accept', isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = (req.user as any).claims.sub;
+      const application = await storage.getMentoringApplication(id);
+      if (!application) return res.status(404).json({ message: "Application not found" });
+      if (!await verifyContactOwnership(application.contactId, userId)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const existingRelationships = await storage.getMentoringRelationshipsByContact(application.contactId);
+      const hasActive = existingRelationships.some(r => r.status === "active");
+      if (hasActive) {
+        return res.status(400).json({ message: "This person already has an active mentoring relationship" });
+      }
+
+      const updated = await storage.updateMentoringApplication(id, {
+        status: "accepted",
+        reviewedBy: userId,
+        reviewedDate: new Date(),
+        reviewNotes: req.body.reviewNotes || null,
+      });
+
+      const relationship = await storage.createMentoringRelationship({
+        contactId: application.contactId,
+        status: "active",
+        startDate: new Date(),
+        focusAreas: application.whatNeedHelpWith || application.ventureDescription || null,
+        sessionFrequency: "monthly",
+      });
+
+      res.json({ application: updated, relationship });
+    } catch (err: any) {
+      console.error("Accept application error:", err);
+      res.status(500).json({ message: "Failed to accept application" });
+    }
+  });
+
   // === Mentor Availability API ===
 
   async function isMentorOwner(adminUserId: string, targetMentorUserId: string): Promise<boolean> {

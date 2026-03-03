@@ -186,6 +186,7 @@ export interface IStorage {
   deleteContact(id: number): Promise<void>;
 
   // Interactions
+  getInteraction(id: number): Promise<Interaction | undefined>;
   getInteractions(contactId: number): Promise<Interaction[]>;
   createInteraction(interaction: InsertInteraction): Promise<Interaction>;
   deleteInteraction(id: number): Promise<void>;
@@ -597,6 +598,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Interactions
+  async getInteraction(id: number): Promise<Interaction | undefined> {
+    const [item] = await db.select().from(interactions).where(eq(interactions.id, id));
+    return item;
+  }
+
   async getInteractions(contactId: number): Promise<Interaction[]> {
     return await db.select()
       .from(interactions)
