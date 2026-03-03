@@ -7594,7 +7594,12 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   app.post("/api/mentoring-relationships", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const input = insertMentoringRelationshipSchema.parse(req.body);
+      const body = { ...req.body };
+      if (typeof body.startDate === "string") body.startDate = new Date(body.startDate);
+      if (typeof body.endDate === "string") body.endDate = new Date(body.endDate);
+      if (typeof body.lastSessionDate === "string") body.lastSessionDate = new Date(body.lastSessionDate);
+      if (typeof body.nextSessionDate === "string") body.nextSessionDate = new Date(body.nextSessionDate);
+      const input = insertMentoringRelationshipSchema.parse(body);
       if (!await verifyContactOwnership(input.contactId, userId)) {
         return res.status(403).json({ message: "Forbidden" });
       }
@@ -7630,7 +7635,12 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       if (!await verifyContactOwnership(existing.contactId, userId)) {
         return res.status(403).json({ message: "Forbidden" });
       }
-      const updated = await storage.updateMentoringRelationship(id, req.body);
+      const body = { ...req.body };
+      if (typeof body.startDate === "string") body.startDate = new Date(body.startDate);
+      if (typeof body.endDate === "string") body.endDate = new Date(body.endDate);
+      if (typeof body.lastSessionDate === "string") body.lastSessionDate = new Date(body.lastSessionDate);
+      if (typeof body.nextSessionDate === "string") body.nextSessionDate = new Date(body.nextSessionDate);
+      const updated = await storage.updateMentoringRelationship(id, body);
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ message: "Failed to update mentoring relationship" });
