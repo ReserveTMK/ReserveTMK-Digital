@@ -1,16 +1,14 @@
 import { useContacts } from "@/hooks/use-contacts";
-import { useInteractions } from "@/hooks/use-interactions";
 import { useMeetings, useDeleteMeeting } from "@/hooks/use-meetings";
 import { useEvents } from "@/hooks/use-events";
 import { useImpactLogs } from "@/hooks/use-impact-logs";
 import { useAuth } from "@/hooks/use-auth";
 import { useProgrammes } from "@/hooks/use-programmes";
 import { useBookings, useVenues } from "@/hooks/use-bookings";
-import { Activity, Calendar as CalendarIcon, ArrowRight, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, PartyPopper, Mic, FileText, Building2, Layers, AlertTriangle, ClipboardCheck, ListChecks, Rocket, Sprout, TreePine, Sun, Eye, Loader2 } from "lucide-react";
+import { Calendar as CalendarIcon, ArrowRight, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, PartyPopper, Mic, Building2, Layers, AlertTriangle, ClipboardCheck, ListChecks, Rocket, Sprout, TreePine, Sun, Eye, Loader2, Users, DollarSign, TrendingUp, TrendingDown, Lightbulb, UserPlus } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { format, startOfMonth, endOfMonth, startOfDay, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, addDays, isToday, isBefore, isAfter } from "date-fns";
 import { formatTimeSlot } from "@/lib/utils";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -27,7 +25,15 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { BarChart, Bar, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import type { Meeting, Contact, Event, Programme, Booking, Project, ProjectTask } from "@shared/schema";
+import {
+  useEnrichedRelationships,
+  useMentoringApplications,
+  isOverdue,
+  FREQUENCY_DAYS,
+  type EnrichedRelationship,
+} from "@/components/mentoring/mentoring-hooks";
 
 const MEETING_STATUS_COLORS: Record<string, string> = {
   scheduled: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
@@ -38,7 +44,6 @@ const MEETING_STATUS_COLORS: Record<string, string> = {
 export default function Dashboard() {
   const { user } = useAuth();
   const { data: contacts } = useContacts();
-  const { data: interactions, isLoading: loadingInteractions } = useInteractions();
   const { data: meetings } = useMeetings();
   const { data: events } = useEvents();
   const { data: impactLogs } = useImpactLogs();
@@ -66,7 +71,8 @@ export default function Dashboard() {
     queryKey: ["/api/dashboard/outstanding-actions"],
   });
 
-  const recentInteractions = interactions?.slice(0, 5) || [];
+  const { data: enrichedRelationships } = useEnrichedRelationships();
+  const { data: mentoringApplications } = useMentoringApplications();
 
   const deleteEventMutation = useMutation({
     mutationFn: async ({ id, reason }: { id: number; reason: string }) => {
@@ -99,14 +105,6 @@ export default function Dashboard() {
     },
   });
 
-  const recentDebriefs = useMemo(() => {
-    if (!impactLogs) return [];
-    return (impactLogs as any[])
-      .slice()
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 5);
-  }, [impactLogs]);
-
   const { data: mentoringRelationships } = useQuery<any[]>({
     queryKey: ["/api/mentoring-relationships"],
   });
@@ -116,8 +114,66 @@ export default function Dashboard() {
   });
 
   const { data: allTasks } = useQuery<ProjectTask[]>({
-    queryKey: ["/api/projects", "all-tasks"],
+    queryKey: ["/api/projects/all-tasks"],
   });
+
+  const overdueMentees = useMemo(() => {
+    if (!enrichedRelationships) return [];
+    return enrichedRelationships
+      .filter((r: EnrichedRelationship) => isOverdue(r))
+      .map((r: EnrichedRelationship) => {
+        const daysSince = r.lastSessionDate
+          ? Math.floor((Date.now() - new Date(r.lastSessionDate).getTime()) / (1000 * 60 * 60 * 24))
+          : 0;
+        const threshold = FREQUENCY_DAYS[r.sessionFrequency || "monthly"] || 30;
+        return { ...r, daysSince, daysOverdue: daysSince - threshold };
+      })
+      .sort((a, b) => b.daysOverdue - a.daysOverdue);
+  }, [enrichedRelationships]);
+
+  const pendingApplicationCount = useMemo(() => {
+    if (!mentoringApplications) return 0;
+    return mentoringApplications.filter((a: any) => a.status === "pending").length;
+  }, [mentoringApplications]);
+
+  const communityGrowth = useMemo(() => {
+    if (!contacts || contacts.length === 0) return [];
+    const now = new Date();
+    const months: { label: string; count: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const monthStart = startOfMonth(subMonths(now, i));
+      const monthEnd = endOfMonth(subMonths(now, i));
+      const count = (contacts as any[]).filter((c: any) => {
+        if (!c.isCommunityMember) return false;
+        const created = new Date(c.createdAt);
+        return created >= monthStart && created <= monthEnd;
+      }).length;
+      months.push({ label: format(monthStart, "MMM"), count });
+    }
+    return months;
+  }, [contacts]);
+
+  const bookingRevenue = useMemo(() => {
+    if (!bookings) return { thisMonth: 0, lastMonth: 0, change: 0 };
+    const now = new Date();
+    const thisMonthStart = startOfMonth(now);
+    const lastMonthStart = startOfMonth(subMonths(now, 1));
+    const lastMonthEnd = endOfMonth(subMonths(now, 1));
+
+    let thisMonth = 0;
+    let lastMonth = 0;
+    (bookings as Booking[]).forEach((b) => {
+      if (b.status === "cancelled" || !b.startDate) return;
+      const amount = parseFloat((b as any).amount) || 0;
+      if (amount === 0) return;
+      const d = new Date(b.startDate);
+      if (d >= thisMonthStart) thisMonth += amount;
+      else if (d >= lastMonthStart && d <= lastMonthEnd) lastMonth += amount;
+    });
+
+    const change = lastMonth > 0 ? ((thisMonth - lastMonth) / lastMonth) * 100 : (thisMonth > 0 ? 100 : 0);
+    return { thisMonth, lastMonth, change };
+  }, [bookings]);
 
   const projectWidget = useMemo(() => {
     if (!projectsData) return { active: 0, planning: 0, pendingTasks: 0, urgent: [] as (Project & { pendingTaskCount: number })[] };
@@ -264,12 +320,10 @@ export default function Dashboard() {
     const ora = contacts?.filter((c: any) => c.stage === "ora").length || 0;
     const inactive = contacts?.filter((c: any) => c.stage === "inactive").length || 0;
     const activeMentoring = mentoringRelationships?.filter((r: any) => r.status === "active").length || 0;
-    const thirtyDaysAgo = addDays(new Date(), -30);
-    const recentInteractionCount = interactions?.filter(
-      (i: any) => new Date(i.date || i.createdAt) >= thirtyDaysAgo
-    ).length || 0;
-    return { kakano, tipu, ora, inactive, activeMentoring, recentInteractionCount };
-  }, [contacts, mentoringRelationships, interactions]);
+    const communityCount = (contacts as any[])?.filter((c: any) => c.isCommunityMember).length || 0;
+    const innovatorCount = (contacts as any[])?.filter((c: any) => c.isInnovator).length || 0;
+    return { kakano, tipu, ora, inactive, activeMentoring, communityCount, innovatorCount };
+  }, [contacts, mentoringRelationships]);
 
   const calendarDays = useMemo(() => {
     const start = startOfMonth(currentMonth);
@@ -370,80 +424,69 @@ export default function Dashboard() {
             </p>
           </div>
 
-          {debriefQueue && debriefQueue.length > 0 && (
-            <Card className="border-l-4 border-l-orange-500 p-4 md:p-6" data-testid="card-debrief-queue">
+          {debriefAttention.length > 0 && (
+            <Card className="border-l-4 border-l-amber-500 p-4 md:p-6" data-testid="card-debriefs-attention-top">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-orange-500/10">
-                    <ClipboardCheck className="w-5 h-5 text-orange-600" />
+                  <div className="p-2 rounded-lg bg-amber-500/10">
+                    <ClipboardCheck className="w-5 h-5 text-amber-600" />
                   </div>
                   <div>
-                    <h2 className="text-lg font-bold font-display">To Be Debriefed</h2>
-                    <p className="text-sm text-muted-foreground">
-                      {debriefQueue.length} event{debriefQueue.length !== 1 ? "s" : ""} awaiting debrief
-                    </p>
+                    <h2 className="text-lg font-bold font-display" data-testid="text-debriefs-attention-heading">Debriefs Needing Attention</h2>
+                    <p className="text-sm text-muted-foreground">{debriefAttention.length} item{debriefAttention.length !== 1 ? "s" : ""} to review</p>
                   </div>
                 </div>
-                <Link href="/debriefs?tab=calendar" data-testid="link-view-all-debriefs">
+                <Link href="/debriefs" data-testid="link-view-all-debriefs">
                   <Button variant="outline" size="sm" className="gap-1">
                     View All <ArrowRight className="w-4 h-4" />
                   </Button>
                 </Link>
               </div>
-
-              <div className="space-y-2">
-                {debriefQueue.slice(0, 3).map((item: any) => (
+              <div className="space-y-1.5 max-h-[240px] overflow-y-auto pr-1">
+                {debriefAttention.slice(0, 6).map((item) => (
                   <div
-                    key={item.id}
-                    className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
-                    data-testid={`debrief-queue-item-${item.id}`}
+                    key={`${item.type}-${item.id}`}
+                    className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/40"
+                    data-testid={`debrief-attention-${item.type}-${item.id}`}
                   >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <Badge
-                        variant={item.queueStatus === "overdue" ? "destructive" : item.queueStatus === "in_progress" ? "secondary" : "outline"}
-                        className="shrink-0 text-xs"
-                        data-testid={`badge-status-${item.id}`}
-                      >
-                        {item.queueStatus === "overdue" && <AlertTriangle className="w-3 h-3 mr-1" />}
-                        {item.queueStatus === "overdue" ? "Overdue" : item.queueStatus === "in_progress" ? "In Progress" : "Due"}
-                      </Badge>
-                      <div className="min-w-0">
-                        <p className="font-medium text-sm truncate">{item.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {format(new Date(item.startTime), "d MMM yyyy")} · {item.type}
-                        </p>
-                      </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{item.name}</p>
+                      <span className="text-xs text-muted-foreground">{item.date}</span>
                     </div>
+                    <Badge variant="secondary" className={`text-[10px] shrink-0 ${item.statusColor}`}>
+                      {item.status}
+                    </Badge>
                     <div className="flex items-center gap-1 shrink-0">
-                      <Link href={`/debriefs?tab=calendar&reconcile=${item.id}`} data-testid={`button-reconcile-${item.id}`}>
-                        <Button size="sm" variant="default" className="gap-1 shrink-0">
-                          <Mic className="w-3 h-3" /> Reconcile
+                      <Link href={item.link}>
+                        <Button size="sm" variant="default" className="gap-1" data-testid={`button-log-debrief-${item.type}-${item.id}`}>
+                          <Mic className="w-3 h-3" /> Log
                         </Button>
                       </Link>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-muted-foreground hover:text-foreground"
-                        onClick={() => { setSkipTarget(item); setSkipReason(""); }}
-                        data-testid={`button-skip-debrief-${item.id}`}
-                      >
-                        Dismiss
-                      </Button>
+                      {item.type === "event" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-muted-foreground hover:text-foreground"
+                          onClick={() => { setSkipTarget(item); setSkipReason(""); }}
+                          data-testid={`button-skip-debrief-${item.id}`}
+                        >
+                          Dismiss
+                        </Button>
+                      )}
+                      {item.type === "event" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => { setDeleteTarget(item); setDeleteReason(""); }}
+                          data-testid={`button-delete-event-${item.id}`}
+                        >
+                          <Trash2 className="w-3 h-3 text-destructive" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
-              {(() => {
-                const unconfirmedCount = (impactLogs as any[])?.filter((l: any) => l.status !== "confirmed").length || 0;
-                if (unconfirmedCount === 0) return null;
-                return (
-                  <div className="mt-3 pt-3 border-t border-border" data-testid="text-unconfirmed-debriefs">
-                    <Link href="/debriefs" className="text-sm text-muted-foreground hover:text-foreground transition-colors" data-testid="link-unconfirmed-debriefs">
-                      <span className="font-medium text-foreground">{unconfirmedCount}</span> debrief{unconfirmedCount !== 1 ? "s" : ""} awaiting confirmation <ArrowRight className="w-3 h-3 inline ml-1" />
-                    </Link>
-                  </div>
-                );
-              })()}
             </Card>
           )}
 
@@ -470,7 +513,7 @@ export default function Dashboard() {
               <div className="space-y-2">
                 {outstandingActions.slice(0, 5).map((action) => {
                   const contact = contacts?.find((c: Contact) => c.id === action.contactId);
-                  const isOverdue = action.dueDate ? isBefore(new Date(action.dueDate), new Date()) : false;
+                  const actionOverdue = action.dueDate ? isBefore(new Date(action.dueDate), new Date()) : false;
                   return (
                     <div
                       key={action.id}
@@ -494,7 +537,7 @@ export default function Dashboard() {
                               <span className="text-xs text-muted-foreground" data-testid={`text-action-contact-${action.id}`}>{contact.name}</span>
                             )}
                             {action.dueDate && (
-                              <span className={`text-xs ${isOverdue ? "text-red-600 dark:text-red-400 font-medium" : "text-muted-foreground"}`} data-testid={`text-action-due-${action.id}`}>
+                              <span className={`text-xs ${actionOverdue ? "text-red-600 dark:text-red-400 font-medium" : "text-muted-foreground"}`} data-testid={`text-action-due-${action.id}`}>
                                 Due {format(new Date(action.dueDate), "d MMM yyyy")}
                               </span>
                             )}
@@ -506,6 +549,65 @@ export default function Dashboard() {
                 })}
               </div>
             </Card>
+          )}
+
+          {(overdueMentees.length > 0 || pendingApplicationCount > 0) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {overdueMentees.length > 0 && (
+                <Card className="border-l-4 border-l-red-500 p-4 md:p-6" data-testid="card-overdue-mentees">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-red-500/10">
+                        <AlertTriangle className="w-5 h-5 text-red-600" />
+                      </div>
+                      <div>
+                        <h3 className="font-display font-semibold" data-testid="text-overdue-mentees-heading">Overdue Mentees</h3>
+                        <p className="text-xs text-muted-foreground">{overdueMentees.length} mentee{overdueMentees.length !== 1 ? "s" : ""} past due</p>
+                      </div>
+                    </div>
+                    <Link href="/mentoring" data-testid="link-view-mentoring">
+                      <Button variant="ghost" size="sm" className="gap-1 text-primary">
+                        View <ArrowRight className="w-3 h-3" />
+                      </Button>
+                    </Link>
+                  </div>
+                  <div className="space-y-1.5">
+                    {overdueMentees.slice(0, 4).map((r) => (
+                      <Link key={r.id} href={`/contacts/${r.contactId}`} data-testid={`link-overdue-mentee-${r.id}`}>
+                        <div className="flex items-center justify-between p-2 rounded-lg bg-muted/40 hover:bg-muted transition-colors cursor-pointer">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium truncate">{r.contactName}</p>
+                            <p className="text-xs text-muted-foreground">{r.sessionFrequency} sessions</p>
+                          </div>
+                          <Badge variant="destructive" className="text-[10px] shrink-0" data-testid={`badge-overdue-days-${r.id}`}>
+                            {r.daysOverdue}d overdue
+                          </Badge>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </Card>
+              )}
+
+              {pendingApplicationCount > 0 && (
+                <Card className="border-l-4 border-l-blue-500 p-4 md:p-6" data-testid="card-pending-applications">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-blue-500/10">
+                      <UserPlus className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-display font-semibold" data-testid="text-pending-apps-heading">Pending Applications</h3>
+                      <p className="text-xs text-muted-foreground">{pendingApplicationCount} mentoring application{pendingApplicationCount !== 1 ? "s" : ""} awaiting review</p>
+                    </div>
+                    <Link href="/mentoring" data-testid="link-review-applications">
+                      <Button size="sm" className="gap-1">
+                        Review <ArrowRight className="w-3 h-3" />
+                      </Button>
+                    </Link>
+                  </div>
+                </Card>
+              )}
+            </div>
           )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
@@ -557,77 +659,6 @@ export default function Dashboard() {
               </div>
             </Card>
 
-            <Card className="p-4 md:p-6" data-testid="card-debriefs-attention">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 rounded-lg bg-amber-500/10">
-                  <ClipboardCheck className="w-5 h-5 text-amber-600" />
-                </div>
-                <div>
-                  <h3 className="font-display font-semibold" data-testid="text-debriefs-attention-heading">Debriefs Needing Attention</h3>
-                  <p className="text-xs text-muted-foreground">{debriefAttention.length} item{debriefAttention.length !== 1 ? "s" : ""}</p>
-                </div>
-              </div>
-              {debriefAttention.length > 0 ? (
-                <div className="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
-                  {debriefAttention.map((item) => (
-                    <div
-                      key={`${item.type}-${item.id}`}
-                      className="flex items-center gap-2 p-2 rounded-lg bg-muted/40"
-                      data-testid={`debrief-attention-${item.type}-${item.id}`}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{item.name}</p>
-                        <span className="text-xs text-muted-foreground">{item.date}</span>
-                      </div>
-                      <Badge variant="secondary" className={`text-[10px] shrink-0 ${item.statusColor}`}>
-                        {item.status}
-                      </Badge>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <Link href={item.link}>
-                          <Button size="sm" variant="default" className="gap-1" data-testid={`button-log-debrief-${item.type}-${item.id}`}>
-                            <Mic className="w-3 h-3" /> Log
-                          </Button>
-                        </Link>
-                        {item.type === "event" && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-muted-foreground hover:text-foreground"
-                            onClick={() => { setSkipTarget(item); setSkipReason(""); }}
-                            data-testid={`button-skip-debrief-${item.id}`}
-                          >
-                            Dismiss
-                          </Button>
-                        )}
-                        {item.type === "event" && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => { setDeleteTarget(item); setDeleteReason(""); }}
-                            data-testid={`button-delete-event-${item.id}`}
-                          >
-                            <Trash2 className="w-3 h-3 text-destructive" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-6 text-muted-foreground text-sm">
-                  <ClipboardCheck className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                  <p>All caught up!</p>
-                </div>
-              )}
-              <div className="mt-3 pt-3 border-t border-border">
-                <Link href="/debriefs">
-                  <Button variant="ghost" size="sm" className="w-full gap-1 text-primary" data-testid="button-quick-debrief">
-                    <Mic className="w-3.5 h-3.5" /> Quick Debrief <ArrowRight className="w-3 h-3 ml-auto" />
-                  </Button>
-                </Link>
-              </div>
-            </Card>
-
             <Card className="p-4 md:p-6" data-testid="card-community-snapshot">
               <div className="flex items-center gap-3 mb-4">
                 <div className="p-2 rounded-lg bg-emerald-500/10">
@@ -644,7 +675,7 @@ export default function Dashboard() {
                     <Sprout className="w-4 h-4 text-amber-600" />
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm font-semibold">Kākano</p>
+                    <p className="text-sm font-semibold">Kakano</p>
                     <p className="text-[11px] text-muted-foreground">Seed / Foundation</p>
                   </div>
                   <span className="text-lg font-bold tabular-nums" data-testid="text-kakano-count">{journeySnapshot.kakano}</span>
@@ -688,9 +719,15 @@ export default function Dashboard() {
               </div>
               <div className="mt-3 pt-3 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
                 <span className="flex items-center gap-1.5">
-                  <Activity className="w-3.5 h-3.5" />
-                  <span data-testid="text-recent-interactions-count">{journeySnapshot.recentInteractionCount} interactions</span> in last 30 days
+                  <Users className="w-3.5 h-3.5" />
+                  <span data-testid="text-community-count">{journeySnapshot.communityCount} community</span>
                 </span>
+                {journeySnapshot.innovatorCount > 0 && (
+                  <span className="flex items-center gap-1.5">
+                    <Lightbulb className="w-3.5 h-3.5 text-amber-500" />
+                    <span data-testid="text-innovator-count">{journeySnapshot.innovatorCount} innovator{journeySnapshot.innovatorCount !== 1 ? "s" : ""}</span>
+                  </span>
+                )}
               </div>
             </Card>
 
@@ -760,10 +797,87 @@ export default function Dashboard() {
                 </Link>
               </div>
             </Card>
+
+            <Card className="p-4 md:p-6" data-testid="card-booking-revenue">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 rounded-lg bg-green-500/10">
+                  <DollarSign className="w-5 h-5 text-green-600" />
+                </div>
+                <div>
+                  <h3 className="font-display font-semibold" data-testid="text-revenue-heading">Booking Revenue</h3>
+                  <p className="text-xs text-muted-foreground">{format(new Date(), "MMMM yyyy")}</p>
+                </div>
+              </div>
+              <div className="flex items-end gap-4 mb-3">
+                <div>
+                  <p className="text-3xl font-bold tabular-nums" data-testid="text-revenue-this-month">
+                    ${bookingRevenue.thisMonth.toLocaleString("en-NZ", { minimumFractionDigits: 0 })}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">This month</p>
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-1.5">
+                    {bookingRevenue.change > 0 ? (
+                      <TrendingUp className="w-4 h-4 text-green-600" />
+                    ) : bookingRevenue.change < 0 ? (
+                      <TrendingDown className="w-4 h-4 text-red-600" />
+                    ) : null}
+                    {bookingRevenue.change !== 0 && (
+                      <span className={`text-sm font-semibold ${bookingRevenue.change > 0 ? "text-green-600" : "text-red-600"}`} data-testid="text-revenue-change">
+                        {bookingRevenue.change > 0 ? "+" : ""}{Math.round(bookingRevenue.change)}%
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground" data-testid="text-revenue-last-month">
+                    Last month: ${bookingRevenue.lastMonth.toLocaleString("en-NZ", { minimumFractionDigits: 0 })}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 pt-3 border-t border-border">
+                <Link href="/bookings">
+                  <Button variant="ghost" size="sm" className="w-full gap-1 text-primary" data-testid="button-view-bookings">
+                    <Building2 className="w-3.5 h-3.5" /> View Bookings <ArrowRight className="w-3 h-3 ml-auto" />
+                  </Button>
+                </Link>
+              </div>
+            </Card>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 space-y-4">
+          {communityGrowth.length > 0 && communityGrowth.some(m => m.count > 0) && (
+            <Card className="p-4 md:p-6" data-testid="card-community-growth">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <Users className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-display font-semibold" data-testid="text-growth-heading">Community Growth</h3>
+                  <p className="text-xs text-muted-foreground">New members added per month (last 6 months)</p>
+                </div>
+              </div>
+              <div className="h-[120px]" data-testid="chart-community-growth">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={communityGrowth} barSize={24}>
+                    <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          return (
+                            <div className="bg-popover border rounded-lg shadow-sm px-3 py-1.5 text-sm">
+                              <span className="font-semibold">{payload[0].value}</span> new member{payload[0].value !== 1 ? "s" : ""}
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+          )}
+
+          <div className="space-y-4">
               <div className="flex items-center justify-between gap-4 flex-wrap">
                 <h2 className="text-xl font-bold font-display">Calendar</h2>
               </div>
@@ -1049,108 +1163,6 @@ export default function Dashboard() {
                   </div>
                 )}
               </Card>
-            </div>
-
-            <div className="space-y-4">
-              <h2 className="text-xl font-bold font-display" data-testid="text-recent-debriefs-heading">Recent Debriefs</h2>
-              <Card className="p-4 md:p-6">
-                {recentDebriefs.length > 0 ? (
-                  <div className="space-y-4">
-                    {recentDebriefs.map((debrief: any) => (
-                      <Link
-                        key={debrief.id}
-                        href={`/debriefs/${debrief.id}`}
-                        data-testid={`link-debrief-${debrief.id}`}
-                        className="block w-full text-left p-2 rounded-lg hover:bg-muted/50 transition-colors"
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className="flex flex-col items-center bg-primary/10 rounded-lg px-2 py-1 shrink-0">
-                            <span className="text-xs font-medium text-primary">{debrief.createdAt ? format(new Date(debrief.createdAt), "MMM") : ""}</span>
-                            <span className="text-lg font-bold text-primary leading-tight">{debrief.createdAt ? format(new Date(debrief.createdAt), "d") : ""}</span>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-sm truncate" data-testid={`text-debrief-title-${debrief.id}`}>{debrief.title}</p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <Badge variant="secondary" className={`text-xs ${
-                                debrief.status === "reviewed" ? "bg-green-500/15 text-green-700 dark:text-green-300" :
-                                debrief.status === "draft" ? "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300" :
-                                "bg-blue-500/15 text-blue-700 dark:text-blue-300"
-                              }`} data-testid={`badge-debrief-status-${debrief.id}`}>
-                                {debrief.status}
-                              </Badge>
-                              {debrief.createdAt && (
-                                <span className="text-xs text-muted-foreground">
-                                  {format(new Date(debrief.createdAt), "MMM d, yyyy")}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </Link>
-                    ))}
-                    <Link href="/debriefs" className="text-primary hover:underline text-xs font-medium flex items-center justify-center pt-2" data-testid="link-view-all-debriefs">
-                      View all debriefs <ArrowRight className="w-3 h-3 ml-1" />
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="text-center py-6 text-muted-foreground text-sm">
-                    <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                    <p>No debriefs yet.</p>
-                    <Link href="/debriefs" data-testid="link-go-to-debriefs">
-                      <Button variant="ghost" size="sm" className="mt-1 text-primary">
-                        Go to Debriefs
-                      </Button>
-                    </Link>
-                  </div>
-                )}
-              </Card>
-
-              <h2 className="text-xl font-bold font-display">Recent Interactions</h2>
-              <Card className="p-4 md:p-6">
-                {loadingInteractions ? (
-                  <div className="space-y-4">
-                    {[1, 2, 3].map((i) => (
-                      <div key={i} className="flex gap-3">
-                        <Skeleton className="h-8 w-8 rounded-full" />
-                        <div className="space-y-2 flex-1">
-                          <Skeleton className="h-3 w-full" />
-                          <Skeleton className="h-3 w-3/4" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : recentInteractions.length > 0 ? (
-                  <div className="space-y-3">
-                    {recentInteractions.slice(0, 5).map((interaction) => {
-                      const contact = contacts?.find((c: Contact) => c.id === interaction.contactId);
-                      return (
-                        <div key={interaction.id} className="flex items-start gap-3">
-                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs shrink-0">
-                            {contact?.name?.[0] || "?"}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{contact?.name || "Unknown"}</p>
-                            <p className="text-xs text-muted-foreground truncate">
-                              {interaction.summary || interaction.type}
-                            </p>
-                            <span className="text-xs text-muted-foreground">
-                              {format(new Date(interaction.date), "MMM d")}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    <Link href="/contacts" className="text-primary hover:underline text-xs font-medium flex items-center justify-center pt-2">
-                      View all members <ArrowRight className="w-3 h-3 ml-1" />
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="text-center py-6 text-muted-foreground text-sm">
-                    <p>No interactions yet.</p>
-                  </div>
-                )}
-              </Card>
-            </div>
           </div>
 
         </div>
@@ -1202,6 +1214,50 @@ export default function Dashboard() {
             >
               {deleteEventMutation.isPending && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
               Remove
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!skipTarget} onOpenChange={(open) => { if (!open) { setSkipTarget(null); setSkipReason(""); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Dismiss Debrief</DialogTitle>
+          </DialogHeader>
+          {skipTarget && (
+            <div className="space-y-4">
+              <div className="p-3 rounded-lg bg-muted/50">
+                <p className="text-sm font-medium">{skipTarget.name}</p>
+                <p className="text-xs text-muted-foreground">{skipTarget.date}</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="skip-reason">Why is this debrief being dismissed?</Label>
+                <Textarea
+                  id="skip-reason"
+                  value={skipReason}
+                  onChange={(e) => setSkipReason(e.target.value)}
+                  placeholder="e.g. Not relevant, already documented elsewhere..."
+                  className="resize-none"
+                  data-testid="input-skip-reason"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setSkipTarget(null); setSkipReason(""); }} data-testid="button-cancel-skip">
+              Cancel
+            </Button>
+            <Button
+              disabled={!skipReason.trim() || skipDebriefMutation.isPending}
+              onClick={() => {
+                if (skipTarget?.id) {
+                  skipDebriefMutation.mutate({ id: skipTarget.id, reason: skipReason.trim() });
+                }
+              }}
+              data-testid="button-confirm-skip"
+            >
+              {skipDebriefMutation.isPending && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
+              Dismiss
             </Button>
           </DialogFooter>
         </DialogContent>
