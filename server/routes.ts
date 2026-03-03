@@ -742,6 +742,51 @@ export async function registerRoutes(
     res.json(allMeetings);
   });
 
+  app.get('/api/meetings/debrief-summaries', isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const profiles = await storage.getMentorProfiles(userId);
+      const mentorUserIds = new Set<string>();
+      mentorUserIds.add(userId);
+      profiles.forEach(p => {
+        if (p.mentorUserId) mentorUserIds.add(p.mentorUserId);
+        mentorUserIds.add(`mentor-${p.id}`);
+      });
+
+      let allMeetings: any[] = [];
+      for (const mid of mentorUserIds) {
+        const m = await storage.getMeetings(mid);
+        allMeetings.push(...m);
+      }
+
+      const debriefed = allMeetings.filter(m => m.interactionId && (m.type === "mentoring" || !m.type));
+      const summaries: Record<number, any> = {};
+
+      const userContacts = await storage.getContacts(userId);
+      const userContactIds = new Set(userContacts.map(c => c.id));
+
+      for (const meeting of debriefed) {
+        if (!userContactIds.has(meeting.contactId)) continue;
+        const interaction = await storage.getInteraction(meeting.interactionId!);
+        if (interaction && userContactIds.has(interaction.contactId)) {
+          summaries[meeting.id] = {
+            meetingId: meeting.id,
+            mindsetScore: interaction.analysis?.mindsetScore,
+            skillScore: interaction.analysis?.skillScore,
+            confidenceScore: interaction.analysis?.confidenceScore,
+            keyInsights: interaction.analysis?.keyInsights || [],
+            summary: interaction.summary,
+          };
+        }
+      }
+
+      res.json(summaries);
+    } catch (err: any) {
+      console.error("Debrief summaries error:", err);
+      res.status(500).json({ message: "Failed to fetch debrief summaries" });
+    }
+  });
+
   app.get(api.meetings.list.path, isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
     const meetingsList = await storage.getMeetings(userId);
@@ -931,51 +976,6 @@ export async function registerRoutes(
     } catch (err: any) {
       console.error("Debrief error:", err);
       res.status(500).json({ message: "Failed to log debrief" });
-    }
-  });
-
-  app.get('/api/meetings/debrief-summaries', isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      const profiles = await storage.getMentorProfiles(userId);
-      const mentorUserIds = new Set<string>();
-      mentorUserIds.add(userId);
-      profiles.forEach(p => {
-        if (p.mentorUserId) mentorUserIds.add(p.mentorUserId);
-        mentorUserIds.add(`mentor-${p.id}`);
-      });
-
-      let allMeetings: any[] = [];
-      for (const mid of mentorUserIds) {
-        const m = await storage.getMeetings(mid);
-        allMeetings.push(...m);
-      }
-
-      const debriefed = allMeetings.filter(m => m.interactionId && (m.type === "mentoring" || !m.type));
-      const summaries: Record<number, any> = {};
-
-      const userContacts = await storage.getContacts(userId);
-      const userContactIds = new Set(userContacts.map(c => c.id));
-
-      for (const meeting of debriefed) {
-        if (!userContactIds.has(meeting.contactId)) continue;
-        const interaction = await storage.getInteraction(meeting.interactionId!);
-        if (interaction && userContactIds.has(interaction.contactId)) {
-          summaries[meeting.id] = {
-            meetingId: meeting.id,
-            mindsetScore: interaction.analysis?.mindsetScore,
-            skillScore: interaction.analysis?.skillScore,
-            confidenceScore: interaction.analysis?.confidenceScore,
-            keyInsights: interaction.analysis?.keyInsights || [],
-            summary: interaction.summary,
-          };
-        }
-      }
-
-      res.json(summaries);
-    } catch (err: any) {
-      console.error("Debrief summaries error:", err);
-      res.status(500).json({ message: "Failed to fetch debrief summaries" });
     }
   });
 
@@ -7642,7 +7642,12 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       if (!await verifyContactOwnership(existing.contactId, userId)) {
         return res.status(403).json({ message: "Forbidden" });
       }
-      const updated = await storage.updateMentoringApplication(id, req.body);
+      const updateData = { ...req.body };
+      if (updateData.status === "declined" || updateData.status === "deferred") {
+        updateData.reviewedBy = userId;
+        updateData.reviewedDate = new Date();
+      }
+      const updated = await storage.updateMentoringApplication(id, updateData);
       if (!updated) return res.status(404).json({ message: "Not found" });
       res.json(updated);
     } catch (err: any) {
