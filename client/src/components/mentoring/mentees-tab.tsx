@@ -32,6 +32,9 @@ import {
   ChevronRight,
   UserPlus,
   Contact,
+  Sprout,
+  TreePine,
+  Sun,
 } from "lucide-react";
 import { MenteeCard } from "@/components/mentoring/mentee-card";
 import { ApplicationCard } from "@/components/mentoring/application-card";
@@ -77,6 +80,7 @@ function AddMenteeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
   const [customFocus, setCustomFocus] = useState("");
   const [frequency, setFrequency] = useState("monthly");
   const [notes, setNotes] = useState("");
+  const [stage, setStage] = useState("kakano");
 
   const filteredContacts = useMemo(() => {
     if (!contacts || !contactSearch.trim()) return (contacts || []).slice(0, 10);
@@ -117,6 +121,7 @@ function AddMenteeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
     setCustomFocus("");
     setFrequency("monthly");
     setNotes("");
+    setStage("kakano");
   };
 
   const createRelationship = useMutation({
@@ -147,12 +152,16 @@ function AddMenteeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
 
     if (mode === "existing") {
       if (!contactId) return;
-      if (notes.trim()) {
+      const patchData: any = {};
+      if (notes.trim()) patchData.notes = notes.trim();
+      if (stage) patchData.stage = stage;
+      patchData.isCommunityMember = true;
+      if (Object.keys(patchData).length > 0) {
         try {
-          await apiRequest("PATCH", `/api/contacts/${parseInt(contactId)}`, { notes: notes.trim() });
+          await apiRequest("PATCH", `/api/contacts/${parseInt(contactId)}`, patchData);
           queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
         } catch (e: any) {
-          toast({ title: "Warning", description: "Could not save notes to contact", variant: "destructive" });
+          toast({ title: "Warning", description: "Could not update contact details", variant: "destructive" });
         }
       }
       createRelationship.mutate({
@@ -174,7 +183,7 @@ function AddMenteeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
           whatTheyAreBuilding: newWhatBuilding.trim() || null,
           role: "entrepreneur",
           isCommunityMember: true,
-          stage: "kakano",
+          stage: stage || "kakano",
           notes: notes.trim() || null,
         });
         queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
@@ -248,6 +257,7 @@ function AddMenteeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
                 <div className="space-y-2">
                   <Label>Email</Label>
                   <Input placeholder="Email address" type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} data-testid="input-new-mentee-email" />
+                  <p className="text-[10px] text-muted-foreground">Used to recognise this person when they book online</p>
                 </div>
                 <div className="space-y-2">
                   <Label>Phone</Label>
@@ -293,6 +303,35 @@ function AddMenteeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
               </div>
             </div>
           )}
+
+          <div className="space-y-2">
+            <Label>Journey Stage</Label>
+            <div className="flex gap-2">
+              {([
+                { id: "kakano", label: "Kakano", desc: "Seed", icon: Sprout, color: "text-amber-700 dark:text-amber-400", bg: "bg-amber-500/10 border-amber-200 dark:border-amber-800" },
+                { id: "tipu", label: "Tipu", desc: "Growth", icon: TreePine, color: "text-green-700 dark:text-green-400", bg: "bg-green-500/10 border-green-200 dark:border-green-800" },
+                { id: "ora", label: "Ora", desc: "Thriving", icon: Sun, color: "text-sky-700 dark:text-sky-400", bg: "bg-sky-500/10 border-sky-200 dark:border-sky-800" },
+              ] as const).map(s => {
+                const Icon = s.icon;
+                const isSelected = stage === s.id;
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    className={`flex-1 flex flex-col items-center gap-1 px-3 py-2.5 rounded-lg border-2 transition-all ${
+                      isSelected ? `${s.bg} ${s.color} border-current font-semibold` : "border-border hover:bg-muted text-muted-foreground"
+                    }`}
+                    onClick={() => setStage(s.id)}
+                    data-testid={`stage-${s.id}`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    <span className="text-xs font-medium">{s.label}</span>
+                    <span className="text-[10px] opacity-70">{s.desc}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           <div className="space-y-2">
             <Label>Focus Areas (select up to 3)</Label>
@@ -370,8 +409,11 @@ export function MenteesTab() {
   const pendingApps = applications?.filter(a => a.status === "pending") || [];
 
   const acceptApp = useMutation({
-    mutationFn: async ({ id, notes }: { id: number; notes?: string }) => {
-      const res = await apiRequest("POST", `/api/mentoring-applications/${id}/accept`, { reviewNotes: notes });
+    mutationFn: async ({ id, notes, extra }: { id: number; notes?: string; extra?: { focusAreas?: string; sessionFrequency?: string; stage?: string } }) => {
+      const res = await apiRequest("POST", `/api/mentoring-applications/${id}/accept`, {
+        reviewNotes: notes,
+        ...(extra || {}),
+      });
       return res.json();
     },
     onSuccess: () => {
@@ -442,7 +484,7 @@ export function MenteesTab() {
                 key={app.id}
                 application={app}
                 contacts={(contacts || []) as any[]}
-                onAccept={(id, notes) => acceptApp.mutate({ id, notes })}
+                onAccept={(id, notes, extra) => acceptApp.mutate({ id, notes, extra })}
                 onDecline={(id, notes) => declineApp.mutate({ id, notes })}
                 onDefer={(id, notes) => deferApp.mutate({ id, notes })}
               />

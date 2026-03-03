@@ -8,7 +8,7 @@ import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON } from "./replit_integrations/anthropic/client";
 import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, type ReportFilters } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks } from "@shared/schema";
+import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES } from "@shared/schema";
 import crypto from "crypto";
 import { db } from "./db";
 import { eq, and, sql, gte, lte } from "drizzle-orm";
@@ -1054,13 +1054,26 @@ export async function registerRoutes(
         reviewNotes: req.body.reviewNotes || null,
       });
 
+      const reqFocusAreas = req.body.focusAreas && typeof req.body.focusAreas === 'string' && req.body.focusAreas.trim() ? req.body.focusAreas.trim() : null;
+      const reqFrequency = req.body.sessionFrequency && (SESSION_FREQUENCIES as readonly string[]).includes(req.body.sessionFrequency) ? req.body.sessionFrequency : "monthly";
+      const reqStage = req.body.stage && (JOURNEY_STAGES as readonly string[]).includes(req.body.stage) ? req.body.stage : "kakano";
+
       const relationship = await storage.createMentoringRelationship({
         contactId: application.contactId,
         status: "active",
         startDate: new Date(),
-        focusAreas: application.whatNeedHelpWith || application.ventureDescription || null,
-        sessionFrequency: "monthly",
+        focusAreas: reqFocusAreas || application.whatNeedHelpWith || application.ventureDescription || null,
+        sessionFrequency: reqFrequency,
       });
+
+      try {
+        await storage.updateContact(application.contactId, {
+          isCommunityMember: true,
+          stage: reqStage,
+        });
+      } catch (contactErr) {
+        console.warn("Failed to update contact on acceptance:", contactErr);
+      }
 
       res.json({ application: updated, relationship });
     } catch (err: any) {
@@ -1456,7 +1469,7 @@ export async function registerRoutes(
       const resolved = await resolveMentorUserId(rawId);
       const meetingUserId = resolved.availabilityUserId;
       const contactOwnerUserId = resolved.ownerUserId || resolved.availabilityUserId;
-      const { name, email, phone, date, time, duration, focus, notes, meetingTypeId, pathway, onboardingAnswers } = req.body;
+      const { name, email, phone, date, time, duration, focus, notes, meetingTypeId, pathway, onboardingAnswers, discoveryGoals } = req.body;
 
       if (!name || !date || !time) {
         return res.status(400).json({ message: "name, date, and time are required" });
@@ -1504,13 +1517,19 @@ export async function registerRoutes(
         meetingTypeId: meetingTypeId ? parseInt(meetingTypeId) : undefined,
       });
 
-      if (pathway === 'mentoring' && isNewContact && onboardingAnswers) {
+      if (pathway === 'mentoring' && isNewContact) {
         try {
-          await storage.createMentoringApplication({
+          const appData: any = {
             contactId: contact.id,
-            onboardingAnswers: onboardingAnswers,
             status: 'pending',
-          });
+          };
+          if (onboardingAnswers) appData.onboardingAnswers = onboardingAnswers;
+          if (discoveryGoals) {
+            appData.ventureDescription = discoveryGoals.ventureDescription || null;
+            appData.currentStage = discoveryGoals.currentStage || null;
+            appData.whatNeedHelpWith = discoveryGoals.whatNeedHelpWith || null;
+          }
+          await storage.createMentoringApplication(appData);
         } catch (appErr) {
           console.warn("Failed to create mentoring application:", appErr);
         }
@@ -1550,15 +1569,34 @@ export async function registerRoutes(
     try {
       const { userId } = req.params;
       const email = req.query.email as string;
-      if (!email) return res.status(400).json({ message: "email query parameter required" });
+      const name = req.query.name as string;
       const resolved = await resolveMentorUserId(userId);
       const ownerUserId = resolved.ownerUserId || resolved.availabilityUserId;
       const allContacts = await storage.getContacts(ownerUserId);
-      const contact = allContacts.find((c: any) => c.email && c.email.toLowerCase() === email.toLowerCase());
-      if (!contact) return res.json({ isReturning: false });
-      const relationships = await storage.getMentoringRelationshipsByContact(contact.id);
-      const hasActive = relationships.some((r: any) => r.status === 'active' || r.status === 'on_hold');
-      res.json({ isReturning: hasActive, contactName: contact.name });
+
+      if (email) {
+        const contact = allContacts.find((c: any) => c.email && c.email.toLowerCase() === email.toLowerCase());
+        if (!contact) return res.json({ isReturning: false });
+        const relationships = await storage.getMentoringRelationshipsByContact(contact.id);
+        const hasActive = relationships.some((r: any) => r.status === 'active' || r.status === 'on_hold');
+        return res.json({ isReturning: hasActive, contactName: contact.name, matchedByEmail: true });
+      }
+
+      if (name) {
+        const nameLower = name.toLowerCase().trim();
+        const nameMatches = allContacts.filter((c: any) => c.name && c.name.toLowerCase().trim() === nameLower);
+        if (nameMatches.length === 0) return res.json({ isReturning: false, nameFound: false });
+        for (const contact of nameMatches) {
+          const relationships = await storage.getMentoringRelationshipsByContact(contact.id);
+          const hasActive = relationships.some((r: any) => r.status === 'active' || r.status === 'on_hold');
+          if (hasActive) {
+            return res.json({ isReturning: true, contactName: contact.name, nameFound: true });
+          }
+        }
+        return res.json({ isReturning: false, nameFound: true, contactName: nameMatches[0].name });
+      }
+
+      return res.status(400).json({ message: "email or name query parameter required" });
     } catch (err) {
       res.status(500).json({ message: "Failed to check mentee status" });
     }
