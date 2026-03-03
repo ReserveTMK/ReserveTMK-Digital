@@ -1647,7 +1647,22 @@ export const VENTURE_TYPES = ["commercial_business", "social_enterprise", "creat
 export type VentureType = typeof VENTURE_TYPES[number];
 
 export const MENTORING_RELATIONSHIP_STATUSES = ["application", "active", "on_hold", "graduated", "ended"] as const;
-export const SESSION_FREQUENCIES = ["weekly", "fortnightly", "monthly"] as const;
+export const SESSION_FREQUENCIES = ["weekly", "fortnightly", "monthly", "ad_hoc"] as const;
+
+export const MENTORING_FOCUS_AREAS = [
+  "Business Planning",
+  "Financial Literacy",
+  "Marketing & Sales",
+  "Leadership",
+  "Digital Skills",
+  "Hauora / Wellbeing",
+  "Creative Development",
+  "Community Building",
+  "Strategic Thinking",
+  "Communication & Storytelling",
+  "Operations & Systems",
+  "Cultural Grounding",
+] as const;
 
 export const mentoringRelationships = pgTable("mentoring_relationships", {
   id: serial("id").primaryKey(),

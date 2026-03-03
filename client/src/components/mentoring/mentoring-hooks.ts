@@ -37,6 +37,13 @@ export const FREQUENCY_DAYS: Record<string, number> = {
   monthly: 30,
 };
 
+export const FREQUENCY_LABELS: Record<string, string> = {
+  weekly: "Weekly",
+  fortnightly: "Fortnightly",
+  monthly: "Monthly",
+  ad_hoc: "Ad-hoc",
+};
+
 export type EnrichedRelationship = MentoringRelationship & {
   contactName: string;
   contactEmail?: string;
@@ -83,6 +90,7 @@ export function useMentoringApplications() {
 export function isOverdue(relationship: EnrichedRelationship): boolean {
   if (!relationship.lastSessionDate || !relationship.sessionFrequency) return false;
   if (relationship.status !== "active") return false;
+  if (relationship.sessionFrequency === "ad_hoc") return false;
   const daysSince = Math.floor((Date.now() - new Date(relationship.lastSessionDate).getTime()) / (1000 * 60 * 60 * 24));
   const threshold = FREQUENCY_DAYS[relationship.sessionFrequency] || 30;
   return daysSince > threshold * 1.25;

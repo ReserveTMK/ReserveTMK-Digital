@@ -28,6 +28,7 @@ import {
   JOURNEY_STAGE_CONFIG,
   RELATIONSHIP_STATUS_CONFIG,
   VENTURE_TYPE_LABELS,
+  FREQUENCY_LABELS,
   isOverdue,
 } from "@/components/mentoring/mentoring-hooks";
 import type { EnrichedRelationship } from "@/components/mentoring/mentoring-hooks";
@@ -109,6 +110,7 @@ export function MenteeCard({ relationship }: { relationship: EnrichedRelationshi
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/mentoring-relationships/enriched"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/meetings/debrief-summaries"] });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -147,7 +149,7 @@ export function MenteeCard({ relationship }: { relationship: EnrichedRelationshi
                 {relationship.completedSessionCount} sessions
               </span>
               {relationship.sessionFrequency && (
-                <span className="capitalize">{relationship.sessionFrequency}</span>
+                <span>{FREQUENCY_LABELS[relationship.sessionFrequency] || relationship.sessionFrequency}</span>
               )}
               {daysSinceSession !== null && (
                 <span>Last session {daysSinceSession === 0 ? "today" : `${daysSinceSession}d ago`}</span>
@@ -221,7 +223,11 @@ export function MenteeCard({ relationship }: { relationship: EnrichedRelationshi
             {relationship.focusAreas && (
               <div>
                 <p className="text-xs font-medium mb-1">Focus Areas</p>
-                <p className="text-xs text-muted-foreground">{relationship.focusAreas}</p>
+                <div className="flex flex-wrap gap-1">
+                  {relationship.focusAreas.split(",").filter(a => a.trim()).map((area, i) => (
+                    <Badge key={i} variant="secondary" className="text-[10px]">{area.trim()}</Badge>
+                  ))}
+                </div>
               </div>
             )}
 
