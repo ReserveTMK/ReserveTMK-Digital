@@ -53,6 +53,8 @@ export default function Dashboard() {
   const [viewMeeting, setViewMeeting] = useState<Meeting | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
   const [deleteReason, setDeleteReason] = useState("");
+  const [skipTarget, setSkipTarget] = useState<any | null>(null);
+  const [skipReason, setSkipReason] = useState("");
 
   const { data: debriefQueue } = useQuery<any[]>({
     queryKey: ["/api/events/needs-debrief"],
@@ -79,6 +81,21 @@ export default function Dashboard() {
     },
     onError: (err: any) => {
       toast({ title: "Failed to delete event", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const skipDebriefMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: number; reason: string }) => {
+      await apiRequest("POST", `/api/events/${id}/skip-debrief`, { reason });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/events/needs-debrief"] });
+      setSkipTarget(null);
+      setSkipReason("");
+      toast({ title: "Debrief dismissed" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to dismiss debrief", description: err.message, variant: "destructive" });
     },
   });
 
@@ -397,11 +414,22 @@ export default function Dashboard() {
                         </p>
                       </div>
                     </div>
-                    <Link href={`/debriefs?tab=calendar&reconcile=${item.id}`} data-testid={`button-reconcile-${item.id}`}>
-                      <Button size="sm" variant="default" className="gap-1 shrink-0">
-                        <Mic className="w-3 h-3" /> Reconcile
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Link href={`/debriefs?tab=calendar&reconcile=${item.id}`} data-testid={`button-reconcile-${item.id}`}>
+                        <Button size="sm" variant="default" className="gap-1 shrink-0">
+                          <Mic className="w-3 h-3" /> Reconcile
+                        </Button>
+                      </Link>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-muted-foreground hover:text-foreground"
+                        onClick={() => { setSkipTarget(item); setSkipReason(""); }}
+                        data-testid={`button-skip-debrief-${item.id}`}
+                      >
+                        Dismiss
                       </Button>
-                    </Link>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -560,6 +588,17 @@ export default function Dashboard() {
                             <Mic className="w-3 h-3" /> Log
                           </Button>
                         </Link>
+                        {item.type === "event" && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-muted-foreground hover:text-foreground"
+                            onClick={() => { setSkipTarget(item); setSkipReason(""); }}
+                            data-testid={`button-skip-debrief-${item.id}`}
+                          >
+                            Dismiss
+                          </Button>
+                        )}
                         {item.type === "event" && (
                           <Button
                             size="sm"

@@ -1518,14 +1518,18 @@ export async function registerRoutes(
     try {
       const userId = (req.user as any).claims.sub;
       const eventId = parseInt(req.params.id);
-      const event = await storage.getEvent(eventId);
-      if (!event) return res.status(404).json({ message: "Event not found" });
-      if (event.userId !== userId) return res.status(403).json({ message: "Forbidden" });
       const { reason } = req.body;
-      const updated = await storage.updateEvent(eventId, {
-        debriefSkippedReason: reason || "Skipped by user",
+
+      if (!reason) {
+        return res.status(400).json({ message: "Reason is required to skip debrief" });
+      }
+
+      await storage.updateEvent(eventId, {
+        debriefSkippedReason: reason,
+        requiresDebrief: false
       });
-      res.json(updated);
+
+      res.json({ message: "Debrief skipped" });
     } catch (err) {
       console.error("Skip debrief error:", err);
       res.status(500).json({ message: "Failed to skip debrief" });
