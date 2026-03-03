@@ -1,4 +1,3 @@
-import { MetricCard } from "@/components/ui/metric-card";
 import { useContacts } from "@/hooks/use-contacts";
 import { useInteractions } from "@/hooks/use-interactions";
 import { useMeetings, useDeleteMeeting } from "@/hooks/use-meetings";
@@ -7,7 +6,7 @@ import { useImpactLogs } from "@/hooks/use-impact-logs";
 import { useAuth } from "@/hooks/use-auth";
 import { useProgrammes } from "@/hooks/use-programmes";
 import { useBookings, useVenues } from "@/hooks/use-bookings";
-import { Users, Activity, TrendingUp, Calendar as CalendarIcon, ArrowRight, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, PartyPopper, Mic, FileText, Building2, Layers, BookOpen, AlertTriangle, ClipboardCheck, SkipForward, ListChecks, Info, Rocket, Sprout, TreePine, Sun, Eye } from "lucide-react";
+import { Activity, Calendar as CalendarIcon, ArrowRight, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, PartyPopper, Mic, FileText, Building2, Layers, AlertTriangle, ClipboardCheck, ListChecks, Rocket, Sprout, TreePine, Sun, Eye, Loader2 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { format, startOfMonth, endOfMonth, startOfDay, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, addDays, isToday, isBefore, isAfter } from "date-fns";
 import { formatTimeSlot } from "@/lib/utils";
@@ -23,10 +22,11 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-} from "recharts";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import type { Meeting, Contact, Event, Programme, Booking, Project, ProjectTask } from "@shared/schema";
 
 const MEETING_STATUS_COLORS: Record<string, string> = {
@@ -37,7 +37,7 @@ const MEETING_STATUS_COLORS: Record<string, string> = {
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const { data: contacts, isLoading: loadingContacts } = useContacts();
+  const { data: contacts } = useContacts();
   const { data: interactions, isLoading: loadingInteractions } = useInteractions();
   const { data: meetings } = useMeetings();
   const { data: events } = useEvents();
@@ -47,9 +47,12 @@ export default function Dashboard() {
   const { data: venues } = useVenues();
   const [, navigate] = useLocation();
 
+  const { toast } = useToast();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [viewMeeting, setViewMeeting] = useState<Meeting | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
+  const [deleteReason, setDeleteReason] = useState("");
 
   const { data: debriefQueue } = useQuery<any[]>({
     queryKey: ["/api/events/needs-debrief"],
@@ -61,45 +64,23 @@ export default function Dashboard() {
     queryKey: ["/api/dashboard/outstanding-actions"],
   });
 
-  const { data: blendedStats } = useQuery<{
-    legacy: { totalActivations: number; totalFoottraffic: number; totalBookings: number; totalHours: number; totalRevenue: number; totalInKind: number; reportCount: number };
-    live: { completedProgrammes: number; completedBookings: number; confirmedDebriefs: number };
-    boundaryDate: string | null;
-  }>({ queryKey: ["/api/dashboard/blended-stats"] });
-
-  const { data: trendData } = useQuery<{
-    trendData: Array<{
-      quarterLabel: string;
-      activationsTotal: number;
-      activationsWorkshops: number;
-      activationsMentoring: number;
-      activationsEvents: number;
-      foottrafficUnique: number | null;
-      source?: string;
-    }>;
-    boundaryDate: string | null;
-  }>({
-    queryKey: ["/api/legacy-trend-data"],
-  });
-
-  const hasLegacy = blendedStats && blendedStats.legacy.reportCount > 0;
-
-  const communityCount = contacts?.filter((c: any) => c.isCommunityMember)?.length || 0;
-  const totalContacts = contacts?.length || 0;
-  const ytdInteractions = useMemo(() => {
-    if (!interactions) return 0;
-    const ytdStart = new Date(new Date().getFullYear(), 0, 1);
-    return interactions.filter((i: any) => new Date(i.date || i.createdAt) >= ytdStart).length;
-  }, [interactions]);
-  const totalInteractions = interactions?.length || 0;
   const recentInteractions = interactions?.slice(0, 5) || [];
 
-  const recentConfidence = interactions
-    ?.slice(0, 10)
-    .reduce((acc, curr) => acc + (curr.analysis?.confidenceScore || 0), 0);
-  const avgConfidence = recentConfidence && interactions?.length
-    ? (recentConfidence / Math.min(interactions.length, 10)).toFixed(1)
-    : "N/A";
+  const deleteEventMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: number; reason: string }) => {
+      await apiRequest("DELETE", `/api/events/${id}`, { reason });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/events/needs-debrief"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      setDeleteTarget(null);
+      setDeleteReason("");
+      toast({ title: "Event removed" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to delete event", description: err.message, variant: "destructive" });
+    },
+  });
 
   const recentDebriefs = useMemo(() => {
     if (!impactLogs) return [];
@@ -222,11 +203,12 @@ export default function Dashboard() {
   }, [meetings, events, programmes, bookings]);
 
   const debriefAttention = useMemo(() => {
-    const items: { id: number; name: string; date: string; status: string; statusColor: string; link: string }[] = [];
+    const items: { id: number; eventId: number | null; name: string; date: string; status: string; statusColor: string; link: string; type: "event" | "debrief" }[] = [];
 
     (debriefQueue || []).forEach((item: any) => {
       items.push({
         id: item.id,
+        eventId: item.id,
         name: item.name,
         date: item.startTime ? format(new Date(item.startTime), "d MMM") : "",
         status: item.queueStatus === "overdue" ? "Overdue" : "Needs Debrief",
@@ -234,16 +216,17 @@ export default function Dashboard() {
           ? "bg-red-500/15 text-red-700 dark:text-red-300"
           : "bg-amber-500/15 text-amber-700 dark:text-amber-300",
         link: `/debriefs?tab=calendar&reconcile=${item.id}`,
+        type: "event",
       });
     });
 
     (impactLogs as any[] || [])
       .filter((l: any) => l.status !== "confirmed")
       .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 5)
       .forEach((l: any) => {
         items.push({
           id: l.id,
+          eventId: l.eventId || null,
           name: l.title || "Untitled debrief",
           date: l.createdAt ? format(new Date(l.createdAt), "d MMM") : "",
           status: l.status === "draft" ? "Draft" : l.status === "reviewed" ? "Reviewed" : "Pending",
@@ -251,10 +234,11 @@ export default function Dashboard() {
             ? "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300"
             : "bg-blue-500/15 text-blue-700 dark:text-blue-300",
           link: `/debriefs/${l.id}`,
+          type: "debrief",
         });
       });
 
-    return items.slice(0, 6);
+    return items;
   }, [debriefQueue, impactLogs]);
 
   const journeySnapshot = useMemo(() => {
@@ -368,51 +352,6 @@ export default function Dashboard() {
               Here's a snapshot of your community impact.
             </p>
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 md:gap-6">
-            <MetricCard
-              title="Total Community"
-              value={loadingContacts ? "..." : communityCount}
-              subtext={totalContacts > 0 ? `${totalContacts} total contacts` : undefined}
-              icon={<Users className="w-5 h-5" />}
-              color="primary"
-              data-testid="metric-community"
-            />
-            <MetricCard
-              title="Interactions YTD"
-              value={loadingInteractions ? "..." : ytdInteractions}
-              subtext={totalInteractions > ytdInteractions ? `${totalInteractions} all time` : undefined}
-              icon={<Activity className="w-5 h-5" />}
-              color="secondary"
-              data-testid="metric-interactions"
-            />
-            <MetricCard
-              title="Impact Debriefs"
-              value={(impactLogs as any[])?.length || 0}
-              subtext={hasLegacy && blendedStats!.legacy.totalActivations > 0 ? `incl. ${blendedStats!.legacy.totalActivations.toLocaleString()} legacy activations` : undefined}
-              icon={<Mic className="w-5 h-5" />}
-              color="green"
-              data-testid="metric-debriefs"
-            />
-            <MetricCard
-              title="Avg Confidence"
-              value={avgConfidence}
-              icon={<TrendingUp className="w-5 h-5" />}
-              color="green"
-              trend={avgConfidence !== "N/A" && Number(avgConfidence) > 7 ? "up" : "neutral"}
-              trendValue="Good"
-              data-testid="metric-confidence"
-            />
-            <MetricCard
-              title="Total Events"
-              value={events?.length || 0}
-              subtext={hasLegacy && blendedStats!.legacy.totalBookings > 0 ? `incl. ${blendedStats!.legacy.totalBookings.toLocaleString()} legacy bookings` : undefined}
-              icon={<CalendarIcon className="w-5 h-5" />}
-              color="blue"
-              data-testid="metric-total-events"
-            />
-          </div>
-
 
           {debriefQueue && debriefQueue.length > 0 && (
             <Card className="border-l-4 border-l-orange-500 p-4 md:p-6" data-testid="card-debrief-queue">
@@ -603,17 +542,36 @@ export default function Dashboard() {
               {debriefAttention.length > 0 ? (
                 <div className="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
                   {debriefAttention.map((item) => (
-                    <Link key={item.id} href={item.link} data-testid={`debrief-attention-${item.id}`}>
-                      <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/40 hover:bg-muted transition-colors cursor-pointer">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{item.name}</p>
-                          <span className="text-xs text-muted-foreground">{item.date}</span>
-                        </div>
-                        <Badge variant="secondary" className={`text-[10px] shrink-0 ${item.statusColor}`}>
-                          {item.status}
-                        </Badge>
+                    <div
+                      key={`${item.type}-${item.id}`}
+                      className="flex items-center gap-2 p-2 rounded-lg bg-muted/40"
+                      data-testid={`debrief-attention-${item.type}-${item.id}`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{item.name}</p>
+                        <span className="text-xs text-muted-foreground">{item.date}</span>
                       </div>
-                    </Link>
+                      <Badge variant="secondary" className={`text-[10px] shrink-0 ${item.statusColor}`}>
+                        {item.status}
+                      </Badge>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Link href={item.link}>
+                          <Button size="sm" variant="default" className="gap-1" data-testid={`button-log-debrief-${item.type}-${item.id}`}>
+                            <Mic className="w-3 h-3" /> Log
+                          </Button>
+                        </Link>
+                        {item.type === "event" && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => { setDeleteTarget(item); setDeleteReason(""); }}
+                            data-testid={`button-delete-event-${item.id}`}
+                          >
+                            <Trash2 className="w-3 h-3 text-destructive" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
                   ))}
                 </div>
               ) : (
@@ -1156,38 +1114,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {trendData?.trendData && trendData.trendData.length > 1 && (
-            <Card className="p-5" data-testid="card-dashboard-trend">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-primary" />
-                  <h3 className="font-display font-semibold">Quarterly Trend</h3>
-                  <Badge variant="secondary" className="text-[10px]">{trendData.trendData.length} quarters</Badge>
-                </div>
-                <Link href="/legacy-reports">
-                  <Button variant="ghost" size="sm" className="text-xs">
-                    <BookOpen className="w-3 h-3 mr-1" /> Manage Legacy Data
-                  </Button>
-                </Link>
-              </div>
-              <div className="h-[220px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={trendData.trendData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis dataKey="quarterLabel" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip
-                      contentStyle={{ borderRadius: 8, fontSize: 12 }}
-                    />
-                    <Line type="monotone" dataKey="activationsTotal" stroke="hsl(var(--brand-coral))" strokeWidth={2} name="Activations" dot />
-                    <Line type="monotone" dataKey="activationsWorkshops" stroke="hsl(var(--brand-green))" strokeWidth={1.5} name="Workshops" dot />
-                    <Line type="monotone" dataKey="activationsMentoring" stroke="hsl(var(--brand-blue))" strokeWidth={1.5} name="Mentoring" dot />
-                    <Line type="monotone" dataKey="foottrafficUnique" stroke="hsl(var(--primary))" strokeWidth={1.5} name="Hub Foot Traffic" dot />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
-          )}
         </div>
       </main>
 
@@ -1196,6 +1122,51 @@ export default function Dashboard() {
         onClose={() => setViewMeeting(null)}
         contacts={contacts || []}
       />
+
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) { setDeleteTarget(null); setDeleteReason(""); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Remove Event</DialogTitle>
+          </DialogHeader>
+          {deleteTarget && (
+            <div className="space-y-4">
+              <div className="p-3 rounded-lg bg-muted/50">
+                <p className="text-sm font-medium">{deleteTarget.name}</p>
+                <p className="text-xs text-muted-foreground">{deleteTarget.date}</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="delete-reason">Why is this event being removed?</Label>
+                <Textarea
+                  id="delete-reason"
+                  value={deleteReason}
+                  onChange={(e) => setDeleteReason(e.target.value)}
+                  placeholder="e.g. Cancelled, duplicate entry, entered in error..."
+                  className="resize-none"
+                  data-testid="input-delete-reason"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDeleteTarget(null); setDeleteReason(""); }} data-testid="button-cancel-delete">
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={!deleteReason.trim() || deleteEventMutation.isPending}
+              onClick={() => {
+                if (deleteTarget?.eventId) {
+                  deleteEventMutation.mutate({ id: deleteTarget.eventId, reason: deleteReason.trim() });
+                }
+              }}
+              data-testid="button-confirm-delete"
+            >
+              {deleteEventMutation.isPending && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
+              Remove
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
