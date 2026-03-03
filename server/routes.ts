@@ -1472,7 +1472,6 @@ export async function registerRoutes(
       );
 
       const needsDebrief = userEvents.filter(e => {
-        if (!e.requiresDebrief) return false;
         if (e.eventStatus === "cancelled") return false;
         if (e.debriefSkippedReason) return false;
         if (confirmedEventIds.has(e.id)) return false;
