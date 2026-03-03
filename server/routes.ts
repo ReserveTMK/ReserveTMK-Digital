@@ -6739,7 +6739,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       if (!Array.isArray(contactIds) || contactIds.length === 0) {
         return res.status(400).json({ message: "No contact IDs provided" });
       }
-      const allowedFields = ["role", "activityStatus", "relationshipCircle", "relationshipCircleOverride"];
+      const allowedFields = ["role", "activityStatus", "relationshipCircle", "relationshipCircleOverride", "isInnovator"];
       const safeUpdates: Record<string, any> = {};
       for (const key of Object.keys(updates || {})) {
         if (allowedFields.includes(key)) {
@@ -7147,6 +7147,31 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     } catch (err: any) {
       console.error("Backfill error:", err);
       res.status(500).json({ message: "Failed to backfill community members" });
+    }
+  });
+
+  app.patch("/api/contacts/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const contactId = parseInt(req.params.id);
+      const contact = await storage.getContact(contactId);
+      if (!contact || contact.userId !== userId) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+      const allowedFields = ["isInnovator", "name", "email", "phone", "role", "businessName", "nickname", "ventureType", "age", "ethnicity", "location", "suburb", "localBoard", "tags", "revenueBand", "notes", "active", "stage", "whatTheyAreBuilding"];
+      const updates: Record<string, any> = {};
+      for (const key of Object.keys(req.body)) {
+        if (allowedFields.includes(key)) {
+          updates[key] = req.body[key];
+        }
+      }
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ message: "No valid fields to update" });
+      }
+      const updated = await storage.updateContact(contactId, updates);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update contact" });
     }
   });
 

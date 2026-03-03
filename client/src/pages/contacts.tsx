@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { useContacts, useCreateContact, useDeleteContact } from "@/hooks/use-contacts";
-import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, ArrowUpDown, Lightbulb } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { Link } from "wouter";
@@ -54,7 +54,7 @@ export default function Contacts() {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
-  const [viewMode, setViewMode] = useState<"community" | "all">("community");
+  const [viewMode, setViewMode] = useState<"community" | "innovators" | "all">("community");
   const [open, setOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -281,19 +281,34 @@ export default function Contacts() {
     },
   });
 
+  const innovatorToggleMutation = useMutation({
+    mutationFn: async ({ id, isInnovator }: { id: number; isInnovator: boolean }) => {
+      const res = await apiRequest("PATCH", `/api/contacts/${id}`, { isInnovator });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast({ title: "Success", description: "Innovator status updated" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
   const filteredContacts = contacts?.filter(contact => {
     const matchesSearch = contact.name.toLowerCase().includes(search.toLowerCase()) || 
                           contact.businessName?.toLowerCase().includes(search.toLowerCase()) ||
                           contact.email?.toLowerCase().includes(search.toLowerCase());
     const matchesRole = roleFilter === "all" || contact.role === roleFilter;
-    const matchesView = viewMode === "all" || (contact as any).isCommunityMember === true;
+    const matchesView = viewMode === "all" || (viewMode === "community" && (contact as any).isCommunityMember === true) || (viewMode === "innovators" && (contact as any).isInnovator === true);
     return matchesSearch && matchesRole && matchesView;
   });
 
   const analytics = useMemo(() => {
     if (!contacts || contacts.length === 0) return null;
     const communityContacts = (contacts as any[]).filter(c => c.isCommunityMember);
-    const pool = viewMode === "community" ? communityContacts : (contacts as any[]);
+    const innovatorContacts = (contacts as any[]).filter(c => c.isInnovator);
+    const pool = viewMode === "community" ? communityContacts : viewMode === "innovators" ? innovatorContacts : (contacts as any[]);
     if (pool.length === 0) return null;
 
     const now = Date.now();
@@ -342,6 +357,16 @@ export default function Contacts() {
                   <Button variant="outline" onClick={() => bulkMoveMutation.mutate({ contactIds: Array.from(selectedContacts), isCommunityMember: true })} disabled={bulkMoveMutation.isPending} data-testid="button-bulk-mark-community">
                     {bulkMoveMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <UserCheck className="w-4 h-4 mr-2" />}
                     Mark Community
+                  </Button>
+                )}
+                <Button variant="outline" onClick={() => bulkUpdateMutation.mutate({ contactIds: Array.from(selectedContacts), updates: { isInnovator: true } as any })} disabled={bulkUpdateMutation.isPending} data-testid="button-bulk-add-innovator">
+                  <Lightbulb className="w-4 h-4 mr-2" />
+                  Add to Innovators
+                </Button>
+                {viewMode === "innovators" && (
+                  <Button variant="outline" onClick={() => bulkUpdateMutation.mutate({ contactIds: Array.from(selectedContacts), updates: { isInnovator: false } as any })} disabled={bulkUpdateMutation.isPending} data-testid="button-bulk-remove-innovator">
+                    <Lightbulb className="w-4 h-4 mr-2" />
+                    Remove from Innovators
                   </Button>
                 )}
                 <Button variant="outline" onClick={() => setBulkRoleOpen(true)} data-testid="button-bulk-update-role">
@@ -740,6 +765,15 @@ export default function Contacts() {
                   Community
                 </Button>
                 <Button
+                  variant={viewMode === "innovators" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setViewMode("innovators")}
+                  data-testid="button-view-innovators"
+                >
+                  <Lightbulb className="w-4 h-4 mr-1.5" />
+                  Our Innovators
+                </Button>
+                <Button
                   variant={viewMode === "all" ? "default" : "outline"}
                   size="sm"
                   onClick={() => setViewMode("all")}
@@ -841,6 +875,12 @@ export default function Contacts() {
                         <h3 className="text-base font-bold font-display text-foreground truncate group-hover:text-primary transition-colors" data-testid={`text-name-${contact.id}`}>
                           {contact.name}
                         </h3>
+                        {contact.isInnovator && (
+                          <Badge variant="outline" className="text-[10px] h-5 px-1.5 bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800" data-testid={`badge-innovator-${contact.id}`}>
+                            <Lightbulb className="w-3 h-3 mr-0.5" />
+                            Innovator
+                          </Badge>
+                        )}
                         {getCircleBadge(contact.relationshipCircle)}
                       </div>
                       
@@ -932,6 +972,24 @@ export default function Contacts() {
                         >
                           <UserCheck className="w-4 h-4 mr-2" />
                           Mark as Community Member
+                        </DropdownMenuItem>
+                      )}
+                      {!contact.isInnovator && (
+                        <DropdownMenuItem
+                          onClick={() => innovatorToggleMutation.mutate({ id: contact.id, isInnovator: true })}
+                          data-testid={`menu-add-innovator-${contact.id}`}
+                        >
+                          <Lightbulb className="w-4 h-4 mr-2" />
+                          Add to Our Innovators
+                        </DropdownMenuItem>
+                      )}
+                      {contact.isInnovator && (
+                        <DropdownMenuItem
+                          onClick={() => innovatorToggleMutation.mutate({ id: contact.id, isInnovator: false })}
+                          data-testid={`menu-remove-innovator-${contact.id}`}
+                        >
+                          <Lightbulb className="w-4 h-4 mr-2" />
+                          Remove from Innovators
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuItem
