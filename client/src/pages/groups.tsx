@@ -2,13 +2,12 @@ import { Button } from "@/components/ui/beautiful-button";
 import { useGroups, useCreateGroup, useUpdateGroup, useDeleteGroup, useGroupMembers, useAddGroupMember, useRemoveGroupMember, useEnrichGroup, useGroupTaxonomyLinks, useSaveGroupTaxonomyLinks } from "@/hooks/use-groups";
 import { useContacts } from "@/hooks/use-contacts";
 import { useTaxonomy } from "@/hooks/use-taxonomy";
-import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe, Target, History, ChevronDown, Pencil, Edit3, CheckSquare, UserCheck, Tag, Merge, List, Table, ArrowUp, ArrowDown, ArrowUpDown, Lightbulb } from "lucide-react";
+import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe, Target, Pencil, Edit3, CheckSquare, UserCheck, Merge, List, Table, ArrowUp, ArrowDown, ArrowUpDown, Lightbulb } from "lucide-react";
 import { Link } from "wouter";
-import { RelationshipStageSelector } from "@/components/relationship-stage-selector";
+
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { format } from "date-fns";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+
 import { useState, useMemo } from "react";
 import {
   Dialog,
@@ -41,19 +40,12 @@ import {
 } from "@/components/ui/popover";
 
 const GROUP_TYPE_COLORS: Record<string, string> = {
-  "Organisation": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
-  "Collective": "bg-purple-500/10 text-purple-700 dark:text-purple-300",
-  "Community Group": "bg-rose-500/10 text-rose-700 dark:text-rose-300",
-  "Community Collective": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
-  "Whānau Group": "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-  "Business": "bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  "Resident Company": "bg-teal-500/10 text-teal-700 dark:text-teal-300",
   "Partner": "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
-  "Government": "bg-slate-500/10 text-slate-700 dark:text-slate-300",
-  "Iwi": "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-  "NGO": "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
+  "Organisation": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
+  "Community Collective": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
   "Education": "bg-yellow-500/10 text-yellow-700 dark:text-yellow-300",
-  "Other": "bg-gray-500/10 text-gray-700 dark:text-gray-300",
+  "Business": "bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  "Community Group": "bg-rose-500/10 text-rose-700 dark:text-rose-300",
 };
 
 const MEMBER_ROLES = ["Lead Contact", "Representative", "Member", "Coordinator", "Director", "Trustee"] as const;
@@ -74,8 +66,6 @@ export default function Groups() {
   const [layoutView, setLayoutView] = useState<"list" | "table">("list");
 
 
-  const [bulkTierOpen, setBulkTierOpen] = useState(false);
-  const [bulkTierValue, setBulkTierValue] = useState("");
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [primaryMergeId, setPrimaryMergeId] = useState<number | null>(null);
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
@@ -119,22 +109,6 @@ export default function Groups() {
     },
   });
 
-  const bulkTierMutation = useMutation({
-    mutationFn: async () => {
-      await apiRequest('POST', '/api/groups/bulk-update-tier', { groupIds: Array.from(selectedGroups), tier: bulkTierValue });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/groups/community-density'] });
-      toast({ title: "Tier updated", description: `${selectedGroups.size} group(s) updated to "${bulkTierValue}"` });
-      setSelectedGroups(new Set());
-      setBulkTierOpen(false);
-      setBulkTierValue("");
-    },
-    onError: (error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
-  });
 
   const mergeMutation = useMutation({
     mutationFn: async ({ primaryId, mergeIds }: { primaryId: number; mergeIds: number[] }) => {
@@ -405,15 +379,6 @@ export default function Groups() {
                     Demote ({selectedGroups.size})
                   </Button>
                 )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setBulkTierOpen(true)}
-                  data-testid="button-change-tier"
-                >
-                  <Tag className="w-4 h-4 mr-2" />
-                  Change Tier
-                </Button>
                 {selectedGroups.size >= 2 && (
                   <Button
                     variant="outline"
@@ -671,40 +636,6 @@ export default function Groups() {
           </DialogContent>
         </Dialog>
 
-        <Dialog open={bulkTierOpen} onOpenChange={(open) => { setBulkTierOpen(open); if (!open) setBulkTierValue(""); }}>
-          <DialogContent className="sm:max-w-[400px]">
-            <DialogHeader>
-              <DialogTitle data-testid="text-bulk-tier-title">Change Tier for {selectedGroups.size} groups</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-3">
-              <Label>Relationship Tier</Label>
-              <Select value={bulkTierValue} onValueChange={setBulkTierValue}>
-                <SelectTrigger data-testid="select-bulk-tier">
-                  <SelectValue placeholder="Select tier" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="support">Support</SelectItem>
-                  <SelectItem value="collaborate">Collaborate</SelectItem>
-                  <SelectItem value="mentioned">Noted</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <DialogFooter className="gap-2">
-              <Button variant="outline" onClick={() => { setBulkTierOpen(false); setBulkTierValue(""); }} data-testid="button-cancel-bulk-tier">
-                Cancel
-              </Button>
-              <Button
-                onClick={() => bulkTierMutation.mutate()}
-                disabled={!bulkTierValue || bulkTierMutation.isPending}
-                data-testid="button-confirm-bulk-tier"
-              >
-                {bulkTierMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                Update Tier
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
         <Dialog open={mergeDialogOpen} onOpenChange={(v) => { setMergeDialogOpen(v); if (!v) setPrimaryMergeId(null); }}>
           <DialogContent data-testid="dialog-merge-groups">
             <DialogHeader>
@@ -726,7 +657,7 @@ export default function Groups() {
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm truncate">{g.name}</p>
                       <p className="text-xs text-muted-foreground truncate">
-                        {[g.type, g.relationshipTier].filter(Boolean).join(" · ")}
+                        {g.type}
                       </p>
                     </div>
                     {primaryMergeId === id && <Badge variant="secondary" className="text-xs">Primary</Badge>}
@@ -801,7 +732,6 @@ export default function Groups() {
                             {g.contactEmail && <p className="text-xs text-muted-foreground truncate">{g.contactEmail}</p>}
                             <div className="flex items-center gap-2 mt-1">
                               {density && <span className="text-[10px] text-muted-foreground"><Users className="w-3 h-3 inline mr-0.5" />{density.totalMembers} members</span>}
-                              {g.relationshipStage && <Badge variant="secondary" className="text-[9px] h-4 capitalize">{g.relationshipStage}</Badge>}
                             </div>
                           </div>
                         );
@@ -819,7 +749,7 @@ export default function Groups() {
   );
 }
 
-type GroupSortField = "name" | "type" | "members" | "stage" | "tier" | "contact";
+type GroupSortField = "name" | "type" | "members" | "contact";
 type GroupSortDir = "asc" | "desc";
 
 function GroupSortHeader({ label, field, activeField, dir, onSort, className }: { label: string; field: GroupSortField; activeField: GroupSortField | null; dir: GroupSortDir; onSort: (f: GroupSortField) => void; className?: string }) {
@@ -834,20 +764,6 @@ function GroupSortHeader({ label, field, activeField, dir, onSort, className }: 
   );
 }
 
-const STAGE_COLORS: Record<string, string> = {
-  new: "bg-slate-500/10 text-slate-600 dark:text-slate-400",
-  engaged: "bg-blue-500/10 text-blue-700 dark:text-blue-300",
-  active: "bg-green-500/10 text-green-700 dark:text-green-300",
-  deepening: "bg-purple-500/10 text-purple-700 dark:text-purple-300",
-  partner: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  alumni: "bg-gray-500/10 text-gray-600 dark:text-gray-400",
-};
-
-const TIER_COLORS: Record<string, string> = {
-  support: "bg-blue-500/10 text-blue-700 dark:text-blue-300",
-  collaborate: "bg-green-500/10 text-green-700 dark:text-green-300",
-  mentioned: "bg-slate-500/10 text-slate-600 dark:text-slate-400",
-};
 
 function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, toggleGroupSelection, toggleSelectAll, onSelect, onEdit, onDelete, viewMode, onPromote, isPromoting }: {
   groups: Group[];
@@ -907,14 +823,6 @@ function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, t
           av = communityDensity[a.id]?.totalMembers || 0;
           bv = communityDensity[b.id]?.totalMembers || 0;
           return sortDir === "asc" ? av - bv : bv - av;
-        case "stage":
-          av = (a.relationshipStage || "").toLowerCase();
-          bv = (b.relationshipStage || "").toLowerCase();
-          break;
-        case "tier":
-          av = (a.relationshipTier || "").toLowerCase();
-          bv = (b.relationshipTier || "").toLowerCase();
-          break;
         case "contact":
           av = (a.contactEmail || "").toLowerCase();
           bv = (b.contactEmail || "").toLowerCase();
@@ -946,8 +854,6 @@ function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, t
               <GroupSortHeader label="Type" field="type" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
               <th className="px-3 py-3 text-xs font-medium text-muted-foreground text-left">Community</th>
               <GroupSortHeader label="Members" field="members" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
-              <GroupSortHeader label="Stage" field="stage" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
-              <GroupSortHeader label="Tier" field="tier" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
               <GroupSortHeader label="Contact" field="contact" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
               <th className="px-3 py-3 w-20"></th>
             </tr>
@@ -1024,24 +930,6 @@ function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, t
                         </Badge>
                       )}
                     </div>
-                  </td>
-                  <td className="px-3 py-2">
-                    {group.relationshipStage ? (
-                      <Badge className={`text-[10px] h-5 px-2 capitalize ${STAGE_COLORS[group.relationshipStage] || ""}`} data-testid={`table-stage-group-${group.id}`}>
-                        {group.relationshipStage}
-                      </Badge>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    {group.relationshipTier ? (
-                      <Badge variant="outline" className={`text-[10px] h-5 px-2 capitalize ${TIER_COLORS[group.relationshipTier] || ""}`} data-testid={`table-tier-group-${group.id}`}>
-                        {group.relationshipTier}
-                      </Badge>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
                   </td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">
                     {group.contactEmail ? (
@@ -1339,28 +1227,7 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit }: {
   const [enrichData, setEnrichData] = useState<Record<string, any> | null>(null);
   const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set());
   const [selectedKaupapa, setSelectedKaupapa] = useState<Set<number>>(new Set());
-  const [stageHistoryOpen, setStageHistoryOpen] = useState(false);
   const { toast } = useToast();
-
-  const stageUpdateMutation = useMutation({
-    mutationFn: (stage: string) => apiRequest('PATCH', `/api/groups/${group.id}/relationship-stage`, { stage }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/relationship-stage-history', 'group', group.id] });
-      queryClient.invalidateQueries({ queryKey: ['/api/dashboard/relationship-stages'] });
-      toast({ title: "Stage updated" });
-    },
-  });
-
-  const { data: stageHistory } = useQuery({
-    queryKey: ['/api/relationship-stage-history', 'group', group.id],
-    queryFn: async () => {
-      const res = await fetch(`/api/relationship-stage-history/group/${group.id}`, { credentials: 'include' });
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: open,
-  });
 
   const pushToCommunityMutation = useMutation({
     mutationFn: async (contactIds: number[]) => {
@@ -1520,38 +1387,6 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit }: {
             </div>
           </div>
         </DialogHeader>
-
-        <div className="space-y-2">
-          <h4 className="text-sm font-medium text-muted-foreground">Relationship Stage</h4>
-          <RelationshipStageSelector
-            currentStage={group.relationshipStage || "new"}
-            onStageChange={(stage) => stageUpdateMutation.mutate(stage)}
-            disabled={stageUpdateMutation.isPending}
-          />
-          <Collapsible open={stageHistoryOpen} onOpenChange={setStageHistoryOpen}>
-            <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="toggle-group-stage-history">
-              <History className="w-3 h-3" />
-              Stage History
-              <ChevronDown className={`w-3 h-3 transition-transform ${stageHistoryOpen ? "rotate-180" : ""}`} />
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              {Array.isArray(stageHistory) && stageHistory.length > 0 ? (
-                <div className="mt-2 space-y-1.5">
-                  {stageHistory.map((h: any) => (
-                    <div key={h.id} className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span>{h.previousStage || "—"}</span>
-                      <span>→</span>
-                      <Badge variant="secondary" className="text-[10px]">{h.newStage}</Badge>
-                      <span className="ml-auto">{h.changedAt ? format(new Date(h.changedAt), "dd MMM yyyy") : ""}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="mt-2 text-xs text-muted-foreground">No stage changes recorded yet.</p>
-              )}
-            </CollapsibleContent>
-          </Collapsible>
-        </div>
 
         {enrichData && (
           <div className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-3">
