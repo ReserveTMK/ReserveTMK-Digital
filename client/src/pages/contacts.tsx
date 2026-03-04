@@ -1452,6 +1452,9 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
                 </th>
               )}
               <SortHeader label="Name" field="name" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-4" />
+              {drilldownTier === "all" && (
+                <SortHeader label="Innovator" field="community" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-28" />
+              )}
               {drilldownTier !== "innovators" && (
                 <SortHeader label={drilldownTier === "community" ? "Innovator" : "Community"} field="community" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-28" />
               )}
@@ -1490,6 +1493,29 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
                     <span className="font-medium truncate max-w-[180px]">{contact.name}</span>
                   </Link>
                 </td>
+                {drilldownTier === "all" && (
+                  <td className="px-3 py-2">
+                    {contact.isInnovator ? (
+                      <Badge
+                        className="text-[10px] h-5 px-2 bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/20"
+                        data-testid={`badge-innovator-${contact.id}`}
+                      >
+                        <Lightbulb className="w-3 h-3 mr-1" />
+                        Yes
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] h-5 px-2 cursor-pointer hover:bg-amber-500/10 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
+                        onClick={() => onPromote?.(contact.id)}
+                        data-testid={`button-promote-innovator-${contact.id}`}
+                      >
+                        <Plus className="w-3 h-3 mr-1" />
+                        Add
+                      </Badge>
+                    )}
+                  </td>
+                )}
                 {drilldownTier !== "innovators" && (
                   <td className="px-3 py-2">
                     {drilldownTier === "community" ? (
