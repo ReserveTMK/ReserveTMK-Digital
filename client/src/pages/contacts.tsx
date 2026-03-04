@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { useContacts, useDeleteContact } from "@/hooks/use-contacts";
-import { Plus, Search, Filter, Loader2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, Lightbulb, ChevronRight } from "lucide-react";
+import { Plus, Search, Filter, Loader2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, Lightbulb, ChevronRight, Upload } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useState, useMemo, useEffect } from "react";
 import { Link } from "wouter";
