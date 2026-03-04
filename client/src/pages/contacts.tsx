@@ -746,15 +746,6 @@ export default function Contacts() {
           <div className="flex items-center justify-between gap-2" data-testid="view-toggle">
             <div className="flex items-center gap-1 border rounded-lg p-0.5">
               <Button
-                variant={viewMode === "community" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setViewMode("community")}
-                data-testid="button-view-community"
-              >
-                <Users className="w-4 h-4 mr-1.5" />
-                Community ({tierCounts.community})
-              </Button>
-              <Button
                 variant={viewMode === "innovators" ? "secondary" : "ghost"}
                 size="sm"
                 onClick={() => setViewMode("innovators")}
@@ -762,6 +753,15 @@ export default function Contacts() {
               >
                 <Lightbulb className="w-4 h-4 mr-1.5" />
                 Our Innovators ({tierCounts.innovators})
+              </Button>
+              <Button
+                variant={viewMode === "community" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("community")}
+                data-testid="button-view-community"
+              >
+                <Users className="w-4 h-4 mr-1.5" />
+                Our Community ({tierCounts.community})
               </Button>
               <Button
                 variant={viewMode === "all" ? "secondary" : "ghost"}
