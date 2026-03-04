@@ -7558,7 +7558,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       if (!contact || contact.userId !== userId) {
         return res.status(404).json({ message: "Contact not found" });
       }
-      const allowedFields = ["isInnovator", "name", "email", "phone", "role", "businessName", "nickname", "ventureType", "age", "ethnicity", "location", "suburb", "localBoard", "tags", "revenueBand", "notes", "active", "stage", "whatTheyAreBuilding"];
+      const allowedFields = ["isInnovator", "name", "email", "phone", "role", "businessName", "nickname", "ventureType", "age", "ethnicity", "location", "suburb", "localBoard", "tags", "revenueBand", "notes", "active", "stage", "whatTheyAreBuilding", "supportType", "connectionStrength"];
       const updates: Record<string, any> = {};
       for (const key of Object.keys(req.body)) {
         if (allowedFields.includes(key)) {
@@ -7569,6 +7569,24 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
         return res.status(400).json({ message: "No valid fields to update" });
       }
       const updated = await storage.updateContact(contactId, updates);
+
+      if (Array.isArray(updates.supportType) && updates.supportType.includes("mentoring") && updated.isInnovator) {
+        try {
+          const existingRels = await storage.getMentoringRelationshipsByContact(contactId);
+          const hasActive = existingRels.some(r => r.status === "active" || r.status === "application");
+          if (!hasActive) {
+            await storage.createMentoringRelationship({
+              contactId,
+              status: "active",
+              startDate: new Date(),
+              sessionFrequency: "monthly",
+            });
+          }
+        } catch (err) {
+          console.error(`Auto-create mentoring relationship failed for contact ${contactId}:`, err);
+        }
+      }
+
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ message: "Failed to update contact" });
@@ -8101,6 +8119,34 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       res.json(all.filter(r => userContactIds.has(r.contactId)));
     } catch (err: any) {
       res.status(500).json({ message: "Failed to fetch mentoring relationships" });
+    }
+  });
+
+  app.post("/api/mentoring-relationships/backfill-from-support-type", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const allContacts = await storage.getContacts(userId);
+      const mentoringContacts = allContacts.filter(c =>
+        c.isInnovator && Array.isArray(c.supportType) && c.supportType.includes("mentoring")
+      );
+      let created = 0;
+      for (const contact of mentoringContacts) {
+        const existing = await storage.getMentoringRelationshipsByContact(contact.id);
+        const hasActive = existing.some(r => r.status === "active" || r.status === "application");
+        if (!hasActive) {
+          await storage.createMentoringRelationship({
+            contactId: contact.id,
+            status: "active",
+            startDate: new Date(),
+            sessionFrequency: "monthly",
+          });
+          created++;
+        }
+      }
+      res.json({ checked: mentoringContacts.length, created });
+    } catch (err: any) {
+      console.error("Backfill mentoring relationships error:", err);
+      res.status(500).json({ message: "Failed to backfill mentoring relationships" });
     }
   });
 
