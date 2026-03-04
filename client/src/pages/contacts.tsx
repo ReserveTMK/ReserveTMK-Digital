@@ -1007,6 +1007,7 @@ export default function Contacts() {
                       className="shrink-0"
                       onClick={() => promoteMutation.mutate(contact.id)}
                       disabled={promoteMutation.isPending}
+                      title={viewMode === "community" ? "Promote to Our Innovators" : "Promote to Our Community"}
                       data-testid={`button-promote-${contact.id}`}
                     >
                       <ArrowUp className="w-4 h-4" />
@@ -1423,6 +1424,7 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
                       variant="ghost"
                       onClick={() => onPromote(contact.id)}
                       disabled={promotePending}
+                      title={drilldownTier === "community" ? "Promote to Our Innovators" : "Promote to Our Community"}
                       data-testid={`table-promote-${contact.id}`}
                     >
                       <ArrowUp className="w-4 h-4" />
