@@ -47,7 +47,7 @@ const REVENUE_BANDS = [
 export function CreateContactDialogContent({ onSuccess }: { onSuccess: () => void }) {
   const { mutate, isPending } = useCreateContact();
   const [metricScores, setMetricScores] = useState<{
-    confidenceScore?: number;
+    bizConfidence?: number;
     systemsInPlace?: number;
     fundingReadiness?: number;
     networkStrength?: number;
@@ -199,17 +199,17 @@ export function CreateContactDialogContent({ onSuccess }: { onSuccess: () => voi
           <Label className="text-sm font-semibold">Baseline Scores (1-10)</Label>
           <div className="grid grid-cols-2 gap-3 bg-muted/30 p-3 rounded-lg border border-border">
             <div className="space-y-1">
-              <Label htmlFor="confidenceScore" className="text-xs text-muted-foreground">Confidence Score</Label>
+              <Label htmlFor="bizConfidence" className="text-xs text-muted-foreground">Biz Confidence</Label>
               <Input
-                id="confidenceScore"
+                id="bizConfidence"
                 type="number"
                 min={1}
                 max={10}
-                data-testid="input-confidence-score"
+                data-testid="input-biz-confidence"
                 placeholder="1-10"
                 onChange={(e) => {
                   const val = parseInt(e.target.value);
-                  if (val >= 1 && val <= 10) setMetricScores(prev => ({ ...prev, confidenceScore: val }));
+                  if (val >= 1 && val <= 10) setMetricScores(prev => ({ ...prev, bizConfidence: val }));
                 }}
               />
             </div>

@@ -5,7 +5,7 @@ import {
   contacts, groups, groupMembers, events, eventAttendance,
   programmes, programmeEvents, bookings, memberships, mous, venues,
   milestones, relationshipStageHistory, communitySpend, meetings, interactions,
-  meetingTypes,
+  meetingTypes, monthlySnapshots,
 } from "@shared/schema";
 
 export interface ReportFilters {
@@ -65,131 +65,136 @@ function confirmedDebriefConditions(filters: ReportFilters) {
   return and(...conditions)!;
 }
 
-export async function getEngagementMetrics(filters: ReportFilters) {
+export async function getReachMetrics(filters: ReportFilters) {
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
-  const where = confirmedDebriefConditions(filters);
   const lensContactIds = await getCommunityLensContactIds(filters);
 
-  let uniqueContactsResult = await db
-    .selectDistinct({ contactId: impactLogContacts.contactId })
+  const contactTouchpoints = new Map<number, number>();
+  function addTouchpoint(contactId: number | null | undefined) {
+    if (contactId == null) return;
+    if (lensContactIds && !lensContactIds.has(contactId)) return;
+    contactTouchpoints.set(contactId, (contactTouchpoints.get(contactId) || 0) + 1);
+  }
+
+  const sourceBreakdown = { debriefs: 0, meetings: 0, events: 0, externalEvents: 0, emails: 0, bookings: 0, programmes: 0 };
+
+  const debriefWhere = confirmedDebriefConditions(filters);
+  const debriefContacts = await db
+    .select({ contactId: impactLogContacts.contactId })
     .from(impactLogContacts)
     .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
-    .where(where);
+    .where(debriefWhere);
+  for (const r of debriefContacts) { addTouchpoint(r.contactId); sourceBreakdown.debriefs++; }
 
-  if (lensContactIds) {
-    uniqueContactsResult = uniqueContactsResult.filter(r => lensContactIds.has(r.contactId));
+  const meetingsInRange = await db.select().from(meetings).where(and(
+    eq(meetings.userId, filters.userId),
+    inArray(meetings.status, ["completed", "confirmed"]),
+    gte(meetings.startTime, start), lte(meetings.startTime, end),
+  ));
+  for (const m of meetingsInRange) { addTouchpoint(m.contactId); sourceBreakdown.meetings++; }
+
+  const eventsInRange = await db.select().from(events).where(and(
+    eq(events.userId, filters.userId), eq(events.eventStatus, "active"),
+    gte(events.startTime, start), lte(events.startTime, end),
+  ));
+  const eventIds = eventsInRange.map(e => e.id);
+  let attendanceRows: { eventId: number; contactId: number }[] = [];
+  if (eventIds.length > 0) {
+    attendanceRows = await db.select({ eventId: eventAttendance.eventId, contactId: eventAttendance.contactId })
+      .from(eventAttendance).where(inArray(eventAttendance.eventId, eventIds));
+  }
+  const eventTypeMap = new Map(eventsInRange.map(e => [e.id, e.type]));
+  for (const a of attendanceRows) {
+    addTouchpoint(a.contactId);
+    const etype = eventTypeMap.get(a.eventId);
+    if (etype === "External Event") { sourceBreakdown.externalEvents++; } else { sourceBreakdown.events++; }
   }
 
-  let totalInstancesCount: number;
-  if (lensContactIds) {
-    const allInstances = await db
-      .select({ contactId: impactLogContacts.contactId })
-      .from(impactLogContacts)
-      .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
-      .where(where);
-    totalInstancesCount = allInstances.filter(r => lensContactIds.has(r.contactId)).length;
-  } else {
-    const totalInstancesResult = await db
-      .select({ count: count() })
-      .from(impactLogContacts)
-      .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
-      .where(where);
-    totalInstancesCount = Number(totalInstancesResult[0]?.count || 0);
+  const emailInteractions = await db.select({ contactId: interactions.contactId }).from(interactions)
+    .innerJoin(contacts, eq(interactions.contactId, contacts.id))
+    .where(and(
+      eq(contacts.userId, filters.userId),
+      eq(interactions.type, "Email"),
+      gte(interactions.date, start), lte(interactions.date, end),
+    ));
+  for (const e of emailInteractions) { addTouchpoint(e.contactId); sourceBreakdown.emails++; }
+
+  const bookingsInRange = await db.select().from(bookings).where(and(
+    eq(bookings.userId, filters.userId),
+    inArray(bookings.status, ["confirmed", "completed"]),
+    gte(bookings.startDate, start), lte(bookings.startDate, end),
+  ));
+  for (const b of bookingsInRange) {
+    addTouchpoint(b.bookerId);
+    if (b.attendees) { for (const aid of b.attendees) addTouchpoint(aid); }
+    sourceBreakdown.bookings++;
   }
 
-  let newContactsCount: number;
-  if (lensContactIds) {
-    const newContactsList = await db
-      .select({ id: contacts.id })
-      .from(contacts)
-      .where(and(
-        eq(contacts.userId, filters.userId),
-        gte(contacts.createdAt, start),
-        lte(contacts.createdAt, end),
-      ));
-    newContactsCount = newContactsList.filter(r => lensContactIds.has(r.id)).length;
-  } else {
-    const newContactsResult = await db
-      .select({ count: count() })
-      .from(contacts)
-      .where(and(
-        eq(contacts.userId, filters.userId),
-        gte(contacts.createdAt, start),
-        lte(contacts.createdAt, end),
-      ));
-    newContactsCount = Number(newContactsResult[0]?.count || 0);
+  const programmesInRange = await db.select().from(programmes).where(and(
+    eq(programmes.userId, filters.userId),
+    inArray(programmes.status, ["active", "completed"]),
+    gte(programmes.startDate, start), lte(programmes.startDate, end),
+  ));
+  for (const p of programmesInRange) {
+    if (p.attendees) { for (const aid of p.attendees) addTouchpoint(aid); }
+    sourceBreakdown.programmes++;
   }
 
-  const activeGroupsResult = await db
-    .selectDistinct({ groupId: impactLogGroups.groupId })
-    .from(impactLogGroups)
-    .innerJoin(impactLogs, eq(impactLogGroups.impactLogId, impactLogs.id))
-    .where(where);
+  const uniqueContacts = contactTouchpoints.size;
+  const totalEngagements = Array.from(contactTouchpoints.values()).reduce((s, v) => s + v, 0);
 
-  const activeGroupsViaContacts = uniqueContactsResult.length > 0
-    ? await db
-        .selectDistinct({ groupId: groupMembers.groupId })
-        .from(groupMembers)
-        .innerJoin(groups, eq(groupMembers.groupId, groups.id))
-        .where(and(
-          eq(groups.userId, filters.userId),
-          inArray(groupMembers.contactId, uniqueContactsResult.map(r => r.contactId)),
-        ))
-    : [];
+  const footTrafficResult = await db
+    .select({ total: sum(monthlySnapshots.footTraffic) })
+    .from(monthlySnapshots)
+    .where(and(
+      eq(monthlySnapshots.userId, filters.userId),
+      gte(monthlySnapshots.month, start), lte(monthlySnapshots.month, end),
+    ));
+  const footTraffic = Number(footTrafficResult[0]?.total || 0);
 
-  const allGroupIds = new Set([
-    ...activeGroupsResult.map(r => r.groupId),
-    ...activeGroupsViaContacts.map(r => r.groupId),
-  ]);
+  const repeatCount = Array.from(contactTouchpoints.values()).filter(v => v >= 2).length;
 
-  let repeatResult = await db
-    .select({
-      contactId: impactLogContacts.contactId,
-      cnt: count(),
-    })
-    .from(impactLogContacts)
-    .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
-    .where(where)
-    .groupBy(impactLogContacts.contactId);
+  let newContactsCount = 0;
+  let promotedToCommunity = 0;
+  let promotedToInnovator = 0;
+  const allContactsList = await db.select({
+    id: contacts.id, createdAt: contacts.createdAt,
+    movedToCommunityAt: contacts.movedToCommunityAt,
+    movedToInnovatorsAt: contacts.movedToInnovatorsAt,
+  }).from(contacts).where(eq(contacts.userId, filters.userId));
 
-  if (lensContactIds) {
-    repeatResult = repeatResult.filter(r => lensContactIds.has(r.contactId));
+  for (const c of allContactsList) {
+    const matchesLens = !lensContactIds || lensContactIds.has(c.id);
+    if (!matchesLens) continue;
+    if (c.createdAt && c.createdAt >= start && c.createdAt <= end) newContactsCount++;
+    if (c.movedToCommunityAt && c.movedToCommunityAt >= start && c.movedToCommunityAt <= end) promotedToCommunity++;
+    if (c.movedToInnovatorsAt && c.movedToInnovatorsAt >= start && c.movedToInnovatorsAt <= end) promotedToInnovator++;
   }
 
-  const repeatCount = repeatResult.filter(r => Number(r.cnt) >= 2).length;
+  const newGroupsResult = await db.select({ count: count() }).from(groups).where(and(
+    eq(groups.userId, filters.userId),
+    gte(groups.createdAt, start), lte(groups.createdAt, end),
+  ));
+  const newGroups = Number(newGroupsResult[0]?.count || 0);
 
   let demographicBreakdown: Record<string, any> = {};
-  if (uniqueContactsResult.length > 0) {
-    const contactIds = uniqueContactsResult.map(r => r.contactId);
-    const contactDetails = await db
-      .select({
-        id: contacts.id,
-        age: contacts.age,
-        ethnicity: contacts.ethnicity,
-        location: contacts.location,
-        consentStatus: contacts.consentStatus,
-        stage: contacts.stage,
-      })
-      .from(contacts)
-      .where(and(eq(contacts.userId, filters.userId), inArray(contacts.id, contactIds)));
+  const contactIdsArr = Array.from(contactTouchpoints.keys());
+  if (contactIdsArr.length > 0) {
+    const contactDetails = await db.select({
+      id: contacts.id, age: contacts.age, ethnicity: contacts.ethnicity,
+      location: contacts.location, consentStatus: contacts.consentStatus, stage: contacts.stage,
+    }).from(contacts).where(and(eq(contacts.userId, filters.userId), inArray(contacts.id, contactIdsArr)));
 
     const consentedContacts = contactDetails.filter(c => c.consentStatus === "given");
-
     const ethnicityMap: Record<string, number> = {};
     const locationMap: Record<string, number> = {};
     const ageGroups: Record<string, number> = { "under_18": 0, "18_24": 0, "25_34": 0, "35_44": 0, "45_54": 0, "55_plus": 0, "unknown": 0 };
     const stageMap: Record<string, number> = {};
 
     for (const c of consentedContacts) {
-      if (c.ethnicity) {
-        for (const eth of c.ethnicity) {
-          ethnicityMap[eth] = (ethnicityMap[eth] || 0) + 1;
-        }
-      }
-      if (c.location) {
-        locationMap[c.location] = (locationMap[c.location] || 0) + 1;
-      }
+      if (c.ethnicity) { for (const eth of c.ethnicity) ethnicityMap[eth] = (ethnicityMap[eth] || 0) + 1; }
+      if (c.location) locationMap[c.location] = (locationMap[c.location] || 0) + 1;
       if (c.age != null) {
         if (c.age < 18) ageGroups["under_18"]++;
         else if (c.age <= 24) ageGroups["18_24"]++;
@@ -197,67 +202,49 @@ export async function getEngagementMetrics(filters: ReportFilters) {
         else if (c.age <= 44) ageGroups["35_44"]++;
         else if (c.age <= 54) ageGroups["45_54"]++;
         else ageGroups["55_plus"]++;
-      } else {
-        ageGroups["unknown"]++;
-      }
-      if (c.stage) {
-        stageMap[c.stage] = (stageMap[c.stage] || 0) + 1;
-      }
+      } else { ageGroups["unknown"]++; }
+      if (c.stage) stageMap[c.stage] = (stageMap[c.stage] || 0) + 1;
     }
-
-    demographicBreakdown = {
-      totalConsented: consentedContacts.length,
-      ethnicity: ethnicityMap,
-      location: locationMap,
-      ageGroups,
-      relationshipStage: stageMap,
-    };
+    demographicBreakdown = { totalConsented: consentedContacts.length, ethnicity: ethnicityMap, location: locationMap, ageGroups, relationshipStage: stageMap };
   }
 
   return {
-    uniqueContacts: uniqueContactsResult.length,
-    totalEngagementInstances: totalInstancesCount,
-    newContacts: newContactsCount,
-    activeGroups: allGroupIds.size,
-    repeatEngagementRate: uniqueContactsResult.length > 0
-      ? Math.round((repeatCount / uniqueContactsResult.length) * 100) : 0,
+    peopleReached: uniqueContacts + footTraffic,
+    uniqueContacts,
+    footTraffic,
+    totalEngagements,
+    sourceBreakdown,
+    ecosystemGrowth: { newContacts: newContactsCount, promotedToCommunity, promotedToInnovator, newGroups },
+    repeatEngagementRate: uniqueContacts > 0 ? Math.round((repeatCount / uniqueContacts) * 100) : 0,
     repeatEngagementCount: repeatCount,
     demographicBreakdown,
   };
+}
+
+export async function getEngagementMetrics(filters: ReportFilters) {
+  return getReachMetrics(filters);
 }
 
 export async function getDeliveryMetrics(filters: ReportFilters) {
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
 
-  const eventsInRange = await db
-    .select()
-    .from(events)
-    .where(and(
-      eq(events.userId, filters.userId),
-      ne(events.eventStatus, "cancelled"),
-      gte(events.startTime, start),
-      lte(events.startTime, end),
-    ));
+  const eventsInRange = await db.select().from(events).where(and(
+    eq(events.userId, filters.userId), ne(events.eventStatus, "cancelled"),
+    gte(events.startTime, start), lte(events.startTime, end),
+  ));
 
   const eventsByType: Record<string, number> = {};
   let totalAttendees = 0;
   for (const e of eventsInRange) {
     eventsByType[e.type] = (eventsByType[e.type] || 0) + 1;
-    if (e.attendeeCount && e.attendeeCount > 0) {
-      totalAttendees += e.attendeeCount;
-    }
+    if (e.attendeeCount && e.attendeeCount > 0) totalAttendees += e.attendeeCount;
   }
 
-  const bookingsInRange = await db
-    .select()
-    .from(bookings)
-    .where(and(
-      eq(bookings.userId, filters.userId),
-      inArray(bookings.status, ["confirmed", "completed"]),
-      gte(bookings.startDate, start),
-      lte(bookings.startDate, end),
-    ));
+  const bookingsInRange = await db.select().from(bookings).where(and(
+    eq(bookings.userId, filters.userId), inArray(bookings.status, ["confirmed", "completed"]),
+    gte(bookings.startDate, start), lte(bookings.startDate, end),
+  ));
 
   const bookingsByClassification: Record<string, number> = {};
   let communityHours = 0;
@@ -270,262 +257,150 @@ export async function getDeliveryMetrics(filters: ReportFilters) {
       if (b.isMultiDay && b.startDate && b.endDate) {
         const daySpan = Math.max(1, Math.ceil((new Date(b.endDate).getTime() - new Date(b.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1);
         communityHours += dailyHours * daySpan;
-      } else {
-        communityHours += dailyHours;
-      }
+      } else { communityHours += dailyHours; }
     }
   }
 
-  const programmesInRange = await db
-    .select()
-    .from(programmes)
-    .where(and(
-      eq(programmes.userId, filters.userId),
-      ne(programmes.status, "cancelled"),
-      gte(programmes.startDate, start),
-      lte(programmes.startDate, end),
-    ));
+  const userMentoringTypes = await db.select({ name: meetingTypes.name }).from(meetingTypes).where(and(
+    eq(meetingTypes.userId, filters.userId), eq(meetingTypes.category, "mentoring"), eq(meetingTypes.isActive, true),
+  ));
+  const MENTORING_TYPES = userMentoringTypes.length > 0
+    ? userMentoringTypes.map(t => t.name.toLowerCase())
+    : ["mentoring", "catchup", "follow-up"];
+  const mentoringMeetings = await db.select().from(meetings).where(and(
+    eq(meetings.userId, filters.userId), inArray(meetings.type, MENTORING_TYPES),
+    inArray(meetings.status, ["completed", "confirmed"]),
+    gte(meetings.startTime, start), lte(meetings.startTime, end),
+  ));
 
+  const programmesInRange = await db.select().from(programmes).where(and(
+    eq(programmes.userId, filters.userId), ne(programmes.status, "cancelled"),
+    gte(programmes.startDate, start), lte(programmes.startDate, end),
+  ));
   const programmesByClassification: Record<string, number> = {};
   let programmesCompleted = 0;
+  let programmeAttendees = 0;
   for (const p of programmesInRange) {
     programmesByClassification[p.classification] = (programmesByClassification[p.classification] || 0) + 1;
     if (p.status === "completed") programmesCompleted++;
+    if (p.attendees) programmeAttendees += p.attendees.length;
   }
 
-  let communitySpendTotal = 0;
-  let communitySpendError = false;
-  try {
-    const spendResult = await db
-      .select({ total: sum(communitySpend.amount) })
-      .from(communitySpend)
-      .where(and(
-        eq(communitySpend.userId, filters.userId),
-        gte(communitySpend.date, start),
-        lte(communitySpend.date, end),
-      ));
-    communitySpendTotal = Math.round(Number(spendResult[0]?.total || 0) * 100) / 100;
-  } catch (err) {
-    console.error("[reporting] Community spend query failed:", err);
-    communitySpendError = true;
-  }
+  const totalActivations = eventsInRange.length + bookingsInRange.length + mentoringMeetings.length + programmesInRange.length;
 
   return {
-    events: {
-      total: eventsInRange.length,
-      byType: eventsByType,
-      totalAttendees,
-    },
+    totalActivations,
+    events: { total: eventsInRange.length, byType: eventsByType, totalAttendees },
     bookings: {
-      total: bookingsInRange.length,
-      byClassification: bookingsByClassification,
+      total: bookingsInRange.length, byClassification: bookingsByClassification,
       communityHours: Math.round(communityHours * 10) / 10,
     },
+    mentoringSessions: mentoringMeetings.length,
     programmes: {
-      total: programmesInRange.length,
-      byClassification: programmesByClassification,
+      total: programmesInRange.length, byClassification: programmesByClassification,
       completed: programmesCompleted,
     },
-    communitySpend: communitySpendTotal,
-    communitySpendError,
+    communityHours: Math.round(communityHours * 10) / 10,
+    totalAttendees: totalAttendees + programmeAttendees,
     communityLensApplied: false,
   };
 }
 
-export async function getImpactByTaxonomy(filters: ReportFilters) {
-  const where = confirmedDebriefConditions(filters);
-  const lensContactIds = await getCommunityLensContactIds(filters);
-
-  const confirmedLogIds = await db
-    .select({ id: impactLogs.id })
-    .from(impactLogs)
-    .where(where);
-
-  if (confirmedLogIds.length === 0) {
-    return [];
-  }
-
-  const logIds = confirmedLogIds.map(r => r.id);
-
-  const tagConditions = filters.taxonomyIds?.length
-    ? and(inArray(impactTags.impactLogId, logIds), inArray(impactTags.taxonomyId, filters.taxonomyIds))
-    : inArray(impactTags.impactLogId, logIds);
-
-  const allTags = await db
-    .select({
-      taxonomyId: impactTags.taxonomyId,
-      taxonomyName: impactTaxonomy.name,
-      taxonomyColor: impactTaxonomy.color,
-      impactLogId: impactTags.impactLogId,
-      confidence: impactTags.confidence,
-      notes: impactTags.notes,
-      evidence: impactTags.evidence,
-    })
-    .from(impactTags)
-    .innerJoin(impactTaxonomy, eq(impactTags.taxonomyId, impactTaxonomy.id))
-    .where(tagConditions!);
-
-  const contactsByLog = await db
-    .select({
-      impactLogId: impactLogContacts.impactLogId,
-      contactId: impactLogContacts.contactId,
-    })
-    .from(impactLogContacts)
-    .where(inArray(impactLogContacts.impactLogId, logIds));
-
-  const contactsByLogMap = new Map<number, number[]>();
-  for (const row of contactsByLog) {
-    const cid = row.contactId;
-    if (lensContactIds && !lensContactIds.has(cid)) continue;
-    if (!contactsByLogMap.has(row.impactLogId)) contactsByLogMap.set(row.impactLogId, []);
-    contactsByLogMap.get(row.impactLogId)!.push(cid);
-  }
-
-  const quotesByLog = await db
-    .select({
-      id: impactLogs.id,
-      keyQuotes: impactLogs.keyQuotes,
-    })
-    .from(impactLogs)
-    .where(inArray(impactLogs.id, logIds));
-
-  const quotesMap = new Map<number, string[]>();
-  for (const row of quotesByLog) {
-    if (row.keyQuotes) quotesMap.set(row.id, row.keyQuotes);
-  }
-
-  const grouped = new Map<number, {
-    taxonomyId: number;
-    taxonomyName: string;
-    taxonomyColor: string | null;
-    debriefCount: number;
-    weightedScore: number;
-    contactIds: Set<number>;
-    quotes: string[];
-    evidenceSnippets: string[];
-    logIds: Set<number>;
-  }>();
-
-  for (const tag of allTags) {
-    if (!grouped.has(tag.taxonomyId)) {
-      grouped.set(tag.taxonomyId, {
-        taxonomyId: tag.taxonomyId,
-        taxonomyName: tag.taxonomyName,
-        taxonomyColor: tag.taxonomyColor,
-        debriefCount: 0,
-        weightedScore: 0,
-        contactIds: new Set(),
-        quotes: [],
-        evidenceSnippets: [],
-        logIds: new Set(),
-      });
-    }
-    const g = grouped.get(tag.taxonomyId)!;
-    if (!g.logIds.has(tag.impactLogId)) {
-      g.debriefCount++;
-      g.logIds.add(tag.impactLogId);
-    }
-    g.weightedScore += tag.confidence || 0;
-
-    const logContacts = contactsByLogMap.get(tag.impactLogId) || [];
-    for (const cid of logContacts) g.contactIds.add(cid);
-
-    if (tag.evidence) g.evidenceSnippets.push(tag.evidence);
-    if (tag.notes) g.evidenceSnippets.push(tag.notes);
-
-    if ((tag.confidence || 0) >= 70) {
-      const logQuotes = quotesMap.get(tag.impactLogId) || [];
-      for (const q of logQuotes) {
-        if (!g.quotes.includes(q)) g.quotes.push(q);
-      }
-    }
-  }
-
-  return Array.from(grouped.values())
-    .map(g => ({
-      taxonomyId: g.taxonomyId,
-      taxonomyName: g.taxonomyName,
-      taxonomyColor: g.taxonomyColor,
-      debriefCount: g.debriefCount,
-      weightedImpactScore: g.weightedScore,
-      uniqueContactsAffected: g.contactIds.size,
-      representativeQuotes: g.quotes.slice(0, 5),
-      evidenceSnippets: g.evidenceSnippets.slice(0, 5),
-    }))
-    .sort((a, b) => b.weightedImpactScore - a.weightedImpactScore);
-}
-
-export async function getOutcomeMovement(filters: ReportFilters) {
+export async function getImpactMetrics(filters: ReportFilters) {
   const where = confirmedDebriefConditions(filters);
   const lensContactIds = await getCommunityLensContactIds(filters);
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
 
-  let contactIds = await db
-    .selectDistinct({ contactId: impactLogContacts.contactId })
-    .from(impactLogContacts)
-    .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
-    .where(where);
+  let communitySpendTotal = 0;
+  try {
+    const spendResult = await db.select({ total: sum(communitySpend.amount) }).from(communitySpend)
+      .where(and(eq(communitySpend.userId, filters.userId), gte(communitySpend.date, start), lte(communitySpend.date, end)));
+    communitySpendTotal = Math.round(Number(spendResult[0]?.total || 0) * 100) / 100;
+  } catch (err) { console.error("[reporting] Community spend query failed:", err); }
 
-  if (lensContactIds) {
-    contactIds = contactIds.filter(r => lensContactIds.has(r.contactId));
+  const confirmedLogIds = await db.select({ id: impactLogs.id }).from(impactLogs).where(where);
+  const logIds = confirmedLogIds.map(r => r.id);
+
+  let taxonomyBreakdown: any[] = [];
+  if (logIds.length > 0) {
+    const tagConditions = filters.taxonomyIds?.length
+      ? and(inArray(impactTags.impactLogId, logIds), inArray(impactTags.taxonomyId, filters.taxonomyIds))
+      : inArray(impactTags.impactLogId, logIds);
+
+    const allTags = await db.select({
+      taxonomyId: impactTags.taxonomyId, taxonomyName: impactTaxonomy.name, taxonomyColor: impactTaxonomy.color,
+      impactLogId: impactTags.impactLogId, confidence: impactTags.confidence, notes: impactTags.notes, evidence: impactTags.evidence,
+    }).from(impactTags).innerJoin(impactTaxonomy, eq(impactTags.taxonomyId, impactTaxonomy.id)).where(tagConditions!);
+
+    const contactsByLog = await db.select({ impactLogId: impactLogContacts.impactLogId, contactId: impactLogContacts.contactId })
+      .from(impactLogContacts).where(inArray(impactLogContacts.impactLogId, logIds));
+    const contactsByLogMap = new Map<number, number[]>();
+    for (const row of contactsByLog) {
+      if (lensContactIds && !lensContactIds.has(row.contactId)) continue;
+      if (!contactsByLogMap.has(row.impactLogId)) contactsByLogMap.set(row.impactLogId, []);
+      contactsByLogMap.get(row.impactLogId)!.push(row.contactId);
+    }
+
+    const quotesByLog = await db.select({ id: impactLogs.id, keyQuotes: impactLogs.keyQuotes })
+      .from(impactLogs).where(inArray(impactLogs.id, logIds));
+    const quotesMap = new Map<number, string[]>();
+    for (const row of quotesByLog) { if (row.keyQuotes) quotesMap.set(row.id, row.keyQuotes); }
+
+    const grouped = new Map<number, { taxonomyId: number; taxonomyName: string; taxonomyColor: string | null; debriefCount: number; weightedScore: number; contactIds: Set<number>; quotes: string[]; evidenceSnippets: string[]; logIds: Set<number> }>();
+    for (const tag of allTags) {
+      if (!grouped.has(tag.taxonomyId)) {
+        grouped.set(tag.taxonomyId, { taxonomyId: tag.taxonomyId, taxonomyName: tag.taxonomyName, taxonomyColor: tag.taxonomyColor, debriefCount: 0, weightedScore: 0, contactIds: new Set(), quotes: [], evidenceSnippets: [], logIds: new Set() });
+      }
+      const g = grouped.get(tag.taxonomyId)!;
+      if (!g.logIds.has(tag.impactLogId)) { g.debriefCount++; g.logIds.add(tag.impactLogId); }
+      g.weightedScore += tag.confidence || 0;
+      const logContacts = contactsByLogMap.get(tag.impactLogId) || [];
+      for (const cid of logContacts) g.contactIds.add(cid);
+      if (tag.evidence) g.evidenceSnippets.push(tag.evidence);
+      if (tag.notes) g.evidenceSnippets.push(tag.notes);
+      if ((tag.confidence || 0) >= 70) {
+        const logQuotes = quotesMap.get(tag.impactLogId) || [];
+        for (const q of logQuotes) { if (!g.quotes.includes(q)) g.quotes.push(q); }
+      }
+    }
+    taxonomyBreakdown = Array.from(grouped.values()).map(g => ({
+      name: g.taxonomyName, color: g.taxonomyColor, debriefCount: g.debriefCount,
+      peopleAffected: g.contactIds.size, impactScore: g.weightedScore,
+      topQuotes: g.quotes.slice(0, 5), evidence: g.evidenceSnippets.slice(0, 5),
+    })).sort((a, b) => b.impactScore - a.impactScore);
   }
 
-  if (contactIds.length === 0) {
-    return {
-      totalContacts: 0,
-      contactsWithMetrics: 0,
-      averageChange: { mindset: 0, skill: 0, confidence: 0 },
-      positiveMovementPercent: { mindset: 0, skill: 0, confidence: 0 },
-      milestoneCount: 0,
-    };
-  }
+  let engagedContactIds = await db.selectDistinct({ contactId: impactLogContacts.contactId })
+    .from(impactLogContacts).innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id)).where(where);
+  if (lensContactIds) engagedContactIds = engagedContactIds.filter(r => lensContactIds.has(r.contactId));
+  const cIds = engagedContactIds.map(r => r.contactId);
 
-  const cIds = contactIds.map(r => r.contactId);
-
-  const contactMetrics = await db
-    .select({
-      id: contacts.id,
-      metrics: contacts.metrics,
-    })
-    .from(contacts)
-    .where(and(eq(contacts.userId, filters.userId), inArray(contacts.id, cIds)));
-
-  let mindsetChanges: number[] = [];
-  let skillChanges: number[] = [];
-  let confidenceChanges: number[] = [];
-
-  for (const c of contactMetrics) {
-    const m = c.metrics as any;
-    if (!m) continue;
-    if (m.mindset != null) mindsetChanges.push(m.mindset);
-    if (m.skill != null) skillChanges.push(m.skill);
-    if (m.confidence != null) confidenceChanges.push(m.confidence);
+  let mindsetChanges: number[] = [], skillChanges: number[] = [], confidenceChanges: number[] = [];
+  let contactsWithMetrics = 0;
+  if (cIds.length > 0) {
+    const contactMetrics = await db.select({ id: contacts.id, metrics: contacts.metrics })
+      .from(contacts).where(and(eq(contacts.userId, filters.userId), inArray(contacts.id, cIds)));
+    for (const c of contactMetrics) {
+      const m = c.metrics as any;
+      if (!m || Object.keys(m).length === 0) continue;
+      contactsWithMetrics++;
+      if (m.mindset != null) mindsetChanges.push(m.mindset);
+      if (m.skill != null) skillChanges.push(m.skill);
+      if (m.confidence != null) confidenceChanges.push(m.confidence);
+    }
   }
 
   const avgFn = (arr: number[]) => arr.length ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10 : 0;
   const positivePercent = (arr: number[]) => arr.length ? Math.round((arr.filter(v => v > 0).length / arr.length) * 100) : 0;
 
-  const confirmedLogs = await db
-    .select({ id: impactLogs.id, milestones: impactLogs.milestones })
-    .from(impactLogs)
-    .where(where);
-
-  let milestonesFromTable = await db
-    .select()
-    .from(milestones)
-    .where(and(
-      eq(milestones.userId, filters.userId),
-      gte(milestones.createdAt, start),
-      lte(milestones.createdAt, end),
-    ));
-
+  const confirmedLogs = await db.select({ id: impactLogs.id, milestones: impactLogs.milestones }).from(impactLogs).where(where);
+  let milestonesFromTable = await db.select().from(milestones).where(and(
+    eq(milestones.userId, filters.userId), gte(milestones.createdAt, start), lte(milestones.createdAt, end),
+  ));
   if (lensContactIds) {
-    milestonesFromTable = milestonesFromTable.filter(m =>
-      m.linkedContactId && lensContactIds.has(m.linkedContactId)
-    );
+    milestonesFromTable = milestonesFromTable.filter(m => m.linkedContactId && lensContactIds.has(m.linkedContactId));
   }
-
   let inlineMilestoneCount = 0;
   const tableMilestoneLogIds = new Set(milestonesFromTable.map(m => m.impactLogId).filter(Boolean));
   for (const log of confirmedLogs) {
@@ -534,22 +409,61 @@ export async function getOutcomeMovement(filters: ReportFilters) {
     }
   }
 
-  const totalMilestoneCount = milestonesFromTable.length + inlineMilestoneCount;
+  let connectionMovement = 0;
+  const CONNECTION_ORDER = ["known", "connected", "engaged", "embedded", "partnering"];
+  const stageHistory = await db.select().from(relationshipStageHistory).where(and(
+    eq(relationshipStageHistory.entityType, "contact"),
+    gte(relationshipStageHistory.changedAt, start), lte(relationshipStageHistory.changedAt, end),
+  ));
+  const deepenedContacts = new Set<number>();
+  for (const sh of stageHistory) {
+    if (lensContactIds && !lensContactIds.has(sh.entityId)) continue;
+    const prevIdx = sh.previousStage ? CONNECTION_ORDER.indexOf(sh.previousStage) : -1;
+    const newIdx = CONNECTION_ORDER.indexOf(sh.newStage);
+    if (newIdx > prevIdx && newIdx >= 0) deepenedContacts.add(sh.entityId);
+  }
+  connectionMovement = deepenedContacts.size;
 
   return {
-    totalContacts: cIds.length,
-    contactsWithMetrics: contactMetrics.filter(c => c.metrics && Object.keys(c.metrics as any).length > 0).length,
+    communitySpend: communitySpendTotal,
+    milestoneCount: milestonesFromTable.length + inlineMilestoneCount,
+    growthMetrics: {
+      mindset: { averageScore: avgFn(mindsetChanges), positiveMovementPercent: positivePercent(mindsetChanges) },
+      skill: { averageScore: avgFn(skillChanges), positiveMovementPercent: positivePercent(skillChanges) },
+      confidence: { averageScore: avgFn(confidenceChanges), positiveMovementPercent: positivePercent(confidenceChanges) },
+    },
+    contactsWithMetrics,
+    connectionMovement,
+    taxonomyBreakdown,
+  };
+}
+
+export async function getImpactByTaxonomy(filters: ReportFilters) {
+  const result = await getImpactMetrics(filters);
+  return result.taxonomyBreakdown.map(t => ({
+    taxonomyId: 0, taxonomyName: t.name, taxonomyColor: t.color,
+    debriefCount: t.debriefCount, weightedImpactScore: t.impactScore,
+    uniqueContactsAffected: t.peopleAffected,
+    representativeQuotes: t.topQuotes, evidenceSnippets: t.evidence,
+  }));
+}
+
+export async function getOutcomeMovement(filters: ReportFilters) {
+  const result = await getImpactMetrics(filters);
+  return {
+    totalContacts: result.contactsWithMetrics,
+    contactsWithMetrics: result.contactsWithMetrics,
     averageChange: {
-      mindset: avgFn(mindsetChanges),
-      skill: avgFn(skillChanges),
-      confidence: avgFn(confidenceChanges),
+      mindset: result.growthMetrics.mindset.averageScore,
+      skill: result.growthMetrics.skill.averageScore,
+      confidence: result.growthMetrics.confidence.averageScore,
     },
     positiveMovementPercent: {
-      mindset: positivePercent(mindsetChanges),
-      skill: positivePercent(skillChanges),
-      confidence: positivePercent(confidenceChanges),
+      mindset: result.growthMetrics.mindset.positiveMovementPercent,
+      skill: result.growthMetrics.skill.positiveMovementPercent,
+      confidence: result.growthMetrics.confidence.positiveMovementPercent,
     },
-    milestoneCount: totalMilestoneCount,
+    milestoneCount: result.milestoneCount,
   };
 }
 
@@ -689,144 +603,109 @@ export async function generateNarrative(
   legacyContext?: { metrics: any; highlights: string[]; reportCount: number } | null,
   narrativeStyle: "compliance" | "story" = "compliance",
 ) {
-  const [engagement, delivery, impact, outcomes, value, mentoring] = await Promise.all([
-    getEngagementMetrics(filters),
+  const [reach, delivery, impact, value, mentoring] = await Promise.all([
+    getReachMetrics(filters),
     getDeliveryMetrics(filters),
-    getImpactByTaxonomy(filters),
-    getOutcomeMovement(filters),
+    getImpactMetrics(filters),
     getValueContribution(filters),
     getMentoringMetrics(filters),
   ]);
 
-  const topCategories = impact.slice(0, 3);
+  const topCategories = impact.taxonomyBreakdown.slice(0, 3);
   const startLabel = new Date(filters.startDate).toLocaleDateString("en-NZ", { month: "long", year: "numeric" });
   const endLabel = new Date(filters.endDate).toLocaleDateString("en-NZ", { month: "long", year: "numeric" });
-  const periodLabel = startLabel === endLabel ? startLabel : `${startLabel} – ${endLabel}`;
+  const periodLabel = startLabel === endLabel ? startLabel : `${startLabel} - ${endLabel}`;
   const lm = legacyContext?.metrics;
   const hasLegacy = legacyContext && legacyContext.reportCount > 0 && lm;
-
   const lens = filters.communityLens;
   const lensLabel = lens === "maori" ? "Maori (matawaka)" : lens === "pasifika" ? "Pasifika" : lens === "maori_pasifika" ? "Maori and Pasifika" : null;
 
   const sections: string[] = [];
 
   if (narrativeStyle === "story") {
-    let whoText = `## Who Our Community Is\n\n`;
-    if (lensLabel) {
-      whoText += `Focusing on our ${lensLabel} community, `;
-    } else {
-      whoText += `Across our community, `;
-    }
-    whoText += `${engagement.uniqueContacts} people walked through our doors and engaged with us during ${periodLabel}.`;
-    if (hasLegacy) {
-      whoText += ` This builds on a history captured in ${legacyContext.reportCount} legacy report${legacyContext.reportCount > 1 ? "s" : ""}.`;
-    }
-    whoText += ` Among them, ${engagement.newContacts} were new faces joining our network for the first time.`;
-    whoText += ` ${engagement.activeGroups} groups and organisations were part of the journey, and ${engagement.repeatEngagementRate}% of our people came back more than once — showing the depth of connection being built.`;
-    sections.push(whoText);
+    let reachText = `## Our Reach\n\n`;
+    if (lensLabel) reachText += `Focusing on our ${lensLabel} community, `;
+    else reachText += `During ${periodLabel}, `;
+    reachText += `we reached ${reach.peopleReached.toLocaleString()} people`;
+    if (reach.footTraffic > 0) reachText += ` (including ${reach.footTraffic.toLocaleString()} through foot traffic)`;
+    reachText += `.`;
+    if (hasLegacy) reachText += ` This builds on ${legacyContext.reportCount} legacy report${legacyContext.reportCount > 1 ? "s" : ""}.`;
+    reachText += ` ${reach.ecosystemGrowth.newContacts} new people joined our network. ${reach.repeatEngagementRate}% came back more than once, showing the depth of connection being built.`;
+    if (reach.ecosystemGrowth.promotedToCommunity > 0) reachText += ` ${reach.ecosystemGrowth.promotedToCommunity} people deepened into our community.`;
+    if (reach.ecosystemGrowth.promotedToInnovator > 0) reachText += ` ${reach.ecosystemGrowth.promotedToInnovator} became innovators.`;
+    sections.push(reachText);
 
-    let happeningText = `## What's Happening\n\n`;
-    const eventTypes = Object.entries(delivery.events.byType).map(([t, c]) => `${c} ${t.toLowerCase()}${c > 1 ? "s" : ""}`).join(", ");
-    happeningText += `We hosted ${delivery.events.total} events (${eventTypes || "none recorded"})`;
-    if (delivery.events.totalAttendees > 0) {
-      happeningText += `, reaching ${delivery.events.totalAttendees} people`;
-    }
-    if (hasLegacy && lm.activationsTotal > 0) {
-      happeningText += `, alongside ${lm.activationsTotal} activations from our legacy period`;
-    }
-    happeningText += `. ${delivery.bookings.total} venue bookings contributed ${delivery.bookings.communityHours} hours of community activity.`;
-    if (mentoring.totalSessions > 0) {
-      happeningText += ` ${mentoring.completedSessions} mentoring sessions were delivered to ${mentoring.uniqueMentees} mentee${mentoring.uniqueMentees !== 1 ? "s" : ""}, totalling ${mentoring.totalHours} hours of focused support.`;
-    }
-    happeningText += ` ${delivery.programmes.total} programmes were running, with ${delivery.programmes.completed} reaching completion — each one a story of growth and possibility.`;
-    sections.push(happeningText);
-
-    if (topCategories.length > 0) {
-      let changeText = `## What We're Seeing Change\n\n`;
-      if (lensLabel) {
-        changeText += `Within our ${lensLabel} community, the `;
-      } else {
-        changeText += `The `;
-      }
-      changeText += `most significant shifts are happening in:\n`;
-      changeText += topCategories.map(c => {
-        let line = `- **${c.taxonomyName}**: touching ${c.uniqueContactsAffected} lives across ${c.debriefCount} sessions`;
-        if (c.representativeQuotes.length > 0) {
-          line += `\n  > "${c.representativeQuotes[0]}"`;
-        }
-        return line;
-      }).join("\n");
-      changeText += `\n\n${outcomes.contactsWithMetrics} people have measurable growth tracked — with confidence shifting positively for ${outcomes.positiveMovementPercent.confidence}% of them. ${outcomes.milestoneCount} milestones mark the tangible progress our community is making.`;
-      sections.push(changeText);
-    }
-
-    sections.push(`## [Participant Story]\n\n*[Insert a participant story here — a real example of change, growth, or connection that brings the data to life.]*`);
-
-    sections.push(`## [What's Next]\n\n*[Share what's coming up — upcoming programmes, community goals, or areas of focus for the next period.]*`);
-  } else {
-    let engText = `## Who We Reached\n\nDuring ${periodLabel}`;
-    if (lensLabel) {
-      engText += ` (filtered to ${lensLabel} community)`;
-    }
-    if (hasLegacy) {
-      engText += ` (combining data from ${legacyContext.reportCount} legacy report${legacyContext.reportCount > 1 ? "s" : ""} with live tracking)`;
-    }
-    engText += `, ${engagement.uniqueContacts} unique individuals were engaged across ${engagement.totalEngagementInstances} interactions.`;
-    if (hasLegacy && lm.foottrafficUnique > 0) {
-      engText += ` Legacy reports recorded ${lm.foottrafficUnique.toLocaleString()} hub foot traffic (unique visitors).`;
-    }
-    engText += ` ${engagement.newContacts} new contacts were added to the network. ${engagement.activeGroups} groups/organisations were actively involved. The repeat engagement rate was ${engagement.repeatEngagementRate}%, with ${engagement.repeatEngagementCount} individuals engaged more than once.`;
-    sections.push(engText);
-
-    const eventTypes = Object.entries(delivery.events.byType).map(([t, c]) => `${c} ${t.toLowerCase()}${c > 1 ? "s" : ""}`).join(", ");
-    let delText = `## What We Delivered\n\n${delivery.events.total} events were held (${eventTypes || "none recorded"})`;
-    if (delivery.events.totalAttendees > 0) {
-      delText += `, reaching ${delivery.events.totalAttendees} people`;
-    }
-    delText += `.`;
-    if (hasLegacy && lm.activationsTotal > 0) {
-      const parts: string[] = [];
-      parts.push(`${lm.activationsTotal} total activations`);
-      if (lm.activationsWorkshops > 0) parts.push(`${lm.activationsWorkshops} workshops`);
-      if (lm.activationsMentoring > 0) parts.push(`${lm.activationsMentoring} mentoring sessions`);
-      if (lm.activationsEvents > 0) parts.push(`${lm.activationsEvents} events`);
-      if (lm.activationsPartnerMeetings > 0) parts.push(`${lm.activationsPartnerMeetings} partner meetings`);
-      delText += ` Legacy reports contributed ${parts.join(", ")}.`;
-    }
-    const combinedBookings = delivery.bookings.total + (hasLegacy ? lm.bookingsTotal || 0 : 0);
-    delText += ` ${combinedBookings} venue bookings were recorded across the period`;
-    if (hasLegacy && lm.bookingsTotal > 0) {
-      delText += ` (${delivery.bookings.total} live, ${lm.bookingsTotal} legacy)`;
-    }
-    delText += ` totalling ${delivery.bookings.communityHours} tracked community hours.`;
-    if (mentoring.totalSessions > 0) {
-      delText += ` ${mentoring.completedSessions} mentoring sessions were delivered to ${mentoring.uniqueMentees} mentee${mentoring.uniqueMentees !== 1 ? "s" : ""}, totalling ${mentoring.totalHours} hours.`;
-      if (mentoring.newMentees > 0) {
-        delText += ` ${mentoring.newMentees} new mentee${mentoring.newMentees !== 1 ? "s" : ""} started their journey during this period.`;
-      }
-    }
-    delText += ` ${delivery.programmes.total} programmes ran during this period, with ${delivery.programmes.completed} completing.`;
+    let delText = `## What We Delivered\n\n`;
+    delText += `Across the period, ${delivery.totalActivations} activations were delivered - ${delivery.events.total} events, ${delivery.bookings.total} bookings, ${delivery.mentoringSessions} mentoring sessions, and ${delivery.programmes.total} programmes.`;
+    if (delivery.totalAttendees > 0) delText += ` ${delivery.totalAttendees} attendees participated across events and programmes.`;
+    if (mentoring.totalHours > 0) delText += ` ${mentoring.totalHours} hours of mentoring support were provided to ${mentoring.uniqueMentees} mentee${mentoring.uniqueMentees !== 1 ? "s" : ""}.`;
+    if (delivery.communityHours > 0) delText += ` ${delivery.communityHours} hours of community activity through venue bookings.`;
     sections.push(delText);
 
-    if (topCategories.length > 0) {
-      const catLines = topCategories.map(c => {
-        let line = `- **${c.taxonomyName}**: ${c.debriefCount} debriefs, ${c.uniqueContactsAffected} people affected (impact score: ${c.weightedImpactScore})`;
-        if (c.representativeQuotes.length > 0) {
-          line += `\n  > "${c.representativeQuotes[0]}"`;
-        }
-        return line;
-      }).join("\n");
-      let impactHeader = `## What Shifted`;
-      if (lensLabel) impactHeader += ` (${lensLabel})`;
-      sections.push(`${impactHeader}\n\nThe top impact areas during this period were:\n${catLines}`);
+    if (topCategories.length > 0 || impact.milestoneCount > 0 || impact.contactsWithMetrics > 0) {
+      let impText = `## What Changed\n\n`;
+      if (impact.communitySpend > 0) impText += `$${impact.communitySpend.toLocaleString()} was invested directly into community. `;
+      if (impact.milestoneCount > 0) impText += `${impact.milestoneCount} milestones were achieved. `;
+      if (impact.contactsWithMetrics > 0) {
+        impText += `${impact.contactsWithMetrics} people have tracked growth - mindset shifted positively for ${impact.growthMetrics.mindset.positiveMovementPercent}%, skill for ${impact.growthMetrics.skill.positiveMovementPercent}%, and confidence for ${impact.growthMetrics.confidence.positiveMovementPercent}%.`;
+      }
+      if (impact.connectionMovement > 0) impText += ` ${impact.connectionMovement} people deepened their connection strength.`;
+      if (topCategories.length > 0) {
+        impText += `\n\nKey impact areas:\n`;
+        impText += topCategories.map(c => {
+          let line = `- **${c.name}**: ${c.peopleAffected} people across ${c.debriefCount} sessions`;
+          if (c.topQuotes.length > 0) line += `\n  > "${c.topQuotes[0]}"`;
+          return line;
+        }).join("\n");
+      }
+      sections.push(impText);
     }
 
-    sections.push(`## Outcome Movement\n\n${outcomes.contactsWithMetrics} of ${outcomes.totalContacts} engaged contacts had tracked metrics. Average scores: mindset ${outcomes.averageChange.mindset}, skill ${outcomes.averageChange.skill}, confidence ${outcomes.averageChange.confidence}. ${outcomes.milestoneCount} milestones were recorded across confirmed debriefs.`);
+    sections.push(`## [Participant Story]\n\n*[Insert a participant story here - a real example of change, growth, or connection that brings the data to life.]*`);
+    sections.push(`## [What's Next]\n\n*[Share what's coming up - upcoming programmes, community goals, or areas of focus for the next period.]*`);
+  } else {
+    let reachText = `## Reach\n\nDuring ${periodLabel}`;
+    if (lensLabel) reachText += ` (${lensLabel} community)`;
+    if (hasLegacy) reachText += ` (combining ${legacyContext.reportCount} legacy report${legacyContext.reportCount > 1 ? "s" : ""})`;
+    reachText += `, ${reach.peopleReached.toLocaleString()} people were reached (${reach.uniqueContacts} tracked contacts`;
+    if (reach.footTraffic > 0) reachText += ` + ${reach.footTraffic.toLocaleString()} foot traffic`;
+    reachText += `) across ${reach.totalEngagements} engagements.`;
+    if (hasLegacy && lm.foottrafficUnique > 0) reachText += ` Legacy foot traffic: ${lm.foottrafficUnique.toLocaleString()}.`;
+    reachText += ` ${reach.ecosystemGrowth.newContacts} new contacts added. Repeat engagement rate: ${reach.repeatEngagementRate}%.`;
+    if (reach.ecosystemGrowth.promotedToCommunity > 0) reachText += ` ${reach.ecosystemGrowth.promotedToCommunity} promoted to community.`;
+    if (reach.ecosystemGrowth.promotedToInnovator > 0) reachText += ` ${reach.ecosystemGrowth.promotedToInnovator} promoted to innovators.`;
+    if (reach.ecosystemGrowth.newGroups > 0) reachText += ` ${reach.ecosystemGrowth.newGroups} new groups formed.`;
+    sections.push(reachText);
 
-    sections.push(`## Value & Contribution\n\nTotal revenue from bookings: $${value.revenue.total.toLocaleString()}. ${value.memberships.active} active memberships contributed $${value.memberships.totalRevenue.toLocaleString()}. ${value.mouExchange.active} MOUs delivered $${value.mouExchange.totalInKindValue.toLocaleString()} in in-kind value. Programme costs totalled $${value.programmeCosts.reduce((s, p) => s + p.totalCost, 0).toLocaleString()}.`);
+    let delText = `## Delivery\n\n${delivery.totalActivations} total activations: ${delivery.events.total} events, ${delivery.bookings.total} bookings, ${delivery.mentoringSessions} mentoring sessions, ${delivery.programmes.total} programmes.`;
+    if (delivery.totalAttendees > 0) delText += ` ${delivery.totalAttendees} total attendees.`;
+    if (delivery.communityHours > 0) delText += ` ${delivery.communityHours} community hours.`;
+    if (hasLegacy && lm.activationsTotal > 0) delText += ` Legacy: ${lm.activationsTotal} activations.`;
+    if (mentoring.totalHours > 0) delText += ` Mentoring: ${mentoring.totalHours} hours to ${mentoring.uniqueMentees} mentees.`;
+    if (mentoring.newMentees > 0) delText += ` ${mentoring.newMentees} new mentees started.`;
+    sections.push(delText);
 
-    sections.push(`## [Participant Story]\n\n*[Insert a participant story here — a real example that illustrates the impact described above.]*`);
+    let impText = `## Impact\n\n`;
+    if (impact.communitySpend > 0) impText += `Community investment: $${impact.communitySpend.toLocaleString()}. `;
+    impText += `${impact.milestoneCount} milestones achieved. ${impact.contactsWithMetrics} people with tracked growth.`;
+    if (impact.contactsWithMetrics > 0) {
+      impText += ` Average scores - mindset: ${impact.growthMetrics.mindset.averageScore}, skill: ${impact.growthMetrics.skill.averageScore}, confidence: ${impact.growthMetrics.confidence.averageScore}.`;
+      impText += ` Positive movement - mindset: ${impact.growthMetrics.mindset.positiveMovementPercent}%, skill: ${impact.growthMetrics.skill.positiveMovementPercent}%, confidence: ${impact.growthMetrics.confidence.positiveMovementPercent}%.`;
+    }
+    if (impact.connectionMovement > 0) impText += ` ${impact.connectionMovement} connections deepened.`;
+    if (topCategories.length > 0) {
+      const catLines = topCategories.map(c => {
+        let line = `- **${c.name}**: ${c.debriefCount} debriefs, ${c.peopleAffected} affected (score: ${c.impactScore})`;
+        if (c.topQuotes.length > 0) line += `\n  > "${c.topQuotes[0]}"`;
+        return line;
+      }).join("\n");
+      impText += `\n\nTop impact areas:\n${catLines}`;
+    }
+    sections.push(impText);
 
+    sections.push(`## Value & Contribution\n\nBooking revenue: $${value.revenue.total.toLocaleString()}. ${value.memberships.active} memberships ($${value.memberships.totalRevenue.toLocaleString()}). ${value.mouExchange.active} MOUs ($${value.mouExchange.totalInKindValue.toLocaleString()} in-kind). Programme costs: $${value.programmeCosts.reduce((s, p) => s + p.totalCost, 0).toLocaleString()}.`);
+
+    sections.push(`## [Participant Story]\n\n*[Insert a participant story here - a real example that illustrates the impact described above.]*`);
     sections.push(`## [What's Next]\n\n*[Outline upcoming priorities, planned activities, or strategic focus for the next reporting period.]*`);
   }
 
@@ -839,10 +718,9 @@ export async function generateNarrative(
     narrative: sections.join("\n\n"),
     narrativeStyle,
     sections: {
-      engagement,
+      reach,
       delivery,
       impact,
-      outcomes,
       value,
     },
   };
@@ -1256,31 +1134,40 @@ export async function getMentoringMetrics(filters: ReportFilters) {
 }
 
 export async function getFullMonthlyReport(filters: ReportFilters) {
-  const [engagement, delivery, impact, outcomes, value, mentoring] = await Promise.all([
-    getEngagementMetrics(filters),
+  const [reach, delivery, impact, value, mentoring] = await Promise.all([
+    getReachMetrics(filters),
     getDeliveryMetrics(filters),
-    getImpactByTaxonomy(filters),
-    getOutcomeMovement(filters),
+    getImpactMetrics(filters),
     getValueContribution(filters),
     getMentoringMetrics(filters),
   ]);
 
   return {
-    period: {
-      startDate: filters.startDate,
-      endDate: filters.endDate,
-    },
+    period: { startDate: filters.startDate, endDate: filters.endDate },
     filters: {
-      programmeIds: filters.programmeIds,
-      taxonomyIds: filters.taxonomyIds,
-      demographicSegments: filters.demographicSegments,
-      communityLens: filters.communityLens,
+      programmeIds: filters.programmeIds, taxonomyIds: filters.taxonomyIds,
+      demographicSegments: filters.demographicSegments, communityLens: filters.communityLens,
     },
-    engagement,
+    reach,
     delivery,
     impact,
-    outcomes,
     value,
     mentoring,
+    engagement: reach,
+    outcomes: {
+      totalContacts: impact.contactsWithMetrics,
+      contactsWithMetrics: impact.contactsWithMetrics,
+      averageChange: {
+        mindset: impact.growthMetrics.mindset.averageScore,
+        skill: impact.growthMetrics.skill.averageScore,
+        confidence: impact.growthMetrics.confidence.averageScore,
+      },
+      positiveMovementPercent: {
+        mindset: impact.growthMetrics.mindset.positiveMovementPercent,
+        skill: impact.growthMetrics.skill.positiveMovementPercent,
+        confidence: impact.growthMetrics.confidence.positiveMovementPercent,
+      },
+      milestoneCount: impact.milestoneCount,
+    },
   };
 }

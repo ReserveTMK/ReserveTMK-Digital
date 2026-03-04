@@ -6,9 +6,11 @@ import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON } from "./replit_integrations/anthropic/client";
-import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, type ReportFilters } from "./reporting";
+import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getReachMetrics, getDeliveryMetrics, getImpactMetrics, type ReportFilters } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES } from "@shared/schema";
+import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES } from "@shared/schema";
+import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
+import { ObjectStorageService } from "./replit_integrations/object_storage";
 import crypto from "crypto";
 import { db } from "./db";
 import { eq, and, sql, gte, lte } from "drizzle-orm";
@@ -218,6 +220,9 @@ export async function registerRoutes(
   
   // Audio Routes
   registerAudioRoutes(app);
+
+  // Object Storage Routes
+  registerObjectStorageRoutes(app);
 
   // === Contacts API ===
 
@@ -661,7 +666,8 @@ export async function registerRoutes(
         - metrics: Object with these scores from 1-10 based on the text:
           - mindset: Growth mindset and mental resilience
           - skill: Capability level (technical, creative, or business skills)
-          - confidence: Overall self-confidence demonstrated
+          - confidence: Personal self-confidence demonstrated
+          - bizConfidence: Business confidence — confidence in their venture's viability, market readiness, and business direction
           - systemsInPlace: How well their venture systems and processes are established
           - fundingReadiness: Sustainability readiness — preparedness for funding, revenue, or sustaining their venture
           - networkStrength: Connection strength — quality of their professional/community network
@@ -683,6 +689,7 @@ export async function registerRoutes(
           mindset: result.metrics?.mindset || 5,
           skill: result.metrics?.skill || 5,
           confidence: result.metrics?.confidence || 5,
+          bizConfidence: result.metrics?.bizConfidence || 5,
           systemsInPlace: result.metrics?.systemsInPlace || 5,
           fundingReadiness: result.metrics?.fundingReadiness || 5,
           networkStrength: result.metrics?.networkStrength || 5,
@@ -2449,6 +2456,7 @@ Return a JSON object with EXACTLY this structure:
     "mindset": 1-10,
     "skill": 1-10,
     "confidence": 1-10,
+    "bizConfidence": 1-10,
     "systemsInPlace": 1-10,
     "fundingReadiness": 1-10,
     "networkStrength": 1-10,
@@ -6420,6 +6428,105 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     } catch (err: any) {
       console.error("Community spend summary error:", err);
       res.status(500).json({ message: "Failed to fetch summary" });
+    }
+  });
+
+  // === MONTHLY SNAPSHOTS ===
+
+  app.get("/api/monthly-snapshots", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const snapshots = await storage.getMonthlySnapshots(userId);
+      res.json(snapshots);
+    } catch (err: any) {
+      console.error("Get monthly snapshots error:", err);
+      res.status(500).json({ message: "Failed to fetch monthly snapshots" });
+    }
+  });
+
+  app.post("/api/monthly-snapshots", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { month, footTraffic, notes } = req.body;
+      if (!month) {
+        return res.status(400).json({ message: "Month is required" });
+      }
+      const monthDate = new Date(month);
+      monthDate.setDate(1);
+      monthDate.setHours(0, 0, 0, 0);
+      const snapshot = await storage.upsertMonthlySnapshot(userId, monthDate, { footTraffic, notes });
+      res.json(snapshot);
+    } catch (err: any) {
+      console.error("Upsert monthly snapshot error:", err);
+      res.status(500).json({ message: "Failed to save monthly snapshot" });
+    }
+  });
+
+  app.delete("/api/monthly-snapshots/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteMonthlySnapshot(parseInt(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Delete monthly snapshot error:", err);
+      res.status(500).json({ message: "Failed to delete monthly snapshot" });
+    }
+  });
+
+  // === REPORT HIGHLIGHTS ===
+
+  app.get("/api/report-highlights", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const highlights = await storage.getReportHighlights(userId);
+      res.json(highlights);
+    } catch (err: any) {
+      console.error("Get report highlights error:", err);
+      res.status(500).json({ message: "Failed to fetch report highlights" });
+    }
+  });
+
+  app.post("/api/report-highlights", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { title, description, category, month, photoUrl } = req.body;
+      if (!title || !description || !category || !month) {
+        return res.status(400).json({ message: "Title, description, category, and month are required" });
+      }
+      const monthDate = new Date(month);
+      let finalPhotoUrl = photoUrl || null;
+      if (finalPhotoUrl) {
+        try {
+          const objService = new ObjectStorageService();
+          finalPhotoUrl = await objService.trySetObjectEntityAclPolicy(finalPhotoUrl, {
+            owner: userId,
+            visibility: "public",
+          });
+        } catch (e) {
+          console.error("Failed to set ACL on photo:", e);
+        }
+      }
+      const highlight = await storage.createReportHighlight({
+        userId,
+        title,
+        description,
+        category,
+        month: monthDate,
+        photoUrl: finalPhotoUrl,
+      });
+      res.json(highlight);
+    } catch (err: any) {
+      console.error("Create report highlight error:", err);
+      res.status(500).json({ message: "Failed to create report highlight" });
+    }
+  });
+
+  app.delete("/api/report-highlights/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteReportHighlight(parseInt(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Delete report highlight error:", err);
+      res.status(500).json({ message: "Failed to delete report highlight" });
     }
   });
 

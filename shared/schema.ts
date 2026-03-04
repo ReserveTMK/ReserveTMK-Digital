@@ -59,6 +59,7 @@ export const contacts = pgTable("contacts", {
     mindset?: number;
     skill?: number;
     confidence?: number;
+    bizConfidence?: number;
     confidenceScore?: number;
     systemsInPlace?: number;
     fundingReadiness?: number;
@@ -102,6 +103,7 @@ export const interactions = pgTable("interactions", {
     mindsetScore?: number;
     skillScore?: number;
     confidenceScore?: number;
+    bizConfidenceScore?: number;
     confidenceScoreMetric?: number;
     systemsInPlaceScore?: number;
     fundingReadinessScore?: number;
@@ -777,6 +779,29 @@ export const weeklyHubDebriefs = pgTable("weekly_hub_debriefs", {
   confirmedAt: timestamp("confirmed_at"),
 });
 
+export const monthlySnapshots = pgTable("monthly_snapshots", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  month: timestamp("month").notNull(),
+  footTraffic: integer("foot_traffic"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const HIGHLIGHT_CATEGORIES = ["event", "programme", "mentoring", "community", "milestone"] as const;
+
+export const reportHighlights = pgTable("report_highlights", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  month: timestamp("month").notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  photoUrl: text("photo_url"),
+  category: text("category").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const insertLegacyReportExtractionSchema = createInsertSchema(legacyReportExtractions).omit({
   id: true,
   createdAt: true,
@@ -788,11 +813,28 @@ export const insertWeeklyHubDebriefSchema = createInsertSchema(weeklyHubDebriefs
   confirmedAt: true,
 });
 
+export const insertMonthlySnapshotSchema = createInsertSchema(monthlySnapshots).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertReportHighlightSchema = createInsertSchema(reportHighlights).omit({
+  id: true,
+  createdAt: true,
+});
+
 export type LegacyReportExtraction = typeof legacyReportExtractions.$inferSelect;
 export type InsertLegacyReportExtraction = z.infer<typeof insertLegacyReportExtractionSchema>;
 
 export type WeeklyHubDebrief = typeof weeklyHubDebriefs.$inferSelect;
 export type InsertWeeklyHubDebrief = z.infer<typeof insertWeeklyHubDebriefSchema>;
+
+export type MonthlySnapshot = typeof monthlySnapshots.$inferSelect;
+export type InsertMonthlySnapshot = z.infer<typeof insertMonthlySnapshotSchema>;
+
+export type ReportHighlight = typeof reportHighlights.$inferSelect;
+export type InsertReportHighlight = z.infer<typeof insertReportHighlightSchema>;
 
 export const insertLegacyReportSchema = createInsertSchema(legacyReports).omit({
   id: true,
@@ -1824,7 +1866,7 @@ export type AnalyzeInteractionResponse = {
     mindset: number;
     skill: number;
     confidence: number;
-    confidenceScore: number;
+    bizConfidence: number;
     systemsInPlace: number;
     fundingReadiness: number;
     networkStrength: number;

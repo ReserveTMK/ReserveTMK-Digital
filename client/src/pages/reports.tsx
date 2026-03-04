@@ -6,19 +6,21 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell,
+  PieChart, Pie, Cell, LineChart, Line,
 } from "recharts";
 import {
   FileText, Users, Loader2, BarChart3, CalendarDays, CalendarRange,
   Download, Activity, Tag, TrendingUp, Building2, DollarSign,
   Save, BookOpen, ChevronDown, ChevronUp, Handshake, Clock,
-  Info, History, Zap, X, Pen, Landmark, Settings,
+  Info, History, Zap, X, Pen, Landmark, Settings, Camera, Star,
+  Plus, Trash2, Footprints, ArrowUpRight,
 } from "lucide-react";
 import {
   format, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, subMonths, startOfYear,
@@ -80,6 +82,9 @@ function StatCard({ icon: Icon, label, value, color = "primary", testId, subText
     indigo: "bg-indigo-500/10 text-indigo-500",
     cyan: "bg-cyan-500/10 text-cyan-500",
     slate: "bg-slate-500/10 text-slate-500",
+    teal: "bg-teal-500/10 text-teal-500",
+    emerald: "bg-emerald-500/10 text-emerald-500",
+    purple: "bg-purple-500/10 text-purple-500",
   };
   return (
     <Card className="p-4">
@@ -90,6 +95,31 @@ function StatCard({ icon: Icon, label, value, color = "primary", testId, subText
         <span className="text-sm text-muted-foreground">{label}</span>
       </div>
       <p className="text-2xl font-bold" data-testid={testId}>{value}</p>
+      {subText && <p className="text-xs text-muted-foreground mt-1">{subText}</p>}
+    </Card>
+  );
+}
+
+function HeadlineStatCard({ icon: Icon, label, value, color = "primary", testId, subText }: {
+  icon: any; label: string; value: string | number; color?: string; testId: string; subText?: string;
+}) {
+  const colorMap: Record<string, string> = {
+    primary: "bg-primary/10 text-primary border-primary/20",
+    blue: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+    green: "bg-green-500/10 text-green-500 border-green-500/20",
+    amber: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+    violet: "bg-violet-500/10 text-violet-500 border-violet-500/20",
+    indigo: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
+  };
+  return (
+    <Card className={`p-5 border-2 ${colorMap[color] || colorMap.primary}`}>
+      <div className="flex items-center gap-3 mb-2">
+        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${colorMap[color] || colorMap.primary}`}>
+          <Icon className="w-5 h-5" />
+        </div>
+        <span className="text-sm font-medium text-muted-foreground">{label}</span>
+      </div>
+      <p className="text-3xl font-bold" data-testid={testId}>{value}</p>
       {subText && <p className="text-xs text-muted-foreground mt-1">{subText}</p>}
     </Card>
   );
@@ -156,6 +186,14 @@ function MetricBenchmarkCard({ title, benchmarks, color }: {
   );
 }
 
+const HIGHLIGHT_CATEGORY_OPTIONS = [
+  { value: "event", label: "Event" },
+  { value: "programme", label: "Programme" },
+  { value: "mentoring", label: "Mentoring" },
+  { value: "community", label: "Community" },
+  { value: "milestone", label: "Milestone" },
+];
+
 export default function Reports() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("monthly");
@@ -174,6 +212,15 @@ export default function Reports() {
   const [tamakiOraData, setTamakiOraData] = useState<any>(null);
   const [activeFunder, setActiveFunder] = useState<Funder | null>(null);
   const [narrativeStyle, setNarrativeStyle] = useState<"compliance" | "story">("compliance");
+  const [showFootTrafficDialog, setShowFootTrafficDialog] = useState(false);
+  const [footTrafficMonth, setFootTrafficMonth] = useState(monthOptions[0]?.start || "");
+  const [footTrafficValue, setFootTrafficValue] = useState("");
+  const [footTrafficNotes, setFootTrafficNotes] = useState("");
+  const [showHighlightDialog, setShowHighlightDialog] = useState(false);
+  const [highlightTitle, setHighlightTitle] = useState("");
+  const [highlightDescription, setHighlightDescription] = useState("");
+  const [highlightCategory, setHighlightCategory] = useState("community");
+  const [highlightPhoto, setHighlightPhoto] = useState<File | null>(null);
 
   const { data: savedReports } = useQuery<any[]>({
     queryKey: ["/api/reports"],
@@ -193,6 +240,14 @@ export default function Reports() {
 
   const { data: fundersList } = useQuery<Funder[]>({
     queryKey: ["/api/funders"],
+  });
+
+  const { data: monthlySnapshots, refetch: refetchSnapshots } = useQuery<any[]>({
+    queryKey: ["/api/monthly-snapshots"],
+  });
+
+  const { data: highlights, refetch: refetchHighlights } = useQuery<any[]>({
+    queryKey: ["/api/report-highlights"],
   });
 
   const [programmeFilter, setProgrammeFilter] = useState("all");
@@ -234,9 +289,9 @@ export default function Reports() {
 
   const COMMUNITY_LENS_LABELS: Record<string, string> = {
     all: "All Communities",
-    maori: "Māori (mātāwaka)",
+    maori: "Maori (matawaka)",
     pasifika: "Pasifika",
-    maori_pasifika: "Māori + Pasifika",
+    maori_pasifika: "Maori + Pasifika",
   };
 
   const handleSelectFunder = (funder: Funder) => {
@@ -305,9 +360,9 @@ export default function Reports() {
       }
 
       const showTamakiOra = activeFunder && (
-        activeFunder.name.toLowerCase().includes("ngā mātārae") ||
         activeFunder.name.toLowerCase().includes("nga matarae") ||
-        (activeFunder.outcomesFramework && activeFunder.outcomesFramework.toLowerCase().includes("tāmaki ora")) ||
+        activeFunder.name.toLowerCase().includes("nga matarae") ||
+        (activeFunder.outcomesFramework && activeFunder.outcomesFramework.toLowerCase().includes("tamaki ora")) ||
         (activeFunder.outcomesFramework && activeFunder.outcomesFramework.toLowerCase().includes("tamaki ora"))
       );
       if (showTamakiOra) {
@@ -404,7 +459,64 @@ export default function Reports() {
     if (!startDate || !endDate) return "";
     if (activeTab === "ytd") return `YTD ${new Date().getFullYear()}`;
     if (activeTab === "alltime") return "All Time";
-    return `${format(new Date(startDate), "MMM d, yyyy")} – ${format(new Date(endDate), "MMM d, yyyy")}`;
+    return `${format(new Date(startDate), "MMM d, yyyy")} - ${format(new Date(endDate), "MMM d, yyyy")}`;
+  };
+
+  const handleSaveFootTraffic = async () => {
+    try {
+      await apiRequest("POST", "/api/monthly-snapshots", {
+        month: footTrafficMonth,
+        footTraffic: parseInt(footTrafficValue) || 0,
+        notes: footTrafficNotes || null,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/monthly-snapshots"] });
+      refetchSnapshots();
+      setFootTrafficValue("");
+      setFootTrafficNotes("");
+      toast({ title: "Saved", description: "Foot traffic data saved" });
+    } catch {
+      toast({ title: "Error", description: "Failed to save foot traffic", variant: "destructive" });
+    }
+  };
+
+  const handleAddHighlight = async () => {
+    try {
+      const formData = new FormData();
+      formData.append("title", highlightTitle);
+      formData.append("description", highlightDescription);
+      formData.append("category", highlightCategory);
+      const { startDate } = getDateRange();
+      formData.append("month", startDate);
+      if (highlightPhoto) {
+        formData.append("photo", highlightPhoto);
+      }
+      const res = await fetch("/api/report-highlights", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed");
+      queryClient.invalidateQueries({ queryKey: ["/api/report-highlights"] });
+      refetchHighlights();
+      setHighlightTitle("");
+      setHighlightDescription("");
+      setHighlightCategory("community");
+      setHighlightPhoto(null);
+      setShowHighlightDialog(false);
+      toast({ title: "Added", description: "Highlight added to report" });
+    } catch {
+      toast({ title: "Error", description: "Failed to add highlight", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteHighlight = async (id: number) => {
+    try {
+      await apiRequest("DELETE", `/api/report-highlights/${id}`);
+      queryClient.invalidateQueries({ queryKey: ["/api/report-highlights"] });
+      refetchHighlights();
+    } catch {
+      toast({ title: "Error", description: "Failed to delete highlight", variant: "destructive" });
+    }
   };
 
   const handleDownloadCSV = () => {
@@ -413,78 +525,67 @@ export default function Reports() {
     const d = reportData;
 
     rows.push(["Report Period", getPeriodLabel()]);
-    if (communityLens !== "all") {
-      rows.push(["Community Lens", COMMUNITY_LENS_LABELS[communityLens] || communityLens]);
+    if (communityLens !== "all") rows.push(["Community Lens", COMMUNITY_LENS_LABELS[communityLens] || communityLens]);
+    if (activeFunder) rows.push(["Funder Profile", activeFunder.name]);
+    rows.push([]);
+
+    const reach = d.reach || d.engagement;
+    rows.push(["=== REACH ==="]);
+    rows.push(["People Reached", String(reach?.peopleReached || 0)]);
+    rows.push(["Unique Contacts", String(reach?.uniqueContacts || 0)]);
+    rows.push(["Foot Traffic", String(reach?.footTraffic || 0)]);
+    rows.push(["Total Engagements", String(reach?.totalEngagements || 0)]);
+    rows.push(["Repeat Engagement Rate", `${reach?.repeatEngagementRate || 0}%`]);
+    if (reach?.ecosystemGrowth) {
+      rows.push(["New Contacts", String(reach.ecosystemGrowth.newContacts || 0)]);
+      rows.push(["Promoted to Community", String(reach.ecosystemGrowth.promotedToCommunity || 0)]);
+      rows.push(["Promoted to Innovators", String(reach.ecosystemGrowth.promotedToInnovator || 0)]);
+      rows.push(["New Groups", String(reach.ecosystemGrowth.newGroups || 0)]);
     }
-    if (activeFunder) {
-      rows.push(["Funder Profile", activeFunder.name]);
+    if (reach?.sourceBreakdown) {
+      rows.push(["Source: Debriefs", String(reach.sourceBreakdown.debriefs || 0)]);
+      rows.push(["Source: Meetings", String(reach.sourceBreakdown.meetings || 0)]);
+      rows.push(["Source: Events", String(reach.sourceBreakdown.events || 0)]);
+      rows.push(["Source: External Events", String(reach.sourceBreakdown.externalEvents || 0)]);
+      rows.push(["Source: Emails", String(reach.sourceBreakdown.emails || 0)]);
+      rows.push(["Source: Bookings", String(reach.sourceBreakdown.bookings || 0)]);
+      rows.push(["Source: Programmes", String(reach.sourceBreakdown.programmes || 0)]);
     }
     rows.push([]);
 
-    if (d.isBlended && d.legacyMetrics) {
-      rows.push(["Legacy Reports Included", String(d.legacyReportCount || 0)]);
-      rows.push(["Legacy Periods", d.legacyPeriods?.join(", ") || ""]);
-      rows.push([]);
-    }
-
-    rows.push(["=== ENGAGEMENT ==="]);
-    if (d.isBlended && d.legacyMetrics) {
-      rows.push(["Total Reach (legacy + live)", String((d.legacyMetrics.foottrafficUnique || 0) + (d.engagement?.uniqueContacts || 0))]);
-      rows.push(["  Legacy Foot Traffic", String(d.legacyMetrics.foottrafficUnique || 0)]);
-      rows.push(["  Live Unique Contacts", String(d.engagement?.uniqueContacts || 0)]);
-    } else {
-      rows.push(["Unique Contacts", String(d.engagement?.uniqueContacts || 0)]);
-    }
-    rows.push(["Total Engagement Instances", String(d.engagement?.totalEngagementInstances || 0)]);
-    rows.push(["Avg Engagements per Contact", String(d.engagement?.uniqueContacts ? Math.round(((d.engagement?.totalEngagementInstances || 0) / d.engagement.uniqueContacts) * 10) / 10 : 0)]);
-    rows.push(["New Contacts", String(d.engagement?.newContacts || 0)]);
-    rows.push(["Active Groups", String(d.engagement?.activeGroups || 0)]);
-    rows.push(["Repeat Engagement Rate", `${d.engagement?.repeatEngagementRate || 0}%`]);
-    rows.push([]);
     rows.push(["=== DELIVERY ==="]);
-    if (d.isBlended && d.legacyMetrics) {
-      rows.push(["Events (combined)", String((d.legacyMetrics.activationsEvents || 0) + (d.delivery?.events?.total || 0))]);
-      rows.push(["  Legacy Events", String(d.legacyMetrics.activationsEvents || 0)]);
-      rows.push(["  Live Events", String(d.delivery?.events?.total || 0)]);
-      rows.push(["Bookings (combined)", String((d.legacyMetrics.bookingsTotal || 0) + (d.delivery?.bookings?.total || 0))]);
-      rows.push(["  Legacy Bookings", String(d.legacyMetrics.bookingsTotal || 0)]);
-      rows.push(["  Live Bookings", String(d.delivery?.bookings?.total || 0)]);
-    } else {
-      rows.push(["Total Events", String(d.delivery?.events?.total || 0)]);
-      rows.push(["Total Bookings", String(d.delivery?.bookings?.total || 0)]);
-    }
-    if (d.delivery?.events?.byType) {
-      for (const [type, count] of Object.entries(d.delivery.events.byType)) {
-        rows.push([`  ${type}`, String(count)]);
-      }
-    }
-    rows.push(["Community Hours", String(d.delivery?.bookings?.communityHours || 0)]);
-    rows.push(["Programmes Total", String(d.delivery?.programmes?.total || 0)]);
-    rows.push(["Programmes Completed", String(d.delivery?.programmes?.completed || 0)]);
-    rows.push(["Community Spend", `$${d.delivery?.communitySpend || 0}`]);
-    if (d.isBlended && d.legacyMetrics) {
-      rows.push(["Workshops (incl. legacy)", String((d.legacyMetrics.activationsWorkshops || 0) + (d.delivery?.events?.byType?.workshop || 0))]);
-      rows.push(["Mentoring (incl. legacy)", String((d.legacyMetrics.activationsMentoring || 0) + (d.delivery?.events?.byType?.mentoring || 0))]);
-      rows.push(["Partner Meetings (incl. legacy)", String((d.legacyMetrics.activationsPartnerMeetings || 0) + (d.delivery?.events?.byType?.partner_meeting || 0))]);
-      rows.push(["Total Activations (legacy)", String(d.legacyMetrics.activationsTotal || 0)]);
-    };
+    rows.push(["Total Activations", String(d.delivery?.totalActivations || 0)]);
+    rows.push(["Events", String(d.delivery?.events?.total || 0)]);
+    rows.push(["Bookings", String(d.delivery?.bookings?.total || 0)]);
+    rows.push(["Mentoring Sessions", String(d.delivery?.mentoringSessions || 0)]);
+    rows.push(["Programmes", String(d.delivery?.programmes?.total || 0)]);
+    rows.push(["Community Hours", String(d.delivery?.communityHours || 0)]);
+    rows.push(["Total Attendees", String(d.delivery?.totalAttendees || 0)]);
     rows.push([]);
-    rows.push(["=== IMPACT BY TAXONOMY ==="]);
-    rows.push(["Category", "Debriefs", "Impact Score", "Contacts Affected"]);
-    if (d.impact) {
-      for (const cat of d.impact) {
-        rows.push([cat.taxonomyName, String(cat.debriefCount), String(cat.weightedImpactScore), String(cat.uniqueContactsAffected)]);
+
+    const imp = d.impact;
+    rows.push(["=== IMPACT ==="]);
+    rows.push(["Community Spend", `$${imp?.communitySpend || 0}`]);
+    rows.push(["Milestones Achieved", String(imp?.milestoneCount || 0)]);
+    rows.push(["People with Tracked Growth", String(imp?.contactsWithMetrics || 0)]);
+    if (imp?.growthMetrics) {
+      rows.push(["Mindset Avg", String(imp.growthMetrics.mindset?.averageScore || 0)]);
+      rows.push(["Mindset Positive %", `${imp.growthMetrics.mindset?.positiveMovementPercent || 0}%`]);
+      rows.push(["Skill Avg", String(imp.growthMetrics.skill?.averageScore || 0)]);
+      rows.push(["Skill Positive %", `${imp.growthMetrics.skill?.positiveMovementPercent || 0}%`]);
+      rows.push(["Confidence Avg", String(imp.growthMetrics.confidence?.averageScore || 0)]);
+      rows.push(["Confidence Positive %", `${imp.growthMetrics.confidence?.positiveMovementPercent || 0}%`]);
+    }
+    rows.push(["Connections Deepened", String(imp?.connectionMovement || 0)]);
+    if (imp?.taxonomyBreakdown) {
+      rows.push([]);
+      rows.push(["Impact Category", "Debriefs", "People Affected", "Impact Score"]);
+      for (const cat of imp.taxonomyBreakdown) {
+        rows.push([cat.name, String(cat.debriefCount), String(cat.peopleAffected), String(cat.impactScore)]);
       }
     }
     rows.push([]);
-    rows.push(["=== OUTCOME MOVEMENT ==="]);
-    rows.push(["Contacts Tracked", String(d.outcomes?.totalContacts || 0)]);
-    rows.push(["With Metrics", String(d.outcomes?.contactsWithMetrics || 0)]);
-    rows.push(["Avg Mindset", String(d.outcomes?.averageChange?.mindset || 0)]);
-    rows.push(["Avg Skill", String(d.outcomes?.averageChange?.skill || 0)]);
-    rows.push(["Avg Confidence", String(d.outcomes?.averageChange?.confidence || 0)]);
-    rows.push(["Milestones Recorded", String(d.outcomes?.milestoneCount || 0)]);
-    rows.push([]);
+
     rows.push(["=== VALUE & CONTRIBUTION ==="]);
     rows.push(["Total Revenue", `$${d.value?.revenue?.total || 0}`]);
     rows.push(["In-Kind Value", `$${d.value?.inKindValue || 0}`]);
@@ -524,21 +625,115 @@ export default function Reports() {
     URL.revokeObjectURL(url);
   };
 
-  const eng = reportData?.engagement;
+  const reach = reportData?.reach || reportData?.engagement;
   const del = reportData?.delivery;
   const imp = reportData?.impact;
-  const out = reportData?.outcomes;
   const val = reportData?.value;
   const ment = reportData?.mentoring;
   const lm = reportData?.legacyMetrics;
   const isBlended = reportData?.isBlended;
 
+  const { startDate: filterStart, endDate: filterEnd } = getDateRange();
+  const periodHighlights = highlights?.filter((h: any) => {
+    if (!filterStart || !filterEnd) return false;
+    const hMonth = h.month?.slice(0, 10);
+    return hMonth >= filterStart && hMonth <= filterEnd;
+  }) || [];
+
+  const footTrafficTrend = (monthlySnapshots || [])
+    .slice()
+    .sort((a: any, b: any) => a.month.localeCompare(b.month))
+    .slice(-6)
+    .map((s: any) => ({
+      month: format(new Date(s.month), "MMM yy"),
+      value: s.footTraffic || 0,
+    }));
+
   return (
     <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
         <div className="max-w-6xl mx-auto space-y-6">
-          <div>
-            <h1 className="text-3xl font-display font-bold" data-testid="text-reports-title">Reports</h1>
-            <p className="text-muted-foreground mt-1">Generate funder-ready impact reports from your operational data.</p>
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <h1 className="text-3xl font-display font-bold" data-testid="text-reports-title">Reports</h1>
+              <p className="text-muted-foreground mt-1">Generate funder-ready impact reports from your operational data.</p>
+            </div>
+            <Dialog open={showFootTrafficDialog} onOpenChange={setShowFootTrafficDialog}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" data-testid="button-foot-traffic">
+                  <Footprints className="w-4 h-4 mr-2" /> Monthly Data
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Monthly Foot Traffic</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Month</Label>
+                      <Select value={footTrafficMonth} onValueChange={setFootTrafficMonth}>
+                        <SelectTrigger data-testid="select-ft-month"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {monthOptions.map(opt => (
+                            <SelectItem key={opt.value} value={opt.start}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Foot Traffic</Label>
+                      <Input
+                        type="number"
+                        value={footTrafficValue}
+                        onChange={e => setFootTrafficValue(e.target.value)}
+                        placeholder="e.g. 250"
+                        data-testid="input-foot-traffic"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Notes (optional)</Label>
+                    <Input
+                      value={footTrafficNotes}
+                      onChange={e => setFootTrafficNotes(e.target.value)}
+                      placeholder="Any notes about this month..."
+                      data-testid="input-ft-notes"
+                    />
+                  </div>
+                  <Button onClick={handleSaveFootTraffic} data-testid="button-save-ft">
+                    <Save className="w-4 h-4 mr-2" /> Save
+                  </Button>
+
+                  {footTrafficTrend.length > 0 && (
+                    <div className="pt-4 border-t">
+                      <h4 className="text-sm font-semibold mb-3">Recent Trend</h4>
+                      <ResponsiveContainer width="100%" height={120}>
+                        <LineChart data={footTrafficTrend}>
+                          <XAxis dataKey="month" tick={{ fontSize: 10 }} />
+                          <YAxis hide />
+                          <Tooltip />
+                          <Line type="monotone" dataKey="value" stroke="hsl(14, 88%, 68%)" strokeWidth={2} dot={{ r: 3 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+
+                  {monthlySnapshots && monthlySnapshots.length > 0 && (
+                    <div className="pt-4 border-t max-h-48 overflow-y-auto">
+                      <h4 className="text-sm font-semibold mb-2">History</h4>
+                      <div className="space-y-1">
+                        {[...monthlySnapshots].sort((a: any, b: any) => b.month.localeCompare(a.month)).map((s: any) => (
+                          <div key={s.id} className="flex items-center justify-between text-sm py-1 border-b last:border-0">
+                            <span>{format(new Date(s.month), "MMMM yyyy")}</span>
+                            <span className="font-medium">{(s.footTraffic || 0).toLocaleString()} visitors</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
 
           <Card className="p-3" data-testid="report-toolbar">
@@ -546,9 +741,9 @@ export default function Reports() {
               <div className="flex flex-wrap gap-1 p-1 bg-muted/50 rounded-lg" data-testid="community-lens-selector">
                 {([
                   { value: "all", label: "All", testId: "lens-all" },
-                  { value: "maori", label: "Māori (mātāwaka)", testId: "lens-maori" },
+                  { value: "maori", label: "Maori (matawaka)", testId: "lens-maori" },
                   { value: "pasifika", label: "Pasifika", testId: "lens-pasifika" },
-                  { value: "maori_pasifika", label: "Māori + Pasifika", testId: "lens-maori-pasifika" },
+                  { value: "maori_pasifika", label: "Maori + Pasifika", testId: "lens-maori-pasifika" },
                 ] as const).map((opt) => (
                   <Button
                     key={opt.value}
@@ -663,7 +858,7 @@ export default function Reports() {
                   <div className="space-y-2">
                     <Label>Year to Date</Label>
                     <div className="flex items-center h-10 px-3 rounded-md border bg-muted/30 text-sm">
-                      Jan 1, {new Date().getFullYear()} – Today
+                      Jan 1, {new Date().getFullYear()} - Today
                     </div>
                   </div>
                 </TabsContent>
@@ -673,7 +868,7 @@ export default function Reports() {
                     <Label>All Time</Label>
                     <div className="flex items-center h-10 px-3 rounded-md border bg-muted/30 text-sm">
                       {dateRange?.earliestDate
-                        ? `${format(new Date(dateRange.earliestDate), "MMM yyyy")} – Today`
+                        ? `${format(new Date(dateRange.earliestDate), "MMM yyyy")} - Today`
                         : "All available data"}
                     </div>
                   </div>
@@ -777,7 +972,7 @@ export default function Reports() {
               <div className="flex items-center justify-between gap-4 flex-wrap">
                 <div>
                   <h2 className="text-xl font-display font-bold" data-testid="text-report-header">
-                    {activeFunder ? `${activeFunder.name} — ${COMMUNITY_LENS_LABELS[activeFunder.communityLens || "all"]}` : "Report Results"}
+                    {activeFunder ? `${activeFunder.name} - ${COMMUNITY_LENS_LABELS[activeFunder.communityLens || "all"]}` : "Report Results"}
                   </h2>
                   <p className="text-sm text-muted-foreground" data-testid="text-report-period">{getPeriodLabel()}</p>
                 </div>
@@ -795,58 +990,85 @@ export default function Reports() {
                 <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 text-xs" data-testid="banner-legacy-blend">
                   <History className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
                   <span className="text-indigo-800 dark:text-indigo-300">
-                    Includes {reportData.legacyReportCount} legacy report{reportData.legacyReportCount > 1 ? "s" : ""} · {reportData.legacyPeriods?.join(", ")}
+                    Includes {reportData.legacyReportCount} legacy report{reportData.legacyReportCount > 1 ? "s" : ""} - {reportData.legacyPeriods?.join(", ")}
                   </span>
                 </div>
               )}
 
-              {/* Section 1: Engagement */}
-              <CollapsibleSection title="Engagement" icon={Users} testId="section-engagement" defaultOpen={isSectionDefaultOpen("engagement")} key={`engagement-${activeFunder?.id || 'none'}`}>
+              {/* Section 1: Reach */}
+              <CollapsibleSection title="Reach" icon={Users} testId="section-reach" defaultOpen={isSectionDefaultOpen("reach")} key={`reach-${activeFunder?.id || 'none'}`}>
                 <div className="pt-4 space-y-4">
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                    {isBlended && lm ? (
-                      <StatCard icon={Users} label="Total Reach" value={((lm.foottrafficUnique || 0) + (eng?.uniqueContacts || 0)).toLocaleString()} color="primary" testId="stat-total-reach" subText={`${(lm.foottrafficUnique || 0).toLocaleString()} legacy + ${eng?.uniqueContacts || 0} live`} />
-                    ) : (
-                      <StatCard icon={Users} label="Unique Contacts" value={eng?.uniqueContacts || 0} color="primary" testId="stat-unique-contacts" />
-                    )}
-                    <StatCard icon={Activity} label="Engagements" value={eng?.totalEngagementInstances || 0} color="blue" testId="stat-engagements" />
-                    <StatCard icon={Users} label="New Contacts" value={eng?.newContacts || 0} color="green" testId="stat-new-contacts" />
-                    <StatCard icon={Building2} label="Active Groups" value={eng?.activeGroups || 0} color="violet" testId="stat-active-groups" />
-                    <StatCard icon={TrendingUp} label="Repeat Rate" value={`${eng?.repeatEngagementRate || 0}%`} color="amber" testId="stat-repeat-rate" />
-                    <StatCard icon={Activity} label="Avg per Contact" value={eng?.uniqueContacts ? Math.round(((eng?.totalEngagementInstances || 0) / eng.uniqueContacts) * 10) / 10 : 0} color="pink" testId="stat-avg-per-contact" />
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <HeadlineStatCard
+                      icon={Users}
+                      label="People Reached"
+                      value={(reach?.peopleReached || 0).toLocaleString()}
+                      color="primary"
+                      testId="stat-people-reached"
+                      subText={reach?.footTraffic > 0 ? `${reach.uniqueContacts || 0} tracked + ${(reach.footTraffic || 0).toLocaleString()} foot traffic` : undefined}
+                    />
+                    <StatCard icon={Activity} label="Total Engagements" value={(reach?.totalEngagements || 0).toLocaleString()} color="blue" testId="stat-total-engagements" />
+                    <StatCard icon={TrendingUp} label="Repeat Engagement" value={`${reach?.repeatEngagementRate || 0}%`} color="amber" testId="stat-repeat-rate" subText={`${reach?.repeatEngagementCount || 0} people came back 2+ times`} />
                   </div>
 
-                  {eng?.demographicBreakdown?.ethnicity && Object.keys(eng.demographicBreakdown.ethnicity).length > 0 && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                      <div>
-                        <h4 className="text-sm font-semibold mb-3">Ethnicity Breakdown</h4>
-                        <ResponsiveContainer width="100%" height={200}>
-                          <PieChart>
-                            <Pie
-                              data={Object.entries(eng.demographicBreakdown.ethnicity).map(([name, value]) => ({ name, value }))}
-                              cx="50%" cy="50%" outerRadius={70} dataKey="value" label={({ name, percent }: any) => `${name} ${(percent * 100).toFixed(0)}%`}
-                            >
-                              {Object.entries(eng.demographicBreakdown.ethnicity).map((_: any, i: number) => (
-                                <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                              ))}
-                            </Pie>
-                            <Tooltip />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-semibold mb-3">Age Groups</h4>
-                        <ResponsiveContainer width="100%" height={200}>
-                          <BarChart data={Object.entries(eng.demographicBreakdown.ageGroups || {}).filter(([_, v]) => (v as number) > 0).map(([name, value]) => ({ name: name.replace("_", "-"), value }))}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                            <YAxis allowDecimals={false} />
-                            <Tooltip />
-                            <Bar dataKey="value" fill="hsl(14, 88%, 68%)" radius={[4, 4, 0, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
+                  {reach?.sourceBreakdown && (
+                    <div className="flex flex-wrap gap-2" data-testid="reach-source-badges">
+                      {Object.entries(reach.sourceBreakdown).filter(([_, v]) => (v as number) > 0).map(([source, count]) => (
+                        <Badge key={source} variant="outline" className="text-xs capitalize py-1 px-2.5">
+                          {source.replace(/([A-Z])/g, ' $1').trim()}: {count as number}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+
+                  {reach?.ecosystemGrowth && (
+                    <div className="pt-3 border-t">
+                      <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                        <ArrowUpRight className="w-4 h-4 text-green-500" /> Ecosystem Growth
+                      </h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <StatCard icon={Users} label="New People" value={reach.ecosystemGrowth.newContacts || 0} color="green" testId="stat-new-contacts" />
+                        <StatCard icon={ArrowUpRight} label="To Community" value={reach.ecosystemGrowth.promotedToCommunity || 0} color="blue" testId="stat-promoted-community" />
+                        <StatCard icon={Star} label="To Innovators" value={reach.ecosystemGrowth.promotedToInnovator || 0} color="amber" testId="stat-promoted-innovator" />
+                        <StatCard icon={Building2} label="New Groups" value={reach.ecosystemGrowth.newGroups || 0} color="violet" testId="stat-new-groups" />
                       </div>
                     </div>
+                  )}
+
+                  {reach?.demographicBreakdown?.ethnicity && Object.keys(reach.demographicBreakdown.ethnicity).length > 0 && (
+                    <details className="pt-3 border-t">
+                      <summary className="text-sm font-semibold cursor-pointer hover:text-primary transition-colors">Demographics</summary>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <div>
+                          <h4 className="text-sm font-semibold mb-3">Ethnicity</h4>
+                          <ResponsiveContainer width="100%" height={200}>
+                            <PieChart>
+                              <Pie
+                                data={Object.entries(reach.demographicBreakdown.ethnicity).map(([name, value]) => ({ name, value }))}
+                                cx="50%" cy="50%" outerRadius={70} dataKey="value" label={({ name, percent }: any) => `${name} ${(percent * 100).toFixed(0)}%`}
+                              >
+                                {Object.entries(reach.demographicBreakdown.ethnicity).map((_: any, i: number) => (
+                                  <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                                ))}
+                              </Pie>
+                              <Tooltip />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-semibold mb-3">Age Groups</h4>
+                          <ResponsiveContainer width="100%" height={200}>
+                            <BarChart data={Object.entries(reach.demographicBreakdown.ageGroups || {}).filter(([_, v]) => (v as number) > 0).map(([name, value]) => ({ name: name.replace("_", "-"), value }))}>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                              <YAxis allowDecimals={false} />
+                              <Tooltip />
+                              <Bar dataKey="value" fill="hsl(14, 88%, 68%)" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    </details>
                   )}
                 </div>
               </CollapsibleSection>
@@ -860,87 +1082,83 @@ export default function Reports() {
                       <span>Events, bookings, and programmes show organisation-level data (not filtered by community lens). Mentoring metrics are filtered.</span>
                     </div>
                   )}
-                  {del?.communitySpendError && (
-                    <div className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-500/10 rounded-md px-3 py-2" data-testid="notice-spend-error">
-                      <Info className="w-3.5 h-3.5 shrink-0" />
-                      <span>Community spend data could not be retrieved. The amount shown may be incorrect.</span>
-                    </div>
-                  )}
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                    {isBlended && lm ? (
-                      <StatCard icon={CalendarDays} label="Events" value={(lm.activationsEvents || 0) + (del?.events?.total || 0)} color="blue" testId="stat-events" subText={`${lm.activationsEvents || 0} legacy + ${del?.events?.total || 0} live`} />
-                    ) : (
-                      <StatCard icon={CalendarDays} label="Events" value={del?.events?.total || 0} color="blue" testId="stat-events" />
-                    )}
-                    {(del?.events?.totalAttendees || 0) > 0 && (
-                      <StatCard icon={Users} label="People Reached" value={del.events.totalAttendees} color="teal" testId="stat-people-reached" />
-                    )}
-                    {isBlended && lm ? (
-                      <StatCard icon={Building2} label="Bookings" value={(lm.bookingsTotal || 0) + (del?.bookings?.total || 0)} color="orange" testId="stat-bookings" subText={`${lm.bookingsTotal || 0} legacy + ${del?.bookings?.total || 0} live`} />
-                    ) : (
-                      <StatCard icon={Building2} label="Bookings" value={del?.bookings?.total || 0} color="orange" testId="stat-bookings" />
-                    )}
-                    <StatCard icon={Clock} label="Community Hours" value={del?.bookings?.communityHours || 0} color="green" testId="stat-community-hours" />
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <HeadlineStatCard
+                      icon={Zap}
+                      label="Total Activations"
+                      value={(del?.totalActivations || 0).toLocaleString()}
+                      color="indigo"
+                      testId="stat-total-activations"
+                    />
+                    <StatCard icon={Users} label="Total Attendees" value={(del?.totalAttendees || 0).toLocaleString()} color="blue" testId="stat-total-attendees" />
+                    <StatCard icon={Clock} label="Community Hours" value={del?.communityHours || 0} color="green" testId="stat-community-hours" />
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <StatCard icon={CalendarDays} label="Events" value={del?.events?.total || 0} color="blue" testId="stat-events" />
+                    <StatCard icon={Building2} label="Bookings" value={del?.bookings?.total || 0} color="orange" testId="stat-bookings" />
+                    <StatCard icon={Users} label="Mentoring Sessions" value={del?.mentoringSessions || 0} color="purple" testId="stat-mentoring-sessions" />
                     <StatCard icon={Activity} label="Programmes" value={del?.programmes?.total || 0} color="indigo" testId="stat-programmes" />
-                    <StatCard icon={TrendingUp} label="Programmes Completed" value={del?.programmes?.completed || 0} color="amber" testId="stat-completed" />
-                    <StatCard icon={DollarSign} label="Community Spend" value={`$${(del?.communitySpend || 0).toLocaleString()}`} color="cyan" testId="stat-community-spend" />
                   </div>
 
                   {isBlended && lm && (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3" data-testid="legacy-delivery-breakdown">
                       <StatCard icon={Activity} label="Workshops" value={(lm.activationsWorkshops || 0) + (del?.events?.byType?.workshop || 0)} color="slate" testId="stat-workshops" subText="incl. legacy" />
-                      <StatCard icon={Users} label="Mentoring" value={(lm.activationsMentoring || 0) + (del?.events?.byType?.mentoring || 0)} color="slate" testId="stat-mentoring" subText="incl. legacy" />
+                      <StatCard icon={Users} label="Mentoring (legacy)" value={lm.activationsMentoring || 0} color="slate" testId="stat-legacy-mentoring" subText="legacy only" />
                       <StatCard icon={Handshake} label="Partner Meetings" value={(lm.activationsPartnerMeetings || 0) + (del?.events?.byType?.partner_meeting || 0)} color="slate" testId="stat-partner-meetings" subText="incl. legacy" />
-                      <StatCard icon={Activity} label="Total Activations" value={lm.activationsTotal || 0} color="indigo" testId="stat-legacy-activations" subText="legacy only" />
+                      <StatCard icon={Activity} label="Legacy Activations" value={lm.activationsTotal || 0} color="indigo" testId="stat-legacy-activations" subText="legacy only" />
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {del?.events?.byType && Object.keys(del.events.byType).length > 0 && (
-                      <div>
-                        <h4 className="text-sm font-semibold mb-3">Events by Type</h4>
-                        <ResponsiveContainer width="100%" height={200}>
-                          <BarChart data={Object.entries(del.events.byType).map(([name, value]) => ({ name, value }))}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                            <YAxis allowDecimals={false} />
-                            <Tooltip />
-                            <Bar dataKey="value" fill="hsl(161, 100%, 12%)" radius={[4, 4, 0, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    )}
-                    {del?.bookings?.byClassification && Object.keys(del.bookings.byClassification).length > 0 && (
-                      <div>
-                        <h4 className="text-sm font-semibold mb-3">Bookings by Type</h4>
-                        <ResponsiveContainer width="100%" height={200}>
-                          <BarChart data={Object.entries(del.bookings.byClassification).map(([name, value]) => ({ name, value }))}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                            <YAxis allowDecimals={false} />
-                            <Tooltip />
-                            <Bar dataKey="value" fill="hsl(199, 85%, 83%)" radius={[4, 4, 0, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    )}
-                  </div>
+                  <details className="pt-3 border-t">
+                    <summary className="text-sm font-semibold cursor-pointer hover:text-primary transition-colors">Type Breakdowns</summary>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                      {del?.events?.byType && Object.keys(del.events.byType).length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-semibold mb-3">Events by Type</h4>
+                          <ResponsiveContainer width="100%" height={200}>
+                            <BarChart data={Object.entries(del.events.byType).map(([name, value]) => ({ name, value }))}>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                              <YAxis allowDecimals={false} />
+                              <Tooltip />
+                              <Bar dataKey="value" fill="hsl(161, 100%, 12%)" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                      {del?.bookings?.byClassification && Object.keys(del.bookings.byClassification).length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-semibold mb-3">Bookings by Type</h4>
+                          <ResponsiveContainer width="100%" height={200}>
+                            <BarChart data={Object.entries(del.bookings.byClassification).map(([name, value]) => ({ name, value }))}>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                              <YAxis allowDecimals={false} />
+                              <Tooltip />
+                              <Bar dataKey="value" fill="hsl(199, 85%, 83%)" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                    </div>
+                  </details>
 
                   {ment && ment.totalSessions > 0 && (
-                    <div className="mt-6 pt-6 border-t" data-testid="subsection-mentoring">
-                      <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                        <Users className="w-4 h-4" /> Mentoring
-                      </h3>
-                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                        <StatCard icon={CalendarDays} label="Sessions" value={ment.totalSessions} color="purple" testId="stat-mentoring-sessions" />
-                        <StatCard icon={Clock} label="Hours" value={Math.round(ment.totalHours * 10) / 10} color="violet" testId="stat-mentoring-hours" />
-                        <StatCard icon={Users} label="Mentees" value={ment.uniqueMentees} color="indigo" testId="stat-mentoring-mentees" />
-                        <StatCard icon={TrendingUp} label="Avg Sessions/Mentee" value={Math.round(ment.avgSessionsPerMentee * 10) / 10} color="blue" testId="stat-avg-sessions" />
-                        <StatCard icon={Users} label="New Mentees" value={ment.newMentees} color="emerald" testId="stat-new-mentees" />
-                        <StatCard icon={Activity} label="Completion Rate" value={`${Math.round(ment.completionRate)}%`} color="green" testId="stat-completion-rate" />
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    <details className="pt-3 border-t">
+                      <summary className="text-sm font-semibold cursor-pointer hover:text-primary transition-colors flex items-center gap-2">
+                        <Users className="w-4 h-4" /> Mentoring Detail
+                      </summary>
+                      <div className="mt-4 space-y-4" data-testid="subsection-mentoring">
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                          <StatCard icon={CalendarDays} label="Sessions" value={ment.totalSessions} color="purple" testId="stat-mentoring-total" />
+                          <StatCard icon={Clock} label="Hours" value={Math.round(ment.totalHours * 10) / 10} color="violet" testId="stat-mentoring-hours" />
+                          <StatCard icon={Users} label="Mentees" value={ment.uniqueMentees} color="indigo" testId="stat-mentoring-mentees" />
+                          <StatCard icon={TrendingUp} label="Avg Sessions/Mentee" value={Math.round(ment.avgSessionsPerMentee * 10) / 10} color="blue" testId="stat-avg-sessions" />
+                          <StatCard icon={Users} label="New Mentees" value={ment.newMentees} color="emerald" testId="stat-new-mentees" />
+                          <StatCard icon={Activity} label="Completion Rate" value={`${Math.round(ment.completionRate)}%`} color="green" testId="stat-completion-rate" />
+                        </div>
                         {ment.byFocus && Object.keys(ment.byFocus).length > 0 && (
                           <div>
                             <h4 className="text-sm font-semibold mb-3">Sessions by Focus Area</h4>
@@ -955,70 +1173,109 @@ export default function Reports() {
                             </ResponsiveContainer>
                           </div>
                         )}
-                        <div className="space-y-3">
-                          {ment.bySource && Object.keys(ment.bySource).length > 0 && (
-                            <div>
-                              <h4 className="text-sm font-semibold mb-2">Booking Source</h4>
-                              <div className="flex gap-3 flex-wrap">
-                                {Object.entries(ment.bySource).map(([source, count]) => (
-                                  <Badge key={source} variant="outline" className="text-xs capitalize">
-                                    {source.replace(/_/g, ' ')}: {count as number}
-                                  </Badge>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          <div className="bg-muted/30 rounded-md px-3 py-2 text-xs text-muted-foreground">
-                            Debrief rate: {Math.round(ment.debriefRate)}% of completed sessions have linked transcripts
-                          </div>
-                        </div>
                       </div>
-                    </div>
+                    </details>
                   )}
                 </div>
               </CollapsibleSection>
 
-              {/* Section 3: Impact by Taxonomy */}
-              <CollapsibleSection title="Impact by Taxonomy" icon={Tag} testId="section-impact" defaultOpen={isSectionDefaultOpen("impact")} key={`impact-${activeFunder?.id || 'none'}`}>
-                <div className="pt-4">
-                  {imp && imp.length > 0 ? (
-                    <div className="space-y-4">
-                      <ResponsiveContainer width="100%" height={Math.max(200, imp.length * 40)}>
-                        <BarChart data={imp} layout="vertical" margin={{ left: 120 }}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis type="number" />
-                          <YAxis type="category" dataKey="taxonomyName" tick={{ fontSize: 12 }} width={120} />
-                          <Tooltip />
-                          <Bar dataKey="weightedImpactScore" name="Impact Score" fill="hsl(14, 88%, 68%)" radius={[0, 4, 4, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
+              {/* Section 3: Impact */}
+              <CollapsibleSection title="Impact" icon={TrendingUp} testId="section-impact" defaultOpen={isSectionDefaultOpen("impact")} key={`impact-${activeFunder?.id || 'none'}`}>
+                <div className="pt-4 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {(imp?.communitySpend || 0) > 0 && (
+                      <HeadlineStatCard
+                        icon={DollarSign}
+                        label="Community Investment"
+                        value={`$${(imp?.communitySpend || 0).toLocaleString()}`}
+                        color="green"
+                        testId="stat-community-spend"
+                      />
+                    )}
+                    <HeadlineStatCard
+                      icon={Star}
+                      label="Milestones Achieved"
+                      value={imp?.milestoneCount || 0}
+                      color="amber"
+                      testId="stat-milestones"
+                    />
+                    <HeadlineStatCard
+                      icon={Users}
+                      label="People with Tracked Growth"
+                      value={imp?.contactsWithMetrics || 0}
+                      color="violet"
+                      testId="stat-tracked-growth"
+                    />
+                  </div>
 
-                      <div className="space-y-3 mt-4">
-                        {imp.map((cat: any) => (
-                          <div key={cat.taxonomyId} className="border rounded-lg p-4">
+                  {imp?.growthMetrics && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {[
+                        { key: "mindset", label: "Mindset", color: "text-blue-600 dark:text-blue-400" },
+                        { key: "skill", label: "Skill", color: "text-green-600 dark:text-green-400" },
+                        { key: "confidence", label: "Confidence", color: "text-violet-600 dark:text-violet-400" },
+                      ].map(metric => {
+                        const data = imp.growthMetrics[metric.key];
+                        return (
+                          <Card key={metric.key} className="p-4">
+                            <h4 className={`text-sm font-semibold mb-2 ${metric.color}`}>{metric.label}</h4>
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-2xl font-bold">{data?.averageScore || 0}</span>
+                              <span className="text-xs text-muted-foreground">/10 avg</span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-2">
+                              <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-green-500 rounded-full transition-all"
+                                  style={{ width: `${data?.positiveMovementPercent || 0}%` }}
+                                />
+                              </div>
+                              <span className="text-xs font-medium text-green-600">{data?.positiveMovementPercent || 0}% positive</span>
+                            </div>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {(imp?.connectionMovement || 0) > 0 && (
+                    <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800" data-testid="stat-connection-movement">
+                      <ArrowUpRight className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                      <span className="text-sm"><strong>{imp.connectionMovement}</strong> people deepened their connection strength during this period</span>
+                    </div>
+                  )}
+
+                  {imp?.taxonomyBreakdown && imp.taxonomyBreakdown.length > 0 && (
+                    <details className="pt-3 border-t">
+                      <summary className="text-sm font-semibold cursor-pointer hover:text-primary transition-colors flex items-center gap-2">
+                        <Tag className="w-4 h-4" /> Impact by Category ({imp.taxonomyBreakdown.length})
+                      </summary>
+                      <div className="mt-4 space-y-3">
+                        {imp.taxonomyBreakdown.map((cat: any, idx: number) => (
+                          <div key={idx} className="border rounded-lg p-4">
                             <div className="flex items-center justify-between mb-2">
                               <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat.taxonomyColor || "hsl(14, 88%, 68%)" }} />
-                                <span className="font-semibold">{cat.taxonomyName}</span>
+                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat.color || "hsl(14, 88%, 68%)" }} />
+                                <span className="font-semibold">{cat.name}</span>
                               </div>
                               <div className="flex gap-2 text-sm text-muted-foreground">
                                 <span>{cat.debriefCount} debriefs</span>
-                                <span>·</span>
-                                <span>{cat.uniqueContactsAffected} people</span>
-                                <span>·</span>
-                                <span>Score: {cat.weightedImpactScore}</span>
+                                <span>-</span>
+                                <span>{cat.peopleAffected} people</span>
+                                <span>-</span>
+                                <span>Score: {cat.impactScore}</span>
                               </div>
                             </div>
-                            {cat.representativeQuotes?.length > 0 && (
+                            {cat.topQuotes?.length > 0 && (
                               <div className="mt-2 space-y-1">
-                                {cat.representativeQuotes.slice(0, 2).map((q: string, i: number) => (
+                                {cat.topQuotes.slice(0, 2).map((q: string, i: number) => (
                                   <p key={i} className="text-sm italic text-muted-foreground border-l-2 border-primary/30 pl-3">"{q}"</p>
                                 ))}
                               </div>
                             )}
-                            {cat.evidenceSnippets?.length > 0 && (
+                            {cat.evidence?.length > 0 && (
                               <div className="mt-2 flex flex-wrap gap-1">
-                                {cat.evidenceSnippets.slice(0, 3).map((e: string, i: number) => (
+                                {cat.evidence.slice(0, 3).map((e: string, i: number) => (
                                   <Badge key={i} variant="secondary" className="text-xs">{e.length > 80 ? e.slice(0, 80) + "..." : e}</Badge>
                                 ))}
                               </div>
@@ -1026,35 +1283,112 @@ export default function Reports() {
                           </div>
                         ))}
                       </div>
-                    </div>
-                  ) : (
-                    <p className="text-muted-foreground text-sm py-4">No confirmed debriefs with taxonomy tags found in this period.</p>
+                    </details>
                   )}
                 </div>
               </CollapsibleSection>
 
-              {/* Section 4: Outcome Movement */}
-              <CollapsibleSection title="Outcome Movement" icon={TrendingUp} testId="section-outcomes" defaultOpen={isSectionDefaultOpen("outcomes")} key={`outcomes-${activeFunder?.id || 'none'}`}>
+              {/* Section 4: Highlights */}
+              <CollapsibleSection title="Highlights" icon={Camera} testId="section-highlights" defaultOpen={isSectionDefaultOpen("highlights")} key={`highlights-${activeFunder?.id || 'none'}`}>
                 <div className="pt-4 space-y-4">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <StatCard icon={Users} label="Contacts Tracked" value={out?.totalContacts || 0} color="primary" testId="stat-tracked-contacts" />
-                    <StatCard icon={Activity} label="With Metrics" value={out?.contactsWithMetrics || 0} color="blue" testId="stat-with-metrics" />
-                    <StatCard icon={TrendingUp} label="Milestones" value={out?.milestoneCount || 0} color="amber" testId="stat-milestones" />
-                    <StatCard icon={Activity} label="Avg Positive Movement" value={`${out?.positiveMovementPercent ? Math.round(((out.positiveMovementPercent.mindset || 0) + (out.positiveMovementPercent.skill || 0) + (out.positiveMovementPercent.confidence || 0)) / 3) : 0}%`} color="green" testId="stat-positive-movement" />
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">Key moments, achievements, and stories from this period.</p>
+                    <Dialog open={showHighlightDialog} onOpenChange={setShowHighlightDialog}>
+                      <DialogTrigger asChild>
+                        <Button size="sm" variant="outline" data-testid="button-add-highlight">
+                          <Plus className="w-4 h-4 mr-1" /> Add Highlight
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Add Highlight</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <Label>Title</Label>
+                            <Input
+                              value={highlightTitle}
+                              onChange={e => setHighlightTitle(e.target.value)}
+                              placeholder="e.g. Community Day Success"
+                              data-testid="input-highlight-title"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Description</Label>
+                            <Textarea
+                              value={highlightDescription}
+                              onChange={e => setHighlightDescription(e.target.value)}
+                              placeholder="What happened and why it matters..."
+                              className="min-h-[80px]"
+                              data-testid="textarea-highlight-desc"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Category</Label>
+                            <Select value={highlightCategory} onValueChange={setHighlightCategory}>
+                              <SelectTrigger data-testid="select-highlight-category"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {HIGHLIGHT_CATEGORY_OPTIONS.map(opt => (
+                                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Photo (optional)</Label>
+                            <Input
+                              type="file"
+                              accept="image/*"
+                              onChange={e => setHighlightPhoto(e.target.files?.[0] || null)}
+                              data-testid="input-highlight-photo"
+                            />
+                            {highlightPhoto && (
+                              <div className="mt-2 w-24 h-24 rounded-md overflow-hidden bg-muted">
+                                <img src={URL.createObjectURL(highlightPhoto)} alt="Preview" className="w-full h-full object-cover" />
+                              </div>
+                            )}
+                          </div>
+                          <Button onClick={handleAddHighlight} disabled={!highlightTitle.trim()} data-testid="button-submit-highlight">
+                            <Plus className="w-4 h-4 mr-2" /> Add
+                          </Button>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
                   </div>
 
-                  {out && (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {["mindset", "skill", "confidence"].map(metric => (
-                        <Card key={metric} className="p-4">
-                          <h4 className="text-sm font-semibold capitalize mb-2">{metric}</h4>
-                          <div className="flex items-baseline gap-2">
-                            <span className="text-2xl font-bold">{out.averageChange?.[metric] || 0}</span>
-                            <span className="text-xs text-muted-foreground">/10 avg</span>
+                  {periodHighlights.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {periodHighlights.map((h: any) => (
+                        <Card key={h.id} className="overflow-hidden" data-testid={`highlight-card-${h.id}`}>
+                          {h.photoUrl && (
+                            <div className="h-40 bg-muted">
+                              <img src={h.photoUrl} alt={h.title} className="w-full h-full object-cover" />
+                            </div>
+                          )}
+                          <div className="p-4">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <h4 className="font-semibold text-sm">{h.title}</h4>
+                                <Badge variant="secondary" className="text-xs mt-1 capitalize">{h.category}</Badge>
+                              </div>
+                              <button
+                                onClick={() => handleDeleteHighlight(h.id)}
+                                className="text-muted-foreground hover:text-destructive transition-colors p-1"
+                                data-testid={`button-delete-highlight-${h.id}`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                            {h.description && (
+                              <p className="text-sm text-muted-foreground mt-2 line-clamp-3">{h.description}</p>
+                            )}
                           </div>
-                          <p className="text-xs text-muted-foreground mt-1">{out.positiveMovementPercent?.[metric] || 0}% positive movement</p>
                         </Card>
                       ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground text-sm">
+                      No highlights yet for this period. Add photos and key moments to enrich your report.
                     </div>
                   )}
                 </div>
@@ -1281,12 +1615,12 @@ export default function Reports() {
                 </CollapsibleSection>
               )}
 
-              {/* Section 8: Tāmaki Ora Alignment */}
+              {/* Section 8: Tamaki Ora Alignment */}
               {tamakiOraData && (
-                <CollapsibleSection title="Tāmaki Ora Alignment" icon={Landmark} testId="section-tamaki-ora" defaultOpen={isSectionDefaultOpen("tamaki-ora")}>
+                <CollapsibleSection title="Tamaki Ora Alignment" icon={Landmark} testId="section-tamaki-ora" defaultOpen={isSectionDefaultOpen("tamaki-ora")}>
                   <div className="pt-4 space-y-4">
                     <p className="text-sm text-muted-foreground">
-                      Alignment with the Tāmaki Ora outcomes framework — measuring impact across three pou for Māori community wellbeing.
+                      Alignment with the Tamaki Ora outcomes framework - measuring impact across three pou for Maori community wellbeing.
                     </p>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <Card className="p-4 space-y-3" data-testid="card-whai-rawa-ora">
@@ -1436,7 +1770,7 @@ export default function Reports() {
                           </div>
                           <Textarea
                             id="participant-story"
-                            placeholder="Share a real participant story that brings the data to life — a moment of change, growth, or connection..."
+                            placeholder="Share a real participant story that brings the data to life - a moment of change, growth, or connection..."
                             value={participantStory}
                             onChange={(e) => setParticipantStory(e.target.value)}
                             className="min-h-[100px] resize-y"
@@ -1476,7 +1810,7 @@ export default function Reports() {
                           <div className="space-y-1">
                             {reportData.legacyHighlights.slice(0, 6).map((h: string, i: number) => (
                               <p key={i} className="text-sm text-muted-foreground flex items-start gap-2">
-                                <span className="text-primary mt-1">•</span>
+                                <span className="text-primary mt-1">-</span>
                                 <span>{h}</span>
                               </p>
                             ))}

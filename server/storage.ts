@@ -172,6 +172,12 @@ import {
   mentoringOnboardingQuestions,
   type MentoringOnboardingQuestion,
   type InsertMentoringOnboardingQuestion,
+  monthlySnapshots,
+  reportHighlights,
+  type MonthlySnapshot,
+  type InsertMonthlySnapshot,
+  type ReportHighlight,
+  type InsertReportHighlight,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, sql, max, count } from "drizzle-orm";
 
@@ -499,6 +505,18 @@ export interface IStorage {
   updateProjectTask(id: number, updates: Partial<InsertProjectTask>): Promise<ProjectTask>;
   deleteProjectTask(id: number): Promise<void>;
 
+  // Monthly Snapshots
+  getMonthlySnapshots(userId: string): Promise<MonthlySnapshot[]>;
+  getMonthlySnapshot(id: number): Promise<MonthlySnapshot | undefined>;
+  upsertMonthlySnapshot(userId: string, month: Date, data: Partial<InsertMonthlySnapshot>): Promise<MonthlySnapshot>;
+  deleteMonthlySnapshot(id: number): Promise<void>;
+
+  // Report Highlights
+  getReportHighlights(userId: string): Promise<ReportHighlight[]>;
+  getReportHighlight(id: number): Promise<ReportHighlight | undefined>;
+  createReportHighlight(data: InsertReportHighlight): Promise<ReportHighlight>;
+  deleteReportHighlight(id: number): Promise<void>;
+
   // Auth (re-exported or separate)
   auth: IAuthStorage;
 }
@@ -616,7 +634,7 @@ export class DatabaseStorage implements IStorage {
     if (insertInteraction.analysis) {
       const analysis = insertInteraction.analysis as any;
       const hasAnyScore = analysis.mindsetScore !== undefined || analysis.skillScore !== undefined || 
-        analysis.confidenceScore !== undefined || analysis.confidenceScoreMetric !== undefined ||
+        analysis.confidenceScore !== undefined || analysis.bizConfidenceScore !== undefined || analysis.confidenceScoreMetric !== undefined ||
         analysis.systemsInPlaceScore !== undefined || analysis.fundingReadinessScore !== undefined ||
         analysis.networkStrengthScore !== undefined || analysis.communityImpactScore !== undefined;
       
@@ -628,7 +646,8 @@ export class DatabaseStorage implements IStorage {
         if (analysis.mindsetScore !== undefined) newMetrics.mindset = analysis.mindsetScore;
         if (analysis.skillScore !== undefined) newMetrics.skill = analysis.skillScore;
         if (analysis.confidenceScore !== undefined) newMetrics.confidence = analysis.confidenceScore;
-        if (analysis.confidenceScoreMetric !== undefined) newMetrics.confidenceScore = analysis.confidenceScoreMetric;
+        if (analysis.bizConfidenceScore !== undefined) newMetrics.bizConfidence = analysis.bizConfidenceScore;
+        if (analysis.confidenceScoreMetric !== undefined) newMetrics.bizConfidence = analysis.confidenceScoreMetric;
         if (analysis.systemsInPlaceScore !== undefined) newMetrics.systemsInPlace = analysis.systemsInPlaceScore;
         if (analysis.fundingReadinessScore !== undefined) newMetrics.fundingReadiness = analysis.fundingReadinessScore;
         if (analysis.networkStrengthScore !== undefined) newMetrics.networkStrength = analysis.networkStrengthScore;
@@ -2052,6 +2071,56 @@ export class DatabaseStorage implements IStorage {
 
   async deleteProjectTask(id: number): Promise<void> {
     await db.delete(projectTasks).where(eq(projectTasks.id, id));
+  }
+
+  // Monthly Snapshots
+  async getMonthlySnapshots(userId: string): Promise<MonthlySnapshot[]> {
+    return db.select().from(monthlySnapshots).where(eq(monthlySnapshots.userId, userId)).orderBy(desc(monthlySnapshots.month));
+  }
+
+  async getMonthlySnapshot(id: number): Promise<MonthlySnapshot | undefined> {
+    const [item] = await db.select().from(monthlySnapshots).where(eq(monthlySnapshots.id, id));
+    return item;
+  }
+
+  async upsertMonthlySnapshot(userId: string, month: Date, data: Partial<InsertMonthlySnapshot>): Promise<MonthlySnapshot> {
+    const existing = await db.select().from(monthlySnapshots).where(
+      and(eq(monthlySnapshots.userId, userId), eq(monthlySnapshots.month, month))
+    );
+    if (existing.length > 0) {
+      const [updated] = await db.update(monthlySnapshots)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(monthlySnapshots.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(monthlySnapshots)
+      .values({ userId, month, ...data })
+      .returning();
+    return created;
+  }
+
+  async deleteMonthlySnapshot(id: number): Promise<void> {
+    await db.delete(monthlySnapshots).where(eq(monthlySnapshots.id, id));
+  }
+
+  // Report Highlights
+  async getReportHighlights(userId: string): Promise<ReportHighlight[]> {
+    return db.select().from(reportHighlights).where(eq(reportHighlights.userId, userId)).orderBy(desc(reportHighlights.createdAt));
+  }
+
+  async getReportHighlight(id: number): Promise<ReportHighlight | undefined> {
+    const [item] = await db.select().from(reportHighlights).where(eq(reportHighlights.id, id));
+    return item;
+  }
+
+  async createReportHighlight(data: InsertReportHighlight): Promise<ReportHighlight> {
+    const [created] = await db.insert(reportHighlights).values(data).returning();
+    return created;
+  }
+
+  async deleteReportHighlight(id: number): Promise<void> {
+    await db.delete(reportHighlights).where(eq(reportHighlights.id, id));
   }
 
   // Stage Progression

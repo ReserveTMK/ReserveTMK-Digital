@@ -153,7 +153,7 @@ export default function ContactDetail() {
       mindset: i.analysis?.mindsetScore || 0,
       skill: i.analysis?.skillScore || 0,
       confidence: i.analysis?.confidenceScore || 0,
-      bizConfidence: i.analysis?.confidenceScoreMetric || 0,
+      bizConfidence: i.analysis?.bizConfidenceScore || i.analysis?.confidenceScoreMetric || 0,
       systems: i.analysis?.systemsInPlaceScore || 0,
       funding: i.analysis?.fundingReadinessScore || 0,
       network: i.analysis?.networkStrengthScore || 0,
@@ -379,7 +379,7 @@ export default function ContactDetail() {
             />
             <MetricCard 
               title="Biz Confidence" 
-              value={contact.metrics?.confidenceScore || "-"} 
+              value={contact.metrics?.bizConfidence || contact.metrics?.confidenceScore || "-"} 
               icon={<Rocket className="w-5 h-5" />} 
               color="primary"
               data-testid="metric-biz-confidence"
@@ -699,7 +699,7 @@ export default function ContactDetail() {
                          </div>
                          <div className="text-center">
                            <p className="text-xs text-muted-foreground mb-1">Biz Conf.</p>
-                           <p className="font-bold text-pink-500">{interaction.analysis?.confidenceScoreMetric || "-"}</p>
+                           <p className="font-bold text-pink-500">{interaction.analysis?.bizConfidenceScore || interaction.analysis?.confidenceScoreMetric || "-"}</p>
                          </div>
                          <div className="text-center">
                            <p className="text-xs text-muted-foreground mb-1">Systems</p>
@@ -1887,7 +1887,7 @@ function LogInteractionDialog({ contactId }: { contactId: number }) {
         mindsetScore: analysisResult.metrics.mindset,
         skillScore: analysisResult.metrics.skill,
         confidenceScore: analysisResult.metrics.confidence,
-        confidenceScoreMetric: analysisResult.metrics.confidenceScore,
+        bizConfidenceScore: analysisResult.metrics.bizConfidence,
         systemsInPlaceScore: analysisResult.metrics.systemsInPlace,
         fundingReadinessScore: analysisResult.metrics.fundingReadiness,
         networkStrengthScore: analysisResult.metrics.networkStrength,
@@ -1971,7 +1971,7 @@ function LogInteractionDialog({ contactId }: { contactId: number }) {
                 </div>
                 <div className="bg-background rounded-lg p-2 text-center border border-border shadow-sm">
                   <div className="text-xs text-muted-foreground">Biz Conf.</div>
-                  <div className="font-bold text-lg text-pink-500">{analysisResult.metrics.confidenceScore}</div>
+                  <div className="font-bold text-lg text-pink-500">{analysisResult.metrics.bizConfidence}</div>
                 </div>
                 <div className="bg-background rounded-lg p-2 text-center border border-border shadow-sm">
                   <div className="text-xs text-muted-foreground">Systems</div>
