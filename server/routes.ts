@@ -7570,7 +7570,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       }
       const updated = await storage.updateContact(contactId, updates);
 
-      if (Array.isArray(updates.supportType) && updates.supportType.includes("mentoring") && updated.isInnovator) {
+      if (Array.isArray(updates.supportType) && (updates.supportType.includes("mentoring") || updates.supportType.includes("workshop_skills")) && updated.isInnovator) {
         try {
           const existingRels = await storage.getMentoringRelationshipsByContact(contactId);
           const hasActive = existingRels.some(r => r.status === "active" || r.status === "application");
@@ -8127,7 +8127,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       const userId = (req.user as any).claims.sub;
       const allContacts = await storage.getContacts(userId);
       const mentoringContacts = allContacts.filter(c =>
-        c.isInnovator && Array.isArray(c.supportType) && c.supportType.includes("mentoring")
+        c.isInnovator && Array.isArray(c.supportType) && (c.supportType.includes("mentoring") || c.supportType.includes("workshop_skills"))
       );
       let created = 0;
       for (const contact of mentoringContacts) {

@@ -33,15 +33,22 @@ export const CONNECTION_CONFIG: Record<string, { label: string; level: number; c
 
 export const CONNECTION_LEVELS = ["known", "connected", "engaged", "embedded", "partnering"];
 
-export const SUPPORT_OPTIONS = ["mentoring", "space", "venue_hire", "hot_desking", "service_trade", "paid_work", "networking"];
+export const SUPPORT_OPTIONS = ["mentoring", "workshop_skills", "space", "venue_hire", "hot_desking", "service_trade", "paid_work", "networking"];
 
 export const SUPPORT_LABEL_MAP: Record<string, string> = {
-  mentoring: "Mentoring", space: "Space", venue_hire: "Venue Hire", hot_desking: "Hot Desking",
-  service_trade: "Service Trade", paid_work: "Paid Work", networking: "Networking",
+  mentoring: "Mentoring",
+  workshop_skills: "Workshop/Skills",
+  space: "Space",
+  venue_hire: "Venue Hire",
+  hot_desking: "Hot Desking",
+  service_trade: "Service Trade",
+  paid_work: "Paid Work",
+  networking: "Networking",
 };
 
 export const SUPPORT_COLOR_MAP: Record<string, string> = {
   mentoring: "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/20",
+  workshop_skills: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-500/20",
   space: "bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-500/20",
   venue_hire: "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/20",
   hot_desking: "bg-teal-500/15 text-teal-700 dark:text-teal-300 border-teal-500/20",
