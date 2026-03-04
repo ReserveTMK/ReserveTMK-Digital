@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { useContacts, useCreateContact, useDeleteContact } from "@/hooks/use-contacts";
-import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, ArrowUpDown, Lightbulb, ChevronRight, ArrowLeft } from "lucide-react";
+import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, ArrowUpDown, Lightbulb, ChevronRight } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { Link } from "wouter";
@@ -71,7 +71,8 @@ export default function Contacts() {
   const [primaryMergeId, setPrimaryMergeId] = useState<number | null>(null);
   const [layoutView, setLayoutView] = useState<"list" | "table">("list");
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
-  const [drilldownTier, setDrilldownTier] = useState<null | "innovators" | "community" | "all">(null);
+
+
 
   const { data: allGroups } = useQuery<any[]>({ queryKey: ["/api/groups"] });
   const { data: suggestedDuplicates } = useQuery<{ reason: string; contacts: any[] }[]>({ queryKey: ["/api/contacts/suggested-duplicates"] });
@@ -332,24 +333,12 @@ export default function Contacts() {
     },
   });
 
-  const handleDrilldown = (tier: "innovators" | "community" | "all") => {
-    setDrilldownTier(tier);
-    setViewMode(tier);
-  };
-
-  const handleBackToSummary = () => {
-    setDrilldownTier(null);
-    setSearch("");
-    setRoleFilter("all");
-  };
-
   const filteredContacts = contacts?.filter(contact => {
     const matchesSearch = contact.name.toLowerCase().includes(search.toLowerCase()) || 
                           contact.businessName?.toLowerCase().includes(search.toLowerCase()) ||
                           contact.email?.toLowerCase().includes(search.toLowerCase());
     const matchesRole = roleFilter === "all" || contact.role === roleFilter;
-    const activeTier = drilldownTier || viewMode;
-    const matchesView = activeTier === "all" || (activeTier === "community" && (contact as any).isCommunityMember === true && !(contact as any).isInnovator) || (activeTier === "innovators" && (contact as any).isInnovator === true);
+    const matchesView = viewMode === "all" || (viewMode === "community" && (contact as any).isCommunityMember === true && !(contact as any).isInnovator) || (viewMode === "innovators" && (contact as any).isInnovator === true);
     return matchesSearch && matchesRole && matchesView;
   });
 
@@ -403,7 +392,7 @@ export default function Contacts() {
                   <Trash2 className="w-4 h-4 mr-2" />
                   Delete ({selectedContacts.size})
                 </Button>
-                {(drilldownTier === "all" || drilldownTier === "community") && (
+                {(viewMode === "all" || viewMode === "community") && (
                   <Button variant="outline" onClick={async () => {
                     for (const id of Array.from(selectedContacts)) {
                       await promoteMutation.mutateAsync(id);
@@ -414,7 +403,7 @@ export default function Contacts() {
                     Promote ({selectedContacts.size})
                   </Button>
                 )}
-                {(drilldownTier === "community" || drilldownTier === "innovators") && (
+                {(viewMode === "community" || viewMode === "innovators") && (
                   <Button variant="outline" onClick={async () => {
                     for (const id of Array.from(selectedContacts)) {
                       await demoteMutation.mutateAsync(id);
@@ -469,31 +458,18 @@ export default function Contacts() {
 
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              {drilldownTier && (
-                <Button variant="ghost" size="icon" onClick={handleBackToSummary} data-testid="button-back-summary">
-                  <ArrowLeft className="w-5 h-5" />
-                </Button>
-              )}
-              <div>
-                <h1 className="text-3xl font-display font-bold" data-testid="text-page-title">
-                  {drilldownTier === "innovators" ? "Our Innovators" : drilldownTier === "community" ? "Our Community" : drilldownTier === "all" ? "All Contacts" : "People"}
-                </h1>
-                <p className="text-muted-foreground mt-1">
-                  {drilldownTier ? `${filteredContacts?.length ?? 0} contact${(filteredContacts?.length ?? 0) !== 1 ? 's' : ''}` : "The people in your community"}
-                </p>
-              </div>
+            <div>
+              <h1 className="text-3xl font-display font-bold" data-testid="text-page-title">People</h1>
+              <p className="text-muted-foreground mt-1">The people in your community</p>
             </div>
             
             <div className="flex items-center gap-2 flex-wrap">
               {!editMode && (
                 <>
-                  {drilldownTier && (
-                    <Button variant="outline" onClick={() => setEditMode(true)} data-testid="button-edit-mode">
-                      <Edit3 className="w-4 h-4 mr-2" />
-                      Edit
-                    </Button>
-                  )}
+                  <Button variant="outline" onClick={() => setEditMode(true)} data-testid="button-edit-mode">
+                    <Edit3 className="w-4 h-4 mr-2" />
+                    Edit
+                  </Button>
                   {suggestedDuplicates && suggestedDuplicates.length > 0 && (
                     <Button variant="outline" onClick={() => setDuplicatesOpen(true)} data-testid="button-duplicates-contacts">
                       <Merge className="w-4 h-4 mr-2" />
@@ -766,64 +742,107 @@ export default function Contacts() {
             </DialogContent>
           </Dialog>
 
-          {/* Summary Cards (when no drilldown) */}
-          {!drilldownTier && isLoading && (
-            <div className="flex justify-center items-center h-64">
-              <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            </div>
-          )}
-          {!drilldownTier && contacts && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4" data-testid="tier-summary-cards">
-              <Card
-                className="p-6 cursor-pointer hover-elevate border-amber-200 dark:border-amber-800/50"
-                onClick={() => handleDrilldown("innovators")}
-                data-testid="card-tier-innovators"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-lg bg-amber-500/15 flex items-center justify-center shrink-0">
-                    <Lightbulb className="w-6 h-6 text-amber-600 dark:text-amber-400" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-3xl font-bold font-display leading-none" data-testid="text-count-innovators">{tierCounts.innovators}</p>
-                    <p className="text-sm text-muted-foreground mt-1">Our Innovators</p>
-                  </div>
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4" data-testid="tier-summary-cards">
+            <Card
+              className={`p-6 cursor-pointer transition-all duration-200 border-amber-200 dark:border-amber-800/50 ${viewMode === "innovators" ? "ring-2 ring-amber-500/50 shadow-md" : "hover:shadow-md"}`}
+              onClick={() => setViewMode("innovators")}
+              data-testid="card-tier-innovators"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-lg bg-amber-500/15 flex items-center justify-center shrink-0">
+                  <Lightbulb className="w-6 h-6 text-amber-600 dark:text-amber-400" />
                 </div>
-              </Card>
-              <Card
-                className="p-6 cursor-pointer hover-elevate border-emerald-200 dark:border-emerald-800/50"
-                onClick={() => handleDrilldown("community")}
-                data-testid="card-tier-community"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-lg bg-emerald-500/15 flex items-center justify-center shrink-0">
-                    <Users className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-3xl font-bold font-display leading-none" data-testid="text-count-community">{tierCounts.community}</p>
-                    <p className="text-sm text-muted-foreground mt-1">Our Community</p>
-                  </div>
+                <div className="min-w-0">
+                  <p className="text-3xl font-bold font-display leading-none" data-testid="text-count-innovators">{tierCounts.innovators}</p>
+                  <p className="text-sm text-muted-foreground mt-1">Our Innovators</p>
                 </div>
-              </Card>
-              <Card
-                className="p-6 cursor-pointer hover-elevate"
-                onClick={() => handleDrilldown("all")}
-                data-testid="card-tier-all"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                    <User className="w-6 h-6 text-muted-foreground" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-3xl font-bold font-display leading-none" data-testid="text-count-all">{tierCounts.all}</p>
-                    <p className="text-sm text-muted-foreground mt-1">All Contacts</p>
-                  </div>
+              </div>
+            </Card>
+            <Card
+              className={`p-6 cursor-pointer transition-all duration-200 border-emerald-200 dark:border-emerald-800/50 ${viewMode === "community" ? "ring-2 ring-emerald-500/50 shadow-md" : "hover:shadow-md"}`}
+              onClick={() => setViewMode("community")}
+              data-testid="card-tier-community"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-lg bg-emerald-500/15 flex items-center justify-center shrink-0">
+                  <Users className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
                 </div>
-              </Card>
-            </div>
-          )}
+                <div className="min-w-0">
+                  <p className="text-3xl font-bold font-display leading-none" data-testid="text-count-community">{tierCounts.community}</p>
+                  <p className="text-sm text-muted-foreground mt-1">Our Community</p>
+                </div>
+              </div>
+            </Card>
+            <Card
+              className={`p-6 cursor-pointer transition-all duration-200 ${viewMode === "all" ? "ring-2 ring-primary/50 shadow-md" : "hover:shadow-md"}`}
+              onClick={() => setViewMode("all")}
+              data-testid="card-tier-all"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                  <User className="w-6 h-6 text-muted-foreground" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-3xl font-bold font-display leading-none" data-testid="text-count-all">{tierCounts.all}</p>
+                  <p className="text-sm text-muted-foreground mt-1">All Contacts</p>
+                </div>
+              </div>
+            </Card>
+          </div>
 
-          {drilldownTier && (
-            <>
+          {/* View Toggle + Analytics */}
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between gap-2" data-testid="view-toggle">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={viewMode === "community" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setViewMode("community")}
+                  data-testid="button-view-community"
+                >
+                  <Users className="w-4 h-4 mr-1.5" />
+                  Community
+                </Button>
+                <Button
+                  variant={viewMode === "innovators" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setViewMode("innovators")}
+                  data-testid="button-view-innovators"
+                >
+                  <Lightbulb className="w-4 h-4 mr-1.5" />
+                  Our Innovators
+                </Button>
+                <Button
+                  variant={viewMode === "all" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setViewMode("all")}
+                  data-testid="button-view-all"
+                >
+                  All Contacts
+                </Button>
+              </div>
+              <div className="flex items-center gap-1 border rounded-lg p-0.5" data-testid="layout-toggle">
+                <Button
+                  variant={layoutView === "list" ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setLayoutView("list")}
+                  data-testid="button-layout-list"
+                >
+                  <List className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant={layoutView === "table" ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setLayoutView("table")}
+                  data-testid="button-layout-table"
+                >
+                  <Table className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+
               {analytics && (
                 <div className="space-y-3" data-testid="community-analytics">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -885,63 +904,40 @@ export default function Contacts() {
                 </div>
               )}
 
-              {/* Search + Filters */}
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center justify-end gap-2">
-                  <div className="flex items-center gap-1 border rounded-lg p-0.5" data-testid="layout-toggle">
-                    <Button
-                      variant={layoutView === "list" ? "secondary" : "ghost"}
-                      size="sm"
-                      onClick={() => setLayoutView("list")}
-                      data-testid="button-layout-list"
-                    >
-                      <List className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant={layoutView === "table" ? "secondary" : "ghost"}
-                      size="sm"
-                      onClick={() => setLayoutView("table")}
-                      data-testid="button-layout-table"
-                    >
-                      <Table className="w-4 h-4" />
-                    </Button>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input 
+                placeholder="Search by name or email..." 
+                className="pl-10 h-11 bg-card rounded-xl border-border/60"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                data-testid="input-search-contacts"
+              />
+            </div>
+            <div className="w-full sm:w-48">
+              <Select value={roleFilter} onValueChange={setRoleFilter}>
+                <SelectTrigger className="h-11 rounded-xl bg-card border-border/60" data-testid="select-role-filter">
+                  <div className="flex items-center gap-2">
+                    <Filter className="w-4 h-4 text-muted-foreground" />
+                    <SelectValue placeholder="Filter by Role" />
                   </div>
-                </div>
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input 
-                      placeholder="Search by name or email..." 
-                      className="pl-10 h-11 bg-card rounded-xl border-border/60"
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      data-testid="input-search-contacts"
-                    />
-                  </div>
-                  <div className="w-full sm:w-48">
-                    <Select value={roleFilter} onValueChange={setRoleFilter}>
-                      <SelectTrigger className="h-11 rounded-xl bg-card border-border/60" data-testid="select-role-filter">
-                        <div className="flex items-center gap-2">
-                          <Filter className="w-4 h-4 text-muted-foreground" />
-                          <SelectValue placeholder="Filter by Role" />
-                        </div>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Roles</SelectItem>
-                        <SelectItem value="Entrepreneur">Entrepreneur</SelectItem>
-                        <SelectItem value="Creative">Creative</SelectItem>
-                        <SelectItem value="Community Leader">Community Leader</SelectItem>
-                        <SelectItem value="Movement Builder">Movement Builder</SelectItem>
-                        <SelectItem value="Professional">Professional</SelectItem>
-                        <SelectItem value="Innovator">Innovator</SelectItem>
-                        <SelectItem value="Rangatahi">Rangatahi</SelectItem>
-                        <SelectItem value="Aspiring">Aspiring</SelectItem>
-                        <SelectItem value="Business Owner">Business Owner</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Roles</SelectItem>
+                  <SelectItem value="Entrepreneur">Entrepreneur</SelectItem>
+                  <SelectItem value="Creative">Creative</SelectItem>
+                  <SelectItem value="Community Leader">Community Leader</SelectItem>
+                  <SelectItem value="Movement Builder">Movement Builder</SelectItem>
+                  <SelectItem value="Professional">Professional</SelectItem>
+                  <SelectItem value="Innovator">Innovator</SelectItem>
+                  <SelectItem value="Rangatahi">Rangatahi</SelectItem>
+                  <SelectItem value="Aspiring">Aspiring</SelectItem>
+                  <SelectItem value="Business Owner">Business Owner</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
 
               {/* Contacts List / Table */}
               {isLoading ? (
@@ -958,7 +954,7 @@ export default function Contacts() {
                   <Button onClick={() => setOpen(true)} variant="outline" data-testid="button-add-member-empty">Add Member</Button>
                 </div>
               ) : layoutView === "table" ? (
-                <ContactsTableView contacts={filteredContacts || []} allContacts={(contacts as any[]) || []} editMode={editMode} selectedContacts={selectedContacts} toggleContactSelection={toggleContactSelection} toggleSelectAll={toggleSelectAll} onToggleCommunity={(id, isCommunityMember) => communityStatusMutation.mutate({ id, isCommunityMember })} drilldownTier={drilldownTier} onPromote={(id) => promoteMutation.mutate(id)} promotePending={promoteMutation.isPending} />
+                <ContactsTableView contacts={filteredContacts || []} allContacts={(contacts as any[]) || []} editMode={editMode} selectedContacts={selectedContacts} toggleContactSelection={toggleContactSelection} toggleSelectAll={toggleSelectAll} onToggleCommunity={(id, isCommunityMember) => communityStatusMutation.mutate({ id, isCommunityMember })} drilldownTier={viewMode} onPromote={(id) => promoteMutation.mutate(id)} promotePending={promoteMutation.isPending} />
               ) : (
             <div className="space-y-3">
               {(filteredContacts || []).map((contact: any) => (
@@ -1055,7 +1051,7 @@ export default function Contacts() {
                     </div>
                   </Link>
 
-                  {drilldownTier !== "innovators" && (
+                  {viewMode !== "innovators" && (
                     <Button
                       size="icon"
                       variant="ghost"
@@ -1140,8 +1136,6 @@ export default function Contacts() {
                 </div>
               ))}
             </div>
-          )}
-            </>
           )}
         </div>
       </main>
