@@ -1248,17 +1248,67 @@ const STAGE_CONFIG: Record<string, { label: string; color: string; bgColor: stri
   inactive: { label: "Inactive", color: "text-muted-foreground", bgColor: "bg-muted border-border", icon: Pause },
 };
 
-function JourneyStageBadge({ stage, contactId }: { stage?: string; contactId: number }) {
+function InlineStageCell({ stage, contactId }: { stage?: string; contactId: number }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const stages = ["kakano", "tipu", "ora", "inactive"];
+
+  const handleSelect = async (newStage: string) => {
+    if (newStage === stage) { setOpen(false); return; }
+    setSaving(true);
+    try {
+      await apiRequest("PATCH", `/api/contacts/${contactId}`, { stage: newStage });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast({ title: "Stage updated" });
+      setOpen(false);
+    } catch {
+      toast({ title: "Failed to update stage", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const config = STAGE_CONFIG[stage || ""] || null;
-  if (!config) {
-    return <span className="text-xs text-muted-foreground/50">—</span>;
-  }
-  const StageIcon = config.icon;
+
   return (
-    <Badge variant="outline" className={`text-[10px] h-5 px-1.5 ${config.bgColor} ${config.color}`} data-testid={`badge-stage-${contactId}`}>
-      <StageIcon className="w-3 h-3 mr-1" />
-      {config.label}
-    </Badge>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button className="text-left px-2 py-1 rounded hover:bg-muted/60 transition-colors cursor-pointer group flex items-center gap-1" data-testid={`table-cell-stage-${contactId}`}>
+          {config ? (
+            <Badge variant="outline" className={`text-[10px] h-5 px-1.5 ${config.bgColor} ${config.color}`}>
+              {(() => { const I = config.icon; return <I className="w-3 h-3 mr-1" />; })()}
+              {config.label}
+            </Badge>
+          ) : (
+            <span className="text-muted-foreground/50 text-xs">+ Set</span>
+          )}
+          <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-48 p-2" align="start">
+        <div className="space-y-1">
+          {stages.map(s => {
+            const sc = STAGE_CONFIG[s];
+            const Icon = sc.icon;
+            const isActive = s === stage;
+            return (
+              <button
+                key={s}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm hover:bg-accent/50 transition-colors ${isActive ? "bg-accent" : ""}`}
+                onClick={() => handleSelect(s)}
+                disabled={saving}
+                data-testid={`stage-opt-${s}-${contactId}`}
+              >
+                <Icon className={`w-3.5 h-3.5 ${sc.color}`} />
+                <span>{sc.label}</span>
+                {isActive && <Check className="w-3 h-3 ml-auto" />}
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -1466,7 +1516,6 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
               <SortHeader label="Age" field="age" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-20" />
               <SortHeader label="Suburb" field="suburb" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
               <SortHeader label="Last Active" field="lastActive" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
-              {drilldownTier && drilldownTier === "community" && <th className="px-2 py-3 w-10"></th>}
             </tr>
           </thead>
           <tbody>
@@ -1538,7 +1587,7 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
                 {drilldownTier === "innovators" ? (
                   <>
                     <td className="px-3 py-2">
-                      <JourneyStageBadge stage={contact.stage} contactId={contact.id} />
+                      <InlineStageCell stage={contact.stage} contactId={contact.id} />
                     </td>
                     <td className="px-1 py-2">
                       <InlineSupportCell contactId={contact.id} supportTypes={contact.supportType || []} />
@@ -1565,22 +1614,6 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
                     ? format(new Date(contact.lastActiveDate || contact.lastInteractionDate), "MMM d, yyyy")
                     : "—"}
                 </td>
-                {drilldownTier && drilldownTier === "community" && (
-                  <td className="px-2 py-2">
-                    {onPromote && !contact.isInnovator && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => onPromote(contact.id)}
-                        disabled={promotePending}
-                        title="Promote to Our Innovators"
-                        data-testid={`table-promote-innovator-${contact.id}`}
-                      >
-                        <Lightbulb className="w-4 h-4 text-amber-500" />
-                      </Button>
-                    )}
-                  </td>
-                )}
               </tr>
             ))}
           </tbody>
