@@ -1,0 +1,583 @@
+Reorganize the People section of Reserve Tāmaki into a hierarchical Community structure with filtering and quick promotion actions.
+
+CONTEXT:
+Currently "People" is the top-level nav with contacts displayed in 3 containers. We need to restructure this into a hierarchical community model where contacts flow from broadest (All Contacts) → Community (our scope) → Innovators (people we actively support).
+
+GOALS:
+1. Rename top nav from "People" to "Community"
+2. Create dropdown with: People, Groups, Ecosystems
+3. Implement 3-tier filtering system: All Contacts → Our Community → Our Innovators
+4. Add quick promotion buttons (one-way flow: Contacts → Community → Innovators)
+5. Cascade changes from people to their linked groups
+6. Same structure for both People and Groups
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 1: NAVIGATION & STRUCTURE UPDATE
+
+───────────────────────────────────────────────────────────────────────
+UPDATE TOP-LEVEL NAVIGATION
+───────────────────────────────────────────────────────────────────────
+
+CURRENT:
+[People] [Groups] [Programs] [Bookings] etc.
+
+NEW:
+[Community ▼] [Programs] [Bookings] etc.
+
+When clicking "Community", show dropdown:
+┌─────────────────────┐
+│ People              │
+│ Groups              │
+│ Ecosystems          │
+└─────────────────────┘
+
+Routes:
+- /community/people
+- /community/groups
+- /community/ecosystems
+
+Default: /community/people (redirect from /community)
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 2: DATABASE SCHEMA UPDATES
+
+───────────────────────────────────────────────────────────────────────
+ADD COMMUNITY TIER FIELDS
+───────────────────────────────────────────────────────────────────────
+
+-- Add community tier to contacts
+ALTER TABLE contacts
+ADD COLUMN IF NOT EXISTS community_tier ENUM('all_contacts', 'our_community', 'our_innovators') DEFAULT 'all_contacts',
+ADD COLUMN IF NOT EXISTS moved_to_community_at TIMESTAMP NULL,
+ADD COLUMN IF NOT EXISTS moved_to_innovators_at TIMESTAMP NULL,
+ADD INDEX idx_community_tier (community_tier);
+
+-- Add community tier to groups
+ALTER TABLE groups
+ADD COLUMN IF NOT EXISTS community_tier ENUM('all_groups', 'our_community', 'our_innovators') DEFAULT 'all_groups',
+ADD COLUMN IF NOT EXISTS moved_to_community_at TIMESTAMP NULL,
+ADD COLUMN IF NOT EXISTS moved_to_innovators_at TIMESTAMP NULL,
+ADD INDEX idx_community_tier (community_tier);
+
+DEFINITIONS:
+
+all_contacts / all_groups:
+- Everyone in the database
+- May or may not be in our community scope
+- Could be: leads, inquiries, one-off contacts, ecosystem partners
+
+our_community:
+- Within scope of Reserve's community
+- Engaged with us (workshops, events, bookings)
+- Part of our ecosystem
+- May not be receiving intensive support yet
+
+our_innovators:
+- People/ventures we actively mentor and support
+- Typically in tipu (mentoring) track or have active relationship
+- Core community we're investing in
+- Subset of our_community
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 3: PEOPLE VIEW - 3-TIER STRUCTURE
+
+───────────────────────────────────────────────────────────────────────
+LAYOUT: LEFT-TO-RIGHT FLOW
+───────────────────────────────────────────────────────────────────────
+
+Page: /community/people
+
+┌────────────────────────────────────────────────────────────────────┐
+│ Community > People                                                 │
+├────────────────────────────────────────────────────────────────────┤
+│                                                                    │
+│ [Table View] [Card View]                          [+ Add Person]  │
+│                                                                    │
+├────────────────────────────────────────────────────────────────────┤
+│ OUR INNOVATORS    │  OUR COMMUNITY      │  ALL CONTACTS          │
+│ (23)              │  (87)               │  (234)                 │
+├───────────────────┼─────────────────────┼────────────────────────┤
+│                   │                     │                        │
+│ People we         │ Our community       │ Everyone in database   │
+│ actively mentor   │ scope - engaged     │ - all contacts         │
+│ and support       │ with Reserve        │                        │
+│                   │                     │                        │
+│ [View in Table]   │ [View in Table]     │ [View in Table]        │
+│                   │                     │                        │
+└───────────────────┴─────────────────────┴────────────────────────┘
+
+Three containers arranged LEFT to RIGHT:
+1. OUR INNOVATORS (leftmost) - smallest, most focused group
+2. OUR COMMUNITY (middle) - medium, our active community
+3. ALL CONTACTS (rightmost) - largest, everyone
+
+Visual hierarchy:
+- Left = most engaged/supported
+- Right = broadest/everyone
+- Flow is left-directed (All → Community → Innovators)
+
+───────────────────────────────────────────────────────────────────────
+TABLE VIEW WITH QUICK PROMOTION
+───────────────────────────────────────────────────────────────────────
+
+When clicking [View in Table] for any tier:
+
+VIEW: ALL CONTACTS TABLE
+┌────────────────────────────────────────────────────────────────────┐
+│ All Contacts (234)                              [+ Add Person]     │
+├────────────────────────────────────────────────────────────────────┤
+│ Showing: All Contacts                                              │
+│ [Search...] [Filter ▼] [Bulk Actions ▼]                           │
+├────────────────────────────────────────────────────────────────────┤
+│ □  Name            │ Tier           │ Stage   │ Last Contact │ ⚡ │
+├────────────────────────────────────────────────────────────────────┤
+│ □  Tama Williams   │ All Contacts   │ Kakano  │ 2 days ago   │ ➜  │
+│ □  Sarah Johnson   │ All Contacts   │ Tipu    │ 1 week ago   │ ➜  │
+│ □  John Lee        │ All Contacts   │ Kakano  │ 3 weeks ago  │ ➜  │
+└────────────────────────────────────────────────────────────────────┘
+
+Quick Promotion Button (➜):
+- Shows only for contacts in "all_contacts" tier
+- Click → moves to "our_community" 
+- No confirmation, instant action
+- Success toast: "Moved to Our Community"
+
+VIEW: OUR COMMUNITY TABLE
+┌────────────────────────────────────────────────────────────────────┐
+│ Our Community (87)                              [+ Add Person]     │
+├────────────────────────────────────────────────────────────────────┤
+│ Showing: Our Community                                             │
+│ [Search...] [Filter ▼] [Bulk Actions ▼]                           │
+├────────────────────────────────────────────────────────────────────┤
+│ □  Name            │ Tier           │ Stage   │ Last Contact │ ⚡ │
+├────────────────────────────────────────────────────────────────────┤
+│ □  Moana Smith     │ Our Community  │ Tipu    │ Yesterday    │ ➜  │
+│ □  Emma Taylor     │ Our Community  │ Kakano  │ 3 days ago   │ ➜  │
+│ □  James Brown     │ Our Community  │ Ora     │ 1 week ago   │ ➜  │
+└────────────────────────────────────────────────────────────────────┘
+
+Quick Promotion Button (➜):
+- Shows only for contacts in "our_community" tier
+- Click → moves to "our_innovators"
+- No confirmation, instant action
+- Success toast: "Moved to Our Innovators"
+
+VIEW: OUR INNOVATORS TABLE
+┌────────────────────────────────────────────────────────────────────┐
+│ Our Innovators (23)                             [+ Add Person]     │
+├────────────────────────────────────────────────────────────────────┤
+│ Showing: Our Innovators                                            │
+│ [Search...] [Filter ▼] [Bulk Actions ▼]                           │
+├────────────────────────────────────────────────────────────────────┤
+│ □  Name            │ Tier             │ Stage   │ Last Contact │   │
+├────────────────────────────────────────────────────────────────────┤
+│ □  Alex Chen       │ Our Innovators   │ Tipu    │ Today        │   │
+│ □  Maria Garcia    │ Our Innovators   │ Ora     │ Yesterday    │   │
+│ □  David Kim       │ Our Innovators   │ Tipu    │ 2 days ago   │   │
+└────────────────────────────────────────────────────────────────────┘
+
+NO Quick Promotion Button:
+- Our Innovators is the highest tier
+- No ➜ button in this view
+- Can only move back via Bulk Actions
+
+───────────────────────────────────────────────────────────────────────
+QUICK PROMOTION LOGIC
+───────────────────────────────────────────────────────────────────────
+
+Button (➜) click handler:
+
+IF current_tier == 'all_contacts':
+  -- Promote to our_community
+  UPDATE contacts 
+  SET community_tier = 'our_community',
+      moved_to_community_at = NOW()
+  WHERE id = [contact_id];
+  
+  -- Also move their linked groups
+  UPDATE groups 
+  SET community_tier = 'our_community',
+      moved_to_community_at = NOW()
+  WHERE id IN (
+    SELECT group_id FROM contact_group_links WHERE contact_id = [contact_id]
+  );
+  
+  Show toast: "✓ Moved to Our Community"
+  Refresh table
+
+IF current_tier == 'our_community':
+  -- Promote to our_innovators
+  UPDATE contacts 
+  SET community_tier = 'our_innovators',
+      moved_to_innovators_at = NOW()
+  WHERE id = [contact_id];
+  
+  -- Also move their linked groups
+  UPDATE groups 
+  SET community_tier = 'our_innovators',
+      moved_to_innovators_at = NOW()
+  WHERE id IN (
+    SELECT group_id FROM contact_group_links WHERE contact_id = [contact_id]
+  );
+  
+  Show toast: "✓ Moved to Our Innovators"
+  Refresh table
+
+───────────────────────────────────────────────────────────────────────
+BULK ACTIONS (DEMOTION)
+───────────────────────────────────────────────────────────────────────
+
+Select multiple contacts (checkboxes) → Bulk Actions dropdown:
+
+[Bulk Actions ▼]
+├─ Move to Our Innovators (only if current tier is our_community or all_contacts)
+├─ Move to Our Community (only if current tier is all_contacts or our_innovators)
+├─ Move to All Contacts (only if current tier is our_community or our_innovators)
+├─ Export Selected
+├─ Tag Selected
+└─ Delete Selected
+
+When moving contacts:
+1. Update all selected contacts' community_tier
+2. Update timestamps
+3. Cascade to linked groups
+4. Show confirmation: "Moved [X] contacts to [tier]"
+5. Refresh view
+
+This allows both promotion (quick button) and demotion (bulk actions).
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 4: GROUPS VIEW - SAME STRUCTURE
+
+───────────────────────────────────────────────────────────────────────
+LAYOUT: IDENTICAL TO PEOPLE
+───────────────────────────────────────────────────────────────────────
+
+Page: /community/groups
+
+┌────────────────────────────────────────────────────────────────────┐
+│ Community > Groups                                                 │
+├────────────────────────────────────────────────────────────────────┤
+│                                                                    │
+│ [Table View] [Card View]                          [+ Add Group]   │
+│                                                                    │
+├────────────────────────────────────────────────────────────────────┤
+│ OUR INNOVATORS    │  OUR COMMUNITY      │  ALL GROUPS            │
+│ (15)              │  (45)               │  (128)                 │
+├───────────────────┼─────────────────────┼────────────────────────┤
+│                   │                     │                        │
+│ Ventures we       │ Community ventures  │ All groups/orgs in     │
+│ actively support  │ & organizations     │ database               │
+│                   │                     │                        │
+│ [View in Table]   │ [View in Table]     │ [View in Table]        │
+│                   │                     │                        │
+└───────────────────┴─────────────────────┴────────────────────────┘
+
+Same logic as People:
+- 3 tiers: Our Innovators → Our Community → All Groups
+- Quick promotion button (➜) in All Groups and Our Community tables
+- No quick button in Our Innovators
+- Bulk actions for demotion
+- Cascade from people to groups
+
+───────────────────────────────────────────────────────────────────────
+GROUP TABLE VIEWS
+───────────────────────────────────────────────────────────────────────
+
+VIEW: ALL GROUPS TABLE
+┌────────────────────────────────────────────────────────────────────┐
+│ All Groups (128)                                [+ Add Group]      │
+├────────────────────────────────────────────────────────────────────┤
+│ □  Name                   │ Tier         │ Type      │ Members │ ⚡ │
+├────────────────────────────────────────────────────────────────────┤
+│ □  Street Athletes        │ All Groups   │ Movement  │ 4       │ ➜  │
+│ □  Local Business Ltd     │ All Groups   │ Business  │ 1       │ ➜  │
+│ □  Community Collective   │ All Groups   │ Community │ 8       │ ➜  │
+└────────────────────────────────────────────────────────────────────┘
+
+VIEW: OUR COMMUNITY TABLE
+┌────────────────────────────────────────────────────────────────────┐
+│ Our Community (45)                              [+ Add Group]      │
+├────────────────────────────────────────────────────────────────────┤
+│ □  Name                   │ Tier           │ Type      │ Members│⚡│
+├────────────────────────────────────────────────────────────────────┤
+│ □  Creative Collective    │ Our Community  │ Movement  │ 6      │➜ │
+│ □  Social Enterprise Co   │ Our Community  │ Social E  │ 3      │➜ │
+└────────────────────────────────────────────────────────────────────┘
+
+VIEW: OUR INNOVATORS TABLE
+┌────────────────────────────────────────────────────────────────────┐
+│ Our Innovators (15)                             [+ Add Group]      │
+├────────────────────────────────────────────────────────────────────┤
+│ □  Name                   │ Tier             │ Type    │ Members │ │
+├────────────────────────────────────────────────────────────────────┤
+│ □  Tech Startup Ltd       │ Our Innovators   │ Business│ 2       │ │
+│ □  Arts Collective        │ Our Innovators   │ Creative│ 5       │ │
+└────────────────────────────────────────────────────────────────────┘
+
+Same quick promotion and bulk actions as People.
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 5: CASCADE LOGIC (PEOPLE ↔ GROUPS)
+
+───────────────────────────────────────────────────────────────────────
+WHEN PERSON MOVES TIERS
+───────────────────────────────────────────────────────────────────────
+
+SCENARIO 1: Person promoted (All Contacts → Our Community)
+
+STEP 1: Update person
+UPDATE contacts SET community_tier = 'our_community' WHERE id = [person_id];
+
+STEP 2: Find linked groups
+SELECT DISTINCT group_id 
+FROM contact_group_links 
+WHERE contact_id = [person_id];
+
+STEP 3: Update linked groups to same tier
+UPDATE groups 
+SET community_tier = 'our_community',
+    moved_to_community_at = NOW()
+WHERE id IN ([linked_group_ids]);
+
+LOGIC: If person moves to our_community, their groups should too (they're connected)
+
+───────────────────────────────────────────────────────────────────────
+
+SCENARIO 2: Person demoted (Our Community → All Contacts)
+
+STEP 1: Update person
+UPDATE contacts SET community_tier = 'all_contacts' WHERE id = [person_id];
+
+STEP 2: Find linked groups
+SELECT DISTINCT group_id 
+FROM contact_group_links 
+WHERE contact_id = [person_id];
+
+STEP 3: Check if groups have other members still in higher tier
+FOR EACH linked_group:
+  
+  SELECT COUNT(*) AS higher_tier_members
+  FROM contact_group_links cgl
+  JOIN contacts c ON cgl.contact_id = c.id
+  WHERE cgl.group_id = [group_id]
+  AND c.community_tier IN ('our_community', 'our_innovators');
+  
+  IF higher_tier_members == 0:
+    -- No other members in community/innovators, demote group too
+    UPDATE groups 
+    SET community_tier = 'all_contacts'
+    WHERE id = [group_id];
+  ELSE:
+    -- Other members still in higher tier, keep group there
+    -- Don't demote group
+
+LOGIC: Only demote group if ALL members have been demoted
+
+───────────────────────────────────────────────────────────────────────
+
+SCENARIO 3: Group deleted with last member
+
+IF deleting a person:
+  
+  -- Check if they're the last member of any groups
+  SELECT group_id, COUNT(*) as member_count
+  FROM contact_group_links
+  WHERE group_id IN (
+    SELECT group_id FROM contact_group_links WHERE contact_id = [deleting_person_id]
+  )
+  GROUP BY group_id;
+  
+  FOR EACH group with member_count == 1 (this person is last member):
+    -- Show warning
+    WARN: "This person is the last member of [group_name]. Group will be deleted too."
+    
+    -- If confirmed:
+    DELETE FROM groups WHERE id = [group_id];
+    DELETE FROM contact_group_links WHERE group_id = [group_id];
+
+IF person not confirmed to delete groups:
+  -- Just remove their link
+  DELETE FROM contact_group_links WHERE contact_id = [person_id];
+  -- Groups remain but with 0 members (orphaned)
+
+───────────────────────────────────────────────────────────────────────
+
+SCENARIO 4: Group tier changed manually
+
+IF group tier changed in Groups view:
+  
+  -- Do NOT cascade to people
+  -- Groups can be in higher tier than some of their members
+  -- Example: Organization (our_community) with some members (all_contacts)
+  
+  -- Only update group
+  UPDATE groups SET community_tier = [new_tier] WHERE id = [group_id];
+  
+  -- Don't touch members
+
+LOGIC: Group tier is independent, can be higher than individual members
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 6: ECOSYSTEMS (PLACEHOLDER)
+
+───────────────────────────────────────────────────────────────────────
+ECOSYSTEMS VIEW
+───────────────────────────────────────────────────────────────────────
+
+Page: /community/ecosystems
+
+For now, show placeholder:
+
+┌────────────────────────────────────────────────────────────────────┐
+│ Community > Ecosystems                                             │
+├────────────────────────────────────────────────────────────────────┤
+│                                                                    │
+│ 🌐 Ecosystems                                                      │
+│                                                                    │
+│ Map and track ecosystem partners, organizations, and networks     │
+│ that support our community.                                       │
+│                                                                    │
+│ Coming soon...                                                     │
+│                                                                    │
+│ In the meantime, ecosystem partners can be added to Groups.       │
+│                                                                    │
+└────────────────────────────────────────────────────────────────────┘
+
+This reserves the space for future ecosystem mapping functionality.
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 7: FILTERING & QUERIES
+
+───────────────────────────────────────────────────────────────────────
+DATABASE QUERIES
+───────────────────────────────────────────────────────────────────────
+
+GET ALL CONTACTS (rightmost container):
+SELECT * FROM contacts 
+WHERE community_tier = 'all_contacts'
+ORDER BY last_interaction DESC;
+
+GET OUR COMMUNITY (middle container):
+SELECT * FROM contacts 
+WHERE community_tier = 'our_community'
+ORDER BY last_interaction DESC;
+
+GET OUR INNOVATORS (leftmost container):
+SELECT * FROM contacts 
+WHERE community_tier = 'our_innovators'
+ORDER BY last_interaction DESC;
+
+COUNTS FOR BADGES:
+SELECT 
+  COUNT(CASE WHEN community_tier = 'all_contacts' THEN 1 END) as all_contacts_count,
+  COUNT(CASE WHEN community_tier = 'our_community' THEN 1 END) as community_count,
+  COUNT(CASE WHEN community_tier = 'our_innovators' THEN 1 END) as innovators_count
+FROM contacts;
+
+Same queries for groups with groups table.
+
+═══════════════════════════════════════════════════════════════════════
+
+TESTING CHECKLIST:
+
+NAVIGATION:
+□ Top nav shows "Community" with dropdown
+□ Dropdown has People, Groups, Ecosystems
+□ Routes work (/community/people, /community/groups, /community/ecosystems)
+
+DATABASE:
+□ community_tier field added to contacts
+□ community_tier field added to groups
+□ Timestamps for moves added
+□ Indexes created
+
+PEOPLE VIEW:
+□ 3 containers show: Our Innovators, Our Community, All Contacts
+□ Containers arranged left to right
+□ Counts display correctly
+□ Can click to view table for each tier
+
+PEOPLE TABLES:
+□ All Contacts table shows only all_contacts tier
+□ Quick promotion button (➜) visible
+□ Click moves to our_community
+□ Our Community table shows only our_community tier
+□ Quick promotion button (➜) visible
+□ Click moves to our_innovators
+□ Our Innovators table shows only our_innovators tier
+□ NO quick promotion button
+□ Bulk actions available in all tables
+
+GROUPS VIEW:
+□ Same 3-container structure as People
+□ Groups filter by tier correctly
+□ Quick promotion works same as People
+□ Bulk actions work
+
+CASCADE LOGIC:
+□ Person promoted → linked groups promoted
+□ Person demoted → groups checked, demoted only if no other higher-tier members
+□ Last member deleted → warning shown, groups deleted if confirmed
+□ Group tier changed → does NOT affect members
+
+BULK ACTIONS:
+□ Can select multiple contacts/groups
+□ Bulk Actions menu shows appropriate options
+□ Can move to any tier
+□ Confirmation shown
+□ Changes apply to all selected
+
+ECOSYSTEMS:
+□ Placeholder page shows
+□ No errors
+
+═══════════════════════════════════════════════════════════════════════
+
+IMPLEMENTATION ORDER:
+
+1. Database schema updates (community_tier fields)
+2. Update navigation (People → Community dropdown)
+3. Build 3-container layout for People
+4. Build table views with filtering
+5. Implement quick promotion button (➜)
+6. Implement bulk actions
+7. Build cascade logic (person → groups)
+8. Test cascade scenarios
+9. Clone structure for Groups
+10. Test Groups promotion/demotion
+11. Add Ecosystems placeholder
+12. Full end-to-end testing
+
+═══════════════════════════════════════════════════════════════════════
+
+KEY DESIGN PRINCIPLES:
+
+1. LEFT = MOST ENGAGED (Our Innovators)
+2. RIGHT = BROADEST (All Contacts)
+3. ONE-WAY QUICK ACTIONS (→ direction only, promote not demote)
+4. BULK ACTIONS FOR DEMOTION (deliberate, multi-select)
+5. CASCADE DOWN (person moves → groups move)
+6. NO CASCADE UP (group moves → people don't move)
+7. SMART DEMOTION (only demote group if all members demoted)
+
+═══════════════════════════════════════════════════════════════════════
+
+Execute this implementation step by step. Show progress after each major component.
+
+If you need clarification on:
+- Current navigation structure
+- Existing contacts/groups table structure
+- Contact-group linking table
+- Current UI framework/components
+
+Please ask before proceeding.
+
+Start with database updates and verify schema before building UI.
