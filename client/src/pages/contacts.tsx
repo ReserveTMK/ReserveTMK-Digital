@@ -742,104 +742,53 @@ export default function Contacts() {
             </DialogContent>
           </Dialog>
 
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4" data-testid="tier-summary-cards">
-            <Card
-              className={`p-6 cursor-pointer transition-all duration-200 border-amber-200 dark:border-amber-800/50 ${viewMode === "innovators" ? "ring-2 ring-amber-500/50 shadow-md" : "hover:shadow-md"}`}
-              onClick={() => setViewMode("innovators")}
-              data-testid="card-tier-innovators"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-lg bg-amber-500/15 flex items-center justify-center shrink-0">
-                  <Lightbulb className="w-6 h-6 text-amber-600 dark:text-amber-400" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-3xl font-bold font-display leading-none" data-testid="text-count-innovators">{tierCounts.innovators}</p>
-                  <p className="text-sm text-muted-foreground mt-1">Our Innovators</p>
-                </div>
-              </div>
-            </Card>
-            <Card
-              className={`p-6 cursor-pointer transition-all duration-200 border-emerald-200 dark:border-emerald-800/50 ${viewMode === "community" ? "ring-2 ring-emerald-500/50 shadow-md" : "hover:shadow-md"}`}
-              onClick={() => setViewMode("community")}
-              data-testid="card-tier-community"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-lg bg-emerald-500/15 flex items-center justify-center shrink-0">
-                  <Users className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-3xl font-bold font-display leading-none" data-testid="text-count-community">{tierCounts.community}</p>
-                  <p className="text-sm text-muted-foreground mt-1">Our Community</p>
-                </div>
-              </div>
-            </Card>
-            <Card
-              className={`p-6 cursor-pointer transition-all duration-200 ${viewMode === "all" ? "ring-2 ring-primary/50 shadow-md" : "hover:shadow-md"}`}
-              onClick={() => setViewMode("all")}
-              data-testid="card-tier-all"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                  <User className="w-6 h-6 text-muted-foreground" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-3xl font-bold font-display leading-none" data-testid="text-count-all">{tierCounts.all}</p>
-                  <p className="text-sm text-muted-foreground mt-1">All Contacts</p>
-                </div>
-              </div>
-            </Card>
-          </div>
-
-          {/* View Toggle + Analytics */}
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between gap-2" data-testid="view-toggle">
-              <div className="flex items-center gap-2">
-                <Button
-                  variant={viewMode === "community" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setViewMode("community")}
-                  data-testid="button-view-community"
-                >
-                  <Users className="w-4 h-4 mr-1.5" />
-                  Community
-                </Button>
-                <Button
-                  variant={viewMode === "innovators" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setViewMode("innovators")}
-                  data-testid="button-view-innovators"
-                >
-                  <Lightbulb className="w-4 h-4 mr-1.5" />
-                  Our Innovators
-                </Button>
-                <Button
-                  variant={viewMode === "all" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setViewMode("all")}
-                  data-testid="button-view-all"
-                >
-                  All Contacts
-                </Button>
-              </div>
-              <div className="flex items-center gap-1 border rounded-lg p-0.5" data-testid="layout-toggle">
-                <Button
-                  variant={layoutView === "list" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setLayoutView("list")}
-                  data-testid="button-layout-list"
-                >
-                  <List className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant={layoutView === "table" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setLayoutView("table")}
-                  data-testid="button-layout-table"
-                >
-                  <Table className="w-4 h-4" />
-                </Button>
-              </div>
+          {/* View Toggle */}
+          <div className="flex items-center justify-between gap-2" data-testid="view-toggle">
+            <div className="flex items-center gap-1 border rounded-lg p-0.5">
+              <Button
+                variant={viewMode === "community" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("community")}
+                data-testid="button-view-community"
+              >
+                <Users className="w-4 h-4 mr-1.5" />
+                Community ({tierCounts.community})
+              </Button>
+              <Button
+                variant={viewMode === "innovators" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("innovators")}
+                data-testid="button-view-innovators"
+              >
+                <Lightbulb className="w-4 h-4 mr-1.5" />
+                Our Innovators ({tierCounts.innovators})
+              </Button>
+              <Button
+                variant={viewMode === "all" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("all")}
+                data-testid="button-view-all"
+              >
+                All Contacts ({tierCounts.all})
+              </Button>
+            </div>
+            <div className="flex items-center gap-1 border rounded-lg p-0.5" data-testid="layout-toggle">
+              <Button
+                variant={layoutView === "list" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setLayoutView("list")}
+                data-testid="button-layout-list"
+              >
+                <List className="w-4 h-4" />
+              </Button>
+              <Button
+                variant={layoutView === "table" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setLayoutView("table")}
+                data-testid="button-layout-table"
+              >
+                <Table className="w-4 h-4" />
+              </Button>
             </div>
           </div>
 
