@@ -1453,10 +1453,13 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
               )}
               <SortHeader label="Name" field="name" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-4" />
               {drilldownTier === "all" && (
-                <SortHeader label="Innovator" field="community" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-28" />
+                <>
+                  <SortHeader label="Community" field="community" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-28" />
+                  <SortHeader label="Innovator" field="isInnovator" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-28" />
+                </>
               )}
-              {drilldownTier !== "innovators" && (
-                <SortHeader label={drilldownTier === "community" ? "Innovator" : "Community"} field="community" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-28" />
+              {drilldownTier === "community" && (
+                <SortHeader label="Innovator" field="community" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-28" />
               )}
               {drilldownTier === "innovators" ? (
                 <>
@@ -1494,6 +1497,53 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
                   </Link>
                 </td>
                 {drilldownTier === "all" && (
+                  <>
+                    <td className="px-3 py-2">
+                      {contact.isCommunityMember ? (
+                        <Badge
+                          className="text-[10px] h-5 px-2 bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/20 cursor-pointer hover:bg-purple-500/25 transition-colors"
+                          onClick={() => onToggleCommunity(contact.id, false)}
+                          data-testid={`badge-community-${contact.id}`}
+                        >
+                          <UserCheck className="w-3 h-3 mr-1" />
+                          Yes
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] h-5 px-2 cursor-pointer hover:bg-purple-500/10 hover:text-purple-700 dark:hover:text-purple-300 transition-colors"
+                          onClick={() => onToggleCommunity(contact.id, true)}
+                          data-testid={`button-add-community-${contact.id}`}
+                        >
+                          <Plus className="w-3 h-3 mr-1" />
+                          Add
+                        </Badge>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {contact.isInnovator ? (
+                        <Badge
+                          className="text-[10px] h-5 px-2 bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/20"
+                          data-testid={`badge-innovator-${contact.id}`}
+                        >
+                          <Lightbulb className="w-3 h-3 mr-1" />
+                          Yes
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] h-5 px-2 cursor-pointer hover:bg-amber-500/10 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
+                          onClick={() => onPromote?.(contact.id)}
+                          data-testid={`button-promote-innovator-${contact.id}`}
+                        >
+                          <Plus className="w-3 h-3 mr-1" />
+                          Add
+                        </Badge>
+                      )}
+                    </td>
+                  </>
+                )}
+                {drilldownTier === "community" && (
                   <td className="px-3 py-2">
                     {contact.isInnovator ? (
                       <Badge
@@ -1513,52 +1563,6 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
                         <Plus className="w-3 h-3 mr-1" />
                         Add
                       </Badge>
-                    )}
-                  </td>
-                )}
-                {drilldownTier !== "innovators" && (
-                  <td className="px-3 py-2">
-                    {drilldownTier === "community" ? (
-                      contact.isInnovator ? (
-                        <Badge
-                          className="text-[10px] h-5 px-2 bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/20"
-                          data-testid={`badge-innovator-${contact.id}`}
-                        >
-                          <Lightbulb className="w-3 h-3 mr-1" />
-                          Yes
-                        </Badge>
-                      ) : (
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] h-5 px-2 cursor-pointer hover:bg-amber-500/10 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
-                          onClick={() => onPromote?.(contact.id)}
-                          data-testid={`button-promote-innovator-${contact.id}`}
-                        >
-                          <Plus className="w-3 h-3 mr-1" />
-                          Add
-                        </Badge>
-                      )
-                    ) : (
-                      contact.isCommunityMember ? (
-                        <Badge
-                          className="text-[10px] h-5 px-2 bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/20 cursor-pointer hover:bg-purple-500/25 transition-colors"
-                          onClick={() => onToggleCommunity(contact.id, false)}
-                          data-testid={`badge-community-${contact.id}`}
-                        >
-                          <UserCheck className="w-3 h-3 mr-1" />
-                          Yes
-                        </Badge>
-                      ) : (
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] h-5 px-2 cursor-pointer hover:bg-purple-500/10 hover:text-purple-700 dark:hover:text-purple-300 transition-colors"
-                          onClick={() => onToggleCommunity(contact.id, true)}
-                          data-testid={`button-add-community-${contact.id}`}
-                        >
-                          <Plus className="w-3 h-3 mr-1" />
-                          Add
-                        </Badge>
-                      )
                     )}
                   </td>
                 )}
