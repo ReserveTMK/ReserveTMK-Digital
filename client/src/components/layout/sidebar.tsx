@@ -44,11 +44,11 @@ const navigation: NavItem[] = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Calendar", href: "/calendar", icon: CalendarCheck },
   {
-    name: "People", href: "/contacts", icon: Users,
+    name: "Community", href: "/community/people", icon: Users,
     children: [
-      { name: "People", href: "/contacts", icon: Users },
-      { name: "Groups", href: "/groups", icon: Network },
-      { name: "Ecosystem", href: "/ecosystem", icon: Handshake },
+      { name: "People", href: "/community/people", icon: Users },
+      { name: "Groups", href: "/community/groups", icon: Network },
+      { name: "Ecosystems", href: "/community/ecosystems", icon: Handshake },
     ],
   },
   {
@@ -88,7 +88,7 @@ const navigation: NavItem[] = [
 const bottomNavItems: NavItem[] = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Calendar", href: "/calendar", icon: CalendarCheck },
-  { name: "People", href: "/contacts", icon: Users },
+  { name: "Community", href: "/community/people", icon: Users },
   { name: "Tracking", href: "/debriefs", icon: Activity },
 ];
 
@@ -130,7 +130,7 @@ export function Sidebar() {
       <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
         {navigation.map((item) => {
           if (item.children) {
-            const isChildActive = item.children.some(c => location === c.href);
+            const isChildActive = item.children.some(c => location === c.href || location.startsWith(c.href + "/"));
             const isExpanded = expandedGroups[item.name] ?? isChildActive;
 
             return (
@@ -154,7 +154,7 @@ export function Sidebar() {
                   isExpanded ? "max-h-60 opacity-100 mt-0.5" : "max-h-0 opacity-0"
                 )}>
                   {item.children.map((child) => {
-                    const isSubActive = location === child.href;
+                    const isSubActive = location === child.href || location.startsWith(child.href + "/");
                     return (
                       <Link
                         key={child.name}

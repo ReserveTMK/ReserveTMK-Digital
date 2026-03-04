@@ -1,4 +1,4 @@
-import { Switch, Route, useLocation } from "wouter";
+import { Switch, Route, Redirect, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -97,12 +97,28 @@ function Router() {
           {user ? <Dashboard /> : <LandingPage />}
         </Route>
 
-        <Route path="/contacts">
+        <Route path="/community/people">
           <ProtectedRoute component={Contacts} />
         </Route>
-        
+
+        <Route path="/community/groups">
+          <ProtectedRoute component={GroupsPage} />
+        </Route>
+
+        <Route path="/community/ecosystems">
+          <ProtectedRoute component={EcosystemPage} />
+        </Route>
+
+        <Route path="/community">
+          <Redirect to="/community/people" />
+        </Route>
+
         <Route path="/contacts/:id">
           <ProtectedRoute component={ContactDetail} />
+        </Route>
+
+        <Route path="/contacts">
+          <Redirect to="/community/people" />
         </Route>
 
         <Route path="/debriefs">
@@ -152,11 +168,11 @@ function Router() {
         </Route>
 
         <Route path="/groups">
-          <ProtectedRoute component={GroupsPage} />
+          <Redirect to="/community/groups" />
         </Route>
 
         <Route path="/ecosystem">
-          <ProtectedRoute component={EcosystemPage} />
+          <Redirect to="/community/ecosystems" />
         </Route>
 
         <Route path="/community-spend">

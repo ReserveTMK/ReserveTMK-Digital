@@ -23,7 +23,7 @@ import {
   Popover, PopoverContent, PopoverTrigger,
 } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import type { Group } from "@shared/schema";
 
 const TIER_CONFIG = {
@@ -383,6 +383,11 @@ export default function EcosystemPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-6" data-testid="ecosystem-page">
+      <nav className="flex items-center gap-1.5 text-sm text-muted-foreground" data-testid="breadcrumb-ecosystems">
+        <Link href="/community/people" className="hover:text-foreground transition-colors">Community</Link>
+        <ChevronRight className="w-3.5 h-3.5" />
+        <span className="text-foreground font-medium">Ecosystems</span>
+      </nav>
       {editMode && (
         <div className="fixed top-14 left-0 right-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border shadow-md px-4 md:px-8 py-3" data-testid="edit-toolbar-ecosystem">
           <div className="max-w-7xl mx-auto w-full flex items-center gap-2 flex-wrap">

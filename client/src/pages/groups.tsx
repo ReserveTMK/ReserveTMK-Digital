@@ -2,7 +2,8 @@ import { Button } from "@/components/ui/beautiful-button";
 import { useGroups, useCreateGroup, useUpdateGroup, useDeleteGroup, useGroupMembers, useAddGroupMember, useRemoveGroupMember, useEnrichGroup, useGroupTaxonomyLinks, useSaveGroupTaxonomyLinks } from "@/hooks/use-groups";
 import { useContacts } from "@/hooks/use-contacts";
 import { useTaxonomy } from "@/hooks/use-taxonomy";
-import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe, Target, History, ChevronDown, Pencil, Edit3, CheckSquare, UserCheck, ArrowRightLeft, Tag, Merge, List, Table, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe, Target, History, ChevronDown, Pencil, Edit3, CheckSquare, UserCheck, Tag, Merge, List, Table, ArrowUp, ArrowDown, ArrowUpDown, Lightbulb, ArrowLeft } from "lucide-react";
+import { Link } from "wouter";
 import { RelationshipStageSelector } from "@/components/relationship-stage-selector";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -69,8 +70,9 @@ export default function Groups() {
   const [editMode, setEditMode] = useState(false);
   const [selectedGroups, setSelectedGroups] = useState<Set<number>>(new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<"community" | "all">("all");
+  const [viewMode, setViewMode] = useState<"community" | "innovators" | "all">("all");
   const [layoutView, setLayoutView] = useState<"list" | "table">("list");
+  const [drilldownTier, setDrilldownTier] = useState<null | "innovators" | "community" | "all">(null);
   const [bulkTierOpen, setBulkTierOpen] = useState(false);
   const [bulkTierValue, setBulkTierValue] = useState("");
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
@@ -152,6 +154,123 @@ export default function Groups() {
     },
   });
 
+  const promoteMutation = useMutation({
+    mutationFn: async (groupId: number) => {
+      const group = groups?.find((g: Group) => g.id === groupId);
+      if (!group) throw new Error("Group not found");
+      const data: Record<string, any> = {};
+      if (drilldownTier === "all") {
+        data.isCommunity = true;
+        data.movedToCommunityAt = new Date().toISOString();
+      } else if (drilldownTier === "community") {
+        data.isInnovator = true;
+        data.movedToInnovatorsAt = new Date().toISOString();
+      }
+      const res = await apiRequest("PATCH", `/api/groups/${groupId}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups/community-density'] });
+      toast({ title: "Group promoted", description: drilldownTier === "all" ? "Promoted to Community" : "Promoted to Innovators" });
+    },
+    onError: (error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const demoteMutation = useMutation({
+    mutationFn: async (groupId: number) => {
+      const group = groups?.find((g: Group) => g.id === groupId);
+      if (!group) throw new Error("Group not found");
+      const data: Record<string, any> = {};
+      if (drilldownTier === "innovators") {
+        data.isInnovator = false;
+        data.movedToInnovatorsAt = null;
+      } else if (drilldownTier === "community") {
+        data.isCommunity = false;
+        data.movedToCommunityAt = null;
+      }
+      const res = await apiRequest("PATCH", `/api/groups/${groupId}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups/community-density'] });
+      toast({ title: "Group demoted" });
+    },
+    onError: (error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const bulkPromoteMutation = useMutation({
+    mutationFn: async (groupIds: number[]) => {
+      const promises = groupIds.map(async (id) => {
+        const data: Record<string, any> = {};
+        if (drilldownTier === "all") {
+          data.isCommunity = true;
+          data.movedToCommunityAt = new Date().toISOString();
+        } else if (drilldownTier === "community") {
+          data.isInnovator = true;
+          data.movedToInnovatorsAt = new Date().toISOString();
+        }
+        return apiRequest("PATCH", `/api/groups/${id}`, data);
+      });
+      await Promise.all(promises);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups/community-density'] });
+      toast({ title: "Groups promoted", description: `${selectedGroups.size} group(s) promoted` });
+      setSelectedGroups(new Set());
+    },
+    onError: (error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const bulkDemoteMutation = useMutation({
+    mutationFn: async (groupIds: number[]) => {
+      const promises = groupIds.map(async (id) => {
+        const data: Record<string, any> = {};
+        if (drilldownTier === "innovators") {
+          data.isInnovator = false;
+          data.movedToInnovatorsAt = null;
+        } else if (drilldownTier === "community") {
+          data.isCommunity = false;
+          data.movedToCommunityAt = null;
+        }
+        return apiRequest("PATCH", `/api/groups/${id}`, data);
+      });
+      await Promise.all(promises);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups/community-density'] });
+      toast({ title: "Groups demoted", description: `${selectedGroups.size} group(s) demoted` });
+      setSelectedGroups(new Set());
+    },
+    onError: (error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const innovatorCount = useMemo(() => {
+    if (!groups) return 0;
+    return groups.filter((g: Group) => g.isInnovator === true).length;
+  }, [groups]);
+
+  const communityCount = useMemo(() => {
+    if (!groups) return 0;
+    return groups.filter((g: Group) => g.isCommunity === true && g.isInnovator !== true).length;
+  }, [groups]);
+
+  const allCount = useMemo(() => {
+    if (!groups) return 0;
+    return groups.length;
+  }, [groups]);
+
   const openMergeDialog = () => {
     if (selectedGroups.size < 2) {
       toast({ title: "Select at least 2 groups to merge", variant: "destructive" });
@@ -180,11 +299,10 @@ export default function Groups() {
 
   const displayGroups = useMemo(() => {
     let result = filteredGroups;
-    if (viewMode === "community") {
-      result = result.filter((g: Group) => {
-        const density = communityDensity?.[g.id];
-        return density && density.communityCount > 0;
-      });
+    if (drilldownTier === "innovators") {
+      result = result.filter((g: Group) => g.isInnovator === true);
+    } else if (drilldownTier === "community") {
+      result = result.filter((g: Group) => g.isCommunity === true && g.isInnovator !== true);
     }
     result.sort((a: Group, b: Group) => {
       const aCount = communityDensity?.[a.id]?.communityCount || 0;
@@ -192,7 +310,7 @@ export default function Groups() {
       return bCount - aCount;
     });
     return result;
-  }, [filteredGroups, communityDensity, viewMode]);
+  }, [filteredGroups, communityDensity, drilldownTier]);
 
   const openCreateDialog = () => {
     setEditingGroup(null);
@@ -236,6 +354,9 @@ export default function Groups() {
       isSelected={selectedGroups.has(group.id)}
       onToggleSelect={() => toggleGroupSelection(group.id)}
       communityCount={communityDensity?.[group.id]?.communityCount || 0}
+      drilldownTier={drilldownTier}
+      onPromote={() => promoteMutation.mutate(group.id)}
+      isPromoting={promoteMutation.isPending}
     />
   );
 
@@ -259,20 +380,28 @@ export default function Groups() {
                   <Trash2 className="w-4 h-4 mr-2" />
                   Delete ({selectedGroups.size})
                 </Button>
-                {viewMode === "all" && (
+                {(drilldownTier === "all" || drilldownTier === "community") && (
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => {
-                      toast({
-                        title: "Community membership",
-                        description: "Community status is determined by member engagement, not manual assignment.",
-                      });
-                    }}
-                    data-testid="button-move-to-community"
+                    onClick={() => bulkPromoteMutation.mutate(Array.from(selectedGroups))}
+                    disabled={bulkPromoteMutation.isPending}
+                    data-testid="button-bulk-promote-groups"
                   >
-                    <ArrowRightLeft className="w-4 h-4 mr-2" />
-                    Move to Community
+                    {bulkPromoteMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowUp className="w-4 h-4 mr-2" />}
+                    Promote ({selectedGroups.size})
+                  </Button>
+                )}
+                {(drilldownTier === "community" || drilldownTier === "innovators") && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => bulkDemoteMutation.mutate(Array.from(selectedGroups))}
+                    disabled={bulkDemoteMutation.isPending}
+                    data-testid="button-bulk-demote-groups"
+                  >
+                    {bulkDemoteMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowDown className="w-4 h-4 mr-2" />}
+                    Demote ({selectedGroups.size})
                   </Button>
                 )}
                 <Button
@@ -306,6 +435,12 @@ export default function Groups() {
       )}
         <div className="max-w-6xl mx-auto space-y-6">
 
+          <nav className="flex items-center gap-1 text-sm text-muted-foreground" data-testid="breadcrumb-groups">
+            <Link href="/community" className="hover:text-foreground transition-colors" data-testid="breadcrumb-community">Community</Link>
+            <ChevronRight className="w-4 h-4" />
+            <span className="text-foreground font-medium" data-testid="breadcrumb-current">Groups</span>
+          </nav>
+
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl md:text-3xl font-bold font-display" data-testid="text-groups-title">
@@ -337,118 +472,176 @@ export default function Groups() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between gap-2" data-testid="view-toggle">
-              <div className="flex items-center gap-2">
-                <Button
-                  variant={viewMode === "community" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setViewMode("community")}
-                  data-testid="button-view-community"
-                >
-                  <UserCheck className="w-4 h-4 mr-2" />
-                  Community
-                </Button>
-                <Button
-                  variant={viewMode === "all" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setViewMode("all")}
-                  data-testid="button-view-all"
-                >
-                  <Building2 className="w-4 h-4 mr-2" />
-                  All
-                </Button>
-              </div>
-              <div className="flex items-center gap-1 border rounded-lg p-0.5" data-testid="layout-toggle">
-                <Button
-                  variant={layoutView === "list" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setLayoutView("list")}
-                  data-testid="button-layout-list"
-                >
-                  <List className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant={layoutView === "table" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setLayoutView("table")}
-                  data-testid="button-layout-table"
-                >
-                  <Table className="w-4 h-4" />
-                </Button>
-              </div>
+          {drilldownTier === null ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card
+                className="p-6 cursor-pointer hover-elevate border-amber-500/20"
+                onClick={() => { setDrilldownTier("innovators"); setViewMode("innovators"); }}
+                data-testid="card-tier-innovators"
+              >
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                    <Lightbulb className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-sm">Our Innovators</h3>
+                    <p className="text-xs text-muted-foreground">Innovation-driving groups</p>
+                  </div>
+                </div>
+                <p className="text-3xl font-bold text-amber-600 dark:text-amber-400" data-testid="text-innovator-count">{innovatorCount}</p>
+              </Card>
+              <Card
+                className="p-6 cursor-pointer hover-elevate border-emerald-500/20"
+                onClick={() => { setDrilldownTier("community"); setViewMode("community"); }}
+                data-testid="card-tier-community"
+              >
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                    <Users className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-sm">Our Community</h3>
+                    <p className="text-xs text-muted-foreground">Community-engaged groups</p>
+                  </div>
+                </div>
+                <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400" data-testid="text-community-count">{communityCount}</p>
+              </Card>
+              <Card
+                className="p-6 cursor-pointer hover-elevate border-slate-500/20"
+                onClick={() => { setDrilldownTier("all"); setViewMode("all"); }}
+                data-testid="card-tier-all"
+              >
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-lg bg-slate-500/10 flex items-center justify-center">
+                    <Building2 className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-sm">All Groups</h3>
+                    <p className="text-xs text-muted-foreground">Every group & organisation</p>
+                  </div>
+                </div>
+                <p className="text-3xl font-bold text-slate-600 dark:text-slate-400" data-testid="text-all-count">{allCount}</p>
+              </Card>
             </div>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search groups..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-10"
-                  data-testid="input-search-groups"
-                />
-              </div>
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="w-full sm:w-[180px]" data-testid="select-type-filter">
-                  <SelectValue placeholder="All types" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All types</SelectItem>
-                  {GROUP_TYPES.map((t) => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {isLoading ? (
-            <div className="flex items-center justify-center py-20">
-              <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            </div>
-          ) : displayGroups.length === 0 ? (
-            <Card className="p-12">
-              <div className="text-center text-muted-foreground">
-                <Building2 className="w-12 h-12 mx-auto mb-4 opacity-40" />
-                <h3 className="text-lg font-semibold mb-2">
-                  {groups?.length === 0 ? "No groups yet" : "No matching groups"}
-                </h3>
-                <p className="text-sm mb-4">
-                  {groups?.length === 0
-                    ? "Create your first group or organisation to start tracking community relationships"
-                    : "Try adjusting your search or filters"}
-                </p>
-                {groups?.length === 0 && (
-                  <Button onClick={openCreateDialog} data-testid="button-create-group-empty">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Create Group
-                  </Button>
-                )}
-              </div>
-            </Card>
-          ) : layoutView === "table" ? (
-            <GroupsTableView
-              groups={displayGroups}
-              communityDensity={communityDensity || {}}
-              editMode={editMode}
-              selectedGroups={selectedGroups}
-              toggleGroupSelection={toggleGroupSelection}
-              toggleSelectAll={() => {
-                if (selectedGroups.size === displayGroups.length) {
-                  setSelectedGroups(new Set());
-                } else {
-                  setSelectedGroups(new Set(displayGroups.map((g: Group) => g.id)));
-                }
-              }}
-              onSelect={(group) => setSelectedGroup(group)}
-              onEdit={(group) => openEditDialog(group)}
-              onDelete={(groupId) => setDeleteConfirmId(groupId)}
-            />
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {displayGroups.map(renderGroupCard)}
-            </div>
+            <>
+              <div className="flex items-center gap-3 mb-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => { setDrilldownTier(null); setSelectedGroups(new Set()); setEditMode(false); }}
+                  data-testid="button-back-to-summary"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </Button>
+                <div className="flex items-center gap-2">
+                  {drilldownTier === "innovators" && <Lightbulb className="w-5 h-5 text-amber-600 dark:text-amber-400" />}
+                  {drilldownTier === "community" && <Users className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />}
+                  {drilldownTier === "all" && <Building2 className="w-5 h-5 text-slate-600 dark:text-slate-400" />}
+                  <h2 className="text-lg font-semibold" data-testid="text-drilldown-heading">
+                    {drilldownTier === "innovators" ? "Our Innovators" : drilldownTier === "community" ? "Our Community" : "All Groups"}
+                  </h2>
+                  <Badge variant="secondary" data-testid="text-drilldown-count">{displayGroups.length}</Badge>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-end gap-2" data-testid="layout-toggle">
+                  <div className="flex items-center gap-1 border rounded-lg p-0.5">
+                    <Button
+                      variant={layoutView === "list" ? "secondary" : "ghost"}
+                      size="sm"
+                      onClick={() => setLayoutView("list")}
+                      data-testid="button-layout-list"
+                    >
+                      <List className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant={layoutView === "table" ? "secondary" : "ghost"}
+                      size="sm"
+                      onClick={() => setLayoutView("table")}
+                      data-testid="button-layout-table"
+                    >
+                      <Table className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search groups..."
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      className="pl-10"
+                      data-testid="input-search-groups"
+                    />
+                  </div>
+                  <Select value={typeFilter} onValueChange={setTypeFilter}>
+                    <SelectTrigger className="w-full sm:w-[180px]" data-testid="select-type-filter">
+                      <SelectValue placeholder="All types" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All types</SelectItem>
+                      {GROUP_TYPES.map((t) => (
+                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {isLoading ? (
+                <div className="flex items-center justify-center py-20">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                </div>
+              ) : displayGroups.length === 0 ? (
+                <Card className="p-12">
+                  <div className="text-center text-muted-foreground">
+                    <Building2 className="w-12 h-12 mx-auto mb-4 opacity-40" />
+                    <h3 className="text-lg font-semibold mb-2">
+                      {groups?.length === 0 ? "No groups yet" : "No matching groups"}
+                    </h3>
+                    <p className="text-sm mb-4">
+                      {groups?.length === 0
+                        ? "Create your first group or organisation to start tracking community relationships"
+                        : "Try adjusting your search or filters"}
+                    </p>
+                    {groups?.length === 0 && (
+                      <Button onClick={openCreateDialog} data-testid="button-create-group-empty">
+                        <Plus className="w-4 h-4 mr-2" />
+                        Create Group
+                      </Button>
+                    )}
+                  </div>
+                </Card>
+              ) : layoutView === "table" ? (
+                <GroupsTableView
+                  groups={displayGroups}
+                  communityDensity={communityDensity || {}}
+                  editMode={editMode}
+                  selectedGroups={selectedGroups}
+                  toggleGroupSelection={toggleGroupSelection}
+                  toggleSelectAll={() => {
+                    if (selectedGroups.size === displayGroups.length) {
+                      setSelectedGroups(new Set());
+                    } else {
+                      setSelectedGroups(new Set(displayGroups.map((g: Group) => g.id)));
+                    }
+                  }}
+                  onSelect={(group) => setSelectedGroup(group)}
+                  onEdit={(group) => openEditDialog(group)}
+                  onDelete={(groupId) => setDeleteConfirmId(groupId)}
+                  drilldownTier={drilldownTier}
+                  onPromote={(groupId) => promoteMutation.mutate(groupId)}
+                  isPromoting={promoteMutation.isPending}
+                />
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {displayGroups.map(renderGroupCard)}
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -701,7 +894,7 @@ const TIER_COLORS: Record<string, string> = {
   mentioned: "bg-slate-500/10 text-slate-600 dark:text-slate-400",
 };
 
-function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, toggleGroupSelection, toggleSelectAll, onSelect, onEdit, onDelete }: {
+function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, toggleGroupSelection, toggleSelectAll, onSelect, onEdit, onDelete, drilldownTier, onPromote, isPromoting }: {
   groups: Group[];
   communityDensity: Record<number, { communityCount: number; totalMembers: number }>;
   editMode: boolean;
@@ -711,6 +904,9 @@ function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, t
   onSelect: (group: Group) => void;
   onEdit: (group: Group) => void;
   onDelete: (groupId: number) => void;
+  drilldownTier?: string | null;
+  onPromote?: (groupId: number) => void;
+  isPromoting?: boolean;
 }) {
   const [sortField, setSortField] = useState<GroupSortField | null>(null);
   const [sortDir, setSortDir] = useState<GroupSortDir>("asc");
@@ -903,6 +1099,18 @@ function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, t
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                      {drilldownTier && drilldownTier !== "innovators" && onPromote && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => onPromote(group.id)}
+                          disabled={isPromoting}
+                          title={drilldownTier === "all" ? "Promote to Community" : "Promote to Innovators"}
+                          data-testid={`table-promote-group-${group.id}`}
+                        >
+                          <ArrowUp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                        </Button>
+                      )}
                       <Button size="icon" variant="ghost" onClick={() => onEdit(group)} title="Edit" data-testid={`table-edit-group-${group.id}`}>
                         <Pencil className="w-3.5 h-3.5" />
                       </Button>
@@ -921,7 +1129,7 @@ function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, t
   );
 }
 
-function GroupCard({ group, onSelect, onEdit, onDelete, editMode, isSelected, onToggleSelect, communityCount }: {
+function GroupCard({ group, onSelect, onEdit, onDelete, editMode, isSelected, onToggleSelect, communityCount, drilldownTier, onPromote, isPromoting }: {
   group: Group;
   onSelect: () => void;
   onEdit: () => void;
@@ -930,6 +1138,9 @@ function GroupCard({ group, onSelect, onEdit, onDelete, editMode, isSelected, on
   isSelected: boolean;
   onToggleSelect: () => void;
   communityCount: number;
+  drilldownTier?: string | null;
+  onPromote?: () => void;
+  isPromoting?: boolean;
 }) {
   const { data: members } = useGroupMembers(group.id);
   const memberCount = members?.length || 0;
@@ -980,6 +1191,18 @@ function GroupCard({ group, onSelect, onEdit, onDelete, editMode, isSelected, on
           </div>
           {!editMode && (
             <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+              {drilldownTier && drilldownTier !== "innovators" && onPromote && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={onPromote}
+                  disabled={isPromoting}
+                  title={drilldownTier === "all" ? "Promote to Community" : "Promote to Innovators"}
+                  data-testid={`button-promote-group-${group.id}`}
+                >
+                  <ArrowUp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                </Button>
+              )}
               <Button size="icon" variant="ghost" onClick={onEdit} title="Edit" data-testid={`button-edit-group-${group.id}`}>
                 <Pencil className="w-3.5 h-3.5" />
               </Button>

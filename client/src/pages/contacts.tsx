@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { useContacts, useCreateContact, useDeleteContact } from "@/hooks/use-contacts";
-import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, ArrowUpDown, Lightbulb } from "lucide-react";
+import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, ArrowUpDown, Lightbulb, ChevronRight, ArrowLeft } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { Link } from "wouter";
@@ -71,6 +71,7 @@ export default function Contacts() {
   const [primaryMergeId, setPrimaryMergeId] = useState<number | null>(null);
   const [layoutView, setLayoutView] = useState<"list" | "table">("list");
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
+  const [drilldownTier, setDrilldownTier] = useState<null | "innovators" | "community" | "all">(null);
 
   const { data: allGroups } = useQuery<any[]>({ queryKey: ["/api/groups"] });
   const { data: suggestedDuplicates } = useQuery<{ reason: string; contacts: any[] }[]>({ queryKey: ["/api/contacts/suggested-duplicates"] });
@@ -239,6 +240,42 @@ export default function Contacts() {
     },
   });
 
+  const promoteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/contacts/${id}/promote`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups/community-density"] });
+      const tierLabel = data.newTier === "our_innovators" ? "Our Innovators" : "Our Community";
+      const groupMsg = data.groupsUpdated ? ` (${data.groupsUpdated} group${data.groupsUpdated !== 1 ? 's' : ''} updated)` : '';
+      toast({ title: "Promoted", description: `Moved to ${tierLabel}${groupMsg}` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const demoteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/contacts/${id}/demote`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups/community-density"] });
+      const tierLabel = data.newTier === "our_community" ? "Our Community" : "All Contacts";
+      const groupMsg = data.groupsUpdated ? ` (${data.groupsUpdated} group${data.groupsUpdated !== 1 ? 's' : ''} updated)` : '';
+      toast({ title: "Demoted", description: `Moved to ${tierLabel}${groupMsg}` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
   const toggleContactSelection = (id: number) => {
     setSelectedContacts(prev => {
       const next = new Set(prev);
@@ -295,14 +332,33 @@ export default function Contacts() {
     },
   });
 
+  const handleDrilldown = (tier: "innovators" | "community" | "all") => {
+    setDrilldownTier(tier);
+    setViewMode(tier);
+  };
+
+  const handleBackToSummary = () => {
+    setDrilldownTier(null);
+    setSearch("");
+    setRoleFilter("all");
+  };
+
   const filteredContacts = contacts?.filter(contact => {
     const matchesSearch = contact.name.toLowerCase().includes(search.toLowerCase()) || 
                           contact.businessName?.toLowerCase().includes(search.toLowerCase()) ||
                           contact.email?.toLowerCase().includes(search.toLowerCase());
     const matchesRole = roleFilter === "all" || contact.role === roleFilter;
-    const matchesView = viewMode === "all" || (viewMode === "community" && (contact as any).isCommunityMember === true) || (viewMode === "innovators" && (contact as any).isInnovator === true);
+    const activeTier = drilldownTier || viewMode;
+    const matchesView = activeTier === "all" || (activeTier === "community" && (contact as any).isCommunityMember === true && !(contact as any).isInnovator) || (activeTier === "innovators" && (contact as any).isInnovator === true);
     return matchesSearch && matchesRole && matchesView;
   });
+
+  const tierCounts = useMemo(() => {
+    if (!contacts) return { innovators: 0, community: 0, all: 0 };
+    const innovators = (contacts as any[]).filter(c => c.isInnovator).length;
+    const community = (contacts as any[]).filter(c => c.isCommunityMember && !c.isInnovator).length;
+    return { innovators, community, all: contacts.length };
+  }, [contacts]);
 
   const analytics = useMemo(() => {
     if (!contacts || contacts.length === 0) return null;
@@ -347,26 +403,26 @@ export default function Contacts() {
                   <Trash2 className="w-4 h-4 mr-2" />
                   Delete ({selectedContacts.size})
                 </Button>
-                {viewMode === "community" && (
-                  <Button variant="outline" onClick={() => bulkMoveMutation.mutate({ contactIds: Array.from(selectedContacts), isCommunityMember: false })} disabled={bulkMoveMutation.isPending} data-testid="button-bulk-move-all">
-                    {bulkMoveMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowRightLeft className="w-4 h-4 mr-2" />}
-                    Move to All
+                {(drilldownTier === "all" || drilldownTier === "community") && (
+                  <Button variant="outline" onClick={async () => {
+                    for (const id of Array.from(selectedContacts)) {
+                      await promoteMutation.mutateAsync(id);
+                    }
+                    setSelectedContacts(new Set());
+                  }} disabled={promoteMutation.isPending} data-testid="button-bulk-promote">
+                    {promoteMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowUp className="w-4 h-4 mr-2" />}
+                    Promote ({selectedContacts.size})
                   </Button>
                 )}
-                {viewMode === "all" && (
-                  <Button variant="outline" onClick={() => bulkMoveMutation.mutate({ contactIds: Array.from(selectedContacts), isCommunityMember: true })} disabled={bulkMoveMutation.isPending} data-testid="button-bulk-mark-community">
-                    {bulkMoveMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <UserCheck className="w-4 h-4 mr-2" />}
-                    Mark Community
-                  </Button>
-                )}
-                <Button variant="outline" onClick={() => bulkUpdateMutation.mutate({ contactIds: Array.from(selectedContacts), updates: { isInnovator: true } as any })} disabled={bulkUpdateMutation.isPending} data-testid="button-bulk-add-innovator">
-                  <Lightbulb className="w-4 h-4 mr-2" />
-                  Add to Innovators
-                </Button>
-                {viewMode === "innovators" && (
-                  <Button variant="outline" onClick={() => bulkUpdateMutation.mutate({ contactIds: Array.from(selectedContacts), updates: { isInnovator: false } as any })} disabled={bulkUpdateMutation.isPending} data-testid="button-bulk-remove-innovator">
-                    <Lightbulb className="w-4 h-4 mr-2" />
-                    Remove from Innovators
+                {(drilldownTier === "community" || drilldownTier === "innovators") && (
+                  <Button variant="outline" onClick={async () => {
+                    for (const id of Array.from(selectedContacts)) {
+                      await demoteMutation.mutateAsync(id);
+                    }
+                    setSelectedContacts(new Set());
+                  }} disabled={demoteMutation.isPending} data-testid="button-bulk-demote">
+                    {demoteMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowDown className="w-4 h-4 mr-2" />}
+                    Demote ({selectedContacts.size})
                   </Button>
                 )}
                 <Button variant="outline" onClick={() => setBulkRoleOpen(true)} data-testid="button-bulk-update-role">
@@ -404,20 +460,40 @@ export default function Contacts() {
       )}
         <div className="max-w-6xl mx-auto space-y-6">
 
+          {/* Breadcrumb */}
+          <nav className="flex items-center gap-1 text-sm text-muted-foreground" data-testid="breadcrumb-people">
+            <Link href="/community/people" className="hover:text-foreground transition-colors" data-testid="breadcrumb-community">Community</Link>
+            <ChevronRight className="w-4 h-4" />
+            <span className="text-foreground font-medium" data-testid="breadcrumb-current">People</span>
+          </nav>
+
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-display font-bold">People</h1>
-              <p className="text-muted-foreground mt-1">The people in your community</p>
+            <div className="flex items-center gap-3">
+              {drilldownTier && (
+                <Button variant="ghost" size="icon" onClick={handleBackToSummary} data-testid="button-back-summary">
+                  <ArrowLeft className="w-5 h-5" />
+                </Button>
+              )}
+              <div>
+                <h1 className="text-3xl font-display font-bold" data-testid="text-page-title">
+                  {drilldownTier === "innovators" ? "Our Innovators" : drilldownTier === "community" ? "Our Community" : drilldownTier === "all" ? "All Contacts" : "People"}
+                </h1>
+                <p className="text-muted-foreground mt-1">
+                  {drilldownTier ? `${filteredContacts?.length ?? 0} contact${(filteredContacts?.length ?? 0) !== 1 ? 's' : ''}` : "The people in your community"}
+                </p>
+              </div>
             </div>
             
             <div className="flex items-center gap-2 flex-wrap">
               {!editMode && (
                 <>
-                  <Button variant="outline" onClick={() => setEditMode(true)} data-testid="button-edit-mode">
-                    <Edit3 className="w-4 h-4 mr-2" />
-                    Edit
-                  </Button>
+                  {drilldownTier && (
+                    <Button variant="outline" onClick={() => setEditMode(true)} data-testid="button-edit-mode">
+                      <Edit3 className="w-4 h-4 mr-2" />
+                      Edit
+                    </Button>
+                  )}
                   {suggestedDuplicates && suggestedDuplicates.length > 0 && (
                     <Button variant="outline" onClick={() => setDuplicatesOpen(true)} data-testid="button-duplicates-contacts">
                       <Merge className="w-4 h-4 mr-2" />
@@ -690,170 +766,200 @@ export default function Contacts() {
             </DialogContent>
           </Dialog>
 
-          {analytics && (
-            <div className="space-y-3" data-testid="community-analytics">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <Card className="p-4" data-testid="stat-total-members">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <Users className="w-4 h-4 text-primary" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-2xl font-bold font-display leading-none">{analytics.total}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Total Community</p>
-                    </div>
-                  </div>
-                </Card>
-                <Card className="p-4" data-testid="stat-active">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
-                      <UserCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-2xl font-bold font-display leading-none">{analytics.active}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Active (90d)</p>
-                    </div>
-                  </div>
-                </Card>
-                <Card className="p-4" data-testid="stat-inactive">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-orange-500/10 flex items-center justify-center shrink-0">
-                      <UserX className="w-4 h-4 text-orange-600 dark:text-orange-400" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-2xl font-bold font-display leading-none">{analytics.inactive}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Inactive (90d+)</p>
-                    </div>
-                  </div>
-                </Card>
-                <Card className="p-4" data-testid="stat-ytd-interactions">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
-                      <TrendingUp className="w-4 h-4 text-violet-600 dark:text-violet-400" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-2xl font-bold font-display leading-none">{analytics.totalInteractions}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Interactions</p>
-                    </div>
-                  </div>
-                </Card>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {analytics.topRoles.map(([role, count]) => (
-                  <Badge key={role} variant="secondary" className="text-xs" data-testid={`stat-role-${role.toLowerCase().replace(/\s+/g, '-')}`}>
-                    {role}: {count}
-                  </Badge>
-                ))}
-                <span className="text-xs text-muted-foreground ml-1" data-testid="stat-total-debriefs">
-                  {analytics.totalDebriefs} debrief{analytics.totalDebriefs !== 1 ? 's' : ''} logged
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* View Toggle + Filters */}
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between gap-2" data-testid="view-toggle">
-              <div className="flex items-center gap-2">
-                <Button
-                  variant={viewMode === "community" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setViewMode("community")}
-                  data-testid="button-view-community"
-                >
-                  <Users className="w-4 h-4 mr-1.5" />
-                  Community
-                </Button>
-                <Button
-                  variant={viewMode === "innovators" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setViewMode("innovators")}
-                  data-testid="button-view-innovators"
-                >
-                  <Lightbulb className="w-4 h-4 mr-1.5" />
-                  Our Innovators
-                </Button>
-                <Button
-                  variant={viewMode === "all" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setViewMode("all")}
-                  data-testid="button-view-all"
-                >
-                  All Contacts
-                </Button>
-              </div>
-              <div className="flex items-center gap-1 border rounded-lg p-0.5" data-testid="layout-toggle">
-                <Button
-                  variant={layoutView === "list" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setLayoutView("list")}
-                  data-testid="button-layout-list"
-                >
-                  <List className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant={layoutView === "table" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setLayoutView("table")}
-                  data-testid="button-layout-table"
-                >
-                  <Table className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input 
-                  placeholder="Search by name or email..." 
-                  className="pl-10 h-11 bg-card rounded-xl border-border/60"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  data-testid="input-search-contacts"
-                />
-              </div>
-              <div className="w-full sm:w-48">
-                <Select value={roleFilter} onValueChange={setRoleFilter}>
-                  <SelectTrigger className="h-11 rounded-xl bg-card border-border/60" data-testid="select-role-filter">
-                    <div className="flex items-center gap-2">
-                      <Filter className="w-4 h-4 text-muted-foreground" />
-                      <SelectValue placeholder="Filter by Role" />
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Roles</SelectItem>
-                    <SelectItem value="Entrepreneur">Entrepreneur</SelectItem>
-                    <SelectItem value="Creative">Creative</SelectItem>
-                    <SelectItem value="Community Leader">Community Leader</SelectItem>
-                    <SelectItem value="Movement Builder">Movement Builder</SelectItem>
-                    <SelectItem value="Professional">Professional</SelectItem>
-                    <SelectItem value="Innovator">Innovator</SelectItem>
-                    <SelectItem value="Rangatahi">Rangatahi</SelectItem>
-                    <SelectItem value="Aspiring">Aspiring</SelectItem>
-                    <SelectItem value="Business Owner">Business Owner</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-
-          {/* Contacts List / Table */}
-          {isLoading ? (
+          {/* Summary Cards (when no drilldown) */}
+          {!drilldownTier && isLoading && (
             <div className="flex justify-center items-center h-64">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
             </div>
-          ) : filteredContacts?.length === 0 ? (
-            <div className="bg-card rounded-2xl border border-dashed border-border p-12 text-center">
-              <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-                <Search className="w-8 h-8 text-muted-foreground" />
-              </div>
-              <h3 className="text-lg font-semibold mb-2">No community members found</h3>
-              <p className="text-muted-foreground mb-6">Try adjusting your filters or add a new member.</p>
-              <Button onClick={() => setOpen(true)} variant="outline" data-testid="button-add-member-empty">Add Member</Button>
+          )}
+          {!drilldownTier && contacts && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4" data-testid="tier-summary-cards">
+              <Card
+                className="p-6 cursor-pointer hover-elevate border-amber-200 dark:border-amber-800/50"
+                onClick={() => handleDrilldown("innovators")}
+                data-testid="card-tier-innovators"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-lg bg-amber-500/15 flex items-center justify-center shrink-0">
+                    <Lightbulb className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-3xl font-bold font-display leading-none" data-testid="text-count-innovators">{tierCounts.innovators}</p>
+                    <p className="text-sm text-muted-foreground mt-1">Our Innovators</p>
+                  </div>
+                </div>
+              </Card>
+              <Card
+                className="p-6 cursor-pointer hover-elevate border-emerald-200 dark:border-emerald-800/50"
+                onClick={() => handleDrilldown("community")}
+                data-testid="card-tier-community"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-lg bg-emerald-500/15 flex items-center justify-center shrink-0">
+                    <Users className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-3xl font-bold font-display leading-none" data-testid="text-count-community">{tierCounts.community}</p>
+                    <p className="text-sm text-muted-foreground mt-1">Our Community</p>
+                  </div>
+                </div>
+              </Card>
+              <Card
+                className="p-6 cursor-pointer hover-elevate"
+                onClick={() => handleDrilldown("all")}
+                data-testid="card-tier-all"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                    <User className="w-6 h-6 text-muted-foreground" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-3xl font-bold font-display leading-none" data-testid="text-count-all">{tierCounts.all}</p>
+                    <p className="text-sm text-muted-foreground mt-1">All Contacts</p>
+                  </div>
+                </div>
+              </Card>
             </div>
-          ) : layoutView === "table" ? (
-            <ContactsTableView contacts={filteredContacts || []} allContacts={(contacts as any[]) || []} editMode={editMode} selectedContacts={selectedContacts} toggleContactSelection={toggleContactSelection} toggleSelectAll={toggleSelectAll} onToggleCommunity={(id, isCommunityMember) => communityStatusMutation.mutate({ id, isCommunityMember })} />
-          ) : (
+          )}
+
+          {drilldownTier && (
+            <>
+              {analytics && (
+                <div className="space-y-3" data-testid="community-analytics">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <Card className="p-4" data-testid="stat-total-members">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                          <Users className="w-4 h-4 text-primary" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-2xl font-bold font-display leading-none">{analytics.total}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">Total</p>
+                        </div>
+                      </div>
+                    </Card>
+                    <Card className="p-4" data-testid="stat-active">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
+                          <UserCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-2xl font-bold font-display leading-none">{analytics.active}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">Active (90d)</p>
+                        </div>
+                      </div>
+                    </Card>
+                    <Card className="p-4" data-testid="stat-inactive">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-orange-500/10 flex items-center justify-center shrink-0">
+                          <UserX className="w-4 h-4 text-orange-600 dark:text-orange-400" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-2xl font-bold font-display leading-none">{analytics.inactive}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">Inactive (90d+)</p>
+                        </div>
+                      </div>
+                    </Card>
+                    <Card className="p-4" data-testid="stat-ytd-interactions">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
+                          <TrendingUp className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-2xl font-bold font-display leading-none">{analytics.totalInteractions}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">Interactions</p>
+                        </div>
+                      </div>
+                    </Card>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {analytics.topRoles.map(([role, count]) => (
+                      <Badge key={role} variant="secondary" className="text-xs" data-testid={`stat-role-${role.toLowerCase().replace(/\s+/g, '-')}`}>
+                        {role}: {count}
+                      </Badge>
+                    ))}
+                    <span className="text-xs text-muted-foreground ml-1" data-testid="stat-total-debriefs">
+                      {analytics.totalDebriefs} debrief{analytics.totalDebriefs !== 1 ? 's' : ''} logged
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Search + Filters */}
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-end gap-2">
+                  <div className="flex items-center gap-1 border rounded-lg p-0.5" data-testid="layout-toggle">
+                    <Button
+                      variant={layoutView === "list" ? "secondary" : "ghost"}
+                      size="sm"
+                      onClick={() => setLayoutView("list")}
+                      data-testid="button-layout-list"
+                    >
+                      <List className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant={layoutView === "table" ? "secondary" : "ghost"}
+                      size="sm"
+                      onClick={() => setLayoutView("table")}
+                      data-testid="button-layout-table"
+                    >
+                      <Table className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input 
+                      placeholder="Search by name or email..." 
+                      className="pl-10 h-11 bg-card rounded-xl border-border/60"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      data-testid="input-search-contacts"
+                    />
+                  </div>
+                  <div className="w-full sm:w-48">
+                    <Select value={roleFilter} onValueChange={setRoleFilter}>
+                      <SelectTrigger className="h-11 rounded-xl bg-card border-border/60" data-testid="select-role-filter">
+                        <div className="flex items-center gap-2">
+                          <Filter className="w-4 h-4 text-muted-foreground" />
+                          <SelectValue placeholder="Filter by Role" />
+                        </div>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Roles</SelectItem>
+                        <SelectItem value="Entrepreneur">Entrepreneur</SelectItem>
+                        <SelectItem value="Creative">Creative</SelectItem>
+                        <SelectItem value="Community Leader">Community Leader</SelectItem>
+                        <SelectItem value="Movement Builder">Movement Builder</SelectItem>
+                        <SelectItem value="Professional">Professional</SelectItem>
+                        <SelectItem value="Innovator">Innovator</SelectItem>
+                        <SelectItem value="Rangatahi">Rangatahi</SelectItem>
+                        <SelectItem value="Aspiring">Aspiring</SelectItem>
+                        <SelectItem value="Business Owner">Business Owner</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Contacts List / Table */}
+              {isLoading ? (
+                <div className="flex justify-center items-center h-64">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                </div>
+              ) : filteredContacts?.length === 0 ? (
+                <div className="bg-card rounded-2xl border border-dashed border-border p-12 text-center">
+                  <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Search className="w-8 h-8 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">No community members found</h3>
+                  <p className="text-muted-foreground mb-6">Try adjusting your filters or add a new member.</p>
+                  <Button onClick={() => setOpen(true)} variant="outline" data-testid="button-add-member-empty">Add Member</Button>
+                </div>
+              ) : layoutView === "table" ? (
+                <ContactsTableView contacts={filteredContacts || []} allContacts={(contacts as any[]) || []} editMode={editMode} selectedContacts={selectedContacts} toggleContactSelection={toggleContactSelection} toggleSelectAll={toggleSelectAll} onToggleCommunity={(id, isCommunityMember) => communityStatusMutation.mutate({ id, isCommunityMember })} drilldownTier={drilldownTier} onPromote={(id) => promoteMutation.mutate(id)} promotePending={promoteMutation.isPending} />
+              ) : (
             <div className="space-y-3">
               {(filteredContacts || []).map((contact: any) => (
                 <div key={contact.id} className="group bg-card hover:bg-card/80 border border-border rounded-xl p-4 transition-all duration-200 hover:shadow-md flex items-center gap-4" data-testid={`card-contact-${contact.id}`}>
@@ -949,6 +1055,19 @@ export default function Contacts() {
                     </div>
                   </Link>
 
+                  {drilldownTier !== "innovators" && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="shrink-0"
+                      onClick={() => promoteMutation.mutate(contact.id)}
+                      disabled={promoteMutation.isPending}
+                      data-testid={`button-promote-${contact.id}`}
+                    >
+                      <ArrowUp className="w-4 h-4" />
+                    </Button>
+                  )}
+
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button size="icon" variant="ghost" className="shrink-0" data-testid={`button-contact-menu-${contact.id}`}>
@@ -1021,6 +1140,8 @@ export default function Contacts() {
                 </div>
               ))}
             </div>
+          )}
+            </>
           )}
         </div>
       </main>
@@ -1199,7 +1320,7 @@ function SortHeader({ label, field, activeField, dir, onSort, className }: { lab
   );
 }
 
-function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, toggleContactSelection, toggleSelectAll, onToggleCommunity }: { contacts: any[]; allContacts: any[]; editMode: boolean; selectedContacts: Set<number>; toggleContactSelection: (id: number) => void; toggleSelectAll: () => void; onToggleCommunity: (id: number, isCommunityMember: boolean) => void }) {
+function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, toggleContactSelection, toggleSelectAll, onToggleCommunity, drilldownTier, onPromote, promotePending }: { contacts: any[]; allContacts: any[]; editMode: boolean; selectedContacts: Set<number>; toggleContactSelection: (id: number) => void; toggleSelectAll: () => void; onToggleCommunity: (id: number, isCommunityMember: boolean) => void; drilldownTier?: string | null; onPromote?: (id: number) => void; promotePending?: boolean }) {
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
@@ -1288,6 +1409,7 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
               <SortHeader label="Age" field="age" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-20" />
               <SortHeader label="Suburb" field="suburb" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
               <SortHeader label="Last Active" field="lastActive" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
+              {drilldownTier && drilldownTier !== "innovators" && <th className="px-2 py-3 w-10"></th>}
             </tr>
           </thead>
           <tbody>
@@ -1351,6 +1473,19 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
                     ? format(new Date(contact.lastActiveDate || contact.lastInteractionDate), "MMM d, yyyy")
                     : "—"}
                 </td>
+                {drilldownTier && drilldownTier !== "innovators" && onPromote && (
+                  <td className="px-2 py-2">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => onPromote(contact.id)}
+                      disabled={promotePending}
+                      data-testid={`table-promote-${contact.id}`}
+                    >
+                      <ArrowUp className="w-4 h-4" />
+                    </Button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -1448,7 +1583,7 @@ function CreateContactDialogContent({ onSuccess }: { onSuccess: () => void }) {
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <Label htmlFor="businessName">Group</Label>
-            <Link href="/groups" className="text-xs text-primary/80 hover:text-primary transition-colors" data-testid="link-manage-groups">
+            <Link href="/community/groups" className="text-xs text-primary/80 hover:text-primary transition-colors" data-testid="link-manage-groups">
               Manage Groups
             </Link>
           </div>

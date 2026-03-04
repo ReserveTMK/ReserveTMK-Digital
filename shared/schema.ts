@@ -84,6 +84,8 @@ export const contacts = pgTable("contacts", {
   relationshipCircleOverride: boolean("relationship_circle_override").default(false),
   importSource: text("import_source"),
   lastActiveDate: timestamp("last_active_date"),
+  movedToCommunityAt: timestamp("moved_to_community_at"),
+  movedToInnovatorsAt: timestamp("moved_to_innovators_at"),
 });
 
 export const interactions = pgTable("interactions", {
@@ -346,9 +348,12 @@ export const groups = pgTable("groups", {
   ecosystemRoles: text("ecosystem_roles").array(),
   importSource: text("import_source"),
   isCommunity: boolean("is_community").default(false),
+  isInnovator: boolean("is_innovator").default(false),
   active: boolean("active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  movedToCommunityAt: timestamp("moved_to_community_at"),
+  movedToInnovatorsAt: timestamp("moved_to_innovators_at"),
 });
 
 export const groupMembers = pgTable("group_members", {

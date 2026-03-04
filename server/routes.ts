@@ -7263,6 +7263,111 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     }
   });
 
+  app.post("/api/contacts/:id/promote", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const contactId = parseInt(req.params.id);
+      const contact = await storage.getContact(contactId);
+      if (!contact || contact.userId !== userId) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+
+      const updates: any = {};
+      let newTier = "";
+      if (!contact.isCommunityMember) {
+        updates.isCommunityMember = true;
+        updates.communityMemberOverride = true;
+        updates.movedToCommunityAt = new Date();
+        newTier = "our_community";
+      } else if (!contact.isInnovator) {
+        updates.isInnovator = true;
+        updates.movedToInnovatorsAt = new Date();
+        newTier = "our_innovators";
+      } else {
+        return res.json({ contact, newTier: "our_innovators", groupsUpdated: 0, message: "Already at highest tier" });
+      }
+
+      const updated = await storage.updateContact(contactId, updates);
+
+      let groupsUpdated = 0;
+      const contactGroupLinks = await storage.getContactGroups(contactId);
+      for (const m of contactGroupLinks) {
+        const group = await storage.getGroup(m.groupId);
+        if (!group || group.userId !== userId) continue;
+
+        if (newTier === "our_community" && !group.isCommunity) {
+          await storage.updateGroup(m.groupId, { isCommunity: true, movedToCommunityAt: new Date() });
+          groupsUpdated++;
+        } else if (newTier === "our_innovators" && !group.isInnovator) {
+          await storage.updateGroup(m.groupId, { isInnovator: true, movedToInnovatorsAt: new Date() });
+          groupsUpdated++;
+        }
+      }
+
+      res.json({ contact: updated, newTier, groupsUpdated });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to promote contact" });
+    }
+  });
+
+  app.post("/api/contacts/:id/demote", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const contactId = parseInt(req.params.id);
+      const contact = await storage.getContact(contactId);
+      if (!contact || contact.userId !== userId) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+
+      const updates: any = {};
+      let newTier = "";
+      if (contact.isInnovator) {
+        updates.isInnovator = false;
+        updates.movedToInnovatorsAt = null;
+        newTier = "our_community";
+      } else if (contact.isCommunityMember) {
+        updates.isCommunityMember = false;
+        updates.communityMemberOverride = true;
+        updates.movedToCommunityAt = null;
+        newTier = "all_contacts";
+      } else {
+        return res.json({ contact, newTier: "all_contacts", groupsUpdated: 0, message: "Already at lowest tier" });
+      }
+
+      const updated = await storage.updateContact(contactId, updates);
+
+      let groupsUpdated = 0;
+      const contactGroupLinks = await storage.getContactGroups(contactId);
+      for (const m of contactGroupLinks) {
+        const group = await storage.getGroup(m.groupId);
+        if (!group || group.userId !== userId) continue;
+
+        const members = await storage.getGroupMembers(m.groupId);
+        const otherContacts = await Promise.all(
+          members.filter(mem => mem.contactId !== contactId).map(mem => storage.getContact(mem.contactId))
+        );
+
+        if (newTier === "our_community" && group.isInnovator) {
+          const hasOtherInnovators = otherContacts.some(c => c && c.isInnovator);
+          if (!hasOtherInnovators) {
+            await storage.updateGroup(m.groupId, { isInnovator: false });
+            groupsUpdated++;
+          }
+        } else if (newTier === "all_contacts" && group.isCommunity) {
+          const hasOtherCommunity = otherContacts.some(c => c && c.isCommunityMember);
+          if (!hasOtherCommunity) {
+            await storage.updateGroup(m.groupId, { isCommunity: false });
+            groupsUpdated++;
+          }
+        }
+      }
+
+      res.json({ contact: updated, newTier, groupsUpdated });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to demote contact" });
+    }
+  });
+
   app.post("/api/contacts/community/ai-score", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
