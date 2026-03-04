@@ -1646,7 +1646,7 @@ export type InsertFunderDocument = z.infer<typeof insertFunderDocumentSchema>;
 
 // === MENTORING JOURNEY TABLES ===
 
-export const INNOVATOR_SUPPORT_TYPES = ["mentoring", "support", "collaborate", "space"] as const;
+export const INNOVATOR_SUPPORT_TYPES = ["mentoring", "support", "collaborate", "space", "connection"] as const;
 export type InnovatorSupportType = typeof INNOVATOR_SUPPORT_TYPES[number];
 
 export const JOURNEY_STAGES = ["kakano", "tipu", "ora", "inactive"] as const;

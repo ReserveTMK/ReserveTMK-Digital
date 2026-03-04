@@ -1267,12 +1267,13 @@ function InlineSupportCell({ contactId, supportTypes }: { contactId: number; sup
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>(supportTypes || []);
   const [saving, setSaving] = useState(false);
-  const options = ["mentoring", "support", "collaborate", "space"];
+  const options = ["mentoring", "support", "collaborate", "space", "connection"];
   const colorMap: Record<string, string> = {
     mentoring: "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/20",
     support: "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/20",
     collaborate: "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/20",
     space: "bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-500/20",
+    connection: "bg-pink-500/15 text-pink-700 dark:text-pink-300 border-pink-500/20",
   };
 
   const toggle = (t: string) => {
