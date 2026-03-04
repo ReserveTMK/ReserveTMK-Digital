@@ -11,7 +11,7 @@ import { Card } from "@/components/ui/card";
 import { useRoute } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Loader2, Mic, StopCircle, ArrowLeft, Brain, TrendingUp, Sparkles, AlertCircle, DollarSign, Settings, Rocket, Network, Shield, FileText, CheckSquare, Calendar, Clock, ChevronDown, History, MessageSquare, Pencil, Check, X } from "lucide-react";
+import { Loader2, Mic, StopCircle, ArrowLeft, Brain, TrendingUp, Sparkles, AlertCircle, DollarSign, Settings, Rocket, Network, Shield, FileText, CheckSquare, Calendar, Clock, ChevronDown, History, MessageSquare, Pencil, Check, X, ArrowUp, ArrowDown, Star, Users } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { RelationshipStageSelector } from "@/components/relationship-stage-selector";
@@ -30,6 +30,13 @@ import { searchSuburbs, getLocalBoard, SUBURB_TO_LOCAL_BOARD } from "@shared/auc
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend 
 } from "recharts";
+import {
+  CONNECTION_CONFIG,
+  CONNECTION_LEVELS,
+  SUPPORT_LABEL_MAP,
+  SUPPORT_COLOR_MAP,
+  SUPPORT_OPTIONS,
+} from "@/components/community/inline-cells";
 
 
 export default function ContactDetail() {
@@ -81,6 +88,40 @@ export default function ContactDetail() {
       queryClient.invalidateQueries({ queryKey: ['/api/contacts', id] });
       queryClient.invalidateQueries({ queryKey: ['/api/relationship-stage-history', 'contact', id] });
       queryClient.invalidateQueries({ queryKey: ['/api/dashboard/relationship-stages'] });
+    },
+  });
+
+  const { toast } = useToast();
+
+  const currentTier = contact?.isInnovator ? "innovator" : contact?.isCommunityMember ? "community" : "all";
+
+  const promoteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/contacts/${id}/promote`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts', id] });
+      toast({ title: `Promoted to ${data.newTier === 'innovator' ? 'Innovator' : 'Community'}` });
+    },
+    onError: () => {
+      toast({ title: "Failed to promote", variant: "destructive" });
+    },
+  });
+
+  const demoteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/contacts/${id}/demote`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts', id] });
+      toast({ title: `Demoted to ${data.newTier === 'community' ? 'Community' : 'All'}` });
+    },
+    onError: () => {
+      toast({ title: "Failed to demote", variant: "destructive" });
     },
   });
 
@@ -188,6 +229,19 @@ export default function ContactDetail() {
                   )}
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-muted-foreground text-lg">{contact.role}</p>
+                    <Badge
+                      variant={currentTier === "innovator" ? "default" : currentTier === "community" ? "secondary" : "outline"}
+                      className={cn("text-xs capitalize", currentTier === "innovator" && "bg-amber-500/15 text-amber-700 dark:text-amber-300")}
+                      data-testid="badge-tier"
+                    >
+                      {currentTier === "innovator" ? (
+                        <><Star className="w-3 h-3 mr-1" /> Innovator</>
+                      ) : currentTier === "community" ? (
+                        <><Users className="w-3 h-3 mr-1" /> Community</>
+                      ) : (
+                        "All"
+                      )}
+                    </Badge>
                     {contact.ventureType && (
                       <Badge variant="outline" className="text-xs capitalize" data-testid="badge-venture-type">
                         {({
@@ -227,6 +281,10 @@ export default function ContactDetail() {
                       </span>
                     )}
                   </div>
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <DetailConnectionEditor contactId={contact.id} connectionStrength={contact.connectionStrength} />
+                    <DetailSupportEditor contactId={contact.id} supportTypes={contact.supportType || []} />
+                  </div>
                   {contact.whatTheyAreBuilding && (
                     <p className="text-sm text-muted-foreground mt-2" data-testid="text-what-building">
                       {contact.whatTheyAreBuilding}
@@ -249,14 +307,50 @@ export default function ContactDetail() {
                 </div>
               </div>
 
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button size="lg" className="shadow-lg shadow-primary/20">
-                    <Mic className="w-4 h-4 mr-2" /> Log Interaction
-                  </Button>
-                </DialogTrigger>
-                <LogInteractionDialog contactId={id} />
-              </Dialog>
+              <div className="flex flex-col gap-2 items-end shrink-0">
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button size="lg" className="shadow-lg shadow-primary/20">
+                      <Mic className="w-4 h-4 mr-2" /> Log Interaction
+                    </Button>
+                  </DialogTrigger>
+                  <LogInteractionDialog contactId={id} />
+                </Dialog>
+                <div className="flex items-center gap-2">
+                  {currentTier !== "innovator" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => promoteMutation.mutate()}
+                      disabled={promoteMutation.isPending}
+                      data-testid="button-promote-contact"
+                    >
+                      {promoteMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                      ) : (
+                        <ArrowUp className="w-4 h-4 mr-1" />
+                      )}
+                      Promote to {currentTier === "all" ? "Community" : "Innovator"}
+                    </Button>
+                  )}
+                  {currentTier !== "all" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => demoteMutation.mutate()}
+                      disabled={demoteMutation.isPending}
+                      data-testid="button-demote-contact"
+                    >
+                      {demoteMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                      ) : (
+                        <ArrowDown className="w-4 h-4 mr-1" />
+                      )}
+                      Demote to {currentTier === "innovator" ? "Community" : "All"}
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -977,6 +1071,152 @@ function EthnicityQuickEdit({ contact }: { contact: any }) {
   );
 }
 
+function DetailConnectionEditor({ contactId, connectionStrength }: { contactId: number; connectionStrength?: string | null }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const handleSelect = async (val: string) => {
+    if (val === connectionStrength) { setOpen(false); return; }
+    setSaving(true);
+    try {
+      await apiRequest("PATCH", `/api/contacts/${contactId}`, { connectionStrength: val });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/:id"] });
+      toast({ title: "Connection updated" });
+      setOpen(false);
+    } catch {
+      toast({ title: "Failed to update", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const config = CONNECTION_CONFIG[connectionStrength || ""] || null;
+  const activeLevel = config?.level || 0;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-muted/60 transition-colors cursor-pointer group border border-transparent hover:border-border"
+          data-testid="detail-connection-editor"
+        >
+          <span className="text-xs text-muted-foreground">Connection:</span>
+          <div className="flex items-center gap-0.5">
+            {CONNECTION_LEVELS.map((l, i) => {
+              const lc = CONNECTION_CONFIG[l];
+              return (
+                <div
+                  key={l}
+                  className={`w-3 h-1.5 rounded-sm transition-colors ${i < activeLevel ? lc.dotColor : "bg-muted-foreground/15"}`}
+                />
+              );
+            })}
+          </div>
+          {config ? (
+            <span className={`text-xs font-medium ${config.color}`}>{config.label}</span>
+          ) : (
+            <span className="text-muted-foreground/50 text-xs">Set</span>
+          )}
+          <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-52 p-2" align="start">
+        <div className="space-y-0.5">
+          {CONNECTION_LEVELS.map((l, i) => {
+            const lc = CONNECTION_CONFIG[l];
+            const isActive = l === connectionStrength;
+            return (
+              <button
+                key={l}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm hover:bg-accent/50 transition-colors ${isActive ? "bg-accent" : ""}`}
+                onClick={() => handleSelect(l)}
+                disabled={saving}
+                data-testid={`detail-connection-opt-${l}`}
+              >
+                <div className="flex items-center gap-0.5">
+                  {CONNECTION_LEVELS.map((_, si) => (
+                    <div key={si} className={`w-2.5 h-1.5 rounded-sm ${si <= i ? lc.dotColor : "bg-muted-foreground/15"}`} />
+                  ))}
+                </div>
+                <span className={lc.color}>{lc.label}</span>
+                {isActive && <Check className="w-3 h-3 ml-auto" />}
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function DetailSupportEditor({ contactId, supportTypes }: { contactId: number; supportTypes: string[] }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<string[]>(supportTypes || []);
+  const [saving, setSaving] = useState(false);
+
+  const toggle = (t: string) => {
+    setSelected(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await apiRequest("PATCH", `/api/contacts/${contactId}`, { supportType: selected });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/:id"] });
+      toast({ title: "Support type updated" });
+      setOpen(false);
+    } catch {
+      toast({ title: "Failed to update", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Popover open={open} onOpenChange={(v) => { setOpen(v); if (v) setSelected(supportTypes || []); }}>
+      <PopoverTrigger asChild>
+        <button
+          className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-muted/60 transition-colors cursor-pointer group border border-transparent hover:border-border"
+          data-testid="detail-support-editor"
+        >
+          <span className="text-xs text-muted-foreground">Support:</span>
+          {supportTypes?.length > 0 ? (
+            supportTypes.map(t => (
+              <Badge key={t} className={`text-[10px] h-5 px-1.5 ${SUPPORT_COLOR_MAP[t] || ""}`}>
+                {SUPPORT_LABEL_MAP[t] || t}
+              </Badge>
+            ))
+          ) : (
+            <span className="text-muted-foreground/50 text-xs">Set</span>
+          )}
+          <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-56 p-3" align="start">
+        <div className="space-y-1">
+          {SUPPORT_OPTIONS.map(t => (
+            <label key={t} className="flex items-center gap-2 cursor-pointer text-sm hover:bg-accent/50 rounded px-1 py-0.5" data-testid={`detail-support-opt-${t}`}>
+              <Checkbox checked={selected.includes(t)} onCheckedChange={() => toggle(t)} />
+              {SUPPORT_LABEL_MAP[t] || t}
+            </label>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2 mt-3 pt-2 border-t">
+          <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button size="sm" onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+            Save
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onOpenChange: (v: boolean) => void; contact: any }) {
   const { toast } = useToast();
   const [name, setName] = useState(contact.name || "");
@@ -1100,7 +1340,7 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
       apiRequest('PATCH', `/api/contacts/${contact.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/contacts/:id', contact.id] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts/:id'] });
       toast({ title: "Contact updated" });
       onOpenChange(false);
     },
