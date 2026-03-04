@@ -9363,5 +9363,97 @@ Rules:
     }
   })();
 
+  // Temporary migration endpoint - import data from dev to production
+  app.post("/api/admin/migrate-table", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      if (userId !== "54568936") {
+        return res.status(403).json({ message: "Not authorized for migration" });
+      }
+      
+      const { tableName, rows } = req.body;
+      if (!tableName || !Array.isArray(rows) || rows.length === 0) {
+        return res.status(400).json({ message: "tableName and rows[] required" });
+      }
+
+      // Sanitize table name
+      const safeTable = tableName.replace(/[^a-z0-9_]/gi, "");
+      
+      const { Pool } = await import("pg");
+      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+      const client = await pool.connect();
+      
+      try {
+        // Get column info for the table
+        const colsResult = await client.query(
+          `SELECT column_name, data_type FROM information_schema.columns WHERE table_name = $1 AND table_schema = 'public' ORDER BY ordinal_position`,
+          [safeTable]
+        );
+        const validColumns = new Set(colsResult.rows.map((r: any) => r.column_name));
+        
+        let inserted = 0;
+        
+        for (const row of rows) {
+          const cols = Object.keys(row).filter(k => validColumns.has(k));
+          if (cols.length === 0) continue;
+          
+          const values = cols.map((c, i) => {
+            const val = row[c];
+            if (val === null || val === undefined) return `$${i + 1}`;
+            return `$${i + 1}`;
+          });
+          
+          const params = cols.map(c => {
+            const val = row[c];
+            if (val === null || val === undefined) return null;
+            if (Array.isArray(val) || (typeof val === "object" && val !== null)) {
+              return JSON.stringify(val);
+            }
+            return val;
+          });
+          
+          // Build type casts for array and jsonb columns
+          const colTypes: Record<string, string> = {};
+          for (const cr of colsResult.rows) {
+            colTypes[cr.column_name] = cr.data_type;
+          }
+          
+          const valuePlaceholders = cols.map((c, i) => {
+            const dt = colTypes[c];
+            if (dt === "ARRAY" || dt?.includes("[]") || dt === "text[]") {
+              return `$${i + 1}::text[]`;
+            }
+            if (dt === "jsonb" || dt === "json") {
+              return `$${i + 1}::jsonb`;
+            }
+            return `$${i + 1}`;
+          });
+          
+          const sql = `INSERT INTO "${safeTable}" (${cols.map(c => `"${c}"`).join(", ")}) VALUES (${valuePlaceholders.join(", ")}) ON CONFLICT DO NOTHING`;
+          
+          try {
+            await client.query(sql, params);
+            inserted++;
+          } catch (insertErr: any) {
+            console.error(`Migration insert error for ${safeTable}:`, insertErr.message);
+          }
+        }
+        
+        // Reset sequence if table has serial id
+        try {
+          await client.query(`SELECT setval(pg_get_serial_sequence('"${safeTable}"', 'id'), COALESCE((SELECT MAX(id) FROM "${safeTable}"), 1))`);
+        } catch {} // ignore if no serial sequence
+        
+        res.json({ table: safeTable, inserted, total: rows.length });
+      } finally {
+        client.release();
+        await pool.end();
+      }
+    } catch (err: any) {
+      console.error("Migration error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }
