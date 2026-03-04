@@ -80,6 +80,7 @@ export const contacts = pgTable("contacts", {
   isCommunityMember: boolean("is_community_member").default(false),
   communityMemberOverride: boolean("community_member_override").default(false),
   isInnovator: boolean("is_innovator").default(false),
+  supportType: text("support_type").array(),
   relationshipCircle: text("relationship_circle"),
   relationshipCircleOverride: boolean("relationship_circle_override").default(false),
   importSource: text("import_source"),
@@ -1644,6 +1645,9 @@ export type FunderDocument = typeof funderDocuments.$inferSelect;
 export type InsertFunderDocument = z.infer<typeof insertFunderDocumentSchema>;
 
 // === MENTORING JOURNEY TABLES ===
+
+export const INNOVATOR_SUPPORT_TYPES = ["mentoring", "support", "collaborate"] as const;
+export type InnovatorSupportType = typeof INNOVATOR_SUPPORT_TYPES[number];
 
 export const JOURNEY_STAGES = ["kakano", "tipu", "ora", "inactive"] as const;
 export type JourneyStage = typeof JOURNEY_STAGES[number];

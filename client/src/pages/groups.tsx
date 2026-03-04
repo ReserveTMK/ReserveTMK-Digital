@@ -264,7 +264,7 @@ export default function Groups() {
 
   const communityCount = useMemo(() => {
     if (!groups) return 0;
-    return groups.filter((g: Group) => g.isCommunity === true && g.isInnovator !== true).length;
+    return groups.filter((g: Group) => g.isCommunity === true).length;
   }, [groups]);
 
   const allCount = useMemo(() => {
@@ -303,7 +303,7 @@ export default function Groups() {
     if (viewMode === "innovators") {
       result = result.filter((g: Group) => g.isInnovator === true);
     } else if (viewMode === "community") {
-      result = result.filter((g: Group) => g.isCommunity === true && g.isInnovator !== true);
+      result = result.filter((g: Group) => g.isCommunity === true);
     }
     result.sort((a: Group, b: Group) => {
       const aCount = communityDensity?.[a.id]?.communityCount || 0;

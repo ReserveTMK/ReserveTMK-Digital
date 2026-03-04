@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { useContacts, useCreateContact, useDeleteContact } from "@/hooks/use-contacts";
-import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, ArrowUpDown, Lightbulb, ChevronRight } from "lucide-react";
+import { Plus, Search, Filter, Loader2, User, Upload, FileUp, AlertCircle, CheckCircle2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, ArrowUpDown, Lightbulb, ChevronRight, Sprout, TreePine, Sun, Pause } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { Link } from "wouter";
@@ -338,14 +338,14 @@ export default function Contacts() {
                           contact.businessName?.toLowerCase().includes(search.toLowerCase()) ||
                           contact.email?.toLowerCase().includes(search.toLowerCase());
     const matchesRole = roleFilter === "all" || contact.role === roleFilter;
-    const matchesView = viewMode === "all" || (viewMode === "community" && (contact as any).isCommunityMember === true && !(contact as any).isInnovator) || (viewMode === "innovators" && (contact as any).isInnovator === true);
+    const matchesView = viewMode === "all" || (viewMode === "community" && (contact as any).isCommunityMember === true) || (viewMode === "innovators" && (contact as any).isInnovator === true);
     return matchesSearch && matchesRole && matchesView;
   });
 
   const tierCounts = useMemo(() => {
     if (!contacts) return { innovators: 0, community: 0, all: 0 };
     const innovators = (contacts as any[]).filter(c => c.isInnovator).length;
-    const community = (contacts as any[]).filter(c => c.isCommunityMember && !c.isInnovator).length;
+    const community = (contacts as any[]).filter(c => c.isCommunityMember).length;
     return { innovators, community, all: contacts.length };
   }, [contacts]);
 
@@ -1000,19 +1000,6 @@ export default function Contacts() {
                     </div>
                   </Link>
 
-                  {viewMode === "all" && (
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="shrink-0"
-                      onClick={() => promoteMutation.mutate(contact.id)}
-                      disabled={promoteMutation.isPending}
-                      title="Promote to Our Community"
-                      data-testid={`button-promote-${contact.id}`}
-                    >
-                      <ArrowUp className="w-4 h-4" />
-                    </Button>
-                  )}
                   {viewMode === "community" && !contact.isInnovator && (
                     <Button
                       size="icon"
@@ -1254,7 +1241,98 @@ function InlineEthnicityCell({ contactId, ethnicities, ethnicityCounts }: { cont
   );
 }
 
-type SortField = "name" | "role" | "ethnicity" | "age" | "suburb" | "lastActive" | "community";
+const STAGE_CONFIG: Record<string, { label: string; color: string; bgColor: string; icon: any }> = {
+  kakano: { label: "Kakano", color: "text-amber-700 dark:text-amber-400", bgColor: "bg-amber-500/10 border-amber-200 dark:border-amber-800", icon: Sprout },
+  tipu: { label: "Tipu", color: "text-green-700 dark:text-green-400", bgColor: "bg-green-500/10 border-green-200 dark:border-green-800", icon: TreePine },
+  ora: { label: "Ora", color: "text-sky-700 dark:text-sky-400", bgColor: "bg-sky-500/10 border-sky-200 dark:border-sky-800", icon: Sun },
+  inactive: { label: "Inactive", color: "text-muted-foreground", bgColor: "bg-muted border-border", icon: Pause },
+};
+
+function JourneyStageBadge({ stage, contactId }: { stage?: string; contactId: number }) {
+  const config = STAGE_CONFIG[stage || ""] || null;
+  if (!config) {
+    return <span className="text-xs text-muted-foreground/50">—</span>;
+  }
+  const StageIcon = config.icon;
+  return (
+    <Badge variant="outline" className={`text-[10px] h-5 px-1.5 ${config.bgColor} ${config.color}`} data-testid={`badge-stage-${contactId}`}>
+      <StageIcon className="w-3 h-3 mr-1" />
+      {config.label}
+    </Badge>
+  );
+}
+
+function InlineSupportCell({ contactId, supportTypes }: { contactId: number; supportTypes: string[] }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<string[]>(supportTypes || []);
+  const [saving, setSaving] = useState(false);
+  const options = ["mentoring", "support", "collaborate"];
+  const colorMap: Record<string, string> = {
+    mentoring: "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/20",
+    support: "bg-green-500/15 text-green-700 dark:text-green-300 border-green-500/20",
+    collaborate: "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/20",
+  };
+
+  const toggle = (t: string) => {
+    setSelected(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await apiRequest("PATCH", `/api/contacts/${contactId}`, { supportType: selected });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast({ title: "Support type updated" });
+      setOpen(false);
+    } catch {
+      toast({ title: "Failed to update", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Popover open={open} onOpenChange={(v) => { setOpen(v); if (v) setSelected(supportTypes || []); }}>
+      <PopoverTrigger asChild>
+        <button
+          className="text-left w-full px-2 py-1 rounded hover:bg-muted/60 transition-colors text-sm cursor-pointer group flex items-center gap-1 flex-wrap"
+          data-testid={`table-cell-support-${contactId}`}
+        >
+          {supportTypes?.length > 0 ? (
+            supportTypes.map(t => (
+              <Badge key={t} className={`text-[10px] h-5 px-1.5 ${colorMap[t] || ""}`}>
+                {t.charAt(0).toUpperCase() + t.slice(1)}
+              </Badge>
+            ))
+          ) : (
+            <span className="text-muted-foreground/50">+ Add</span>
+          )}
+          <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-56 p-3" align="start">
+        <div className="space-y-1">
+          {options.map(t => (
+            <label key={t} className="flex items-center gap-2 cursor-pointer text-sm hover:bg-accent/50 rounded px-1 py-0.5" data-testid={`support-opt-${t}-${contactId}`}>
+              <Checkbox checked={selected.includes(t)} onCheckedChange={() => toggle(t)} />
+              {t.charAt(0).toUpperCase() + t.slice(1)}
+            </label>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2 mt-3 pt-2 border-t">
+          <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button size="sm" onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+            Save
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+type SortField = "name" | "role" | "ethnicity" | "age" | "suburb" | "lastActive" | "community" | "stage" | "support";
 type SortDir = "asc" | "desc";
 
 function SortHeader({ label, field, activeField, dir, onSort, className }: { label: string; field: SortField; activeField: SortField | null; dir: SortDir; onSort: (f: SortField) => void; className?: string }) {
@@ -1316,6 +1394,18 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
           av = (a.role || "").toLowerCase();
           bv = (b.role || "").toLowerCase();
           break;
+        case "stage": {
+          const stageOrder = ["kakano", "tipu", "ora", "inactive"];
+          av = stageOrder.indexOf(a.stage || "");
+          bv = stageOrder.indexOf(b.stage || "");
+          if (av === -1) av = 99;
+          if (bv === -1) bv = 99;
+          return sortDir === "asc" ? av - bv : bv - av;
+        }
+        case "support":
+          av = (a.supportType || []).length;
+          bv = (b.supportType || []).length;
+          return sortDir === "asc" ? av - bv : bv - av;
         case "ethnicity":
           av = (a.ethnicity || []).join(", ").toLowerCase();
           bv = (b.ethnicity || []).join(", ").toLowerCase();
@@ -1360,13 +1450,22 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
                 </th>
               )}
               <SortHeader label="Name" field="name" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-4" />
-              <SortHeader label={drilldownTier === "community" || drilldownTier === "innovators" ? "Innovator" : "Community"} field="community" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-28" />
-              <SortHeader label="Role" field="role" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
+              {drilldownTier !== "innovators" && (
+                <SortHeader label={drilldownTier === "community" ? "Innovator" : "Community"} field="community" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-28" />
+              )}
+              {drilldownTier === "innovators" ? (
+                <>
+                  <SortHeader label="Stage" field="stage" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
+                  <SortHeader label="Support" field="support" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[120px]" />
+                </>
+              ) : (
+                <SortHeader label="Role" field="role" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
+              )}
               <SortHeader label="Ethnicity" field="ethnicity" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[160px]" />
               <SortHeader label="Age" field="age" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-20" />
               <SortHeader label="Suburb" field="suburb" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
               <SortHeader label="Last Active" field="lastActive" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
-              {drilldownTier && drilldownTier === "all" && <th className="px-2 py-3 w-10"></th>}
+              {drilldownTier && drilldownTier === "community" && <th className="px-2 py-3 w-10"></th>}
             </tr>
           </thead>
           <tbody>
@@ -1389,55 +1488,68 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
                     <span className="font-medium truncate max-w-[180px]">{contact.name}</span>
                   </Link>
                 </td>
-                <td className="px-3 py-2">
-                  {drilldownTier === "community" || drilldownTier === "innovators" ? (
-                    contact.isInnovator ? (
-                      <Badge
-                        className="text-[10px] h-5 px-2 bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/20"
-                        data-testid={`badge-innovator-${contact.id}`}
-                      >
-                        <Lightbulb className="w-3 h-3 mr-1" />
-                        Yes
-                      </Badge>
+                {drilldownTier !== "innovators" && (
+                  <td className="px-3 py-2">
+                    {drilldownTier === "community" ? (
+                      contact.isInnovator ? (
+                        <Badge
+                          className="text-[10px] h-5 px-2 bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/20"
+                          data-testid={`badge-innovator-${contact.id}`}
+                        >
+                          <Lightbulb className="w-3 h-3 mr-1" />
+                          Yes
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] h-5 px-2 cursor-pointer hover:bg-amber-500/10 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
+                          onClick={() => onPromote?.(contact.id)}
+                          data-testid={`button-promote-innovator-${contact.id}`}
+                        >
+                          <Plus className="w-3 h-3 mr-1" />
+                          Add
+                        </Badge>
+                      )
                     ) : (
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] h-5 px-2 cursor-pointer hover:bg-amber-500/10 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
-                        onClick={() => onPromote?.(contact.id)}
-                        data-testid={`button-promote-innovator-${contact.id}`}
-                      >
-                        <Plus className="w-3 h-3 mr-1" />
-                        Add
-                      </Badge>
-                    )
-                  ) : (
-                    contact.isCommunityMember ? (
-                      <Badge
-                        className="text-[10px] h-5 px-2 bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/20 cursor-pointer hover:bg-purple-500/25 transition-colors"
-                        onClick={() => onToggleCommunity(contact.id, false)}
-                        data-testid={`badge-community-${contact.id}`}
-                      >
-                        <UserCheck className="w-3 h-3 mr-1" />
-                        Yes
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] h-5 px-2 cursor-pointer hover:bg-purple-500/10 hover:text-purple-700 dark:hover:text-purple-300 transition-colors"
-                        onClick={() => onToggleCommunity(contact.id, true)}
-                        data-testid={`button-add-community-${contact.id}`}
-                      >
-                        <Plus className="w-3 h-3 mr-1" />
-                        Add
-                      </Badge>
-                    )
-                  )}
-                </td>
-                <td className="px-3 py-2">
-                  <Badge variant="outline" className="text-[10px] h-5 px-2" data-testid={`table-role-${contact.id}`}>
-                    {contact.role || "—"}
-                  </Badge>
-                </td>
+                      contact.isCommunityMember ? (
+                        <Badge
+                          className="text-[10px] h-5 px-2 bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/20 cursor-pointer hover:bg-purple-500/25 transition-colors"
+                          onClick={() => onToggleCommunity(contact.id, false)}
+                          data-testid={`badge-community-${contact.id}`}
+                        >
+                          <UserCheck className="w-3 h-3 mr-1" />
+                          Yes
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] h-5 px-2 cursor-pointer hover:bg-purple-500/10 hover:text-purple-700 dark:hover:text-purple-300 transition-colors"
+                          onClick={() => onToggleCommunity(contact.id, true)}
+                          data-testid={`button-add-community-${contact.id}`}
+                        >
+                          <Plus className="w-3 h-3 mr-1" />
+                          Add
+                        </Badge>
+                      )
+                    )}
+                  </td>
+                )}
+                {drilldownTier === "innovators" ? (
+                  <>
+                    <td className="px-3 py-2">
+                      <JourneyStageBadge stage={contact.stage} contactId={contact.id} />
+                    </td>
+                    <td className="px-1 py-2">
+                      <InlineSupportCell contactId={contact.id} supportTypes={contact.supportType || []} />
+                    </td>
+                  </>
+                ) : (
+                  <td className="px-3 py-2">
+                    <Badge variant="outline" className="text-[10px] h-5 px-2" data-testid={`table-role-${contact.id}`}>
+                      {contact.role || "—"}
+                    </Badge>
+                  </td>
+                )}
                 <td className="px-1 py-2">
                   <InlineEthnicityCell contactId={contact.id} ethnicities={contact.ethnicity || []} ethnicityCounts={ethnicityCounts} />
                 </td>
@@ -1452,18 +1564,20 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
                     ? format(new Date(contact.lastActiveDate || contact.lastInteractionDate), "MMM d, yyyy")
                     : "—"}
                 </td>
-                {drilldownTier && drilldownTier === "all" && onPromote && (
+                {drilldownTier && drilldownTier === "community" && (
                   <td className="px-2 py-2">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => onPromote(contact.id)}
-                      disabled={promotePending}
-                      title="Promote to Our Community"
-                      data-testid={`table-promote-${contact.id}`}
-                    >
-                      <ArrowUp className="w-4 h-4" />
-                    </Button>
+                    {onPromote && !contact.isInnovator && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => onPromote(contact.id)}
+                        disabled={promotePending}
+                        title="Promote to Our Innovators"
+                        data-testid={`table-promote-innovator-${contact.id}`}
+                      >
+                        <Lightbulb className="w-4 h-4 text-amber-500" />
+                      </Button>
+                    )}
                   </td>
                 )}
               </tr>
