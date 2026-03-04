@@ -355,48 +355,62 @@ export default function ContactDetail() {
           </div>
 
           {/* Current Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
             <MetricCard 
               title="Mindset" 
               value={contact.metrics?.mindset || "-"} 
               icon={<Brain className="w-5 h-5" />} 
               color="primary"
+              data-testid="metric-mindset"
             />
             <MetricCard 
               title="Skill" 
               value={contact.metrics?.skill || "-"} 
               icon={<Sparkles className="w-5 h-5" />} 
               color="secondary"
+              data-testid="metric-skill"
             />
             <MetricCard 
               title="Confidence" 
               value={contact.metrics?.confidence || "-"} 
               icon={<TrendingUp className="w-5 h-5" />} 
               color="green"
+              data-testid="metric-confidence"
             />
             <MetricCard 
               title="Biz Confidence" 
               value={contact.metrics?.confidenceScore || "-"} 
               icon={<Rocket className="w-5 h-5" />} 
               color="primary"
+              data-testid="metric-biz-confidence"
             />
             <MetricCard 
               title="Systems" 
               value={contact.metrics?.systemsInPlace || "-"} 
               icon={<Settings className="w-5 h-5" />} 
               color="secondary"
+              data-testid="metric-systems"
             />
             <MetricCard 
               title="Funding Ready" 
               value={contact.metrics?.fundingReadiness || "-"} 
               icon={<DollarSign className="w-5 h-5" />} 
               color="green"
+              data-testid="metric-funding"
             />
             <MetricCard 
               title="Network" 
               value={contact.metrics?.networkStrength || "-"} 
               icon={<Network className="w-5 h-5" />} 
               color="primary"
+              data-testid="metric-network"
+            />
+            <MetricCard 
+              title="Community" 
+              value={contact.metrics?.communityImpact || "-"} 
+              icon={<Users className="w-5 h-5" />} 
+              color="secondary"
+              data-testid="metric-community-impact"
             />
           </div>
 
@@ -1877,6 +1891,7 @@ function LogInteractionDialog({ contactId }: { contactId: number }) {
         systemsInPlaceScore: analysisResult.metrics.systemsInPlace,
         fundingReadinessScore: analysisResult.metrics.fundingReadiness,
         networkStrengthScore: analysisResult.metrics.networkStrength,
+        communityImpactScore: analysisResult.metrics.communityImpact,
         keyInsights: analysisResult.keywords
       },
       keywords: analysisResult.keywords

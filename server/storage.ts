@@ -615,17 +615,31 @@ export class DatabaseStorage implements IStorage {
     
     if (insertInteraction.analysis) {
       const analysis = insertInteraction.analysis as any;
-      if (analysis.mindsetScore !== undefined || analysis.skillScore !== undefined || analysis.confidenceScore !== undefined) {
-         await db.update(contacts)
-           .set({
-             metrics: {
-               mindset: analysis.mindsetScore ?? 0,
-               skill: analysis.skillScore ?? 0,
-               confidence: analysis.confidenceScore ?? 0,
-             },
-             updatedAt: new Date(),
-           })
-           .where(eq(contacts.id, insertInteraction.contactId));
+      const hasAnyScore = analysis.mindsetScore !== undefined || analysis.skillScore !== undefined || 
+        analysis.confidenceScore !== undefined || analysis.confidenceScoreMetric !== undefined ||
+        analysis.systemsInPlaceScore !== undefined || analysis.fundingReadinessScore !== undefined ||
+        analysis.networkStrengthScore !== undefined || analysis.communityImpactScore !== undefined;
+      
+      if (hasAnyScore) {
+        const [existingContact] = await db.select({ metrics: contacts.metrics }).from(contacts).where(eq(contacts.id, insertInteraction.contactId));
+        const existingMetrics = (existingContact?.metrics as Record<string, any>) || {};
+        
+        const newMetrics: Record<string, any> = { ...existingMetrics };
+        if (analysis.mindsetScore !== undefined) newMetrics.mindset = analysis.mindsetScore;
+        if (analysis.skillScore !== undefined) newMetrics.skill = analysis.skillScore;
+        if (analysis.confidenceScore !== undefined) newMetrics.confidence = analysis.confidenceScore;
+        if (analysis.confidenceScoreMetric !== undefined) newMetrics.confidenceScore = analysis.confidenceScoreMetric;
+        if (analysis.systemsInPlaceScore !== undefined) newMetrics.systemsInPlace = analysis.systemsInPlaceScore;
+        if (analysis.fundingReadinessScore !== undefined) newMetrics.fundingReadiness = analysis.fundingReadinessScore;
+        if (analysis.networkStrengthScore !== undefined) newMetrics.networkStrength = analysis.networkStrengthScore;
+        if (analysis.communityImpactScore !== undefined) newMetrics.communityImpact = analysis.communityImpactScore;
+
+        await db.update(contacts)
+          .set({
+            metrics: newMetrics,
+            updatedAt: new Date(),
+          })
+          .where(eq(contacts.id, insertInteraction.contactId));
       }
     }
 

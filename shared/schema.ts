@@ -106,6 +106,7 @@ export const interactions = pgTable("interactions", {
     systemsInPlaceScore?: number;
     fundingReadinessScore?: number;
     networkStrengthScore?: number;
+    communityImpactScore?: number;
     keyInsights?: string[];
   }>().default({}),
   keywords: text("keywords").array(),

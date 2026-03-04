@@ -507,14 +507,9 @@ export async function getOutcomeMovement(filters: ReportFilters) {
   const positivePercent = (arr: number[]) => arr.length ? Math.round((arr.filter(v => v > 0).length / arr.length) * 100) : 0;
 
   const confirmedLogs = await db
-    .select({ milestones: impactLogs.milestones })
+    .select({ id: impactLogs.id, milestones: impactLogs.milestones })
     .from(impactLogs)
     .where(where);
-
-  let milestoneCount = 0;
-  for (const log of confirmedLogs) {
-    if (log.milestones) milestoneCount += log.milestones.length;
-  }
 
   let milestonesFromTable = await db
     .select()
@@ -531,7 +526,15 @@ export async function getOutcomeMovement(filters: ReportFilters) {
     );
   }
 
-  const totalMilestoneCount = milestoneCount + milestonesFromTable.length;
+  let inlineMilestoneCount = 0;
+  const tableMilestoneLogIds = new Set(milestonesFromTable.map(m => m.impactLogId).filter(Boolean));
+  for (const log of confirmedLogs) {
+    if (log.milestones && log.milestones.length > 0 && !tableMilestoneLogIds.has(log.id)) {
+      inlineMilestoneCount += log.milestones.length;
+    }
+  }
+
+  const totalMilestoneCount = milestonesFromTable.length + inlineMilestoneCount;
 
   return {
     totalContacts: cIds.length,

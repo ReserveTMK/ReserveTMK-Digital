@@ -12,6 +12,49 @@ import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSch
 import crypto from "crypto";
 import { db } from "./db";
 import { eq, and, sql, gte, lte } from "drizzle-orm";
+
+const reportCache = new Map<string, { data: any; expiresAt: number }>();
+const inflightReports = new Map<string, Promise<any>>();
+
+const REPORT_CACHE_TTL_MS = 60_000;
+
+function getReportCacheKey(prefix: string, filters: Record<string, any>): string {
+  const stable = JSON.stringify(filters, Object.keys(filters).sort());
+  return `${prefix}:${crypto.createHash("sha256").update(stable).digest("hex")}`;
+}
+
+function getCachedReport(key: string): any | null {
+  const entry = reportCache.get(key);
+  if (entry && entry.expiresAt > Date.now()) return entry.data;
+  if (entry) reportCache.delete(key);
+  return null;
+}
+
+function setCachedReport(key: string, data: any): void {
+  reportCache.set(key, { data, expiresAt: Date.now() + REPORT_CACHE_TTL_MS });
+}
+
+async function deduplicatedReportCall<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const cached = getCachedReport(key);
+  if (cached) return cached as T;
+
+  const inflight = inflightReports.get(key);
+  if (inflight) return inflight as Promise<T>;
+
+  const promise = fn()
+    .then((result) => {
+      setCachedReport(key, result);
+      inflightReports.delete(key);
+      return result;
+    })
+    .catch((err) => {
+      inflightReports.delete(key);
+      throw err;
+    });
+
+  inflightReports.set(key, promise);
+  return promise;
+}
 import { scanGmailEmails, startAutoSync, getGmailOAuth2Client } from "./gmail-import";
 
 function parseTimeToMinutes(timeStr: string): number {
@@ -4205,88 +4248,94 @@ Important:
         communityLens,
       };
 
-      const report = await getFullMonthlyReport(filters);
+      const cacheKey = getReportCacheKey("generate", { userId, startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder, communityLens });
 
-      let legacyMetrics = null;
-      let isBlended = false;
-      let boundaryDateStr: string | null = null;
-      let legacyReportCount = 0;
-      let legacyPeriods: string[] = [];
-      let legacyHighlights: string[] = [];
+      const result = await deduplicatedReportCall(cacheKey, async () => {
+        const report = await getFullMonthlyReport(filters);
 
-      try {
-        const settings = await storage.getReportingSettings(userId);
-        const boundaryDate = settings?.boundaryDate;
-        const reportStart = new Date(startDate);
+        let legacyMetrics = null;
+        let isBlended = false;
+        let boundaryDateStr: string | null = null;
+        let legacyReportCount = 0;
+        let legacyPeriods: string[] = [];
+        let legacyHighlights: string[] = [];
 
-        const allLegacy = await storage.getLegacyReports(userId);
-        const confirmed = allLegacy.filter(r => r.status === "confirmed");
-        const reqStart = new Date(startDate);
-        const reqEnd = new Date(endDate);
+        try {
+          const settings = await storage.getReportingSettings(userId);
+          const boundaryDate = settings?.boundaryDate;
+          const reportStart = new Date(startDate);
 
-        const overlapping = confirmed.filter(r => {
-          const ps = new Date(r.periodStart);
-          const pe = new Date(r.periodEnd);
-          if (boundaryDate) {
-            return ps <= reqEnd && pe >= reqStart && pe <= boundaryDate;
-          }
-          return ps <= reqEnd && pe >= reqStart;
-        });
+          const allLegacy = await storage.getLegacyReports(userId);
+          const confirmed = allLegacy.filter(r => r.status === "confirmed");
+          const reqStart = new Date(startDate);
+          const reqEnd = new Date(endDate);
 
-        if (overlapping.length > 0) {
-          const totals = {
-            activationsTotal: 0,
-            activationsWorkshops: 0,
-            activationsMentoring: 0,
-            activationsEvents: 0,
-            activationsPartnerMeetings: 0,
-            foottrafficUnique: 0,
-            bookingsTotal: 0,
-          };
-
-          for (const lr of overlapping) {
-            const snapshot = await storage.getLegacyReportSnapshot(lr.id);
-            if (snapshot) {
-              totals.activationsTotal += snapshot.activationsTotal || 0;
-              totals.activationsWorkshops += snapshot.activationsWorkshops || 0;
-              totals.activationsMentoring += snapshot.activationsMentoring || 0;
-              totals.activationsEvents += snapshot.activationsEvents || 0;
-              totals.activationsPartnerMeetings += snapshot.activationsPartnerMeetings || 0;
-              totals.foottrafficUnique += snapshot.foottrafficUnique || 0;
-              totals.bookingsTotal += snapshot.bookingsTotal || 0;
+          const overlapping = confirmed.filter(r => {
+            const ps = new Date(r.periodStart);
+            const pe = new Date(r.periodEnd);
+            if (boundaryDate) {
+              return ps <= reqEnd && pe >= reqStart && pe <= boundaryDate;
             }
-            legacyPeriods.push(lr.quarterLabel);
+            return ps <= reqEnd && pe >= reqStart;
+          });
 
-            try {
-              const extraction = await storage.getLegacyReportExtraction(lr.id);
-              if (extraction?.extractedHighlights) {
-                const highlights = extraction.extractedHighlights as any[];
-                for (const h of highlights) {
-                  if (typeof h === "string" && h.trim()) legacyHighlights.push(h);
-                  else if (h?.text) legacyHighlights.push(h.text);
-                }
+          if (overlapping.length > 0) {
+            const totals = {
+              activationsTotal: 0,
+              activationsWorkshops: 0,
+              activationsMentoring: 0,
+              activationsEvents: 0,
+              activationsPartnerMeetings: 0,
+              foottrafficUnique: 0,
+              bookingsTotal: 0,
+            };
+
+            for (const lr of overlapping) {
+              const snapshot = await storage.getLegacyReportSnapshot(lr.id);
+              if (snapshot) {
+                totals.activationsTotal += snapshot.activationsTotal || 0;
+                totals.activationsWorkshops += snapshot.activationsWorkshops || 0;
+                totals.activationsMentoring += snapshot.activationsMentoring || 0;
+                totals.activationsEvents += snapshot.activationsEvents || 0;
+                totals.activationsPartnerMeetings += snapshot.activationsPartnerMeetings || 0;
+                totals.foottrafficUnique += snapshot.foottrafficUnique || 0;
+                totals.bookingsTotal += snapshot.bookingsTotal || 0;
               }
-            } catch {}
+              legacyPeriods.push(lr.quarterLabel);
+
+              try {
+                const extraction = await storage.getLegacyReportExtraction(lr.id);
+                if (extraction?.extractedHighlights) {
+                  const highlights = extraction.extractedHighlights as any[];
+                  for (const h of highlights) {
+                    if (typeof h === "string" && h.trim()) legacyHighlights.push(h);
+                    else if (h?.text) legacyHighlights.push(h.text);
+                  }
+                }
+              } catch {}
+            }
+
+            legacyMetrics = totals;
+            isBlended = true;
+            boundaryDateStr = boundaryDate?.toISOString() || null;
+            legacyReportCount = overlapping.length;
           }
-
-          legacyMetrics = totals;
-          isBlended = true;
-          boundaryDateStr = boundaryDate?.toISOString() || null;
-          legacyReportCount = overlapping.length;
+        } catch (blendErr) {
+          console.error("Legacy blend error (non-fatal):", blendErr);
         }
-      } catch (blendErr) {
-        console.error("Legacy blend error (non-fatal):", blendErr);
-      }
 
-      res.json({
-        ...report,
-        isBlended,
-        boundaryDate: boundaryDateStr,
-        legacyReportCount,
-        legacyPeriods,
-        legacyMetrics,
-        legacyHighlights: legacyHighlights.slice(0, 20),
+        return {
+          ...report,
+          isBlended,
+          boundaryDate: boundaryDateStr,
+          legacyReportCount,
+          legacyPeriods,
+          legacyMetrics,
+          legacyHighlights: legacyHighlights.slice(0, 20),
+        };
       });
+
+      res.json(result);
     } catch (err: any) {
       console.error("Report generation error:", err);
       res.status(500).json({ message: "Failed to generate report" });
@@ -4393,7 +4442,8 @@ Important:
         funder,
       };
 
-      const comparison = await getCommunityComparison(filters);
+      const cacheKey = getReportCacheKey("comparison", { userId, startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder });
+      const comparison = await deduplicatedReportCall(cacheKey, () => getCommunityComparison(filters));
       res.json(comparison);
     } catch (err: any) {
       console.error("Community comparison error:", err);
@@ -4421,7 +4471,8 @@ Important:
         communityLens: "maori",
       };
 
-      const alignment = await getTamakiOraAlignment(filters);
+      const cacheKey = getReportCacheKey("tamaki-ora", { userId, startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder });
+      const alignment = await deduplicatedReportCall(cacheKey, () => getTamakiOraAlignment(filters));
       res.json(alignment);
     } catch (err: any) {
       console.error("Tamaki Ora alignment error:", err);
@@ -5848,7 +5899,12 @@ Return a JSON object with this exact structure:
         ? sentiments.reduce((sum: number, s: string) => sum + (sentimentMap[s] || 2), 0) / sentiments.length
         : null;
 
-      const outstandingDebriefs = (allDebriefs as any[]).filter((d: any) => d.status === "pending" || d.status === "draft").length;
+      const outstandingDebriefs = (allDebriefs as any[]).filter((d: any) => {
+        if (d.status !== "pending" && d.status !== "draft") return false;
+        const created = new Date(d.createdAt);
+        return created >= weekStart && created <= weekEnd;
+      }).length;
+      const backlogDebriefs = (allDebriefs as any[]).filter((d: any) => d.status === "pending" || d.status === "draft").length;
 
       const allEvents = await storage.getEvents(userId);
       const nextWeekDate = new Date(weekEnd);
@@ -5874,6 +5930,7 @@ Return a JSON object with this exact structure:
         completedBookings: completedBookings.length,
         milestonesCreated: weekMilestones.length,
         outstandingDebriefs,
+        backlogDebriefs,
         upcomingEventsNextWeek: upcomingEvents.length,
         actionsCreated,
         actionsCompleted,
@@ -5891,7 +5948,8 @@ Return a JSON object with this exact structure:
         const label = sentimentAvg >= 2.5 ? "positive" : sentimentAvg >= 1.5 ? "neutral" : "negative";
         summaryParts.push(`Overall sentiment: ${label} (n=${sentiments.length})`);
       }
-      if (outstandingDebriefs > 0) summaryParts.push(`${outstandingDebriefs} event${outstandingDebriefs > 1 ? "s" : ""} still to be debriefed`);
+      if (outstandingDebriefs > 0) summaryParts.push(`${outstandingDebriefs} event${outstandingDebriefs > 1 ? "s" : ""} still to be debriefed this week`);
+      if (backlogDebriefs > outstandingDebriefs) summaryParts.push(`${backlogDebriefs} total outstanding across all time`);
       if (upcomingEvents.length > 0) summaryParts.push(`${upcomingEvents.length} event${upcomingEvents.length > 1 ? "s" : ""} upcoming next week`);
 
       const generatedSummary = summaryParts.join(". ") + ".";
@@ -5915,6 +5973,138 @@ Return a JSON object with this exact structure:
       res.status(201).json(debrief);
     } catch (err: any) {
       console.error("Generate weekly debrief error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/weekly-hub-debriefs/:id/refresh", isAuthenticated, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const existing = await storage.getWeeklyHubDebrief(id);
+      if (!existing) return res.status(404).json({ message: "Not found" });
+      if (existing.status !== "draft") return res.status(400).json({ message: "Only draft debriefs can be refreshed" });
+
+      const userId = (req.user as any).claims.sub;
+      const weekStart = new Date(existing.weekStartDate);
+      const weekEnd = new Date(existing.weekEndDate);
+
+      const allDebriefs = await storage.getImpactLogs(userId);
+      const confirmedDebriefs = (allDebriefs as any[]).filter((d: any) => {
+        if (d.status !== "confirmed") return false;
+        const created = new Date(d.createdAt);
+        return created >= weekStart && created <= weekEnd;
+      });
+
+      const allProgrammes = await storage.getProgrammes(userId);
+      const completedProgrammes = allProgrammes.filter((p: any) => {
+        if (p.status !== "completed") return false;
+        const end = p.endDate ? new Date(p.endDate) : null;
+        return end && end >= weekStart && end <= weekEnd;
+      });
+
+      const allBookings = await storage.getBookings(userId);
+      const completedBookings = allBookings.filter((b: any) => {
+        if (b.status !== "completed") return false;
+        const d = b.bookingDate ? new Date(b.bookingDate) : null;
+        return d && d >= weekStart && d <= weekEnd;
+      });
+
+      const allMilestones = await storage.getMilestones(userId);
+      const weekMilestones = allMilestones.filter(m => {
+        const created = m.createdAt ? new Date(m.createdAt) : null;
+        return created && created >= weekStart && created <= weekEnd;
+      });
+
+      const allTaxonomy = await storage.getTaxonomy(userId);
+      const taxonomyCounts: Record<string, number> = {};
+      confirmedDebriefs.forEach((d: any) => {
+        const tags = d.taxonomyTags || [];
+        tags.forEach((tag: string) => {
+          taxonomyCounts[tag] = (taxonomyCounts[tag] || 0) + 1;
+        });
+      });
+      const topThemes = Object.entries(taxonomyCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([theme]) => theme);
+
+      const sentimentMap: Record<string, number> = { positive: 3, neutral: 2, negative: 1 };
+      const sentiments = confirmedDebriefs.map((d: any) => d.sentiment).filter(Boolean);
+      const sentimentBreakdown: Record<string, number> = { positive: 0, neutral: 0, negative: 0 };
+      sentiments.forEach((s: string) => { sentimentBreakdown[s] = (sentimentBreakdown[s] || 0) + 1; });
+      const sentimentAvg = sentiments.length > 0
+        ? sentiments.reduce((sum: number, s: string) => sum + (sentimentMap[s] || 2), 0) / sentiments.length
+        : null;
+
+      const outstandingDebriefs = (allDebriefs as any[]).filter((d: any) => {
+        if (d.status !== "pending" && d.status !== "draft") return false;
+        const created = new Date(d.createdAt);
+        return created >= weekStart && created <= weekEnd;
+      }).length;
+      const backlogDebriefs = (allDebriefs as any[]).filter((d: any) => d.status === "pending" || d.status === "draft").length;
+
+      const allEvents = await storage.getEvents(userId);
+      const nextWeekDate = new Date(weekEnd);
+      nextWeekDate.setDate(nextWeekDate.getDate() + 1);
+      const nextWeekStart = getNZWeekStart(nextWeekDate);
+      const nextWeekEnd = getNZWeekEnd(nextWeekDate);
+      const upcomingEvents = allEvents.filter(e => {
+        const d = new Date(e.startTime);
+        return d >= nextWeekStart && d <= nextWeekEnd;
+      });
+
+      const allActionItems = await storage.getActionItems(userId);
+      const weekActions = allActionItems.filter(a => {
+        const created = a.createdAt ? new Date(a.createdAt) : null;
+        return created && created >= weekStart && created <= weekEnd;
+      });
+      const actionsCreated = weekActions.length;
+      const actionsCompleted = weekActions.filter(a => a.status === "completed").length;
+
+      const metrics: Record<string, any> = {
+        confirmedDebriefs: confirmedDebriefs.length,
+        completedProgrammes: completedProgrammes.length,
+        completedBookings: completedBookings.length,
+        milestonesCreated: weekMilestones.length,
+        outstandingDebriefs,
+        backlogDebriefs,
+        upcomingEventsNextWeek: upcomingEvents.length,
+        actionsCreated,
+        actionsCompleted,
+      };
+
+      const summaryParts: string[] = [];
+      if (confirmedDebriefs.length > 0) summaryParts.push(`${confirmedDebriefs.length} debrief${confirmedDebriefs.length > 1 ? "s" : ""} confirmed`);
+      else summaryParts.push("No debriefs confirmed this week");
+      if (completedProgrammes.length > 0) summaryParts.push(`${completedProgrammes.length} programme${completedProgrammes.length > 1 ? "s" : ""} completed`);
+      if (completedBookings.length > 0) summaryParts.push(`${completedBookings.length} booking${completedBookings.length > 1 ? "s" : ""} completed`);
+      if (weekMilestones.length > 0) summaryParts.push(`${weekMilestones.length} milestone${weekMilestones.length > 1 ? "s" : ""} created`);
+      if (actionsCreated > 0) summaryParts.push(`${actionsCreated} action${actionsCreated > 1 ? "s" : ""} created, ${actionsCompleted} completed`);
+      if (topThemes.length > 0) summaryParts.push(`Top themes: ${topThemes.join(", ")}`);
+      if (sentimentAvg !== null) {
+        const label = sentimentAvg >= 2.5 ? "positive" : sentimentAvg >= 1.5 ? "neutral" : "negative";
+        summaryParts.push(`Overall sentiment: ${label} (n=${sentiments.length})`);
+      }
+      if (outstandingDebriefs > 0) summaryParts.push(`${outstandingDebriefs} event${outstandingDebriefs > 1 ? "s" : ""} still to be debriefed this week`);
+      if (backlogDebriefs > outstandingDebriefs) summaryParts.push(`${backlogDebriefs} total outstanding across all time`);
+      if (upcomingEvents.length > 0) summaryParts.push(`${upcomingEvents.length} event${upcomingEvents.length > 1 ? "s" : ""} upcoming next week`);
+
+      const generatedSummary = summaryParts.join(". ") + ".";
+
+      const updated = await storage.updateWeeklyHubDebrief(id, {
+        generatedSummaryText: generatedSummary,
+        metricsJson: metrics,
+        themesJson: topThemes,
+        sentimentJson: {
+          average: sentimentAvg,
+          sampleSize: sentiments.length,
+          breakdown: sentimentBreakdown,
+        },
+      });
+
+      res.json(updated);
+    } catch (err: any) {
+      console.error("Refresh weekly debrief error:", err);
       res.status(500).json({ message: err.message });
     }
   });
