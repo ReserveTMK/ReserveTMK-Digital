@@ -659,13 +659,13 @@ export default function Dashboard() {
               </div>
             </Card>
 
-            <Card className="p-4 md:p-6" data-testid="card-community-snapshot">
+            <Card className="p-4 md:p-6" data-testid="card-innovator-snapshot">
               <div className="flex items-center gap-3 mb-4">
                 <div className="p-2 rounded-lg bg-emerald-500/10">
                   <Sprout className="w-5 h-5 text-emerald-600" />
                 </div>
                 <div>
-                  <h3 className="font-display font-semibold" data-testid="text-snapshot-heading">Community Snapshot</h3>
+                  <h3 className="font-display font-semibold" data-testid="text-snapshot-heading">Innovator Snapshot</h3>
                   <p className="text-xs text-muted-foreground">Journey stages</p>
                 </div>
               </div>
