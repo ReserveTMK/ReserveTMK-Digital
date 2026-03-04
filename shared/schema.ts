@@ -1557,6 +1557,7 @@ export const gmailSyncSettings = pgTable("gmail_sync_settings", {
   autoSyncEnabled: boolean("auto_sync_enabled").default(true),
   lastSyncAt: timestamp("last_sync_at"),
   syncIntervalHours: integer("sync_interval_hours").default(24),
+  minEmailFrequency: integer("min_email_frequency").default(2),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

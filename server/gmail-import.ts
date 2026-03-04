@@ -105,7 +105,7 @@ function parseEmailHeader(header: string): Array<{ name: string; email: string }
   return results;
 }
 
-function isNoreplyEmail(email: string): boolean {
+export function isNoreplyEmail(email: string): boolean {
   return NOREPLY_PATTERNS.some(p => p.test(email));
 }
 
@@ -306,7 +306,7 @@ async function scanSingleAccount(
 ): Promise<{ emails: number; people: Map<string, ExtractedPerson> }> {
   const afterEpoch = Math.floor(fromDate.getTime() / 1000);
   const beforeEpoch = Math.floor(toDate.getTime() / 1000);
-  const query = `after:${afterEpoch} before:${beforeEpoch}`;
+  const query = `after:${afterEpoch} before:${beforeEpoch} -category:promotions -category:social -category:updates`;
 
   const peopleMap = new Map<string, ExtractedPerson>();
   let totalEmails = 0;
@@ -332,7 +332,7 @@ async function scanSingleAccount(
             userId: 'me',
             id: msg.id,
             format: 'metadata',
-            metadataHeaders: ['From', 'To', 'Cc'],
+            metadataHeaders: ['From', 'To', 'Cc', 'List-Unsubscribe', 'Precedence'],
           }).catch(() => null)
         )
       );
@@ -342,6 +342,13 @@ async function scanSingleAccount(
         totalEmails++;
 
         const headers = detail.data.payload.headers;
+
+        const listUnsubscribe = headers.find((h: any) => h.name.toLowerCase() === 'list-unsubscribe')?.value;
+        if (listUnsubscribe) continue;
+
+        const precedence = headers.find((h: any) => h.name.toLowerCase() === 'precedence')?.value?.toLowerCase();
+        if (precedence === 'bulk' || precedence === 'list') continue;
+
         const fromHeader = headers.find((h: any) => h.name === 'From')?.value || '';
         const toHeader = headers.find((h: any) => h.name === 'To')?.value || '';
         const ccHeader = headers.find((h: any) => h.name === 'Cc')?.value || '';
@@ -386,10 +393,14 @@ async function finalizeImport(
   totalEmails: number,
   excludedDomains: Set<string>
 ) {
+  const syncSettings = await storage.getGmailSyncSettings(userId);
+  const minFrequency = syncSettings?.minEmailFrequency ?? 2;
+
   const orgMap = new Map<string, ExtractedOrg>();
   for (const person of Array.from(peopleMap.values())) {
     if (PUBLIC_DOMAINS.has(person.domain)) continue;
     if (excludedDomains.has(person.domain)) continue;
+    if (person.frequency < minFrequency) continue;
 
     if (orgMap.has(person.domain)) {
       const org = orgMap.get(person.domain)!;
@@ -471,6 +482,11 @@ async function finalizeImport(
       continue;
     }
 
+    if (person.frequency < minFrequency) {
+      contactsSkipped++;
+      continue;
+    }
+
     try {
       const cleanedName = cleanName(person.name);
       const newContact = await storage.createContact({
@@ -512,8 +528,8 @@ async function finalizeImport(
     completedAt: new Date(),
   });
 
-  const syncSettings = await storage.getGmailSyncSettings(userId);
-  if (!syncSettings) {
+  const existingSyncSettings = await storage.getGmailSyncSettings(userId);
+  if (!existingSyncSettings) {
     await storage.createGmailSyncSettings({
       userId,
       autoSyncEnabled: true,

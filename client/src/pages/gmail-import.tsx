@@ -37,11 +37,19 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Link, useLocation } from "wouter";
 
+interface CleanupContact {
+  id: number;
+  name: string;
+  email: string;
+  notes: string | null;
+}
+
 interface GmailStatus {
   connected: boolean;
   syncSettings: {
     autoSyncEnabled: boolean;
     syncIntervalHours: number;
+    minEmailFrequency: number;
     lastSyncAt: string | null;
   } | null;
   latestImport: ImportHistoryItem | null;
@@ -90,6 +98,7 @@ export default function GmailImportPage() {
   const [exclusionType, setExclusionType] = useState<string>("domain");
   const [exclusionValue, setExclusionValue] = useState("");
   const [pollingId, setPollingId] = useState<number | null>(null);
+  const [selectedCleanup, setSelectedCleanup] = useState<Set<number>>(new Set());
   const [location] = useLocation();
 
   useEffect(() => {
@@ -227,6 +236,36 @@ export default function GmailImportPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/gmail/accounts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/gmail/status"] });
       toast({ title: "Account Removed" });
+    },
+  });
+
+  const updateFrequencyMutation = useMutation({
+    mutationFn: async (minEmailFrequency: number) => {
+      const res = await apiRequest("PUT", "/api/gmail/sync-settings", { minEmailFrequency });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/gmail/status"] });
+      toast({ title: "Frequency threshold updated" });
+    },
+  });
+
+  const cleanupQuery = useQuery<CleanupContact[]>({
+    queryKey: ["/api/gmail/cleanup-suggestions"],
+  });
+
+  const cleanupMutation = useMutation({
+    mutationFn: async (contactIds: number[]) => {
+      const res = await apiRequest("POST", "/api/gmail/cleanup", { contactIds });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/gmail/cleanup-suggestions"] });
+      setSelectedCleanup(new Set());
+      toast({ title: "Cleanup Complete", description: `Removed ${data.deleted} contacts` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Cleanup Failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -521,7 +560,7 @@ export default function GmailImportPage() {
               Automatically scan for new contacts from recent emails once a day
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-6">
             <div className="flex items-center justify-between">
               <div className="space-y-1">
                 <Label>Enable Daily Sync</Label>
@@ -534,6 +573,29 @@ export default function GmailImportPage() {
                 onCheckedChange={(checked) => toggleSyncMutation.mutate(checked)}
                 data-testid="switch-auto-sync"
               />
+            </div>
+            <div className="border-t pt-4">
+              <div className="space-y-2">
+                <Label>Minimum email frequency</Label>
+                <p className="text-sm text-muted-foreground">
+                  Only create contacts from people you have exchanged this many emails with. Higher values filter out more one-off senders.
+                </p>
+                <Select
+                  value={String(status?.syncSettings?.minEmailFrequency ?? 2)}
+                  onValueChange={(val) => updateFrequencyMutation.mutate(parseInt(val))}
+                >
+                  <SelectTrigger className="w-[120px]" data-testid="select-min-frequency">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1 email</SelectItem>
+                    <SelectItem value="2">2 emails</SelectItem>
+                    <SelectItem value="3">3 emails</SelectItem>
+                    <SelectItem value="5">5 emails</SelectItem>
+                    <SelectItem value="10">10 emails</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -611,6 +673,83 @@ export default function GmailImportPage() {
           )}
         </CardContent>
       </Card>
+
+      {(cleanupQuery.data?.length ?? 0) > 0 && (
+        <Card data-testid="card-cleanup">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Cleanup Suggestions
+            </CardTitle>
+            <CardDescription>
+              These contacts were imported from a single email and look like marketing or automated senders. Review and remove any that are not real people.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">
+                {cleanupQuery.data!.length} suspect contact{cleanupQuery.data!.length !== 1 ? 's' : ''} found
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (selectedCleanup.size === cleanupQuery.data!.length) {
+                      setSelectedCleanup(new Set());
+                    } else {
+                      setSelectedCleanup(new Set(cleanupQuery.data!.map(c => c.id)));
+                    }
+                  }}
+                  data-testid="button-toggle-select-all"
+                >
+                  {selectedCleanup.size === cleanupQuery.data!.length ? 'Deselect All' : 'Select All'}
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => cleanupMutation.mutate(Array.from(selectedCleanup))}
+                  disabled={selectedCleanup.size === 0 || cleanupMutation.isPending}
+                  data-testid="button-delete-selected"
+                >
+                  {cleanupMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                  ) : (
+                    <Trash2 className="h-4 w-4 mr-1" />
+                  )}
+                  Delete Selected ({selectedCleanup.size})
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-1 max-h-[300px] overflow-y-auto">
+              {cleanupQuery.data!.map((contact) => (
+                <label
+                  key={contact.id}
+                  className="flex items-center gap-3 py-2 px-3 rounded-md hover:bg-muted/50 cursor-pointer"
+                  data-testid={`cleanup-item-${contact.id}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedCleanup.has(contact.id)}
+                    onChange={(e) => {
+                      const next = new Set(selectedCleanup);
+                      if (e.target.checked) next.add(contact.id);
+                      else next.delete(contact.id);
+                      setSelectedCleanup(next);
+                    }}
+                    className="rounded"
+                    data-testid={`checkbox-cleanup-${contact.id}`}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{contact.name}</p>
+                    <p className="text-xs text-muted-foreground font-mono truncate">{contact.email}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card data-testid="card-import-history">
         <CardHeader>

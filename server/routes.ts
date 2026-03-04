@@ -57,7 +57,7 @@ async function deduplicatedReportCall<T>(key: string, fn: () => Promise<T>): Pro
   inflightReports.set(key, promise);
   return promise;
 }
-import { scanGmailEmails, startAutoSync, getGmailOAuth2Client } from "./gmail-import";
+import { scanGmailEmails, startAutoSync, getGmailOAuth2Client, isNoreplyEmail } from "./gmail-import";
 
 function parseTimeToMinutes(timeStr: string): number {
   const parts = timeStr.split(":");
@@ -6635,11 +6635,67 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     }
   });
 
+  app.get("/api/gmail/cleanup-suggestions", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const allContacts = await storage.getContacts(userId);
+      const suspects = allContacts.filter(c => {
+        if (!c.notes || !c.notes.includes('Imported from Gmail (1 email')) return false;
+        if (!c.email) return false;
+        if (isNoreplyEmail(c.email)) return true;
+        const localPart = c.email.split('@')[0]?.toLowerCase() || '';
+        const marketingPrefixes = ['promo', 'deals', 'offers', 'campaign', 'announce', 'weekly', 'daily', 'store', 'shop', 'rewards', 'membership', 'deliver', 'shipment', 'tracking'];
+        if (marketingPrefixes.some(p => localPart.startsWith(p))) return true;
+        return false;
+      });
+      res.json(suspects.map(c => ({ id: c.id, name: c.name, email: c.email, notes: c.notes })));
+    } catch (err: any) {
+      console.error("Gmail cleanup suggestions error:", err);
+      res.status(500).json({ message: "Failed to get cleanup suggestions" });
+    }
+  });
+
+  app.post("/api/gmail/cleanup", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { contactIds } = req.body;
+      if (!Array.isArray(contactIds) || contactIds.length === 0) {
+        return res.status(400).json({ message: "contactIds array required" });
+      }
+      const allContacts = await storage.getContacts(userId);
+      const ownedIds = new Set(allContacts.map(c => c.id));
+      let deleted = 0;
+      const failed: number[] = [];
+      for (const id of contactIds) {
+        if (!ownedIds.has(id)) continue;
+        try {
+          const memberships = await storage.getContactGroups(id);
+          for (const m of memberships) {
+            await storage.removeGroupMember(m.id);
+          }
+          const contactInteractions = await storage.getInteractions(id);
+          for (const i of contactInteractions) {
+            await storage.deleteInteraction(i.id);
+          }
+          await storage.deleteContact(id);
+          deleted++;
+        } catch (err) {
+          console.error(`Failed to delete contact ${id}:`, err);
+          failed.push(id);
+        }
+      }
+      res.json({ deleted, failed: failed.length });
+    } catch (err: any) {
+      console.error("Gmail cleanup error:", err);
+      res.status(500).json({ message: "Failed to cleanup contacts" });
+    }
+  });
+
   app.get("/api/gmail/sync-settings", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
       const settings = await storage.getGmailSyncSettings(userId);
-      res.json(settings || { autoSyncEnabled: false, syncIntervalHours: 24, lastSyncAt: null });
+      res.json(settings || { autoSyncEnabled: false, syncIntervalHours: 24, minEmailFrequency: 2, lastSyncAt: null });
     } catch (err: any) {
       res.status(500).json({ message: "Failed to fetch sync settings" });
     }
@@ -6648,20 +6704,29 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   app.put("/api/gmail/sync-settings", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { autoSyncEnabled } = req.body;
+      const settingsSchema = z.object({
+        autoSyncEnabled: z.boolean().optional(),
+        minEmailFrequency: z.number().int().min(1).max(10).optional(),
+      });
+      const parsed = settingsSchema.parse(req.body);
+      const updates: any = {};
+      if (parsed.autoSyncEnabled !== undefined) updates.autoSyncEnabled = parsed.autoSyncEnabled;
+      if (parsed.minEmailFrequency !== undefined) updates.minEmailFrequency = parsed.minEmailFrequency;
       const existing = await storage.getGmailSyncSettings(userId);
       if (existing) {
-        const updated = await storage.updateGmailSyncSettings(userId, { autoSyncEnabled });
+        const updated = await storage.updateGmailSyncSettings(userId, updates);
         res.json(updated);
       } else {
         const created = await storage.createGmailSyncSettings({
           userId,
-          autoSyncEnabled,
+          autoSyncEnabled: updates.autoSyncEnabled ?? true,
           syncIntervalHours: 24,
+          minEmailFrequency: updates.minEmailFrequency ?? 2,
         });
         res.json(created);
       }
     } catch (err: any) {
+      if (err.name === 'ZodError') return res.status(400).json({ message: "Invalid settings values" });
       res.status(500).json({ message: "Failed to update sync settings" });
     }
   });

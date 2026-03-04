@@ -44,6 +44,7 @@ PostgreSQL is used as the database, integrated with Drizzle ORM. The schema incl
 -   **Regular Booker Portal**: Self-service portal for regular bookers with magic link authentication, showing package status, upcoming bookings, and a booking flow with calendar view.
 -   **After-Hours Auto-Send**: Detects bookings outside staffed operating hours and automatically sends venue instruction reminder emails with configurable settings.
 -   **Xero Integration**: OAuth2 connection to Xero accounting for automated invoice generation upon booking acceptance, including contact sync and invoice status tracking.
+-   **Gmail Sync**: Multi-account Gmail import with smart filtering. Excludes Gmail Promotions/Social/Updates categories via query filter. Detects and skips mailing list emails via `List-Unsubscribe` and `Precedence: bulk/list` headers. Configurable minimum email frequency threshold (default 2) to prevent single-email senders from creating contacts. User-managed domain/email exclusion list. Cleanup tool to review and bulk-delete already-imported marketing contacts. Settings stored in `gmailSyncSettings` table (`minEmailFrequency` column). Auto-sync runs daily when enabled.
 -   **UI Terminology**: Uses "People" for contacts, 12-hour time format (AM/PM), and removes consent features from contact details.
 
 ## External Dependencies
