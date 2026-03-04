@@ -1,0 +1,81 @@
+Add streamlined role labels to contacts and groups in Reserve Tāmaki app.
+
+GOAL:
+Add simple identity-based role fields so people can identify themselves (Business Owner, Creative, etc.) and organizations can be classified (Business, Social Enterprise, etc.).
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 1: DATABASE
+
+Remove any old unused role/type fields if they exist, then add:
+
+CONTACTS TABLE:
+Add field: role
+Options (10):
+- business_owner → "Business Owner"
+- entrepreneur → "Entrepreneur"
+- creative_artist → "Creative / Artist"
+- freelancer → "Freelancer"
+- community_leader → "Community Leader"
+- professional → "Professional"
+- rangatahi_student → "Rangatahi / Student"
+- partner → "Partner"
+- supporter → "Supporter"
+- other → "Other"
+
+Also add: role_other (text field for custom description if "Other" selected)
+
+GROUPS TABLE:
+Add field: organization_type
+Options (7):
+- business → "Business"
+- social_enterprise → "Social Enterprise"
+- creative_movement → "Creative Movement"
+- community_initiative → "Community Initiative"
+- partner_organization → "Partner Organization"
+- funder → "Funder"
+- other → "Other"
+
+Also add: organization_type_other (text field for custom description if "Other" selected)
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 2: FORMS
+
+Add role dropdown to contact form (optional field, 10 options, shows text input if Other)
+Add organization_type dropdown to group form (optional field, 7 options, shows text input if Other)
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 3: DISPLAY
+
+Show role on contact cards (second line, before organization)
+Show organization_type on group cards (second line)
+Format enum values to readable text (business_owner → "Business Owner")
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 4: FILTERS & BULK ACTIONS
+
+Add "Filter by Role" to contacts table view (shows counts for each role)
+Add "Filter by Organization Type" to groups table view (shows counts for each type)
+Add "Set Role" to bulk actions for contacts
+Add "Set Organization Type" to bulk actions for groups
+
+═══════════════════════════════════════════════════════════════════════
+
+PART 5: ANALYTICS (Optional)
+
+Add dashboard widget showing community breakdown by role with counts.
+
+═══════════════════════════════════════════════════════════════════════
+
+Implementation order:
+1. Database updates (remove old, add new fields)
+2. Update forms
+3. Update display in cards/lists
+4. Add filters
+5. Add bulk actions
+6. Add analytics widget
+
+Test each part before moving to the next.
