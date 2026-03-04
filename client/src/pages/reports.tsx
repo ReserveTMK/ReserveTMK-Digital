@@ -857,7 +857,13 @@ export default function Reports() {
                   {communityLens !== "all" && (
                     <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded-md px-3 py-2" data-testid="notice-delivery-unfiltered">
                       <Info className="w-3.5 h-3.5 shrink-0" />
-                      <span>Delivery metrics show organisation-level data (not filtered by community lens)</span>
+                      <span>Events, bookings, and programmes show organisation-level data (not filtered by community lens). Mentoring metrics are filtered.</span>
+                    </div>
+                  )}
+                  {del?.communitySpendError && (
+                    <div className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-500/10 rounded-md px-3 py-2" data-testid="notice-spend-error">
+                      <Info className="w-3.5 h-3.5 shrink-0" />
+                      <span>Community spend data could not be retrieved. The amount shown may be incorrect.</span>
                     </div>
                   )}
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -865,6 +871,9 @@ export default function Reports() {
                       <StatCard icon={CalendarDays} label="Events" value={(lm.activationsEvents || 0) + (del?.events?.total || 0)} color="blue" testId="stat-events" subText={`${lm.activationsEvents || 0} legacy + ${del?.events?.total || 0} live`} />
                     ) : (
                       <StatCard icon={CalendarDays} label="Events" value={del?.events?.total || 0} color="blue" testId="stat-events" />
+                    )}
+                    {(del?.events?.totalAttendees || 0) > 0 && (
+                      <StatCard icon={Users} label="People Reached" value={del.events.totalAttendees} color="teal" testId="stat-people-reached" />
                     )}
                     {isBlended && lm ? (
                       <StatCard icon={Building2} label="Bookings" value={(lm.bookingsTotal || 0) + (del?.bookings?.total || 0)} color="orange" testId="stat-bookings" subText={`${lm.bookingsTotal || 0} legacy + ${del?.bookings?.total || 0} live`} />

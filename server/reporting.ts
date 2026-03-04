@@ -1,10 +1,11 @@
 import { db } from "./db";
-import { sql, eq, and, gte, lte, inArray, count, countDistinct, sum, avg } from "drizzle-orm";
+import { sql, eq, ne, and, gte, lte, inArray, count, countDistinct, sum, avg } from "drizzle-orm";
 import {
   impactLogs, impactLogContacts, impactLogGroups, impactTags, impactTaxonomy,
   contacts, groups, groupMembers, events, eventAttendance,
   programmes, programmeEvents, bookings, memberships, mous, venues,
   milestones, relationshipStageHistory, communitySpend, meetings, interactions,
+  meetingTypes,
 } from "@shared/schema";
 
 export interface ReportFilters {
@@ -234,13 +235,18 @@ export async function getDeliveryMetrics(filters: ReportFilters) {
     .from(events)
     .where(and(
       eq(events.userId, filters.userId),
+      ne(events.eventStatus, "cancelled"),
       gte(events.startTime, start),
       lte(events.startTime, end),
     ));
 
   const eventsByType: Record<string, number> = {};
+  let totalAttendees = 0;
   for (const e of eventsInRange) {
     eventsByType[e.type] = (eventsByType[e.type] || 0) + 1;
+    if (e.attendeeCount && e.attendeeCount > 0) {
+      totalAttendees += e.attendeeCount;
+    }
   }
 
   const bookingsInRange = await db
@@ -248,6 +254,7 @@ export async function getDeliveryMetrics(filters: ReportFilters) {
     .from(bookings)
     .where(and(
       eq(bookings.userId, filters.userId),
+      inArray(bookings.status, ["confirmed", "completed"]),
       gte(bookings.startDate, start),
       lte(bookings.startDate, end),
     ));
@@ -259,7 +266,13 @@ export async function getDeliveryMetrics(filters: ReportFilters) {
     if (b.startTime && b.endTime) {
       const [sh, sm] = b.startTime.split(":").map(Number);
       const [eh, em] = b.endTime.split(":").map(Number);
-      communityHours += (eh * 60 + em - sh * 60 - sm) / 60;
+      const dailyHours = Math.max(0, (eh * 60 + em - sh * 60 - sm) / 60);
+      if (b.isMultiDay && b.startDate && b.endDate) {
+        const daySpan = Math.max(1, Math.ceil((new Date(b.endDate).getTime() - new Date(b.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1);
+        communityHours += dailyHours * daySpan;
+      } else {
+        communityHours += dailyHours;
+      }
     }
   }
 
@@ -268,6 +281,7 @@ export async function getDeliveryMetrics(filters: ReportFilters) {
     .from(programmes)
     .where(and(
       eq(programmes.userId, filters.userId),
+      ne(programmes.status, "cancelled"),
       gte(programmes.startDate, start),
       lte(programmes.startDate, end),
     ));
@@ -280,6 +294,7 @@ export async function getDeliveryMetrics(filters: ReportFilters) {
   }
 
   let communitySpendTotal = 0;
+  let communitySpendError = false;
   try {
     const spendResult = await db
       .select({ total: sum(communitySpend.amount) })
@@ -290,12 +305,16 @@ export async function getDeliveryMetrics(filters: ReportFilters) {
         lte(communitySpend.date, end),
       ));
     communitySpendTotal = Math.round(Number(spendResult[0]?.total || 0) * 100) / 100;
-  } catch {}
+  } catch (err) {
+    console.error("[reporting] Community spend query failed:", err);
+    communitySpendError = true;
+  }
 
   return {
     events: {
       total: eventsInRange.length,
       byType: eventsByType,
+      totalAttendees,
     },
     bookings: {
       total: bookingsInRange.length,
@@ -308,6 +327,7 @@ export async function getDeliveryMetrics(filters: ReportFilters) {
       completed: programmesCompleted,
     },
     communitySpend: communitySpendTotal,
+    communitySpendError,
     communityLensApplied: false,
   };
 }
@@ -666,12 +686,13 @@ export async function generateNarrative(
   legacyContext?: { metrics: any; highlights: string[]; reportCount: number } | null,
   narrativeStyle: "compliance" | "story" = "compliance",
 ) {
-  const [engagement, delivery, impact, outcomes, value] = await Promise.all([
+  const [engagement, delivery, impact, outcomes, value, mentoring] = await Promise.all([
     getEngagementMetrics(filters),
     getDeliveryMetrics(filters),
     getImpactByTaxonomy(filters),
     getOutcomeMovement(filters),
     getValueContribution(filters),
+    getMentoringMetrics(filters),
   ]);
 
   const topCategories = impact.slice(0, 3);
@@ -704,10 +725,16 @@ export async function generateNarrative(
     let happeningText = `## What's Happening\n\n`;
     const eventTypes = Object.entries(delivery.events.byType).map(([t, c]) => `${c} ${t.toLowerCase()}${c > 1 ? "s" : ""}`).join(", ");
     happeningText += `We hosted ${delivery.events.total} events (${eventTypes || "none recorded"})`;
+    if (delivery.events.totalAttendees > 0) {
+      happeningText += `, reaching ${delivery.events.totalAttendees} people`;
+    }
     if (hasLegacy && lm.activationsTotal > 0) {
       happeningText += `, alongside ${lm.activationsTotal} activations from our legacy period`;
     }
     happeningText += `. ${delivery.bookings.total} venue bookings contributed ${delivery.bookings.communityHours} hours of community activity.`;
+    if (mentoring.totalSessions > 0) {
+      happeningText += ` ${mentoring.completedSessions} mentoring sessions were delivered to ${mentoring.uniqueMentees} mentee${mentoring.uniqueMentees !== 1 ? "s" : ""}, totalling ${mentoring.totalHours} hours of focused support.`;
+    }
     happeningText += ` ${delivery.programmes.total} programmes were running, with ${delivery.programmes.completed} reaching completion — each one a story of growth and possibility.`;
     sections.push(happeningText);
 
@@ -749,7 +776,11 @@ export async function generateNarrative(
     sections.push(engText);
 
     const eventTypes = Object.entries(delivery.events.byType).map(([t, c]) => `${c} ${t.toLowerCase()}${c > 1 ? "s" : ""}`).join(", ");
-    let delText = `## What We Delivered\n\n${delivery.events.total} events were held (${eventTypes || "none recorded"}).`;
+    let delText = `## What We Delivered\n\n${delivery.events.total} events were held (${eventTypes || "none recorded"})`;
+    if (delivery.events.totalAttendees > 0) {
+      delText += `, reaching ${delivery.events.totalAttendees} people`;
+    }
+    delText += `.`;
     if (hasLegacy && lm.activationsTotal > 0) {
       const parts: string[] = [];
       parts.push(`${lm.activationsTotal} total activations`);
@@ -764,7 +795,14 @@ export async function generateNarrative(
     if (hasLegacy && lm.bookingsTotal > 0) {
       delText += ` (${delivery.bookings.total} live, ${lm.bookingsTotal} legacy)`;
     }
-    delText += ` totalling ${delivery.bookings.communityHours} tracked community hours. ${delivery.programmes.total} programmes ran during this period, with ${delivery.programmes.completed} completing.`;
+    delText += ` totalling ${delivery.bookings.communityHours} tracked community hours.`;
+    if (mentoring.totalSessions > 0) {
+      delText += ` ${mentoring.completedSessions} mentoring sessions were delivered to ${mentoring.uniqueMentees} mentee${mentoring.uniqueMentees !== 1 ? "s" : ""}, totalling ${mentoring.totalHours} hours.`;
+      if (mentoring.newMentees > 0) {
+        delText += ` ${mentoring.newMentees} new mentee${mentoring.newMentees !== 1 ? "s" : ""} started their journey during this period.`;
+      }
+    }
+    delText += ` ${delivery.programmes.total} programmes ran during this period, with ${delivery.programmes.completed} completing.`;
     sections.push(delText);
 
     if (topCategories.length > 0) {
@@ -1109,10 +1147,21 @@ export async function getTamakiOraAlignment(filters: ReportFilters) {
 export async function getMentoringMetrics(filters: ReportFilters) {
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
+  const lensContactIds = await getCommunityLensContactIds(filters);
 
-  const MENTORING_TYPES = ["mentoring", "catchup", "follow-up"];
+  const userMentoringTypes = await db
+    .select({ name: meetingTypes.name })
+    .from(meetingTypes)
+    .where(and(
+      eq(meetingTypes.userId, filters.userId),
+      eq(meetingTypes.category, "mentoring"),
+      eq(meetingTypes.isActive, true),
+    ));
+  const MENTORING_TYPES = userMentoringTypes.length > 0
+    ? userMentoringTypes.map(t => t.name.toLowerCase())
+    : ["mentoring", "catchup", "follow-up"];
 
-  const mentoringMeetings = await db
+  const allMentoringMeetings = await db
     .select()
     .from(meetings)
     .where(and(
@@ -1121,6 +1170,10 @@ export async function getMentoringMetrics(filters: ReportFilters) {
       gte(meetings.startTime, start),
       lte(meetings.startTime, end),
     ));
+
+  const mentoringMeetings = lensContactIds
+    ? allMentoringMeetings.filter(m => m.contactId && lensContactIds.has(m.contactId))
+    : allMentoringMeetings;
 
   const deliveredSessions = mentoringMeetings.filter(m => m.status === "completed");
   const totalSessions = mentoringMeetings.length;
@@ -1187,6 +1240,7 @@ export async function getMentoringMetrics(filters: ReportFilters) {
 
   return {
     totalSessions,
+    completedSessions,
     totalHours,
     uniqueMentees,
     avgSessionsPerMentee,
