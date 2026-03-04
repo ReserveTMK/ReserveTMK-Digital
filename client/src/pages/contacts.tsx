@@ -1317,12 +1317,19 @@ function InlineSupportCell({ contactId, supportTypes }: { contactId: number; sup
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>(supportTypes || []);
   const [saving, setSaving] = useState(false);
-  const options = ["mentoring", "support", "collaborate", "space"];
+  const options = ["mentoring", "space", "venue_hire", "hot_desking", "service_trade", "paid_work", "networking"];
+  const labelMap: Record<string, string> = {
+    mentoring: "Mentoring", space: "Space", venue_hire: "Venue Hire", hot_desking: "Hot Desking",
+    service_trade: "Service Trade", paid_work: "Paid Work", networking: "Networking",
+  };
   const colorMap: Record<string, string> = {
     mentoring: "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/20",
-    support: "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/20",
-    collaborate: "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/20",
     space: "bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-500/20",
+    venue_hire: "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/20",
+    hot_desking: "bg-teal-500/15 text-teal-700 dark:text-teal-300 border-teal-500/20",
+    service_trade: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/20",
+    paid_work: "bg-green-500/15 text-green-700 dark:text-green-300 border-green-500/20",
+    networking: "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/20",
   };
 
   const toggle = (t: string) => {
@@ -1353,7 +1360,7 @@ function InlineSupportCell({ contactId, supportTypes }: { contactId: number; sup
           {supportTypes?.length > 0 ? (
             supportTypes.map(t => (
               <Badge key={t} className={`text-[10px] h-5 px-1.5 ${colorMap[t] || ""}`}>
-                {t.charAt(0).toUpperCase() + t.slice(1)}
+                {labelMap[t] || t}
               </Badge>
             ))
           ) : (
@@ -1367,7 +1374,7 @@ function InlineSupportCell({ contactId, supportTypes }: { contactId: number; sup
           {options.map(t => (
             <label key={t} className="flex items-center gap-2 cursor-pointer text-sm hover:bg-accent/50 rounded px-1 py-0.5" data-testid={`support-opt-${t}-${contactId}`}>
               <Checkbox checked={selected.includes(t)} onCheckedChange={() => toggle(t)} />
-              {t.charAt(0).toUpperCase() + t.slice(1)}
+              {labelMap[t] || t}
             </label>
           ))}
         </div>
@@ -1383,7 +1390,91 @@ function InlineSupportCell({ contactId, supportTypes }: { contactId: number; sup
   );
 }
 
-type SortField = "name" | "role" | "ethnicity" | "age" | "suburb" | "lastActive" | "community" | "stage" | "support";
+const CONNECTION_CONFIG: Record<string, { label: string; level: number; color: string; dotColor: string }> = {
+  known: { label: "Known", level: 1, color: "text-slate-600 dark:text-slate-400", dotColor: "bg-slate-400" },
+  connected: { label: "Connected", level: 2, color: "text-blue-600 dark:text-blue-400", dotColor: "bg-blue-500" },
+  engaged: { label: "Engaged", level: 3, color: "text-green-600 dark:text-green-400", dotColor: "bg-green-500" },
+  embedded: { label: "Embedded", level: 4, color: "text-purple-600 dark:text-purple-400", dotColor: "bg-purple-500" },
+  partnering: { label: "Partnering", level: 5, color: "text-amber-600 dark:text-amber-400", dotColor: "bg-amber-500" },
+};
+
+function InlineConnectionCell({ contactId, connectionStrength }: { contactId: number; connectionStrength?: string | null }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const levels = ["known", "connected", "engaged", "embedded", "partnering"];
+
+  const handleSelect = async (val: string) => {
+    if (val === connectionStrength) { setOpen(false); return; }
+    setSaving(true);
+    try {
+      await apiRequest("PATCH", `/api/contacts/${contactId}`, { connectionStrength: val });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast({ title: "Connection updated" });
+      setOpen(false);
+    } catch {
+      toast({ title: "Failed to update", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const config = CONNECTION_CONFIG[connectionStrength || ""] || null;
+  const activeLevel = config?.level || 0;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button className="text-left px-2 py-1 rounded hover:bg-muted/60 transition-colors cursor-pointer group flex items-center gap-1.5" data-testid={`table-cell-connection-${contactId}`}>
+          <div className="flex items-center gap-0.5">
+            {levels.map((l, i) => {
+              const lc = CONNECTION_CONFIG[l];
+              return (
+                <div
+                  key={l}
+                  className={`w-3 h-1.5 rounded-sm transition-colors ${i < activeLevel ? lc.dotColor : "bg-muted-foreground/15"}`}
+                />
+              );
+            })}
+          </div>
+          {config ? (
+            <span className={`text-[10px] font-medium ${config.color}`}>{config.label}</span>
+          ) : (
+            <span className="text-muted-foreground/50 text-[10px]">+ Set</span>
+          )}
+          <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-52 p-2" align="start">
+        <div className="space-y-0.5">
+          {levels.map((l, i) => {
+            const lc = CONNECTION_CONFIG[l];
+            const isActive = l === connectionStrength;
+            return (
+              <button
+                key={l}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm hover:bg-accent/50 transition-colors ${isActive ? "bg-accent" : ""}`}
+                onClick={() => handleSelect(l)}
+                disabled={saving}
+                data-testid={`connection-opt-${l}-${contactId}`}
+              >
+                <div className="flex items-center gap-0.5">
+                  {levels.map((_, si) => (
+                    <div key={si} className={`w-2.5 h-1.5 rounded-sm ${si <= i ? lc.dotColor : "bg-muted-foreground/15"}`} />
+                  ))}
+                </div>
+                <span className={lc.color}>{lc.label}</span>
+                {isActive && <Check className="w-3 h-3 ml-auto" />}
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+type SortField = "name" | "role" | "ethnicity" | "age" | "suburb" | "lastActive" | "community" | "stage" | "support" | "connection";
 type SortDir = "asc" | "desc";
 
 function SortHeader({ label, field, activeField, dir, onSort, className }: { label: string; field: SortField; activeField: SortField | null; dir: SortDir; onSort: (f: SortField) => void; className?: string }) {
@@ -1453,6 +1544,11 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
           if (bv === -1) bv = 99;
           return sortDir === "asc" ? av - bv : bv - av;
         }
+        case "connection":
+          const connOrder = ["known", "connected", "engaged", "embedded", "partnering"];
+          av = connOrder.indexOf(a.connectionStrength || "");
+          bv = connOrder.indexOf(b.connectionStrength || "");
+          return sortDir === "asc" ? av - bv : bv - av;
         case "support":
           av = (a.supportType || []).length;
           bv = (b.supportType || []).length;
@@ -1507,7 +1603,13 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
               {drilldownTier === "innovators" ? (
                 <>
                   <SortHeader label="Stage" field="stage" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
+                  <SortHeader label="Connection" field="connection" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[120px]" />
                   <SortHeader label="Support" field="support" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[120px]" />
+                </>
+              ) : drilldownTier === "community" ? (
+                <>
+                  <SortHeader label="Role" field="role" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
+                  <SortHeader label="Connection" field="connection" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[120px]" />
                 </>
               ) : (
                 <SortHeader label="Role" field="role" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
@@ -1590,7 +1692,21 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
                       <InlineStageCell stage={contact.stage} contactId={contact.id} />
                     </td>
                     <td className="px-1 py-2">
+                      <InlineConnectionCell contactId={contact.id} connectionStrength={contact.connectionStrength} />
+                    </td>
+                    <td className="px-1 py-2">
                       <InlineSupportCell contactId={contact.id} supportTypes={contact.supportType || []} />
+                    </td>
+                  </>
+                ) : drilldownTier === "community" ? (
+                  <>
+                    <td className="px-3 py-2">
+                      <Badge variant="outline" className="text-[10px] h-5 px-2" data-testid={`table-role-${contact.id}`}>
+                        {contact.role || "—"}
+                      </Badge>
+                    </td>
+                    <td className="px-1 py-2">
+                      <InlineConnectionCell contactId={contact.id} connectionStrength={contact.connectionStrength} />
                     </td>
                   </>
                 ) : (

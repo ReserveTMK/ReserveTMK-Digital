@@ -81,6 +81,7 @@ export const contacts = pgTable("contacts", {
   communityMemberOverride: boolean("community_member_override").default(false),
   isInnovator: boolean("is_innovator").default(false),
   supportType: text("support_type").array(),
+  connectionStrength: text("connection_strength"),
   relationshipCircle: text("relationship_circle"),
   relationshipCircleOverride: boolean("relationship_circle_override").default(false),
   importSource: text("import_source"),
@@ -1635,7 +1636,10 @@ export type InsertFunderDocument = z.infer<typeof insertFunderDocumentSchema>;
 
 // === MENTORING JOURNEY TABLES ===
 
-export const INNOVATOR_SUPPORT_TYPES = ["mentoring", "support", "collaborate", "space"] as const;
+export const INNOVATOR_SUPPORT_TYPES = ["mentoring", "space", "venue_hire", "hot_desking", "service_trade", "paid_work", "networking"] as const;
+
+export const CONNECTION_STRENGTHS = ["known", "connected", "engaged", "embedded", "partnering"] as const;
+export type ConnectionStrength = typeof CONNECTION_STRENGTHS[number];
 export type InnovatorSupportType = typeof INNOVATOR_SUPPORT_TYPES[number];
 
 export const JOURNEY_STAGES = ["kakano", "tipu", "ora", "inactive"] as const;
