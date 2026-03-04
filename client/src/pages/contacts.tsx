@@ -973,18 +973,6 @@ export default function Contacts() {
 
                     <div className="flex flex-col items-end gap-1 max-w-[200px] shrink-0">
                       <div className="flex items-center gap-1">
-                        {contact.isCommunityMember && (
-                          <Badge className="text-[10px] h-5 px-1.5 bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/20" data-testid={`badge-community-list-${contact.id}`}>
-                            <UserCheck className="w-3 h-3 mr-1" />
-                            Community
-                          </Badge>
-                        )}
-                        {contact.isInnovator && (
-                          <Badge className="text-[10px] h-5 px-1.5 bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/20" data-testid={`badge-innovator-list-${contact.id}`}>
-                            <Lightbulb className="w-3 h-3 mr-1" />
-                            Innovator
-                          </Badge>
-                        )}
                         {contact.ventureType && (
                           <Badge variant="secondary" className="text-[10px] h-5 px-1.5 shrink-0 hidden sm:inline-flex capitalize" data-testid={`badge-venture-type-${contact.id}`}>
                             {({
@@ -1279,13 +1267,12 @@ function InlineSupportCell({ contactId, supportTypes }: { contactId: number; sup
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>(supportTypes || []);
   const [saving, setSaving] = useState(false);
-  const options = ["mentoring", "support", "collaborate", "space", "connection"];
+  const options = ["mentoring", "support", "collaborate", "space"];
   const colorMap: Record<string, string> = {
     mentoring: "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/20",
     support: "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/20",
     collaborate: "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/20",
     space: "bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-500/20",
-    connection: "bg-pink-500/15 text-pink-700 dark:text-pink-300 border-pink-500/20",
   };
 
   const toggle = (t: string) => {
