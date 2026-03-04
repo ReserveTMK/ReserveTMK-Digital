@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Pencil, Check, Loader2, ArrowUp, ArrowDown, ArrowUpDown, Sprout, TreePine, Sun, Pause } from "lucide-react";
+import { CONTACT_ROLES } from "@shared/schema";
 
 export const TABLE_ETHNICITY_OPTIONS = [
   { group: "Polynesian", options: ["Samoan", "Tongan", "Cook Islands Māori", "Niuean", "Tokelauan", "Fijian", "Hawaiian", "Tahitian", "Māori", "Other Polynesian"] },
@@ -401,27 +402,35 @@ export function InlineConnectionCell({ contactId, connectionStrength }: { contac
   );
 }
 
-export function InlineRoleCell({ role, contactId }: { role: string; contactId: number }) {
+export function InlineRoleCell({ role, roleOther, contactId }: { role: string; roleOther?: string | null; contactId: number }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const roles = [
-    "Entrepreneur",
-    "Creative",
-    "Community Leader",
-    "Movement Builder",
-    "Professional",
-    "Innovator",
-    "Rangatahi",
-    "Aspiring",
-    "Business Owner"
-  ];
+  const [otherText, setOtherText] = useState(roleOther || "");
 
   const handleSelect = async (newRole: string) => {
-    if (newRole === role) { setOpen(false); return; }
+    if (newRole === role && newRole !== "Other") { setOpen(false); return; }
     setSaving(true);
     try {
-      await apiRequest("PATCH", `/api/contacts/${contactId}`, { role: newRole });
+      const updates: Record<string, any> = { role: newRole };
+      if (newRole !== "Other") {
+        updates.roleOther = null;
+      }
+      await apiRequest("PATCH", `/api/contacts/${contactId}`, updates);
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast({ title: "Role updated" });
+      if (newRole !== "Other") setOpen(false);
+    } catch {
+      toast({ title: "Failed to update role", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveOther = async () => {
+    setSaving(true);
+    try {
+      await apiRequest("PATCH", `/api/contacts/${contactId}`, { role: "Other", roleOther: otherText.trim() || null });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       toast({ title: "Role updated" });
       setOpen(false);
@@ -432,34 +441,51 @@ export function InlineRoleCell({ role, contactId }: { role: string; contactId: n
     }
   };
 
+  const displayRole = role === "Other" && roleOther ? `Other - ${roleOther}` : (role || "—");
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(v) => { setOpen(v); if (v) setOtherText(roleOther || ""); }}>
       <PopoverTrigger asChild>
         <button 
           className="text-left px-2 py-1 rounded hover:bg-muted/60 transition-colors cursor-pointer group flex items-center gap-1" 
           data-testid={`table-cell-role-${contactId}`}
         >
           <Badge variant="outline" className="text-[10px] h-5 px-2">
-            {role || "—"}
+            {displayRole}
           </Badge>
           <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-48 p-2" align="start">
+      <PopoverContent className="w-56 p-2" align="start">
         <div className="space-y-1">
-          {roles.map(r => (
+          {CONTACT_ROLES.map((r: string) => (
             <button
               key={r}
               className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm hover:bg-accent/50 transition-colors ${r === role ? "bg-accent" : ""}`}
               onClick={() => handleSelect(r)}
               disabled={saving}
-              data-testid={`role-opt-${r.toLowerCase().replace(/\s+/g, '-')}-${contactId}`}
+              data-testid={`role-opt-${r.toLowerCase().replace(/[\s/]+/g, '-')}-${contactId}`}
             >
               <span>{r}</span>
               {r === role && <Check className="w-3 h-3 ml-auto" />}
             </button>
           ))}
         </div>
+        {role === "Other" && (
+          <div className="mt-2 pt-2 border-t space-y-2">
+            <Input
+              value={otherText}
+              onChange={(e) => setOtherText(e.target.value)}
+              placeholder="Describe role..."
+              className="h-7 text-sm"
+              data-testid={`input-role-other-${contactId}`}
+            />
+            <Button size="sm" className="w-full" onClick={handleSaveOther} disabled={saving} data-testid={`button-save-role-other-${contactId}`}>
+              {saving ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+              Save
+            </Button>
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   );

@@ -344,6 +344,9 @@ export async function registerRoutes(
         ...req.body,
         userId,
       });
+      if (input.role !== "Other") {
+        input.roleOther = null;
+      }
       
       const contact = await storage.createContact(input);
       res.status(201).json(contact);
@@ -365,7 +368,7 @@ export async function registerRoutes(
       if (!existing) return res.status(404).json({ message: "Contact not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
 
-      const allowedFields = ["name", "nickname", "businessName", "ventureType", "role", "email", "phone", "age", "ethnicity", "location", "suburb", "localBoard", "tags", "revenueBand", "metrics", "notes", "active", "consentStatus", "consentDate", "consentNotes", "stage", "whatTheyAreBuilding", "relationshipStage", "isCommunityMember", "communityMemberOverride", "isInnovator", "supportType", "connectionStrength", "relationshipCircle", "relationshipCircleOverride"];
+      const allowedFields = ["name", "nickname", "businessName", "ventureType", "role", "roleOther", "email", "phone", "age", "ethnicity", "location", "suburb", "localBoard", "tags", "revenueBand", "metrics", "notes", "active", "consentStatus", "consentDate", "consentNotes", "stage", "whatTheyAreBuilding", "relationshipStage", "isCommunityMember", "communityMemberOverride", "isInnovator", "supportType", "connectionStrength", "relationshipCircle", "relationshipCircleOverride"];
       const filteredBody: Record<string, any> = {};
       for (const field of allowedFields) {
         if (req.body[field] !== undefined) {
@@ -374,6 +377,9 @@ export async function registerRoutes(
       }
 
       const input = api.contacts.update.input.parse(filteredBody);
+      if (input.role && input.role !== "Other") {
+        input.roleOther = null;
+      }
       if (input.stage && input.stage !== existing.stage) {
         await storage.appendStageProgression(id, input.stage);
       }
@@ -4962,15 +4968,15 @@ Important:
                 await storage.createGroup({
                   userId,
                   name: org.name,
-                  type: org.type === "community_group" ? "Community Group" :
-                        org.type === "community_collective" ? "Community Collective" :
-                        org.type === "resident_company" ? "Resident Company" :
+                  type: org.type === "community_group" ? "Community Initiative" :
+                        org.type === "community_collective" ? "Community Initiative" :
                         org.type === "business" ? "Business" :
-                        org.type === "partner" ? "Partner" :
-                        org.type === "government" ? "Government" :
-                        org.type === "iwi" ? "Iwi" :
-                        org.type === "ngo" ? "NGO" :
-                        org.type === "education" ? "Education" : "Organisation",
+                        org.type === "partner" ? "Partner Organization" :
+                        org.type === "government" ? "Partner Organization" :
+                        org.type === "ngo" ? "Social Enterprise" :
+                        org.type === "education" ? "Other" :
+                        org.type === "funder" ? "Funder" : "Business",
+                  organizationTypeOther: org.type === "education" ? "Education" : (org.type === "resident_company" ? "Resident Company" : (org.type === "iwi" ? "Iwi" : null)),
                   description: org.description || null,
                   notes: org.relationship ? `Relationship: ${org.relationship}. Imported from legacy report ${existing.quarterLabel}.` : `Imported from legacy report ${existing.quarterLabel}.`,
                   importSource: `Imported from legacy report ${existing.quarterLabel}`,
@@ -5004,7 +5010,7 @@ Important:
                 await storage.createContact({
                   userId,
                   name: person.name,
-                  role: person.role || "Community Member",
+                  role: person.role || "Supporter",
                   notes: person.context ? `${person.context}. Imported from legacy report ${existing.quarterLabel}.` : `Imported from legacy report ${existing.quarterLabel}.`,
                 });
                 existingContactNames.add(person.name.toLowerCase().trim());
@@ -5055,15 +5061,15 @@ Important:
               await storage.createGroup({
                 userId,
                 name: org.name,
-                type: org.type === "community_group" ? "Community Group" :
-                      org.type === "community_collective" ? "Community Collective" :
-                      org.type === "resident_company" ? "Resident Company" :
+                type: org.type === "community_group" ? "Community Initiative" :
+                      org.type === "community_collective" ? "Community Initiative" :
                       org.type === "business" ? "Business" :
-                      org.type === "partner" ? "Partner" :
-                      org.type === "government" ? "Government" :
-                      org.type === "iwi" ? "Iwi" :
-                      org.type === "ngo" ? "NGO" :
-                      org.type === "education" ? "Education" : "Organisation",
+                      org.type === "partner" ? "Partner Organization" :
+                      org.type === "government" ? "Partner Organization" :
+                      org.type === "ngo" ? "Social Enterprise" :
+                      org.type === "education" ? "Other" :
+                      org.type === "funder" ? "Funder" : "Business",
+                organizationTypeOther: org.type === "education" ? "Education" : (org.type === "resident_company" ? "Resident Company" : (org.type === "iwi" ? "Iwi" : null)),
                 description: org.description || null,
                 notes: org.relationship ? `Relationship: ${org.relationship}. Imported from legacy report ${report.quarterLabel}.` : `Imported from legacy report ${report.quarterLabel}.`,
                 importSource: `Imported from legacy report ${report.quarterLabel}`,
@@ -5087,7 +5093,7 @@ Important:
               await storage.createContact({
                 userId,
                 name: person.name,
-                role: person.role || "Community Member",
+                role: person.role || "Supporter",
                 notes: person.context ? `${person.context}. Imported from legacy report ${report.quarterLabel}.` : `Imported from legacy report ${report.quarterLabel}.`,
               });
               existingContactNames.add(person.name.toLowerCase().trim());
@@ -7473,6 +7479,33 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     }
   });
 
+  app.post("/api/groups/bulk-update-type", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { groupIds, type, organizationTypeOther } = req.body;
+      if (!Array.isArray(groupIds) || groupIds.length === 0) {
+        return res.status(400).json({ message: "No group IDs provided" });
+      }
+      if (!type) {
+        return res.status(400).json({ message: "Type is required" });
+      }
+      let updated = 0;
+      for (const id of groupIds) {
+        const group = await storage.getGroup(id);
+        if (group && group.userId === userId) {
+          await storage.updateGroup(id, {
+            type,
+            organizationTypeOther: type === "Other" ? (organizationTypeOther || null) : null,
+          });
+          updated++;
+        }
+      }
+      res.json({ updated });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update group types" });
+    }
+  });
+
   app.post("/api/contacts/community/backfill", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
@@ -7618,12 +7651,15 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       if (!contact || contact.userId !== userId) {
         return res.status(404).json({ message: "Contact not found" });
       }
-      const allowedFields = ["isInnovator", "name", "email", "phone", "role", "businessName", "nickname", "ventureType", "age", "ethnicity", "location", "suburb", "localBoard", "tags", "revenueBand", "notes", "active", "stage", "whatTheyAreBuilding", "supportType", "connectionStrength"];
+      const allowedFields = ["isInnovator", "name", "email", "phone", "role", "roleOther", "businessName", "nickname", "ventureType", "age", "ethnicity", "location", "suburb", "localBoard", "tags", "revenueBand", "notes", "active", "stage", "whatTheyAreBuilding", "supportType", "connectionStrength"];
       const updates: Record<string, any> = {};
       for (const key of Object.keys(req.body)) {
         if (allowedFields.includes(key)) {
           updates[key] = req.body[key];
         }
+      }
+      if (updates.role && updates.role !== "Other") {
+        updates.roleOther = null;
       }
       if (Object.keys(updates).length === 0) {
         return res.status(400).json({ message: "No valid fields to update" });

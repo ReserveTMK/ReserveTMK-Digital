@@ -37,6 +37,7 @@ import {
   SUPPORT_COLOR_MAP,
   SUPPORT_OPTIONS,
 } from "@/components/community/inline-cells";
+import { CONTACT_ROLES } from "@shared/schema";
 
 
 export default function ContactDetail() {
@@ -228,7 +229,7 @@ export default function ContactDetail() {
                     <p className="text-muted-foreground/80 text-base" data-testid="text-business-name">{contact.businessName}</p>
                   )}
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-muted-foreground text-lg">{contact.role}</p>
+                    <p className="text-muted-foreground text-lg" data-testid="text-contact-role">{contact.role === "Other" && contact.roleOther ? `Other - ${contact.roleOther}` : contact.role}</p>
                     <Badge
                       variant={currentTier === "innovator" ? "default" : currentTier === "community" ? "secondary" : "outline"}
                       className={cn("text-xs capitalize", currentTier === "innovator" && "bg-amber-500/15 text-amber-700 dark:text-amber-300")}
@@ -474,7 +475,7 @@ export default function ContactDetail() {
                                 disabled={!quickAddGroupName.trim() || createGroupForTagging.isPending}
                                 onClick={async () => {
                                   try {
-                                    const newGroup = await createGroupForTagging.mutateAsync({ name: quickAddGroupName.trim(), type: "Organisation" });
+                                    const newGroup = await createGroupForTagging.mutateAsync({ name: quickAddGroupName.trim(), type: "Business" });
                                     addGroupMember.mutate({ groupId: newGroup.id, contactId: id, role: selectedGroupRole }, {
                                       onSuccess: () => {
                                         setAddGroupOpen(false);
@@ -1250,6 +1251,7 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
   const [showQuickAddEmail, setShowQuickAddEmail] = useState(false);
   const [quickAddEmailName, setQuickAddEmailName] = useState("");
   const [role, setRole] = useState(contact.role || "Entrepreneur");
+  const [roleOther, setRoleOther] = useState(contact.roleOther || "");
   const [ventureType, setVentureType] = useState(contact.ventureType || "");
   const [stage, setStage] = useState(contact.stage || "");
   const [whatTheyAreBuilding, setWhatTheyAreBuilding] = useState(contact.whatTheyAreBuilding || "");
@@ -1294,6 +1296,7 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
       setBusinessName(contact.businessName || "");
       setBusinessSearch(contact.businessName || "");
       setRole(contact.role || "Entrepreneur");
+      setRoleOther(contact.roleOther || "");
       setVentureType(contact.ventureType || "");
       setStage(contact.stage || "");
       setWhatTheyAreBuilding(contact.whatTheyAreBuilding || "");
@@ -1336,7 +1339,7 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
   const handleQuickAddGroup = async () => {
     if (!businessSearch.trim()) return;
     try {
-      const newGroup = await createGroup.mutateAsync({ name: businessSearch.trim(), type: "Organisation" });
+      const newGroup = await createGroup.mutateAsync({ name: businessSearch.trim(), type: "Business" });
       setBusinessName(businessSearch.trim());
       setShowQuickAddBusiness(false);
       setShowBusinessDropdown(false);
@@ -1376,6 +1379,7 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
       localBoard: localBoard.trim() || null,
       businessName: businessName.trim() || null,
       role: role,
+      roleOther: role === "Other" ? (roleOther.trim() || null) : null,
       ventureType: ventureType || null,
       stage: stage || null,
       whatTheyAreBuilding: whatTheyAreBuilding.trim() || null,
@@ -1587,22 +1591,24 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-role">Role</Label>
-              <Select value={role} onValueChange={setRole}>
+              <Select value={role} onValueChange={(v) => { setRole(v); if (v !== "Other") setRoleOther(""); }}>
                 <SelectTrigger data-testid="select-edit-role">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Entrepreneur">Entrepreneur</SelectItem>
-                  <SelectItem value="Creative">Creative</SelectItem>
-                  <SelectItem value="Community Leader">Community Leader</SelectItem>
-                  <SelectItem value="Movement Builder">Movement Builder</SelectItem>
-                  <SelectItem value="Professional">Professional</SelectItem>
-                  <SelectItem value="Innovator">Innovator</SelectItem>
-                  <SelectItem value="Rangatahi">Rangatahi</SelectItem>
-                  <SelectItem value="Aspiring">Aspiring</SelectItem>
-                  <SelectItem value="Business Owner">Business Owner</SelectItem>
+                  {CONTACT_ROLES.map((r) => (
+                    <SelectItem key={r} value={r}>{r}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              {role === "Other" && (
+                <Input
+                  value={roleOther}
+                  onChange={(e) => setRoleOther(e.target.value)}
+                  placeholder="Describe role..."
+                  data-testid="input-edit-role-other"
+                />
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-venture-type">Venture Type</Label>

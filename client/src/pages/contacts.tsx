@@ -31,6 +31,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { ContactsTableView } from "@/components/community/contacts-table";
 import { CreateContactDialogContent, BulkUploadDialog, CleanUpDialog } from "@/components/community/contact-dialogs";
+import { CONTACT_ROLES } from "@shared/schema";
 
 function getCircleBadge(circle: string | null | undefined) {
   if (!circle) return null;
@@ -59,6 +60,7 @@ export default function Contacts() {
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const [bulkRoleOpen, setBulkRoleOpen] = useState(false);
   const [bulkRoleValue, setBulkRoleValue] = useState("");
+  const [bulkRoleOther, setBulkRoleOther] = useState("");
   const [bulkRelationshipOpen, setBulkRelationshipOpen] = useState(false);
   const [bulkRelationshipValue, setBulkRelationshipValue] = useState("");
   const [linkGroupOpen, setLinkGroupOpen] = useState(false);
@@ -339,6 +341,17 @@ export default function Contacts() {
     return matchesSearch && matchesRole && matchesView;
   });
 
+  const roleCounts = useMemo(() => {
+    if (!contacts) return {} as Record<string, number>;
+    const pool = viewMode === "community" ? (contacts as any[]).filter(c => c.isCommunityMember) : viewMode === "innovators" ? (contacts as any[]).filter(c => c.isInnovator) : (contacts as any[]);
+    const counts: Record<string, number> = {};
+    for (const c of pool) {
+      const r = c.role || "Unknown";
+      counts[r] = (counts[r] || 0) + 1;
+    }
+    return counts;
+  }, [contacts, viewMode]);
+
   const tierCounts = useMemo(() => {
     if (!contacts) return { innovators: 0, community: 0, all: 0 };
     const innovators = (contacts as any[]).filter(c => c.isInnovator).length;
@@ -522,35 +535,45 @@ export default function Contacts() {
             </DialogContent>
           </Dialog>
 
-          <Dialog open={bulkRoleOpen} onOpenChange={(v) => { setBulkRoleOpen(v); if (!v) setBulkRoleValue(""); }}>
+          <Dialog open={bulkRoleOpen} onOpenChange={(v) => { setBulkRoleOpen(v); if (!v) { setBulkRoleValue(""); setBulkRoleOther(""); } }}>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle data-testid="text-bulk-role-title">Update Role for {selectedContacts.size} contact{selectedContacts.size !== 1 ? 's' : ''}</DialogTitle>
               </DialogHeader>
-              <div className="py-4">
-                <Select value={bulkRoleValue} onValueChange={setBulkRoleValue}>
+              <div className="py-4 space-y-3">
+                <Select value={bulkRoleValue} onValueChange={(v) => { setBulkRoleValue(v); if (v !== "Other") setBulkRoleOther(""); }}>
                   <SelectTrigger data-testid="select-bulk-role">
                     <SelectValue placeholder="Select a role" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Entrepreneur">Entrepreneur</SelectItem>
-                    <SelectItem value="Creative">Creative</SelectItem>
-                    <SelectItem value="Community Leader">Community Leader</SelectItem>
-                    <SelectItem value="Movement Builder">Movement Builder</SelectItem>
-                    <SelectItem value="Professional">Professional</SelectItem>
-                    <SelectItem value="Innovator">Innovator</SelectItem>
-                    <SelectItem value="Rangatahi">Rangatahi</SelectItem>
-                    <SelectItem value="Aspiring">Aspiring</SelectItem>
-                    <SelectItem value="Business Owner">Business Owner</SelectItem>
+                    {CONTACT_ROLES.map((r: string) => (
+                      <SelectItem key={r} value={r}>{r}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+                {bulkRoleValue === "Other" && (
+                  <Input
+                    value={bulkRoleOther}
+                    onChange={(e) => setBulkRoleOther(e.target.value)}
+                    placeholder="Describe role..."
+                    data-testid="input-bulk-role-other"
+                  />
+                )}
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => { setBulkRoleOpen(false); setBulkRoleValue(""); }} data-testid="button-bulk-role-cancel">
+                <Button variant="outline" onClick={() => { setBulkRoleOpen(false); setBulkRoleValue(""); setBulkRoleOther(""); }} data-testid="button-bulk-role-cancel">
                   Cancel
                 </Button>
                 <Button
-                  onClick={() => bulkUpdateMutation.mutate({ contactIds: Array.from(selectedContacts), updates: { role: bulkRoleValue } })}
+                  onClick={() => {
+                    const updates: Record<string, any> = { role: bulkRoleValue };
+                    if (bulkRoleValue === "Other") {
+                      updates.roleOther = bulkRoleOther.trim() || null;
+                    } else {
+                      updates.roleOther = null;
+                    }
+                    bulkUpdateMutation.mutate({ contactIds: Array.from(selectedContacts), updates });
+                  }}
                   disabled={!bulkRoleValue || bulkUpdateMutation.isPending}
                   data-testid="button-bulk-role-confirm"
                 >
@@ -728,7 +751,7 @@ export default function Contacts() {
                           <Building2 className="w-4 h-4 text-muted-foreground" />
                           <span>{g.name}</span>
                         </div>
-                        <Badge variant="outline" className="text-[10px]">{g.type || 'Organisation'}</Badge>
+                        <Badge variant="outline" className="text-[10px]">{g.type || 'Business'}</Badge>
                       </button>
                     ))}
                   {(allGroups || []).filter((g: any) => g.name.toLowerCase().includes(linkGroupSearch.toLowerCase())).length === 0 && (
@@ -858,15 +881,12 @@ export default function Contacts() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Roles</SelectItem>
-                  <SelectItem value="Entrepreneur">Entrepreneur</SelectItem>
-                  <SelectItem value="Creative">Creative</SelectItem>
-                  <SelectItem value="Community Leader">Community Leader</SelectItem>
-                  <SelectItem value="Movement Builder">Movement Builder</SelectItem>
-                  <SelectItem value="Professional">Professional</SelectItem>
-                  <SelectItem value="Innovator">Innovator</SelectItem>
-                  <SelectItem value="Rangatahi">Rangatahi</SelectItem>
-                  <SelectItem value="Aspiring">Aspiring</SelectItem>
-                  <SelectItem value="Business Owner">Business Owner</SelectItem>
+                  {CONTACT_ROLES.map((r: string) => {
+                    const count = roleCounts[r] || 0;
+                    return (
+                      <SelectItem key={r} value={r}>{r}{count > 0 ? ` (${count})` : ""}</SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
@@ -983,7 +1003,7 @@ export default function Contacts() {
                         )}
                         {contact.role && (
                           <Badge variant="outline" className="text-[10px] h-5 px-2 shrink-0 hidden sm:inline-flex" data-testid={`badge-role-side-${contact.id}`}>
-                            {contact.role}
+                            {contact.role === "Other" && contact.roleOther ? `Other - ${contact.roleOther}` : contact.role}
                           </Badge>
                         )}
                       </div>

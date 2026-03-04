@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from "react";
 import { Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertContactSchema } from "@shared/schema";
+import { insertContactSchema, CONTACT_ROLES } from "@shared/schema";
 import { z } from "zod";
 import { Button } from "@/components/ui/beautiful-button";
 import { Badge } from "@/components/ui/badge";
@@ -70,6 +70,7 @@ export function CreateContactDialogContent({ onSuccess }: { onSuccess: () => voi
       ethnicity: [],
       location: "",
       role: "Entrepreneur",
+      roleOther: "",
       revenueBand: "",
       tags: [],
     },
@@ -162,22 +163,24 @@ export function CreateContactDialogContent({ onSuccess }: { onSuccess: () => voi
 
         <div className="space-y-2">
           <Label htmlFor="role">Role</Label>
-          <Select value={form.watch("role") || "Entrepreneur"} onValueChange={(v) => form.setValue("role", v)}>
+          <Select value={form.watch("role") || "Entrepreneur"} onValueChange={(v) => { form.setValue("role", v); if (v !== "Other") form.setValue("roleOther", ""); }}>
             <SelectTrigger data-testid="select-role">
               <SelectValue placeholder="Select role" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="Entrepreneur">Entrepreneur</SelectItem>
-              <SelectItem value="Creative">Creative</SelectItem>
-              <SelectItem value="Community Leader">Community Leader</SelectItem>
-              <SelectItem value="Movement Builder">Movement Builder</SelectItem>
-              <SelectItem value="Professional">Professional</SelectItem>
-              <SelectItem value="Innovator">Innovator</SelectItem>
-              <SelectItem value="Rangatahi">Rangatahi</SelectItem>
-              <SelectItem value="Aspiring">Aspiring</SelectItem>
-              <SelectItem value="Business Owner">Business Owner</SelectItem>
+              {CONTACT_ROLES.map((r) => (
+                <SelectItem key={r} value={r}>{r}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
+          {form.watch("role") === "Other" && (
+            <Input
+              placeholder="Describe role..."
+              value={form.watch("roleOther") || ""}
+              onChange={(e) => form.setValue("roleOther", e.target.value)}
+              data-testid="input-role-other"
+            />
+          )}
         </div>
 
         <div className="space-y-2">

@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation, Link } from "wouter";
-import type { Group } from "@shared/schema";
+import { GROUP_TYPES, type Group } from "@shared/schema";
 
 const TIER_CONFIG = {
   support: {
@@ -59,16 +59,13 @@ const TIER_CONFIG = {
 type TierKey = keyof typeof TIER_CONFIG;
 
 const TYPE_COLORS: Record<string, string> = {
-  "Organisation": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
-  "Community Group": "bg-rose-500/10 text-rose-700 dark:text-rose-300",
-  "Community Collective": "bg-purple-500/10 text-purple-700 dark:text-purple-300",
-  "Resident Company": "bg-teal-500/10 text-teal-700 dark:text-teal-300",
   "Business": "bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  "Partner": "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
-  "Government": "bg-slate-500/10 text-slate-700 dark:text-slate-300",
-  "Iwi": "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-  "NGO": "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
-  "Education": "bg-yellow-500/10 text-yellow-700 dark:text-yellow-300",
+  "Social Enterprise": "bg-teal-500/10 text-teal-700 dark:text-teal-300",
+  "Creative Movement": "bg-pink-500/10 text-pink-700 dark:text-pink-300",
+  "Community Initiative": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
+  "Partner Organization": "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
+  "Funder": "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  "Other": "bg-slate-500/10 text-slate-700 dark:text-slate-300",
 };
 
 const ECOSYSTEM_ROLES = [
@@ -333,6 +330,7 @@ export default function EcosystemPage() {
     return Array.from(types).sort();
   }, [groups]);
 
+
   const toggleMergeSelection = (id: number) => {
     setSelectedForMerge(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
@@ -505,14 +503,17 @@ export default function EcosystemPage() {
             />
           </div>
           <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-full sm:w-48" data-testid="select-type-filter">
+            <SelectTrigger className="w-full sm:w-56" data-testid="select-type-filter">
               <SelectValue placeholder="All types" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All types</SelectItem>
-              {uniqueTypes.map(t => (
-                <SelectItem key={t} value={t}>{t}</SelectItem>
-              ))}
+              <SelectItem value="all">All types ({groups?.length || 0})</SelectItem>
+              {GROUP_TYPES.map(t => {
+                const count = (groups as Group[])?.filter(g => g.type === t).length || 0;
+                return (
+                  <SelectItem key={t} value={t}>{t} ({count})</SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
           <Button
@@ -902,7 +903,7 @@ function GroupCard({
               {group.name}
             </h3>
             <Badge variant="outline" className={`text-[10px] px-1.5 ${typeColor}`}>
-              {group.type}
+              {group.type === "Other" && group.organizationTypeOther ? `Other - ${group.organizationTypeOther}` : group.type}
             </Badge>
           </div>
 

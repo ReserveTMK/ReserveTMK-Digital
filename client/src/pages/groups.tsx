@@ -40,13 +40,21 @@ import {
 } from "@/components/ui/popover";
 
 const GROUP_TYPE_COLORS: Record<string, string> = {
-  "Partner": "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
-  "Organisation": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
-  "Community Collective": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
-  "Education": "bg-yellow-500/10 text-yellow-700 dark:text-yellow-300",
   "Business": "bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  "Community Group": "bg-rose-500/10 text-rose-700 dark:text-rose-300",
+  "Social Enterprise": "bg-teal-500/10 text-teal-700 dark:text-teal-300",
+  "Creative Movement": "bg-pink-500/10 text-pink-700 dark:text-pink-300",
+  "Community Initiative": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
+  "Partner Organization": "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
+  "Funder": "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  "Other": "bg-slate-500/10 text-slate-700 dark:text-slate-300",
 };
+
+function displayGroupType(group: { type: string; organizationTypeOther?: string | null }): string {
+  if (group.type === "Other" && group.organizationTypeOther) {
+    return `Other - ${group.organizationTypeOther}`;
+  }
+  return group.type;
+}
 
 const MEMBER_ROLES = ["Lead Contact", "Representative", "Member", "Coordinator", "Director", "Trustee"] as const;
 
@@ -69,6 +77,9 @@ export default function Groups() {
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [primaryMergeId, setPrimaryMergeId] = useState<number | null>(null);
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
+  const [bulkTypeOpen, setBulkTypeOpen] = useState(false);
+  const [bulkTypeValue, setBulkTypeValue] = useState<string>("");
+  const [bulkTypeOther, setBulkTypeOther] = useState<string>("");
   const { toast } = useToast();
 
   const createGroup = useCreateGroup();
@@ -109,6 +120,24 @@ export default function Groups() {
     },
   });
 
+
+  const bulkTypeMutation = useMutation({
+    mutationFn: async ({ groupIds, type, organizationTypeOther }: { groupIds: number[]; type: string; organizationTypeOther?: string }) => {
+      const res = await apiRequest('POST', '/api/groups/bulk-update-type', { groupIds, type, organizationTypeOther: type === "Other" ? organizationTypeOther : null });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+      toast({ title: "Types updated", description: `${data.updated || selectedGroups.size} group(s) updated` });
+      setSelectedGroups(new Set());
+      setBulkTypeOpen(false);
+      setBulkTypeValue("");
+      setBulkTypeOther("");
+    },
+    onError: (error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
 
   const mergeMutation = useMutation({
     mutationFn: async ({ primaryId, mergeIds }: { primaryId: number; mergeIds: number[] }) => {
@@ -390,6 +419,15 @@ export default function Groups() {
                     Merge ({selectedGroups.size})
                   </Button>
                 )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBulkTypeOpen(true)}
+                  data-testid="button-bulk-set-type"
+                >
+                  <Building2 className="w-4 h-4 mr-2" />
+                  Set Type ({selectedGroups.size})
+                </Button>
               </>
             )}
             <Button variant="outline" onClick={toggleEditMode} data-testid="button-toggle-edit-mode">
@@ -500,14 +538,17 @@ export default function Groups() {
                 />
               </div>
               <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="w-full sm:w-[180px]" data-testid="select-type-filter">
+                <SelectTrigger className="w-full sm:w-[220px]" data-testid="select-type-filter">
                   <SelectValue placeholder="All types" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All types</SelectItem>
-                  {GROUP_TYPES.map((t) => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
-                  ))}
+                  <SelectItem value="all">All types ({groups?.length || 0})</SelectItem>
+                  {GROUP_TYPES.map((t) => {
+                    const count = groups?.filter((g: Group) => g.type === t).length || 0;
+                    return (
+                      <SelectItem key={t} value={t}>{t} ({count})</SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
@@ -676,6 +717,47 @@ export default function Groups() {
               >
                 {mergeMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Merge className="w-4 h-4 mr-2" />}
                 {mergeMutation.isPending ? "Merging..." : "Merge"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={bulkTypeOpen} onOpenChange={(v) => { setBulkTypeOpen(v); if (!v) { setBulkTypeValue(""); setBulkTypeOther(""); } }}>
+          <DialogContent className="sm:max-w-[400px]" data-testid="dialog-bulk-set-type">
+            <DialogHeader>
+              <DialogTitle data-testid="text-bulk-type-title">Set Organization Type for {selectedGroups.size} group(s)</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <Select value={bulkTypeValue} onValueChange={(v) => { setBulkTypeValue(v); if (v !== "Other") setBulkTypeOther(""); }}>
+                <SelectTrigger data-testid="select-bulk-type">
+                  <SelectValue placeholder="Select type..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {GROUP_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {bulkTypeValue === "Other" && (
+                <Input
+                  value={bulkTypeOther}
+                  onChange={(e) => setBulkTypeOther(e.target.value)}
+                  placeholder="Specify organization type..."
+                  data-testid="input-bulk-type-other"
+                />
+              )}
+            </div>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => { setBulkTypeOpen(false); setBulkTypeValue(""); setBulkTypeOther(""); }} data-testid="button-cancel-bulk-type">
+                Cancel
+              </Button>
+              <Button
+                onClick={() => bulkTypeMutation.mutate({ groupIds: Array.from(selectedGroups), type: bulkTypeValue, organizationTypeOther: bulkTypeOther })}
+                disabled={!bulkTypeValue || bulkTypeMutation.isPending}
+                data-testid="button-confirm-bulk-type"
+              >
+                {bulkTypeMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Update Type
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -892,7 +974,7 @@ function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, t
                   </td>
                   <td className="px-3 py-2">
                     <Badge className={`text-[10px] h-5 px-2 ${GROUP_TYPE_COLORS[group.type] || ""}`} data-testid={`table-type-group-${group.id}`}>
-                      {group.type}
+                      {displayGroupType(group)}
                     </Badge>
                   </td>
                   <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
@@ -1021,7 +1103,7 @@ function GroupCard({ group, onSelect, onEdit, onDelete, editMode, isSelected, on
               <h3 className="font-medium text-sm truncate" data-testid={`text-group-name-${group.id}`}>{group.name}</h3>
               <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                 <Badge className={`text-[10px] ${GROUP_TYPE_COLORS[group.type] || ""}`}>
-                  {group.type}
+                  {displayGroupType(group)}
                 </Badge>
                 {communityCount > 0 && (
                   <Badge className="text-[10px] bg-purple-500/10 text-purple-700 dark:text-purple-300" data-testid={`badge-community-${group.id}`}>
@@ -1091,7 +1173,8 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
   onUpdate: ReturnType<typeof useUpdateGroup>;
 }) {
   const [name, setName] = useState("");
-  const [type, setType] = useState<string>("Organisation");
+  const [type, setType] = useState<string>("Business");
+  const [organizationTypeOther, setOrganizationTypeOther] = useState("");
   const [description, setDescription] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
@@ -1101,7 +1184,8 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
 
   const resetForm = () => {
     setName(group?.name || "");
-    setType(group?.type || "Organisation");
+    setType(group?.type || "Business");
+    setOrganizationTypeOther(group?.organizationTypeOther || "");
     setDescription(group?.description || "");
     setContactEmail(group?.contactEmail || "");
     setContactPhone(group?.contactPhone || "");
@@ -1117,9 +1201,10 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
 
   const handleSubmit = () => {
     if (!name.trim()) return;
-    const data = {
+    const data: Record<string, any> = {
       name: name.trim(),
       type,
+      organizationTypeOther: type === "Other" ? (organizationTypeOther.trim() || null) : null,
       description: description.trim() || undefined,
       contactEmail: contactEmail.trim() || undefined,
       contactPhone: contactPhone.trim() || undefined,
@@ -1154,7 +1239,7 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
           </div>
           <div className="space-y-2">
             <Label>Type</Label>
-            <Select value={type} onValueChange={setType}>
+            <Select value={type} onValueChange={(v) => { setType(v); if (v !== "Other") setOrganizationTypeOther(""); }}>
               <SelectTrigger data-testid="select-group-type">
                 <SelectValue />
               </SelectTrigger>
@@ -1164,6 +1249,14 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
                 ))}
               </SelectContent>
             </Select>
+            {type === "Other" && (
+              <Input
+                value={organizationTypeOther}
+                onChange={(e) => setOrganizationTypeOther(e.target.value)}
+                placeholder="Specify organization type..."
+                data-testid="input-group-type-other"
+              />
+            )}
           </div>
           <div className="space-y-2">
             <Label>Description</Label>
@@ -1366,7 +1459,7 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit }: {
               {group.name}
             </DialogTitle>
             <div className="flex items-center gap-2">
-              <Badge className={GROUP_TYPE_COLORS[group.type] || ""}>{group.type}</Badge>
+              <Badge className={GROUP_TYPE_COLORS[group.type] || ""}>{displayGroupType(group)}</Badge>
               <Button
                 size="sm"
                 variant="outline"

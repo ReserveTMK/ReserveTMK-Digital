@@ -243,7 +243,7 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
                     </td>
                   )}
                   <td className="px-3 py-2">
-                    <InlineRoleCell role={contact.role} contactId={contact.id} />
+                    <InlineRoleCell role={contact.role} roleOther={contact.roleOther} contactId={contact.id} />
                   </td>
                   {drilldownTier === "innovators" ? (
                     <>

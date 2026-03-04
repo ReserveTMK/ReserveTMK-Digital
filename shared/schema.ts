@@ -36,16 +36,31 @@ export const MILESTONE_TYPES = [
 ] as const;
 export type MilestoneType = typeof MILESTONE_TYPES[number];
 
+export const CONTACT_ROLES = [
+  "Business Owner",
+  "Entrepreneur",
+  "Creative / Artist",
+  "Freelancer",
+  "Community Leader",
+  "Professional",
+  "Rangatahi / Student",
+  "Partner",
+  "Supporter",
+  "Other",
+] as const;
+export type ContactRole = typeof CONTACT_ROLES[number];
+
 // === TABLE DEFINITIONS ===
 
 export const contacts = pgTable("contacts", {
   id: serial("id").primaryKey(),
-  userId: text("user_id").notNull(), // Links to users.id from auth
+  userId: text("user_id").notNull(),
   name: text("name").notNull(),
   nickname: text("nickname"),
   businessName: text("business_name"),
   ventureType: text("venture_type"),
-  role: text("role").notNull(), // 'Entrepreneur', 'Creative', 'Community Leader', 'Movement Builder', 'Professional', 'Innovator', 'Rangatahi', 'Aspiring', 'Business Owner'
+  role: text("role").notNull(),
+  roleOther: text("role_other"),
   email: text("email"),
   phone: text("phone"),
   age: integer("age"),
@@ -315,12 +330,13 @@ export const calendarSettings = pgTable("calendar_settings", {
 });
 
 export const GROUP_TYPES = [
-  "Partner",
-  "Organisation",
-  "Community Collective",
-  "Education",
   "Business",
-  "Community Group",
+  "Social Enterprise",
+  "Creative Movement",
+  "Community Initiative",
+  "Partner Organization",
+  "Funder",
+  "Other",
 ] as const;
 export type GroupType = typeof GROUP_TYPES[number];
 
@@ -328,7 +344,8 @@ export const groups = pgTable("groups", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
   name: text("name").notNull(),
-  type: text("type").notNull().default("Organisation"),
+  type: text("type").notNull().default("Business"),
+  organizationTypeOther: text("organization_type_other"),
   description: text("description"),
   contactEmail: text("contact_email"),
   contactPhone: text("contact_phone"),
@@ -1107,7 +1124,7 @@ export const insertGroupSchema = createInsertSchema(groups).omit({
   createdAt: true,
   updatedAt: true,
 }).extend({
-  type: z.enum(GROUP_TYPES).default("Organisation"),
+  type: z.enum(GROUP_TYPES).default("Business"),
 });
 
 export const insertGroupMemberSchema = createInsertSchema(groupMembers).omit({
