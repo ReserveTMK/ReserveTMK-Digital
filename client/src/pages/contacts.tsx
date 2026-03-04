@@ -973,6 +973,18 @@ export default function Contacts() {
 
                     <div className="flex flex-col items-end gap-1 max-w-[200px] shrink-0">
                       <div className="flex items-center gap-1">
+                        {contact.isCommunityMember && (
+                          <Badge className="text-[10px] h-5 px-1.5 bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/20" data-testid={`badge-community-list-${contact.id}`}>
+                            <UserCheck className="w-3 h-3 mr-1" />
+                            Community
+                          </Badge>
+                        )}
+                        {contact.isInnovator && (
+                          <Badge className="text-[10px] h-5 px-1.5 bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/20" data-testid={`badge-innovator-list-${contact.id}`}>
+                            <Lightbulb className="w-3 h-3 mr-1" />
+                            Innovator
+                          </Badge>
+                        )}
                         {contact.ventureType && (
                           <Badge variant="secondary" className="text-[10px] h-5 px-1.5 shrink-0 hidden sm:inline-flex capitalize" data-testid={`badge-venture-type-${contact.id}`}>
                             {({
@@ -1452,14 +1464,8 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
                 </th>
               )}
               <SortHeader label="Name" field="name" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-4" />
-              {drilldownTier === "all" && (
-                <>
-                  <SortHeader label="Community" field="community" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-28" />
-                  <SortHeader label="Innovator" field="isInnovator" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-28" />
-                </>
-              )}
-              {drilldownTier === "community" && (
-                <SortHeader label="Innovator" field="community" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-28" />
+              {drilldownTier !== "innovators" && (
+                <SortHeader label={drilldownTier === "community" ? "Innovator" : "Community"} field="community" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-28" />
               )}
               {drilldownTier === "innovators" ? (
                 <>
@@ -1496,10 +1502,30 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
                     <span className="font-medium truncate max-w-[180px]">{contact.name}</span>
                   </Link>
                 </td>
-                {drilldownTier === "all" && (
-                  <>
-                    <td className="px-3 py-2">
-                      {contact.isCommunityMember ? (
+                {drilldownTier !== "innovators" && (
+                  <td className="px-3 py-2">
+                    {drilldownTier === "community" ? (
+                      contact.isInnovator ? (
+                        <Badge
+                          className="text-[10px] h-5 px-2 bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/20"
+                          data-testid={`badge-innovator-${contact.id}`}
+                        >
+                          <Lightbulb className="w-3 h-3 mr-1" />
+                          Yes
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] h-5 px-2 cursor-pointer hover:bg-amber-500/10 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
+                          onClick={() => onPromote?.(contact.id)}
+                          data-testid={`button-promote-innovator-${contact.id}`}
+                        >
+                          <Plus className="w-3 h-3 mr-1" />
+                          Add
+                        </Badge>
+                      )
+                    ) : (
+                      contact.isCommunityMember ? (
                         <Badge
                           className="text-[10px] h-5 px-2 bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/20 cursor-pointer hover:bg-purple-500/25 transition-colors"
                           onClick={() => onToggleCommunity(contact.id, false)}
@@ -1518,51 +1544,7 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
                           <Plus className="w-3 h-3 mr-1" />
                           Add
                         </Badge>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      {contact.isInnovator ? (
-                        <Badge
-                          className="text-[10px] h-5 px-2 bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/20"
-                          data-testid={`badge-innovator-${contact.id}`}
-                        >
-                          <Lightbulb className="w-3 h-3 mr-1" />
-                          Yes
-                        </Badge>
-                      ) : (
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] h-5 px-2 cursor-pointer hover:bg-amber-500/10 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
-                          onClick={() => onPromote?.(contact.id)}
-                          data-testid={`button-promote-innovator-${contact.id}`}
-                        >
-                          <Plus className="w-3 h-3 mr-1" />
-                          Add
-                        </Badge>
-                      )}
-                    </td>
-                  </>
-                )}
-                {drilldownTier === "community" && (
-                  <td className="px-3 py-2">
-                    {contact.isInnovator ? (
-                      <Badge
-                        className="text-[10px] h-5 px-2 bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/20"
-                        data-testid={`badge-innovator-${contact.id}`}
-                      >
-                        <Lightbulb className="w-3 h-3 mr-1" />
-                        Yes
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] h-5 px-2 cursor-pointer hover:bg-amber-500/10 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
-                        onClick={() => onPromote?.(contact.id)}
-                        data-testid={`button-promote-innovator-${contact.id}`}
-                      >
-                        <Plus className="w-3 h-3 mr-1" />
-                        Add
-                      </Badge>
+                      )
                     )}
                   </td>
                 )}
