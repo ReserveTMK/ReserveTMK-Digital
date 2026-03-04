@@ -7290,6 +7290,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       const updated = await storage.updateContact(contactId, updates);
 
       let groupsUpdated = 0;
+      const updatedGroupIds = new Set<number>();
       const contactGroupLinks = await storage.getContactGroups(contactId);
       for (const m of contactGroupLinks) {
         const group = await storage.getGroup(m.groupId);
@@ -7297,10 +7298,25 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
         if (newTier === "our_community" && !group.isCommunity) {
           await storage.updateGroup(m.groupId, { isCommunity: true, movedToCommunityAt: new Date() });
+          updatedGroupIds.add(m.groupId);
           groupsUpdated++;
         } else if (newTier === "our_innovators" && !group.isInnovator) {
           await storage.updateGroup(m.groupId, { isInnovator: true, movedToInnovatorsAt: new Date() });
+          updatedGroupIds.add(m.groupId);
           groupsUpdated++;
+        }
+      }
+
+      if (updated.linkedGroupId && !updatedGroupIds.has(updated.linkedGroupId)) {
+        const linkedGroup = await storage.getGroup(updated.linkedGroupId);
+        if (linkedGroup && linkedGroup.userId === userId) {
+          if (newTier === "our_community" && !linkedGroup.isCommunity) {
+            await storage.updateGroup(updated.linkedGroupId, { isCommunity: true, movedToCommunityAt: new Date() });
+            groupsUpdated++;
+          } else if (newTier === "our_innovators" && !linkedGroup.isInnovator) {
+            await storage.updateGroup(updated.linkedGroupId, { isInnovator: true, movedToInnovatorsAt: new Date() });
+            groupsUpdated++;
+          }
         }
       }
 
@@ -7337,6 +7353,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       const updated = await storage.updateContact(contactId, updates);
 
       let groupsUpdated = 0;
+      const updatedGroupIds = new Set<number>();
       const contactGroupLinks = await storage.getContactGroups(contactId);
       for (const m of contactGroupLinks) {
         const group = await storage.getGroup(m.groupId);
@@ -7351,13 +7368,42 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
           const hasOtherInnovators = otherContacts.some(c => c && c.isInnovator);
           if (!hasOtherInnovators) {
             await storage.updateGroup(m.groupId, { isInnovator: false });
+            updatedGroupIds.add(m.groupId);
             groupsUpdated++;
           }
         } else if (newTier === "all_contacts" && group.isCommunity) {
           const hasOtherCommunity = otherContacts.some(c => c && c.isCommunityMember);
           if (!hasOtherCommunity) {
             await storage.updateGroup(m.groupId, { isCommunity: false });
+            updatedGroupIds.add(m.groupId);
             groupsUpdated++;
+          }
+        }
+      }
+
+      if (updated.linkedGroupId && !updatedGroupIds.has(updated.linkedGroupId)) {
+        const linkedGroup = await storage.getGroup(updated.linkedGroupId);
+        if (linkedGroup && linkedGroup.userId === userId) {
+          if (newTier === "our_community" && linkedGroup.isInnovator) {
+            const members = await storage.getGroupMembers(updated.linkedGroupId);
+            const otherContacts = await Promise.all(
+              members.filter(mem => mem.contactId !== contactId).map(mem => storage.getContact(mem.contactId))
+            );
+            const hasOtherInnovators = otherContacts.some(c => c && c.isInnovator);
+            if (!hasOtherInnovators) {
+              await storage.updateGroup(updated.linkedGroupId, { isInnovator: false });
+              groupsUpdated++;
+            }
+          } else if (newTier === "all_contacts" && linkedGroup.isCommunity) {
+            const members = await storage.getGroupMembers(updated.linkedGroupId);
+            const otherContacts = await Promise.all(
+              members.filter(mem => mem.contactId !== contactId).map(mem => storage.getContact(mem.contactId))
+            );
+            const hasOtherCommunity = otherContacts.some(c => c && c.isCommunityMember);
+            if (!hasOtherCommunity) {
+              await storage.updateGroup(updated.linkedGroupId, { isCommunity: false });
+              groupsUpdated++;
+            }
           }
         }
       }

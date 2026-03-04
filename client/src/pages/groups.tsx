@@ -173,7 +173,7 @@ export default function Groups() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
       queryClient.invalidateQueries({ queryKey: ['/api/groups/community-density'] });
-      toast({ title: "Group promoted", description: viewMode === "all" ? "Promoted to Community" : "Promoted to Innovators" });
+      toast({ title: "Group promoted", description: viewMode === "all" ? "Promoted to Our Community" : "Promoted to Our Innovators" });
     },
     onError: (error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -1060,7 +1060,7 @@ function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, t
                           variant="ghost"
                           onClick={() => onPromote(group.id)}
                           disabled={isPromoting}
-                          title={viewMode === "all" ? "Promote to Community" : "Promote to Innovators"}
+                          title={viewMode === "all" ? "Promote to Our Community" : "Promote to Our Innovators"}
                           data-testid={`table-promote-group-${group.id}`}
                         >
                           <ArrowUp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -1152,7 +1152,7 @@ function GroupCard({ group, onSelect, onEdit, onDelete, editMode, isSelected, on
                   variant="ghost"
                   onClick={onPromote}
                   disabled={isPromoting}
-                  title={viewMode === "all" ? "Promote to Community" : "Promote to Innovators"}
+                  title={viewMode === "all" ? "Promote to Our Community" : "Promote to Our Innovators"}
                   data-testid={`button-promote-group-${group.id}`}
                 >
                   <ArrowUp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
