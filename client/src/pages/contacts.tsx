@@ -1000,17 +1000,30 @@ export default function Contacts() {
                     </div>
                   </Link>
 
-                  {viewMode !== "innovators" && (
+                  {viewMode === "all" && (
                     <Button
                       size="icon"
                       variant="ghost"
                       className="shrink-0"
                       onClick={() => promoteMutation.mutate(contact.id)}
                       disabled={promoteMutation.isPending}
-                      title={viewMode === "community" ? "Promote to Our Innovators" : "Promote to Our Community"}
+                      title="Promote to Our Community"
                       data-testid={`button-promote-${contact.id}`}
                     >
                       <ArrowUp className="w-4 h-4" />
+                    </Button>
+                  )}
+                  {viewMode === "community" && !contact.isInnovator && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="shrink-0"
+                      onClick={() => promoteMutation.mutate(contact.id)}
+                      disabled={promoteMutation.isPending}
+                      title="Promote to Our Innovators"
+                      data-testid={`button-promote-innovator-${contact.id}`}
+                    >
+                      <Lightbulb className="w-4 h-4 text-amber-500" />
                     </Button>
                   )}
 
@@ -1347,13 +1360,13 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
                 </th>
               )}
               <SortHeader label="Name" field="name" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-4" />
-              <SortHeader label="Community" field="community" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-28" />
+              <SortHeader label={drilldownTier === "community" || drilldownTier === "innovators" ? "Innovator" : "Community"} field="community" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-28" />
               <SortHeader label="Role" field="role" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
               <SortHeader label="Ethnicity" field="ethnicity" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[160px]" />
               <SortHeader label="Age" field="age" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-20" />
               <SortHeader label="Suburb" field="suburb" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
               <SortHeader label="Last Active" field="lastActive" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
-              {drilldownTier && drilldownTier !== "innovators" && <th className="px-2 py-3 w-10"></th>}
+              {drilldownTier && drilldownTier === "all" && <th className="px-2 py-3 w-10"></th>}
             </tr>
           </thead>
           <tbody>
@@ -1377,25 +1390,47 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
                   </Link>
                 </td>
                 <td className="px-3 py-2">
-                  {contact.isCommunityMember ? (
-                    <Badge
-                      className="text-[10px] h-5 px-2 bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/20 cursor-pointer hover:bg-purple-500/25 transition-colors"
-                      onClick={() => onToggleCommunity(contact.id, false)}
-                      data-testid={`badge-community-${contact.id}`}
-                    >
-                      <UserCheck className="w-3 h-3 mr-1" />
-                      Yes
-                    </Badge>
+                  {drilldownTier === "community" || drilldownTier === "innovators" ? (
+                    contact.isInnovator ? (
+                      <Badge
+                        className="text-[10px] h-5 px-2 bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/20"
+                        data-testid={`badge-innovator-${contact.id}`}
+                      >
+                        <Lightbulb className="w-3 h-3 mr-1" />
+                        Yes
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] h-5 px-2 cursor-pointer hover:bg-amber-500/10 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
+                        onClick={() => onPromote?.(contact.id)}
+                        data-testid={`button-promote-innovator-${contact.id}`}
+                      >
+                        <Plus className="w-3 h-3 mr-1" />
+                        Add
+                      </Badge>
+                    )
                   ) : (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] h-5 px-2 cursor-pointer hover:bg-purple-500/10 hover:text-purple-700 dark:hover:text-purple-300 transition-colors"
-                      onClick={() => onToggleCommunity(contact.id, true)}
-                      data-testid={`button-add-community-${contact.id}`}
-                    >
-                      <Plus className="w-3 h-3 mr-1" />
-                      Add
-                    </Badge>
+                    contact.isCommunityMember ? (
+                      <Badge
+                        className="text-[10px] h-5 px-2 bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/20 cursor-pointer hover:bg-purple-500/25 transition-colors"
+                        onClick={() => onToggleCommunity(contact.id, false)}
+                        data-testid={`badge-community-${contact.id}`}
+                      >
+                        <UserCheck className="w-3 h-3 mr-1" />
+                        Yes
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] h-5 px-2 cursor-pointer hover:bg-purple-500/10 hover:text-purple-700 dark:hover:text-purple-300 transition-colors"
+                        onClick={() => onToggleCommunity(contact.id, true)}
+                        data-testid={`button-add-community-${contact.id}`}
+                      >
+                        <Plus className="w-3 h-3 mr-1" />
+                        Add
+                      </Badge>
+                    )
                   )}
                 </td>
                 <td className="px-3 py-2">
@@ -1417,14 +1452,14 @@ function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, 
                     ? format(new Date(contact.lastActiveDate || contact.lastInteractionDate), "MMM d, yyyy")
                     : "—"}
                 </td>
-                {drilldownTier && drilldownTier !== "innovators" && onPromote && (
+                {drilldownTier && drilldownTier === "all" && onPromote && (
                   <td className="px-2 py-2">
                     <Button
                       size="icon"
                       variant="ghost"
                       onClick={() => onPromote(contact.id)}
                       disabled={promotePending}
-                      title={drilldownTier === "community" ? "Promote to Our Innovators" : "Promote to Our Community"}
+                      title="Promote to Our Community"
                       data-testid={`table-promote-${contact.id}`}
                     >
                       <ArrowUp className="w-4 h-4" />
