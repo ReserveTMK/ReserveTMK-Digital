@@ -365,11 +365,39 @@ export async function registerRoutes(
       if (!existing) return res.status(404).json({ message: "Contact not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
 
-      const input = api.contacts.update.input.parse(req.body);
+      const allowedFields = ["name", "nickname", "businessName", "ventureType", "role", "email", "phone", "age", "ethnicity", "location", "suburb", "localBoard", "tags", "revenueBand", "metrics", "notes", "active", "consentStatus", "consentDate", "consentNotes", "stage", "whatTheyAreBuilding", "relationshipStage", "isCommunityMember", "communityMemberOverride", "isInnovator", "supportType", "connectionStrength", "relationshipCircle", "relationshipCircleOverride"];
+      const filteredBody: Record<string, any> = {};
+      for (const field of allowedFields) {
+        if (req.body[field] !== undefined) {
+          filteredBody[field] = req.body[field];
+        }
+      }
+
+      const input = api.contacts.update.input.parse(filteredBody);
       if (input.stage && input.stage !== existing.stage) {
         await storage.appendStageProgression(id, input.stage);
       }
       const updated = await storage.updateContact(id, input);
+
+      // Auto-create mentoring relationship for innovators with mentoring/workshop support
+      if (updated.isInnovator && updated.supportType && 
+          (updated.supportType.includes("mentoring") || updated.supportType.includes("workshop_skills"))) {
+        const existingRels = await storage.getMentoringRelationshipsByContact(id);
+        const hasActiveRel = existingRels.some(r => r.status === "active" || r.status === "application");
+        
+        if (!hasActiveRel) {
+          await storage.createMentoringRelationship({
+            contactId: id,
+            userId: (req.user as any).claims.sub,
+            status: "active",
+            startDate: new Date(),
+            sessionFrequency: "monthly",
+            journeyStage: updated.stage || "kakano",
+            focusAreas: []
+          });
+        }
+      }
+
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -390,6 +418,38 @@ export async function registerRoutes(
 
     await storage.deleteContact(id);
     res.status(204).send();
+  });
+
+  app.post("/api/mentoring-relationships/backfill-from-support-type", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const allContacts = await storage.getContacts(userId);
+      let createdCount = 0;
+
+      for (const contact of allContacts) {
+        if (contact.isInnovator && contact.supportType && 
+            (contact.supportType.includes("mentoring") || contact.supportType.includes("workshop_skills"))) {
+          const existingRels = await storage.getMentoringRelationshipsByContact(contact.id);
+          const hasActiveRel = existingRels.some(r => r.status === "active" || r.status === "application");
+          
+          if (!hasActiveRel) {
+            await storage.createMentoringRelationship({
+              contactId: contact.id,
+              userId,
+              status: "active",
+              startDate: new Date(),
+              sessionFrequency: "monthly",
+              journeyStage: contact.stage || "kakano",
+              focusAreas: []
+            });
+            createdCount++;
+          }
+        }
+      }
+      res.json({ success: true, createdCount });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   app.get("/api/contacts/:id/debriefs", isAuthenticated, async (req, res) => {

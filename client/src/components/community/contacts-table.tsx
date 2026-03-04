@@ -3,13 +3,17 @@ import { Link } from "wouter";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Lightbulb, UserCheck } from "lucide-react";
+import { Plus, Lightbulb, UserCheck, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/beautiful-button";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import {
   InlineTextCell,
   InlineEthnicityCell,
   InlineStageCell,
   InlineSupportCell,
   InlineConnectionCell,
+  InlineRoleCell,
   SortHeader,
 } from "@/components/community/inline-cells";
 import type { SortField, SortDir } from "@/components/community/inline-cells";
@@ -30,6 +34,8 @@ interface ContactsTableViewProps {
 export function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, toggleContactSelection, toggleSelectAll, onToggleCommunity, drilldownTier, onPromote, promotePending }: ContactsTableViewProps) {
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [backfilling, setBackfilling] = useState(false);
+  const { toast } = useToast();
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -38,6 +44,21 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
     } else {
       setSortField(field);
       setSortDir("asc");
+    }
+  };
+
+  const handleBackfill = async () => {
+    setBackfilling(true);
+    try {
+      const res = await apiRequest("POST", "/api/mentoring-relationships/backfill-from-support-type");
+      const data = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/mentoring-relationships"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast({ title: "Backfill complete", description: `Created ${data.createdCount} mentoring relationships.` });
+    } catch (err: any) {
+      toast({ title: "Backfill failed", variant: "destructive", description: err.message });
+    } finally {
+      setBackfilling(false);
     }
   };
 
@@ -112,158 +133,154 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
   }, [contacts, sortField, sortDir]);
 
   return (
-    <div className="bg-card border border-border rounded-xl overflow-hidden" data-testid="contacts-table">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-muted/30">
-              {editMode && (
-                <th className="px-3 py-3 w-10">
-                  <Checkbox
-                    checked={contacts.length > 0 && selectedContacts.size === contacts.length}
-                    onCheckedChange={toggleSelectAll}
-                    data-testid="table-checkbox-select-all"
-                  />
-                </th>
-              )}
-              <SortHeader label="Name" field="name" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-4" />
-              {drilldownTier !== "innovators" && (
-                <SortHeader label={drilldownTier === "community" ? "Innovator" : "Community"} field="community" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-28" />
-              )}
-              {drilldownTier === "innovators" ? (
-                <>
-                  <SortHeader label="Stage" field="stage" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
-                  <SortHeader label="Connection" field="connection" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[120px]" />
-                  <SortHeader label="Support" field="support" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[120px]" />
-                </>
-              ) : drilldownTier === "community" ? (
-                <>
-                  <SortHeader label="Role" field="role" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
-                  <SortHeader label="Connection" field="connection" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[120px]" />
-                </>
-              ) : (
-                <SortHeader label="Role" field="role" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
-              )}
-              <SortHeader label="Ethnicity" field="ethnicity" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[160px]" />
-              <SortHeader label="Age" field="age" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-20" />
-              <SortHeader label="Suburb" field="suburb" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
-              <SortHeader label="Last Active" field="lastActive" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
-            </tr>
-          </thead>
-          <tbody>
-            {sortedContacts.map((contact) => (
-              <tr key={contact.id} className={`border-b last:border-b-0 hover:bg-muted/20 transition-colors ${editMode && selectedContacts.has(contact.id) ? 'bg-primary/5' : ''}`} data-testid={`table-row-${contact.id}`}>
+    <div className="space-y-4">
+      {drilldownTier === "innovators" && (
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" onClick={handleBackfill} disabled={backfilling}>
+            {backfilling && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            Sync Mentoring Relationships
+          </Button>
+        </div>
+      )}
+      <div className="bg-card border border-border rounded-xl overflow-hidden" data-testid="contacts-table">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/30">
                 {editMode && (
-                  <td className="px-3 py-2">
+                  <th className="px-3 py-3 w-10">
                     <Checkbox
-                      checked={selectedContacts.has(contact.id)}
-                      onCheckedChange={() => toggleContactSelection(contact.id)}
-                      data-testid={`table-checkbox-${contact.id}`}
+                      checked={contacts.length > 0 && selectedContacts.size === contacts.length}
+                      onCheckedChange={toggleSelectAll}
+                      data-testid="table-checkbox-select-all"
                     />
-                  </td>
+                  </th>
                 )}
-                <td className="px-4 py-2">
-                  <Link href={`/contacts/${contact.id}`} className="flex items-center gap-2 transition-colors" data-testid={`table-link-${contact.id}`}>
-                    <div className="w-7 h-7 rounded-md bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
-                      {contact.name[0]}
-                    </div>
-                    <span className="font-medium truncate max-w-[180px]">{contact.name}</span>
-                  </Link>
-                </td>
+                <SortHeader label="Name" field="name" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-4" />
                 {drilldownTier !== "innovators" && (
-                  <td className="px-3 py-2">
-                    {drilldownTier === "community" ? (
-                      contact.isInnovator ? (
-                        <Badge
-                          className="text-[10px] h-5 px-2 bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/20"
-                          data-testid={`badge-innovator-${contact.id}`}
-                        >
-                          <Lightbulb className="w-3 h-3 mr-1" />
-                          Yes
-                        </Badge>
-                      ) : (
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] h-5 px-2 cursor-pointer hover:bg-amber-500/10 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
-                          onClick={() => onPromote?.(contact.id)}
-                          data-testid={`button-promote-innovator-${contact.id}`}
-                        >
-                          <Plus className="w-3 h-3 mr-1" />
-                          Add
-                        </Badge>
-                      )
-                    ) : (
-                      contact.isCommunityMember ? (
-                        <Badge
-                          className="text-[10px] h-5 px-2 bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/20 cursor-pointer hover:bg-purple-500/25 transition-colors"
-                          onClick={() => onToggleCommunity(contact.id, false)}
-                          data-testid={`badge-community-${contact.id}`}
-                        >
-                          <UserCheck className="w-3 h-3 mr-1" />
-                          Yes
-                        </Badge>
-                      ) : (
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] h-5 px-2 cursor-pointer hover:bg-purple-500/10 hover:text-purple-700 dark:hover:text-purple-300 transition-colors"
-                          onClick={() => onToggleCommunity(contact.id, true)}
-                          data-testid={`button-add-community-${contact.id}`}
-                        >
-                          <Plus className="w-3 h-3 mr-1" />
-                          Add
-                        </Badge>
-                      )
-                    )}
-                  </td>
+                  <SortHeader label={drilldownTier === "community" ? "Innovator" : "Community"} field="community" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-28" />
                 )}
+                <SortHeader label="Role" field="role" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
                 {drilldownTier === "innovators" ? (
                   <>
-                    <td className="px-3 py-2">
-                      <InlineStageCell stage={contact.stage} contactId={contact.id} />
-                    </td>
-                    <td className="px-1 py-2">
-                      <InlineConnectionCell contactId={contact.id} connectionStrength={contact.connectionStrength} />
-                    </td>
-                    <td className="px-1 py-2">
-                      <InlineSupportCell contactId={contact.id} supportTypes={contact.supportType || []} />
-                    </td>
+                    <SortHeader label="Stage" field="stage" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
+                    <SortHeader label="Connection" field="connection" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[120px]" />
+                    <SortHeader label="Support" field="support" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[120px]" />
                   </>
                 ) : drilldownTier === "community" ? (
-                  <>
+                  <SortHeader label="Connection" field="connection" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[120px]" />
+                ) : null}
+                <SortHeader label="Ethnicity" field="ethnicity" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[160px]" />
+                <SortHeader label="Age" field="age" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-20" />
+                <SortHeader label="Suburb" field="suburb" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
+                <SortHeader label="Last Active" field="lastActive" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {sortedContacts.map((contact) => (
+                <tr key={contact.id} className={`border-b last:border-b-0 hover:bg-muted/20 transition-colors ${editMode && selectedContacts.has(contact.id) ? 'bg-primary/5' : ''}`} data-testid={`table-row-${contact.id}`}>
+                  {editMode && (
                     <td className="px-3 py-2">
-                      <Badge variant="outline" className="text-[10px] h-5 px-2" data-testid={`table-role-${contact.id}`}>
-                        {contact.role || "\u2014"}
-                      </Badge>
+                      <Checkbox
+                        checked={selectedContacts.has(contact.id)}
+                        onCheckedChange={() => toggleContactSelection(contact.id)}
+                        data-testid={`table-checkbox-${contact.id}`}
+                      />
                     </td>
+                  )}
+                  <td className="px-4 py-2">
+                    <Link href={`/contacts/${contact.id}`} className="flex items-center gap-2 transition-colors" data-testid={`table-link-${contact.id}`}>
+                      <div className="w-7 h-7 rounded-md bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
+                        {contact.name[0]}
+                      </div>
+                      <span className="font-medium truncate max-w-[180px]">{contact.name}</span>
+                    </Link>
+                  </td>
+                  {drilldownTier !== "innovators" && (
+                    <td className="px-3 py-2">
+                      {drilldownTier === "community" ? (
+                        contact.isInnovator ? (
+                          <Badge
+                            className="text-[10px] h-5 px-2 bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/20"
+                            data-testid={`badge-innovator-${contact.id}`}
+                          >
+                            <Lightbulb className="w-3 h-3 mr-1" />
+                            Yes
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] h-5 px-2 cursor-pointer hover:bg-amber-500/10 hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
+                            onClick={() => onPromote?.(contact.id)}
+                            data-testid={`button-promote-innovator-${contact.id}`}
+                          >
+                            <Plus className="w-3 h-3 mr-1" />
+                            Add
+                          </Badge>
+                        )
+                      ) : (
+                        contact.isCommunityMember ? (
+                          <Badge
+                            className="text-[10px] h-5 px-2 bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/20 cursor-pointer hover:bg-purple-500/25 transition-colors"
+                            onClick={() => onToggleCommunity(contact.id, false)}
+                            data-testid={`badge-community-${contact.id}`}
+                          >
+                            <UserCheck className="w-3 h-3 mr-1" />
+                            Yes
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] h-5 px-2 cursor-pointer hover:bg-purple-500/10 hover:text-purple-700 dark:hover:text-purple-300 transition-colors"
+                            onClick={() => onToggleCommunity(contact.id, true)}
+                            data-testid={`button-add-community-${contact.id}`}
+                          >
+                            <Plus className="w-3 h-3 mr-1" />
+                            Add
+                          </Badge>
+                        )
+                      )}
+                    </td>
+                  )}
+                  <td className="px-3 py-2">
+                    <InlineRoleCell role={contact.role} contactId={contact.id} />
+                  </td>
+                  {drilldownTier === "innovators" ? (
+                    <>
+                      <td className="px-3 py-2">
+                        <InlineStageCell stage={contact.stage} contactId={contact.id} />
+                      </td>
+                      <td className="px-1 py-2">
+                        <InlineConnectionCell contactId={contact.id} connectionStrength={contact.connectionStrength} />
+                      </td>
+                      <td className="px-1 py-2">
+                        <InlineSupportCell contactId={contact.id} supportTypes={contact.supportType || []} />
+                      </td>
+                    </>
+                  ) : drilldownTier === "community" ? (
                     <td className="px-1 py-2">
                       <InlineConnectionCell contactId={contact.id} connectionStrength={contact.connectionStrength} />
                     </td>
-                  </>
-                ) : (
-                  <td className="px-3 py-2">
-                    <Badge variant="outline" className="text-[10px] h-5 px-2" data-testid={`table-role-${contact.id}`}>
-                      {contact.role || "\u2014"}
-                    </Badge>
+                  ) : null}
+                  <td className="px-1 py-2">
+                    <InlineEthnicityCell contactId={contact.id} ethnicities={contact.ethnicity || []} ethnicityCounts={ethnicityCounts} />
                   </td>
-                )}
-                <td className="px-1 py-2">
-                  <InlineEthnicityCell contactId={contact.id} ethnicities={contact.ethnicity || []} ethnicityCounts={ethnicityCounts} />
-                </td>
-                <td className="px-1 py-2">
-                  <InlineTextCell contactId={contact.id} field="age" value={contact.age?.toString() || ""} placeholder="\u2014" />
-                </td>
-                <td className="px-1 py-2">
-                  <InlineTextCell contactId={contact.id} field="suburb" value={contact.suburb || ""} placeholder="\u2014" />
-                </td>
-                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap" data-testid={`table-active-${contact.id}`}>
-                  {(contact.lastActiveDate || contact.lastInteractionDate)
-                    ? format(new Date(contact.lastActiveDate || contact.lastInteractionDate), "MMM d, yyyy")
-                    : "\u2014"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                  <td className="px-1 py-2">
+                    <InlineTextCell contactId={contact.id} field="age" value={contact.age?.toString() || ""} placeholder="—" />
+                  </td>
+                  <td className="px-1 py-2">
+                    <InlineTextCell contactId={contact.id} field="suburb" value={contact.suburb || ""} placeholder="—" />
+                  </td>
+                  <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap" data-testid={`table-active-${contact.id}`}>
+                    {(contact.lastActiveDate || contact.lastInteractionDate)
+                      ? format(new Date(contact.lastActiveDate || contact.lastInteractionDate), "MMM d, yyyy")
+                      : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

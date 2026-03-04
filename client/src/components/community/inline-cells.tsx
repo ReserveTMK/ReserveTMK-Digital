@@ -401,6 +401,70 @@ export function InlineConnectionCell({ contactId, connectionStrength }: { contac
   );
 }
 
+export function InlineRoleCell({ role, contactId }: { role: string; contactId: number }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const roles = [
+    "Entrepreneur",
+    "Creative",
+    "Community Leader",
+    "Movement Builder",
+    "Professional",
+    "Innovator",
+    "Rangatahi",
+    "Aspiring",
+    "Business Owner"
+  ];
+
+  const handleSelect = async (newRole: string) => {
+    if (newRole === role) { setOpen(false); return; }
+    setSaving(true);
+    try {
+      await apiRequest("PATCH", `/api/contacts/${contactId}`, { role: newRole });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast({ title: "Role updated" });
+      setOpen(false);
+    } catch {
+      toast({ title: "Failed to update role", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button 
+          className="text-left px-2 py-1 rounded hover:bg-muted/60 transition-colors cursor-pointer group flex items-center gap-1" 
+          data-testid={`table-cell-role-${contactId}`}
+        >
+          <Badge variant="outline" className="text-[10px] h-5 px-2">
+            {role || "—"}
+          </Badge>
+          <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-48 p-2" align="start">
+        <div className="space-y-1">
+          {roles.map(r => (
+            <button
+              key={r}
+              className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm hover:bg-accent/50 transition-colors ${r === role ? "bg-accent" : ""}`}
+              onClick={() => handleSelect(r)}
+              disabled={saving}
+              data-testid={`role-opt-${r.toLowerCase().replace(/\s+/g, '-')}-${contactId}`}
+            >
+              <span>{r}</span>
+              {r === role && <Check className="w-3 h-3 ml-auto" />}
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function ConnectionStrengthDisplay({ connectionStrength }: { connectionStrength?: string | null }) {
   const config = CONNECTION_CONFIG[connectionStrength || ""] || null;
   const activeLevel = config?.level || 0;
