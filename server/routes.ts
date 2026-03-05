@@ -9403,24 +9403,57 @@ Rules:
             return `$${i + 1}`;
           });
           
+          // Build type info
+          const colTypes: Record<string, string> = {};
+          const colUdtTypes: Record<string, string> = {};
+          for (const cr of colsResult.rows) {
+            colTypes[cr.column_name] = cr.data_type;
+          }
+          
+          // Get udt_name for array element type detection
+          const udtResult = await client.query(
+            `SELECT column_name, udt_name FROM information_schema.columns WHERE table_name = $1 AND table_schema = 'public'`,
+            [safeTable]
+          );
+          for (const ur of udtResult.rows) {
+            colUdtTypes[ur.column_name] = ur.udt_name;
+          }
+          
           const params = cols.map(c => {
             const val = row[c];
             if (val === null || val === undefined) return null;
+            const dt = colTypes[c];
+            const udt = colUdtTypes[c];
+            
+            // Handle arrays - convert JSON arrays to PostgreSQL array format
+            if (dt === "ARRAY") {
+              if (Array.isArray(val)) {
+                return val; // pg driver handles native arrays
+              }
+              // If it's a JSON string of an array, parse it
+              if (typeof val === "string" && val.startsWith("[")) {
+                try { return JSON.parse(val); } catch { return val; }
+              }
+              return val;
+            }
+            
+            if (dt === "jsonb" || dt === "json") {
+              if (typeof val === "object") return JSON.stringify(val);
+              return val;
+            }
+            
             if (Array.isArray(val) || (typeof val === "object" && val !== null)) {
               return JSON.stringify(val);
             }
             return val;
           });
           
-          // Build type casts for array and jsonb columns
-          const colTypes: Record<string, string> = {};
-          for (const cr of colsResult.rows) {
-            colTypes[cr.column_name] = cr.data_type;
-          }
-          
           const valuePlaceholders = cols.map((c, i) => {
             const dt = colTypes[c];
-            if (dt === "ARRAY" || dt?.includes("[]") || dt === "text[]") {
+            const udt = colUdtTypes[c];
+            if (dt === "ARRAY") {
+              // Determine element type from udt_name (e.g. _int4, _text, _varchar)
+              if (udt === "_int4" || udt === "_int8") return `$${i + 1}::integer[]`;
               return `$${i + 1}::text[]`;
             }
             if (dt === "jsonb" || dt === "json") {
