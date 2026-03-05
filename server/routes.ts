@@ -9364,10 +9364,10 @@ Rules:
   })();
 
   // Temporary migration endpoint - import data from dev to production
-  app.post("/api/admin/migrate-table", isAuthenticated, async (req, res) => {
+  app.post("/api/admin/migrate-table", async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
-      if (userId !== "54568936") {
+      const migrationKey = req.headers["x-migration-key"];
+      if (migrationKey !== process.env.SESSION_SECRET) {
         return res.status(403).json({ message: "Not authorized for migration" });
       }
       
