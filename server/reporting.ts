@@ -267,11 +267,18 @@ export async function getDeliveryMetrics(filters: ReportFilters) {
   const MENTORING_TYPES = userMentoringTypes.length > 0
     ? userMentoringTypes.map(t => t.name.toLowerCase())
     : ["mentoring", "catchup", "follow-up"];
-  const mentoringMeetings = await db.select().from(meetings).where(and(
-    eq(meetings.userId, filters.userId), inArray(meetings.type, MENTORING_TYPES),
+
+  const allMeetingsInRange = await db.select().from(meetings).where(and(
+    eq(meetings.userId, filters.userId),
     inArray(meetings.status, ["completed", "confirmed"]),
     gte(meetings.startTime, start), lte(meetings.startTime, end),
   ));
+  const mentoringMeetings = allMeetingsInRange.filter(m => m.type && MENTORING_TYPES.includes(m.type.toLowerCase()));
+  const partnerMeetings = allMeetingsInRange.filter(m => m.type && !MENTORING_TYPES.includes(m.type.toLowerCase()));
+
+  const workshopCount = eventsInRange.filter(e =>
+    e.type && e.type.toLowerCase().includes("workshop")
+  ).length;
 
   const programmesInRange = await db.select().from(programmes).where(and(
     eq(programmes.userId, filters.userId), ne(programmes.status, "cancelled"),
@@ -286,7 +293,7 @@ export async function getDeliveryMetrics(filters: ReportFilters) {
     if (p.attendees) programmeAttendees += p.attendees.length;
   }
 
-  const totalActivations = eventsInRange.length + bookingsInRange.length + mentoringMeetings.length + programmesInRange.length;
+  const totalActivations = eventsInRange.length + bookingsInRange.length + mentoringMeetings.length + programmesInRange.length + partnerMeetings.length;
 
   return {
     totalActivations,
@@ -296,6 +303,8 @@ export async function getDeliveryMetrics(filters: ReportFilters) {
       communityHours: Math.round(communityHours * 10) / 10,
     },
     mentoringSessions: mentoringMeetings.length,
+    partnerMeetings: partnerMeetings.length,
+    workshops: workshopCount,
     programmes: {
       total: programmesInRange.length, byClassification: programmesByClassification,
       completed: programmesCompleted,
@@ -1133,13 +1142,235 @@ export async function getMentoringMetrics(filters: ReportFilters) {
   };
 }
 
+export async function getOrganisationsEngaged(filters: ReportFilters) {
+  const start = parseDate(filters.startDate);
+  const end = parseDate(filters.endDate);
+
+  const debriefWhere = confirmedDebriefConditions(filters);
+  const debriefContactIds = await db
+    .selectDistinct({ contactId: impactLogContacts.contactId })
+    .from(impactLogContacts)
+    .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
+    .where(debriefWhere);
+
+  const meetingsInRange = await db.select({ contactId: meetings.contactId }).from(meetings).where(and(
+    eq(meetings.userId, filters.userId),
+    inArray(meetings.status, ["completed", "confirmed"]),
+    gte(meetings.startTime, start), lte(meetings.startTime, end),
+  ));
+
+  const eventIds = (await db.select({ id: events.id }).from(events).where(and(
+    eq(events.userId, filters.userId), eq(events.eventStatus, "active"),
+    gte(events.startTime, start), lte(events.startTime, end),
+  ))).map(e => e.id);
+  let eventContactIds: { contactId: number }[] = [];
+  if (eventIds.length > 0) {
+    eventContactIds = await db.selectDistinct({ contactId: eventAttendance.contactId })
+      .from(eventAttendance).where(inArray(eventAttendance.eventId, eventIds));
+  }
+
+  const bookingsInRange = await db.select({ bookerId: bookings.bookerId, attendees: bookings.attendees }).from(bookings).where(and(
+    eq(bookings.userId, filters.userId),
+    inArray(bookings.status, ["confirmed", "completed"]),
+    gte(bookings.startDate, start), lte(bookings.startDate, end),
+  ));
+
+  const programmesInRange = await db.select({ attendees: programmes.attendees }).from(programmes).where(and(
+    eq(programmes.userId, filters.userId),
+    inArray(programmes.status, ["active", "completed"]),
+    gte(programmes.startDate, start), lte(programmes.startDate, end),
+  ));
+
+  const engagedContactIds = new Set<number>();
+  for (const r of debriefContactIds) if (r.contactId) engagedContactIds.add(r.contactId);
+  for (const r of meetingsInRange) if (r.contactId) engagedContactIds.add(r.contactId);
+  for (const r of eventContactIds) if (r.contactId) engagedContactIds.add(r.contactId);
+  for (const b of bookingsInRange) {
+    if (b.bookerId) engagedContactIds.add(b.bookerId);
+    if (b.attendees) for (const a of b.attendees) engagedContactIds.add(a);
+  }
+  for (const p of programmesInRange) {
+    if (p.attendees) for (const a of p.attendees) engagedContactIds.add(a);
+  }
+
+  if (engagedContactIds.size === 0) return [];
+
+  const engagedArr = Array.from(engagedContactIds);
+  const memberRows = await db.select({
+    groupId: groupMembers.groupId,
+    contactId: groupMembers.contactId,
+  }).from(groupMembers).where(inArray(groupMembers.contactId, engagedArr));
+
+  const groupIds = new Set(memberRows.map(r => r.groupId));
+  const newGroups = await db.select({ id: groups.id }).from(groups).where(and(
+    eq(groups.userId, filters.userId),
+    gte(groups.createdAt, start), lte(groups.createdAt, end),
+  ));
+  for (const g of newGroups) groupIds.add(g.id);
+
+  if (groupIds.size === 0) return [];
+
+  const groupDetails = await db.select({
+    id: groups.id,
+    name: groups.name,
+    organizationType: groups.organizationType,
+    isCommunity: groups.isCommunity,
+    isInnovator: groups.isInnovator,
+    createdAt: groups.createdAt,
+  }).from(groups).where(inArray(groups.id, Array.from(groupIds)));
+
+  const allMemberRows = await db.select({
+    groupId: groupMembers.groupId,
+    contactId: groupMembers.contactId,
+  }).from(groupMembers).where(inArray(groupMembers.groupId, Array.from(groupIds)));
+
+  const membersPerGroup = new Map<number, number>();
+  const engagedMembersPerGroup = new Map<number, number>();
+  for (const r of allMemberRows) {
+    membersPerGroup.set(r.groupId, (membersPerGroup.get(r.groupId) || 0) + 1);
+    if (engagedContactIds.has(r.contactId)) {
+      engagedMembersPerGroup.set(r.groupId, (engagedMembersPerGroup.get(r.groupId) || 0) + 1);
+    }
+  }
+
+  return groupDetails.map(g => {
+    const isNew = g.createdAt && g.createdAt >= start && g.createdAt <= end;
+    const context = isNew ? "New this period" :
+      g.isInnovator ? "Innovator" :
+      g.isCommunity ? "Community member" : "Contact";
+    return {
+      id: g.id,
+      name: g.name,
+      type: g.organizationType || "Other",
+      context,
+      engagedMembers: engagedMembersPerGroup.get(g.id) || 0,
+      totalMembers: membersPerGroup.get(g.id) || 0,
+    };
+  }).sort((a, b) => b.engagedMembers - a.engagedMembers);
+}
+
+export async function getPeopleFeatured(filters: ReportFilters) {
+  const start = parseDate(filters.startDate);
+  const end = parseDate(filters.endDate);
+  const lensContactIds = await getCommunityLensContactIds(filters);
+
+  const debriefWhere = confirmedDebriefConditions(filters);
+  const debriefContactRows = await db
+    .select({ contactId: impactLogContacts.contactId, impactLogId: impactLogContacts.impactLogId })
+    .from(impactLogContacts)
+    .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
+    .where(debriefWhere);
+
+  const contactDebriefCount = new Map<number, number>();
+  for (const r of debriefContactRows) {
+    if (lensContactIds && !lensContactIds.has(r.contactId)) continue;
+    contactDebriefCount.set(r.contactId, (contactDebriefCount.get(r.contactId) || 0) + 1);
+  }
+
+  let milestonesInRange = await db.select().from(milestones).where(and(
+    eq(milestones.userId, filters.userId),
+    gte(milestones.createdAt, start), lte(milestones.createdAt, end),
+  ));
+  if (lensContactIds) {
+    milestonesInRange = milestonesInRange.filter(m => m.linkedContactId && lensContactIds.has(m.linkedContactId));
+  }
+  const contactMilestones = new Map<number, string[]>();
+  for (const m of milestonesInRange) {
+    if (!m.linkedContactId) continue;
+    if (!contactMilestones.has(m.linkedContactId)) contactMilestones.set(m.linkedContactId, []);
+    contactMilestones.get(m.linkedContactId)!.push(m.title);
+  }
+
+  const userContactIds = (await db.select({ id: contacts.id }).from(contacts).where(eq(contacts.userId, filters.userId))).map(c => c.id);
+  const stageHistory = userContactIds.length > 0 ? await db.select().from(relationshipStageHistory).where(and(
+    eq(relationshipStageHistory.entityType, "contact"),
+    inArray(relationshipStageHistory.entityId, userContactIds),
+    gte(relationshipStageHistory.changedAt, start), lte(relationshipStageHistory.changedAt, end),
+  )) : [];
+  const JOURNEY_ORDER = ["kakano", "tipu", "ora"];
+  const contactJourneyProgress = new Map<number, { from: string; to: string }>();
+  for (const sh of stageHistory) {
+    if (lensContactIds && !lensContactIds.has(sh.entityId)) continue;
+    const prevIdx = sh.previousStage ? JOURNEY_ORDER.indexOf(sh.previousStage) : -1;
+    const newIdx = JOURNEY_ORDER.indexOf(sh.newStage);
+    if (newIdx > prevIdx && newIdx >= 0) {
+      contactJourneyProgress.set(sh.entityId, { from: sh.previousStage || "new", to: sh.newStage });
+    }
+  }
+
+  const allContactsList = await db.select({
+    id: contacts.id,
+    movedToInnovatorsAt: contacts.movedToInnovatorsAt,
+  }).from(contacts).where(eq(contacts.userId, filters.userId));
+  const newInnovatorIds = new Set<number>();
+  for (const c of allContactsList) {
+    if (c.movedToInnovatorsAt && c.movedToInnovatorsAt >= start && c.movedToInnovatorsAt <= end) {
+      if (!lensContactIds || lensContactIds.has(c.id)) {
+        newInnovatorIds.add(c.id);
+      }
+    }
+  }
+
+  const featuredIds = new Set<number>();
+  for (const id of contactDebriefCount.keys()) featuredIds.add(id);
+  for (const id of contactMilestones.keys()) featuredIds.add(id);
+  for (const id of contactJourneyProgress.keys()) featuredIds.add(id);
+  for (const id of newInnovatorIds) featuredIds.add(id);
+
+  if (featuredIds.size === 0) return [];
+
+  const contactDetails = await db.select({
+    id: contacts.id,
+    firstName: contacts.firstName,
+    lastName: contacts.lastName,
+    role: contacts.role,
+    stage: contacts.stage,
+    metrics: contacts.metrics,
+    isInnovator: contacts.isInnovator,
+    isCommunityMember: contacts.isCommunityMember,
+  }).from(contacts).where(and(
+    eq(contacts.userId, filters.userId),
+    inArray(contacts.id, Array.from(featuredIds)),
+  ));
+
+  return contactDetails.map(c => {
+    const reasons: string[] = [];
+    const debriefs = contactDebriefCount.get(c.id);
+    if (debriefs) reasons.push(`${debriefs} debrief${debriefs > 1 ? "s" : ""}`);
+    const mils = contactMilestones.get(c.id);
+    if (mils) reasons.push(`Milestone${mils.length > 1 ? "s" : ""}: ${mils.slice(0, 2).join(", ")}`);
+    const journey = contactJourneyProgress.get(c.id);
+    if (journey) reasons.push(`Stage: ${journey.from} \u2192 ${journey.to}`);
+    if (newInnovatorIds.has(c.id)) reasons.push("New innovator");
+
+    const m = c.metrics as any;
+    const growthScores = m ? {
+      mindset: m.mindset ?? null,
+      skill: m.skill ?? null,
+      confidence: m.confidence ?? null,
+    } : null;
+
+    return {
+      id: c.id,
+      name: `${c.firstName || ""} ${c.lastName || ""}`.trim(),
+      role: c.role || null,
+      stage: c.stage || null,
+      isInnovator: c.isInnovator || false,
+      reasons,
+      growthScores,
+    };
+  }).sort((a, b) => b.reasons.length - a.reasons.length);
+}
+
 export async function getFullMonthlyReport(filters: ReportFilters) {
-  const [reach, delivery, impact, value, mentoring] = await Promise.all([
+  const [reach, delivery, impact, value, mentoring, organisationsEngaged, peopleFeatured] = await Promise.all([
     getReachMetrics(filters),
     getDeliveryMetrics(filters),
     getImpactMetrics(filters),
     getValueContribution(filters),
     getMentoringMetrics(filters),
+    getOrganisationsEngaged(filters),
+    getPeopleFeatured(filters),
   ]);
 
   return {
@@ -1153,6 +1384,8 @@ export async function getFullMonthlyReport(filters: ReportFilters) {
     impact,
     value,
     mentoring,
+    organisationsEngaged,
+    peopleFeatured,
     engagement: reach,
     outcomes: {
       totalContacts: impact.contactsWithMetrics,

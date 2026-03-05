@@ -558,9 +558,19 @@ export default function Reports() {
     rows.push(["Events", String(d.delivery?.events?.total || 0)]);
     rows.push(["Bookings", String(d.delivery?.bookings?.total || 0)]);
     rows.push(["Mentoring Sessions", String(d.delivery?.mentoringSessions || 0)]);
+    rows.push(["Partner Meetings", String(d.delivery?.partnerMeetings || 0)]);
+    rows.push(["Workshops", String(d.delivery?.workshops || 0)]);
     rows.push(["Programmes", String(d.delivery?.programmes?.total || 0)]);
     rows.push(["Community Hours", String(d.delivery?.communityHours || 0)]);
     rows.push(["Total Attendees", String(d.delivery?.totalAttendees || 0)]);
+    if (d.organisationsEngaged?.length > 0) {
+      rows.push([]);
+      rows.push(["=== ORGANISATIONS ENGAGED ==="]);
+      rows.push(["Name", "Type", "Context", "Engaged Members", "Total Members"]);
+      for (const org of d.organisationsEngaged) {
+        rows.push([org.name, org.type, org.context, String(org.engagedMembers), String(org.totalMembers)]);
+      }
+    }
     rows.push([]);
 
     const imp = d.impact;
@@ -582,6 +592,20 @@ export default function Reports() {
       rows.push(["Impact Category", "Debriefs", "People Affected", "Impact Score"]);
       for (const cat of imp.taxonomyBreakdown) {
         rows.push([cat.name, String(cat.debriefCount), String(cat.peopleAffected), String(cat.impactScore)]);
+      }
+    }
+    if (d.peopleFeatured?.length > 0) {
+      rows.push([]);
+      rows.push(["=== PEOPLE FEATURED ==="]);
+      rows.push(["Name", "Role", "Stage", "Innovator", "Reasons", "Mindset", "Skill", "Confidence"]);
+      for (const p of d.peopleFeatured) {
+        rows.push([
+          p.name, p.role || "", p.stage || "", p.isInnovator ? "Yes" : "No",
+          p.reasons.join("; "),
+          String(p.growthScores?.mindset ?? ""),
+          String(p.growthScores?.skill ?? ""),
+          String(p.growthScores?.confidence ?? ""),
+        ]);
       }
     }
     rows.push([]);
@@ -1095,18 +1119,18 @@ export default function Reports() {
                     <StatCard icon={Clock} label="Community Hours" value={del?.communityHours || 0} color="green" testId="stat-community-hours" />
                   </div>
 
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                     <StatCard icon={CalendarDays} label="Events" value={del?.events?.total || 0} color="blue" testId="stat-events" />
                     <StatCard icon={Building2} label="Bookings" value={del?.bookings?.total || 0} color="orange" testId="stat-bookings" />
                     <StatCard icon={Users} label="Mentoring Sessions" value={del?.mentoringSessions || 0} color="purple" testId="stat-mentoring-sessions" />
+                    <StatCard icon={Handshake} label="Partner Meetings" value={(del?.partnerMeetings || 0) + (isBlended && lm ? lm.activationsPartnerMeetings || 0 : 0)} color="teal" testId="stat-partner-meetings" />
+                    <StatCard icon={Activity} label="Workshops" value={(del?.workshops || 0) + (isBlended && lm ? lm.activationsWorkshops || 0 : 0)} color="amber" testId="stat-workshops" />
                     <StatCard icon={Activity} label="Programmes" value={del?.programmes?.total || 0} color="indigo" testId="stat-programmes" />
                   </div>
 
                   {isBlended && lm && (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3" data-testid="legacy-delivery-breakdown">
-                      <StatCard icon={Activity} label="Workshops" value={(lm.activationsWorkshops || 0) + (del?.events?.byType?.workshop || 0)} color="slate" testId="stat-workshops" subText="incl. legacy" />
                       <StatCard icon={Users} label="Mentoring (legacy)" value={lm.activationsMentoring || 0} color="slate" testId="stat-legacy-mentoring" subText="legacy only" />
-                      <StatCard icon={Handshake} label="Partner Meetings" value={(lm.activationsPartnerMeetings || 0) + (del?.events?.byType?.partner_meeting || 0)} color="slate" testId="stat-partner-meetings" subText="incl. legacy" />
                       <StatCard icon={Activity} label="Legacy Activations" value={lm.activationsTotal || 0} color="indigo" testId="stat-legacy-activations" subText="legacy only" />
                     </div>
                   )}
@@ -1173,6 +1197,40 @@ export default function Reports() {
                             </ResponsiveContainer>
                           </div>
                         )}
+                      </div>
+                    </details>
+                  )}
+
+                  {reportData?.organisationsEngaged && reportData.organisationsEngaged.length > 0 && (
+                    <details className="pt-3 border-t">
+                      <summary className="text-sm font-semibold cursor-pointer hover:text-primary transition-colors flex items-center gap-2">
+                        <Building2 className="w-4 h-4" /> Organisations Engaged ({reportData.organisationsEngaged.length})
+                      </summary>
+                      <div className="mt-4" data-testid="subsection-organisations-engaged">
+                        <div className="border rounded-lg overflow-hidden">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="bg-muted/50">
+                                <th className="text-left p-3 font-medium">Organisation</th>
+                                <th className="text-left p-3 font-medium">Type</th>
+                                <th className="text-left p-3 font-medium">Context</th>
+                                <th className="text-center p-3 font-medium">Engaged</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {reportData.organisationsEngaged.map((org: any) => (
+                                <tr key={org.id} className="border-t">
+                                  <td className="p-3 font-medium">{org.name}</td>
+                                  <td className="p-3 text-muted-foreground">{org.type}</td>
+                                  <td className="p-3">
+                                    <Badge variant="secondary" className="text-xs">{org.context}</Badge>
+                                  </td>
+                                  <td className="p-3 text-center">{org.engagedMembers}/{org.totalMembers}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
                     </details>
                   )}
@@ -1281,6 +1339,66 @@ export default function Reports() {
                               </div>
                             )}
                           </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+
+                  {reportData?.peopleFeatured && reportData.peopleFeatured.length > 0 && (
+                    <details className="pt-3 border-t">
+                      <summary className="text-sm font-semibold cursor-pointer hover:text-primary transition-colors flex items-center gap-2">
+                        <Users className="w-4 h-4" /> People Featured ({reportData.peopleFeatured.length})
+                      </summary>
+                      <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3" data-testid="subsection-people-featured">
+                        {reportData.peopleFeatured.map((person: any) => (
+                          <Card key={person.id} className="p-4">
+                            <div className="flex items-start justify-between mb-2">
+                              <div>
+                                <Link href={`/community/people/${person.id}`}>
+                                  <span className="font-semibold hover:text-primary cursor-pointer" data-testid={`person-featured-${person.id}`}>{person.name}</span>
+                                </Link>
+                                {person.role && <p className="text-xs text-muted-foreground">{person.role}</p>}
+                              </div>
+                              <div className="flex items-center gap-1">
+                                {person.stage && (
+                                  <Badge variant="outline" className="text-xs capitalize">{person.stage}</Badge>
+                                )}
+                                {person.isInnovator && (
+                                  <Badge className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">Innovator</Badge>
+                                )}
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              {person.reasons.map((reason: string, i: number) => (
+                                <p key={i} className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <span className="w-1 h-1 rounded-full bg-primary/50 shrink-0" />
+                                  {reason}
+                                </p>
+                              ))}
+                            </div>
+                            {person.growthScores && (person.growthScores.mindset != null || person.growthScores.skill != null || person.growthScores.confidence != null) && (
+                              <div className="flex gap-3 mt-3 pt-2 border-t">
+                                {person.growthScores.mindset != null && (
+                                  <div className="text-center">
+                                    <div className="text-sm font-bold text-blue-600">{person.growthScores.mindset}</div>
+                                    <div className="text-[10px] text-muted-foreground">Mindset</div>
+                                  </div>
+                                )}
+                                {person.growthScores.skill != null && (
+                                  <div className="text-center">
+                                    <div className="text-sm font-bold text-green-600">{person.growthScores.skill}</div>
+                                    <div className="text-[10px] text-muted-foreground">Skill</div>
+                                  </div>
+                                )}
+                                {person.growthScores.confidence != null && (
+                                  <div className="text-center">
+                                    <div className="text-sm font-bold text-violet-600">{person.growthScores.confidence}</div>
+                                    <div className="text-[10px] text-muted-foreground">Confidence</div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </Card>
                         ))}
                       </div>
                     </details>
