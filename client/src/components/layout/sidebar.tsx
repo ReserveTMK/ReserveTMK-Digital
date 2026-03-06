@@ -43,7 +43,6 @@ type NavItem = {
 
 const navigation: NavItem[] = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
-  { name: "Calendar", href: "/calendar", icon: CalendarCheck },
   {
     name: "Community", href: "/community/people", icon: Users,
     children: [
@@ -63,8 +62,9 @@ const navigation: NavItem[] = [
     ],
   },
   {
-    name: "Tracking", href: "/debriefs", icon: Activity,
+    name: "Tracking", href: "/calendar", icon: Activity,
     children: [
+      { name: "Calendar", href: "/calendar", icon: CalendarCheck },
       { name: "Debriefs", href: "/debriefs", icon: Mic },
       { name: "Catch Up", href: "/catch-up", icon: PhoneCall },
       { name: "Community Spend", href: "/community-spend", icon: DollarSign },
@@ -89,9 +89,8 @@ const navigation: NavItem[] = [
 
 const bottomNavItems: NavItem[] = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
-  { name: "Calendar", href: "/calendar", icon: CalendarCheck },
   { name: "Community", href: "/community/people", icon: Users },
-  { name: "Tracking", href: "/debriefs", icon: Activity },
+  { name: "Tracking", href: "/calendar", icon: Activity },
 ];
 
 export function Sidebar() {

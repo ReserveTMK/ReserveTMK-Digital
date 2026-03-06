@@ -34,6 +34,9 @@ import {
   User,
   CheckCircle2,
   CircleDashed,
+  Plus,
+  Footprints,
+  Save,
 } from "lucide-react";
 import {
   format,
@@ -68,6 +71,7 @@ import {
 } from "@/components/ui/select";
 import { useContacts } from "@/hooks/use-contacts";
 import { useEventAttendance, useAddAttendance, useRemoveAttendance } from "@/hooks/use-event-attendance";
+import { useGroups } from "@/hooks/use-groups";
 import { useProgrammes } from "@/hooks/use-programmes";
 import { useBookings, useVenues } from "@/hooks/use-bookings";
 import type { Contact, Programme, Booking, Venue } from "@shared/schema";
@@ -930,6 +934,18 @@ export default function CalendarPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [showSchedule, setShowSchedule] = useState(true);
   const [showSpace, setShowSpace] = useState(true);
+  const [logActivityOpen, setLogActivityOpen] = useState(false);
+  const [activityName, setActivityName] = useState("");
+  const [activityType, setActivityType] = useState("Hub Activity");
+  const [activityDate, setActivityDate] = useState("");
+  const [activityPurpose, setActivityPurpose] = useState("");
+  const [activityOutcome, setActivityOutcome] = useState("");
+  const [activityContactSearch, setActivityContactSearch] = useState("");
+  const [activitySelectedContacts, setActivitySelectedContacts] = useState<Contact[]>([]);
+  const [activityGroupSearch, setActivityGroupSearch] = useState("");
+  const [activitySelectedGroups, setActivitySelectedGroups] = useState<{ id: number; name: string }[]>([]);
+  const [footTrafficValue, setFootTrafficValue] = useState("");
+  const [footTrafficSaving, setFootTrafficSaving] = useState(false);
 
   function toggleTypeFilter(type: string) {
     setActiveTypeFilters(prev => {
@@ -965,9 +981,15 @@ export default function CalendarPage() {
   const { data: programmes } = useProgrammes();
   const { data: allBookings } = useBookings();
   const { data: venues } = useVenues();
+  const { data: allContacts } = useContacts();
+  const { data: allGroups } = useGroups();
 
   const { data: impactLogs } = useQuery<{ id: number; eventId: number | null; status: string }[]>({
     queryKey: ["/api/impact-logs"],
+  });
+
+  const { data: monthlySnapshots } = useQuery<any[]>({
+    queryKey: ["/api/monthly-snapshots"],
   });
 
   const debriefByEventId = useMemo(() => {
@@ -1104,6 +1126,102 @@ export default function CalendarPage() {
     },
   });
 
+  const ACTIVITY_TYPES = ["Hub Activity", "Drop-in", "Catch Up", "Community Event", "Other"] as const;
+
+  const logActivityMutation = useMutation({
+    mutationFn: async (data: { name: string; type: string; date: string; description: string; contacts: Contact[]; groups: { id: number; name: string }[] }) => {
+      const dayStart = new Date(data.date);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(data.date);
+      dayEnd.setHours(23, 59, 59, 999);
+      const tags = data.groups.map(g => g.name);
+      const res = await apiRequest("POST", "/api/events", {
+        name: data.name,
+        type: data.type,
+        startTime: dayStart.toISOString(),
+        endTime: dayEnd.toISOString(),
+        source: "internal",
+        requiresDebrief: true,
+        description: data.description || null,
+        tags: tags.length > 0 ? tags : null,
+        attendeeCount: data.contacts.length || null,
+      });
+      const event = await res.json();
+      for (const contact of data.contacts) {
+        await apiRequest("POST", "/api/event-attendance", {
+          eventId: event.id,
+          contactId: contact.id,
+          role: "attendee",
+        });
+      }
+      return event;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      toast({ title: "Activity logged", description: "Your activity has been recorded on the calendar." });
+      setLogActivityOpen(false);
+      resetActivityForm();
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to log activity", description: err.message, variant: "destructive" });
+    },
+  });
+
+  function resetActivityForm() {
+    setActivityName("");
+    setActivityType("Hub Activity");
+    setActivityDate("");
+    setActivityPurpose("");
+    setActivityOutcome("");
+    setActivityContactSearch("");
+    setActivitySelectedContacts([]);
+    setActivityGroupSearch("");
+    setActivitySelectedGroups([]);
+  }
+
+  function openLogActivity() {
+    setActivityDate(format(selectedDate, "yyyy-MM-dd"));
+    setLogActivityOpen(true);
+  }
+
+  function handleLogActivity() {
+    if (!activityName.trim()) return;
+    const descriptionParts: string[] = [];
+    if (activityPurpose.trim()) descriptionParts.push(`Purpose: ${activityPurpose.trim()}`);
+    if (activityOutcome.trim()) descriptionParts.push(`Outcome: ${activityOutcome.trim()}`);
+    logActivityMutation.mutate({
+      name: activityName.trim(),
+      type: activityType,
+      date: activityDate || format(new Date(), "yyyy-MM-dd"),
+      description: descriptionParts.join("\n\n"),
+      contacts: activitySelectedContacts,
+      groups: activitySelectedGroups,
+    });
+  }
+
+  const filteredActivityContacts = useMemo(() => {
+    if (!allContacts || !activityContactSearch.trim()) return [];
+    const term = activityContactSearch.toLowerCase();
+    const selectedIds = new Set(activitySelectedContacts.map(c => c.id));
+    return (allContacts as Contact[])
+      .filter(c => !selectedIds.has(c.id))
+      .filter(c =>
+        c.name.toLowerCase().includes(term) ||
+        (c.email && c.email.toLowerCase().includes(term))
+      )
+      .slice(0, 5);
+  }, [allContacts, activityContactSearch, activitySelectedContacts]);
+
+  const filteredActivityGroups = useMemo(() => {
+    if (!allGroups || !activityGroupSearch.trim()) return [];
+    const term = activityGroupSearch.toLowerCase();
+    const selectedIds = new Set(activitySelectedGroups.map(g => g.id));
+    return (allGroups as { id: number; name: string }[])
+      .filter(g => !selectedIds.has(g.id))
+      .filter(g => g.name.toLowerCase().includes(term))
+      .slice(0, 5);
+  }, [allGroups, activityGroupSearch, activitySelectedGroups]);
+
   function handleDismissEvent(gcalEventId: string, eventName: string, suggestedReason?: string) {
     setDismissTarget({ gcalEventId, eventName });
     setDismissReason(suggestedReason || "");
@@ -1227,6 +1345,53 @@ export default function CalendarPage() {
     }
     return events;
   }, [allEvents, activeTypeFilters, showDismissed]);
+
+  const currentMonthKey = format(startOfMonth(currentMonth), "yyyy-MM-dd");
+  const currentSnapshot = useMemo(() => {
+    if (!monthlySnapshots) return null;
+    const snap = monthlySnapshots.find((s: any) => s.month?.slice(0, 10) === currentMonthKey) || null;
+    if (snap) {
+      setFootTrafficValue(String(snap.footTraffic || ""));
+    } else {
+      setFootTrafficValue("");
+    }
+    return snap;
+  }, [monthlySnapshots, currentMonthKey]);
+
+  const monthEventCount = useMemo(() => {
+    return filteredEvents.filter(e => isSameMonth(e.date, currentMonth)).length;
+  }, [filteredEvents, currentMonth]);
+
+  const monthDebriefedCount = useMemo(() => {
+    if (!appEvents || !impactLogs) return 0;
+    const mStart = startOfMonth(currentMonth);
+    const mEnd = endOfMonth(currentMonth);
+    let count = 0;
+    for (const event of appEvents) {
+      const eventDate = new Date(event.startTime);
+      if (eventDate >= mStart && eventDate <= mEnd && debriefByEventId.has(event.id)) {
+        count++;
+      }
+    }
+    return count;
+  }, [appEvents, impactLogs, currentMonth, debriefByEventId]);
+
+  const handleSaveFootTraffic = async () => {
+    setFootTrafficSaving(true);
+    try {
+      await apiRequest("POST", "/api/monthly-snapshots", {
+        month: currentMonthKey,
+        footTraffic: parseInt(footTrafficValue) || 0,
+        notes: null,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/monthly-snapshots"] });
+      toast({ title: "Saved", description: "Foot traffic updated" });
+    } catch {
+      toast({ title: "Error", description: "Failed to save foot traffic", variant: "destructive" });
+    } finally {
+      setFootTrafficSaving(false);
+    }
+  };
 
   const eventsByDate = useMemo(() => {
     const map = new Map<string, CombinedEvent[]>();
@@ -1451,6 +1616,13 @@ export default function CalendarPage() {
               <RefreshCw className={`w-4 h-4 ${gcalLoading ? "animate-spin" : ""}`} />
               Sync
             </Button>
+            <Button
+              onClick={openLogActivity}
+              data-testid="button-log-activity"
+            >
+              <Plus className="w-4 h-4" />
+              Log Activity
+            </Button>
           </div>
         </div>
 
@@ -1530,6 +1702,54 @@ export default function CalendarPage() {
             )}
           </Card>
         )}
+
+        <Card className="p-4 mb-6" data-testid="panel-monthly-summary">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <Footprints className="w-4 h-4 text-primary" />
+              <span className="text-sm font-semibold" data-testid="text-monthly-summary-title">
+                {format(currentMonth, "MMMM yyyy")} Summary
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2 text-sm">
+                <CalendarDays className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-muted-foreground">Events:</span>
+                <span className="font-medium" data-testid="text-month-event-count">{monthEventCount}</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <FileText className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-muted-foreground">Debriefed:</span>
+                <span className="font-medium" data-testid="text-month-debriefed-count">{monthDebriefedCount}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Footprints className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Foot Traffic:</span>
+                <Input
+                  type="number"
+                  className="w-24 text-sm"
+                  placeholder={currentSnapshot ? String(currentSnapshot.footTraffic || 0) : "0"}
+                  value={footTrafficValue}
+                  onChange={e => setFootTrafficValue(e.target.value)}
+                  data-testid="input-foot-traffic"
+                />
+                <Button
+                  size="sm"
+                  onClick={handleSaveFootTraffic}
+                  disabled={footTrafficSaving || footTrafficValue === ""}
+                  data-testid="button-save-foot-traffic"
+                >
+                  {footTrafficSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                </Button>
+              </div>
+              {currentSnapshot && currentSnapshot.footTraffic > 0 && (
+                <span className="text-xs text-muted-foreground" data-testid="text-current-foot-traffic">
+                  Saved: {(currentSnapshot.footTraffic || 0).toLocaleString()}
+                </span>
+              )}
+            </div>
+          </div>
+        </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
@@ -1936,6 +2156,181 @@ export default function CalendarPage() {
             >
               {dismissMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <EyeOff className="w-4 h-4 mr-1" />}
               Dismiss
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={logActivityOpen} onOpenChange={(open) => { setLogActivityOpen(open); if (!open) resetActivityForm(); }}>
+        <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Log Activity</DialogTitle>
+            <DialogDescription>Record something that happened. It will appear on your calendar.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="activity-date">Date</Label>
+              <Input
+                id="activity-date"
+                type="date"
+                value={activityDate}
+                onChange={(e) => setActivityDate(e.target.value)}
+                data-testid="input-activity-date"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="activity-name">What happened <span className="text-destructive">*</span></Label>
+              <Input
+                id="activity-name"
+                value={activityName}
+                onChange={(e) => setActivityName(e.target.value)}
+                placeholder="e.g. Morning drop-in session, Community catch up..."
+                data-testid="input-activity-name"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Type</Label>
+              <Select value={activityType} onValueChange={setActivityType}>
+                <SelectTrigger data-testid="trigger-activity-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ACTIVITY_TYPES.map(t => (
+                    <SelectItem key={t} value={t} data-testid={`option-activity-type-${t.toLowerCase().replace(/\s+/g, "-")}`}>
+                      {t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Tagged people</Label>
+              {activitySelectedContacts.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-1.5">
+                  {activitySelectedContacts.map(c => (
+                    <Badge key={c.id} variant="secondary" className="text-xs gap-1 pr-1" data-testid={`badge-activity-contact-${c.id}`}>
+                      {c.name}
+                      <button
+                        onClick={() => setActivitySelectedContacts(prev => prev.filter(p => p.id !== c.id))}
+                        className="ml-0.5"
+                        data-testid={`button-remove-activity-contact-${c.id}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={activityContactSearch}
+                  onChange={(e) => setActivityContactSearch(e.target.value)}
+                  placeholder="Search people..."
+                  className="pl-8"
+                  data-testid="input-activity-contact-search"
+                />
+              </div>
+              {filteredActivityContacts.length > 0 && (
+                <div className="border rounded-md divide-y max-h-32 overflow-y-auto">
+                  {filteredActivityContacts.map(c => (
+                    <button
+                      key={c.id}
+                      onClick={() => {
+                        setActivitySelectedContacts(prev => [...prev, c]);
+                        setActivityContactSearch("");
+                      }}
+                      className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted/50 transition-colors"
+                      data-testid={`button-select-activity-contact-${c.id}`}
+                    >
+                      <span className="font-medium">{c.name}</span>
+                      {c.email && <span className="text-xs text-muted-foreground ml-2">{c.email}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label>Tagged groups</Label>
+              {activitySelectedGroups.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-1.5">
+                  {activitySelectedGroups.map(g => (
+                    <Badge key={g.id} variant="secondary" className="text-xs gap-1 pr-1" data-testid={`badge-activity-group-${g.id}`}>
+                      {g.name}
+                      <button
+                        onClick={() => setActivitySelectedGroups(prev => prev.filter(p => p.id !== g.id))}
+                        className="ml-0.5"
+                        data-testid={`button-remove-activity-group-${g.id}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={activityGroupSearch}
+                  onChange={(e) => setActivityGroupSearch(e.target.value)}
+                  placeholder="Search groups..."
+                  className="pl-8"
+                  data-testid="input-activity-group-search"
+                />
+              </div>
+              {filteredActivityGroups.length > 0 && (
+                <div className="border rounded-md divide-y max-h-32 overflow-y-auto">
+                  {filteredActivityGroups.map(g => (
+                    <button
+                      key={g.id}
+                      onClick={() => {
+                        setActivitySelectedGroups(prev => [...prev, { id: g.id, name: g.name }]);
+                        setActivityGroupSearch("");
+                      }}
+                      className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted/50 transition-colors"
+                      data-testid={`button-select-activity-group-${g.id}`}
+                    >
+                      {g.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="activity-purpose">Why / purpose</Label>
+              <Textarea
+                id="activity-purpose"
+                value={activityPurpose}
+                onChange={(e) => setActivityPurpose(e.target.value)}
+                placeholder="What was the purpose of this activity?"
+                className="resize-none"
+                rows={2}
+                data-testid="input-activity-purpose"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="activity-outcome">Outcome / notes</Label>
+              <Textarea
+                id="activity-outcome"
+                value={activityOutcome}
+                onChange={(e) => setActivityOutcome(e.target.value)}
+                placeholder="What was the result? Any notes or follow-ups?"
+                className="resize-none"
+                rows={2}
+                data-testid="input-activity-outcome"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setLogActivityOpen(false); resetActivityForm(); }} data-testid="button-cancel-activity">
+              Cancel
+            </Button>
+            <Button
+              onClick={handleLogActivity}
+              disabled={!activityName.trim() || logActivityMutation.isPending}
+              data-testid="button-save-activity"
+            >
+              {logActivityMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+              Save Activity
             </Button>
           </DialogFooter>
         </DialogContent>

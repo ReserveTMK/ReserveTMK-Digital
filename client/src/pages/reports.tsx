@@ -20,7 +20,7 @@ import {
   Download, Activity, Tag, TrendingUp, Building2, DollarSign,
   Save, BookOpen, ChevronDown, ChevronUp, Handshake, Clock,
   Info, History, Zap, X, Pen, Landmark, Settings, Camera, Star,
-  Plus, Trash2, Footprints, ArrowUpRight, Search, UserPlus,
+  Plus, Trash2, ArrowUpRight,
 } from "lucide-react";
 import {
   format, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, subMonths, startOfYear,
@@ -212,10 +212,6 @@ export default function Reports() {
   const [tamakiOraData, setTamakiOraData] = useState<any>(null);
   const [activeFunder, setActiveFunder] = useState<Funder | null>(null);
   const [narrativeStyle, setNarrativeStyle] = useState<"compliance" | "story">("compliance");
-  const [showFootTrafficDialog, setShowFootTrafficDialog] = useState(false);
-  const [footTrafficMonth, setFootTrafficMonth] = useState(monthOptions[0]?.start || "");
-  const [footTrafficValue, setFootTrafficValue] = useState("");
-  const [footTrafficNotes, setFootTrafficNotes] = useState("");
   const [showHighlightDialog, setShowHighlightDialog] = useState(false);
   const [highlightTitle, setHighlightTitle] = useState("");
   const [highlightDescription, setHighlightDescription] = useState("");
@@ -242,7 +238,7 @@ export default function Reports() {
     queryKey: ["/api/funders"],
   });
 
-  const { data: monthlySnapshots, refetch: refetchSnapshots } = useQuery<any[]>({
+  const { data: monthlySnapshots } = useQuery<any[]>({
     queryKey: ["/api/monthly-snapshots"],
   });
 
@@ -250,81 +246,7 @@ export default function Reports() {
     queryKey: ["/api/report-highlights"],
   });
 
-  const { data: allContacts } = useQuery<any[]>({
-    queryKey: ["/api/contacts"],
-  });
 
-  const { data: allGroups } = useQuery<any[]>({
-    queryKey: ["/api/groups"],
-  });
-
-  const [touchpointContactSearch, setTouchpointContactSearch] = useState("");
-  const [touchpointGroupSearch, setTouchpointGroupSearch] = useState("");
-  const [touchpointContactId, setTouchpointContactId] = useState<number | null>(null);
-  const [touchpointGroupId, setTouchpointGroupId] = useState<number | null>(null);
-  const [touchpointDescription, setTouchpointDescription] = useState("");
-  const [touchpointContactDropdownOpen, setTouchpointContactDropdownOpen] = useState(false);
-  const [touchpointGroupDropdownOpen, setTouchpointGroupDropdownOpen] = useState(false);
-
-  const currentSnapshotForMonth = useMemo(() => {
-    if (!monthlySnapshots || !footTrafficMonth) return null;
-    return monthlySnapshots.find((s: any) => s.month?.slice(0, 10) === footTrafficMonth?.slice(0, 10));
-  }, [monthlySnapshots, footTrafficMonth]);
-
-  const { data: touchpoints, refetch: refetchTouchpoints } = useQuery<any[]>({
-    queryKey: ["/api/monthly-snapshots", currentSnapshotForMonth?.id, "touchpoints"],
-    queryFn: async () => {
-      if (!currentSnapshotForMonth?.id) return [];
-      const res = await fetch(`/api/monthly-snapshots/${currentSnapshotForMonth.id}/touchpoints`, { credentials: "include" });
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: !!currentSnapshotForMonth?.id,
-  });
-
-  const filteredTouchpointContacts = useMemo(() => {
-    if (!allContacts || !touchpointContactSearch) return [];
-    const search = touchpointContactSearch.toLowerCase();
-    return allContacts.filter((c: any) => c.name?.toLowerCase().includes(search)).slice(0, 8);
-  }, [allContacts, touchpointContactSearch]);
-
-  const filteredTouchpointGroups = useMemo(() => {
-    if (!allGroups || !touchpointGroupSearch) return [];
-    const search = touchpointGroupSearch.toLowerCase();
-    return allGroups.filter((g: any) => g.name?.toLowerCase().includes(search)).slice(0, 8);
-  }, [allGroups, touchpointGroupSearch]);
-
-  const handleAddTouchpoint = async () => {
-    if (!currentSnapshotForMonth?.id || !touchpointDescription.trim()) return;
-    if (!touchpointContactId && !touchpointGroupId) return;
-    try {
-      await apiRequest("POST", `/api/monthly-snapshots/${currentSnapshotForMonth.id}/touchpoints`, {
-        snapshotId: currentSnapshotForMonth.id,
-        contactId: touchpointContactId,
-        groupId: touchpointGroupId,
-        description: touchpointDescription.trim(),
-      });
-      setTouchpointContactId(null);
-      setTouchpointGroupId(null);
-      setTouchpointContactSearch("");
-      setTouchpointGroupSearch("");
-      setTouchpointDescription("");
-      refetchTouchpoints();
-      toast({ title: "Added", description: "Touchpoint recorded" });
-    } catch {
-      toast({ title: "Error", description: "Failed to add touchpoint", variant: "destructive" });
-    }
-  };
-
-  const handleDeleteTouchpoint = async (touchpointId: number) => {
-    if (!currentSnapshotForMonth?.id) return;
-    try {
-      await apiRequest("DELETE", `/api/monthly-snapshots/${currentSnapshotForMonth.id}/touchpoints/${touchpointId}`);
-      refetchTouchpoints();
-    } catch {
-      toast({ title: "Error", description: "Failed to remove touchpoint", variant: "destructive" });
-    }
-  };
 
   const [programmeFilter, setProgrammeFilter] = useState("all");
   const [taxonomyFilter, setTaxonomyFilter] = useState("all");
@@ -538,22 +460,6 @@ export default function Reports() {
     return `${format(new Date(startDate), "MMM d, yyyy")} - ${format(new Date(endDate), "MMM d, yyyy")}`;
   };
 
-  const handleSaveFootTraffic = async () => {
-    try {
-      await apiRequest("POST", "/api/monthly-snapshots", {
-        month: footTrafficMonth,
-        footTraffic: parseInt(footTrafficValue) || 0,
-        notes: footTrafficNotes || null,
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/monthly-snapshots"] });
-      refetchSnapshots();
-      setFootTrafficValue("");
-      setFootTrafficNotes("");
-      toast({ title: "Saved", description: "Foot traffic data saved" });
-    } catch {
-      toast({ title: "Error", description: "Failed to save foot traffic", variant: "destructive" });
-    }
-  };
 
   const handleAddHighlight = async () => {
     try {
@@ -740,15 +646,6 @@ export default function Reports() {
     return hMonth >= filterStart && hMonth <= filterEnd;
   }) || [];
 
-  const footTrafficTrend = (monthlySnapshots || [])
-    .slice()
-    .sort((a: any, b: any) => a.month.localeCompare(b.month))
-    .slice(-6)
-    .map((s: any) => ({
-      month: format(new Date(s.month), "MMM yy"),
-      value: s.footTraffic || 0,
-    }));
-
   return (
     <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
         <div className="max-w-6xl mx-auto space-y-6">
@@ -757,247 +654,6 @@ export default function Reports() {
               <h1 className="text-3xl font-display font-bold" data-testid="text-reports-title">Reports</h1>
               <p className="text-muted-foreground mt-1">Generate funder-ready impact reports from your operational data.</p>
             </div>
-            <Dialog open={showFootTrafficDialog} onOpenChange={setShowFootTrafficDialog}>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="sm" data-testid="button-foot-traffic">
-                  <Footprints className="w-4 h-4 mr-2" /> Monthly Data
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>Monthly Data</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label>Month</Label>
-                      <Select value={footTrafficMonth} onValueChange={setFootTrafficMonth}>
-                        <SelectTrigger data-testid="select-ft-month"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {monthOptions.map(opt => (
-                            <SelectItem key={opt.value} value={opt.start}>{opt.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Foot Traffic</Label>
-                      <Input
-                        type="number"
-                        value={footTrafficValue}
-                        onChange={e => setFootTrafficValue(e.target.value)}
-                        placeholder="e.g. 250"
-                        data-testid="input-foot-traffic"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Notes (optional)</Label>
-                    <Input
-                      value={footTrafficNotes}
-                      onChange={e => setFootTrafficNotes(e.target.value)}
-                      placeholder="Any notes about this month..."
-                      data-testid="input-ft-notes"
-                    />
-                  </div>
-                  <Button onClick={handleSaveFootTraffic} data-testid="button-save-ft">
-                    <Save className="w-4 h-4 mr-2" /> Save
-                  </Button>
-
-                  {currentSnapshotForMonth && (
-                    <div className="pt-4 border-t space-y-4" data-testid="section-touchpoints">
-                      <div className="flex items-center gap-2">
-                        <UserPlus className="w-4 h-4 text-primary" />
-                        <h4 className="text-sm font-semibold">Touchpoints</h4>
-                        <span className="text-xs text-muted-foreground">Tag people or groups from unplanned interactions</span>
-                      </div>
-
-                      <div className="space-y-3 rounded-lg border p-3">
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-1 relative">
-                            <Label className="text-xs">Person</Label>
-                            <div className="relative">
-                              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                              <Input
-                                value={touchpointContactId ? (allContacts?.find((c: any) => c.id === touchpointContactId)?.name || touchpointContactSearch) : touchpointContactSearch}
-                                onChange={e => {
-                                  setTouchpointContactSearch(e.target.value);
-                                  setTouchpointContactId(null);
-                                  setTouchpointContactDropdownOpen(true);
-                                }}
-                                onFocus={() => setTouchpointContactDropdownOpen(true)}
-                                onBlur={() => setTimeout(() => setTouchpointContactDropdownOpen(false), 200)}
-                                placeholder="Search contacts..."
-                                className="pl-8 text-sm"
-                                data-testid="input-touchpoint-contact"
-                              />
-                            </div>
-                            {touchpointContactDropdownOpen && filteredTouchpointContacts.length > 0 && (
-                              <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md max-h-40 overflow-y-auto">
-                                {filteredTouchpointContacts.map((c: any) => (
-                                  <button
-                                    key={c.id}
-                                    className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted/50 transition-colors"
-                                    onMouseDown={e => e.preventDefault()}
-                                    onClick={() => {
-                                      setTouchpointContactId(c.id);
-                                      setTouchpointContactSearch(c.name);
-                                      setTouchpointContactDropdownOpen(false);
-                                    }}
-                                    data-testid={`touchpoint-contact-option-${c.id}`}
-                                  >
-                                    <span className="font-medium">{c.name}</span>
-                                    {c.role && <span className="text-xs text-muted-foreground ml-2">{c.role}</span>}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          <div className="space-y-1 relative">
-                            <Label className="text-xs">Group / Organisation</Label>
-                            <div className="relative">
-                              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                              <Input
-                                value={touchpointGroupId ? (allGroups?.find((g: any) => g.id === touchpointGroupId)?.name || touchpointGroupSearch) : touchpointGroupSearch}
-                                onChange={e => {
-                                  setTouchpointGroupSearch(e.target.value);
-                                  setTouchpointGroupId(null);
-                                  setTouchpointGroupDropdownOpen(true);
-                                }}
-                                onFocus={() => setTouchpointGroupDropdownOpen(true)}
-                                onBlur={() => setTimeout(() => setTouchpointGroupDropdownOpen(false), 200)}
-                                placeholder="Search groups..."
-                                className="pl-8 text-sm"
-                                data-testid="input-touchpoint-group"
-                              />
-                            </div>
-                            {touchpointGroupDropdownOpen && filteredTouchpointGroups.length > 0 && (
-                              <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md max-h-40 overflow-y-auto">
-                                {filteredTouchpointGroups.map((g: any) => (
-                                  <button
-                                    key={g.id}
-                                    className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted/50 transition-colors"
-                                    onMouseDown={e => e.preventDefault()}
-                                    onClick={() => {
-                                      setTouchpointGroupId(g.id);
-                                      setTouchpointGroupSearch(g.name);
-                                      setTouchpointGroupDropdownOpen(false);
-                                    }}
-                                    data-testid={`touchpoint-group-option-${g.id}`}
-                                  >
-                                    <span className="font-medium">{g.name}</span>
-                                    {g.type && <span className="text-xs text-muted-foreground ml-2">{g.type}</span>}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <Input
-                            value={touchpointDescription}
-                            onChange={e => setTouchpointDescription(e.target.value)}
-                            placeholder="What happened / connections made..."
-                            className="flex-1 text-sm"
-                            data-testid="input-touchpoint-description"
-                          />
-                          <Button
-                            size="sm"
-                            onClick={handleAddTouchpoint}
-                            disabled={!touchpointDescription.trim() || (!touchpointContactId && !touchpointGroupId)}
-                            data-testid="button-add-touchpoint"
-                          >
-                            <Plus className="w-4 h-4 mr-1" /> Add
-                          </Button>
-                        </div>
-                        {touchpointContactId && (
-                          <Badge variant="secondary" className="text-xs">
-                            <Users className="w-3 h-3 mr-1" />
-                            {allContacts?.find((c: any) => c.id === touchpointContactId)?.name}
-                            <button onClick={() => { setTouchpointContactId(null); setTouchpointContactSearch(""); }} className="ml-1">
-                              <X className="w-3 h-3" />
-                            </button>
-                          </Badge>
-                        )}
-                        {touchpointGroupId && (
-                          <Badge variant="secondary" className="text-xs">
-                            <Building2 className="w-3 h-3 mr-1" />
-                            {allGroups?.find((g: any) => g.id === touchpointGroupId)?.name}
-                            <button onClick={() => { setTouchpointGroupId(null); setTouchpointGroupSearch(""); }} className="ml-1">
-                              <X className="w-3 h-3" />
-                            </button>
-                          </Badge>
-                        )}
-                      </div>
-
-                      {touchpoints && touchpoints.length > 0 && (
-                        <div className="space-y-1.5" data-testid="list-touchpoints">
-                          {touchpoints.map((tp: any) => (
-                            <div key={tp.id} className="flex items-start gap-2 text-sm p-2 rounded-md border" data-testid={`touchpoint-item-${tp.id}`}>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  {tp.contactName && (
-                                    <Badge variant="outline" className="text-xs">
-                                      <Users className="w-3 h-3 mr-1" />{tp.contactName}
-                                    </Badge>
-                                  )}
-                                  {tp.groupName && (
-                                    <Badge variant="outline" className="text-xs">
-                                      <Building2 className="w-3 h-3 mr-1" />{tp.groupName}
-                                    </Badge>
-                                  )}
-                                </div>
-                                <p className="text-muted-foreground mt-1">{tp.description}</p>
-                              </div>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleDeleteTouchpoint(tp.id)}
-                                data-testid={`button-delete-touchpoint-${tp.id}`}
-                              >
-                                <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {(!touchpoints || touchpoints.length === 0) && (
-                        <p className="text-xs text-muted-foreground text-center py-2">No touchpoints recorded for this month yet.</p>
-                      )}
-                    </div>
-                  )}
-
-                  {footTrafficTrend.length > 0 && (
-                    <div className="pt-4 border-t">
-                      <h4 className="text-sm font-semibold mb-3">Recent Trend</h4>
-                      <ResponsiveContainer width="100%" height={120}>
-                        <LineChart data={footTrafficTrend}>
-                          <XAxis dataKey="month" tick={{ fontSize: 10 }} />
-                          <YAxis hide />
-                          <Tooltip />
-                          <Line type="monotone" dataKey="value" stroke="hsl(14, 88%, 68%)" strokeWidth={2} dot={{ r: 3 }} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
-
-                  {monthlySnapshots && monthlySnapshots.length > 0 && (
-                    <div className="pt-4 border-t max-h-48 overflow-y-auto">
-                      <h4 className="text-sm font-semibold mb-2">History</h4>
-                      <div className="space-y-1">
-                        {[...monthlySnapshots].sort((a: any, b: any) => b.month.localeCompare(a.month)).map((s: any) => (
-                          <div key={s.id} className="flex items-center justify-between text-sm py-1 border-b last:border-0">
-                            <span>{format(new Date(s.month), "MMMM yyyy")}</span>
-                            <span className="font-medium">{(s.footTraffic || 0).toLocaleString()} visitors</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </DialogContent>
-            </Dialog>
           </div>
 
           <Card className="p-3" data-testid="report-toolbar">

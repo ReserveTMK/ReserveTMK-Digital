@@ -48,11 +48,6 @@ const navGroups: NavGroup[] = [
     children: [],
   },
   {
-    name: "Calendar",
-    href: "/calendar",
-    children: [],
-  },
-  {
     name: "Community",
     href: "/community/people",
     children: [
@@ -74,8 +69,9 @@ const navGroups: NavGroup[] = [
   },
   {
     name: "Tracking",
-    href: "/debriefs",
+    href: "/calendar",
     children: [
+      { name: "Calendar", href: "/calendar", icon: CalendarCheck, description: "Events, activities & foot traffic" },
       { name: "Debriefs", href: "/debriefs", icon: Mic, description: "Interactions, calendar & weekly debriefs" },
       { name: "Catch Up", href: "/catch-up", icon: PhoneCall, description: "Plan who to connect with next" },
       { name: "Community Spend", href: "/community-spend", icon: DollarSign, description: "Track community investment" },
@@ -95,7 +91,6 @@ const navGroups: NavGroup[] = [
     href: "/scheduling",
     children: [
       { name: "Availability", href: "/scheduling", icon: CalendarClock, description: "Manage staff & mentor availability" },
-      { name: "Calendar", href: "/calendar", icon: Calendar, description: "Calendar sync & display settings" },
       { name: "Venues & Bookings", href: "/bookings", icon: Building2, description: "Venue hire & booking settings" },
       { name: "Mentoring", href: "/mentoring", icon: Users, description: "Mentoring programme settings" },
       { name: "Reporting", href: "/legacy-reports", icon: BarChart3, description: "Report configuration & uploads" },
