@@ -1616,13 +1616,6 @@ export default function CalendarPage() {
               <RefreshCw className={`w-4 h-4 ${gcalLoading ? "animate-spin" : ""}`} />
               Sync
             </Button>
-            <Button
-              onClick={openLogActivity}
-              data-testid="button-log-activity"
-            >
-              <Plus className="w-4 h-4" />
-              Log Activity
-            </Button>
           </div>
         </div>
 
@@ -1929,14 +1922,34 @@ export default function CalendarPage() {
                     </div>
                   </Card>
                 ))}
+                <Button
+                  variant="outline"
+                  className="w-full border-dashed"
+                  onClick={openLogActivity}
+                  data-testid="button-log-activity"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Log Activity
+                </Button>
               </div>
             ) : (
-              <Card className="p-6">
-                <div className="text-center text-muted-foreground text-sm">
-                  <Calendar className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                  <p>No items on this day</p>
-                </div>
-              </Card>
+              <div className="space-y-3">
+                <Card className="p-6">
+                  <div className="text-center text-muted-foreground text-sm">
+                    <Calendar className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                    <p>No items on this day</p>
+                  </div>
+                </Card>
+                <Button
+                  variant="outline"
+                  className="w-full border-dashed"
+                  onClick={openLogActivity}
+                  data-testid="button-log-activity-empty"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Log Activity
+                </Button>
+              </div>
             )}
           </div>
         </div>
