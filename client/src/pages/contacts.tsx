@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { useContacts, useDeleteContact } from "@/hooks/use-contacts";
-import { Plus, Search, Filter, Loader2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, Lightbulb, ChevronRight, Upload } from "lucide-react";
+import { Plus, Search, Filter, Loader2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, Lightbulb, ChevronRight, Upload, Star } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useState, useMemo, useEffect } from "react";
 import { Link } from "wouter";
@@ -52,7 +52,7 @@ export default function Contacts() {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
-  const [viewMode, setViewMode] = useState<"community" | "innovators" | "all">("community");
+  const [viewMode, setViewMode] = useState<"community" | "innovators" | "all" | "vip">("community");
   const [open, setOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -249,7 +249,7 @@ export default function Contacts() {
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
       queryClient.invalidateQueries({ queryKey: ["/api/groups/community-density"] });
-      const tierLabel = data.newTier === "our_innovators" ? "Our Innovators" : "Our Community";
+      const tierLabel = data.newTier === "vip" ? "VIP" : data.newTier === "our_innovators" ? "Our Innovators" : "Our Community";
       const groupMsg = data.groupsUpdated ? ` (${data.groupsUpdated} group${data.groupsUpdated !== 1 ? 's' : ''} updated)` : '';
       toast({ title: "Promoted", description: `Moved to ${tierLabel}${groupMsg}` });
     },
@@ -267,7 +267,7 @@ export default function Contacts() {
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
       queryClient.invalidateQueries({ queryKey: ["/api/groups/community-density"] });
-      const tierLabel = data.newTier === "our_community" ? "Our Community" : "All Contacts";
+      const tierLabel = data.newTier === "our_innovators" ? "Our Innovators" : data.newTier === "our_community" ? "Our Community" : "All Contacts";
       const groupMsg = data.groupsUpdated ? ` (${data.groupsUpdated} group${data.groupsUpdated !== 1 ? 's' : ''} updated)` : '';
       toast({ title: "Demoted", description: `Moved to ${tierLabel}${groupMsg}` });
     },
@@ -337,13 +337,13 @@ export default function Contacts() {
                           contact.businessName?.toLowerCase().includes(search.toLowerCase()) ||
                           contact.email?.toLowerCase().includes(search.toLowerCase());
     const matchesRole = roleFilter === "all" || contact.role === roleFilter;
-    const matchesView = viewMode === "all" || (viewMode === "community" && (contact as any).isCommunityMember === true) || (viewMode === "innovators" && (contact as any).isInnovator === true);
+    const matchesView = viewMode === "all" || (viewMode === "community" && (contact as any).isCommunityMember === true) || (viewMode === "innovators" && (contact as any).isInnovator === true) || (viewMode === "vip" && (contact as any).isVip === true);
     return matchesSearch && matchesRole && matchesView;
   });
 
   const roleCounts = useMemo(() => {
     if (!contacts) return {} as Record<string, number>;
-    const pool = viewMode === "community" ? (contacts as any[]).filter(c => c.isCommunityMember) : viewMode === "innovators" ? (contacts as any[]).filter(c => c.isInnovator) : (contacts as any[]);
+    const pool = viewMode === "community" ? (contacts as any[]).filter(c => c.isCommunityMember) : viewMode === "innovators" ? (contacts as any[]).filter(c => c.isInnovator) : viewMode === "vip" ? (contacts as any[]).filter(c => c.isVip) : (contacts as any[]);
     const counts: Record<string, number> = {};
     for (const c of pool) {
       const r = c.role || "Unknown";
@@ -353,17 +353,19 @@ export default function Contacts() {
   }, [contacts, viewMode]);
 
   const tierCounts = useMemo(() => {
-    if (!contacts) return { innovators: 0, community: 0, all: 0 };
+    if (!contacts) return { innovators: 0, community: 0, all: 0, vip: 0 };
     const innovators = (contacts as any[]).filter(c => c.isInnovator).length;
     const community = (contacts as any[]).filter(c => c.isCommunityMember).length;
-    return { innovators, community, all: contacts.length };
+    const vip = (contacts as any[]).filter(c => c.isVip).length;
+    return { innovators, community, all: contacts.length, vip };
   }, [contacts]);
 
   const analytics = useMemo(() => {
     if (!contacts || contacts.length === 0) return null;
     const communityContacts = (contacts as any[]).filter(c => c.isCommunityMember);
     const innovatorContacts = (contacts as any[]).filter(c => c.isInnovator);
-    const pool = viewMode === "community" ? communityContacts : viewMode === "innovators" ? innovatorContacts : (contacts as any[]);
+    const vipContacts = (contacts as any[]).filter(c => c.isVip);
+    const pool = viewMode === "community" ? communityContacts : viewMode === "innovators" ? innovatorContacts : viewMode === "vip" ? vipContacts : (contacts as any[]);
     if (pool.length === 0) return null;
 
     const now = Date.now();
@@ -402,7 +404,7 @@ export default function Contacts() {
                   <Trash2 className="w-4 h-4 mr-2" />
                   Delete ({selectedContacts.size})
                 </Button>
-                {(viewMode === "all" || viewMode === "community") && (
+                {(viewMode === "all" || viewMode === "community" || viewMode === "innovators") && (
                   <Button variant="outline" onClick={async () => {
                     for (const id of Array.from(selectedContacts)) {
                       await promoteMutation.mutateAsync(id);
@@ -413,7 +415,7 @@ export default function Contacts() {
                     Promote ({selectedContacts.size})
                   </Button>
                 )}
-                {(viewMode === "community" || viewMode === "innovators") && (
+                {(viewMode === "community" || viewMode === "innovators" || viewMode === "vip") && (
                   <Button variant="outline" onClick={async () => {
                     for (const id of Array.from(selectedContacts)) {
                       await demoteMutation.mutateAsync(id);
@@ -764,7 +766,7 @@ export default function Contacts() {
 
           {/* View Toggle */}
           <div className="flex items-center justify-between gap-2" data-testid="view-toggle">
-            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "community" | "innovators" | "all")}>
+            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "community" | "innovators" | "all" | "vip")}>
               <TabsList>
                 <TabsTrigger value="innovators" data-testid="button-view-innovators">
                   <Lightbulb className="w-4 h-4 mr-1.5" />
@@ -776,6 +778,10 @@ export default function Contacts() {
                 </TabsTrigger>
                 <TabsTrigger value="all" data-testid="button-view-all">
                   All Contacts ({tierCounts.all})
+                </TabsTrigger>
+                <TabsTrigger value="vip" data-testid="button-view-vip">
+                  <Star className="w-4 h-4 mr-1.5" />
+                  VIP ({tierCounts.vip})
                 </TabsTrigger>
               </TabsList>
             </Tabs>
@@ -942,6 +948,12 @@ export default function Contacts() {
                         <h3 className="text-base font-bold font-display text-foreground truncate group-hover:text-primary transition-colors" data-testid={`text-name-${contact.id}`}>
                           {contact.name}
                         </h3>
+                        {contact.isVip && (
+                          <Badge variant="outline" className="text-[10px] h-5 px-1.5 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800" data-testid={`badge-vip-${contact.id}`}>
+                            <Star className="w-3 h-3 mr-0.5" />
+                            VIP
+                          </Badge>
+                        )}
                         {contact.isInnovator && (
                           <Badge variant="outline" className="text-[10px] h-5 px-1.5 bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800" data-testid={`badge-innovator-${contact.id}`}>
                             <Lightbulb className="w-3 h-3 mr-0.5" />
@@ -1027,6 +1039,20 @@ export default function Contacts() {
                       data-testid={`button-promote-innovator-${contact.id}`}
                     >
                       <Lightbulb className="w-4 h-4 text-amber-500" />
+                    </Button>
+                  )}
+
+                  {viewMode === "community" && contact.isInnovator && !contact.isVip && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="shrink-0"
+                      onClick={() => promoteMutation.mutate(contact.id)}
+                      disabled={promoteMutation.isPending}
+                      title="Promote to VIP"
+                      data-testid={`button-promote-vip-${contact.id}`}
+                    >
+                      <Star className="w-4 h-4 text-yellow-500" />
                     </Button>
                   )}
 

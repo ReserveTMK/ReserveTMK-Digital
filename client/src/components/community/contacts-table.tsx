@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Lightbulb, UserCheck, Loader2, Coffee } from "lucide-react";
+import { Plus, Lightbulb, UserCheck, Loader2, Coffee, Star } from "lucide-react";
 import { Button } from "@/components/ui/beautiful-button";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -172,7 +172,7 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
 
   return (
     <div className="space-y-4">
-      {drilldownTier === "innovators" && (
+      {(drilldownTier === "innovators" || drilldownTier === "vip") && (
         <div className="flex justify-end">
           <Button variant="outline" size="sm" onClick={handleBackfill} disabled={backfilling}>
             {backfilling && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
@@ -195,11 +195,11 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
                   </th>
                 )}
                 <SortHeader label="Name" field="name" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-4" />
-                {drilldownTier !== "innovators" && (
+                {drilldownTier !== "innovators" && drilldownTier !== "vip" && (
                   <SortHeader label={drilldownTier === "community" ? "Innovator" : "Community"} field="community" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-28" />
                 )}
                 <SortHeader label="Role" field="role" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
-                {drilldownTier === "innovators" ? (
+                {(drilldownTier === "innovators" || drilldownTier === "vip") ? (
                   <>
                     <SortHeader label="Stage" field="stage" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
                     <SortHeader label="Connection" field="connection" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[120px]" />
@@ -233,19 +233,34 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
                         {contact.name[0]}
                       </div>
                       <span className="font-medium truncate max-w-[180px]">{contact.name}</span>
+                      {contact.isVip && (
+                        <Star className="w-3.5 h-3.5 text-yellow-500 shrink-0" data-testid={`icon-vip-${contact.id}`} />
+                      )}
                     </Link>
                   </td>
-                  {drilldownTier !== "innovators" && (
+                  {drilldownTier !== "innovators" && drilldownTier !== "vip" && (
                     <td className="px-3 py-2">
                       {drilldownTier === "community" ? (
                         contact.isInnovator ? (
-                          <Badge
-                            className="text-[10px] h-5 px-2 bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/20"
-                            data-testid={`badge-innovator-${contact.id}`}
-                          >
-                            <Lightbulb className="w-3 h-3 mr-1" />
-                            Yes
-                          </Badge>
+                          <div className="flex items-center gap-1">
+                            <Badge
+                              className="text-[10px] h-5 px-2 bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/20"
+                              data-testid={`badge-innovator-${contact.id}`}
+                            >
+                              <Lightbulb className="w-3 h-3 mr-1" />
+                              Yes
+                            </Badge>
+                            {!contact.isVip && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] h-5 px-1.5 cursor-pointer hover:bg-yellow-500/10 hover:text-yellow-700 dark:hover:text-yellow-300 transition-colors"
+                                onClick={() => onPromote?.(contact.id)}
+                                data-testid={`button-promote-vip-${contact.id}`}
+                              >
+                                <Star className="w-3 h-3" />
+                              </Badge>
+                            )}
+                          </div>
                         ) : (
                           <Badge
                             variant="outline"
@@ -284,7 +299,7 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
                   <td className="px-3 py-2">
                     <InlineRoleCell role={contact.role} roleOther={contact.roleOther} contactId={contact.id} />
                   </td>
-                  {drilldownTier === "innovators" ? (
+                  {(drilldownTier === "innovators" || drilldownTier === "vip") ? (
                     <>
                       <td className="px-3 py-2">
                         <InlineStageCell stage={contact.stage} contactId={contact.id} />

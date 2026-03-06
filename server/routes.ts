@@ -7905,11 +7905,27 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
         updates.isInnovator = true;
         updates.movedToInnovatorsAt = new Date();
         newTier = "our_innovators";
+      } else if (!contact.isVip) {
+        updates.isVip = true;
+        updates.movedToVipAt = new Date();
+        newTier = "vip";
       } else {
-        return res.json({ contact, newTier: "our_innovators", groupsUpdated: 0, message: "Already at highest tier" });
+        return res.json({ contact, newTier: "vip", groupsUpdated: 0, message: "Already at highest tier" });
       }
 
       const updated = await storage.updateContact(contactId, updates);
+
+      if (newTier === "vip") {
+        try {
+          await storage.addToCatchUpList({
+            userId,
+            contactId,
+            priority: "urgent",
+            note: "VIP -- flagged for catch up",
+          });
+        } catch (e: any) {
+        }
+      }
 
       let groupsUpdated = 0;
       const updatedGroupIds = new Set<number>();
@@ -7959,7 +7975,11 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
       const updates: any = {};
       let newTier = "";
-      if (contact.isInnovator) {
+      if (contact.isVip) {
+        updates.isVip = false;
+        updates.movedToVipAt = null;
+        newTier = "our_innovators";
+      } else if (contact.isInnovator) {
         updates.isInnovator = false;
         updates.movedToInnovatorsAt = null;
         newTier = "our_community";

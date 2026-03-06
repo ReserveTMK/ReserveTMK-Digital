@@ -156,7 +156,7 @@ export default function ContactDetail() {
 
   const { toast } = useToast();
 
-  const currentTier = contact?.isInnovator ? "innovator" : contact?.isCommunityMember ? "community" : "all";
+  const currentTier = contact?.isVip ? "vip" : contact?.isInnovator ? "innovator" : contact?.isCommunityMember ? "community" : "all";
 
   const promoteMutation = useMutation({
     mutationFn: async () => {
@@ -166,7 +166,8 @@ export default function ContactDetail() {
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
       queryClient.invalidateQueries({ queryKey: ['/api/contacts', id] });
-      toast({ title: `Promoted to ${data.newTier === 'innovator' ? 'Innovator' : 'Community'}` });
+      queryClient.invalidateQueries({ queryKey: ["/api/catch-up-list"] });
+      toast({ title: `Promoted to ${data.newTier === 'vip' ? 'VIP' : data.newTier === 'innovator' ? 'Innovator' : 'Community'}` });
     },
     onError: () => {
       toast({ title: "Failed to promote", variant: "destructive" });
@@ -181,7 +182,7 @@ export default function ContactDetail() {
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
       queryClient.invalidateQueries({ queryKey: ['/api/contacts', id] });
-      toast({ title: `Demoted to ${data.newTier === 'community' ? 'Community' : 'All'}` });
+      toast({ title: `Demoted to ${data.newTier === 'innovator' ? 'Innovator' : data.newTier === 'community' ? 'Community' : 'All'}` });
     },
     onError: () => {
       toast({ title: "Failed to demote", variant: "destructive" });
@@ -293,11 +294,13 @@ export default function ContactDetail() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-muted-foreground text-lg" data-testid="text-contact-role">{contact.role === "Other" && contact.roleOther ? `Other - ${contact.roleOther}` : contact.role}</p>
                     <Badge
-                      variant={currentTier === "innovator" ? "default" : currentTier === "community" ? "secondary" : "outline"}
-                      className={cn("text-xs capitalize", currentTier === "innovator" && "bg-amber-500/15 text-amber-700 dark:text-amber-300")}
+                      variant={currentTier === "vip" ? "default" : currentTier === "innovator" ? "default" : currentTier === "community" ? "secondary" : "outline"}
+                      className={cn("text-xs capitalize", currentTier === "vip" && "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300", currentTier === "innovator" && "bg-amber-500/15 text-amber-700 dark:text-amber-300")}
                       data-testid="badge-tier"
                     >
-                      {currentTier === "innovator" ? (
+                      {currentTier === "vip" ? (
+                        <><Star className="w-3 h-3 mr-1 fill-current" /> VIP</>
+                      ) : currentTier === "innovator" ? (
                         <><Star className="w-3 h-3 mr-1" /> Innovator</>
                       ) : currentTier === "community" ? (
                         <><Users className="w-3 h-3 mr-1" /> Community</>
@@ -470,7 +473,7 @@ export default function ContactDetail() {
                   </Popover>
                 )}
                 <div className="flex items-center gap-2">
-                  {currentTier !== "innovator" && (
+                  {currentTier !== "vip" && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -483,7 +486,7 @@ export default function ContactDetail() {
                       ) : (
                         <ArrowUp className="w-4 h-4 mr-1" />
                       )}
-                      Promote to {currentTier === "all" ? "Community" : "Innovator"}
+                      Promote to {currentTier === "all" ? "Community" : currentTier === "community" ? "Innovator" : "VIP"}
                     </Button>
                   )}
                   {currentTier !== "all" && (
@@ -499,7 +502,7 @@ export default function ContactDetail() {
                       ) : (
                         <ArrowDown className="w-4 h-4 mr-1" />
                       )}
-                      Demote to {currentTier === "innovator" ? "Community" : "All"}
+                      Demote to {currentTier === "vip" ? "Innovator" : currentTier === "innovator" ? "Community" : "All"}
                     </Button>
                   )}
                 </div>
