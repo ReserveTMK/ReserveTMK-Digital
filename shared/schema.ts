@@ -852,6 +852,23 @@ export type InsertWeeklyHubDebrief = z.infer<typeof insertWeeklyHubDebriefSchema
 export type MonthlySnapshot = typeof monthlySnapshots.$inferSelect;
 export type InsertMonthlySnapshot = z.infer<typeof insertMonthlySnapshotSchema>;
 
+export const dailyFootTraffic = pgTable("daily_foot_traffic", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  date: timestamp("date").notNull(),
+  count: integer("count").notNull().default(0),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertDailyFootTrafficSchema = createInsertSchema(dailyFootTraffic).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type DailyFootTraffic = typeof dailyFootTraffic.$inferSelect;
+export type InsertDailyFootTraffic = z.infer<typeof insertDailyFootTrafficSchema>;
+
 export type ReportHighlight = typeof reportHighlights.$inferSelect;
 export type InsertReportHighlight = z.infer<typeof insertReportHighlightSchema>;
 

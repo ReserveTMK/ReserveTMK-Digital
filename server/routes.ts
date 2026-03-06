@@ -8,7 +8,7 @@ import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON } from "./replit_integrations/anthropic/client";
 import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getReachMetrics, getDeliveryMetrics, getImpactMetrics, type ReportFilters } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES } from "@shared/schema";
+import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic } from "@shared/schema";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { ObjectStorageService } from "./replit_integrations/object_storage";
 import crypto from "crypto";
@@ -6593,6 +6593,64 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     } catch (err: any) {
       console.error("Delete touchpoint error:", err);
       res.status(500).json({ message: "Failed to delete touchpoint" });
+    }
+  });
+
+  // === DAILY FOOT TRAFFIC ===
+
+  app.get("/api/daily-foot-traffic", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const month = req.query.month as string;
+      if (!month) return res.status(400).json({ message: "month query param required" });
+      const monthDate = new Date(month);
+      const start = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+      const end = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0, 23, 59, 59);
+      const rows = await db.select().from(dailyFootTraffic)
+        .where(and(
+          eq(dailyFootTraffic.userId, userId),
+          gte(dailyFootTraffic.date, start),
+          lte(dailyFootTraffic.date, end),
+        ));
+      res.json(rows);
+    } catch (err: any) {
+      console.error("Get daily foot traffic error:", err);
+      res.status(500).json({ message: "Failed to fetch daily foot traffic" });
+    }
+  });
+
+  app.post("/api/daily-foot-traffic", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { date, count, notes } = req.body;
+      if (!date || count === undefined) return res.status(400).json({ message: "date and count required" });
+      const dateObj = new Date(date);
+      const dayStart = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
+      const existing = await db.select().from(dailyFootTraffic)
+        .where(and(
+          eq(dailyFootTraffic.userId, userId),
+          eq(dailyFootTraffic.date, dayStart),
+        ));
+      let result;
+      if (existing.length > 0) {
+        const updates: any = { count: parseInt(count) };
+        if (notes !== undefined) updates.notes = notes;
+        [result] = await db.update(dailyFootTraffic)
+          .set(updates)
+          .where(eq(dailyFootTraffic.id, existing[0].id))
+          .returning();
+      } else {
+        [result] = await db.insert(dailyFootTraffic).values({
+          userId,
+          date: dayStart,
+          count: parseInt(count),
+          notes: notes || null,
+        }).returning();
+      }
+      res.json(result);
+    } catch (err: any) {
+      console.error("Save daily foot traffic error:", err);
+      res.status(500).json({ message: "Failed to save daily foot traffic" });
     }
   });
 

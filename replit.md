@@ -37,7 +37,7 @@ PostgreSQL is used as the database, integrated with Drizzle ORM. The schema incl
 -   **Mentoring System**: Comprehensive mentoring management hub with sessions, mentees, and mentors tabs. Includes AI debrief insights, journey stage tracking, and application review.
 -   **Journey Framework**: Tracks culturally-grounded Maori stage progression (kakano → tipu → ora) with visual components.
 -   **NZ Timezone Standardization**: All date and time calculations are standardized to Pacific/Auckland.
--   **Calendar as Tracking Hub**: Integrates Google Calendar sync, manual activity logging, and monthly summaries with foot traffic input.
+-   **Calendar as Tracking Hub**: Integrates Google Calendar sync, manual activity logging, and monthly summaries. Daily foot traffic input per day in the day view panel; monthly summary shows aggregated totals from `dailyFootTraffic` table.
 -   **Community Structure**: A 4-tier system (All Contacts / Our Community / Our Innovators / VIP) with dynamic filtering, contact roles, group types, and promote/demote functionality.
 -   **Our Innovators**: A curated subset of contacts with specific support types and connection strengths.
 -   **Debriefs/Impact Tracking**: Supports manual impact tags, weekly summaries, and AI analysis syncing 8 metric scores to contacts.

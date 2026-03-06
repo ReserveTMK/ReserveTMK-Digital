@@ -5,7 +5,7 @@ import {
   contacts, groups, groupMembers, events, eventAttendance,
   programmes, programmeEvents, bookings, memberships, mous, venues,
   milestones, relationshipStageHistory, communitySpend, meetings, interactions,
-  meetingTypes, monthlySnapshots, footTrafficTouchpoints,
+  meetingTypes, monthlySnapshots, footTrafficTouchpoints, dailyFootTraffic,
 } from "@shared/schema";
 
 export interface ReportFilters {
@@ -157,14 +157,32 @@ export async function getReachMetrics(filters: ReportFilters) {
   const uniqueContacts = contactTouchpoints.size;
   const totalEngagements = Array.from(contactTouchpoints.values()).reduce((s, v) => s + v, 0);
 
-  const footTrafficResult = await db
-    .select({ total: sum(monthlySnapshots.footTraffic) })
-    .from(monthlySnapshots)
+  const dailyFTRows = await db.select({ count: count() }).from(dailyFootTraffic)
     .where(and(
-      eq(monthlySnapshots.userId, filters.userId),
-      gte(monthlySnapshots.month, start), lte(monthlySnapshots.month, end),
+      eq(dailyFootTraffic.userId, filters.userId),
+      gte(dailyFootTraffic.date, start), lte(dailyFootTraffic.date, end),
     ));
-  const footTraffic = Number(footTrafficResult[0]?.total || 0);
+  const hasDailyRows = Number(dailyFTRows[0]?.count || 0) > 0;
+  let footTraffic = 0;
+  if (hasDailyRows) {
+    const dailyFTResult = await db
+      .select({ total: sum(dailyFootTraffic.count) })
+      .from(dailyFootTraffic)
+      .where(and(
+        eq(dailyFootTraffic.userId, filters.userId),
+        gte(dailyFootTraffic.date, start), lte(dailyFootTraffic.date, end),
+      ));
+    footTraffic = Number(dailyFTResult[0]?.total || 0);
+  } else {
+    const legacyResult = await db
+      .select({ total: sum(monthlySnapshots.footTraffic) })
+      .from(monthlySnapshots)
+      .where(and(
+        eq(monthlySnapshots.userId, filters.userId),
+        gte(monthlySnapshots.month, start), lte(monthlySnapshots.month, end),
+      ));
+    footTraffic = Number(legacyResult[0]?.total || 0);
+  }
 
   const repeatCount = Array.from(contactTouchpoints.values()).filter(v => v >= 2).length;
 

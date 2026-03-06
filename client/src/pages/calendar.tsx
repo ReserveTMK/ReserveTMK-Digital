@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useLocation } from "wouter";
 import {
   Calendar,
@@ -944,8 +944,8 @@ export default function CalendarPage() {
   const [activitySelectedContacts, setActivitySelectedContacts] = useState<Contact[]>([]);
   const [activityGroupSearch, setActivityGroupSearch] = useState("");
   const [activitySelectedGroups, setActivitySelectedGroups] = useState<{ id: number; name: string }[]>([]);
-  const [footTrafficValue, setFootTrafficValue] = useState("");
-  const [footTrafficSaving, setFootTrafficSaving] = useState(false);
+  const [dailyFootTrafficValue, setDailyFootTrafficValue] = useState("");
+  const [dailyFTSaving, setDailyFTSaving] = useState(false);
 
   function toggleTypeFilter(type: string) {
     setActiveTypeFilters(prev => {
@@ -1349,14 +1349,35 @@ export default function CalendarPage() {
   const currentMonthKey = format(startOfMonth(currentMonth), "yyyy-MM-dd");
   const currentSnapshot = useMemo(() => {
     if (!monthlySnapshots) return null;
-    const snap = monthlySnapshots.find((s: any) => s.month?.slice(0, 10) === currentMonthKey) || null;
-    if (snap) {
-      setFootTrafficValue(String(snap.footTraffic || ""));
-    } else {
-      setFootTrafficValue("");
-    }
-    return snap;
+    return monthlySnapshots.find((s: any) => s.month?.slice(0, 10) === currentMonthKey) || null;
   }, [monthlySnapshots, currentMonthKey]);
+
+  const { data: dailyFootTrafficData } = useQuery<any[]>({
+    queryKey: ["/api/daily-foot-traffic", currentMonthKey],
+    queryFn: () => fetch(`/api/daily-foot-traffic?month=${currentMonthKey}`, { credentials: "include" }).then(r => r.json()),
+  });
+
+  const monthlyFootTrafficTotal = useMemo(() => {
+    if (!dailyFootTrafficData || dailyFootTrafficData.length === 0) return 0;
+    return dailyFootTrafficData.reduce((sum: number, entry: any) => sum + (entry.count || 0), 0);
+  }, [dailyFootTrafficData]);
+
+  const selectedDayFootTraffic = useMemo(() => {
+    if (!dailyFootTrafficData) return null;
+    const dateKey = format(selectedDate, "yyyy-MM-dd");
+    return dailyFootTrafficData.find((entry: any) => {
+      const entryDate = new Date(entry.date);
+      return format(entryDate, "yyyy-MM-dd") === dateKey;
+    }) || null;
+  }, [dailyFootTrafficData, selectedDate]);
+
+  useEffect(() => {
+    if (selectedDayFootTraffic) {
+      setDailyFootTrafficValue(String(selectedDayFootTraffic.count));
+    } else {
+      setDailyFootTrafficValue("");
+    }
+  }, [selectedDayFootTraffic]);
 
   const monthEventCount = useMemo(() => {
     return filteredEvents.filter(e => isSameMonth(e.date, currentMonth)).length;
@@ -1376,20 +1397,20 @@ export default function CalendarPage() {
     return count;
   }, [appEvents, impactLogs, currentMonth, debriefByEventId]);
 
-  const handleSaveFootTraffic = async () => {
-    setFootTrafficSaving(true);
+  const handleSaveDailyFootTraffic = async () => {
+    setDailyFTSaving(true);
     try {
-      await apiRequest("POST", "/api/monthly-snapshots", {
-        month: currentMonthKey,
-        footTraffic: parseInt(footTrafficValue) || 0,
-        notes: null,
+      const dateKey = format(selectedDate, "yyyy-MM-dd");
+      await apiRequest("POST", "/api/daily-foot-traffic", {
+        date: dateKey,
+        count: parseInt(dailyFootTrafficValue) || 0,
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/monthly-snapshots"] });
-      toast({ title: "Saved", description: "Foot traffic updated" });
+      queryClient.invalidateQueries({ queryKey: ["/api/daily-foot-traffic"] });
+      toast({ title: "Saved", description: `Foot traffic for ${format(selectedDate, "MMM d")} updated` });
     } catch {
       toast({ title: "Error", description: "Failed to save foot traffic", variant: "destructive" });
     } finally {
-      setFootTrafficSaving(false);
+      setDailyFTSaving(false);
     }
   };
 
@@ -1715,31 +1736,11 @@ export default function CalendarPage() {
                 <span className="text-muted-foreground">Debriefed:</span>
                 <span className="font-medium" data-testid="text-month-debriefed-count">{monthDebriefedCount}</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 text-sm">
                 <Footprints className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Foot Traffic:</span>
-                <Input
-                  type="number"
-                  className="w-24 text-sm"
-                  placeholder={currentSnapshot ? String(currentSnapshot.footTraffic || 0) : "0"}
-                  value={footTrafficValue}
-                  onChange={e => setFootTrafficValue(e.target.value)}
-                  data-testid="input-foot-traffic"
-                />
-                <Button
-                  size="sm"
-                  onClick={handleSaveFootTraffic}
-                  disabled={footTrafficSaving || footTrafficValue === ""}
-                  data-testid="button-save-foot-traffic"
-                >
-                  {footTrafficSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                </Button>
+                <span className="text-muted-foreground">Foot Traffic:</span>
+                <span className="font-medium" data-testid="text-month-foot-traffic-total">{monthlyFootTrafficTotal.toLocaleString()}</span>
               </div>
-              {currentSnapshot && currentSnapshot.footTraffic > 0 && (
-                <span className="text-xs text-muted-foreground" data-testid="text-current-foot-traffic">
-                  Saved: {(currentSnapshot.footTraffic || 0).toLocaleString()}
-                </span>
-              )}
             </div>
           </div>
         </Card>
@@ -1922,6 +1923,27 @@ export default function CalendarPage() {
                     </div>
                   </Card>
                 ))}
+                <div className="flex items-center gap-2 mt-1">
+                  <Footprints className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm text-muted-foreground whitespace-nowrap">Foot Traffic:</span>
+                  <Input
+                    type="number"
+                    className="w-20 h-8 text-sm"
+                    placeholder="0"
+                    value={dailyFootTrafficValue}
+                    onChange={e => setDailyFootTrafficValue(e.target.value)}
+                    data-testid="input-daily-foot-traffic"
+                  />
+                  <Button
+                    size="sm"
+                    className="h-8"
+                    onClick={handleSaveDailyFootTraffic}
+                    disabled={dailyFTSaving || dailyFootTrafficValue === ""}
+                    data-testid="button-save-daily-foot-traffic"
+                  >
+                    {dailyFTSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  </Button>
+                </div>
                 <Button
                   variant="outline"
                   className="w-full border-dashed"
@@ -1940,6 +1962,27 @@ export default function CalendarPage() {
                     <p>No items on this day</p>
                   </div>
                 </Card>
+                <div className="flex items-center gap-2">
+                  <Footprints className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm text-muted-foreground whitespace-nowrap">Foot Traffic:</span>
+                  <Input
+                    type="number"
+                    className="w-20 h-8 text-sm"
+                    placeholder="0"
+                    value={dailyFootTrafficValue}
+                    onChange={e => setDailyFootTrafficValue(e.target.value)}
+                    data-testid="input-daily-foot-traffic-empty"
+                  />
+                  <Button
+                    size="sm"
+                    className="h-8"
+                    onClick={handleSaveDailyFootTraffic}
+                    disabled={dailyFTSaving || dailyFootTrafficValue === ""}
+                    data-testid="button-save-daily-foot-traffic-empty"
+                  >
+                    {dailyFTSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  </Button>
+                </div>
                 <Button
                   variant="outline"
                   className="w-full border-dashed"
