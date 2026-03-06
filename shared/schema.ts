@@ -1913,3 +1913,40 @@ export const insertMentoringOnboardingQuestionSchema = createInsertSchema(mentor
 });
 export type MentoringOnboardingQuestion = typeof mentoringOnboardingQuestions.$inferSelect;
 export type InsertMentoringOnboardingQuestion = z.infer<typeof insertMentoringOnboardingQuestionSchema>;
+
+export const footTrafficTouchpoints = pgTable("foot_traffic_touchpoints", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  snapshotId: integer("snapshot_id").notNull(),
+  contactId: integer("contact_id"),
+  groupId: integer("group_id"),
+  description: text("description").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertFootTrafficTouchpointSchema = createInsertSchema(footTrafficTouchpoints).omit({
+  id: true,
+  createdAt: true,
+});
+export type FootTrafficTouchpoint = typeof footTrafficTouchpoints.$inferSelect;
+export type InsertFootTrafficTouchpoint = z.infer<typeof insertFootTrafficTouchpointSchema>;
+
+export const CATCH_UP_PRIORITIES = ["urgent", "soon", "whenever"] as const;
+
+export const catchUpList = pgTable("catch_up_list", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  contactId: integer("contact_id").notNull(),
+  note: text("note"),
+  priority: text("priority").default("soon"),
+  createdAt: timestamp("created_at").defaultNow(),
+  dismissedAt: timestamp("dismissed_at"),
+});
+
+export const insertCatchUpItemSchema = createInsertSchema(catchUpList).omit({
+  id: true,
+  createdAt: true,
+  dismissedAt: true,
+});
+export type CatchUpItem = typeof catchUpList.$inferSelect;
+export type InsertCatchUpItem = z.infer<typeof insertCatchUpItemSchema>;

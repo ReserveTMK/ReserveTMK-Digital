@@ -178,6 +178,12 @@ import {
   type InsertMonthlySnapshot,
   type ReportHighlight,
   type InsertReportHighlight,
+  footTrafficTouchpoints,
+  type FootTrafficTouchpoint,
+  type InsertFootTrafficTouchpoint,
+  catchUpList,
+  type CatchUpItem,
+  type InsertCatchUpItem,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, sql, max, count } from "drizzle-orm";
 
@@ -516,6 +522,19 @@ export interface IStorage {
   getReportHighlight(id: number): Promise<ReportHighlight | undefined>;
   createReportHighlight(data: InsertReportHighlight): Promise<ReportHighlight>;
   deleteReportHighlight(id: number): Promise<void>;
+
+  // Foot Traffic Touchpoints
+  getFootTrafficTouchpoints(snapshotId: number): Promise<any[]>;
+  createFootTrafficTouchpoint(data: InsertFootTrafficTouchpoint): Promise<FootTrafficTouchpoint>;
+  deleteFootTrafficTouchpoint(id: number): Promise<void>;
+
+  // Catch Up List
+  getCatchUpList(userId: string): Promise<any[]>;
+  getCatchUpListHistory(userId: string): Promise<any[]>;
+  addToCatchUpList(data: InsertCatchUpItem): Promise<CatchUpItem>;
+  updateCatchUpItem(id: number, updates: Partial<InsertCatchUpItem>): Promise<CatchUpItem>;
+  dismissCatchUpItem(id: number): Promise<CatchUpItem>;
+  removeCatchUpItem(id: number): Promise<void>;
 
   // Auth (re-exported or separate)
   auth: IAuthStorage;
@@ -2121,6 +2140,115 @@ export class DatabaseStorage implements IStorage {
 
   async deleteReportHighlight(id: number): Promise<void> {
     await db.delete(reportHighlights).where(eq(reportHighlights.id, id));
+  }
+
+  // Foot Traffic Touchpoints
+  async getFootTrafficTouchpoints(snapshotId: number): Promise<any[]> {
+    const rows = await db.select({
+      id: footTrafficTouchpoints.id,
+      userId: footTrafficTouchpoints.userId,
+      snapshotId: footTrafficTouchpoints.snapshotId,
+      contactId: footTrafficTouchpoints.contactId,
+      groupId: footTrafficTouchpoints.groupId,
+      description: footTrafficTouchpoints.description,
+      createdAt: footTrafficTouchpoints.createdAt,
+      contactName: contacts.name,
+      groupName: groups.name,
+    })
+    .from(footTrafficTouchpoints)
+    .leftJoin(contacts, eq(footTrafficTouchpoints.contactId, contacts.id))
+    .leftJoin(groups, eq(footTrafficTouchpoints.groupId, groups.id))
+    .where(eq(footTrafficTouchpoints.snapshotId, snapshotId))
+    .orderBy(desc(footTrafficTouchpoints.createdAt));
+    return rows;
+  }
+
+  async createFootTrafficTouchpoint(data: InsertFootTrafficTouchpoint): Promise<FootTrafficTouchpoint> {
+    const [created] = await db.insert(footTrafficTouchpoints).values(data).returning();
+    return created;
+  }
+
+  async deleteFootTrafficTouchpoint(id: number): Promise<void> {
+    await db.delete(footTrafficTouchpoints).where(eq(footTrafficTouchpoints.id, id));
+  }
+
+  // Catch Up List
+  async getCatchUpList(userId: string): Promise<any[]> {
+    return db.select({
+      id: catchUpList.id,
+      userId: catchUpList.userId,
+      contactId: catchUpList.contactId,
+      note: catchUpList.note,
+      priority: catchUpList.priority,
+      createdAt: catchUpList.createdAt,
+      dismissedAt: catchUpList.dismissedAt,
+      contactName: contacts.name,
+      contactRole: contacts.role,
+      contactStage: contacts.stage,
+      contactConnectionStrength: contacts.connectionStrength,
+      contactIsInnovator: contacts.isInnovator,
+      contactIsCommunityMember: contacts.isCommunityMember,
+    })
+    .from(catchUpList)
+    .leftJoin(contacts, eq(catchUpList.contactId, contacts.id))
+    .where(and(eq(catchUpList.userId, userId), sql`${catchUpList.dismissedAt} IS NULL`))
+    .orderBy(desc(catchUpList.createdAt));
+  }
+
+  async getCatchUpListHistory(userId: string): Promise<any[]> {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    return db.select({
+      id: catchUpList.id,
+      userId: catchUpList.userId,
+      contactId: catchUpList.contactId,
+      note: catchUpList.note,
+      priority: catchUpList.priority,
+      createdAt: catchUpList.createdAt,
+      dismissedAt: catchUpList.dismissedAt,
+      contactName: contacts.name,
+      contactRole: contacts.role,
+      contactStage: contacts.stage,
+    })
+    .from(catchUpList)
+    .leftJoin(contacts, eq(catchUpList.contactId, contacts.id))
+    .where(and(
+      eq(catchUpList.userId, userId),
+      sql`${catchUpList.dismissedAt} IS NOT NULL`,
+      gte(catchUpList.dismissedAt, thirtyDaysAgo),
+    ))
+    .orderBy(desc(catchUpList.dismissedAt));
+  }
+
+  async addToCatchUpList(data: InsertCatchUpItem): Promise<CatchUpItem> {
+    const existing = await db.select().from(catchUpList).where(and(
+      eq(catchUpList.userId, data.userId),
+      eq(catchUpList.contactId, data.contactId),
+      sql`${catchUpList.dismissedAt} IS NULL`,
+    ));
+    if (existing.length > 0) {
+      const [updated] = await db.update(catchUpList)
+        .set({ note: data.note, priority: data.priority })
+        .where(eq(catchUpList.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(catchUpList).values(data).returning();
+    return created;
+  }
+
+  async updateCatchUpItem(id: number, updates: Partial<InsertCatchUpItem>): Promise<CatchUpItem> {
+    const [updated] = await db.update(catchUpList).set(updates).where(eq(catchUpList.id, id)).returning();
+    return updated;
+  }
+
+  async dismissCatchUpItem(id: number): Promise<CatchUpItem> {
+    const [updated] = await db.update(catchUpList).set({ dismissedAt: new Date() }).where(eq(catchUpList.id, id)).returning();
+    return updated;
+  }
+
+  async removeCatchUpItem(id: number): Promise<void> {
+    await db.delete(catchUpList).where(eq(catchUpList.id, id));
   }
 
   // Stage Progression

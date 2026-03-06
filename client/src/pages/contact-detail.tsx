@@ -11,7 +11,7 @@ import { Card } from "@/components/ui/card";
 import { useRoute } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Loader2, Mic, StopCircle, ArrowLeft, Brain, TrendingUp, Sparkles, AlertCircle, DollarSign, Settings, Rocket, Network, Shield, FileText, CheckSquare, Calendar, Clock, ChevronDown, History, MessageSquare, Pencil, Check, X, ArrowUp, ArrowDown, Star, Users } from "lucide-react";
+import { Loader2, Mic, StopCircle, ArrowLeft, Brain, TrendingUp, Sparkles, AlertCircle, DollarSign, Settings, Rocket, Network, Shield, FileText, CheckSquare, Calendar, Clock, ChevronDown, History, MessageSquare, Pencil, Check, X, ArrowUp, ArrowDown, Star, Users, Coffee, Trash2, Plus } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { RelationshipStageSelector } from "@/components/relationship-stage-selector";
@@ -70,6 +70,9 @@ export default function ContactDetail() {
   const [quickAddGroupName, setQuickAddGroupName] = useState("");
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [stageHistoryOpen, setStageHistoryOpen] = useState(false);
+  const [catchUpPopoverOpen, setCatchUpPopoverOpen] = useState(false);
+  const [catchUpNote, setCatchUpNote] = useState("");
+  const [catchUpPriority, setCatchUpPriority] = useState("soon");
 
   const { data: stageHistory } = useQuery({
     queryKey: ['/api/relationship-stage-history', 'contact', id],
@@ -89,6 +92,65 @@ export default function ContactDetail() {
       queryClient.invalidateQueries({ queryKey: ['/api/contacts', id] });
       queryClient.invalidateQueries({ queryKey: ['/api/relationship-stage-history', 'contact', id] });
       queryClient.invalidateQueries({ queryKey: ['/api/dashboard/relationship-stages'] });
+    },
+  });
+
+  type CatchUpItemData = {
+    id: number;
+    userId: string;
+    contactId: number;
+    note: string | null;
+    priority: string | null;
+    createdAt: string | null;
+    dismissedAt: string | null;
+    contactName: string | null;
+    contactRole: string | null;
+    contactStage: string | null;
+    contactConnectionStrength: string | null;
+    contactIsInnovator: boolean | null;
+    contactIsCommunityMember: boolean | null;
+  };
+
+  const { data: catchUpItems } = useQuery<CatchUpItemData[]>({
+    queryKey: ["/api/catch-up-list"],
+  });
+
+  const catchUpItem = catchUpItems?.find((item) => item.contactId === id);
+
+  const addToCatchUpMutation = useMutation({
+    mutationFn: async (data: { contactId: number; note: string; priority: string }) => {
+      await apiRequest("POST", "/api/catch-up-list", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/catch-up-list"] });
+      setCatchUpPopoverOpen(false);
+      setCatchUpNote("");
+      setCatchUpPriority("soon");
+      toast({ title: "Added to catch-up list" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to add", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const dismissCatchUpMutation = useMutation({
+    mutationFn: async (itemId: number) => {
+      await apiRequest("PATCH", `/api/catch-up-list/${itemId}`, { dismiss: true });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/catch-up-list"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/catch-up-list/history"] });
+      toast({ title: "Marked as done" });
+    },
+  });
+
+  const removeCatchUpMutation = useMutation({
+    mutationFn: async (itemId: number) => {
+      await apiRequest("DELETE", `/api/catch-up-list/${itemId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/catch-up-list"] });
+      toast({ title: "Removed from catch-up list" });
     },
   });
 
@@ -317,6 +379,96 @@ export default function ContactDetail() {
                   </DialogTrigger>
                   <LogInteractionDialog contactId={id} />
                 </Dialog>
+                {catchUpItem ? (
+                  <div className="flex items-center gap-2" data-testid="catch-up-status">
+                    <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/20">
+                      <Coffee className="w-3 h-3 mr-1" />
+                      On Catch Up List
+                      {catchUpItem.priority && (
+                        <span className="ml-1 opacity-70">
+                          ({catchUpItem.priority})
+                        </span>
+                      )}
+                    </Badge>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => dismissCatchUpMutation.mutate(catchUpItem.id)}
+                      disabled={dismissCatchUpMutation.isPending}
+                      data-testid="button-catch-up-done"
+                    >
+                      {dismissCatchUpMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                      ) : (
+                        <Check className="w-4 h-4 mr-1" />
+                      )}
+                      Done
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeCatchUpMutation.mutate(catchUpItem.id)}
+                      disabled={removeCatchUpMutation.isPending}
+                      data-testid="button-catch-up-remove"
+                    >
+                      {removeCatchUpMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </Button>
+                  </div>
+                ) : (
+                  <Popover open={catchUpPopoverOpen} onOpenChange={setCatchUpPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" data-testid="button-add-catch-up">
+                        <Coffee className="w-4 h-4 mr-1" />
+                        Add to Catch Up
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-72" align="end">
+                      <div className="space-y-3">
+                        <h4 className="font-medium text-sm">Add to Catch Up List</h4>
+                        <div className="space-y-2">
+                          <Label className="text-xs">Priority</Label>
+                          <Select value={catchUpPriority} onValueChange={setCatchUpPriority}>
+                            <SelectTrigger data-testid="select-catch-up-priority">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="urgent">Urgent</SelectItem>
+                              <SelectItem value="soon">Soon</SelectItem>
+                              <SelectItem value="whenever">Whenever</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-xs">Note (optional)</Label>
+                          <Input
+                            value={catchUpNote}
+                            onChange={(e) => setCatchUpNote(e.target.value)}
+                            placeholder="Why catch up?"
+                            data-testid="input-catch-up-note"
+                          />
+                        </div>
+                        <Button
+                          className="w-full"
+                          size="sm"
+                          disabled={addToCatchUpMutation.isPending}
+                          onClick={() => addToCatchUpMutation.mutate({ contactId: id, note: catchUpNote, priority: catchUpPriority })}
+                          data-testid="button-confirm-catch-up"
+                        >
+                          {addToCatchUpMutation.isPending ? (
+                            <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                          ) : (
+                            <Plus className="w-4 h-4 mr-1" />
+                          )}
+                          Add
+                        </Button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                )}
                 <div className="flex items-center gap-2">
                   {currentTier !== "innovator" && (
                     <Button

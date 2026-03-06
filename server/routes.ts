@@ -6538,6 +6538,152 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     }
   });
 
+  // === FOOT TRAFFIC TOUCHPOINTS ===
+
+  app.get("/api/monthly-snapshots/:id/touchpoints", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const snapshot = await storage.getMonthlySnapshot(parseInt(req.params.id));
+      if (!snapshot || snapshot.userId !== userId) {
+        return res.status(404).json({ message: "Snapshot not found" });
+      }
+      const touchpoints = await storage.getFootTrafficTouchpoints(snapshot.id);
+      res.json(touchpoints);
+    } catch (err: any) {
+      console.error("Get touchpoints error:", err);
+      res.status(500).json({ message: "Failed to fetch touchpoints" });
+    }
+  });
+
+  app.post("/api/monthly-snapshots/:id/touchpoints", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const snapshotId = parseInt(req.params.id);
+      const snapshot = await storage.getMonthlySnapshot(snapshotId);
+      if (!snapshot || snapshot.userId !== userId) {
+        return res.status(404).json({ message: "Snapshot not found" });
+      }
+      const { contactId, groupId, description } = req.body;
+      if (!description) {
+        return res.status(400).json({ message: "Description is required" });
+      }
+      const touchpoint = await storage.createFootTrafficTouchpoint({
+        userId,
+        snapshotId,
+        contactId: contactId || null,
+        groupId: groupId || null,
+        description,
+      });
+      res.json(touchpoint);
+    } catch (err: any) {
+      console.error("Create touchpoint error:", err);
+      res.status(500).json({ message: "Failed to create touchpoint" });
+    }
+  });
+
+  app.delete("/api/monthly-snapshots/:id/touchpoints/:touchpointId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const snapshot = await storage.getMonthlySnapshot(parseInt(req.params.id));
+      if (!snapshot || snapshot.userId !== userId) {
+        return res.status(404).json({ message: "Snapshot not found" });
+      }
+      await storage.deleteFootTrafficTouchpoint(parseInt(req.params.touchpointId));
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Delete touchpoint error:", err);
+      res.status(500).json({ message: "Failed to delete touchpoint" });
+    }
+  });
+
+  // === CATCH UP LIST ===
+
+  app.get("/api/catch-up-list/history", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const history = await storage.getCatchUpListHistory(userId);
+      res.json(history);
+    } catch (err: any) {
+      console.error("Get catch-up history error:", err);
+      res.status(500).json({ message: "Failed to fetch catch-up history" });
+    }
+  });
+
+  app.get("/api/catch-up-list", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const items = await storage.getCatchUpList(userId);
+      res.json(items);
+    } catch (err: any) {
+      console.error("Get catch-up list error:", err);
+      res.status(500).json({ message: "Failed to fetch catch-up list" });
+    }
+  });
+
+  app.post("/api/catch-up-list", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { contactId, note, priority } = req.body;
+      if (!contactId) {
+        return res.status(400).json({ message: "Contact ID is required" });
+      }
+      const item = await storage.addToCatchUpList({
+        userId,
+        contactId,
+        note: note || null,
+        priority: priority || "soon",
+      });
+      res.json(item);
+    } catch (err: any) {
+      console.error("Add to catch-up list error:", err);
+      res.status(500).json({ message: "Failed to add to catch-up list" });
+    }
+  });
+
+  app.patch("/api/catch-up-list/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getCatchUpList(userId);
+      const history = await storage.getCatchUpListHistory(userId);
+      const allItems = [...existing, ...history];
+      if (!allItems.find((item: any) => item.id === id)) {
+        return res.status(404).json({ message: "Catch-up item not found" });
+      }
+      const { note, priority, dismiss } = req.body;
+      if (dismiss) {
+        const item = await storage.dismissCatchUpItem(id);
+        return res.json(item);
+      }
+      const updates: any = {};
+      if (note !== undefined) updates.note = note;
+      if (priority !== undefined) updates.priority = priority;
+      const item = await storage.updateCatchUpItem(id, updates);
+      res.json(item);
+    } catch (err: any) {
+      console.error("Update catch-up item error:", err);
+      res.status(500).json({ message: "Failed to update catch-up item" });
+    }
+  });
+
+  app.delete("/api/catch-up-list/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const existing = await storage.getCatchUpList(userId);
+      const history = await storage.getCatchUpListHistory(userId);
+      const allItems = [...existing, ...history];
+      const id = parseInt(req.params.id);
+      if (!allItems.find((item: any) => item.id === id)) {
+        return res.status(404).json({ message: "Catch-up item not found" });
+      }
+      await storage.removeCatchUpItem(id);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Delete catch-up item error:", err);
+      res.status(500).json({ message: "Failed to delete catch-up item" });
+    }
+  });
+
   // === REPORT HIGHLIGHTS ===
 
   app.get("/api/report-highlights", isAuthenticated, async (req, res) => {

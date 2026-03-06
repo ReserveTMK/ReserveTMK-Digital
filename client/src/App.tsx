@@ -37,6 +37,7 @@ import ProjectsPage from "@/pages/projects";
 import BookingDetailPage from "@/pages/booking-detail";
 import PublicSurveyPage from "@/pages/public-survey";
 import BookerPortalPage from "@/pages/booker-portal";
+import CatchUpPage from "@/pages/catch-up";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -205,6 +206,10 @@ function Router() {
 
         <Route path="/projects">
           <ProtectedRoute component={ProjectsPage} />
+        </Route>
+
+        <Route path="/catch-up">
+          <ProtectedRoute component={CatchUpPage} />
         </Route>
 
         <Route path="/book/:userId">

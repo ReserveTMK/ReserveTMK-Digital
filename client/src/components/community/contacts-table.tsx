@@ -3,10 +3,12 @@ import { Link } from "wouter";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Lightbulb, UserCheck, Loader2 } from "lucide-react";
+import { Plus, Lightbulb, UserCheck, Loader2, Coffee } from "lucide-react";
 import { Button } from "@/components/ui/beautiful-button";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   InlineTextCell,
   InlineEthnicityCell,
@@ -31,11 +33,47 @@ interface ContactsTableViewProps {
   promotePending?: boolean;
 }
 
+type CatchUpItemData = {
+  id: number;
+  contactId: number;
+  priority: string | null;
+};
+
 export function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, toggleContactSelection, toggleSelectAll, onToggleCommunity, drilldownTier, onPromote, promotePending }: ContactsTableViewProps) {
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [backfilling, setBackfilling] = useState(false);
   const { toast } = useToast();
+
+  const { data: catchUpItems } = useQuery<CatchUpItemData[]>({
+    queryKey: ["/api/catch-up-list"],
+  });
+
+  const catchUpContactIds = useMemo(() => {
+    const map = new Map<number, CatchUpItemData>();
+    (catchUpItems || []).forEach((item) => map.set(item.contactId, item));
+    return map;
+  }, [catchUpItems]);
+
+  const addToCatchUpMutation = useMutation({
+    mutationFn: async (contactId: number) => {
+      await apiRequest("POST", "/api/catch-up-list", { contactId, note: "", priority: "soon" });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/catch-up-list"] });
+      toast({ title: "Added to catch-up list" });
+    },
+  });
+
+  const removeCatchUpMutation = useMutation({
+    mutationFn: async (itemId: number) => {
+      await apiRequest("DELETE", `/api/catch-up-list/${itemId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/catch-up-list"] });
+      toast({ title: "Removed from catch-up list" });
+    },
+  });
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -174,6 +212,7 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
                 <SortHeader label="Age" field="age" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-20" />
                 <SortHeader label="Suburb" field="suburb" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
                 <SortHeader label="Last Active" field="lastActive" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
+                <th className="px-2 py-3 w-10"></th>
               </tr>
             </thead>
             <tbody>
@@ -275,6 +314,48 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
                     {(contact.lastActiveDate || contact.lastInteractionDate)
                       ? format(new Date(contact.lastActiveDate || contact.lastInteractionDate), "MMM d, yyyy")
                       : "—"}
+                  </td>
+                  <td className="px-2 py-2">
+                    {(() => {
+                      const catchUpEntry = catchUpContactIds.get(contact.id);
+                      if (catchUpEntry) {
+                        return (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="toggle-elevate toggle-elevated text-amber-600 dark:text-amber-400"
+                                onClick={() => removeCatchUpMutation.mutate(catchUpEntry.id)}
+                                disabled={removeCatchUpMutation.isPending}
+                                data-testid={`button-catch-up-remove-${contact.id}`}
+                              >
+                                <Coffee className="w-4 h-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>On catch-up list ({catchUpEntry.priority || "soon"}) — click to remove</TooltipContent>
+                          </Tooltip>
+                        );
+                      }
+                      return (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-muted-foreground"
+                              style={{ visibility: "visible" }}
+                              onClick={() => addToCatchUpMutation.mutate(contact.id)}
+                              disabled={addToCatchUpMutation.isPending}
+                              data-testid={`button-catch-up-add-${contact.id}`}
+                            >
+                              <Coffee className="w-4 h-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Add to catch-up list</TooltipContent>
+                        </Tooltip>
+                      );
+                    })()}
                   </td>
                 </tr>
               ))}

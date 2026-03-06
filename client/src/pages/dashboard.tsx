@@ -5,7 +5,7 @@ import { useImpactLogs } from "@/hooks/use-impact-logs";
 import { useAuth } from "@/hooks/use-auth";
 import { useProgrammes } from "@/hooks/use-programmes";
 import { useBookings, useVenues } from "@/hooks/use-bookings";
-import { Calendar as CalendarIcon, ArrowRight, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, PartyPopper, Mic, Building2, Layers, AlertTriangle, ClipboardCheck, ListChecks, Rocket, Sprout, TreePine, Sun, Eye, Loader2, Users, DollarSign, TrendingUp, TrendingDown, Lightbulb, UserPlus } from "lucide-react";
+import { Calendar as CalendarIcon, ArrowRight, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, PartyPopper, Mic, Building2, Layers, AlertTriangle, ClipboardCheck, ListChecks, Rocket, Sprout, TreePine, Sun, Eye, Loader2, Users, DollarSign, TrendingUp, TrendingDown, Lightbulb, UserPlus, Coffee } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { format, startOfMonth, endOfMonth, startOfDay, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, addDays, isToday, isBefore, isAfter } from "date-fns";
 import { formatTimeSlot } from "@/lib/utils";
@@ -117,6 +117,13 @@ export default function Dashboard() {
     queryKey: ["/api/projects/all-tasks"],
   });
 
+  const { data: catchUpItems } = useQuery<{
+    id: number; contactId: number; note: string | null; priority: string; createdAt: string;
+    contactName?: string; contactRole?: string; contactStage?: string; connectionStrength?: string;
+  }[]>({
+    queryKey: ["/api/catch-up-list"],
+  });
+
   const overdueMentees = useMemo(() => {
     if (!enrichedRelationships) return [];
     return enrichedRelationships
@@ -135,6 +142,15 @@ export default function Dashboard() {
     if (!mentoringApplications) return 0;
     return mentoringApplications.filter((a: any) => a.status === "pending").length;
   }, [mentoringApplications]);
+
+  const catchUpSummary = useMemo(() => {
+    if (!catchUpItems || catchUpItems.length === 0) return null;
+    const urgent = catchUpItems.filter(i => i.priority === "urgent");
+    const soon = catchUpItems.filter(i => i.priority === "soon");
+    const whenever = catchUpItems.filter(i => i.priority === "whenever");
+    const topItems = [...urgent, ...soon, ...whenever].slice(0, 5);
+    return { total: catchUpItems.length, urgentCount: urgent.length, soonCount: soon.length, wheneverCount: whenever.length, topItems };
+  }, [catchUpItems]);
 
   const communityGrowth = useMemo(() => {
     if (!contacts || contacts.length === 0) return [];
@@ -545,6 +561,67 @@ export default function Dashboard() {
                         </div>
                       </div>
                     </div>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
+
+          {catchUpSummary && (
+            <Card className="border-l-4 border-l-teal-500 p-4 md:p-6" data-testid="card-catch-up-summary">
+              <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-teal-500/10">
+                    <Coffee className="w-5 h-5 text-teal-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold font-display" data-testid="text-catch-up-heading">Catch Up</h2>
+                    <p className="text-sm text-muted-foreground" data-testid="text-catch-up-subtitle">
+                      {catchUpSummary.total} contact{catchUpSummary.total !== 1 ? "s" : ""} to catch up with
+                      {catchUpSummary.urgentCount > 0 || catchUpSummary.soonCount > 0 ? " — " : ""}
+                      {[
+                        catchUpSummary.urgentCount > 0 ? `${catchUpSummary.urgentCount} urgent` : "",
+                        catchUpSummary.soonCount > 0 ? `${catchUpSummary.soonCount} soon` : "",
+                      ].filter(Boolean).join(", ")}
+                    </p>
+                  </div>
+                </div>
+                <Link href="/catch-up" data-testid="link-view-all-catch-ups">
+                  <Button variant="outline" size="sm" className="gap-1">
+                    View All <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </Link>
+              </div>
+              <div className="space-y-1.5">
+                {catchUpSummary.topItems.map((item) => {
+                  const addedDate = new Date(item.createdAt);
+                  const daysAgo = Math.floor((Date.now() - addedDate.getTime()) / (1000 * 60 * 60 * 24));
+                  const priorityColor = item.priority === "urgent"
+                    ? "bg-red-500/15 text-red-700 dark:text-red-300"
+                    : item.priority === "soon"
+                    ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                    : "bg-muted text-muted-foreground";
+                  return (
+                    <Link key={item.id} href={`/contacts/${item.contactId}`} data-testid={`catch-up-item-${item.id}`}>
+                      <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/40 hover:bg-muted transition-colors cursor-pointer">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate" data-testid={`text-catch-up-name-${item.id}`}>
+                            {item.contactName || "Contact"}
+                          </p>
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                            {item.note && (
+                              <span className="text-xs text-muted-foreground truncate max-w-[200px]">{item.note}</span>
+                            )}
+                            <span className="text-xs text-muted-foreground">
+                              {daysAgo === 0 ? "added today" : `added ${daysAgo}d ago`}
+                            </span>
+                          </div>
+                        </div>
+                        <Badge variant="secondary" className={`text-[10px] shrink-0 ${priorityColor}`} data-testid={`badge-catch-up-priority-${item.id}`}>
+                          {item.priority}
+                        </Badge>
+                      </div>
+                    </Link>
                   );
                 })}
               </div>

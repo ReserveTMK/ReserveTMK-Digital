@@ -5,7 +5,7 @@ import {
   contacts, groups, groupMembers, events, eventAttendance,
   programmes, programmeEvents, bookings, memberships, mous, venues,
   milestones, relationshipStageHistory, communitySpend, meetings, interactions,
-  meetingTypes, monthlySnapshots,
+  meetingTypes, monthlySnapshots, footTrafficTouchpoints,
 } from "@shared/schema";
 
 export interface ReportFilters {
@@ -77,7 +77,7 @@ export async function getReachMetrics(filters: ReportFilters) {
     contactTouchpoints.set(contactId, (contactTouchpoints.get(contactId) || 0) + 1);
   }
 
-  const sourceBreakdown = { debriefs: 0, meetings: 0, events: 0, externalEvents: 0, emails: 0, bookings: 0, programmes: 0 };
+  const sourceBreakdown = { debriefs: 0, meetings: 0, events: 0, externalEvents: 0, emails: 0, bookings: 0, programmes: 0, touchpoints: 0 };
 
   const debriefWhere = confirmedDebriefConditions(filters);
   const debriefContacts = await db
@@ -139,6 +139,19 @@ export async function getReachMetrics(filters: ReportFilters) {
   for (const p of programmesInRange) {
     if (p.attendees) { for (const aid of p.attendees) addTouchpoint(aid); }
     sourceBreakdown.programmes++;
+  }
+
+  const snapshotsInRange = await db.select({ id: monthlySnapshots.id }).from(monthlySnapshots).where(and(
+    eq(monthlySnapshots.userId, filters.userId),
+    gte(monthlySnapshots.month, start), lte(monthlySnapshots.month, end),
+  ));
+  const snapshotIds = snapshotsInRange.map(s => s.id);
+  if (snapshotIds.length > 0) {
+    const touchpointRows = await db.select({ contactId: footTrafficTouchpoints.contactId })
+      .from(footTrafficTouchpoints).where(inArray(footTrafficTouchpoints.snapshotId, snapshotIds));
+    for (const t of touchpointRows) {
+      if (t.contactId) { addTouchpoint(t.contactId); sourceBreakdown.touchpoints++; }
+    }
   }
 
   const uniqueContacts = contactTouchpoints.size;
@@ -1193,15 +1206,31 @@ export async function getOrganisationsEngaged(filters: ReportFilters) {
     if (p.attendees) for (const a of p.attendees) engagedContactIds.add(a);
   }
 
-  if (engagedContactIds.size === 0) return [];
+  const snapshotsInRange = await db.select({ id: monthlySnapshots.id }).from(monthlySnapshots).where(and(
+    eq(monthlySnapshots.userId, filters.userId),
+    gte(monthlySnapshots.month, start), lte(monthlySnapshots.month, end),
+  ));
+  const snapshotIds = snapshotsInRange.map(s => s.id);
+  const touchpointGroupIds = new Set<number>();
+  if (snapshotIds.length > 0) {
+    const touchpointRows = await db.select({ contactId: footTrafficTouchpoints.contactId, groupId: footTrafficTouchpoints.groupId })
+      .from(footTrafficTouchpoints).where(inArray(footTrafficTouchpoints.snapshotId, snapshotIds));
+    for (const t of touchpointRows) {
+      if (t.contactId) engagedContactIds.add(t.contactId);
+      if (t.groupId) touchpointGroupIds.add(t.groupId);
+    }
+  }
+
+  if (engagedContactIds.size === 0 && touchpointGroupIds.size === 0) return [];
 
   const engagedArr = Array.from(engagedContactIds);
-  const memberRows = await db.select({
+  const memberRows = engagedArr.length > 0 ? await db.select({
     groupId: groupMembers.groupId,
     contactId: groupMembers.contactId,
-  }).from(groupMembers).where(inArray(groupMembers.contactId, engagedArr));
+  }).from(groupMembers).where(inArray(groupMembers.contactId, engagedArr)) : [];
 
   const groupIds = new Set(memberRows.map(r => r.groupId));
+  for (const gid of touchpointGroupIds) groupIds.add(gid);
   const newGroups = await db.select({ id: groups.id }).from(groups).where(and(
     eq(groups.userId, filters.userId),
     gte(groups.createdAt, start), lte(groups.createdAt, end),
@@ -1311,11 +1340,29 @@ export async function getPeopleFeatured(filters: ReportFilters) {
     }
   }
 
+  const snapshotsInRange = await db.select({ id: monthlySnapshots.id }).from(monthlySnapshots).where(and(
+    eq(monthlySnapshots.userId, filters.userId),
+    gte(monthlySnapshots.month, start), lte(monthlySnapshots.month, end),
+  ));
+  const snapshotIds = snapshotsInRange.map(s => s.id);
+  const contactTouchpointReasons = new Map<number, string[]>();
+  if (snapshotIds.length > 0) {
+    const touchpointRows = await db.select({ contactId: footTrafficTouchpoints.contactId, description: footTrafficTouchpoints.description })
+      .from(footTrafficTouchpoints).where(inArray(footTrafficTouchpoints.snapshotId, snapshotIds));
+    for (const t of touchpointRows) {
+      if (!t.contactId) continue;
+      if (lensContactIds && !lensContactIds.has(t.contactId)) continue;
+      if (!contactTouchpointReasons.has(t.contactId)) contactTouchpointReasons.set(t.contactId, []);
+      contactTouchpointReasons.get(t.contactId)!.push(`Foot traffic note: ${t.description}`);
+    }
+  }
+
   const featuredIds = new Set<number>();
   for (const id of contactDebriefCount.keys()) featuredIds.add(id);
   for (const id of contactMilestones.keys()) featuredIds.add(id);
   for (const id of contactJourneyProgress.keys()) featuredIds.add(id);
   for (const id of newInnovatorIds) featuredIds.add(id);
+  for (const id of contactTouchpointReasons.keys()) featuredIds.add(id);
 
   if (featuredIds.size === 0) return [];
 
@@ -1342,6 +1389,8 @@ export async function getPeopleFeatured(filters: ReportFilters) {
     const journey = contactJourneyProgress.get(c.id);
     if (journey) reasons.push(`Stage: ${journey.from} \u2192 ${journey.to}`);
     if (newInnovatorIds.has(c.id)) reasons.push("New innovator");
+    const touchpointNotes = contactTouchpointReasons.get(c.id);
+    if (touchpointNotes) reasons.push(...touchpointNotes.slice(0, 3));
 
     const m = c.metrics as any;
     const growthScores = m ? {

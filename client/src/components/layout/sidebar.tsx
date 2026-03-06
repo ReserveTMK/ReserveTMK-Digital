@@ -23,6 +23,7 @@ import {
   Mail,
   CalendarClock,
   Rocket,
+  PhoneCall,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "../ui/beautiful-button";
@@ -65,6 +66,7 @@ const navigation: NavItem[] = [
     name: "Tracking", href: "/debriefs", icon: Activity,
     children: [
       { name: "Debriefs", href: "/debriefs", icon: Mic },
+      { name: "Catch Up", href: "/catch-up", icon: PhoneCall },
       { name: "Community Spend", href: "/community-spend", icon: DollarSign },
     ],
   },
