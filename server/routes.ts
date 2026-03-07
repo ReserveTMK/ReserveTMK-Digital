@@ -368,7 +368,7 @@ export async function registerRoutes(
       if (!existing) return res.status(404).json({ message: "Contact not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
 
-      const allowedFields = ["name", "nickname", "businessName", "ventureType", "role", "roleOther", "email", "phone", "age", "ethnicity", "location", "suburb", "localBoard", "tags", "revenueBand", "metrics", "notes", "active", "consentStatus", "consentDate", "consentNotes", "stage", "whatTheyAreBuilding", "relationshipStage", "isCommunityMember", "communityMemberOverride", "isInnovator", "supportType", "connectionStrength", "relationshipCircle", "relationshipCircleOverride"];
+      const allowedFields = ["name", "nickname", "businessName", "ventureType", "role", "roleOther", "email", "phone", "age", "ethnicity", "location", "suburb", "localBoard", "tags", "revenueBand", "metrics", "notes", "active", "consentStatus", "consentDate", "consentNotes", "stage", "whatTheyAreBuilding", "relationshipStage", "isCommunityMember", "communityMemberOverride", "isInnovator", "supportType", "connectionStrength", "relationshipCircle", "relationshipCircleOverride", "vipReason"];
       const filteredBody: Record<string, any> = {};
       for (const field of allowedFields) {
         if (req.body[field] !== undefined) {
@@ -7278,6 +7278,117 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     }
   });
 
+  app.get("/api/ecosystem/vip", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const allContacts = await storage.getContacts(userId);
+      const allGroups = await storage.getGroups(userId);
+
+      const vipContacts = allContacts
+        .filter((c: any) => c.isVip)
+        .map((c: any) => ({
+          id: c.id,
+          type: "contact" as const,
+          name: c.name,
+          email: c.email,
+          businessName: c.businessName,
+          linkedGroupName: c.linkedGroupName,
+          vipReason: c.vipReason,
+          movedToVipAt: c.movedToVipAt,
+          stage: c.stage,
+          supportType: c.supportType,
+          role: c.role,
+        }));
+
+      const vipGroups = allGroups
+        .filter((g: any) => g.isVip)
+        .map((g: any) => ({
+          id: g.id,
+          type: "group" as const,
+          name: g.name,
+          groupType: g.type,
+          vipReason: g.vipReason,
+          movedToVipAt: g.movedToVipAt,
+          ecosystemRoles: g.ecosystemRoles,
+          memberCount: 0,
+        }));
+
+      const densityResult = await db.execute(sql`
+        SELECT group_id, COUNT(*) as total_members,
+          COUNT(CASE WHEN contact_id IN (
+            SELECT id FROM contacts WHERE user_id = ${userId} AND is_community_member = true
+          ) THEN 1 END) as community_count
+        FROM group_members
+        WHERE group_id IN (SELECT id FROM groups WHERE user_id = ${userId} AND is_vip = true)
+        GROUP BY group_id
+      `);
+
+      const densityMap: Record<number, number> = {};
+      for (const row of densityResult.rows) {
+        densityMap[Number(row.group_id)] = Number(row.total_members) || 0;
+      }
+      for (const g of vipGroups) {
+        g.memberCount = densityMap[g.id] || 0;
+      }
+
+      const combined = [...vipContacts, ...vipGroups].sort((a, b) => {
+        const aDate = a.movedToVipAt ? new Date(a.movedToVipAt).getTime() : 0;
+        const bDate = b.movedToVipAt ? new Date(b.movedToVipAt).getTime() : 0;
+        return bDate - aDate;
+      });
+
+      res.json(combined);
+    } catch (err: any) {
+      console.error("VIP endpoint error:", err);
+      res.status(500).json({ message: "Failed to get VIP list" });
+    }
+  });
+
+  app.post("/api/groups/:id/promote-vip", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const groupId = parseInt(req.params.id);
+      const group = await storage.getGroup(groupId);
+      if (!group || group.userId !== userId) {
+        return res.status(404).json({ message: "Group not found" });
+      }
+      if (group.isVip) {
+        return res.json({ group, message: "Already VIP" });
+      }
+      const updates: Record<string, any> = {
+        isVip: true,
+        movedToVipAt: new Date(),
+      };
+      if (!group.isInnovator) updates.isInnovator = true;
+      if (!group.isCommunity) updates.isCommunity = true;
+      if (req.body.vipReason) updates.vipReason = req.body.vipReason;
+      const updated = await storage.updateGroup(groupId, updates);
+      res.json({ group: updated });
+    } catch (err: any) {
+      console.error("Group VIP promote error:", err);
+      res.status(500).json({ message: "Failed to promote group to VIP" });
+    }
+  });
+
+  app.post("/api/groups/:id/demote-vip", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const groupId = parseInt(req.params.id);
+      const group = await storage.getGroup(groupId);
+      if (!group || group.userId !== userId) {
+        return res.status(404).json({ message: "Group not found" });
+      }
+      const updated = await storage.updateGroup(groupId, {
+        isVip: false,
+        movedToVipAt: null,
+        vipReason: null,
+      });
+      res.json({ group: updated });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to demote group from VIP" });
+    }
+  });
+
   app.get("/api/contacts/community/junk-scan", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
@@ -7966,6 +8077,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       } else if (!contact.isVip) {
         updates.isVip = true;
         updates.movedToVipAt = new Date();
+        if (req.body.vipReason) updates.vipReason = req.body.vipReason;
         newTier = "vip";
       } else {
         return res.json({ contact, newTier: "vip", groupsUpdated: 0, message: "Already at highest tier" });

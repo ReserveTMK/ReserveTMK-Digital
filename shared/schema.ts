@@ -97,6 +97,7 @@ export const contacts = pgTable("contacts", {
   communityMemberOverride: boolean("community_member_override").default(false),
   isInnovator: boolean("is_innovator").default(false),
   isVip: boolean("is_vip").default(false),
+  vipReason: text("vip_reason"),
   supportType: text("support_type").array(),
   connectionStrength: text("connection_strength"),
   relationshipCircle: text("relationship_circle"),
@@ -362,11 +363,14 @@ export const groups = pgTable("groups", {
   importSource: text("import_source"),
   isCommunity: boolean("is_community").default(false),
   isInnovator: boolean("is_innovator").default(false),
+  isVip: boolean("is_vip").default(false),
+  vipReason: text("vip_reason"),
   active: boolean("active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   movedToCommunityAt: timestamp("moved_to_community_at"),
   movedToInnovatorsAt: timestamp("moved_to_innovators_at"),
+  movedToVipAt: timestamp("moved_to_vip_at"),
 });
 
 export const groupMembers = pgTable("group_members", {

@@ -38,8 +38,9 @@ PostgreSQL is used as the database, integrated with Drizzle ORM. The schema incl
 -   **Journey Framework**: Tracks culturally-grounded Maori stage progression (kakano → tipu → ora) with visual components.
 -   **NZ Timezone Standardization**: All date and time calculations are standardized to Pacific/Auckland.
 -   **Calendar as Tracking Hub**: Integrates Google Calendar sync, manual activity logging, and monthly summaries. Daily foot traffic input per day in the day view panel; monthly summary shows aggregated totals from `dailyFootTraffic` table.
--   **Community Structure**: A 4-tier system (All Contacts / Our Community / Our Innovators / VIP) with dynamic filtering, contact roles, group types, and promote/demote functionality.
--   **Our Innovators**: A curated subset of contacts with specific support types and connection strengths.
+-   **Community Structure**: A 4-tier system (All Contacts / Our Community / Our Innovators / VIP) with dynamic filtering, contact roles, group types, and promote/demote functionality. VIP applies to both contacts and groups with a `vipReason` field capturing why they're priority. People and Groups list cards are compact (name + group/type only) with tier-specific extras.
+-   **Our Innovators**: A curated subset of contacts with specific support types and connection strengths. Cards show journey stage badge and support type ticks.
+-   **Ecosystem View**: Role-based lane layout (Funders, Delivery Partners, Connectors, etc.) with a "Priority Conversations" VIP section showing combined VIP contacts and groups. Groups can appear in multiple role lanes via `ecosystemRoles` array.
 -   **Debriefs/Impact Tracking**: Supports manual impact tags, weekly summaries, and AI analysis syncing 8 metric scores to contacts.
 -   **Projects**: Tracks internal initiatives with AI-powered task extraction.
 -   **Venue Hire System**: Manages venue bookings with automated workflows, conflict checking, and post-booking surveys.

@@ -24,6 +24,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -72,6 +73,9 @@ export default function Contacts() {
   const [primaryMergeId, setPrimaryMergeId] = useState<number | null>(null);
   const [layoutView, setLayoutView] = useState<"list" | "table">("list");
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
+  const [vipReasonDialogOpen, setVipReasonDialogOpen] = useState(false);
+  const [vipReasonContactId, setVipReasonContactId] = useState<number | null>(null);
+  const [vipReasonText, setVipReasonText] = useState("");
 
   useEffect(() => {
     if (isMobile) {
@@ -249,22 +253,43 @@ export default function Contacts() {
   });
 
   const promoteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      const res = await apiRequest("POST", `/api/contacts/${id}/promote`);
+    mutationFn: async ({ id, vipReason }: { id: number; vipReason?: string }) => {
+      const body = vipReason ? { vipReason } : undefined;
+      const res = await apiRequest("POST", `/api/contacts/${id}/promote`, body);
       return res.json();
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
       queryClient.invalidateQueries({ queryKey: ["/api/groups/community-density"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ecosystem/vip"] });
       const tierLabel = data.newTier === "vip" ? "VIP" : data.newTier === "our_innovators" ? "Our Innovators" : "Our Community";
       const groupMsg = data.groupsUpdated ? ` (${data.groupsUpdated} group${data.groupsUpdated !== 1 ? 's' : ''} updated)` : '';
       toast({ title: "Promoted", description: `Moved to ${tierLabel}${groupMsg}` });
+      setVipReasonDialogOpen(false);
+      setVipReasonContactId(null);
+      setVipReasonText("");
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     },
   });
+
+  const handlePromote = (contactId: number) => {
+    const contact = contacts?.find((c: any) => c.id === contactId);
+    if (contact && (contact as any).isInnovator) {
+      setVipReasonContactId(contactId);
+      setVipReasonText("");
+      setVipReasonDialogOpen(true);
+    } else {
+      promoteMutation.mutate({ id: contactId });
+    }
+  };
+
+  const confirmVipPromotion = () => {
+    if (!vipReasonContactId) return;
+    promoteMutation.mutate({ id: vipReasonContactId, vipReason: vipReasonText.trim() || undefined });
+  };
 
   const demoteMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -275,6 +300,7 @@ export default function Contacts() {
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
       queryClient.invalidateQueries({ queryKey: ["/api/groups/community-density"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ecosystem/vip"] });
       const tierLabel = data.newTier === "our_innovators" ? "Our Innovators" : data.newTier === "our_community" ? "Our Community" : "All Contacts";
       const groupMsg = data.groupsUpdated ? ` (${data.groupsUpdated} group${data.groupsUpdated !== 1 ? 's' : ''} updated)` : '';
       toast({ title: "Demoted", description: `Moved to ${tierLabel}${groupMsg}` });
@@ -423,7 +449,7 @@ export default function Contacts() {
                       {(viewMode === "all" || viewMode === "community" || viewMode === "innovators") && (
                         <DropdownMenuItem onClick={async () => {
                           for (const id of Array.from(selectedContacts)) {
-                            await promoteMutation.mutateAsync(id);
+                            await promoteMutation.mutateAsync({ id });
                           }
                           setSelectedContacts(new Set());
                         }} disabled={promoteMutation.isPending} data-testid="menu-bulk-promote">
@@ -463,7 +489,7 @@ export default function Contacts() {
                     {(viewMode === "all" || viewMode === "community" || viewMode === "innovators") && (
                       <Button variant="outline" onClick={async () => {
                         for (const id of Array.from(selectedContacts)) {
-                          await promoteMutation.mutateAsync(id);
+                          await promoteMutation.mutateAsync({ id });
                         }
                         setSelectedContacts(new Set());
                       }} disabled={promoteMutation.isPending} data-testid="button-bulk-promote">
@@ -1016,7 +1042,7 @@ export default function Contacts() {
                   </div>
                 </div>
               ) : layoutView === "table" ? (
-                <ContactsTableView contacts={filteredContacts || []} allContacts={(contacts as any[]) || []} editMode={editMode} selectedContacts={selectedContacts} toggleContactSelection={toggleContactSelection} toggleSelectAll={toggleSelectAll} onToggleCommunity={(id, isCommunityMember) => communityStatusMutation.mutate({ id, isCommunityMember })} drilldownTier={viewMode} onPromote={(id) => promoteMutation.mutate(id)} promotePending={promoteMutation.isPending} />
+                <ContactsTableView contacts={filteredContacts || []} allContacts={(contacts as any[]) || []} editMode={editMode} selectedContacts={selectedContacts} toggleContactSelection={toggleContactSelection} toggleSelectAll={toggleSelectAll} onToggleCommunity={(id, isCommunityMember) => communityStatusMutation.mutate({ id, isCommunityMember })} drilldownTier={viewMode} onPromote={(id) => handlePromote(id)} promotePending={promoteMutation.isPending} />
               ) : (
             <div className="space-y-2">
               {(filteredContacts || []).map((contact: any) => (
@@ -1080,7 +1106,7 @@ export default function Contacts() {
                       size="icon"
                       variant="ghost"
                       className="shrink-0"
-                      onClick={() => promoteMutation.mutate(contact.id)}
+                      onClick={() => handlePromote(contact.id)}
                       disabled={promoteMutation.isPending}
                       title="Promote to Our Innovators"
                       data-testid={`button-promote-innovator-${contact.id}`}
@@ -1094,7 +1120,7 @@ export default function Contacts() {
                       size="icon"
                       variant="ghost"
                       className="shrink-0"
-                      onClick={() => promoteMutation.mutate(contact.id)}
+                      onClick={() => handlePromote(contact.id)}
                       disabled={promoteMutation.isPending}
                       title="Promote to VIP"
                       data-testid={`button-promote-vip-${contact.id}`}
@@ -1191,6 +1217,40 @@ export default function Contacts() {
             </div>
           )}
         </div>
+
+      <Dialog open={vipReasonDialogOpen} onOpenChange={(v) => { setVipReasonDialogOpen(v); if (!v) { setVipReasonContactId(null); setVipReasonText(""); } }}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Star className="w-5 h-5 text-yellow-500" />
+              Promote to VIP
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Why is this person being flagged as a VIP priority conversation?
+            </p>
+            <Textarea
+              value={vipReasonText}
+              onChange={(e: any) => setVipReasonText(e.target.value)}
+              placeholder="e.g. Needs follow-up on funding application, key partnership discussion..."
+              className="resize-none"
+              rows={3}
+              data-testid="input-vip-reason"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setVipReasonDialogOpen(false); setVipReasonContactId(null); setVipReasonText(""); }} data-testid="button-cancel-vip-reason">
+              Cancel
+            </Button>
+            <Button onClick={confirmVipPromotion} disabled={promoteMutation.isPending} data-testid="button-confirm-vip-promote">
+              {promoteMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Promote to VIP
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       </main>
   );
 }

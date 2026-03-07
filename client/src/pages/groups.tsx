@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/beautiful-button";
 import { useGroups, useCreateGroup, useUpdateGroup, useDeleteGroup, useGroupMembers, useAddGroupMember, useRemoveGroupMember, useEnrichGroup, useGroupTaxonomyLinks, useSaveGroupTaxonomyLinks } from "@/hooks/use-groups";
 import { useContacts } from "@/hooks/use-contacts";
 import { useTaxonomy } from "@/hooks/use-taxonomy";
-import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe, Target, Pencil, Edit3, CheckSquare, UserCheck, Merge, List, Table, ArrowUp, ArrowDown, ArrowUpDown, Lightbulb } from "lucide-react";
+import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe, Target, Pencil, Edit3, CheckSquare, UserCheck, Merge, List, Table, ArrowUp, ArrowDown, ArrowUpDown, Lightbulb, MoreVertical, Star } from "lucide-react";
 import { Link } from "wouter";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -23,6 +23,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { GROUP_TYPES, type Group, type GroupMember } from "@shared/schema";
 import {
@@ -70,7 +76,7 @@ export default function Groups() {
   const [editMode, setEditMode] = useState(false);
   const [selectedGroups, setSelectedGroups] = useState<Set<number>>(new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<"community" | "innovators" | "all">("all");
+  const [viewMode, setViewMode] = useState<"community" | "innovators" | "all" | "vip">("all");
   const [layoutView, setLayoutView] = useState<"list" | "table">("list");
 
 
@@ -80,6 +86,9 @@ export default function Groups() {
   const [bulkTypeOpen, setBulkTypeOpen] = useState(false);
   const [bulkTypeValue, setBulkTypeValue] = useState<string>("");
   const [bulkTypeOther, setBulkTypeOther] = useState<string>("");
+  const [vipReasonDialogOpen, setVipReasonDialogOpen] = useState(false);
+  const [vipReasonGroupId, setVipReasonGroupId] = useState<number | null>(null);
+  const [vipReasonText, setVipReasonText] = useState("");
   const { toast } = useToast();
 
   const createGroup = useCreateGroup();
@@ -159,9 +168,13 @@ export default function Groups() {
   });
 
   const promoteMutation = useMutation({
-    mutationFn: async (groupId: number) => {
+    mutationFn: async ({ groupId, vipReason }: { groupId: number; vipReason?: string }) => {
       const group = groups?.find((g: Group) => g.id === groupId);
       if (!group) throw new Error("Group not found");
+      if (viewMode === "innovators") {
+        const res = await apiRequest("POST", `/api/groups/${groupId}/promote-vip`, vipReason ? { vipReason } : undefined);
+        return res.json();
+      }
       const data: Record<string, any> = {};
       if (viewMode === "all") {
         data.isCommunity = true;
@@ -176,17 +189,40 @@ export default function Groups() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
       queryClient.invalidateQueries({ queryKey: ['/api/groups/community-density'] });
-      toast({ title: "Group promoted", description: viewMode === "all" ? "Promoted to Our Community" : "Promoted to Our Innovators" });
+      queryClient.invalidateQueries({ queryKey: ['/api/ecosystem/vip'] });
+      const label = viewMode === "all" ? "Promoted to Our Community" : viewMode === "community" ? "Promoted to Our Innovators" : "Promoted to VIP";
+      toast({ title: "Group promoted", description: label });
+      setVipReasonDialogOpen(false);
+      setVipReasonGroupId(null);
+      setVipReasonText("");
     },
     onError: (error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
 
+  const handleGroupPromote = (groupId: number) => {
+    if (viewMode === "innovators") {
+      setVipReasonGroupId(groupId);
+      setVipReasonText("");
+      setVipReasonDialogOpen(true);
+    } else {
+      promoteMutation.mutate({ groupId });
+    }
+  };
+
+  const confirmGroupVipPromotion = () => {
+    if (!vipReasonGroupId) return;
+    promoteMutation.mutate({ groupId: vipReasonGroupId, vipReason: vipReasonText.trim() || undefined });
+  };
+
   const demoteMutation = useMutation({
     mutationFn: async (groupId: number) => {
       const group = groups?.find((g: Group) => g.id === groupId);
       if (!group) throw new Error("Group not found");
+      if (viewMode === "vip") {
+        return apiRequest("POST", `/api/groups/${groupId}/demote-vip`);
+      }
       const data: Record<string, any> = {};
       if (viewMode === "innovators") {
         data.isInnovator = false;
@@ -201,6 +237,7 @@ export default function Groups() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
       queryClient.invalidateQueries({ queryKey: ['/api/groups/community-density'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/ecosystem/vip'] });
       toast({ title: "Group demoted" });
     },
     onError: (error) => {
@@ -211,6 +248,9 @@ export default function Groups() {
   const bulkPromoteMutation = useMutation({
     mutationFn: async (groupIds: number[]) => {
       const promises = groupIds.map(async (id) => {
+        if (viewMode === "innovators") {
+          return apiRequest("POST", `/api/groups/${id}/promote-vip`);
+        }
         const data: Record<string, any> = {};
         if (viewMode === "all") {
           data.isCommunity = true;
@@ -226,6 +266,7 @@ export default function Groups() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
       queryClient.invalidateQueries({ queryKey: ['/api/groups/community-density'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/ecosystem/vip'] });
       toast({ title: "Groups promoted", description: `${selectedGroups.size} group(s) promoted` });
       setSelectedGroups(new Set());
     },
@@ -237,6 +278,9 @@ export default function Groups() {
   const bulkDemoteMutation = useMutation({
     mutationFn: async (groupIds: number[]) => {
       const promises = groupIds.map(async (id) => {
+        if (viewMode === "vip") {
+          return apiRequest("POST", `/api/groups/${id}/demote-vip`);
+        }
         const data: Record<string, any> = {};
         if (viewMode === "innovators") {
           data.isInnovator = false;
@@ -252,6 +296,7 @@ export default function Groups() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
       queryClient.invalidateQueries({ queryKey: ['/api/groups/community-density'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/ecosystem/vip'] });
       toast({ title: "Groups demoted", description: `${selectedGroups.size} group(s) demoted` });
       setSelectedGroups(new Set());
     },
@@ -273,6 +318,11 @@ export default function Groups() {
   const allCount = useMemo(() => {
     if (!groups) return 0;
     return groups.length;
+  }, [groups]);
+
+  const vipCount = useMemo(() => {
+    if (!groups) return 0;
+    return groups.filter((g: Group) => (g as any).isVip === true).length;
   }, [groups]);
 
   const openMergeDialog = () => {
@@ -307,6 +357,8 @@ export default function Groups() {
       result = result.filter((g: Group) => g.isInnovator === true);
     } else if (viewMode === "community") {
       result = result.filter((g: Group) => g.isCommunity === true);
+    } else if (viewMode === "vip") {
+      result = result.filter((g: Group) => (g as any).isVip === true);
     }
     result.sort((a: Group, b: Group) => {
       const aCount = communityDensity?.[a.id]?.communityCount || 0;
@@ -359,7 +411,7 @@ export default function Groups() {
       onToggleSelect={() => toggleGroupSelection(group.id)}
       communityCount={communityDensity?.[group.id]?.communityCount || 0}
       viewMode={viewMode}
-      onPromote={() => promoteMutation.mutate(group.id)}
+      onPromote={() => handleGroupPromote(group.id)}
       isPromoting={promoteMutation.isPending}
     />
   );
@@ -384,7 +436,7 @@ export default function Groups() {
                   <Trash2 className="w-4 h-4 mr-2" />
                   Delete ({selectedGroups.size})
                 </Button>
-                {(viewMode === "all" || viewMode === "community") && (
+                {(viewMode === "all" || viewMode === "community" || viewMode === "innovators") && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -506,6 +558,15 @@ export default function Groups() {
                 >
                   All Groups ({allCount})
                 </Button>
+                <Button
+                  variant={viewMode === "vip" ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setViewMode("vip")}
+                  data-testid="button-view-vip"
+                >
+                  <Star className="w-4 h-4 mr-1.5" />
+                  VIP ({vipCount})
+                </Button>
               </div>
               <div className="flex items-center gap-1 border rounded-lg p-0.5" data-testid="layout-toggle">
                 <Button
@@ -596,11 +657,11 @@ export default function Groups() {
               onEdit={(group) => openEditDialog(group)}
               onDelete={(groupId) => setDeleteConfirmId(groupId)}
               viewMode={viewMode}
-              onPromote={(groupId) => promoteMutation.mutate(groupId)}
+              onPromote={(groupId) => handleGroupPromote(groupId)}
               isPromoting={promoteMutation.isPending}
             />
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="space-y-1">
               {displayGroups.map(renderGroupCard)}
             </div>
           )}
@@ -827,6 +888,40 @@ export default function Groups() {
             )}
           </DialogContent>
         </Dialog>
+
+        <Dialog open={vipReasonDialogOpen} onOpenChange={(v) => { setVipReasonDialogOpen(v); if (!v) { setVipReasonGroupId(null); setVipReasonText(""); } }}>
+          <DialogContent className="sm:max-w-[420px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Star className="w-5 h-5 text-yellow-500" />
+                Promote to VIP
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Why is this group being flagged as a VIP priority conversation?
+              </p>
+              <Textarea
+                value={vipReasonText}
+                onChange={(e) => setVipReasonText(e.target.value)}
+                placeholder="e.g. Key funding partner, strategic collaboration opportunity..."
+                className="resize-none"
+                rows={3}
+                data-testid="input-vip-reason-group"
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setVipReasonDialogOpen(false); setVipReasonGroupId(null); setVipReasonText(""); }} data-testid="button-cancel-vip-reason-group">
+                Cancel
+              </Button>
+              <Button onClick={confirmGroupVipPromotion} disabled={promoteMutation.isPending} data-testid="button-confirm-vip-promote-group">
+                {promoteMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Promote to VIP
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
       </main>
   );
 }
@@ -1078,90 +1173,86 @@ function GroupCard({ group, onSelect, onEdit, onDelete, editMode, isSelected, on
     }
   };
 
+  const promoteIcon = viewMode === "all" ? <Users className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" /> :
+    viewMode === "community" ? <Lightbulb className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" /> :
+    viewMode === "innovators" ? <Star className="w-3.5 h-3.5 text-yellow-600 dark:text-yellow-400" /> : null;
+
+  const promoteTitle = viewMode === "all" ? "Add to Our Community" :
+    viewMode === "community" ? "Promote to Our Innovators" :
+    viewMode === "innovators" ? "Promote to VIP" : "";
+
+  const showPromote = viewMode === "all" ? !group.isCommunity :
+    viewMode === "community" ? !group.isInnovator :
+    viewMode === "innovators" ? !group.isVip : false;
+
   return (
-    <Card
-      className={`p-4 hover-elevate cursor-pointer ${editMode && isSelected ? "ring-2 ring-primary" : ""}`}
+    <div
+      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border hover-elevate cursor-pointer transition-colors ${editMode && isSelected ? "ring-2 ring-primary bg-primary/5" : "bg-card"}`}
       onClick={handleClick}
       data-testid={`card-group-${group.id}`}
     >
-      <div className="space-y-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            {editMode && (
-              <Checkbox
-                checked={isSelected}
-                onCheckedChange={() => onToggleSelect()}
-                onClick={(e) => e.stopPropagation()}
-                className="shrink-0"
-                data-testid={`checkbox-group-${group.id}`}
-              />
-            )}
-            <div className="shrink-0 w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Building2 className="w-4 h-4 text-primary" />
-            </div>
-            <div className="min-w-0">
-              <h3 className="font-medium text-sm truncate" data-testid={`text-group-name-${group.id}`}>{group.name}</h3>
-              <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-                <Badge className={`text-[10px] ${GROUP_TYPE_COLORS[group.type] || ""}`}>
-                  {displayGroupType(group)}
-                </Badge>
-                {communityCount > 0 && (
-                  <Badge className="text-[10px] bg-purple-500/10 text-purple-700 dark:text-purple-300" data-testid={`badge-community-${group.id}`}>
-                    <UserCheck className="w-3 h-3 mr-0.5" />
-                    {communityCount} community
-                  </Badge>
-                )}
-              </div>
-            </div>
-          </div>
-          {!editMode && (
-            <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-              {viewMode && viewMode !== "innovators" && onPromote && (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={onPromote}
-                  disabled={isPromoting}
-                  title={viewMode === "all" ? "Promote to Our Community" : "Promote to Our Innovators"}
-                  data-testid={`button-promote-group-${group.id}`}
-                >
-                  <ArrowUp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                </Button>
-              )}
-              <Button size="icon" variant="ghost" onClick={onEdit} title="Edit" data-testid={`button-edit-group-${group.id}`}>
-                <Pencil className="w-3.5 h-3.5" />
-              </Button>
-              <Button size="icon" variant="ghost" className="text-muted-foreground" onClick={onDelete} title="Delete" data-testid={`button-delete-group-${group.id}`}>
-                <Trash2 className="w-3.5 h-3.5" />
-              </Button>
-            </div>
-          )}
-        </div>
-
-        {group.description && (
-          <p className="text-xs text-muted-foreground line-clamp-2">{group.description}</p>
-        )}
-
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <Users className="w-3 h-3" />
-            {memberCount} {memberCount === 1 ? "member" : "members"}
-          </span>
-          {group.contactEmail && (
-            <span className="flex items-center gap-1">
-              <Mail className="w-3 h-3" />
-              {group.contactEmail}
-            </span>
-          )}
-          {group.address && (
-            <span className="flex items-center gap-1">
-              <MapPin className="w-3 h-3" />
-              {group.address}
-            </span>
-          )}
-        </div>
+      {editMode && (
+        <Checkbox
+          checked={isSelected}
+          onCheckedChange={() => onToggleSelect()}
+          onClick={(e) => e.stopPropagation()}
+          className="shrink-0"
+          data-testid={`checkbox-group-${group.id}`}
+        />
+      )}
+      <div className="shrink-0 w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center">
+        <Building2 className="w-4 h-4 text-primary" />
       </div>
-    </Card>
+      <div className="flex-1 min-w-0">
+        <h3 className="font-medium text-sm truncate" data-testid={`text-group-name-${group.id}`}>{group.name}</h3>
+      </div>
+      <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+        <Badge className={`text-[10px] ${GROUP_TYPE_COLORS[group.type] || ""}`}>
+          {displayGroupType(group)}
+        </Badge>
+        <span className="flex items-center gap-1 text-xs text-muted-foreground" data-testid={`text-members-${group.id}`}>
+          <Users className="w-3 h-3" />
+          {memberCount}
+        </span>
+        {communityCount > 0 && (
+          <Badge className="text-[10px] bg-purple-500/10 text-purple-700 dark:text-purple-300" data-testid={`badge-community-${group.id}`}>
+            <UserCheck className="w-3 h-3 mr-0.5" />
+            {communityCount}
+          </Badge>
+        )}
+        {!editMode && showPromote && onPromote && (
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={onPromote}
+            disabled={isPromoting}
+            title={promoteTitle}
+            data-testid={`button-promote-group-${group.id}`}
+          >
+            {promoteIcon}
+          </Button>
+        )}
+        {!editMode && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon" variant="ghost" data-testid={`button-menu-group-${group.id}`}>
+                <MoreVertical className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onEdit} data-testid={`menu-edit-group-${group.id}`}>
+                <Pencil className="w-4 h-4 mr-2" />
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onDelete} className="text-destructive" data-testid={`menu-delete-group-${group.id}`}>
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+    </div>
   );
 }
 
