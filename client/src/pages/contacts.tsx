@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { useContacts, useDeleteContact } from "@/hooks/use-contacts";
-import { Plus, Search, Filter, Loader2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, Lightbulb, ChevronRight, Upload, Star } from "lucide-react";
+import { Plus, Search, Filter, Loader2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, Lightbulb, ChevronRight, Upload, Star, BookUser, CircleCheck, Sprout, Leaf, Sun, Ban } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useState, useMemo, useEffect } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -867,6 +867,7 @@ export default function Contacts() {
                   Our Community ({tierCounts.community})
                 </TabsTrigger>
                 <TabsTrigger value="all" className="shrink-0" data-testid="button-view-all">
+                  <BookUser className="w-4 h-4 mr-1.5" />
                   All Contacts ({tierCounts.all})
                 </TabsTrigger>
                 <TabsTrigger value="vip" className="shrink-0" data-testid="button-view-vip">
@@ -1017,9 +1018,9 @@ export default function Contacts() {
               ) : layoutView === "table" ? (
                 <ContactsTableView contacts={filteredContacts || []} allContacts={(contacts as any[]) || []} editMode={editMode} selectedContacts={selectedContacts} toggleContactSelection={toggleContactSelection} toggleSelectAll={toggleSelectAll} onToggleCommunity={(id, isCommunityMember) => communityStatusMutation.mutate({ id, isCommunityMember })} drilldownTier={viewMode} onPromote={(id) => promoteMutation.mutate(id)} promotePending={promoteMutation.isPending} />
               ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {(filteredContacts || []).map((contact: any) => (
-                <div key={contact.id} className="group bg-card hover:bg-card/80 border border-border rounded-xl p-4 transition-all duration-200 hover:shadow-md flex items-center gap-4" data-testid={`card-contact-${contact.id}`}>
+                <div key={contact.id} className="group bg-card hover:bg-card/80 border border-border rounded-xl px-4 py-3 transition-all duration-200 hover:shadow-md flex items-center gap-3" data-testid={`card-contact-${contact.id}`}>
                   {editMode && (
                     <Checkbox
                       checked={selectedContacts.has(contact.id)}
@@ -1028,94 +1029,50 @@ export default function Contacts() {
                       data-testid={`checkbox-contact-${contact.id}`}
                     />
                   )}
-                  <Link href={`/contacts/${contact.id}`} className="flex items-center gap-4 flex-1 min-w-0 cursor-pointer" data-testid={`link-contact-${contact.id}`}>
-                    <div className="w-12 h-12 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-lg shrink-0">
+                  <Link href={`/contacts/${contact.id}`} className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer" data-testid={`link-contact-${contact.id}`}>
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-base shrink-0">
                       {contact.name[0]}
                     </div>
                     
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                        <h3 className="text-base font-bold font-display text-foreground truncate group-hover:text-primary transition-colors" data-testid={`text-name-${contact.id}`}>
-                          {contact.name}
-                        </h3>
-                        {contact.isVip && (
-                          <Badge variant="outline" className="text-[10px] h-5 px-1.5 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800" data-testid={`badge-vip-${contact.id}`}>
-                            <Star className="w-3 h-3 mr-0.5" />
-                            VIP
-                          </Badge>
-                        )}
-                        {contact.isInnovator && (
-                          <Badge variant="outline" className="text-[10px] h-5 px-1.5 bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800" data-testid={`badge-innovator-${contact.id}`}>
-                            <Lightbulb className="w-3 h-3 mr-0.5" />
-                            Innovator
-                          </Badge>
-                        )}
-                        {getCircleBadge(contact.relationshipCircle)}
-                      </div>
-                      
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                        <p className="text-xs text-muted-foreground truncate" data-testid={`text-email-${contact.id}`}>
-                          {contact.email || "No email"}
-                        </p>
-                        <p className="text-xs text-primary/80 font-medium" data-testid={`text-last-active-${contact.id}`}>
-                          {(contact.lastActiveDate || contact.lastInteractionDate)
-                            ? `Last active: ${format(new Date(contact.lastActiveDate || contact.lastInteractionDate), "MMM d, yyyy")}`
-                            : `Added: ${format(new Date(contact.createdAt || Date.now()), "MMM d, yyyy")}`}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-3 mt-1.5">
-                        {(() => {
-                          const total = (contact.interactionCount || 0) + (contact.eventCount || 0);
-                          if (total > 0) return (
-                            <span className="flex items-center gap-1 text-xs text-muted-foreground" data-testid={`stat-interactions-${contact.id}`}>
-                              <MessageSquare className="w-3 h-3" />
-                              {total} interaction{total !== 1 ? 's' : ''}
-                            </span>
-                          );
-                          return null;
-                        })()}
-                        {(contact.debriefCount || 0) > 0 && (
-                          <span className="flex items-center gap-1 text-xs text-muted-foreground" data-testid={`stat-debriefs-${contact.id}`}>
-                            <FileText className="w-3 h-3" />
-                            {contact.debriefCount} debrief{contact.debriefCount !== 1 ? 's' : ''}
-                          </span>
-                        )}
-                        {(contact.interactionCount || 0) + (contact.eventCount || 0) === 0 && !(contact.debriefCount || 0) && contact.importSource && (
-                          <span className="flex items-center gap-1 text-xs text-muted-foreground" data-testid={`stat-source-${contact.id}`}>
-                            <Users className="w-3 h-3" />
-                            via {contact.importSource === 'gmail' ? 'Gmail' : contact.importSource === 'legacy_report' ? 'Legacy Report' : contact.importSource}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col items-end gap-1 max-w-[200px] shrink-0">
-                      <div className="flex items-center gap-1">
-                        {contact.ventureType && (
-                          <Badge variant="secondary" className="text-[10px] h-5 px-1.5 shrink-0 hidden sm:inline-flex capitalize" data-testid={`badge-venture-type-${contact.id}`}>
-                            {({
-                              commercial_business: "Commercial Business",
-                              social_enterprise: "Social Enterprise",
-                              creative_movement: "Creative Movement",
-                              community_initiative: "Community Initiative",
-                              exploring: "Exploring",
-                              ecosystem_partner: "Ecosystem Partner",
-                            } as Record<string, string>)[contact.ventureType] || contact.ventureType.replace(/_/g, ' ')}
-                          </Badge>
-                        )}
-                        {contact.role && (
-                          <Badge variant="outline" className="text-[10px] h-5 px-2 shrink-0 hidden sm:inline-flex" data-testid={`badge-role-side-${contact.id}`}>
-                            {contact.role === "Other" && contact.roleOther ? `Other - ${contact.roleOther}` : contact.role}
-                          </Badge>
-                        )}
-                      </div>
+                      <h3 className="text-sm font-bold font-display text-foreground truncate group-hover:text-primary transition-colors" data-testid={`text-name-${contact.id}`}>
+                        {contact.name}
+                      </h3>
                       {(contact.linkedGroupName || contact.businessName) && (
-                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground truncate max-w-full" data-testid={`text-group-link-${contact.id}`}>
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground truncate" data-testid={`text-group-link-${contact.id}`}>
                           <Building2 className="w-3 h-3 shrink-0" />
                           {contact.linkedGroupName || contact.businessName}
                         </span>
                       )}
                     </div>
+
+                    {viewMode === "innovators" && (
+                      <div className="flex items-center gap-2 shrink-0">
+                        {contact.stage && (
+                          <Badge variant="outline" className={`text-[10px] h-5 px-1.5 ${
+                            contact.stage === "kakano" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700" :
+                            contact.stage === "tipu" ? "bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-300 dark:border-sky-700" :
+                            contact.stage === "ora" ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700" :
+                            "bg-muted text-muted-foreground"
+                          }`} data-testid={`badge-stage-${contact.id}`}>
+                            {contact.stage === "kakano" && <Sprout className="w-3 h-3 mr-0.5" />}
+                            {contact.stage === "tipu" && <Leaf className="w-3 h-3 mr-0.5" />}
+                            {contact.stage === "ora" && <Sun className="w-3 h-3 mr-0.5" />}
+                            {contact.stage === "inactive" && <Ban className="w-3 h-3 mr-0.5" />}
+                            {contact.stage.charAt(0).toUpperCase() + contact.stage.slice(1)}
+                          </Badge>
+                        )}
+                        {Array.isArray(contact.supportType) && contact.supportType.length > 0 && (
+                          <div className="flex items-center gap-1" data-testid={`support-types-${contact.id}`}>
+                            {contact.supportType.map((st: string) => (
+                              <span key={st} className="flex items-center text-[10px] text-muted-foreground" title={st.replace(/_/g, ' ')}>
+                                <CircleCheck className="w-3.5 h-3.5 text-green-500" />
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </Link>
 
                   {viewMode === "community" && !contact.isInnovator && (
@@ -1143,6 +1100,20 @@ export default function Contacts() {
                       data-testid={`button-promote-vip-${contact.id}`}
                     >
                       <Star className="w-4 h-4 text-yellow-500" />
+                    </Button>
+                  )}
+
+                  {viewMode === "all" && !contact.isCommunityMember && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="shrink-0"
+                      onClick={() => communityStatusMutation.mutate({ id: contact.id, isCommunityMember: true })}
+                      disabled={communityStatusMutation.isPending}
+                      title="Add to Community"
+                      data-testid={`button-add-community-${contact.id}`}
+                    >
+                      <Users className="w-4 h-4 text-primary" />
                     </Button>
                   )}
 
