@@ -23,6 +23,10 @@ import {
   Package,
   FileText,
   X,
+  DollarSign,
+  Tag,
+  Info,
+  Users,
 } from "lucide-react";
 
 type PortalView = "login" | "dashboard" | "calendar";
@@ -158,6 +162,7 @@ function DashboardView({
 }) {
   const booker = authData.booker;
   const contact = authData.contact;
+  const isGroupLink = authData.isGroupLink === true;
 
   const { data: myBookings, isLoading: bookingsLoading } = useQuery<any[]>({
     queryKey: ["/api/booker/bookings", token],
@@ -213,9 +218,17 @@ function DashboardView({
             Reserve Tamaki
           </p>
           <h1 className="text-2xl font-bold mt-1" data-testid="heading-welcome">
-            Welcome, {contact?.name || booker.organizationName || "there"}
+            Welcome{isGroupLink ? `, ${authData.linkedGroupName || booker.organizationName || "Team"}` : `, ${contact?.name || booker.organizationName || "there"}`}
           </h1>
-          {(booker.organizationName || authData.linkedGroupName) && (
+          {isGroupLink && (
+            <div className="flex items-center gap-2 mt-1">
+              <Users className="w-4 h-4 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground" data-testid="text-group-portal">
+                Group Portal
+              </p>
+            </div>
+          )}
+          {!isGroupLink && (booker.organizationName || authData.linkedGroupName) && (
             <p className="text-sm text-muted-foreground" data-testid="text-org-name">
               {booker.organizationName || authData.linkedGroupName}
             </p>
@@ -291,7 +304,7 @@ function DashboardView({
         </Button>
 
         <div>
-          <h3 className="font-semibold mb-3" data-testid="heading-recent-bookings">Recent Bookings</h3>
+          <h3 className="font-semibold mb-3" data-testid="heading-recent-bookings">{isGroupLink ? "Group Bookings" : "Recent Bookings"}</h3>
           {bookingsLoading ? (
             <div className="space-y-2">
               <Skeleton className="h-16 w-full" />
@@ -310,6 +323,11 @@ function DashboardView({
                         {b.startDate ? new Date(b.startDate).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric", timeZone: "Pacific/Auckland" }) : "TBC"}
                         {b.startTime && b.endTime ? ` | ${formatTimeSlot(b.startTime)} - ${formatTimeSlot(b.endTime)}` : ""}
                       </p>
+                      {isGroupLink && b.bookerName && (
+                        <p className="text-xs text-muted-foreground mt-0.5" data-testid={`text-booked-by-${b.id}`}>
+                          Booked by {b.bookerName}
+                        </p>
+                      )}
                     </div>
                     <Badge variant="secondary" className="text-xs shrink-0">{b.status}</Badge>
                   </div>
@@ -323,6 +341,140 @@ function DashboardView({
   );
 }
 
+function parseTimeToMinutes(timeStr: string): number {
+  const parts = timeStr.split(":");
+  return parseInt(parts[0]) * 60 + parseInt(parts[1] || "0");
+}
+
+type PricingInfo = {
+  fullDayRate: number;
+  halfDayRate: number;
+  hourlyRate: number;
+  baseFullDayRate: number;
+  baseHalfDayRate: number;
+  baseHourlyRate: number;
+  pricingTier: string;
+  discountPercentage: number;
+  coveredByAgreement: boolean;
+  hasPackageCredits: boolean;
+  packageRemaining: number;
+};
+
+function calculateBookingPrice(
+  pricing: PricingInfo | undefined,
+  startTime: string,
+  endTime: string,
+  usePackageCredit: boolean
+): { basePrice: number; finalPrice: number; discount: number; label: string; isPackage: boolean; isCovered: boolean } {
+  if (!pricing) return { basePrice: 0, finalPrice: 0, discount: 0, label: "", isPackage: false, isCovered: false };
+
+  const startMin = parseTimeToMinutes(startTime);
+  const endMin = parseTimeToMinutes(endTime);
+  const durationHours = (endMin - startMin) / 60;
+
+  if (durationHours <= 0) return { basePrice: 0, finalPrice: 0, discount: 0, label: "", isPackage: false, isCovered: false };
+
+  if (pricing.coveredByAgreement) {
+    let basePrice: number;
+    if (durationHours >= 8) basePrice = pricing.baseFullDayRate;
+    else if (durationHours >= 4) basePrice = pricing.baseHalfDayRate;
+    else basePrice = Math.round(pricing.baseHourlyRate * durationHours * 100) / 100;
+    return { basePrice, finalPrice: 0, discount: basePrice, label: "Covered by agreement", isPackage: false, isCovered: true };
+  }
+
+  if (usePackageCredit && pricing.hasPackageCredits) {
+    let basePrice: number;
+    if (durationHours >= 8) basePrice = pricing.baseFullDayRate;
+    else if (durationHours >= 4) basePrice = pricing.baseHalfDayRate;
+    else basePrice = Math.round(pricing.baseHourlyRate * durationHours * 100) / 100;
+    return { basePrice, finalPrice: 0, discount: basePrice, label: `Package credit (${pricing.packageRemaining} remaining)`, isPackage: true, isCovered: false };
+  }
+
+  let basePrice: number;
+  let finalPrice: number;
+  if (durationHours >= 8) {
+    basePrice = pricing.baseFullDayRate;
+    finalPrice = pricing.fullDayRate;
+  } else if (durationHours >= 4) {
+    basePrice = pricing.baseHalfDayRate;
+    finalPrice = pricing.halfDayRate;
+  } else {
+    basePrice = Math.round(pricing.baseHourlyRate * durationHours * 100) / 100;
+    finalPrice = Math.round(pricing.hourlyRate * durationHours * 100) / 100;
+  }
+
+  const discount = Math.round((basePrice - finalPrice) * 100) / 100;
+  let label = "";
+  if (discount > 0) label = `${pricing.discountPercentage}% discount applied`;
+
+  return { basePrice, finalPrice, discount, label, isPackage: false, isCovered: false };
+}
+
+
+function PricingBreakdown({ pricing, startTime, endTime, usePackageCredit }: { pricing: PricingInfo | undefined; startTime: string; endTime: string; usePackageCredit: boolean }) {
+  if (!pricing) return null;
+
+  const result = calculateBookingPrice(pricing, startTime, endTime, usePackageCredit);
+  if (result.basePrice === 0 && !result.isCovered && !result.isPackage) return null;
+
+  const formatCurrency = (amount: number) => `$${amount.toFixed(2)}`;
+
+  if (result.isCovered) {
+    return (
+      <Card className="p-3 border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/20" data-testid="card-pricing-breakdown">
+        <div className="flex items-center gap-2 mb-2 flex-wrap">
+          <FileText className="w-4 h-4 text-green-600 dark:text-green-400" />
+          <span className="text-sm font-medium text-green-700 dark:text-green-300" data-testid="text-pricing-covered">Covered by agreement</span>
+        </div>
+        <div className="text-xs text-muted-foreground">
+          <span data-testid="text-pricing-value-saved">Value: {formatCurrency(result.basePrice)} — no charge</span>
+        </div>
+      </Card>
+    );
+  }
+
+  if (result.isPackage) {
+    return (
+      <Card className="p-3 border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20" data-testid="card-pricing-breakdown">
+        <div className="flex items-center gap-2 mb-2 flex-wrap">
+          <Package className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+          <span className="text-sm font-medium text-blue-700 dark:text-blue-300" data-testid="text-pricing-package">Included in package</span>
+        </div>
+        <div className="text-xs text-muted-foreground" data-testid="text-pricing-package-remaining">
+          {result.label}
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="p-3" data-testid="card-pricing-breakdown">
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        <DollarSign className="w-4 h-4 text-muted-foreground" />
+        <span className="text-sm font-medium" data-testid="text-pricing-heading">Estimated Cost</span>
+      </div>
+      <div className="space-y-1 text-sm">
+        {result.discount > 0 && (
+          <>
+            <div className="flex justify-between gap-2 flex-wrap text-muted-foreground">
+              <span>Base rate</span>
+              <span className="line-through" data-testid="text-pricing-base">{formatCurrency(result.basePrice)}</span>
+            </div>
+            <div className="flex justify-between gap-2 flex-wrap text-green-600 dark:text-green-400">
+              <span className="flex items-center gap-1 flex-wrap"><Tag className="w-3 h-3" /> {result.label}</span>
+              <span data-testid="text-pricing-discount">-{formatCurrency(result.discount)}</span>
+            </div>
+          </>
+        )}
+        <div className="flex justify-between gap-2 flex-wrap font-medium pt-1 border-t border-border">
+          <span>{result.discount > 0 ? "Total" : "Estimated total"}</span>
+          <span data-testid="text-pricing-total">{formatCurrency(result.finalPrice)}</span>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function CalendarView({
   authData,
   token,
@@ -333,6 +485,7 @@ function CalendarView({
   onBack: () => void;
 }) {
   const booker = authData.booker;
+  const isGroupLink = authData.isGroupLink === true;
   const now = new Date();
   const [currentYear, setCurrentYear] = useState(now.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(now.getMonth());
@@ -343,6 +496,7 @@ function CalendarView({
   const [customEnd, setCustomEnd] = useState("12:00");
   const [classification, setClassification] = useState("");
   const [specialRequests, setSpecialRequests] = useState("");
+  const [bookerName, setBookerName] = useState("");
   const [usePackageCredit, setUsePackageCredit] = useState(false);
   const [bookingConfirmed, setBookingConfirmed] = useState(false);
 
@@ -350,6 +504,15 @@ function CalendarView({
     queryKey: ["/api/booker/venues", token],
     queryFn: async () => {
       const res = await fetch(`/api/booker/venues/${token}`);
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+  });
+
+  const { data: pricingData } = useQuery<PricingInfo>({
+    queryKey: ["/api/booker/pricing", token],
+    queryFn: async () => {
+      const res = await fetch(`/api/booker/pricing/${token}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
@@ -404,6 +567,7 @@ function CalendarView({
       classification,
       specialRequests: specialRequests.trim() || undefined,
       usePackageCredit,
+      bookerName: isGroupLink && bookerName.trim() ? bookerName.trim() : undefined,
     });
   };
 
@@ -445,9 +609,37 @@ function CalendarView({
               <span className="text-muted-foreground">Type</span>
               <span className="font-medium">{classification}</span>
             </div>
+            {pricingData && (() => {
+              const priceResult = calculateBookingPrice(pricingData, startTime, endTime, usePackageCredit);
+              if (priceResult.isCovered) {
+                return (
+                  <div className="flex justify-between gap-2 flex-wrap" data-testid="text-confirmed-pricing">
+                    <span className="text-muted-foreground">Cost</span>
+                    <span className="font-medium text-green-600 dark:text-green-400">Covered by agreement</span>
+                  </div>
+                );
+              }
+              if (priceResult.isPackage) {
+                return (
+                  <div className="flex justify-between gap-2 flex-wrap" data-testid="text-confirmed-pricing">
+                    <span className="text-muted-foreground">Cost</span>
+                    <span className="font-medium text-blue-600 dark:text-blue-400">Package credit used</span>
+                  </div>
+                );
+              }
+              if (priceResult.finalPrice > 0) {
+                return (
+                  <div className="flex justify-between gap-2 flex-wrap" data-testid="text-confirmed-pricing">
+                    <span className="text-muted-foreground">Estimated cost</span>
+                    <span className="font-medium">${priceResult.finalPrice.toFixed(2)}</span>
+                  </div>
+                );
+              }
+              return null;
+            })()}
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={() => { setBookingConfirmed(false); setSelectedDate(null); setPresetSlot(""); setClassification(""); setSpecialRequests(""); }} data-testid="button-book-another">
+            <Button variant="outline" className="flex-1" onClick={() => { setBookingConfirmed(false); setSelectedDate(null); setPresetSlot(""); setClassification(""); setSpecialRequests(""); setBookerName(""); }} data-testid="button-book-another">
               Book Another
             </Button>
             <Button className="flex-1" onClick={onBack} data-testid="button-back-to-dashboard">
@@ -469,6 +661,57 @@ function CalendarView({
           <h1 className="text-xl font-bold" data-testid="heading-book-space">Book a Space</h1>
         </div>
 
+        {pricingData && (pricingData.coveredByAgreement || pricingData.hasPackageCredits) && (
+          <Card className="p-4 border-primary/20 bg-primary/5" data-testid="card-agreement-balance">
+            <div className="flex items-start gap-3 flex-wrap">
+              <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                {pricingData.coveredByAgreement ? <FileText className="w-4 h-4 text-primary" /> : <Package className="w-4 h-4 text-primary" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                {pricingData.coveredByAgreement && (
+                  <>
+                    <p className="text-sm font-medium" data-testid="text-agreement-status">
+                      Bookings covered by your {authData.membership ? "membership" : "MOU"} agreement
+                    </p>
+                    {authData.membership?.bookingAllowance > 0 && (
+                      <p className="text-xs text-muted-foreground mt-1" data-testid="text-agreement-allowance">
+                        {(() => {
+                          const used = authData._agreementUsage ?? 0;
+                          const total = authData.membership.bookingAllowance;
+                          const remaining = Math.max(0, total - used);
+                          const period = getPeriodLabel(authData.membership.allowancePeriod);
+                          return `${remaining} of ${total} bookings remaining this ${period}`;
+                        })()}
+                      </p>
+                    )}
+                    {authData.mou?.bookingAllowance > 0 && !authData.membership && (
+                      <p className="text-xs text-muted-foreground mt-1" data-testid="text-mou-allowance">
+                        {(() => {
+                          const used = authData._agreementUsage ?? 0;
+                          const total = authData.mou.bookingAllowance;
+                          const remaining = Math.max(0, total - used);
+                          const period = getPeriodLabel(authData.mou.allowancePeriod);
+                          return `${remaining} of ${total} bookings remaining this ${period}`;
+                        })()}
+                      </p>
+                    )}
+                  </>
+                )}
+                {pricingData.hasPackageCredits && !pricingData.coveredByAgreement && (
+                  <>
+                    <p className="text-sm font-medium" data-testid="text-package-status">
+                      {pricingData.packageRemaining} package credit{pricingData.packageRemaining !== 1 ? "s" : ""} remaining
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Toggle "Use package credit" when booking to apply
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+          </Card>
+        )}
+
         <div className="mb-4">
           <Label>Select Venue</Label>
           {venuesLoading ? (
@@ -486,6 +729,17 @@ function CalendarView({
                 ))}
               </SelectContent>
             </Select>
+          )}
+          {selectedVenue && pricingData && !pricingData.coveredByAgreement && (
+            <div className="mt-2 flex items-center gap-3 flex-wrap text-xs text-muted-foreground" data-testid="text-venue-rates">
+              <Info className="w-3 h-3 shrink-0" />
+              <span>Rates: Half day ${pricingData.halfDayRate.toFixed(0)} | Full day ${pricingData.fullDayRate.toFixed(0)}{pricingData.hourlyRate > 0 ? ` | Hourly $${pricingData.hourlyRate.toFixed(0)}/hr` : ""}</span>
+              {pricingData.discountPercentage > 0 && (
+                <Badge variant="secondary" className="text-xs" data-testid="badge-discount-tier">
+                  {pricingData.discountPercentage}% discount
+                </Badge>
+              )}
+            </div>
           )}
         </div>
 
@@ -587,23 +841,33 @@ function CalendarView({
                 <div className="space-y-2">
                   <Label className="text-xs">Quick Select</Label>
                   <div className="space-y-1">
-                    {PRESET_SLOTS.map(slot => (
-                      <button
-                        key={slot.label}
-                        onClick={() => setPresetSlot(presetSlot === slot.label ? "" : slot.label)}
-                        className={`w-full text-left text-sm px-3 py-2 rounded-md border transition-colors ${
-                          presetSlot === slot.label
-                            ? "border-primary bg-primary/5"
-                            : "border-border"
-                        }`}
-                        data-testid={`slot-${slot.start}-${slot.end}`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Clock className="w-3 h-3 text-muted-foreground" />
-                          {slot.label}
-                        </div>
-                      </button>
-                    ))}
+                    {PRESET_SLOTS.map(slot => {
+                      const slotPrice = pricingData ? calculateBookingPrice(pricingData, slot.start, slot.end, false) : null;
+                      return (
+                        <button
+                          key={slot.label}
+                          onClick={() => setPresetSlot(presetSlot === slot.label ? "" : slot.label)}
+                          className={`w-full text-left text-sm px-3 py-2 rounded-md border transition-colors ${
+                            presetSlot === slot.label
+                              ? "border-primary bg-primary/5"
+                              : "border-border"
+                          }`}
+                          data-testid={`slot-${slot.start}-${slot.end}`}
+                        >
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-2">
+                              <Clock className="w-3 h-3 text-muted-foreground" />
+                              {slot.label}
+                            </div>
+                            {slotPrice && slotPrice.basePrice > 0 && (
+                              <span className="text-xs text-muted-foreground" data-testid={`text-slot-price-${slot.start}`}>
+                                {slotPrice.isCovered ? "Included" : slotPrice.discount > 0 ? `$${slotPrice.finalPrice.toFixed(0)}` : `$${slotPrice.basePrice.toFixed(0)}`}
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -617,6 +881,18 @@ function CalendarView({
                       <Label className="text-xs">End Time</Label>
                       <Input type="time" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} data-testid="input-custom-end" />
                     </div>
+                  </div>
+                )}
+
+                {isGroupLink && (
+                  <div className="space-y-1">
+                    <Label className="text-xs">Your Name (optional)</Label>
+                    <Input
+                      value={bookerName}
+                      onChange={(e) => setBookerName(e.target.value)}
+                      placeholder="Who is making this booking?"
+                      data-testid="input-booker-name"
+                    />
                   </div>
                 )}
 
@@ -658,13 +934,12 @@ function CalendarView({
                   </div>
                 )}
 
-                {(booker.membershipId || booker.mouId) && (
-                  <div className="bg-muted/50 rounded-md px-3 py-2">
-                    <p className="text-xs text-muted-foreground" data-testid="text-agreement-pricing">
-                      Covered by your {booker.membershipId ? "membership" : "MOU"} agreement
-                    </p>
-                  </div>
-                )}
+                <PricingBreakdown
+                  pricing={pricingData}
+                  startTime={startTime}
+                  endTime={endTime}
+                  usePackageCredit={usePackageCredit}
+                />
 
                 <Button
                   className="w-full"

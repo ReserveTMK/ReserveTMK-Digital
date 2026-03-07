@@ -34,6 +34,7 @@ import {
   useCreateVenueInstruction,
   useUpdateVenueInstruction,
   useDeleteVenueInstruction,
+  useAllBookerLinks,
 } from "@/hooks/use-bookings";
 import { useContacts, useCreateContact } from "@/hooks/use-contacts";
 import { useGroups, useCreateGroup } from "@/hooks/use-groups";
@@ -78,7 +79,25 @@ import {
   Receipt,
   Link2,
   Unlink,
+  Filter,
+  Eye,
+  RefreshCw,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useLocation } from "wouter";
 import {
   DropdownMenu,
@@ -91,6 +110,7 @@ import { BOOKING_CLASSIFICATIONS, BOOKING_STATUSES, PRICING_TIERS, DURATION_TYPE
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MetricCard } from "@/components/ui/metric-card";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const CLASSIFICATION_COLORS: Record<string, string> = {
   "Workshop": "bg-blue-500/15 text-blue-700 dark:text-blue-300",
@@ -186,8 +206,16 @@ export default function Bookings() {
   const [venueDialogOpen, setVenueDialogOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "kanban">("kanban");
   const [regularBookersOpen, setRegularBookersOpen] = useState(false);
+  const [regularBookersFullOpen, setRegularBookersFullOpen] = useState(false);
   const [venueInstructionsOpen, setVenueInstructionsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [completionDialogOpen, setCompletionDialogOpen] = useState(false);
+  const [completionBooking, setCompletionBooking] = useState<Booking | null>(null);
+  const [completionNeedsInvoice, setCompletionNeedsInvoice] = useState(false);
+  const [completionInvoiceDone, setCompletionInvoiceDone] = useState(false);
+  const [completionServedDone, setCompletionServedDone] = useState(false);
+  const [completionInvoiceLoading, setCompletionInvoiceLoading] = useState(false);
+  const [completionServedLoading, setCompletionServedLoading] = useState(false);
 
   const filtered = useMemo(() => {
     if (!bookings) return [];
@@ -315,6 +343,65 @@ export default function Bookings() {
     }
   };
 
+  const openCompletionDialog = useCallback(async (booking: Booking) => {
+    try {
+      const res = await apiRequest('POST', `/api/bookings/${booking.id}/complete`);
+      const data = await res.json();
+      queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
+      const updatedBooking = data.booking || booking;
+      setCompletionBooking(updatedBooking);
+      setCompletionNeedsInvoice(data.needsInvoice || false);
+      setCompletionInvoiceDone(!!updatedBooking.xeroInvoiceId);
+      setCompletionServedDone(!!updatedBooking.servedAt);
+      setCompletionInvoiceLoading(false);
+      setCompletionServedLoading(false);
+      setCompletionDialogOpen(true);
+      toast({ title: "Booking completed", description: data.surveyDecision || "Booking marked as completed" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to complete booking", variant: "destructive" });
+    }
+  }, [toast]);
+
+  const openCompletionDialogForExisting = useCallback((booking: Booking) => {
+    setCompletionBooking(booking);
+    setCompletionNeedsInvoice(!booking.xeroInvoiceId && parseFloat(booking.amount || "0") > 0);
+    setCompletionInvoiceDone(!!booking.xeroInvoiceId);
+    setCompletionServedDone(!!booking.servedAt);
+    setCompletionInvoiceLoading(false);
+    setCompletionServedLoading(false);
+    setCompletionDialogOpen(true);
+  }, []);
+
+  const handleGenerateInvoice = useCallback(async () => {
+    if (!completionBooking) return;
+    setCompletionInvoiceLoading(true);
+    try {
+      await apiRequest('POST', `/api/bookings/${completionBooking.id}/generate-invoice`);
+      queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
+      setCompletionInvoiceDone(true);
+      toast({ title: "Invoice generated", description: "Xero invoice has been created" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to generate invoice", variant: "destructive" });
+    } finally {
+      setCompletionInvoiceLoading(false);
+    }
+  }, [completionBooking, toast]);
+
+  const handleMarkServed = useCallback(async () => {
+    if (!completionBooking) return;
+    setCompletionServedLoading(true);
+    try {
+      await apiRequest('POST', `/api/bookings/${completionBooking.id}/mark-served`);
+      queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
+      setCompletionServedDone(true);
+      toast({ title: "Marked as served", description: "Booking has been marked as served" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to mark as served", variant: "destructive" });
+    } finally {
+      setCompletionServedLoading(false);
+    }
+  }, [completionBooking, toast]);
+
   const handleDragEnd = useCallback(async (result: DropResult) => {
     if (!result.destination) return;
     const newStatus = result.destination.droppableId;
@@ -322,13 +409,19 @@ export default function Bookings() {
     const bookingId = parseInt(result.draggableId);
     const booking = bookings?.find(b => b.id === bookingId);
     if (!booking || booking.status === newStatus) return;
+
+    if (newStatus === "completed") {
+      await openCompletionDialog(booking);
+      return;
+    }
+
     try {
       await updateMutation.mutateAsync({ id: bookingId, data: { status: newStatus } });
       toast({ title: "Status updated", description: `Booking moved to ${STATUS_LABELS[newStatus]}` });
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Failed to update status", variant: "destructive" });
     }
-  }, [bookings, updateMutation, toast]);
+  }, [bookings, updateMutation, toast, openCompletionDialog]);
 
   const kanbanColumns = useMemo(() => {
     const columns: Record<string, Booking[]> = {
@@ -559,6 +652,11 @@ export default function Bookings() {
                                               <DropdownMenuItem onClick={() => setEditBooking(booking)} data-testid={`kanban-edit-${booking.id}`}>
                                                 <Pencil className="w-4 h-4 mr-2" /> Edit
                                               </DropdownMenuItem>
+                                              {booking.status === "completed" && (!booking.servedAt || !booking.xeroInvoiceId) && (
+                                                <DropdownMenuItem onClick={() => openCompletionDialogForExisting(booking)} data-testid={`kanban-actions-${booking.id}`}>
+                                                  <CheckCircle2 className="w-4 h-4 mr-2" /> Post-completion Actions
+                                                </DropdownMenuItem>
+                                              )}
                                               <DropdownMenuItem onClick={() => handleDuplicate(booking)} data-testid={`kanban-duplicate-${booking.id}`}>
                                                 <Copy className="w-4 h-4 mr-2" /> Duplicate
                                               </DropdownMenuItem>
@@ -752,6 +850,12 @@ export default function Bookings() {
                                 <Pencil className="w-4 h-4 mr-2" />
                                 Edit
                               </DropdownMenuItem>
+                              {booking.status === "completed" && (!booking.servedAt || !booking.xeroInvoiceId) && (
+                                <DropdownMenuItem onClick={() => openCompletionDialogForExisting(booking)} data-testid={`button-actions-booking-${booking.id}`}>
+                                  <CheckCircle2 className="w-4 h-4 mr-2" />
+                                  Post-completion Actions
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuItem onClick={() => handleDuplicate(booking)} data-testid={`button-duplicate-booking-${booking.id}`}>
                                 <Copy className="w-4 h-4 mr-2" />
                                 Duplicate
@@ -833,7 +937,7 @@ export default function Bookings() {
                 <p className="text-sm text-muted-foreground">Manage regular bookers with pricing tiers, booking packages, and linked agreements.</p>
                 <Button
                   variant="outline"
-                  onClick={() => { setSettingsOpen(false); setRegularBookersOpen(true); }}
+                  onClick={() => { setSettingsOpen(false); setRegularBookersFullOpen(true); }}
                   data-testid="button-open-regular-bookers"
                 >
                   <Users className="w-4 h-4 mr-2" />
@@ -899,10 +1003,117 @@ export default function Bookings() {
         groups={allGroups || []}
       />
 
+      <RegularBookersManagementView
+        open={regularBookersFullOpen}
+        onOpenChange={setRegularBookersFullOpen}
+        contacts={contacts || []}
+        groups={allGroups || []}
+      />
+
       <VenueInstructionsDialog
         open={venueInstructionsOpen}
         onOpenChange={setVenueInstructionsOpen}
       />
+
+      <Dialog open={completionDialogOpen} onOpenChange={setCompletionDialogOpen}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-booking-completed">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2" data-testid="text-completion-title">
+              <CheckCircle2 className="w-5 h-5 text-green-500" />
+              Booking Completed
+            </DialogTitle>
+            <DialogDescription>
+              Take follow-up actions for this completed booking.
+            </DialogDescription>
+          </DialogHeader>
+
+          {completionBooking && (
+            <div className="space-y-4">
+              <div className="rounded-lg border p-3 space-y-1.5 text-sm">
+                <div className="font-medium" data-testid="text-completion-booking-name">
+                  {getBookingGroupName(completionBooking.bookerGroupId) || completionBooking.title || getVenueName(completionBooking.venueId)}
+                </div>
+                <div className="text-muted-foreground flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5" />
+                  {getVenueName(completionBooking.venueId)}
+                </div>
+                {formatDateTime(completionBooking) && (
+                  <div className="text-muted-foreground flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5" />
+                    {formatDateTime(completionBooking)!.date}
+                    {formatDateTime(completionBooking)!.time && (
+                      <span className="ml-1">
+                        <Clock className="w-3.5 h-3.5 inline mr-0.5" />
+                        {formatDateTime(completionBooking)!.time}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {getBookerName(completionBooking.bookerId) && (
+                  <div className="text-muted-foreground flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5" />
+                    {getBookerName(completionBooking.bookerId)}
+                  </div>
+                )}
+                {parseFloat(completionBooking.amount || "0") > 0 && (
+                  <div className="text-muted-foreground flex items-center gap-1.5">
+                    <DollarSign className="w-3.5 h-3.5" />
+                    ${parseFloat(completionBooking.amount || "0").toFixed(2)} excl. GST
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Button
+                  className="w-full justify-between gap-2"
+                  variant={completionInvoiceDone ? "secondary" : "default"}
+                  onClick={handleGenerateInvoice}
+                  disabled={completionInvoiceDone || !completionNeedsInvoice || completionInvoiceLoading}
+                  data-testid="button-generate-invoice"
+                >
+                  <span className="flex items-center gap-2">
+                    <Receipt className="w-4 h-4" />
+                    {completionInvoiceDone ? "Invoice Generated" : completionNeedsInvoice ? "Generate Invoice" : "No invoice needed"}
+                  </span>
+                  {completionInvoiceLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : completionInvoiceDone ? (
+                    <CheckCircle2 className="w-4 h-4 text-green-500" />
+                  ) : null}
+                </Button>
+
+                <Button
+                  className="w-full justify-between gap-2"
+                  variant={completionServedDone ? "secondary" : "default"}
+                  onClick={handleMarkServed}
+                  disabled={completionServedDone || completionServedLoading}
+                  data-testid="button-mark-served"
+                >
+                  <span className="flex items-center gap-2">
+                    <Package className="w-4 h-4" />
+                    {completionServedDone ? "Marked as Served" : "Mark as Served"}
+                  </span>
+                  {completionServedLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : completionServedDone ? (
+                    <CheckCircle2 className="w-4 h-4 text-green-500" />
+                  ) : null}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setCompletionDialogOpen(false)}
+              data-testid="button-completion-done"
+            >
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -2338,6 +2549,634 @@ const INSTRUCTION_TYPE_COLORS: Record<string, string> = {
   general: "bg-gray-500/15 text-gray-700 dark:text-gray-300",
 };
 
+function RegularBookersManagementView({
+  open,
+  onOpenChange,
+  contacts,
+  groups,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  contacts: Contact[];
+  groups: Group[];
+}) {
+  const { data: regularBookers, isLoading } = useRegularBookers();
+  const { data: allBookerLinks, isLoading: linksLoading } = useAllBookerLinks();
+  const createMutation = useCreateRegularBooker();
+  const updateMutation = useUpdateRegularBooker();
+  const deleteMutation = useDeleteRegularBooker();
+  const { toast } = useToast();
+  const { data: allMemberships } = useMemberships();
+  const { data: allMous } = useMous();
+  const { data: allBookings } = useBookings();
+
+  const [editingBooker, setEditingBooker] = useState<RegularBooker | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [agreementFilter, setAgreementFilter] = useState<string>("all");
+  const [tierFilter, setTierFilter] = useState<string>("all");
+  const [linkFilter, setLinkFilter] = useState<string>("all");
+  const [packageFilter, setPackageFilter] = useState<string>("all");
+  const [suggestionsOpen, setSuggestionsOpen] = useState(true);
+  const [prefillData, setPrefillData] = useState<{ contactId?: number; groupId?: number; billingEmail?: string; organizationName?: string } | null>(null);
+
+  const { data: suggestions } = useQuery<{
+    venueContacts: { id: number; name: string; email: string; supportType: string[] }[];
+    agreementContacts: { id: number; name: string; email: string }[];
+    agreementGroups: { id: number; name: string; type: string }[];
+  }>({
+    queryKey: ['/api/regular-bookers/suggestions'],
+  });
+
+  const generateLinkMutation = useMutation({
+    mutationFn: async (bookerId: number) => {
+      const res = await apiRequest("POST", `/api/regular-bookers/${bookerId}/links`, { label: "Portal link" });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/all-booker-links'] });
+      if (data.portalUrl) {
+        navigator.clipboard.writeText(data.portalUrl).then(() => {
+          toast({ title: "Link generated and copied" });
+        }).catch(() => {
+          toast({ title: "Link generated", description: data.portalUrl });
+        });
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to generate link", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const getBookerDisplayName = (booker: RegularBooker) => {
+    const contactName = booker.contactId ? contacts.find(c => c.id === booker.contactId)?.name : null;
+    const groupName = booker.groupId ? groups.find(g => g.id === booker.groupId)?.name : null;
+    if (contactName && groupName) return contactName;
+    if (groupName) return groupName;
+    if (contactName) return contactName;
+    return booker.organizationName || `Booker #${booker.id}`;
+  };
+
+  const getBookerGroupName = (booker: RegularBooker) => {
+    if (!booker.groupId) return null;
+    return groups.find(g => g.id === booker.groupId)?.name || null;
+  };
+
+  const getAgreementInfo = (booker: RegularBooker) => {
+    if (booker.membershipId) {
+      const m = allMemberships?.find(ms => ms.id === booker.membershipId);
+      return m ? { type: "Membership" as const, name: m.name, agreement: m } : null;
+    }
+    if (booker.mouId) {
+      const m = allMous?.find(ms => ms.id === booker.mouId);
+      return m ? { type: "MOU" as const, name: m.title, agreement: m } : null;
+    }
+    return null;
+  };
+
+  const getBookerLinks = (bookerId: number) => {
+    if (!allBookerLinks) return [];
+    return allBookerLinks.filter(l => l.regularBookerId === bookerId);
+  };
+
+  const getLinkStatus = (booker: RegularBooker) => {
+    const links = getBookerLinks(booker.id);
+    if (links.length === 0) return { status: "none" as const, label: "No link", links: [] };
+    const activeLinks = links.filter((l: any) => l.enabled !== false);
+    if (activeLinks.length === 0) return { status: "expired" as const, label: "Expired", links };
+    const lastAccessed = activeLinks.reduce((latest: any, l: any) => {
+      if (!l.lastAccessedAt) return latest;
+      return !latest || new Date(l.lastAccessedAt) > new Date(latest) ? l.lastAccessedAt : latest;
+    }, null);
+    return { status: "active" as const, label: lastAccessed ? `Active` : "Active (unused)", links: activeLinks, lastAccessed };
+  };
+
+  const getPackageInfo = (booker: RegularBooker) => {
+    const agreement = getAgreementInfo(booker);
+    if (agreement) {
+      const ag = agreement.agreement as any;
+      const allowance = ag?.bookingAllowance;
+      const period = ag?.allowancePeriod || "quarterly";
+      if (!allowance) return null;
+      const type = booker.membershipId ? "membership" as const : "mou" as const;
+      const id = (booker.membershipId || booker.mouId)!;
+      const used = getAgreementAllowanceUsage(allBookings, type, id, period);
+      const remaining = Math.max(0, allowance - used);
+      return { used, total: allowance, remaining, period: getPeriodLabel(period), source: "agreement" as const };
+    }
+    if (booker.hasBookingPackage && booker.packageTotalBookings) {
+      const used = booker.packageUsedBookings || 0;
+      const total = booker.packageTotalBookings;
+      const remaining = Math.max(0, total - used);
+      return { used, total, remaining, period: booker.packageExpiresAt ? `expires ${format(new Date(booker.packageExpiresAt), "d MMM yyyy")}` : null, source: "package" as const };
+    }
+    return null;
+  };
+
+  const filtered = useMemo(() => {
+    if (!regularBookers) return [];
+    return regularBookers.filter(booker => {
+      if (search) {
+        const name = getBookerDisplayName(booker).toLowerCase();
+        const group = getBookerGroupName(booker)?.toLowerCase() || "";
+        const org = (booker.organizationName || "").toLowerCase();
+        const email = (booker.billingEmail || "").toLowerCase();
+        const term = search.toLowerCase();
+        if (!name.includes(term) && !group.includes(term) && !org.includes(term) && !email.includes(term)) return false;
+      }
+      if (agreementFilter !== "all") {
+        const ag = getAgreementInfo(booker);
+        if (agreementFilter === "membership" && !ag?.type?.includes("Membership")) return false;
+        if (agreementFilter === "mou" && !ag?.type?.includes("MOU")) return false;
+        if (agreementFilter === "none" && ag) return false;
+      }
+      if (tierFilter !== "all" && booker.pricingTier !== tierFilter) return false;
+      if (linkFilter !== "all") {
+        const linkStatus = getLinkStatus(booker);
+        if (linkFilter === "active" && linkStatus.status !== "active") return false;
+        if (linkFilter === "none" && linkStatus.status !== "none") return false;
+        if (linkFilter === "expired" && linkStatus.status !== "expired") return false;
+      }
+      if (packageFilter !== "all") {
+        const pkg = getPackageInfo(booker);
+        if (packageFilter === "has" && !pkg) return false;
+        if (packageFilter === "none" && pkg) return false;
+      }
+      return true;
+    });
+  }, [regularBookers, search, agreementFilter, tierFilter, linkFilter, packageFilter, allBookerLinks, allMemberships, allMous, allBookings]);
+
+  const handleDelete = async (id: number) => {
+    try {
+      await deleteMutation.mutateAsync(id);
+      toast({ title: "Deleted", description: "Regular booker removed" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to delete", variant: "destructive" });
+    }
+  };
+
+  const copyLink = (portalUrl: string) => {
+    navigator.clipboard.writeText(portalUrl).then(() => {
+      toast({ title: "Link copied to clipboard" });
+    }).catch(() => {
+      toast({ title: "Portal URL", description: portalUrl });
+    });
+  };
+
+  const LINK_STATUS_COLORS: Record<string, string> = {
+    active: "bg-green-500/15 text-green-700 dark:text-green-300",
+    expired: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+    none: "bg-gray-500/15 text-gray-700 dark:text-gray-300",
+  };
+
+  const hasFilters = agreementFilter !== "all" || tierFilter !== "all" || linkFilter !== "all" || packageFilter !== "all";
+
+  const totalSuggestions = (suggestions?.venueContacts?.length || 0) + (suggestions?.agreementContacts?.length || 0) + (suggestions?.agreementGroups?.length || 0);
+
+  const handleSetupSuggestion = (type: "venueContact" | "agreementContact" | "agreementGroup", item: any) => {
+    if (type === "agreementGroup") {
+      setPrefillData({ groupId: item.id, organizationName: item.name });
+    } else {
+      setPrefillData({ contactId: item.id, billingEmail: item.email || "" });
+    }
+    setEditingBooker(null);
+    setFormOpen(true);
+  };
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle data-testid="text-regular-bookers-mgmt-title">Regular Bookers</DialogTitle>
+            <DialogDescription>View and manage all regular bookers, their agreements, packages, and portal links at a glance.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {totalSuggestions > 0 && (
+              <Collapsible open={suggestionsOpen} onOpenChange={setSuggestionsOpen}>
+                <Card className="border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20" data-testid="card-suggested-bookers">
+                  <CollapsibleTrigger asChild>
+                    <div className="flex items-center justify-between gap-2 p-3 cursor-pointer" data-testid="button-toggle-suggestions">
+                      <div className="flex items-center gap-2">
+                        <UserPlus className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                        <span className="text-sm font-medium">Suggested Bookers</span>
+                        <Badge variant="secondary" className="text-[10px]" data-testid="badge-suggestion-count">{totalSuggestions}</Badge>
+                      </div>
+                      {suggestionsOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+                    </div>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="px-3 pb-3 space-y-1">
+                      {suggestions?.venueContacts?.map(contact => (
+                        <div key={`vc-${contact.id}`} className="flex items-center justify-between gap-3 py-1.5 px-2 rounded-md hover-elevate" data-testid={`suggestion-venue-contact-${contact.id}`}>
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <Users className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                            <div className="min-w-0">
+                              <span className="text-sm font-medium truncate block" data-testid={`text-suggestion-name-vc-${contact.id}`}>{contact.name}</span>
+                              {contact.email && <span className="text-xs text-muted-foreground truncate block">{contact.email}</span>}
+                            </div>
+                          </div>
+                          <Badge variant="secondary" className="text-[10px] shrink-0">
+                            {contact.supportType?.includes("venue_hire") ? "Venue hire contact" : "Hot desking contact"}
+                          </Badge>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSetupSuggestion("venueContact", contact)}
+                            data-testid={`button-setup-suggestion-vc-${contact.id}`}
+                          >
+                            <UserPlus className="w-3.5 h-3.5 mr-1.5" />
+                            Set up as Regular Booker
+                          </Button>
+                        </div>
+                      ))}
+                      {suggestions?.agreementContacts?.map(contact => (
+                        <div key={`ac-${contact.id}`} className="flex items-center justify-between gap-3 py-1.5 px-2 rounded-md hover-elevate" data-testid={`suggestion-agreement-contact-${contact.id}`}>
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <Users className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                            <div className="min-w-0">
+                              <span className="text-sm font-medium truncate block" data-testid={`text-suggestion-name-ac-${contact.id}`}>{contact.name}</span>
+                              {contact.email && <span className="text-xs text-muted-foreground truncate block">{contact.email}</span>}
+                            </div>
+                          </div>
+                          <Badge variant="secondary" className="text-[10px] shrink-0">Has active membership</Badge>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSetupSuggestion("agreementContact", contact)}
+                            data-testid={`button-setup-suggestion-ac-${contact.id}`}
+                          >
+                            <UserPlus className="w-3.5 h-3.5 mr-1.5" />
+                            Set up as Regular Booker
+                          </Button>
+                        </div>
+                      ))}
+                      {suggestions?.agreementGroups?.map(group => (
+                        <div key={`ag-${group.id}`} className="flex items-center justify-between gap-3 py-1.5 px-2 rounded-md hover-elevate" data-testid={`suggestion-agreement-group-${group.id}`}>
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <Building className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                            <div className="min-w-0">
+                              <span className="text-sm font-medium truncate block" data-testid={`text-suggestion-name-ag-${group.id}`}>{group.name}</span>
+                              {group.type && <span className="text-xs text-muted-foreground truncate block">{group.type}</span>}
+                            </div>
+                          </div>
+                          <Badge variant="secondary" className="text-[10px] shrink-0">Has active agreement</Badge>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSetupSuggestion("agreementGroup", group)}
+                            data-testid={`button-setup-suggestion-ag-${group.id}`}
+                          >
+                            <UserPlus className="w-3.5 h-3.5 mr-1.5" />
+                            Set up as Regular Booker
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </CollapsibleContent>
+                </Card>
+              </Collapsible>
+            )}
+
+            <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search bookers..."
+                  className="pl-10"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  data-testid="input-search-regular-bookers"
+                />
+              </div>
+              <Select value={agreementFilter} onValueChange={setAgreementFilter}>
+                <SelectTrigger className="w-[150px]" data-testid="select-agreement-filter">
+                  <SelectValue placeholder="Agreement" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Agreements</SelectItem>
+                  <SelectItem value="membership">Membership</SelectItem>
+                  <SelectItem value="mou">MOU</SelectItem>
+                  <SelectItem value="none">No Agreement</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={tierFilter} onValueChange={setTierFilter}>
+                <SelectTrigger className="w-[140px]" data-testid="select-tier-filter">
+                  <SelectValue placeholder="Pricing" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Tiers</SelectItem>
+                  <SelectItem value="full_price">Full Price</SelectItem>
+                  <SelectItem value="discounted">Discounted</SelectItem>
+                  <SelectItem value="free_koha">Free / Koha</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={linkFilter} onValueChange={setLinkFilter}>
+                <SelectTrigger className="w-[140px]" data-testid="select-link-filter">
+                  <SelectValue placeholder="Link Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Links</SelectItem>
+                  <SelectItem value="active">Has Active Link</SelectItem>
+                  <SelectItem value="none">No Link</SelectItem>
+                  <SelectItem value="expired">Expired</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={packageFilter} onValueChange={setPackageFilter}>
+                <SelectTrigger className="w-[140px]" data-testid="select-package-filter">
+                  <SelectValue placeholder="Package" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="has">Has Package</SelectItem>
+                  <SelectItem value="none">No Package</SelectItem>
+                </SelectContent>
+              </Select>
+              {hasFilters && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => { setAgreementFilter("all"); setTierFilter("all"); setLinkFilter("all"); setPackageFilter("all"); }}
+                  data-testid="button-clear-filters"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              )}
+              <Button onClick={() => { setEditingBooker(null); setFormOpen(true); }} data-testid="button-add-regular-booker-mgmt">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Booker
+              </Button>
+            </div>
+
+            {isLoading || linksLoading ? (
+              <div className="flex justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              </div>
+            ) : !regularBookers?.length ? (
+              <div className="text-center py-12">
+                <Users className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+                <h3 className="text-lg font-semibold mb-1" data-testid="text-no-regular-bookers-mgmt">No regular bookers yet</h3>
+                <p className="text-sm text-muted-foreground mb-4">Set up regular bookers to manage recurring venue hire clients.</p>
+                <Button onClick={() => { setEditingBooker(null); setFormOpen(true); }} data-testid="button-add-first-booker">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add First Booker
+                </Button>
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-sm text-muted-foreground">No bookers match your filters.</p>
+              </div>
+            ) : (
+              <div className="border rounded-md">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="min-w-[180px]" data-testid="th-booker-name">Booker</TableHead>
+                      <TableHead className="min-w-[120px]" data-testid="th-group">Group / Org</TableHead>
+                      <TableHead className="min-w-[120px]" data-testid="th-agreement">Agreement</TableHead>
+                      <TableHead className="min-w-[130px]" data-testid="th-package">Package / Balance</TableHead>
+                      <TableHead className="min-w-[100px]" data-testid="th-pricing">Pricing</TableHead>
+                      <TableHead className="min-w-[120px]" data-testid="th-link">Portal Link</TableHead>
+                      <TableHead className="min-w-[80px]" data-testid="th-status">Status</TableHead>
+                      <TableHead className="w-[100px] text-right" data-testid="th-actions">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.map((booker) => {
+                      const agreement = getAgreementInfo(booker);
+                      const linkStatus = getLinkStatus(booker);
+                      const pkg = getPackageInfo(booker);
+                      const groupName = getBookerGroupName(booker);
+
+                      return (
+                        <TableRow key={booker.id} data-testid={`row-booker-${booker.id}`}>
+                          <TableCell>
+                            <div>
+                              <span className="font-medium text-sm" data-testid={`text-booker-name-${booker.id}`}>
+                                {getBookerDisplayName(booker)}
+                              </span>
+                              <p className="text-xs text-muted-foreground truncate" data-testid={`text-booker-email-${booker.id}`}>
+                                {booker.billingEmail}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {groupName ? (
+                              <span className="text-sm flex items-center gap-1.5">
+                                <Building className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                                <span className="truncate">{groupName}</span>
+                              </span>
+                            ) : booker.organizationName ? (
+                              <span className="text-sm text-muted-foreground truncate">{booker.organizationName}</span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {agreement ? (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Badge variant="outline" className="text-[10px] gap-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 cursor-default" data-testid={`badge-agreement-${booker.id}`}>
+                                    <FileText className="w-3 h-3" />
+                                    {agreement.type}
+                                  </Badge>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>{agreement.type}: {agreement.name}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {pkg ? (
+                              <div className="text-xs">
+                                <span className={`font-medium ${pkg.remaining === 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+                                  {pkg.used}/{pkg.total}
+                                </span>
+                                <span className="text-muted-foreground ml-1">used</span>
+                                {pkg.remaining > 0 && (
+                                  <Badge variant="secondary" className="text-[9px] ml-1.5" data-testid={`badge-remaining-${booker.id}`}>
+                                    {pkg.remaining} left
+                                  </Badge>
+                                )}
+                                {pkg.remaining === 0 && (
+                                  <Badge variant="secondary" className="text-[9px] ml-1.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">
+                                    Exhausted
+                                  </Badge>
+                                )}
+                                {pkg.period && (
+                                  <p className="text-[10px] text-muted-foreground mt-0.5">{pkg.source === "agreement" ? `per ${pkg.period}` : pkg.period}</p>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={`${TIER_BADGE_COLORS[booker.pricingTier] || ""} text-[10px]`} data-testid={`badge-tier-${booker.id}`}>
+                              {PRICING_LABELS[booker.pricingTier] || booker.pricingTier}
+                            </Badge>
+                            {booker.pricingTier === "discounted" && parseFloat(booker.discountPercentage || "0") > 0 && (
+                              <p className="text-[10px] text-muted-foreground mt-0.5">{booker.discountPercentage}% off</p>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1.5">
+                              <Badge className={`${LINK_STATUS_COLORS[linkStatus.status]} text-[10px]`} data-testid={`badge-link-${booker.id}`}>
+                                {linkStatus.label}
+                              </Badge>
+                              {linkStatus.status === "active" && linkStatus.lastAccessed && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="text-[10px] text-muted-foreground cursor-default">
+                                      {format(new Date(linkStatus.lastAccessed), "d MMM")}
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Last accessed {format(new Date(linkStatus.lastAccessed), "d MMM yyyy")}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+                            </div>
+                            {linkStatus.links.length > 0 && (
+                              <div className="flex items-center gap-0.5 mt-1">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-6 w-6"
+                                      onClick={() => copyLink(linkStatus.links[0].portalUrl)}
+                                      data-testid={`button-copy-link-${booker.id}`}
+                                    >
+                                      <Copy className="w-3 h-3" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Copy portal link</TooltipContent>
+                                </Tooltip>
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={ACCOUNT_STATUS_COLORS[booker.accountStatus] || ""} data-testid={`badge-status-${booker.id}`}>
+                              {booker.accountStatus}
+                            </Badge>
+                            {booker.loginEnabled && (
+                              <p className="text-[10px] text-muted-foreground mt-0.5">Portal login</p>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-0.5">
+                              {linkStatus.status === "none" && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => generateLinkMutation.mutate(booker.id)}
+                                      disabled={generateLinkMutation.isPending}
+                                      data-testid={`button-gen-link-${booker.id}`}
+                                    >
+                                      {generateLinkMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Link2 className="w-3.5 h-3.5" />}
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Generate portal link</TooltipContent>
+                                </Tooltip>
+                              )}
+                              {linkStatus.status !== "none" && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => generateLinkMutation.mutate(booker.id)}
+                                      disabled={generateLinkMutation.isPending}
+                                      data-testid={`button-new-link-${booker.id}`}
+                                    >
+                                      {generateLinkMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Generate new link</TooltipContent>
+                                </Tooltip>
+                              )}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => { setEditingBooker(booker); setFormOpen(true); }}
+                                    data-testid={`button-edit-booker-${booker.id}`}
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Edit booker</TooltipContent>
+                              </Tooltip>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleDelete(booker.id)}
+                                    data-testid={`button-delete-booker-${booker.id}`}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Delete booker</TooltipContent>
+                              </Tooltip>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between text-xs text-muted-foreground pt-2">
+              <span data-testid="text-booker-count">{filtered.length} of {regularBookers?.length || 0} booker{(regularBookers?.length || 0) !== 1 ? "s" : ""}</span>
+              {hasFilters && <span>Filters active</span>}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <RegularBookerFormDialog
+        open={formOpen}
+        onOpenChange={(v) => { setFormOpen(v); if (!v) { setEditingBooker(null); setPrefillData(null); } }}
+        booker={editingBooker}
+        contacts={contacts}
+        groups={groups}
+        prefill={prefillData}
+        onSubmit={async (data) => {
+          try {
+            if (editingBooker) {
+              await updateMutation.mutateAsync({ id: editingBooker.id, data });
+              toast({ title: "Updated", description: "Regular booker updated" });
+            } else {
+              await createMutation.mutateAsync(data);
+              toast({ title: "Created", description: "Regular booker added" });
+            }
+            setFormOpen(false);
+            setEditingBooker(null);
+            setPrefillData(null);
+            queryClient.invalidateQueries({ queryKey: ['/api/all-booker-links'] });
+            queryClient.invalidateQueries({ queryKey: ['/api/regular-bookers/suggestions'] });
+          } catch (err: any) {
+            toast({ title: "Error", description: err.message || "Failed to save", variant: "destructive" });
+          }
+        }}
+        isPending={createMutation.isPending || updateMutation.isPending}
+      />
+    </>
+  );
+}
+
 function RegularBookersDialog({
   open,
   onOpenChange,
@@ -2600,6 +3439,7 @@ function RegularBookerFormDialog({
   groups,
   onSubmit,
   isPending,
+  prefill,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -2608,6 +3448,7 @@ function RegularBookerFormDialog({
   groups: Group[];
   onSubmit: (data: any) => Promise<void>;
   isPending: boolean;
+  prefill?: { contactId?: number; groupId?: number; billingEmail?: string; organizationName?: string } | null;
 }) {
   const { toast } = useToast();
   const [contactId, setContactId] = useState<number | null>(booker?.contactId || null);
@@ -2652,8 +3493,11 @@ function RegularBookerFormDialog({
   });
 
   const generateLinkMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/regular-bookers/${booker!.id}/links`, { label: "Portal link" });
+    mutationFn: async (opts?: { isGroupLink?: boolean }) => {
+      const res = await apiRequest("POST", `/api/regular-bookers/${booker!.id}/links`, {
+        label: opts?.isGroupLink ? "Group portal link" : "Portal link",
+        isGroupLink: opts?.isGroupLink || false,
+      });
       return res.json();
     },
     onSuccess: (data: any) => {
@@ -2723,10 +3567,10 @@ function RegularBookerFormDialog({
       setLinkedMembershipId(booker.membershipId || null);
       setLinkedMouId(booker.mouId || null);
     } else {
-      setContactId(null);
-      setGroupId(null);
-      setOrganizationName("");
-      setBillingEmail("");
+      setContactId(prefill?.contactId || null);
+      setGroupId(prefill?.groupId || null);
+      setOrganizationName(prefill?.organizationName || "");
+      setBillingEmail(prefill?.billingEmail || "");
       setBillingAddress("");
       setBillingPhone("");
       setPricingTier("full_price");
@@ -2745,7 +3589,7 @@ function RegularBookerFormDialog({
       setLinkedMouId(null);
     }
     setBookerSearch("");
-  }, [booker]);
+  }, [booker, prefill]);
 
   const searchResults = useMemo(() => {
     if (!bookerSearch.trim()) return [];
@@ -3193,27 +4037,42 @@ function RegularBookerFormDialog({
             </div>
             {booker && (
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
                   <Label className="text-xs text-muted-foreground">Portal Links</Label>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => generateLinkMutation.mutate()}
-                    disabled={generateLinkMutation.isPending}
-                    data-testid="button-generate-portal-link"
-                  >
-                    {generateLinkMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Link2 className="w-3 h-3 mr-1" />}
-                    Generate Link
-                  </Button>
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => generateLinkMutation.mutate()}
+                      disabled={generateLinkMutation.isPending}
+                      data-testid="button-generate-portal-link"
+                    >
+                      {generateLinkMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Link2 className="w-3 h-3 mr-1" />}
+                      Individual
+                    </Button>
+                    {(booker.groupId || groupId) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => generateLinkMutation.mutate({ isGroupLink: true })}
+                        disabled={generateLinkMutation.isPending}
+                        data-testid="button-generate-group-link"
+                      >
+                        {generateLinkMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Users className="w-3 h-3 mr-1" />}
+                        Group
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 {bookerLinksData && bookerLinksData.length > 0 ? (
                   <div className="space-y-1.5">
                     {bookerLinksData.map((link: any) => (
                         <div key={link.id} className="flex items-center gap-2 text-xs p-2 rounded border bg-muted/30">
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-mono truncate text-muted-foreground">{link.token.slice(0, 12)}...</span>
-                              {link.label && <Badge variant="secondary" className="text-[9px]">{link.label}</Badge>}
+                              {link.isGroupLink && <Badge variant="secondary" className="text-[9px]">Group</Badge>}
+                              {link.label && !link.isGroupLink && <Badge variant="secondary" className="text-[9px]">{link.label}</Badge>}
                             </div>
                             <div className="text-muted-foreground mt-0.5">
                               Created {format(new Date(link.createdAt), "d MMM yyyy")}

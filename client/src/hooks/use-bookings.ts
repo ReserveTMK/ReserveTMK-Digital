@@ -113,3 +113,7 @@ export function useDeleteVenueInstruction() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/venue-instructions'] }),
   });
 }
+
+export function useAllBookerLinks() {
+  return useQuery<any[]>({ queryKey: ['/api/all-booker-links'] });
+}

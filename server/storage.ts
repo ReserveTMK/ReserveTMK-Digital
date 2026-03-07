@@ -347,6 +347,7 @@ export interface IStorage {
   getRegularBookerByLoginEmail(email: string): Promise<RegularBooker | undefined>;
 
   getBookerLinks(regularBookerId: number): Promise<BookerLink[]>;
+  getAllBookerLinks(userId: string): Promise<BookerLink[]>;
   createBookerLink(data: InsertBookerLink): Promise<BookerLink>;
   deleteBookerLink(id: number): Promise<void>;
   getBookerByLinkToken(token: string): Promise<{ booker: RegularBooker; link: BookerLink } | undefined>;
@@ -1394,6 +1395,13 @@ export class DatabaseStorage implements IStorage {
 
   async getBookerLinks(regularBookerId: number): Promise<BookerLink[]> {
     return await db.select().from(bookerLinks).where(eq(bookerLinks.regularBookerId, regularBookerId)).orderBy(desc(bookerLinks.createdAt));
+  }
+
+  async getAllBookerLinks(userId: string): Promise<BookerLink[]> {
+    const userBookers = await db.select({ id: regularBookers.id }).from(regularBookers).where(eq(regularBookers.userId, userId));
+    if (userBookers.length === 0) return [];
+    const bookerIds = userBookers.map(b => b.id);
+    return await db.select().from(bookerLinks).where(sql`${bookerLinks.regularBookerId} = ANY(${bookerIds})`).orderBy(desc(bookerLinks.createdAt));
   }
 
   async createBookerLink(data: InsertBookerLink): Promise<BookerLink> {

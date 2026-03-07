@@ -43,8 +43,8 @@ PostgreSQL is used as the database, integrated with Drizzle ORM. The schema incl
 -   **Ecosystem View**: Role-based lane layout (Funders, Delivery Partners, Connectors, etc.) with a "Priority Conversations" VIP section showing combined VIP contacts and groups. Groups can appear in multiple role lanes via `ecosystemRoles` array.
 -   **Debriefs/Impact Tracking**: Supports manual impact tags, weekly summaries, and AI analysis syncing 8 metric scores to contacts.
 -   **Projects**: Tracks internal initiatives with AI-powered task extraction.
--   **Venue Hire System**: Manages venue bookings with automated workflows, conflict checking, and post-booking surveys.
--   **Regular Booker Portal**: Self-service portal for regular bookers with magic link authentication, package status, and booking flows.
+-   **Venue Hire System**: Manages venue bookings with automated workflows, conflict checking, and post-booking surveys. Post-completion dialog triggers next-step actions (invoice + mark served) with `servedAt` and `invoiceRequested` tracking on bookings.
+-   **Regular Booker Portal**: Self-service portal for regular bookers with magic link authentication, package status, and booking flows. Supports group-level portal links (`isGroupLink` on bookerLinks) so orgs can share one link. Pricing is shown during booking selection (rates, discounts, agreement coverage). Regular booker management view with enriched table showing contacts, groups, agreements, package balance, and magic link status. Auto-suggestions surface contacts with venue_hire/hot_desking support types or active agreements.
 -   **After-Hours Auto-Send**: Automatically sends venue instruction reminders for bookings outside staffed operating hours.
 -   **Xero Integration**: OAuth2 connection for automated invoice generation and contact/invoice syncing.
 -   **Gmail Sync**: Multi-account Gmail import with smart filtering, mailing list detection, and user-managed exclusion lists. Includes a cleanup tool for marketing contacts.

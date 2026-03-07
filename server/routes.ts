@@ -3484,6 +3484,104 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   });
 
   // === Regular Bookers API ===
+  app.get("/api/regular-bookers/suggestions", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const existingBookers = await storage.getRegularBookers(userId);
+      const existingContactIds = new Set(existingBookers.filter(b => b.contactId).map(b => b.contactId));
+      const existingGroupIds = new Set(existingBookers.filter(b => b.groupId).map(b => b.groupId));
+
+      const allContacts = await storage.getContacts(userId);
+      const venueContacts = allContacts.filter(c => {
+        if (existingContactIds.has(c.id)) return false;
+        const st = (c as any).supportType;
+        if (Array.isArray(st) && (st.includes("venue_hire") || st.includes("hot_desking"))) return true;
+        return false;
+      });
+
+      const allMemberships = await db.select().from(memberships).where(eq(memberships.userId, userId));
+      const allMous = await db.select().from(mous).where(eq(mous.userId, userId));
+
+      const agreementContacts = allContacts.filter(c => {
+        if (existingContactIds.has(c.id)) return false;
+        if (venueContacts.some(vc => vc.id === c.id)) return false;
+        const hasMembership = allMemberships.some(m => m.contactId === c.id && m.status === "active");
+        const hasMou = allMous.some(m => m.contactId === c.id && m.status === "active");
+        return hasMembership || hasMou;
+      });
+
+      const allGroups = await storage.getGroups(userId);
+      const agreementGroups = allGroups.filter(g => {
+        if (existingGroupIds.has(g.id)) return false;
+        const hasMembership = allMemberships.some(m => m.groupId === g.id && m.status === "active");
+        const hasMou = allMous.some(m => m.groupId === g.id && m.status === "active");
+        return hasMembership || hasMou;
+      });
+
+      res.json({
+        venueContacts: venueContacts.map(c => ({ id: c.id, name: c.name, email: c.email, supportType: (c as any).supportType })),
+        agreementContacts: agreementContacts.map(c => ({ id: c.id, name: c.name, email: c.email })),
+        agreementGroups: agreementGroups.map(g => ({ id: g.id, name: g.name, type: g.type })),
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/regular-bookers/enriched", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const bookers = await storage.getRegularBookers(userId);
+
+      const enriched = await Promise.all(bookers.map(async (booker) => {
+        const links = await storage.getBookerLinks(booker.id);
+        const baseUrl = process.env.REPLIT_DEV_DOMAIN
+          ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+          : process.env.REPL_SLUG
+          ? `https://${process.env.REPL_SLUG}.replit.app`
+          : "https://app.reservetmk.co.nz";
+
+        let contact = null;
+        if (booker.contactId) {
+          contact = await storage.getContact(booker.contactId);
+        }
+        let group = null;
+        if (booker.groupId) {
+          group = await storage.getGroup(booker.groupId);
+        }
+        let membership = null;
+        if (booker.membershipId) {
+          membership = await storage.getMembership(booker.membershipId);
+        }
+        let mou = null;
+        if (booker.mouId) {
+          mou = await storage.getMou(booker.mouId);
+        }
+
+        return {
+          ...booker,
+          contact: contact ? { id: contact.id, name: contact.name, email: contact.email } : null,
+          group: group ? { id: group.id, name: group.name, type: group.type } : null,
+          membership: membership ? { id: membership.id, name: membership.name, status: membership.status, bookingAllowance: membership.bookingAllowance, allowancePeriod: membership.allowancePeriod } : null,
+          mou: mou ? { id: mou.id, title: mou.title, status: mou.status, bookingAllowance: mou.bookingAllowance, allowancePeriod: mou.allowancePeriod } : null,
+          links: links.map(l => ({
+            id: l.id,
+            token: l.token,
+            enabled: l.enabled,
+            label: l.label,
+            createdAt: l.createdAt,
+            lastAccessedAt: l.lastAccessedAt,
+            portalUrl: `${baseUrl}/booker/portal/${l.token}`,
+          })),
+        };
+      }));
+
+      res.json(enriched);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/regular-bookers", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
     const bookers = await storage.getRegularBookers(userId);
@@ -3535,6 +3633,22 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     res.json({ success: true });
   });
 
+  app.get("/api/all-booker-links", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const links = await storage.getAllBookerLinks(userId);
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.REPL_SLUG
+        ? `https://${process.env.REPL_SLUG}.replit.app`
+        : "https://app.reservetmk.co.nz";
+      const linksWithUrls = links.map(l => ({ ...l, portalUrl: `${baseUrl}/booker/portal/${l.token}` }));
+      res.json(linksWithUrls);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/regular-bookers/:id/links", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
@@ -3563,11 +3677,13 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
       const token = crypto.randomUUID();
       const label = req.body.label || "Portal link";
+      const isGroupLink = req.body.isGroupLink === true;
       const link = await storage.createBookerLink({
         regularBookerId: id,
         token,
         enabled: true,
         label,
+        isGroupLink,
       });
 
       const baseUrl = process.env.REPLIT_DEV_DOMAIN
@@ -3773,6 +3889,9 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         }
       }
 
+      const needsInvoice = !booking.xeroInvoiceId && parseFloat(booking.amount || "0") > 0;
+      const updatedBooking = await storage.getBooking(bookingId);
+
       res.json({
         success: true,
         surveyDecision: shouldSendSurvey
@@ -3780,7 +3899,24 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
           : "Survey skipped (regular booker, not first booking)",
         isOneOff,
         isFirstBooking,
+        needsAction: true,
+        needsInvoice,
+        booking: updatedBooking,
       });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/bookings/:id/mark-served", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const bookingId = parseInt(req.params.id);
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+      if (booking.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+      await storage.updateBooking(bookingId, { servedAt: new Date() } as any);
+      res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -9144,6 +9280,7 @@ Rules:
       await storage.updateBookerLinkToken(link.id, newToken, new Date(Date.now() + 4 * 60 * 60 * 1000));
       await storage.updateBookerLinkAccess(link.id);
 
+      const isGroupLink = link.isGroupLink === true;
       const contact = booker.contactId ? await storage.getContact(booker.contactId) : null;
       let linkedGroupId: number | null = booker.groupId || null;
       let linkedGroupName: string | null = null;
@@ -9179,10 +9316,56 @@ Rules:
         mou,
         userId: booker.userId,
         token: newToken,
+        isGroupLink,
       });
     } catch (err: any) {
       console.error("Booker auth error:", err);
       res.status(500).json({ message: "Authentication failed" });
+    }
+  });
+
+  app.get("/api/booker/pricing/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const linkResult = await storage.getBookerByLinkToken(token);
+      if (!linkResult || (linkResult.link.tokenExpiry && new Date(linkResult.link.tokenExpiry) < new Date()) || !linkResult.link.enabled) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+      }
+      const booker = linkResult.booker;
+      const defaults = await storage.getBookingPricingDefaults(booker.userId);
+      const fullDayRate = parseFloat(defaults?.fullDayRate || "0");
+      const halfDayRate = parseFloat(defaults?.halfDayRate || "0");
+      const hourlyRate = fullDayRate / 8;
+
+      let pricingTier = booker.pricingTier || "full_price";
+      const discountPct = parseFloat(booker.discountPercentage || "0");
+      const hasMembership = !!booker.membershipId;
+      const hasMou = !!booker.mouId;
+      const hasPackage = booker.hasBookingPackage && ((booker.packageTotalBookings || 0) - (booker.packageUsedBookings || 0)) > 0;
+
+      const applyDiscount = (rate: number) => {
+        if (hasMembership || hasMou) return 0;
+        if (pricingTier === "discounted" && discountPct > 0) {
+          return Math.round(rate * (1 - discountPct / 100) * 100) / 100;
+        }
+        return rate;
+      };
+
+      res.json({
+        fullDayRate: applyDiscount(fullDayRate),
+        halfDayRate: applyDiscount(halfDayRate),
+        hourlyRate: applyDiscount(hourlyRate),
+        baseFullDayRate: fullDayRate,
+        baseHalfDayRate: halfDayRate,
+        baseHourlyRate: hourlyRate,
+        pricingTier,
+        discountPercentage: discountPct,
+        coveredByAgreement: hasMembership || hasMou,
+        hasPackageCredits: hasPackage,
+        packageRemaining: hasPackage ? (booker.packageTotalBookings || 0) - (booker.packageUsedBookings || 0) : 0,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch pricing" });
     }
   });
 
@@ -9246,7 +9429,10 @@ Rules:
         const dateStr = `${sd.getFullYear()}-${String(sd.getMonth() + 1).padStart(2, "0")}-${String(sd.getDate()).padStart(2, "0")}`;
         if (!dates[dateStr]) continue;
 
-        const isYours = booking.bookerId === booker.contactId;
+        const isGroupLink = linkResult.link.isGroupLink === true;
+        const isYours = isGroupLink
+          ? (booker.groupId ? booking.bookerGroupId === booker.groupId : booking.bookerId === booker.contactId)
+          : booking.bookerId === booker.contactId;
         dates[dateStr].bookings.push({
           startTime: booking.startTime,
           endTime: booking.endTime,
@@ -9293,10 +9479,11 @@ Rules:
       }
       const booker = linkResult.booker;
 
-      const { venueId, startDate, startTime, endTime, classification, specialRequests, usePackageCredit } = req.body;
+      const { venueId, startDate, startTime, endTime, classification, specialRequests, usePackageCredit, bookerName } = req.body;
       if (!venueId || !startDate || !startTime || !endTime || !classification) {
         return res.status(400).json({ message: "Missing required fields" });
       }
+      const isGroupLink = linkResult.link.isGroupLink === true;
 
       const allBookings = await storage.getBookings(booker.userId);
       const conflicting = allBookings.filter(b => {
@@ -9322,10 +9509,12 @@ Rules:
         });
       }
 
-      const contactGroups = await storage.getContactGroups(booker.contactId);
-      let bookerGroupId: number | null = null;
-      if (contactGroups.length > 0) {
-        bookerGroupId = contactGroups[0].groupId;
+      let bookerGroupId: number | null = booker.groupId || null;
+      if (!bookerGroupId && booker.contactId) {
+        const contactGroups = await storage.getContactGroups(booker.contactId);
+        if (contactGroups.length > 0) {
+          bookerGroupId = contactGroups[0].groupId;
+        }
       }
 
       const startMinutes = parseTimeToMinutes(startTime);
@@ -9372,10 +9561,11 @@ Rules:
         }
       }
 
+      const titleSuffix = isGroupLink && bookerName ? ` (by ${bookerName})` : "";
       const booking = await storage.createBooking({
         userId: booker.userId,
         venueId,
-        title: `${classification} - Portal Booking`,
+        title: `${classification} - Portal Booking${titleSuffix}`,
         classification,
         status: "enquiry",
         startDate: new Date(startDate),
@@ -9384,11 +9574,12 @@ Rules:
         durationType,
         pricingTier,
         amount,
-        bookerId: booker.contactId,
+        bookerId: isGroupLink ? null : booker.contactId,
         bookerGroupId,
         membershipId,
         mouId,
         specialRequests: specialRequests || null,
+        bookerName: bookerName || null,
         bookingSource: "regular_booker_portal",
         usePackageCredit: shouldUsePackageCredit,
         discountPercentage,
@@ -9410,8 +9601,17 @@ Rules:
       }
       const booker = linkResult.booker;
 
+      const isGroupLink = linkResult.link.isGroupLink === true;
       const allBookings = await storage.getBookings(booker.userId);
-      const myBookings = allBookings.filter(b => b.bookerId === booker.contactId);
+
+      let myBookings;
+      if (isGroupLink && booker.groupId) {
+        myBookings = allBookings.filter(b => b.bookerGroupId === booker.groupId);
+      } else if (booker.contactId) {
+        myBookings = allBookings.filter(b => b.bookerId === booker.contactId || b.bookerGroupId === booker.groupId);
+      } else {
+        myBookings = allBookings.filter(b => b.bookerId === booker.contactId);
+      }
       res.json(myBookings);
     } catch (err: any) {
       res.status(500).json({ message: "Failed to fetch bookings" });
@@ -9610,6 +9810,7 @@ Rules:
 
       const { generateXeroInvoice } = await import("./xero");
       const result = await generateXeroInvoice(userId, bookingId);
+      await storage.updateBooking(bookingId, { invoiceRequested: true } as any);
       if (result) {
         res.json({ success: true, ...result });
       } else {
