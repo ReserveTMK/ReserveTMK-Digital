@@ -875,26 +875,24 @@ export default function Contacts() {
                 </TabsTrigger>
               </TabsList>
             </Tabs>
-            {!isMobile && (
-              <div className="flex items-center gap-1 border rounded-lg p-0.5" data-testid="layout-toggle">
-                <Button
-                  variant={layoutView === "list" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setLayoutView("list")}
-                  data-testid="button-layout-list"
-                >
-                  <List className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant={layoutView === "table" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setLayoutView("table")}
-                  data-testid="button-layout-table"
-                >
-                  <Table className="w-4 h-4" />
-                </Button>
-              </div>
-            )}
+            <div className="flex items-center gap-1 border rounded-lg p-0.5" data-testid="layout-toggle">
+              <Button
+                variant={layoutView === "list" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setLayoutView("list")}
+                data-testid="button-layout-list"
+              >
+                <List className="w-4 h-4" />
+              </Button>
+              <Button
+                variant={layoutView === "table" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setLayoutView("table")}
+                data-testid="button-layout-table"
+              >
+                <Table className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
 
               {analytics && (
