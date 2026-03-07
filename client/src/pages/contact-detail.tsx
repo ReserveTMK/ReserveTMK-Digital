@@ -11,7 +11,9 @@ import { Card } from "@/components/ui/card";
 import { useRoute } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Loader2, Mic, StopCircle, ArrowLeft, Brain, TrendingUp, Sparkles, AlertCircle, DollarSign, Settings, Rocket, Network, Shield, FileText, CheckSquare, Calendar, Clock, ChevronDown, History, MessageSquare, Pencil, Check, X, ArrowUp, ArrowDown, Star, Users, Coffee, Trash2, Plus } from "lucide-react";
+import { Loader2, Mic, StopCircle, ArrowLeft, Brain, TrendingUp, Sparkles, AlertCircle, DollarSign, Settings, Rocket, Network, Shield, FileText, CheckSquare, Calendar, Clock, ChevronDown, History, MessageSquare, Pencil, Check, X, ArrowUp, ArrowDown, Star, Users, Coffee, Trash2, Plus, MoreVertical } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { RelationshipStageSelector } from "@/components/relationship-stage-selector";
@@ -155,6 +157,7 @@ export default function ContactDetail() {
   });
 
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   const currentTier = contact?.isVip ? "vip" : contact?.isInnovator ? "innovator" : contact?.isCommunityMember ? "community" : "all";
 
@@ -374,68 +377,227 @@ export default function ContactDetail() {
               </div>
 
               <div className="flex flex-col gap-2 items-end shrink-0">
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button size="lg" className="shadow-lg shadow-primary/20">
-                      <Mic className="w-4 h-4 mr-2" /> Log Interaction
-                    </Button>
-                  </DialogTrigger>
-                  <LogInteractionDialog contactId={id} />
-                </Dialog>
-                {catchUpItem ? (
-                  <div className="flex items-center gap-2" data-testid="catch-up-status">
-                    <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/20">
-                      <Coffee className="w-3 h-3 mr-1" />
-                      On Catch Up List
-                      {catchUpItem.priority && (
-                        <span className="ml-1 opacity-70">
-                          ({catchUpItem.priority})
-                        </span>
-                      )}
-                    </Badge>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => dismissCatchUpMutation.mutate(catchUpItem.id)}
-                      disabled={dismissCatchUpMutation.isPending}
-                      data-testid="button-catch-up-done"
-                    >
-                      {dismissCatchUpMutation.isPending ? (
-                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                <div className="flex items-center gap-2">
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      {isMobile ? (
+                        <Button size="icon" className="shadow-lg shadow-primary/20" data-testid="button-log-interaction">
+                          <Mic className="w-4 h-4" />
+                        </Button>
                       ) : (
-                        <Check className="w-4 h-4 mr-1" />
+                        <Button size="lg" className="shadow-lg shadow-primary/20" data-testid="button-log-interaction">
+                          <Mic className="w-4 h-4 mr-2" /> Log Interaction
+                        </Button>
                       )}
-                      Done
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeCatchUpMutation.mutate(catchUpItem.id)}
-                      disabled={removeCatchUpMutation.isPending}
-                      data-testid="button-catch-up-remove"
-                    >
-                      {removeCatchUpMutation.isPending ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-4 h-4" />
+                    </DialogTrigger>
+                    <LogInteractionDialog contactId={id} />
+                  </Dialog>
+                  {isMobile && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="icon" data-testid="button-more-actions">
+                          <MoreVertical className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {!catchUpItem && (
+                          <DropdownMenuItem
+                            onClick={() => setCatchUpPopoverOpen(true)}
+                            data-testid="menu-add-catch-up"
+                          >
+                            <Coffee className="w-4 h-4 mr-2" />
+                            Add to Catch Up
+                          </DropdownMenuItem>
+                        )}
+                        {catchUpItem && (
+                          <>
+                            <DropdownMenuItem
+                              onClick={() => dismissCatchUpMutation.mutate(catchUpItem.id)}
+                              disabled={dismissCatchUpMutation.isPending}
+                              data-testid="menu-catch-up-done"
+                            >
+                              <Check className="w-4 h-4 mr-2" />
+                              Mark Catch Up Done
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => removeCatchUpMutation.mutate(catchUpItem.id)}
+                              disabled={removeCatchUpMutation.isPending}
+                              data-testid="menu-catch-up-remove"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Remove from Catch Up
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                        {currentTier !== "vip" && (
+                          <DropdownMenuItem
+                            onClick={() => promoteMutation.mutate()}
+                            disabled={promoteMutation.isPending}
+                            data-testid="menu-promote-contact"
+                          >
+                            <ArrowUp className="w-4 h-4 mr-2" />
+                            Promote to {currentTier === "all" ? "Community" : currentTier === "community" ? "Innovator" : "VIP"}
+                          </DropdownMenuItem>
+                        )}
+                        {currentTier !== "all" && (
+                          <DropdownMenuItem
+                            onClick={() => demoteMutation.mutate()}
+                            disabled={demoteMutation.isPending}
+                            data-testid="menu-demote-contact"
+                          >
+                            <ArrowDown className="w-4 h-4 mr-2" />
+                            Demote to {currentTier === "vip" ? "Innovator" : currentTier === "innovator" ? "Community" : "All"}
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
+                {!isMobile && (
+                  <>
+                    {catchUpItem ? (
+                      <div className="flex items-center gap-2" data-testid="catch-up-status">
+                        <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/20">
+                          <Coffee className="w-3 h-3 mr-1" />
+                          On Catch Up List
+                          {catchUpItem.priority && (
+                            <span className="ml-1 opacity-70">
+                              ({catchUpItem.priority})
+                            </span>
+                          )}
+                        </Badge>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => dismissCatchUpMutation.mutate(catchUpItem.id)}
+                          disabled={dismissCatchUpMutation.isPending}
+                          data-testid="button-catch-up-done"
+                        >
+                          {dismissCatchUpMutation.isPending ? (
+                            <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                          ) : (
+                            <Check className="w-4 h-4 mr-1" />
+                          )}
+                          Done
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeCatchUpMutation.mutate(catchUpItem.id)}
+                          disabled={removeCatchUpMutation.isPending}
+                          data-testid="button-catch-up-remove"
+                        >
+                          {removeCatchUpMutation.isPending ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                        </Button>
+                      </div>
+                    ) : (
+                      <Popover open={catchUpPopoverOpen} onOpenChange={setCatchUpPopoverOpen}>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" size="sm" data-testid="button-add-catch-up">
+                            <Coffee className="w-4 h-4 mr-1" />
+                            Add to Catch Up
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-72" align="end">
+                          <div className="space-y-3">
+                            <h4 className="font-medium text-sm">Add to Catch Up List</h4>
+                            <div className="space-y-2">
+                              <Label className="text-xs">Priority</Label>
+                              <Select value={catchUpPriority} onValueChange={setCatchUpPriority}>
+                                <SelectTrigger data-testid="select-catch-up-priority">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="urgent">Urgent</SelectItem>
+                                  <SelectItem value="soon">Soon</SelectItem>
+                                  <SelectItem value="whenever">Whenever</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label className="text-xs">Note (optional)</Label>
+                              <Input
+                                value={catchUpNote}
+                                onChange={(e) => setCatchUpNote(e.target.value)}
+                                placeholder="Why catch up?"
+                                data-testid="input-catch-up-note"
+                              />
+                            </div>
+                            <Button
+                              className="w-full"
+                              size="sm"
+                              disabled={addToCatchUpMutation.isPending}
+                              onClick={() => addToCatchUpMutation.mutate({ contactId: id, note: catchUpNote, priority: catchUpPriority })}
+                              data-testid="button-confirm-catch-up"
+                            >
+                              {addToCatchUpMutation.isPending ? (
+                                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                              ) : (
+                                <Plus className="w-4 h-4 mr-1" />
+                              )}
+                              Add
+                            </Button>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    )}
+                    <div className="flex items-center gap-2">
+                      {currentTier !== "vip" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => promoteMutation.mutate()}
+                          disabled={promoteMutation.isPending}
+                          data-testid="button-promote-contact"
+                        >
+                          {promoteMutation.isPending ? (
+                            <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                          ) : (
+                            <ArrowUp className="w-4 h-4 mr-1" />
+                          )}
+                          Promote to {currentTier === "all" ? "Community" : currentTier === "community" ? "Innovator" : "VIP"}
+                        </Button>
                       )}
-                    </Button>
-                  </div>
-                ) : (
-                  <Popover open={catchUpPopoverOpen} onOpenChange={setCatchUpPopoverOpen}>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" size="sm" data-testid="button-add-catch-up">
-                        <Coffee className="w-4 h-4 mr-1" />
-                        Add to Catch Up
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-72" align="end">
+                      {currentTier !== "all" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => demoteMutation.mutate()}
+                          disabled={demoteMutation.isPending}
+                          data-testid="button-demote-contact"
+                        >
+                          {demoteMutation.isPending ? (
+                            <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                          ) : (
+                            <ArrowDown className="w-4 h-4 mr-1" />
+                          )}
+                          Demote to {currentTier === "vip" ? "Innovator" : currentTier === "innovator" ? "Community" : "All"}
+                        </Button>
+                      )}
+                    </div>
+                  </>
+                )}
+                {isMobile && catchUpItem && (
+                  <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/20" data-testid="catch-up-status-mobile">
+                    <Coffee className="w-3 h-3 mr-1" />
+                    On Catch Up List
+                  </Badge>
+                )}
+                {isMobile && !catchUpItem && (
+                  <Dialog open={catchUpPopoverOpen} onOpenChange={setCatchUpPopoverOpen}>
+                    <DialogContent className="sm:max-w-[340px] max-h-[90vh] overflow-y-auto">
+                      <DialogHeader>
+                        <DialogTitle>Add to Catch Up List</DialogTitle>
+                      </DialogHeader>
                       <div className="space-y-3">
-                        <h4 className="font-medium text-sm">Add to Catch Up List</h4>
                         <div className="space-y-2">
                           <Label className="text-xs">Priority</Label>
                           <Select value={catchUpPriority} onValueChange={setCatchUpPriority}>
-                            <SelectTrigger data-testid="select-catch-up-priority">
+                            <SelectTrigger data-testid="select-catch-up-priority-mobile">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -451,7 +613,7 @@ export default function ContactDetail() {
                             value={catchUpNote}
                             onChange={(e) => setCatchUpNote(e.target.value)}
                             placeholder="Why catch up?"
-                            data-testid="input-catch-up-note"
+                            data-testid="input-catch-up-note-mobile"
                           />
                         </div>
                         <Button
@@ -459,7 +621,7 @@ export default function ContactDetail() {
                           size="sm"
                           disabled={addToCatchUpMutation.isPending}
                           onClick={() => addToCatchUpMutation.mutate({ contactId: id, note: catchUpNote, priority: catchUpPriority })}
-                          data-testid="button-confirm-catch-up"
+                          data-testid="button-confirm-catch-up-mobile"
                         >
                           {addToCatchUpMutation.isPending ? (
                             <Loader2 className="w-4 h-4 mr-1 animate-spin" />
@@ -469,49 +631,15 @@ export default function ContactDetail() {
                           Add
                         </Button>
                       </div>
-                    </PopoverContent>
-                  </Popover>
+                    </DialogContent>
+                  </Dialog>
                 )}
-                <div className="flex items-center gap-2">
-                  {currentTier !== "vip" && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => promoteMutation.mutate()}
-                      disabled={promoteMutation.isPending}
-                      data-testid="button-promote-contact"
-                    >
-                      {promoteMutation.isPending ? (
-                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                      ) : (
-                        <ArrowUp className="w-4 h-4 mr-1" />
-                      )}
-                      Promote to {currentTier === "all" ? "Community" : currentTier === "community" ? "Innovator" : "VIP"}
-                    </Button>
-                  )}
-                  {currentTier !== "all" && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => demoteMutation.mutate()}
-                      disabled={demoteMutation.isPending}
-                      data-testid="button-demote-contact"
-                    >
-                      {demoteMutation.isPending ? (
-                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                      ) : (
-                        <ArrowDown className="w-4 h-4 mr-1" />
-                      )}
-                      Demote to {currentTier === "vip" ? "Innovator" : currentTier === "innovator" ? "Community" : "All"}
-                    </Button>
-                  )}
-                </div>
               </div>
             </div>
           </div>
 
           {/* Current Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 sm:gap-3">
             <MetricCard 
               title="Mindset" 
               value={contact.metrics?.mindset || "-"} 
@@ -766,7 +894,7 @@ export default function ContactDetail() {
 
           {/* Tabs Content */}
           <Tabs defaultValue="overview" className="space-y-6">
-            <TabsList className="bg-card border border-border p-1 rounded-xl">
+            <TabsList className="bg-card border border-border p-1 rounded-xl w-full overflow-x-auto flex-nowrap justify-start sm:justify-center">
               <TabsTrigger value="overview" className="rounded-lg data-[state=active]:bg-primary/10 data-[state=active]:text-primary" data-testid="tab-overview">Overview</TabsTrigger>
               <TabsTrigger value="history" className="rounded-lg data-[state=active]:bg-primary/10 data-[state=active]:text-primary" data-testid="tab-history">History</TabsTrigger>
               <TabsTrigger value="timeline" className="rounded-lg data-[state=active]:bg-primary/10 data-[state=active]:text-primary" data-testid="tab-timeline">Timeline</TabsTrigger>
@@ -840,34 +968,36 @@ export default function ContactDetail() {
                          {interaction.summary || interaction.transcript}
                        </p>
                        
-                       <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 border-t border-border pt-4">
-                         <div className="text-center">
-                           <p className="text-xs text-muted-foreground mb-1">Mindset</p>
-                           <p className="font-bold text-primary">{interaction.analysis?.mindsetScore || "-"}</p>
-                         </div>
-                         <div className="text-center">
-                           <p className="text-xs text-muted-foreground mb-1">Skill</p>
-                           <p className="font-bold text-secondary-foreground">{interaction.analysis?.skillScore || "-"}</p>
-                         </div>
-                         <div className="text-center">
-                           <p className="text-xs text-muted-foreground mb-1">Confidence</p>
-                           <p className="font-bold text-amber-500">{interaction.analysis?.confidenceScore || "-"}</p>
-                         </div>
-                         <div className="text-center">
-                           <p className="text-xs text-muted-foreground mb-1">Biz Conf.</p>
-                           <p className="font-bold text-pink-500">{interaction.analysis?.bizConfidenceScore || interaction.analysis?.confidenceScoreMetric || "-"}</p>
-                         </div>
-                         <div className="text-center">
-                           <p className="text-xs text-muted-foreground mb-1">Systems</p>
-                           <p className="font-bold text-cyan-500">{interaction.analysis?.systemsInPlaceScore || "-"}</p>
-                         </div>
-                         <div className="text-center">
-                           <p className="text-xs text-muted-foreground mb-1">Funding</p>
-                           <p className="font-bold text-teal-500">{interaction.analysis?.fundingReadinessScore || "-"}</p>
-                         </div>
-                         <div className="text-center">
-                           <p className="text-xs text-muted-foreground mb-1">Network</p>
-                           <p className="font-bold text-orange-500">{interaction.analysis?.networkStrengthScore || "-"}</p>
+                       <div className="overflow-x-auto -mx-2 px-2 border-t border-border pt-4">
+                         <div className="grid grid-cols-7 gap-2 min-w-[420px]">
+                           <div className="text-center">
+                             <p className="text-xs text-muted-foreground mb-1">Mindset</p>
+                             <p className="font-bold text-primary">{interaction.analysis?.mindsetScore || "-"}</p>
+                           </div>
+                           <div className="text-center">
+                             <p className="text-xs text-muted-foreground mb-1">Skill</p>
+                             <p className="font-bold text-secondary-foreground">{interaction.analysis?.skillScore || "-"}</p>
+                           </div>
+                           <div className="text-center">
+                             <p className="text-xs text-muted-foreground mb-1">Confidence</p>
+                             <p className="font-bold text-amber-500">{interaction.analysis?.confidenceScore || "-"}</p>
+                           </div>
+                           <div className="text-center">
+                             <p className="text-xs text-muted-foreground mb-1">Biz Conf.</p>
+                             <p className="font-bold text-pink-500">{interaction.analysis?.bizConfidenceScore || interaction.analysis?.confidenceScoreMetric || "-"}</p>
+                           </div>
+                           <div className="text-center">
+                             <p className="text-xs text-muted-foreground mb-1">Systems</p>
+                             <p className="font-bold text-cyan-500">{interaction.analysis?.systemsInPlaceScore || "-"}</p>
+                           </div>
+                           <div className="text-center">
+                             <p className="text-xs text-muted-foreground mb-1">Funding</p>
+                             <p className="font-bold text-teal-500">{interaction.analysis?.fundingReadinessScore || "-"}</p>
+                           </div>
+                           <div className="text-center">
+                             <p className="text-xs text-muted-foreground mb-1">Network</p>
+                             <p className="font-bold text-orange-500">{interaction.analysis?.networkStrengthScore || "-"}</p>
+                           </div>
                          </div>
                        </div>
                      </div>

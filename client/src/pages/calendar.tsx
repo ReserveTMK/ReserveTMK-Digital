@@ -4,7 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useLocation } from "wouter";
 import {
   Calendar,
@@ -661,7 +662,7 @@ function EventCard({
             </div>
 
             <Dialog open={showNewPersonDialog} onOpenChange={setShowNewPersonDialog}>
-              <DialogContent>
+              <DialogContent className="max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Add New Person</DialogTitle>
                   <DialogDescription>Create a new community member to tag on this event.</DialogDescription>
@@ -946,6 +947,17 @@ export default function CalendarPage() {
   const [activitySelectedGroups, setActivitySelectedGroups] = useState<{ id: number; name: string }[]>([]);
   const [dailyFootTrafficValue, setDailyFootTrafficValue] = useState("");
   const [dailyFTSaving, setDailyFTSaving] = useState(false);
+  const isMobile = useIsMobile();
+  const dayPanelRef = useRef<HTMLDivElement>(null);
+
+  const handleSelectDate = useCallback((day: Date) => {
+    setSelectedDate(day);
+    if (isMobile && dayPanelRef.current) {
+      setTimeout(() => {
+        dayPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 100);
+    }
+  }, [isMobile]);
 
   function toggleTypeFilter(type: string) {
     setActiveTypeFilters(prev => {
@@ -1718,14 +1730,14 @@ export default function CalendarPage() {
         )}
 
         <Card className="p-4 mb-6" data-testid="panel-monthly-summary">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
             <div className="flex items-center gap-2">
               <Footprints className="w-4 h-4 text-primary" />
               <span className="text-sm font-semibold" data-testid="text-monthly-summary-title">
                 {format(currentMonth, "MMMM yyyy")} Summary
               </span>
             </div>
-            <div className="flex flex-wrap items-center gap-4">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-4">
               <div className="flex items-center gap-2 text-sm">
                 <CalendarDays className="w-3.5 h-3.5 text-muted-foreground" />
                 <span className="text-muted-foreground">Events:</span>
@@ -1794,7 +1806,7 @@ export default function CalendarPage() {
                   return (
                     <button
                       key={idx}
-                      onClick={() => setSelectedDate(day)}
+                      onClick={() => handleSelectDate(day)}
                       data-testid={`button-calendar-day-${key}`}
                       className={`
                         relative p-1 min-h-[3rem] md:min-h-[4rem] text-sm border border-border/30 transition-colors
@@ -1835,7 +1847,7 @@ export default function CalendarPage() {
             </Card>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-4" ref={dayPanelRef}>
             <h2 className="text-lg font-bold font-display" data-testid="text-selected-date">
               {format(selectedDate, "EEEE, MMM d")}
             </h2>
@@ -1928,7 +1940,7 @@ export default function CalendarPage() {
                   <span className="text-sm text-muted-foreground whitespace-nowrap">Foot Traffic:</span>
                   <Input
                     type="number"
-                    className="w-20 h-8 text-sm"
+                    className="w-20 min-h-[44px] md:min-h-0 md:h-8 text-sm"
                     placeholder="0"
                     value={dailyFootTrafficValue}
                     onChange={e => setDailyFootTrafficValue(e.target.value)}
@@ -1936,7 +1948,7 @@ export default function CalendarPage() {
                   />
                   <Button
                     size="sm"
-                    className="h-8"
+                    className="min-h-[44px] md:min-h-0 md:h-8"
                     onClick={handleSaveDailyFootTraffic}
                     disabled={dailyFTSaving || dailyFootTrafficValue === ""}
                     data-testid="button-save-daily-foot-traffic"
@@ -1967,7 +1979,7 @@ export default function CalendarPage() {
                   <span className="text-sm text-muted-foreground whitespace-nowrap">Foot Traffic:</span>
                   <Input
                     type="number"
-                    className="w-20 h-8 text-sm"
+                    className="w-20 min-h-[44px] md:min-h-0 md:h-8 text-sm"
                     placeholder="0"
                     value={dailyFootTrafficValue}
                     onChange={e => setDailyFootTrafficValue(e.target.value)}
@@ -1975,7 +1987,7 @@ export default function CalendarPage() {
                   />
                   <Button
                     size="sm"
-                    className="h-8"
+                    className="min-h-[44px] md:min-h-0 md:h-8"
                     onClick={handleSaveDailyFootTraffic}
                     disabled={dailyFTSaving || dailyFootTrafficValue === ""}
                     data-testid="button-save-daily-foot-traffic-empty"
@@ -2118,7 +2130,7 @@ export default function CalendarPage() {
 
       </div>
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Remove Event</DialogTitle>
             <DialogDescription>This action cannot be undone. Please provide a reason.</DialogDescription>
@@ -2165,7 +2177,7 @@ export default function CalendarPage() {
         </DialogContent>
       </Dialog>
       <Dialog open={dismissDialogOpen} onOpenChange={setDismissDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Dismiss Event</DialogTitle>
             <DialogDescription>This event will be hidden from your calendar view. You can restore it later.</DialogDescription>

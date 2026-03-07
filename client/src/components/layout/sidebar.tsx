@@ -139,7 +139,7 @@ export function Sidebar() {
                 <button
                   onClick={() => toggleGroup(item.name)}
                   className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 w-full text-left text-[13px] font-medium",
+                    "flex items-center gap-3 px-3 py-3 rounded-md transition-colors duration-150 w-full text-left text-[13px] font-medium min-h-[44px]",
                     isChildActive
                       ? "bg-[hsl(var(--sidebar-active))] text-white"
                       : "text-[hsl(var(--sidebar-text))] hover:bg-[hsl(var(--sidebar-hover))] hover:text-white",
@@ -161,7 +161,7 @@ export function Sidebar() {
                         key={child.name}
                         href={child.href}
                         className={cn(
-                          "flex items-center gap-3 pl-9 pr-3 py-2 rounded-md transition-colors duration-150 text-[13px]",
+                          "flex items-center gap-3 pl-9 pr-3 py-2.5 rounded-md transition-colors duration-150 text-[13px] min-h-[44px]",
                           isSubActive
                             ? "text-white bg-[hsl(var(--sidebar-active))] font-medium"
                             : "text-[hsl(var(--sidebar-text))] hover:bg-[hsl(var(--sidebar-hover))] hover:text-white",
@@ -182,7 +182,7 @@ export function Sidebar() {
           return (
             <Link key={item.name} href={item.href}
               className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 text-[13px] font-medium",
+                "flex items-center gap-3 px-3 py-3 rounded-md transition-colors duration-150 text-[13px] font-medium min-h-[44px]",
                 isActive
                   ? "bg-[hsl(var(--sidebar-active))] text-white"
                   : "text-[hsl(var(--sidebar-text))] hover:bg-[hsl(var(--sidebar-hover))] hover:text-white",
@@ -243,18 +243,21 @@ export function Sidebar() {
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[hsl(220,26%,14%)] border-t border-[hsl(220,20%,22%)] safe-area-bottom" data-testid="nav-bottom-bar">
         <div className="flex items-stretch justify-around">
           {bottomNavItems.map((item) => {
-            const isActive = location === item.href;
+            const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
             return (
               <Link
                 key={item.name}
                 href={item.href}
                 className={cn(
-                  "flex flex-col items-center justify-center py-2 px-3 flex-1 min-w-0 transition-colors",
+                  "flex flex-col items-center justify-center min-h-[56px] px-3 flex-1 min-w-0 transition-colors relative",
                   isActive ? "text-white" : "text-[hsl(210,20%,55%)]",
                 )}
                 data-testid={`bottom-nav-${item.name.toLowerCase().replace(/\s+/g, "-")}`}
               >
-                <item.icon className={cn("w-5 h-5 mb-0.5", isActive && "text-white")} />
+                {isActive && (
+                  <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-[3px] rounded-b-full bg-[hsl(var(--sidebar-accent))]" />
+                )}
+                <item.icon className={cn("w-5 h-5 mb-1", isActive && "text-white")} />
                 <span className={cn("text-[10px] font-medium truncate", isActive && "text-white")}>
                   {item.name}
                 </span>
@@ -264,10 +267,10 @@ export function Sidebar() {
           <Link
             href="#"
             onClick={(e) => { e.preventDefault(); setOpen(true); }}
-            className="flex flex-col items-center justify-center py-2 px-3 flex-1 min-w-0 transition-colors text-[hsl(210,20%,55%)]"
+            className="flex flex-col items-center justify-center min-h-[56px] px-3 flex-1 min-w-0 transition-colors text-[hsl(210,20%,55%)]"
             data-testid="bottom-nav-more"
           >
-            <MoreHorizontal className="w-5 h-5 mb-0.5" />
+            <MoreHorizontal className="w-5 h-5 mb-1" />
             <span className="text-[10px] font-medium">More</span>
           </Link>
         </div>

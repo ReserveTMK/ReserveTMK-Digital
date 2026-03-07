@@ -91,7 +91,7 @@ export function CreateContactDialogContent({ onSuccess }: { onSuccess: () => voi
   };
 
   return (
-    <DialogContent className="sm:max-w-[500px]">
+    <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle>Add New Community Member</DialogTitle>
       </DialogHeader>
@@ -411,7 +411,7 @@ export function BulkUploadDialog({ open, onOpenChange }: { open: boolean; onOpen
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Bulk Upload Contacts</DialogTitle>
         </DialogHeader>
@@ -621,7 +621,7 @@ export function CleanUpDialog({ open, onOpenChange }: { open: boolean; onOpenCha
 
   return (
     <Dialog open={open} onOpenChange={handleOpen}>
-      <DialogContent className="sm:max-w-[550px]">
+      <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Clean Up Junk Contacts</DialogTitle>
         </DialogHeader>

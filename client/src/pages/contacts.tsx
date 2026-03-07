@@ -3,6 +3,7 @@ import { useContacts, useDeleteContact } from "@/hooks/use-contacts";
 import { Plus, Search, Filter, Loader2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, Lightbulb, ChevronRight, Upload, Star } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useState, useMemo, useEffect } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Link } from "wouter";
 import { format } from "date-fns";
 import {
@@ -50,6 +51,7 @@ function getCircleBadge(circle: string | null | undefined) {
 export default function Contacts() {
   const { data: contacts, isLoading } = useContacts();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"community" | "innovators" | "all" | "vip">("community");
@@ -70,6 +72,12 @@ export default function Contacts() {
   const [primaryMergeId, setPrimaryMergeId] = useState<number | null>(null);
   const [layoutView, setLayoutView] = useState<"list" | "table">("list");
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
+
+  useEffect(() => {
+    if (isMobile) {
+      setLayoutView("list");
+    }
+  }, [isMobile]);
 
 
 
@@ -402,43 +410,93 @@ export default function Contacts() {
               <>
                 <Button variant="destructive" onClick={() => setBulkDeleteConfirmOpen(true)} data-testid="button-bulk-delete">
                   <Trash2 className="w-4 h-4 mr-2" />
-                  Delete ({selectedContacts.size})
+                  {isMobile ? selectedContacts.size : `Delete (${selectedContacts.size})`}
                 </Button>
-                {(viewMode === "all" || viewMode === "community" || viewMode === "innovators") && (
-                  <Button variant="outline" onClick={async () => {
-                    for (const id of Array.from(selectedContacts)) {
-                      await promoteMutation.mutateAsync(id);
-                    }
-                    setSelectedContacts(new Set());
-                  }} disabled={promoteMutation.isPending} data-testid="button-bulk-promote">
-                    {promoteMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowUp className="w-4 h-4 mr-2" />}
-                    Promote ({selectedContacts.size})
-                  </Button>
-                )}
-                {(viewMode === "community" || viewMode === "innovators" || viewMode === "vip") && (
-                  <Button variant="outline" onClick={async () => {
-                    for (const id of Array.from(selectedContacts)) {
-                      await demoteMutation.mutateAsync(id);
-                    }
-                    setSelectedContacts(new Set());
-                  }} disabled={demoteMutation.isPending} data-testid="button-bulk-demote">
-                    {demoteMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowDown className="w-4 h-4 mr-2" />}
-                    Demote ({selectedContacts.size})
-                  </Button>
-                )}
-                <Button variant="outline" onClick={() => setBulkRoleOpen(true)} data-testid="button-bulk-update-role">
-                  <Tag className="w-4 h-4 mr-2" />
-                  Update Role
-                </Button>
-                <Button variant="outline" onClick={() => setBulkRelationshipOpen(true)} data-testid="button-bulk-update-relationship">
-                  <Users className="w-4 h-4 mr-2" />
-                  Update Relationship
-                </Button>
-                {selectedContacts.size >= 2 && (
-                  <Button variant="outline" onClick={openMergeDialog} data-testid="button-merge-contacts">
-                    <Merge className="w-4 h-4 mr-2" />
-                    Merge ({selectedContacts.size})
-                  </Button>
+                {isMobile ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="icon" data-testid="button-bulk-actions-mobile">
+                        <MoreVertical className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {(viewMode === "all" || viewMode === "community" || viewMode === "innovators") && (
+                        <DropdownMenuItem onClick={async () => {
+                          for (const id of Array.from(selectedContacts)) {
+                            await promoteMutation.mutateAsync(id);
+                          }
+                          setSelectedContacts(new Set());
+                        }} disabled={promoteMutation.isPending} data-testid="menu-bulk-promote">
+                          <ArrowUp className="w-4 h-4 mr-2" />
+                          Promote ({selectedContacts.size})
+                        </DropdownMenuItem>
+                      )}
+                      {(viewMode === "community" || viewMode === "innovators" || viewMode === "vip") && (
+                        <DropdownMenuItem onClick={async () => {
+                          for (const id of Array.from(selectedContacts)) {
+                            await demoteMutation.mutateAsync(id);
+                          }
+                          setSelectedContacts(new Set());
+                        }} disabled={demoteMutation.isPending} data-testid="menu-bulk-demote">
+                          <ArrowDown className="w-4 h-4 mr-2" />
+                          Demote ({selectedContacts.size})
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem onClick={() => setBulkRoleOpen(true)} data-testid="menu-bulk-update-role">
+                        <Tag className="w-4 h-4 mr-2" />
+                        Update Role
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setBulkRelationshipOpen(true)} data-testid="menu-bulk-update-relationship">
+                        <Users className="w-4 h-4 mr-2" />
+                        Update Relationship
+                      </DropdownMenuItem>
+                      {selectedContacts.size >= 2 && (
+                        <DropdownMenuItem onClick={openMergeDialog} data-testid="menu-merge-contacts">
+                          <Merge className="w-4 h-4 mr-2" />
+                          Merge ({selectedContacts.size})
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : (
+                  <>
+                    {(viewMode === "all" || viewMode === "community" || viewMode === "innovators") && (
+                      <Button variant="outline" onClick={async () => {
+                        for (const id of Array.from(selectedContacts)) {
+                          await promoteMutation.mutateAsync(id);
+                        }
+                        setSelectedContacts(new Set());
+                      }} disabled={promoteMutation.isPending} data-testid="button-bulk-promote">
+                        {promoteMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowUp className="w-4 h-4 mr-2" />}
+                        Promote ({selectedContacts.size})
+                      </Button>
+                    )}
+                    {(viewMode === "community" || viewMode === "innovators" || viewMode === "vip") && (
+                      <Button variant="outline" onClick={async () => {
+                        for (const id of Array.from(selectedContacts)) {
+                          await demoteMutation.mutateAsync(id);
+                        }
+                        setSelectedContacts(new Set());
+                      }} disabled={demoteMutation.isPending} data-testid="button-bulk-demote">
+                        {demoteMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowDown className="w-4 h-4 mr-2" />}
+                        Demote ({selectedContacts.size})
+                      </Button>
+                    )}
+                    <Button variant="outline" onClick={() => setBulkRoleOpen(true)} data-testid="button-bulk-update-role">
+                      <Tag className="w-4 h-4 mr-2" />
+                      Update Role
+                    </Button>
+                    <Button variant="outline" onClick={() => setBulkRelationshipOpen(true)} data-testid="button-bulk-update-relationship">
+                      <Users className="w-4 h-4 mr-2" />
+                      Update Relationship
+                    </Button>
+                    {selectedContacts.size >= 2 && (
+                      <Button variant="outline" onClick={openMergeDialog} data-testid="button-merge-contacts">
+                        <Merge className="w-4 h-4 mr-2" />
+                        Merge ({selectedContacts.size})
+                      </Button>
+                    )}
+                  </>
                 )}
               </>
             )}
@@ -478,29 +536,61 @@ export default function Contacts() {
             <div className="flex items-center gap-2 flex-wrap">
               {!editMode && (
                 <>
-                  <Button variant="outline" onClick={() => setEditMode(true)} data-testid="button-edit-mode">
-                    <Edit3 className="w-4 h-4 mr-2" />
-                    Edit
-                  </Button>
-                  {suggestedDuplicates && suggestedDuplicates.length > 0 && (
-                    <Button variant="outline" onClick={() => setDuplicatesOpen(true)} data-testid="button-duplicates-contacts">
-                      <Merge className="w-4 h-4 mr-2" />
-                      Duplicates ({suggestedDuplicates.length})
-                    </Button>
+                  {isMobile ? (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="icon" data-testid="button-more-actions-mobile">
+                          <MoreVertical className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setEditMode(true)} data-testid="menu-edit-mode">
+                          <Edit3 className="w-4 h-4 mr-2" />
+                          Edit
+                        </DropdownMenuItem>
+                        {suggestedDuplicates && suggestedDuplicates.length > 0 && (
+                          <DropdownMenuItem onClick={() => setDuplicatesOpen(true)} data-testid="menu-duplicates-contacts">
+                            <Merge className="w-4 h-4 mr-2" />
+                            Duplicates ({suggestedDuplicates.length})
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem onClick={() => autoLinkMutation.mutate()} disabled={autoLinkMutation.isPending} data-testid="menu-auto-link">
+                          <Link2 className="w-4 h-4 mr-2" />
+                          Auto-Link
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setBulkOpen(true)} data-testid="menu-bulk-upload">
+                          <Upload className="w-4 h-4 mr-2" />
+                          Bulk Upload
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ) : (
+                    <>
+                      <Button variant="outline" onClick={() => setEditMode(true)} data-testid="button-edit-mode">
+                        <Edit3 className="w-4 h-4 mr-2" />
+                        Edit
+                      </Button>
+                      {suggestedDuplicates && suggestedDuplicates.length > 0 && (
+                        <Button variant="outline" onClick={() => setDuplicatesOpen(true)} data-testid="button-duplicates-contacts">
+                          <Merge className="w-4 h-4 mr-2" />
+                          Duplicates ({suggestedDuplicates.length})
+                        </Button>
+                      )}
+                      <Button variant="outline" onClick={() => autoLinkMutation.mutate()} disabled={autoLinkMutation.isPending} data-testid="button-auto-link">
+                        {autoLinkMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Link2 className="w-4 h-4 mr-2" />}
+                        Auto-Link
+                      </Button>
+                      <Button variant="outline" onClick={() => setBulkOpen(true)} data-testid="button-bulk-upload">
+                        <Upload className="w-4 h-4 mr-2" />
+                        Bulk Upload
+                      </Button>
+                    </>
                   )}
-                  <Button variant="outline" onClick={() => autoLinkMutation.mutate()} disabled={autoLinkMutation.isPending} data-testid="button-auto-link">
-                    {autoLinkMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Link2 className="w-4 h-4 mr-2" />}
-                    Auto-Link
-                  </Button>
-                  <Button variant="outline" onClick={() => setBulkOpen(true)} data-testid="button-bulk-upload">
-                    <Upload className="w-4 h-4 mr-2" />
-                    Bulk Upload
-                  </Button>
                   <Dialog open={open} onOpenChange={setOpen}>
                     <DialogTrigger asChild>
                       <Button className="shadow-lg" data-testid="button-add-member">
                         <Plus className="w-4 h-4 mr-2" />
-                        Add Member
+                        {isMobile ? "Add" : "Add Member"}
                       </Button>
                     </DialogTrigger>
                     <CreateContactDialogContent onSuccess={() => setOpen(false)} />
@@ -513,7 +603,7 @@ export default function Contacts() {
           <BulkUploadDialog open={bulkOpen} onOpenChange={setBulkOpen} />
 
           <Dialog open={bulkDeleteConfirmOpen} onOpenChange={setBulkDeleteConfirmOpen}>
-            <DialogContent>
+            <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle data-testid="text-bulk-delete-title">Delete {selectedContacts.size} contact{selectedContacts.size !== 1 ? 's' : ''}?</DialogTitle>
               </DialogHeader>
@@ -538,7 +628,7 @@ export default function Contacts() {
           </Dialog>
 
           <Dialog open={bulkRoleOpen} onOpenChange={(v) => { setBulkRoleOpen(v); if (!v) { setBulkRoleValue(""); setBulkRoleOther(""); } }}>
-            <DialogContent>
+            <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle data-testid="text-bulk-role-title">Update Role for {selectedContacts.size} contact{selectedContacts.size !== 1 ? 's' : ''}</DialogTitle>
               </DialogHeader>
@@ -587,7 +677,7 @@ export default function Contacts() {
           </Dialog>
 
           <Dialog open={bulkRelationshipOpen} onOpenChange={(v) => { setBulkRelationshipOpen(v); if (!v) setBulkRelationshipValue(""); }}>
-            <DialogContent>
+            <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle data-testid="text-bulk-relationship-title">Update Relationship for {selectedContacts.size} contact{selectedContacts.size !== 1 ? 's' : ''}</DialogTitle>
               </DialogHeader>
@@ -620,7 +710,7 @@ export default function Contacts() {
           </Dialog>
 
           <Dialog open={mergeDialogOpen} onOpenChange={(v) => { setMergeDialogOpen(v); if (!v) setPrimaryMergeId(null); }}>
-            <DialogContent data-testid="dialog-merge-contacts">
+            <DialogContent className="max-h-[90vh] overflow-y-auto" data-testid="dialog-merge-contacts">
               <DialogHeader>
                 <DialogTitle data-testid="text-merge-title">Merge {selectedContacts.size} Contacts</DialogTitle>
               </DialogHeader>
@@ -726,7 +816,7 @@ export default function Contacts() {
           </Dialog>
 
           <Dialog open={linkGroupOpen} onOpenChange={(v) => { setLinkGroupOpen(v); if (!v) { setLinkGroupContactId(null); setLinkGroupSearch(""); } }}>
-            <DialogContent>
+            <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle data-testid="text-link-group-title">Link to Group</DialogTitle>
               </DialogHeader>
@@ -766,43 +856,45 @@ export default function Contacts() {
 
           {/* View Toggle */}
           <div className="flex items-center justify-between gap-2" data-testid="view-toggle">
-            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "community" | "innovators" | "all" | "vip")}>
-              <TabsList>
-                <TabsTrigger value="innovators" data-testid="button-view-innovators">
+            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "community" | "innovators" | "all" | "vip")} className="min-w-0 flex-1">
+              <TabsList className="overflow-x-auto flex-nowrap w-full justify-start">
+                <TabsTrigger value="innovators" className="shrink-0" data-testid="button-view-innovators">
                   <Lightbulb className="w-4 h-4 mr-1.5" />
                   Our Innovators ({tierCounts.innovators})
                 </TabsTrigger>
-                <TabsTrigger value="community" data-testid="button-view-community">
+                <TabsTrigger value="community" className="shrink-0" data-testid="button-view-community">
                   <Users className="w-4 h-4 mr-1.5" />
                   Our Community ({tierCounts.community})
                 </TabsTrigger>
-                <TabsTrigger value="all" data-testid="button-view-all">
+                <TabsTrigger value="all" className="shrink-0" data-testid="button-view-all">
                   All Contacts ({tierCounts.all})
                 </TabsTrigger>
-                <TabsTrigger value="vip" data-testid="button-view-vip">
+                <TabsTrigger value="vip" className="shrink-0" data-testid="button-view-vip">
                   <Star className="w-4 h-4 mr-1.5" />
                   VIP ({tierCounts.vip})
                 </TabsTrigger>
               </TabsList>
             </Tabs>
-            <div className="flex items-center gap-1 border rounded-lg p-0.5" data-testid="layout-toggle">
-              <Button
-                variant={layoutView === "list" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setLayoutView("list")}
-                data-testid="button-layout-list"
-              >
-                <List className="w-4 h-4" />
-              </Button>
-              <Button
-                variant={layoutView === "table" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setLayoutView("table")}
-                data-testid="button-layout-table"
-              >
-                <Table className="w-4 h-4" />
-              </Button>
-            </div>
+            {!isMobile && (
+              <div className="flex items-center gap-1 border rounded-lg p-0.5" data-testid="layout-toggle">
+                <Button
+                  variant={layoutView === "list" ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setLayoutView("list")}
+                  data-testid="button-layout-list"
+                >
+                  <List className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant={layoutView === "table" ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setLayoutView("table")}
+                  data-testid="button-layout-table"
+                >
+                  <Table className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
           </div>
 
               {analytics && (

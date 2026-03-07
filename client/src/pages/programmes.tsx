@@ -320,7 +320,7 @@ export default function Programmes() {
               />
             </div>
             <Select value={classFilter} onValueChange={setClassFilter}>
-              <SelectTrigger className="w-[180px]" data-testid="select-classification-filter">
+              <SelectTrigger className="w-full sm:w-[180px]" data-testid="select-classification-filter">
                 <SelectValue placeholder="Classification" />
               </SelectTrigger>
               <SelectContent>
@@ -331,7 +331,7 @@ export default function Programmes() {
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[150px]" data-testid="select-status-filter">
+              <SelectTrigger className="w-full sm:w-[150px]" data-testid="select-status-filter">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -1567,7 +1567,7 @@ function ProgrammeFormDialog({
       </Dialog>
 
       <Dialog open={showNewPersonDialog} onOpenChange={setShowNewPersonDialog}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle data-testid="text-new-person-dialog-title">Add New Person</DialogTitle>
             <DialogDescription>Create a new community member to add as a facilitator.</DialogDescription>
