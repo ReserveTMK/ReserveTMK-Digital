@@ -48,6 +48,7 @@ PostgreSQL is used as the database, integrated with Drizzle ORM. The schema incl
 -   **After-Hours Auto-Send**: Automatically sends venue instruction reminders for bookings outside staffed operating hours.
 -   **Xero Integration**: OAuth2 connection for automated invoice generation and contact/invoice syncing.
 -   **Gmail Sync**: Multi-account Gmail import with smart filtering, mailing list detection, and user-managed exclusion lists. Includes a cleanup tool for marketing contacts.
+-   **Mobile Swipe Navigation**: Contact detail page supports horizontal swipe to navigate between contacts on mobile, with subtle edge chevron indicators.
 -   **UI Terminology**: Uses "People" for contacts and 12-hour time format.
 
 ## External Dependencies

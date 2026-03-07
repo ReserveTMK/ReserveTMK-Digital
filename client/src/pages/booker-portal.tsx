@@ -979,8 +979,8 @@ export default function BookerPortalPage() {
       const res = await fetch(`/api/booker/auth/${initialToken}`);
       if (!res.ok) throw new Error("Unauthorized");
       const data = await res.json();
-      if (data.token) {
-        setActiveToken(data.token);
+      if (data.booker?.loginToken) {
+        setActiveToken(data.booker.loginToken);
       }
       return data;
     },

@@ -3070,7 +3070,21 @@ function RegularBookersManagementView({
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-0.5">
-                              {linkStatus.status === "none" && (
+                              {linkStatus.links.length > 0 ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => copyLink(linkStatus.links[0].portalUrl)}
+                                      data-testid={`button-copy-action-${booker.id}`}
+                                    >
+                                      <Link2 className="w-3.5 h-3.5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Copy portal link</TooltipContent>
+                                </Tooltip>
+                              ) : (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <Button
@@ -3084,22 +3098,6 @@ function RegularBookersManagementView({
                                     </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>Generate portal link</TooltipContent>
-                                </Tooltip>
-                              )}
-                              {linkStatus.status !== "none" && (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => generateLinkMutation.mutate(booker.id)}
-                                      disabled={generateLinkMutation.isPending}
-                                      data-testid={`button-new-link-${booker.id}`}
-                                    >
-                                      {generateLinkMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>Generate new link</TooltipContent>
                                 </Tooltip>
                               )}
                               <Tooltip>

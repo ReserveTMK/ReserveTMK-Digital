@@ -3604,7 +3604,23 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const userId = (req.user as any).claims.sub;
       const data = insertRegularBookerSchema.parse({ ...req.body, userId });
       const booker = await storage.createRegularBooker(data);
-      res.json(booker);
+
+      const token = crypto.randomUUID();
+      await storage.createBookerLink({
+        regularBookerId: booker.id,
+        token,
+        enabled: true,
+        label: "Portal link",
+      });
+
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.REPL_SLUG
+        ? `https://${process.env.REPL_SLUG}.replit.app`
+        : "https://app.reservetmk.co.nz";
+      const portalUrl = `${baseUrl}/booker/portal/${token}`;
+
+      res.json({ ...booker, portalUrl });
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -9276,9 +9292,9 @@ Rules:
         return res.status(401).json({ message: "This link has been disabled" });
       }
 
-      const newToken = crypto.randomUUID();
-      await storage.updateBookerLinkToken(link.id, newToken, new Date(Date.now() + 4 * 60 * 60 * 1000));
       await storage.updateBookerLinkAccess(link.id);
+
+      const activeToken = link.token;
 
       const isGroupLink = link.isGroupLink === true;
       const contact = booker.contactId ? await storage.getContact(booker.contactId) : null;
@@ -9308,7 +9324,7 @@ Rules:
       }
 
       res.json({
-        booker: { ...booker, loginToken: newToken },
+        booker: { ...booker, loginToken: activeToken },
         contact,
         linkedGroupId,
         linkedGroupName,
@@ -9881,8 +9897,9 @@ Rules:
     try {
       const allBookers = await db.select().from(regularBookers);
       for (const booker of allBookers) {
+        const existingLinks = await storage.getBookerLinks(booker.id);
+
         if (booker.loginToken) {
-          const existingLinks = await storage.getBookerLinks(booker.id);
           const tokenExists = existingLinks.some(l => l.token === booker.loginToken);
           if (!tokenExists) {
             await storage.createBookerLink({
@@ -9893,6 +9910,18 @@ Rules:
               label: "Migrated portal link",
             });
           }
+        }
+
+        const hasPortalLink = existingLinks.some(l =>
+          l.label === "Portal link" || l.label === "Migrated portal link"
+        );
+        if (!hasPortalLink) {
+          await storage.createBookerLink({
+            regularBookerId: booker.id,
+            token: crypto.randomUUID(),
+            enabled: true,
+            label: "Portal link",
+          });
         }
       }
     } catch (err) {

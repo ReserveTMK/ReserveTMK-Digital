@@ -8,10 +8,10 @@ import { Button } from "@/components/ui/beautiful-button";
 import { MetricCard } from "@/components/ui/metric-card";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { useRoute } from "wouter";
+import { useRoute, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Loader2, Mic, StopCircle, ArrowLeft, Brain, TrendingUp, Sparkles, AlertCircle, DollarSign, Settings, Rocket, Network, Shield, FileText, CheckSquare, Calendar, Clock, ChevronDown, History, MessageSquare, Pencil, Check, X, ArrowUp, ArrowDown, Star, Users, Coffee, Trash2, Plus, MoreVertical } from "lucide-react";
+import { Loader2, Mic, StopCircle, ArrowLeft, Brain, TrendingUp, Sparkles, AlertCircle, DollarSign, Settings, Rocket, Network, Shield, FileText, CheckSquare, Calendar, Clock, ChevronDown, ChevronLeft, ChevronRight, History, MessageSquare, Pencil, Check, X, ArrowUp, ArrowDown, Star, Users, Coffee, Trash2, Plus, MoreVertical } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -158,6 +158,66 @@ export default function ContactDetail() {
 
   const { toast } = useToast();
   const isMobile = useIsMobile();
+  const [, setLocation] = useLocation();
+
+  const { data: allContacts } = useContacts();
+  const contactIds = useMemo(() => (allContacts || []).map((c: any) => c.id), [allContacts]);
+  const currentIndex = contactIds.indexOf(id);
+  const prevContactId = currentIndex >= 0 && contactIds.length > 1 ? contactIds[(currentIndex - 1 + contactIds.length) % contactIds.length] : null;
+  const nextContactId = currentIndex >= 0 && contactIds.length > 1 ? contactIds[(currentIndex + 1) % contactIds.length] : null;
+
+  const swipeRef = useRef<{ startX: number; startY: number; swiping: boolean }>({ startX: 0, startY: 0, swiping: false });
+  const mainRef = useRef<HTMLElement>(null);
+  const [showSwipeHint, setShowSwipeHint] = useState(true);
+
+  useEffect(() => {
+    if (!isMobile || contactIds.length <= 1) return;
+    const el = mainRef.current;
+    if (!el) return;
+
+    const SWIPE_THRESHOLD = 60;
+    const VERTICAL_THRESHOLD_RATIO = 1.5;
+
+    const onTouchStart = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      swipeRef.current = { startX: touch.clientX, startY: touch.clientY, swiping: true };
+    };
+
+    const onTouchMove = (_e: TouchEvent) => {};
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (!swipeRef.current.swiping) return;
+      const touch = e.changedTouches[0];
+      const dx = touch.clientX - swipeRef.current.startX;
+      const dy = touch.clientY - swipeRef.current.startY;
+      swipeRef.current.swiping = false;
+
+      if (Math.abs(dx) < SWIPE_THRESHOLD) return;
+      if (Math.abs(dy) > Math.abs(dx) / VERTICAL_THRESHOLD_RATIO) return;
+
+      if (dx < 0 && nextContactId != null) {
+        setLocation(`/contacts/${nextContactId}`);
+      } else if (dx > 0 && prevContactId != null) {
+        setLocation(`/contacts/${prevContactId}`);
+      }
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: true });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [isMobile, contactIds, prevContactId, nextContactId, setLocation]);
+
+  useEffect(() => {
+    if (showSwipeHint) {
+      const timer = setTimeout(() => setShowSwipeHint(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [showSwipeHint, id]);
 
   const currentTier = contact?.isVip ? "vip" : contact?.isInnovator ? "innovator" : contact?.isCommunityMember ? "community" : "all";
 
@@ -260,7 +320,33 @@ export default function ContactDetail() {
 
   return (
     <>
-    <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
+    <main ref={mainRef} className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto relative">
+        {isMobile && contactIds.length > 1 && (
+          <>
+            <button
+              onClick={() => prevContactId != null && setLocation(`/contacts/${prevContactId}`)}
+              className={cn(
+                "fixed left-0 top-1/2 -translate-y-1/2 z-40 p-1 rounded-r-md bg-muted/60 text-muted-foreground transition-opacity duration-500",
+                showSwipeHint ? "opacity-70" : "opacity-20"
+              )}
+              aria-label="Previous contact"
+              data-testid="button-swipe-prev"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => nextContactId != null && setLocation(`/contacts/${nextContactId}`)}
+              className={cn(
+                "fixed right-0 top-1/2 -translate-y-1/2 z-40 p-1 rounded-l-md bg-muted/60 text-muted-foreground transition-opacity duration-500",
+                showSwipeHint ? "opacity-70" : "opacity-20"
+              )}
+              aria-label="Next contact"
+              data-testid="button-swipe-next"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </>
+        )}
         <div className="max-w-6xl mx-auto space-y-8">
           
           {/* Header */}
