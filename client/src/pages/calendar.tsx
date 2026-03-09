@@ -1366,16 +1366,20 @@ export default function CalendarPage() {
 
   const { data: dailyFootTrafficData } = useQuery<any[]>({
     queryKey: ["/api/daily-foot-traffic", currentMonthKey],
-    queryFn: () => fetch(`/api/daily-foot-traffic?month=${currentMonthKey}`, { credentials: "include" }).then(r => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`/api/daily-foot-traffic?month=${currentMonthKey}`, { credentials: "include" });
+      if (!r.ok) throw new Error("Failed to fetch foot traffic");
+      return r.json();
+    },
   });
 
   const monthlyFootTrafficTotal = useMemo(() => {
-    if (!dailyFootTrafficData || dailyFootTrafficData.length === 0) return 0;
+    if (!Array.isArray(dailyFootTrafficData) || dailyFootTrafficData.length === 0) return 0;
     return dailyFootTrafficData.reduce((sum: number, entry: any) => sum + (entry.count || 0), 0);
   }, [dailyFootTrafficData]);
 
   const selectedDayFootTraffic = useMemo(() => {
-    if (!dailyFootTrafficData) return null;
+    if (!Array.isArray(dailyFootTrafficData)) return null;
     const dateKey = format(selectedDate, "yyyy-MM-dd");
     return dailyFootTrafficData.find((entry: any) => {
       const entryDate = new Date(entry.date);
