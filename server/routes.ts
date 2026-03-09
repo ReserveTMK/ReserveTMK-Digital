@@ -385,9 +385,9 @@ export async function registerRoutes(
       }
       const updated = await storage.updateContact(id, input);
 
-      // Auto-create mentoring relationship for innovators with mentoring/workshop support
+      // Auto-create mentoring relationship for innovators with mentoring support
       if (updated.isInnovator && updated.supportType && 
-          (updated.supportType.includes("mentoring") || updated.supportType.includes("workshop_skills"))) {
+          updated.supportType.includes("mentoring")) {
         const existingRels = await storage.getMentoringRelationshipsByContact(id);
         const hasActiveRel = existingRels.some(r => r.status === "active" || r.status === "application");
         
@@ -434,7 +434,7 @@ export async function registerRoutes(
 
       for (const contact of allContacts) {
         if (contact.isInnovator && contact.supportType && 
-            (contact.supportType.includes("mentoring") || contact.supportType.includes("workshop_skills"))) {
+            contact.supportType.includes("mentoring")) {
           const existingRels = await storage.getMentoringRelationshipsByContact(contact.id);
           const hasActiveRel = existingRels.some(r => r.status === "active" || r.status === "application");
           
@@ -8233,7 +8233,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       }
       const updated = await storage.updateContact(contactId, updates);
 
-      if (Array.isArray(updates.supportType) && (updates.supportType.includes("mentoring") || updates.supportType.includes("workshop_skills")) && updated.isInnovator) {
+      if (Array.isArray(updates.supportType) && updates.supportType.includes("mentoring") && updated.isInnovator) {
         try {
           const existingRels = await storage.getMentoringRelationshipsByContact(contactId);
           const hasActive = existingRels.some(r => r.status === "active" || r.status === "application");
@@ -8811,7 +8811,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       const userId = (req.user as any).claims.sub;
       const allContacts = await storage.getContacts(userId);
       const mentoringContacts = allContacts.filter(c =>
-        c.isInnovator && Array.isArray(c.supportType) && (c.supportType.includes("mentoring") || c.supportType.includes("workshop_skills"))
+        c.isInnovator && Array.isArray(c.supportType) && c.supportType.includes("mentoring")
       );
       let created = 0;
       for (const contact of mentoringContacts) {

@@ -227,7 +227,9 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
                   <>
                     <SortHeader label="Stage" field="stage" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
                     <SortHeader label="Connection" field="connection" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[120px]" />
-                    <SortHeader label="Support" field="support" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[120px]" />
+                    {drilldownTier === "innovators" && (
+                      <SortHeader label="Support" field="support" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[120px]" />
+                    )}
                   </>
                 ) : drilldownTier === "community" ? (
                   <SortHeader label="Connection" field="connection" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[120px]" />
@@ -338,9 +340,11 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
                       <td className="px-1 py-2">
                         <InlineConnectionCell contactId={contact.id} connectionStrength={contact.connectionStrength} />
                       </td>
-                      <td className="px-1 py-2">
-                        <InlineSupportCell contactId={contact.id} supportTypes={contact.supportType || []} />
-                      </td>
+                      {drilldownTier === "innovators" && (
+                        <td className="px-1 py-2">
+                          <InlineSupportCell contactId={contact.id} supportTypes={contact.supportType || []} />
+                        </td>
+                      )}
                     </>
                   ) : drilldownTier === "community" ? (
                     <td className="px-1 py-2">

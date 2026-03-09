@@ -35,7 +35,7 @@ export const CONNECTION_CONFIG: Record<string, { label: string; level: number; c
 
 export const CONNECTION_LEVELS = ["known", "connected", "engaged", "embedded", "partnering"];
 
-export const SUPPORT_OPTIONS = ["workshop_skills", "space", "venue_hire", "hot_desking", "service_trade", "paid_work", "networking"];
+export const SUPPORT_OPTIONS = ["mentoring", "workshop_skills", "space", "venue_hire", "hot_desking", "service_trade", "paid_work", "networking"];
 
 export const SUPPORT_LABEL_MAP: Record<string, string> = {
   mentoring: "Mentoring",
@@ -267,8 +267,7 @@ export function InlineStageCell({ stage, contactId }: { stage?: string; contactI
 export function InlineSupportCell({ contactId, supportTypes }: { contactId: number; supportTypes: string[] }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
-  const displayTypes = (supportTypes || []).filter(t => t !== "mentoring");
-  const [selected, setSelected] = useState<string[]>(displayTypes);
+  const [selected, setSelected] = useState<string[]>(supportTypes || []);
   const [saving, setSaving] = useState(false);
 
   const toggle = (t: string) => {
@@ -278,8 +277,7 @@ export function InlineSupportCell({ contactId, supportTypes }: { contactId: numb
   const handleSave = async () => {
     setSaving(true);
     try {
-      const mentoringKept = (supportTypes || []).includes("mentoring") ? ["mentoring"] : [];
-      await apiRequest("PATCH", `/api/contacts/${contactId}`, { supportType: [...mentoringKept, ...selected] });
+      await apiRequest("PATCH", `/api/contacts/${contactId}`, { supportType: selected });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       toast({ title: "Support type updated" });
       setOpen(false);
@@ -291,14 +289,14 @@ export function InlineSupportCell({ contactId, supportTypes }: { contactId: numb
   };
 
   return (
-    <Popover open={open} onOpenChange={(v) => { setOpen(v); if (v) setSelected(displayTypes); }}>
+    <Popover open={open} onOpenChange={(v) => { setOpen(v); if (v) setSelected(supportTypes || []); }}>
       <PopoverTrigger asChild>
         <button
           className="text-left w-full px-2 py-1 rounded hover:bg-muted/60 transition-colors text-sm cursor-pointer group flex items-center gap-1 flex-wrap"
           data-testid={`table-cell-support-${contactId}`}
         >
-          {displayTypes.length > 0 ? (
-            displayTypes.map(t => (
+          {supportTypes?.length > 0 ? (
+            supportTypes.map(t => (
               <Badge key={t} className={`text-[10px] h-5 px-1.5 ${SUPPORT_COLOR_MAP[t] || ""}`}>
                 {SUPPORT_LABEL_MAP[t] || t}
               </Badge>

@@ -438,7 +438,9 @@ export default function ContactDetail() {
                   </div>
                   <div className="flex flex-wrap items-center gap-2 mt-2">
                     <DetailConnectionEditor contactId={contact.id} connectionStrength={contact.connectionStrength} />
-                    <DetailSupportEditor contactId={contact.id} supportTypes={contact.supportType || []} />
+                    {contact.isInnovator && (
+                      <DetailSupportEditor contactId={contact.id} supportTypes={contact.supportType || []} />
+                    )}
                   </div>
                   {contact.whatTheyAreBuilding && (
                     <p className="text-sm text-muted-foreground mt-2" data-testid="text-what-building">
@@ -1540,8 +1542,7 @@ function DetailConnectionEditor({ contactId, connectionStrength }: { contactId: 
 function DetailSupportEditor({ contactId, supportTypes }: { contactId: number; supportTypes: string[] }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
-  const displayTypes = (supportTypes || []).filter(t => t !== "mentoring");
-  const [selected, setSelected] = useState<string[]>(displayTypes);
+  const [selected, setSelected] = useState<string[]>(supportTypes || []);
   const [saving, setSaving] = useState(false);
 
   const toggle = (t: string) => {
@@ -1551,8 +1552,7 @@ function DetailSupportEditor({ contactId, supportTypes }: { contactId: number; s
   const handleSave = async () => {
     setSaving(true);
     try {
-      const mentoringKept = (supportTypes || []).includes("mentoring") ? ["mentoring"] : [];
-      await apiRequest("PATCH", `/api/contacts/${contactId}`, { supportType: [...mentoringKept, ...selected] });
+      await apiRequest("PATCH", `/api/contacts/${contactId}`, { supportType: selected });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts/:id"] });
       toast({ title: "Support type updated" });
@@ -1565,15 +1565,15 @@ function DetailSupportEditor({ contactId, supportTypes }: { contactId: number; s
   };
 
   return (
-    <Popover open={open} onOpenChange={(v) => { setOpen(v); if (v) setSelected(displayTypes); }}>
+    <Popover open={open} onOpenChange={(v) => { setOpen(v); if (v) setSelected(supportTypes || []); }}>
       <PopoverTrigger asChild>
         <button
           className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-muted/60 transition-colors cursor-pointer group border border-transparent hover:border-border"
           data-testid="detail-support-editor"
         >
           <span className="text-xs text-muted-foreground">Support:</span>
-          {displayTypes.length > 0 ? (
-            displayTypes.map(t => (
+          {supportTypes?.length > 0 ? (
+            supportTypes.map(t => (
               <Badge key={t} className={`text-[10px] h-5 px-1.5 ${SUPPORT_COLOR_MAP[t] || ""}`}>
                 {SUPPORT_LABEL_MAP[t] || t}
               </Badge>

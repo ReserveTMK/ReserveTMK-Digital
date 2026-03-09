@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { useContacts, useDeleteContact } from "@/hooks/use-contacts";
-import { Plus, Search, Filter, Loader2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, Lightbulb, ChevronRight, Upload, Star, BookUser, CircleCheck, Sprout, Leaf, Sun, Ban } from "lucide-react";
+import { Plus, Search, Filter, Loader2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, Lightbulb, ChevronRight, Upload, Star, BookUser, Sprout, Leaf, Sun, Ban } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useState, useMemo, useEffect } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -1087,15 +1087,6 @@ export default function Contacts() {
                             {contact.stage === "inactive" && <Ban className="w-3 h-3 mr-0.5" />}
                             {contact.stage.charAt(0).toUpperCase() + contact.stage.slice(1)}
                           </Badge>
-                        )}
-                        {Array.isArray(contact.supportType) && contact.supportType.filter((st: string) => st !== "mentoring").length > 0 && (
-                          <div className="flex items-center gap-1" data-testid={`support-types-${contact.id}`}>
-                            {contact.supportType.filter((st: string) => st !== "mentoring").map((st: string) => (
-                              <span key={st} className="flex items-center text-[10px] text-muted-foreground" title={st.replace(/_/g, ' ')}>
-                                <CircleCheck className="w-3.5 h-3.5 text-green-500" />
-                              </span>
-                            ))}
-                          </div>
                         )}
                       </div>
                     )}
