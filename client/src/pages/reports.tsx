@@ -561,14 +561,36 @@ export default function Reports() {
     rows.push(["Milestones Achieved", String(imp?.milestoneCount || 0)]);
     rows.push(["People with Tracked Growth", String(imp?.contactsWithMetrics || 0)]);
     if (imp?.growthMetrics) {
-      rows.push(["Mindset Avg", String(imp.growthMetrics.mindset?.averageScore || 0)]);
-      rows.push(["Mindset Positive %", `${imp.growthMetrics.mindset?.positiveMovementPercent || 0}%`]);
-      rows.push(["Skill Avg", String(imp.growthMetrics.skill?.averageScore || 0)]);
-      rows.push(["Skill Positive %", `${imp.growthMetrics.skill?.positiveMovementPercent || 0}%`]);
-      rows.push(["Confidence Avg", String(imp.growthMetrics.confidence?.averageScore || 0)]);
-      rows.push(["Confidence Positive %", `${imp.growthMetrics.confidence?.positiveMovementPercent || 0}%`]);
+      const metricLabels: Record<string, string> = {
+        mindset: "Mindset", skill: "Skill", confidence: "Confidence",
+        bizConfidence: "Biz Confidence", systemsInPlace: "Systems in Place",
+        fundingReadiness: "Funding Readiness", networkStrength: "Network Strength",
+        communityImpact: "Community Impact", digitalPresence: "Digital Presence",
+      };
+      for (const [key, label] of Object.entries(metricLabels)) {
+        const data = imp.growthMetrics[key];
+        if (data) {
+          rows.push([`${label} Avg`, String(data.averageScore || 0)]);
+          rows.push([`${label} Positive %`, `${data.positiveMovementPercent || 0}%`]);
+        }
+      }
     }
     rows.push(["Connections Deepened", String(imp?.connectionMovement || 0)]);
+    if (d.journeyProgression) {
+      rows.push(["Journey Progressions", String(d.journeyProgression.totalProgressions || 0)]);
+      rows.push(["Current Kakano", String(d.journeyProgression.currentDistribution?.kakano || 0)]);
+      rows.push(["Current Tipu", String(d.journeyProgression.currentDistribution?.tipu || 0)]);
+      rows.push(["Current Ora", String(d.journeyProgression.currentDistribution?.ora || 0)]);
+    }
+    if (d.connectionStrength?.distribution) {
+      for (const item of d.connectionStrength.distribution) {
+        rows.push([`Connection: ${item.strength}`, String(item.count)]);
+      }
+    }
+    if (d.communityDiscounts) {
+      rows.push(["Community Discounts Given", `$${d.communityDiscounts.totalDiscountValue || 0}`]);
+      rows.push(["Discounted Bookings", String(d.communityDiscounts.discountedBookingsCount || 0)]);
+    }
     if (imp?.taxonomyBreakdown) {
       rows.push([]);
       rows.push(["Impact Category", "Debriefs", "People Affected", "Impact Score"]);
@@ -1013,6 +1035,9 @@ export default function Reports() {
                     />
                     <StatCard icon={Users} label="Total Attendees" value={(del?.totalAttendees || 0).toLocaleString()} color="blue" testId="stat-total-attendees" />
                     <StatCard icon={Clock} label="Community Hours" value={del?.communityHours || 0} color="green" testId="stat-community-hours" />
+                    {reportData?.communityDiscounts && reportData.communityDiscounts.discountedBookingsCount > 0 && (
+                      <StatCard icon={DollarSign} label="Community Discounts" value={`$${reportData.communityDiscounts.totalDiscountValue.toLocaleString()}`} color="emerald" testId="stat-community-discounts" />
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -1069,6 +1094,11 @@ export default function Reports() {
                     <details className="pt-3 border-t">
                       <summary className="text-sm font-semibold cursor-pointer hover:text-primary transition-colors flex items-center gap-2">
                         <Users className="w-4 h-4" /> Mentoring Detail
+                        {ment.byFocus && Object.keys(ment.byFocus).filter(k => k !== "Unspecified").length > 0 && (
+                          <span className="text-xs font-normal text-muted-foreground ml-1">
+                            Top: {Object.entries(ment.byFocus).filter(([k]) => k !== "Unspecified").sort((a, b) => (b[1] as number) - (a[1] as number)).slice(0, 3).map(([k]) => k).join(", ")}
+                          </span>
+                        )}
                       </summary>
                       <div className="mt-4 space-y-4" data-testid="subsection-mentoring">
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -1162,40 +1192,129 @@ export default function Reports() {
                     />
                   </div>
 
-                  {imp?.growthMetrics && (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {[
-                        { key: "mindset", label: "Mindset", color: "text-blue-600 dark:text-blue-400" },
-                        { key: "skill", label: "Skill", color: "text-green-600 dark:text-green-400" },
-                        { key: "confidence", label: "Confidence", color: "text-violet-600 dark:text-violet-400" },
-                      ].map(metric => {
-                        const data = imp.growthMetrics[metric.key];
-                        return (
-                          <Card key={metric.key} className="p-4">
-                            <h4 className={`text-sm font-semibold mb-2 ${metric.color}`}>{metric.label}</h4>
-                            <div className="flex items-baseline gap-2">
-                              <span className="text-2xl font-bold">{data?.averageScore || 0}</span>
-                              <span className="text-xs text-muted-foreground">/10 avg</span>
-                            </div>
-                            <div className="flex items-center gap-2 mt-2">
-                              <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                                <div
-                                  className="h-full bg-green-500 rounded-full transition-all"
-                                  style={{ width: `${data?.positiveMovementPercent || 0}%` }}
-                                />
+                  {imp?.growthMetrics && (() => {
+                    const METRIC_GROUPS = [
+                      { title: "Personal Growth", metrics: [
+                        { key: "mindset", label: "Mindset", color: "text-blue-600 dark:text-blue-400", barColor: "bg-blue-500" },
+                        { key: "skill", label: "Skill", color: "text-green-600 dark:text-green-400", barColor: "bg-green-500" },
+                        { key: "confidence", label: "Confidence", color: "text-violet-600 dark:text-violet-400", barColor: "bg-violet-500" },
+                      ]},
+                      { title: "Venture Development", metrics: [
+                        { key: "bizConfidence", label: "Biz Confidence", color: "text-orange-600 dark:text-orange-400", barColor: "bg-orange-500" },
+                        { key: "systemsInPlace", label: "Systems in Place", color: "text-teal-600 dark:text-teal-400", barColor: "bg-teal-500" },
+                        { key: "fundingReadiness", label: "Funding Readiness", color: "text-emerald-600 dark:text-emerald-400", barColor: "bg-emerald-500" },
+                      ]},
+                      { title: "Community & Presence", metrics: [
+                        { key: "networkStrength", label: "Network Strength", color: "text-indigo-600 dark:text-indigo-400", barColor: "bg-indigo-500" },
+                        { key: "communityImpact", label: "Community Impact", color: "text-pink-600 dark:text-pink-400", barColor: "bg-pink-500" },
+                        { key: "digitalPresence", label: "Digital Presence", color: "text-cyan-600 dark:text-cyan-400", barColor: "bg-cyan-500" },
+                      ]},
+                    ];
+                    const hasData = (keys: string[]) => keys.some(k => {
+                      const d = imp.growthMetrics[k];
+                      return d && (d.averageScore > 0 || d.positiveMovementPercent > 0);
+                    });
+                    return (
+                      <div className="space-y-4">
+                        {METRIC_GROUPS.map(group => {
+                          if (!hasData(group.metrics.map(m => m.key))) return null;
+                          return (
+                            <div key={group.title}>
+                              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">{group.title}</h4>
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                {group.metrics.map(metric => {
+                                  const data = imp.growthMetrics[metric.key];
+                                  if (!data || (data.averageScore === 0 && data.positiveMovementPercent === 0)) return null;
+                                  return (
+                                    <Card key={metric.key} className="p-4" data-testid={`metric-card-${metric.key}`}>
+                                      <h4 className={`text-sm font-semibold mb-2 ${metric.color}`}>{metric.label}</h4>
+                                      <div className="flex items-baseline gap-2">
+                                        <span className="text-2xl font-bold">{data.averageScore}</span>
+                                        <span className="text-xs text-muted-foreground">/10 avg</span>
+                                      </div>
+                                      <div className="flex items-center gap-2 mt-2">
+                                        <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                                          <div
+                                            className={`h-full ${metric.barColor} rounded-full transition-all`}
+                                            style={{ width: `${data.positiveMovementPercent}%` }}
+                                          />
+                                        </div>
+                                        <span className="text-xs font-medium text-green-600 dark:text-green-400">{data.positiveMovementPercent}%</span>
+                                      </div>
+                                    </Card>
+                                  );
+                                })}
                               </div>
-                              <span className="text-xs font-medium text-green-600">{data?.positiveMovementPercent || 0}% positive</span>
                             </div>
-                          </Card>
-                        );
-                      })}
-                    </div>
-                  )}
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
 
                   {(imp?.connectionMovement || 0) > 0 && (
                     <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800" data-testid="stat-connection-movement">
                       <ArrowUpRight className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                       <span className="text-sm"><strong>{imp.connectionMovement}</strong> people deepened their connection strength during this period</span>
+                    </div>
+                  )}
+
+                  {reportData?.journeyProgression && (reportData.journeyProgression.totalProgressions > 0 || Object.values(reportData.journeyProgression.currentDistribution).some((v: any) => v > 0)) && (
+                    <div className="pt-3 border-t" data-testid="journey-progression">
+                      <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                        <TrendingUp className="w-4 h-4 text-green-600" /> Journey Stage Progression
+                      </h4>
+                      <div className="flex items-center justify-center gap-2 flex-wrap mb-3">
+                        {["kakano", "tipu", "ora"].map((stage, idx) => {
+                          const dist = reportData.journeyProgression.currentDistribution;
+                          const stageColors: Record<string, string> = { kakano: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 border-amber-300", tipu: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 border-green-300", ora: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 border-blue-300" };
+                          const transition = reportData.journeyProgression.transitions?.find((t: any) => t.to === stage);
+                          return (
+                            <div key={stage} className="flex items-center gap-2">
+                              {idx > 0 && (
+                                <div className="flex flex-col items-center">
+                                  <ArrowUpRight className="w-4 h-4 text-muted-foreground" />
+                                  {transition && transition.count > 0 && (
+                                    <span className="text-[10px] font-bold text-green-600 dark:text-green-400">+{transition.count}</span>
+                                  )}
+                                </div>
+                              )}
+                              <div className={`rounded-lg border px-4 py-3 text-center ${stageColors[stage]}`}>
+                                <p className="text-xs font-medium uppercase tracking-wider">{stage}</p>
+                                <p className="text-2xl font-bold">{dist[stage] || 0}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {reportData.journeyProgression.totalProgressions > 0 && (
+                        <p className="text-sm text-center text-muted-foreground">
+                          <strong>{reportData.journeyProgression.totalProgressions}</strong> {reportData.journeyProgression.totalProgressions === 1 ? "person" : "people"} progressed during this period
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {reportData?.connectionStrength?.distribution && reportData.connectionStrength.total > 0 && (
+                    <div className="pt-3 border-t" data-testid="connection-strength-distribution">
+                      <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                        <Handshake className="w-4 h-4 text-indigo-600" /> Connection Strength Distribution
+                      </h4>
+                      <div className="space-y-2">
+                        {reportData.connectionStrength.distribution.map((item: any) => {
+                          const pct = reportData.connectionStrength.total > 0 ? Math.round((item.count / reportData.connectionStrength.total) * 100) : 0;
+                          const strengthColors: Record<string, string> = { known: "bg-slate-400", connected: "bg-blue-400", engaged: "bg-green-500", embedded: "bg-violet-500", partnering: "bg-amber-500" };
+                          return (
+                            <div key={item.strength} className="flex items-center gap-3" data-testid={`connection-${item.strength}`}>
+                              <span className="text-xs font-medium w-20 capitalize">{item.strength}</span>
+                              <div className="flex-1 h-3 bg-muted rounded-full overflow-hidden">
+                                <div className={`h-full ${strengthColors[item.strength] || "bg-primary"} rounded-full transition-all`} style={{ width: `${pct}%` }} />
+                              </div>
+                              <span className="text-xs font-medium w-16 text-right">{item.count} ({pct}%)</span>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
 

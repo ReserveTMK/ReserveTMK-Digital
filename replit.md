@@ -29,7 +29,7 @@ PostgreSQL is used as the database, integrated with Drizzle ORM. The schema incl
 6.  **Community Lens Filtering**: Implements ethnicity-based audience filtering for reporting.
 
 ### Features
--   **Reporting Engine**: Funder-focused reporting across 9 sections, including Reach, Delivery, Impact, and alignment with Tamaki Ora. Supports various touchpoints, highlights, and growth metrics.
+-   **Reporting Engine**: Funder-focused reporting across 9 sections, including Reach, Delivery, Impact, and alignment with Tamaki Ora. Supports various touchpoints, highlights, and all 9 growth metrics (mindset, skill, confidence, bizConfidence, systemsInPlace, fundingReadiness, networkStrength, communityImpact, digitalPresence) grouped by Personal/Venture/Community. Includes journey stage progression tracking (kakano/tipu/ora transitions), connection strength distribution visualization, community discount aggregation, and mentoring focus theme summaries with human-readable labels.
 -   **Catch Up List**: Manages contact follow-ups with priority, notes, and dismissal features.
 -   **Funders Section**: Manages funding relationships, key dates, document storage, and reporting profiles.
 -   **Scheduling System**: Manages mentor/staff availability with Google Calendar sync.

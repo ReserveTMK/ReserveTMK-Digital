@@ -416,7 +416,9 @@ export async function getImpactMetrics(filters: ReportFilters) {
   if (lensContactIds) engagedContactIds = engagedContactIds.filter(r => lensContactIds.has(r.contactId));
   const cIds = engagedContactIds.map(r => r.contactId);
 
-  let mindsetChanges: number[] = [], skillChanges: number[] = [], confidenceChanges: number[] = [];
+  const ALL_METRIC_KEYS = ["mindset", "skill", "confidence", "bizConfidence", "systemsInPlace", "fundingReadiness", "networkStrength", "communityImpact", "digitalPresence"] as const;
+  const metricArrays: Record<string, number[]> = {};
+  for (const key of ALL_METRIC_KEYS) metricArrays[key] = [];
   let contactsWithMetrics = 0;
   if (cIds.length > 0) {
     const contactMetrics = await db.select({ id: contacts.id, metrics: contacts.metrics })
@@ -425,9 +427,9 @@ export async function getImpactMetrics(filters: ReportFilters) {
       const m = c.metrics as any;
       if (!m || Object.keys(m).length === 0) continue;
       contactsWithMetrics++;
-      if (m.mindset != null) mindsetChanges.push(m.mindset);
-      if (m.skill != null) skillChanges.push(m.skill);
-      if (m.confidence != null) confidenceChanges.push(m.confidence);
+      for (const key of ALL_METRIC_KEYS) {
+        if (m[key] != null) metricArrays[key].push(m[key]);
+      }
     }
   }
 
@@ -467,11 +469,9 @@ export async function getImpactMetrics(filters: ReportFilters) {
   return {
     communitySpend: communitySpendTotal,
     milestoneCount: milestonesFromTable.length + inlineMilestoneCount,
-    growthMetrics: {
-      mindset: { averageScore: avgFn(mindsetChanges), positiveMovementPercent: positivePercent(mindsetChanges) },
-      skill: { averageScore: avgFn(skillChanges), positiveMovementPercent: positivePercent(skillChanges) },
-      confidence: { averageScore: avgFn(confidenceChanges), positiveMovementPercent: positivePercent(confidenceChanges) },
-    },
+    growthMetrics: Object.fromEntries(
+      ALL_METRIC_KEYS.map(key => [key, { averageScore: avgFn(metricArrays[key]), positiveMovementPercent: positivePercent(metricArrays[key]) }])
+    ) as Record<string, { averageScore: number; positiveMovementPercent: number }>,
     contactsWithMetrics,
     connectionMovement,
     taxonomyBreakdown,
@@ -490,19 +490,17 @@ export async function getImpactByTaxonomy(filters: ReportFilters) {
 
 export async function getOutcomeMovement(filters: ReportFilters) {
   const result = await getImpactMetrics(filters);
+  const averageChange: Record<string, number> = {};
+  const positiveMovementPercent: Record<string, number> = {};
+  for (const [key, val] of Object.entries(result.growthMetrics)) {
+    averageChange[key] = val.averageScore;
+    positiveMovementPercent[key] = val.positiveMovementPercent;
+  }
   return {
     totalContacts: result.contactsWithMetrics,
     contactsWithMetrics: result.contactsWithMetrics,
-    averageChange: {
-      mindset: result.growthMetrics.mindset.averageScore,
-      skill: result.growthMetrics.skill.averageScore,
-      confidence: result.growthMetrics.confidence.averageScore,
-    },
-    positiveMovementPercent: {
-      mindset: result.growthMetrics.mindset.positiveMovementPercent,
-      skill: result.growthMetrics.skill.positiveMovementPercent,
-      confidence: result.growthMetrics.confidence.positiveMovementPercent,
-    },
+    averageChange,
+    positiveMovementPercent,
     milestoneCount: result.milestoneCount,
   };
 }
@@ -1140,10 +1138,20 @@ export async function getMentoringMetrics(filters: ReportFilters) {
     bySource[source] = (bySource[source] || 0) + 1;
   }
 
+  const FOCUS_LABELS: Record<string, string> = {
+    general: "General", strategy: "Strategy", wellbeing: "Wellbeing",
+    skills: "Skills Development", "skills development": "Skills Development",
+    "skills_development": "Skills Development",
+    business: "Business", career: "Career",
+    leadership: "Leadership", innovation: "Innovation", community: "Community",
+    creative: "Creative", financial: "Financial", digital: "Digital",
+    unspecified: "Unspecified",
+  };
   const byFocus: Record<string, number> = {};
   for (const m of mentoringMeetings) {
-    const focus = m.mentoringFocus || "unspecified";
-    byFocus[focus] = (byFocus[focus] || 0) + 1;
+    const rawFocus = (m.mentoringFocus || "unspecified").trim().toLowerCase().replace(/[-_]+/g, " ").replace(/\s+/g, " ");
+    const label = FOCUS_LABELS[rawFocus] || rawFocus.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+    byFocus[label] = (byFocus[label] || 0) + 1;
   }
 
   const completedCount = mentoringMeetings.filter(m => m.status === "completed").length;
@@ -1429,8 +1437,140 @@ export async function getPeopleFeatured(filters: ReportFilters) {
   }).sort((a, b) => b.reasons.length - a.reasons.length);
 }
 
+export async function getJourneyStageProgression(filters: ReportFilters) {
+  const start = parseDate(filters.startDate);
+  const end = parseDate(filters.endDate);
+  const lensContactIds = await getCommunityLensContactIds(filters);
+
+  const JOURNEY_STAGE_ORDER = ["kakano", "tipu", "ora"];
+
+  const allContacts = await db.select({
+    id: contacts.id,
+    stage: contacts.stage,
+    stageProgression: contacts.stageProgression,
+  }).from(contacts).where(eq(contacts.userId, filters.userId));
+
+  const filteredContacts = lensContactIds
+    ? allContacts.filter(c => lensContactIds.has(c.id))
+    : allContacts;
+
+  const transitions: { from: string; to: string; count: number }[] = [];
+  const transitionMap = new Map<string, number>();
+  let totalProgressions = 0;
+
+  for (const c of filteredContacts) {
+    const prog = c.stageProgression as Array<{ stage: string; date: string; notes?: string }> | null;
+    if (!prog || !Array.isArray(prog)) continue;
+
+    const sorted = [...prog].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    for (let i = 1; i < sorted.length; i++) {
+      const entryDate = new Date(sorted[i].date);
+      if (entryDate >= start && entryDate <= end) {
+        const fromStage = sorted[i - 1].stage;
+        const toStage = sorted[i].stage;
+        const fromIdx = JOURNEY_STAGE_ORDER.indexOf(fromStage);
+        const toIdx = JOURNEY_STAGE_ORDER.indexOf(toStage);
+        if (toIdx > fromIdx) {
+          const key = `${fromStage}→${toStage}`;
+          transitionMap.set(key, (transitionMap.get(key) || 0) + 1);
+          totalProgressions++;
+        }
+      }
+    }
+  }
+
+  for (const [key, count] of transitionMap.entries()) {
+    const [from, to] = key.split("→");
+    transitions.push({ from, to, count });
+  }
+
+  const currentDistribution: Record<string, number> = { kakano: 0, tipu: 0, ora: 0 };
+  for (const c of filteredContacts) {
+    const stage = c.stage || "kakano";
+    if (stage in currentDistribution) currentDistribution[stage]++;
+  }
+
+  return { transitions, totalProgressions, currentDistribution };
+}
+
+export async function getCommunityDiscounts(filters: ReportFilters) {
+  const start = parseDate(filters.startDate);
+  const end = parseDate(filters.endDate);
+
+  const bookingsInRange = await db.select({
+    amount: bookings.amount,
+    discountPercentage: bookings.discountPercentage,
+    discountAmount: bookings.discountAmount,
+  }).from(bookings).where(and(
+    eq(bookings.userId, filters.userId),
+    inArray(bookings.status, ["confirmed", "completed"]),
+    gte(bookings.startDate, start),
+    lte(bookings.startDate, end),
+  ));
+
+  let totalDiscountValue = 0;
+  let discountedBookingsCount = 0;
+  let totalDiscountPercent = 0;
+
+  for (const b of bookingsInRange) {
+    const pct = Number(b.discountPercentage) || 0;
+    const amt = Number(b.discountAmount) || 0;
+    const bookingAmt = Number(b.amount) || 0;
+
+    if (pct > 0 || amt > 0) {
+      discountedBookingsCount++;
+      totalDiscountPercent += pct;
+      if (amt > 0) {
+        totalDiscountValue += amt;
+      } else if (pct > 0 && bookingAmt > 0) {
+        totalDiscountValue += Math.round(bookingAmt * pct) / 100;
+      }
+    }
+  }
+
+  return {
+    totalDiscountValue: Math.round(totalDiscountValue * 100) / 100,
+    discountedBookingsCount,
+    averageDiscountPercent: discountedBookingsCount > 0
+      ? Math.round(totalDiscountPercent / discountedBookingsCount)
+      : 0,
+  };
+}
+
+export async function getConnectionStrengthDistribution(filters: ReportFilters) {
+  const lensContactIds = await getCommunityLensContactIds(filters);
+  const CONNECTION_LEVELS = ["known", "connected", "engaged", "embedded", "partnering"];
+
+  const allContacts = await db.select({
+    id: contacts.id,
+    connectionStrength: contacts.connectionStrength,
+  }).from(contacts).where(eq(contacts.userId, filters.userId));
+
+  const filteredContacts = lensContactIds
+    ? allContacts.filter(c => lensContactIds.has(c.id))
+    : allContacts;
+
+  const distMap = new Map<string, number>();
+  for (const level of CONNECTION_LEVELS) distMap.set(level, 0);
+
+  for (const c of filteredContacts) {
+    const strength = c.connectionStrength || "known";
+    distMap.set(strength, (distMap.get(strength) || 0) + 1);
+  }
+
+  const distribution = CONNECTION_LEVELS.map(strength => ({
+    strength,
+    count: distMap.get(strength) || 0,
+  }));
+
+  return {
+    distribution,
+    total: filteredContacts.length,
+  };
+}
+
 export async function getFullMonthlyReport(filters: ReportFilters) {
-  const [reach, delivery, impact, value, mentoring, organisationsEngaged, peopleFeatured] = await Promise.all([
+  const [reach, delivery, impact, value, mentoring, organisationsEngaged, peopleFeatured, journeyProgression, communityDiscounts, connectionStrength] = await Promise.all([
     getReachMetrics(filters),
     getDeliveryMetrics(filters),
     getImpactMetrics(filters),
@@ -1438,7 +1578,17 @@ export async function getFullMonthlyReport(filters: ReportFilters) {
     getMentoringMetrics(filters),
     getOrganisationsEngaged(filters),
     getPeopleFeatured(filters),
+    getJourneyStageProgression(filters),
+    getCommunityDiscounts(filters),
+    getConnectionStrengthDistribution(filters),
   ]);
+
+  const averageChange: Record<string, number> = {};
+  const positiveMovement: Record<string, number> = {};
+  for (const [key, val] of Object.entries(impact.growthMetrics)) {
+    averageChange[key] = val.averageScore;
+    positiveMovement[key] = val.positiveMovementPercent;
+  }
 
   return {
     period: { startDate: filters.startDate, endDate: filters.endDate },
@@ -1453,20 +1603,15 @@ export async function getFullMonthlyReport(filters: ReportFilters) {
     mentoring,
     organisationsEngaged,
     peopleFeatured,
+    journeyProgression,
+    communityDiscounts,
+    connectionStrength,
     engagement: reach,
     outcomes: {
       totalContacts: impact.contactsWithMetrics,
       contactsWithMetrics: impact.contactsWithMetrics,
-      averageChange: {
-        mindset: impact.growthMetrics.mindset.averageScore,
-        skill: impact.growthMetrics.skill.averageScore,
-        confidence: impact.growthMetrics.confidence.averageScore,
-      },
-      positiveMovementPercent: {
-        mindset: impact.growthMetrics.mindset.positiveMovementPercent,
-        skill: impact.growthMetrics.skill.positiveMovementPercent,
-        confidence: impact.growthMetrics.confidence.positiveMovementPercent,
-      },
+      averageChange,
+      positiveMovementPercent: positiveMovement,
       milestoneCount: impact.milestoneCount,
     },
   };
