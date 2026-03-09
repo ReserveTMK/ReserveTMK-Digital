@@ -1,0 +1,88 @@
+Expand Regular Booker system to support three booking categories (Venue Hire, Hot Desking, Gear Booking):
+
+1. BOOKING CATEGORIES & RESOURCES:
+
+VENUE HIRE:
+- Workshop Space
+- Boardroom
+- Studio
+
+HOT DESKING:
+- Plug n Play Desk 1
+- Plug n Play Desk 2
+- Plug n Play Desk 3
+- Drop-in Desk 1
+- Drop-in Desk 2
+
+GEAR BOOKING:
+- Camera Gear
+- Heat Press
+- 3D Printer
+
+2. REGULAR BOOKER PROFILE:
+
+Add booking_categories (multi-select checkboxes):
+☐ Venue Hire
+☐ Hot Desking
+☐ Gear Booking
+
+Any combination allowed (can have 1, 2, or all 3 categories enabled).
+
+Package types per category:
+- Venue Hire: X bookings prepaid
+- Hot Desking: Unlimited monthly access (subscription)
+- Gear Booking: Unlimited access (subscription)
+
+3. HOT DESKING FEATURES:
+
+- Recurring bookings allowed (e.g., "Every Tuesday 9am-5pm for 3 months")
+- Can book multiple desks at once (for teams)
+- First-come-first-served (any available desk, not assigned)
+- Show desk availability only (don't show who booked)
+
+4. GEAR BOOKING FEATURES:
+
+- Same-day return required (no multi-day loans)
+- Can book multiple items at once
+- Some gear requires training/approval flag (admin can mark items as requiring approval)
+- Track late returns
+- Show gear availability only (don't show who has it)
+
+5. BOOKING VIEWS:
+
+Create three separate calendar views:
+- Venues Calendar (Workshop/Boardroom/Studio bookings)
+- Desks Calendar (hot desk occupancy)
+- Gear Calendar (equipment availability)
+
+Each calendar shows:
+- Availability only (green = available, red = booked)
+- Does NOT show booker names (privacy)
+- Regular bookers see only resources they have access to
+
+6. REGULAR BOOKER SELF-SERVICE:
+
+When regular booker logs in or uses booking link:
+- System shows only their enabled categories
+- Can select date/time and see availability
+- Book available slots/items
+- See their upcoming bookings
+- Cancel their bookings
+
+7. PACKAGE TRACKING:
+
+Display on regular booker profile:
+- Venue Hire: 5/10 bookings used
+- Hot Desking: Active (unlimited access, expires 30 Mar 2026)
+- Gear Booking: Active (unlimited access, expires 30 Mar 2026)
+
+8. FILTERS & MANAGEMENT:
+
+Regular Bookers list filters:
+- All Regular Bookers
+- By category: Venue Hire | Hot Desking | Gear Borrowers
+- Active/Expired subscriptions
+
+Show badges on profiles indicating categories: [Venue] [Desk] [Gear]
+
+Build three booking systems under unified Regular Booker framework with separate calendars and category-based access control.
