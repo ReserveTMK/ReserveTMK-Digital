@@ -449,8 +449,7 @@ export default function RegularBookersPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="min-w-[180px]" data-testid="th-booker-name">Booker</TableHead>
-                <TableHead className="min-w-[120px]" data-testid="th-group">Group / Org</TableHead>
+                <TableHead className="min-w-[200px]" data-testid="th-booker-name">Booker</TableHead>
                 <TableHead className="min-w-[120px]" data-testid="th-agreement">Agreement</TableHead>
                 <TableHead className="min-w-[130px]" data-testid="th-package">Package / Balance</TableHead>
                 <TableHead className="min-w-[100px]" data-testid="th-pricing">Pricing</TableHead>
@@ -473,22 +472,21 @@ export default function RegularBookersPage() {
                         <span className="font-medium text-sm" data-testid={`text-booker-name-${booker.id}`}>
                           {getBookerDisplayName(booker)}
                         </span>
-                        <p className="text-xs text-muted-foreground truncate" data-testid={`text-booker-email-${booker.id}`}>
-                          {booker.billingEmail}
-                        </p>
+                        {groupName && getBookerDisplayName(booker) !== groupName ? (
+                          <p className="text-xs text-muted-foreground truncate flex items-center gap-1" data-testid={`text-booker-group-${booker.id}`}>
+                            <Building className="w-3 h-3 shrink-0" />
+                            {groupName}
+                          </p>
+                        ) : booker.organizationName && getBookerDisplayName(booker) !== booker.organizationName ? (
+                          <p className="text-xs text-muted-foreground truncate" data-testid={`text-booker-org-${booker.id}`}>
+                            {booker.organizationName}
+                          </p>
+                        ) : booker.billingEmail ? (
+                          <p className="text-xs text-muted-foreground truncate" data-testid={`text-booker-email-${booker.id}`}>
+                            {booker.billingEmail}
+                          </p>
+                        ) : null}
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      {groupName ? (
-                        <span className="text-sm flex items-center gap-1.5">
-                          <Building className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                          <span className="truncate">{groupName}</span>
-                        </span>
-                      ) : booker.organizationName ? (
-                        <span className="text-sm text-muted-foreground truncate">{booker.organizationName}</span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">-</span>
-                      )}
                     </TableCell>
                     <TableCell>
                       {agreement ? (
@@ -862,13 +860,16 @@ function RegularBookerFormDialog({
   };
 
   const handleSubmit = () => {
-    if (!billingEmail.trim()) return;
+    if (!hasLinkedAgreement && !billingEmail.trim()) return;
     if (!contactId && !groupId) return;
+    const resolvedBillingEmail = billingEmail.trim() || 
+      (selectedContact?.email || "") || 
+      (selectedGroup as any)?.contactEmail || "";
     onSubmit({
       contactId: contactId || null,
       groupId: groupId || null,
       organizationName: organizationName.trim() || null,
-      billingEmail: billingEmail.trim(),
+      billingEmail: resolvedBillingEmail,
       billingAddress: billingAddress.trim() || null,
       billingPhone: billingPhone.trim() || null,
       pricingTier,
@@ -974,53 +975,6 @@ function RegularBookerFormDialog({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Billing Email *</Label>
-              <Input
-                type="email"
-                value={billingEmail}
-                onChange={(e) => setBillingEmail(e.target.value)}
-                placeholder="billing@example.com"
-                data-testid="input-booker-billing-email"
-              />
-            </div>
-            <div>
-              <Label>Billing Phone</Label>
-              <Input
-                value={billingPhone}
-                onChange={(e) => setBillingPhone(e.target.value)}
-                placeholder="Phone number"
-                data-testid="input-booker-billing-phone"
-              />
-            </div>
-          </div>
-
-          <div>
-            <Label>Billing Address</Label>
-            <Textarea
-              value={billingAddress}
-              onChange={(e) => setBillingAddress(e.target.value)}
-              placeholder="Full billing address"
-              className="resize-none"
-              data-testid="input-booker-billing-address"
-            />
-          </div>
-
-          <div>
-            <Label>Account Status</Label>
-            <Select value={accountStatus} onValueChange={setAccountStatus}>
-              <SelectTrigger data-testid="select-booker-account-status">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {REGULAR_BOOKER_STATUSES.map(s => (
-                  <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           {(activeMemberships.length > 0 || activeMous.length > 0) && (
             <div className="space-y-3 border-t pt-4">
               <Label className="text-sm font-semibold">Linked Agreement</Label>
@@ -1085,6 +1039,57 @@ function RegularBookerFormDialog({
               )}
             </div>
           )}
+
+          {!hasLinkedAgreement && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Billing Email</Label>
+                  <Input
+                    type="email"
+                    value={billingEmail}
+                    onChange={(e) => setBillingEmail(e.target.value)}
+                    placeholder="billing@example.com"
+                    data-testid="input-booker-billing-email"
+                  />
+                </div>
+                <div>
+                  <Label>Billing Phone</Label>
+                  <Input
+                    value={billingPhone}
+                    onChange={(e) => setBillingPhone(e.target.value)}
+                    placeholder="Phone number"
+                    data-testid="input-booker-billing-phone"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label>Billing Address</Label>
+                <Textarea
+                  value={billingAddress}
+                  onChange={(e) => setBillingAddress(e.target.value)}
+                  placeholder="Full billing address"
+                  className="resize-none"
+                  data-testid="input-booker-billing-address"
+                />
+              </div>
+            </>
+          )}
+
+          <div>
+            <Label>Account Status</Label>
+            <Select value={accountStatus} onValueChange={setAccountStatus}>
+              <SelectTrigger data-testid="select-booker-account-status">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {REGULAR_BOOKER_STATUSES.map(s => (
+                  <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
           {!hasLinkedAgreement && (
             <div className="space-y-3 border-t pt-4">
@@ -1236,7 +1241,7 @@ function RegularBookerFormDialog({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={isPending || !hasBookerSelection || !billingEmail.trim()}
+            disabled={isPending || !hasBookerSelection || (!hasLinkedAgreement && !billingEmail.trim())}
             data-testid="button-save-regular-booker"
           >
             {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
