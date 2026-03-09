@@ -1088,9 +1088,9 @@ export default function Contacts() {
                             {contact.stage.charAt(0).toUpperCase() + contact.stage.slice(1)}
                           </Badge>
                         )}
-                        {Array.isArray(contact.supportType) && contact.supportType.length > 0 && (
+                        {Array.isArray(contact.supportType) && contact.supportType.filter((st: string) => st !== "mentoring").length > 0 && (
                           <div className="flex items-center gap-1" data-testid={`support-types-${contact.id}`}>
-                            {contact.supportType.map((st: string) => (
+                            {contact.supportType.filter((st: string) => st !== "mentoring").map((st: string) => (
                               <span key={st} className="flex items-center text-[10px] text-muted-foreground" title={st.replace(/_/g, ' ')}>
                                 <CircleCheck className="w-3.5 h-3.5 text-green-500" />
                               </span>

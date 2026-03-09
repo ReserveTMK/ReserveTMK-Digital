@@ -1540,7 +1540,8 @@ function DetailConnectionEditor({ contactId, connectionStrength }: { contactId: 
 function DetailSupportEditor({ contactId, supportTypes }: { contactId: number; supportTypes: string[] }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState<string[]>(supportTypes || []);
+  const displayTypes = (supportTypes || []).filter(t => t !== "mentoring");
+  const [selected, setSelected] = useState<string[]>(displayTypes);
   const [saving, setSaving] = useState(false);
 
   const toggle = (t: string) => {
@@ -1550,7 +1551,8 @@ function DetailSupportEditor({ contactId, supportTypes }: { contactId: number; s
   const handleSave = async () => {
     setSaving(true);
     try {
-      await apiRequest("PATCH", `/api/contacts/${contactId}`, { supportType: selected });
+      const mentoringKept = (supportTypes || []).includes("mentoring") ? ["mentoring"] : [];
+      await apiRequest("PATCH", `/api/contacts/${contactId}`, { supportType: [...mentoringKept, ...selected] });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts/:id"] });
       toast({ title: "Support type updated" });
@@ -1563,15 +1565,15 @@ function DetailSupportEditor({ contactId, supportTypes }: { contactId: number; s
   };
 
   return (
-    <Popover open={open} onOpenChange={(v) => { setOpen(v); if (v) setSelected(supportTypes || []); }}>
+    <Popover open={open} onOpenChange={(v) => { setOpen(v); if (v) setSelected(displayTypes); }}>
       <PopoverTrigger asChild>
         <button
           className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-muted/60 transition-colors cursor-pointer group border border-transparent hover:border-border"
           data-testid="detail-support-editor"
         >
           <span className="text-xs text-muted-foreground">Support:</span>
-          {supportTypes?.length > 0 ? (
-            supportTypes.map(t => (
+          {displayTypes.length > 0 ? (
+            displayTypes.map(t => (
               <Badge key={t} className={`text-[10px] h-5 px-1.5 ${SUPPORT_COLOR_MAP[t] || ""}`}>
                 {SUPPORT_LABEL_MAP[t] || t}
               </Badge>
