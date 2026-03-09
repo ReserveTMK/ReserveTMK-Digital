@@ -49,7 +49,6 @@ import {
   Save,
   Check,
 } from "lucide-react";
-import { Checkbox } from "@/components/ui/checkbox";
 import type { ImpactLog, Contact } from "@shared/schema";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
@@ -64,6 +63,7 @@ export function ReviewView({ id }: { id: number }) {
   const { data: log, isLoading } = useImpactLog(id);
   const { data: contacts } = useQuery<Contact[]>({ queryKey: ['/api/contacts'] });
   const { data: taxonomyCategories } = useQuery<any[]>({ queryKey: ['/api/taxonomy'] });
+  const { data: savedTags } = useQuery<any[]>({ queryKey: ['/api/impact-logs', id, 'tags'] });
   const updateMutation = useUpdateImpactLog();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -366,14 +366,24 @@ export function ReviewView({ id }: { id: number }) {
   }, [fromQueue, impactLog, extraction, autoAnalyzeTriggered, isAnalyzing]);
 
   useEffect(() => {
-    if (impactLog && extraction && !initialized) {
+    if (impactLog && extraction && !initialized && savedTags !== undefined) {
       setSummary(extraction.summary || impactLog.summary || "");
       setSentiment(extraction.sentiment || impactLog.sentiment || "neutral");
       setMilestones(extraction.milestones || impactLog.milestones || []);
-      setImpactTags((extraction.impactTags || []).map((tag: any) => ({
-        ...tag,
-        selected: tag.selected !== undefined ? tag.selected : !!(tag.taxonomyId),
-      })));
+      if (savedTags && savedTags.length > 0) {
+        setImpactTags(savedTags.map((tag: any) => ({
+          ...tag,
+          category: taxonomyCategories?.find((t: any) => t.id === tag.taxonomyId)?.name || tag.category || "",
+          evidence: tag.evidence || tag.notes || "",
+          dbId: tag.id,
+        })));
+      } else if (Array.isArray(savedTags) && savedTags.length === 0) {
+        setImpactTags([]);
+      } else {
+        setImpactTags((extraction.impactTags || []).map((tag: any) => ({
+          ...tag,
+        })));
+      }
       setPeople((extraction.people || []).map((p: any) => ({
         ...p,
         section: p.section || (["primary", "mentor", "mentee"].includes(p.role) ? "primary" : "secondary"),
@@ -414,7 +424,7 @@ export function ReviewView({ id }: { id: number }) {
 
       setInitialized(true);
     }
-  }, [impactLog, extraction, initialized]);
+  }, [impactLog, extraction, initialized, savedTags, taxonomyCategories]);
 
   const handleSave = async (status: string) => {
     const reviewedData = {
@@ -456,10 +466,9 @@ export function ReviewView({ id }: { id: number }) {
         }
 
         for (const tag of impactTags) {
-          if (tag.taxonomyId && tag.selected !== false) {
+          if (tag.taxonomyId && !tag.dbId) {
             try {
               await apiRequest('POST', `/api/impact-logs/${id}/tags`, {
-                impactLogId: id,
                 taxonomyId: tag.taxonomyId,
                 confidence: tag.confidence,
                 notes: tag.evidence,
@@ -471,6 +480,7 @@ export function ReviewView({ id }: { id: number }) {
 
       queryClient.invalidateQueries({ queryKey: ['/api/impact-logs'] });
       queryClient.invalidateQueries({ queryKey: ['/api/impact-logs', id] });
+      queryClient.invalidateQueries({ queryKey: ['/api/impact-logs', id, 'tags'] });
 
       toast({
         title: status === "confirmed" ? "Debrief Confirmed" : "Draft Saved",
@@ -961,7 +971,7 @@ export function ReviewView({ id }: { id: number }) {
 
               <Card className="p-5">
                 <h3 className="font-bold font-display mb-3">Impact Tags</h3>
-                <p className="text-xs text-muted-foreground mb-3">Tags with matched taxonomy are pre-selected. Uncheck any you don't want saved.</p>
+                <p className="text-xs text-muted-foreground mb-3">Auto-applied from AI analysis. Remove any that don't apply.</p>
                 {impactTags.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No tags extracted</p>
                 ) : (
@@ -970,19 +980,9 @@ export function ReviewView({ id }: { id: number }) {
                       const matchedTaxonomy = tag.taxonomyId
                         ? taxonomyCategories?.find((t: any) => t.id === tag.taxonomyId)
                         : null;
-                      const isSelected = tag.selected !== false;
                       return (
-                        <div key={i} className={`space-y-1.5 p-3 rounded-lg border transition-colors ${isSelected ? "bg-muted/30 border-border" : "bg-muted/10 border-border/50 opacity-60"}`} data-testid={`impact-tag-entry-${i}`}>
+                        <div key={tag.dbId || i} className="space-y-1.5 p-3 rounded-lg border bg-muted/30 border-border" data-testid={`impact-tag-entry-${i}`}>
                           <div className="flex items-center gap-2">
-                            <Checkbox
-                              checked={isSelected}
-                              onCheckedChange={(checked) => {
-                                const updated = [...impactTags];
-                                updated[i] = { ...updated[i], selected: !!checked };
-                                setImpactTags(updated);
-                              }}
-                              data-testid={`checkbox-tag-${i}`}
-                            />
                             <div className="flex items-center justify-between gap-2 flex-1 min-w-0">
                               {tag.taxonomyId && matchedTaxonomy ? (
                                 <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -990,56 +990,79 @@ export function ReviewView({ id }: { id: number }) {
                                     <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: matchedTaxonomy.color }} />
                                   )}
                                   <span className="text-sm font-medium truncate">{matchedTaxonomy.name}</span>
+                                  <Badge variant="secondary" className="text-[10px] shrink-0">Applied</Badge>
                                 </div>
                               ) : (
-                                <Select
-                                  value={tag.taxonomyId ? String(tag.taxonomyId) : ""}
-                                  onValueChange={(val) => {
-                                    const selectedTax = taxonomyCategories?.find((t: any) => t.id === Number(val));
-                                    const updated = [...impactTags];
-                                    updated[i] = {
-                                      ...updated[i],
-                                      taxonomyId: Number(val),
-                                      category: selectedTax?.name || updated[i].category,
-                                      selected: true,
-                                    };
-                                    setImpactTags(updated);
-                                  }}
-                                >
-                                  <SelectTrigger className="flex-1" data-testid={`select-tag-category-${i}`}>
-                                    <SelectValue placeholder="Select taxonomy category..." />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {(taxonomyCategories || []).filter((t: any) => t.active !== false).map((t: any) => (
-                                      <SelectItem key={t.id} value={String(t.id)}>
-                                        <div className="flex items-center gap-2">
-                                          {t.color && (
-                                            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
-                                          )}
-                                          <span>{t.name}</span>
-                                        </div>
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
+                                <div className="flex-1 min-w-0">
+                                  <Select
+                                    value={tag.taxonomyId ? String(tag.taxonomyId) : ""}
+                                    onValueChange={async (val) => {
+                                      const selectedTax = taxonomyCategories?.find((t: any) => t.id === Number(val));
+                                      try {
+                                        const res = await apiRequest('POST', `/api/impact-logs/${id}/tags`, {
+                                          taxonomyId: Number(val),
+                                          confidence: tag.confidence || 50,
+                                          notes: tag.evidence || "",
+                                        });
+                                        const newTag = await res.json();
+                                        const updated = [...impactTags];
+                                        updated[i] = {
+                                          ...updated[i],
+                                          taxonomyId: Number(val),
+                                          category: selectedTax?.name || updated[i].category,
+                                          dbId: newTag.id,
+                                        };
+                                        setImpactTags(updated);
+                                        queryClient.invalidateQueries({ queryKey: ['/api/impact-logs', id, 'tags'] });
+                                        toast({ title: "Tag saved" });
+                                      } catch {
+                                        toast({ title: "Error", description: "Failed to save tag", variant: "destructive" });
+                                      }
+                                    }}
+                                  >
+                                    <SelectTrigger className="flex-1" data-testid={`select-tag-category-${i}`}>
+                                      <SelectValue placeholder="Select taxonomy category..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {(taxonomyCategories || []).filter((t: any) => t.active !== false).map((t: any) => (
+                                        <SelectItem key={t.id} value={String(t.id)}>
+                                          <div className="flex items-center gap-2">
+                                            {t.color && (
+                                              <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
+                                            )}
+                                            <span>{t.name}</span>
+                                          </div>
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  {tag.category && tag.category !== "New Tag" && (
+                                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                                      AI suggested: "{tag.category}"
+                                    </p>
+                                  )}
+                                </div>
                               )}
                               <Button
                                 variant="ghost"
                                 size="icon"
                                 className="min-h-[44px] min-w-[44px]"
-                                onClick={() => setImpactTags(impactTags.filter((_: any, j: number) => j !== i))}
+                                onClick={async () => {
+                                  if (tag.dbId) {
+                                    try {
+                                      await apiRequest('DELETE', `/api/impact-tags/${tag.dbId}`);
+                                      queryClient.invalidateQueries({ queryKey: ['/api/impact-logs', id, 'tags'] });
+                                    } catch {}
+                                  }
+                                  setImpactTags(impactTags.filter((_: any, j: number) => j !== i));
+                                }}
                                 data-testid={`button-remove-tag-${i}`}
                               >
                                 <X className="w-4 h-4" />
                               </Button>
                             </div>
                           </div>
-                          {!tag.taxonomyId && tag.category && tag.category !== "New Tag" && (
-                            <p className="text-xs text-amber-600 dark:text-amber-400 ml-6">
-                              AI suggested: "{tag.category}" -- select a taxonomy category above to save this tag
-                            </p>
-                          )}
-                          <div className="flex items-center gap-2 ml-6">
+                          <div className="flex items-center gap-2">
                             <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
                               <div
                                 className={`h-full rounded-full transition-all ${confidenceColor(tag.confidence || 0)}`}
@@ -1049,7 +1072,7 @@ export function ReviewView({ id }: { id: number }) {
                             <span className="text-xs text-muted-foreground w-10 text-right">{tag.confidence || 0}%</span>
                           </div>
                           {tag.evidence && (
-                            <p className="text-xs text-muted-foreground italic ml-6">{tag.evidence}</p>
+                            <p className="text-xs text-muted-foreground italic">{tag.evidence}</p>
                           )}
                         </div>
                       );
@@ -1060,7 +1083,7 @@ export function ReviewView({ id }: { id: number }) {
                   variant="outline"
                   size="sm"
                   className="mt-3 w-full"
-                  onClick={() => setImpactTags([...impactTags, { category: "", confidence: 50, evidence: "", taxonomyId: null, selected: true }])}
+                  onClick={() => setImpactTags([...impactTags, { category: "", confidence: 50, evidence: "", taxonomyId: null }])}
                   data-testid="button-add-tag"
                 >
                   <Plus className="w-3 h-3 mr-1" />

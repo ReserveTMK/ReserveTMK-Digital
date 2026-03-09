@@ -8,7 +8,7 @@ import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON } from "./replit_integrations/anthropic/client";
 import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getReachMetrics, getDeliveryMetrics, getImpactMetrics, type ReportFilters } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings } from "@shared/schema";
+import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings } from "@shared/schema";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { ObjectStorageService } from "./replit_integrations/object_storage";
 import crypto from "crypto";
@@ -2765,11 +2765,35 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         temperature: 0.3,
       });
 
+      const autoApplyTags = async (logId: number, extractedTags: any[]) => {
+        const existingTags = await storage.getImpactTags(logId);
+        for (const existingTag of existingTags) {
+          await storage.removeImpactTag(existingTag.id);
+        }
+        if (!extractedTags || extractedTags.length === 0) return;
+        for (const tag of extractedTags) {
+          const matchedTax = taxonomy.find(t => t.active && t.name.toLowerCase() === (tag.category || "").toLowerCase());
+          const taxonomyId = matchedTax?.id;
+          if (taxonomyId) {
+            tag.taxonomyId = taxonomyId;
+            await storage.addImpactTag({
+              impactLogId: logId,
+              taxonomyId,
+              confidence: tag.confidence || 50,
+              notes: tag.evidence || null,
+              evidence: tag.evidence || null,
+            });
+          }
+        }
+        extraction.impactTags = extractedTags;
+      };
+
       if (existingLogId) {
         const existing = await storage.getImpactLog(existingLogId);
         if (!existing || existing.userId !== userId) {
           return res.status(404).json({ message: "Impact log not found" });
         }
+        await autoApplyTags(existingLogId, extraction.impactTags);
         const updated = await storage.updateImpactLog(existingLogId, {
           transcript,
           summary: extraction.summary || "",
@@ -2792,11 +2816,98 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
           milestones: extraction.milestones || [],
           keyQuotes: extraction.keyQuotes || [],
         });
+        await autoApplyTags(impactLog.id, extraction.impactTags);
+        await storage.updateImpactLog(impactLog.id, { rawExtraction: extraction });
         res.status(201).json({ id: impactLog.id, impactLog, extraction });
       }
     } catch (error) {
       console.error("Impact extraction error:", error);
       res.status(500).json({ message: "Failed to extract impact data" });
+    }
+  });
+
+  app.get("/api/impact-logs/:id/tags", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const logId = parseInt(req.params.id);
+      if (isNaN(logId)) return res.status(400).json({ message: "Invalid log ID" });
+      const log = await storage.getImpactLog(logId);
+      if (!log || log.userId !== userId) return res.status(404).json({ message: "Not found" });
+      const tags = await storage.getImpactTags(logId);
+      res.json(tags);
+    } catch (error) {
+      console.error("Get impact tags error:", error);
+      res.status(500).json({ message: "Failed to get impact tags" });
+    }
+  });
+
+  app.post("/api/impact-logs/:id/tags", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const logId = parseInt(req.params.id);
+      if (isNaN(logId)) return res.status(400).json({ message: "Invalid log ID" });
+      const log = await storage.getImpactLog(logId);
+      if (!log || log.userId !== userId) return res.status(404).json({ message: "Not found" });
+      const { taxonomyId, confidence, notes } = req.body;
+      if (!taxonomyId) return res.status(400).json({ message: "taxonomyId required" });
+      const userTaxonomy = await storage.getTaxonomy(userId);
+      if (!userTaxonomy.find(t => t.id === taxonomyId)) {
+        return res.status(403).json({ message: "Taxonomy category not found" });
+      }
+      const tag = await storage.addImpactTag({
+        impactLogId: logId,
+        taxonomyId,
+        confidence: confidence || 50,
+        notes: notes || null,
+        evidence: notes || null,
+      });
+      res.status(201).json(tag);
+    } catch (error) {
+      console.error("Add impact tag error:", error);
+      res.status(500).json({ message: "Failed to add impact tag" });
+    }
+  });
+
+  app.post("/api/impact-logs/:id/contacts", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const logId = parseInt(req.params.id);
+      if (isNaN(logId)) return res.status(400).json({ message: "Invalid log ID" });
+      const log = await storage.getImpactLog(logId);
+      if (!log || log.userId !== userId) return res.status(404).json({ message: "Not found" });
+      const { contactId, role } = req.body;
+      if (!contactId) return res.status(400).json({ message: "contactId required" });
+      const contact = await storage.getContact(contactId);
+      if (!contact || contact.userId !== userId) {
+        return res.status(403).json({ message: "Contact not found" });
+      }
+      await storage.addImpactLogContact({ impactLogId: logId, contactId, role: role || "mentioned" });
+      res.status(201).json({ success: true });
+    } catch (error) {
+      console.error("Add impact log contact error:", error);
+      res.status(500).json({ message: "Failed to add contact" });
+    }
+  });
+
+  app.delete("/api/impact-tags/:tagId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const tagId = parseInt(req.params.tagId);
+      if (isNaN(tagId)) return res.status(400).json({ message: "Invalid tag ID" });
+
+      const [tag] = await db.select().from(impactTags).where(eq(impactTags.id, tagId));
+      if (!tag) return res.status(404).json({ message: "Impact tag not found" });
+
+      const log = await storage.getImpactLog(tag.impactLogId);
+      if (!log || log.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      await storage.removeImpactTag(tagId);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Delete impact tag error:", error);
+      res.status(500).json({ message: "Failed to delete impact tag" });
     }
   });
 
