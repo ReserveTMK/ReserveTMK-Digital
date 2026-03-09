@@ -941,6 +941,25 @@ export async function registerRoutes(
 
       const meeting = await storage.createMeeting(input);
 
+      if (req.body.discoveryGoals && contact) {
+        try {
+          const existingRelationships = await storage.getMentoringRelationshipsByContact(contact.id);
+          const hasActiveOrApplication = existingRelationships.some(r => r.status === "active" || r.status === "application");
+          if (!hasActiveOrApplication) {
+            const dg = req.body.discoveryGoals;
+            await storage.createMentoringApplication({
+              contactId: contact.id,
+              status: "pending",
+              ventureDescription: dg.ventureDescription || null,
+              currentStage: dg.currentStage || null,
+              whatNeedHelpWith: dg.whatNeedHelpWith || null,
+            });
+          }
+        } catch (appErr) {
+          console.warn("Failed to create discovery mentoring application:", appErr);
+        }
+      }
+
       // Create Google Calendar event asynchronously
       (async () => {
         try {
@@ -949,11 +968,28 @@ export async function registerRoutes(
           const mentorEmail = mentorProfile?.email || undefined;
           const calendarId = mentorProfile?.googleCalendarId || undefined;
           const menteeEmail = contact.email || undefined;
-          await createCalendarEventForMeeting(meeting, {
+
+          const extraEmails = Array.isArray(req.body.attendees)
+            ? req.body.attendees.filter((a: any) => a.email).map((a: any) => a.email as string)
+            : [];
+
+          const eventId = await createCalendarEventForMeeting(meeting, {
             mentorEmail,
             menteeEmail,
             calendarId,
           });
+
+          if (extraEmails.length > 0 && eventId) {
+            const allAttendees: { email: string }[] = [];
+            if (mentorEmail) allAttendees.push({ email: mentorEmail });
+            if (menteeEmail) allAttendees.push({ email: menteeEmail });
+            extraEmails.forEach((email: string) => {
+              if (!allAttendees.some(a => a.email === email)) {
+                allAttendees.push({ email });
+              }
+            });
+            await updateCalendarEventAttendees(eventId, allAttendees, calendarId);
+          }
         } catch (e) {
           console.warn("Calendar event creation failed silently:", e);
         }
@@ -1004,21 +1040,26 @@ export async function registerRoutes(
       const input = api.meetings.update.input.parse(updates);
       const updated = await storage.updateMeeting(id, input);
 
-      // Update Google Calendar attendees when co-mentor changes
-      if ('coMentorProfileId' in req.body && updated.googleCalendarEventId) {
+      if (('coMentorProfileId' in req.body || 'attendees' in req.body) && updated.googleCalendarEventId) {
         (async () => {
           try {
             const profiles = await storage.getMentorProfiles(userId);
-            const attendees: { email: string }[] = [];
+            const calAttendees: { email: string }[] = [];
             const mentorProfile = profiles.find(p => p.mentorUserId === updated.userId || `mentor-${p.id}` === updated.userId);
-            if (mentorProfile?.email) attendees.push({ email: mentorProfile.email });
+            if (mentorProfile?.email) calAttendees.push({ email: mentorProfile.email });
             if (updated.coMentorProfileId) {
               const coMentor = await storage.getMentorProfile(updated.coMentorProfileId);
-              if (coMentor?.email) attendees.push({ email: coMentor.email });
+              if (coMentor?.email) calAttendees.push({ email: coMentor.email });
             }
             const contact = await storage.getContact(updated.contactId);
-            if (contact?.email) attendees.push({ email: contact.email });
-            await updateCalendarEventAttendees(updated.googleCalendarEventId, attendees, mentorProfile?.googleCalendarId || undefined);
+            if (contact?.email) calAttendees.push({ email: contact.email });
+            const extraAttendees = Array.isArray(updated.attendees) ? (updated.attendees as any[]) : [];
+            extraAttendees.forEach((a: any) => {
+              if (a.email && !calAttendees.some(e => e.email === a.email)) {
+                calAttendees.push({ email: a.email });
+              }
+            });
+            await updateCalendarEventAttendees(updated.googleCalendarEventId, calAttendees, mentorProfile?.googleCalendarId || undefined);
           } catch (e) {
             console.warn("Calendar attendee update failed silently:", e);
           }
@@ -1053,7 +1094,17 @@ export async function registerRoutes(
       const userId = (req.user as any).claims.sub;
       const meeting = await storage.getMeeting(meetingId);
       if (!meeting) return res.status(404).json({ message: "Meeting not found" });
-      if (meeting.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+      let authorized = meeting.userId === userId;
+      if (!authorized) {
+        const profiles = await storage.getMentorProfiles(userId);
+        const mentorUserIds = new Set<string>();
+        for (const p of profiles) {
+          if (p.mentorUserId) mentorUserIds.add(p.mentorUserId);
+          mentorUserIds.add(`mentor-${p.id}`);
+        }
+        authorized = mentorUserIds.has(meeting.userId);
+      }
+      if (!authorized) return res.status(403).json({ message: "Forbidden" });
 
       const { transcript, summary, analysis, type } = req.body;
       if (!transcript && !summary) {

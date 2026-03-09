@@ -39,9 +39,14 @@ import {
   UserPlus,
   MoreVertical,
   ChevronDown,
+  Sprout,
+  TreePine,
+  Sun,
+  Brain,
 } from "lucide-react";
 import { useAnalyzeInteraction } from "@/hooks/use-interactions";
 import { ScoreIndicator } from "@/components/mentoring/score-indicator";
+import { JOURNEY_STAGE_CONFIG } from "@/components/mentoring/mentoring-hooks";
 import type { Meeting, MentorProfile } from "@shared/schema";
 import type { DebriefSummary } from "@/components/mentoring/mentoring-hooks";
 
@@ -54,6 +59,10 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }>
 };
 
 export { STATUS_CONFIG };
+
+const STAGE_ICONS: Record<string, any> = { kakano: Sprout, tipu: TreePine, ora: Sun };
+
+type Attendee = { email: string; name?: string; mentorProfileId?: number };
 
 function DebriefDialog({ meeting, contactName, open, onOpenChange }: { meeting: Meeting; contactName: string; open: boolean; onOpenChange: (v: boolean) => void }) {
   const [transcript, setTranscript] = useState("");
@@ -150,7 +159,67 @@ function DebriefDialog({ meeting, contactName, open, onOpenChange }: { meeting: 
   );
 }
 
-export function SessionCard({ meeting, contacts, showMentor, mentorProfiles, debriefSummary }: { meeting: Meeting & { mentorName?: string; coMentorName?: string | null }; contacts: any[]; showMentor?: boolean; mentorProfiles?: MentorProfile[]; debriefSummary?: DebriefSummary }) {
+function SessionPrepContext({ contactId, allMeetings, debriefSummaries, contacts }: {
+  contactId: number;
+  allMeetings: (Meeting & { mentorName?: string })[];
+  debriefSummaries?: Record<number, DebriefSummary>;
+  contacts: any[];
+}) {
+  const contact = contacts.find(c => c.id === contactId);
+  const pastSessions = allMeetings
+    .filter(m => m.contactId === contactId && m.status === "completed" && m.interactionId)
+    .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+
+  const lastSession = pastSessions[0];
+  const lastDebrief = lastSession ? debriefSummaries?.[lastSession.id] : null;
+  const stage = contact?.stage;
+
+  if (!lastDebrief && !stage) return null;
+
+  const StageIcon = stage ? STAGE_ICONS[stage] : null;
+  const stageConfig = stage ? JOURNEY_STAGE_CONFIG[stage as keyof typeof JOURNEY_STAGE_CONFIG] : null;
+
+  return (
+    <div className="mt-2 p-2.5 rounded-md border border-dashed border-muted-foreground/30 bg-muted/30 space-y-1.5" data-testid="session-prep">
+      <div className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+        <Brain className="w-3 h-3" />
+        Session Prep
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        {stageConfig && StageIcon && (
+          <Badge variant="outline" className={`text-[10px] h-5 px-1.5 ${stageConfig.bgColor} ${stageConfig.color}`}>
+            <StageIcon className="w-3 h-3 mr-0.5" /> {stageConfig.label}
+          </Badge>
+        )}
+        {lastSession?.mentoringFocus && (
+          <Badge variant="outline" className="text-[10px] h-5 px-1.5">
+            Last: {lastSession.mentoringFocus}
+          </Badge>
+        )}
+      </div>
+      {lastDebrief?.summary && (
+        <p className="text-[11px] text-muted-foreground line-clamp-2">{lastDebrief.summary}</p>
+      )}
+      {lastDebrief && (lastDebrief.mindsetScore !== undefined || lastDebrief.skillScore !== undefined || lastDebrief.confidenceScore !== undefined) && (
+        <div className="flex items-center gap-3">
+          <ScoreIndicator label="M" score={lastDebrief.mindsetScore} />
+          <ScoreIndicator label="S" score={lastDebrief.skillScore} />
+          <ScoreIndicator label="C" score={lastDebrief.confidenceScore} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function SessionCard({ meeting, contacts, showMentor, mentorProfiles, debriefSummary, allMeetings, allDebriefSummaries }: {
+  meeting: Meeting & { mentorName?: string; coMentorName?: string | null };
+  contacts: any[];
+  showMentor?: boolean;
+  mentorProfiles?: MentorProfile[];
+  debriefSummary?: DebriefSummary;
+  allMeetings?: (Meeting & { mentorName?: string })[];
+  allDebriefSummaries?: Record<number, DebriefSummary>;
+}) {
   const updateMeeting = useUpdateMeeting();
   const isMobile = useIsMobile();
   const [showDebrief, setShowDebrief] = useState(false);
@@ -162,6 +231,17 @@ export function SessionCard({ meeting, contacts, showMentor, mentorProfiles, deb
   const isPast = new Date(meeting.startTime) < new Date();
   const hasDebrief = !!meeting.interactionId;
   const hasScores = debriefSummary && (debriefSummary.mindsetScore !== undefined || debriefSummary.skillScore !== undefined || debriefSummary.confidenceScore !== undefined);
+  const isUpcoming = (meeting.status === "scheduled" || meeting.status === "confirmed") && !isPast;
+
+  const meetingAttendees: Attendee[] = Array.isArray(meeting.attendees) ? meeting.attendees as Attendee[] : [];
+
+  const handleComplete = () => {
+    updateMeeting.mutate({ id: meeting.id, status: "completed" } as any, {
+      onSuccess: () => {
+        setShowDebrief(true);
+      },
+    });
+  };
 
   const handleCoMentorChange = (value: string) => {
     const coMentorProfileId = value === "none" ? null : parseInt(value);
@@ -184,6 +264,11 @@ export function SessionCard({ meeting, contacts, showMentor, mentorProfiles, deb
               {meeting.coMentorName && (
                 <Badge variant="secondary" className="text-[10px] h-5 px-1.5 bg-purple-500/10 text-purple-700 dark:text-purple-400" data-testid={`badge-co-mentor-${meeting.id}`}>
                   <UserPlus className="w-3 h-3 mr-1" /> {meeting.coMentorName}
+                </Badge>
+              )}
+              {meetingAttendees.length > 0 && (
+                <Badge variant="secondary" className="text-[10px] h-5 px-1.5" data-testid={`badge-attendees-${meeting.id}`}>
+                  <Users className="w-3 h-3 mr-0.5" /> +{meetingAttendees.length}
                 </Badge>
               )}
               <Badge className={`text-[10px] h-5 px-1.5 ${config.color}`} variant="outline" data-testid={`badge-status-${meeting.id}`}>
@@ -219,6 +304,15 @@ export function SessionCard({ meeting, contacts, showMentor, mentorProfiles, deb
             {meeting.notes && (
               <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{meeting.notes}</p>
             )}
+            {meetingAttendees.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {meetingAttendees.map(a => (
+                  <Badge key={a.email} variant="outline" className="text-[10px] h-5 px-1.5 bg-blue-500/5">
+                    {a.name || a.email}
+                  </Badge>
+                ))}
+              </div>
+            )}
             {hasScores && (
               <button
                 className="flex items-center gap-3 mt-2 p-1.5 rounded-md bg-muted/50 hover:bg-muted transition-colors w-full text-left"
@@ -248,6 +342,14 @@ export function SessionCard({ meeting, contacts, showMentor, mentorProfiles, deb
                 )}
               </div>
             )}
+            {isUpcoming && allMeetings && (
+              <SessionPrepContext
+                contactId={meeting.contactId}
+                allMeetings={allMeetings}
+                debriefSummaries={allDebriefSummaries}
+                contacts={contacts}
+              />
+            )}
           </div>
           {isMobile ? (
             <div className="flex items-center gap-1 shrink-0">
@@ -257,7 +359,7 @@ export function SessionCard({ meeting, contacts, showMentor, mentorProfiles, deb
                 </Button>
               )}
               {(meeting.status === "confirmed" || (meeting.status === "scheduled" && isPast)) && (
-                <Button size="sm" variant="outline" className="text-xs h-7 flex-1" onClick={() => updateMeeting.mutate({ id: meeting.id, status: "completed" })} data-testid={`button-complete-${meeting.id}`}>
+                <Button size="sm" variant="outline" className="text-xs h-7 flex-1" onClick={handleComplete} data-testid={`button-complete-${meeting.id}`}>
                   Complete
                 </Button>
               )}
@@ -305,7 +407,7 @@ export function SessionCard({ meeting, contacts, showMentor, mentorProfiles, deb
                 </Button>
               )}
               {(meeting.status === "confirmed" || (meeting.status === "scheduled" && isPast)) && (
-                <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => updateMeeting.mutate({ id: meeting.id, status: "completed" })} data-testid={`button-complete-${meeting.id}`}>
+                <Button size="sm" variant="outline" className="text-xs h-7" onClick={handleComplete} data-testid={`button-complete-${meeting.id}`}>
                   Complete
                 </Button>
               )}

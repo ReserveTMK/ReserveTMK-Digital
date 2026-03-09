@@ -151,6 +151,7 @@ export const meetings = pgTable("meetings", {
   interactionId: integer("interaction_id"),
   coMentorProfileId: integer("co_mentor_profile_id"),
   meetingTypeId: integer("meeting_type_id"),
+  attendees: jsonb("attendees"),
   googleCalendarEventId: text("google_calendar_event_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });

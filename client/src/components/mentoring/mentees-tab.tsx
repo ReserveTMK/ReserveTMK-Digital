@@ -35,9 +35,11 @@ import {
   Sprout,
   TreePine,
   Sun,
+  Calendar as CalendarIcon,
 } from "lucide-react";
 import { MenteeCard } from "@/components/mentoring/mentee-card";
 import { ApplicationCard } from "@/components/mentoring/application-card";
+import { ScheduleSessionDialog } from "@/components/mentoring/sessions-tab";
 import {
   useEnrichedRelationships,
   useMentoringApplications,
@@ -405,21 +407,26 @@ export function MenteesTab() {
   const [statusFilter, setStatusFilter] = useState("active");
   const [search, setSearch] = useState("");
   const [appsOpen, setAppsOpen] = useState(true);
+  const [schedulePrompt, setSchedulePrompt] = useState<{ contactId: number; contactName: string; showScheduler?: boolean } | null>(null);
 
   const pendingApps = applications?.filter(a => a.status === "pending") || [];
 
   const acceptApp = useMutation({
-    mutationFn: async ({ id, notes, extra }: { id: number; notes?: string; extra?: { focusAreas?: string; sessionFrequency?: string; stage?: string } }) => {
+    mutationFn: async ({ id, notes, extra, contactId, contactName }: { id: number; notes?: string; extra?: { focusAreas?: string; sessionFrequency?: string; stage?: string }; contactId?: number; contactName?: string }) => {
       const res = await apiRequest("POST", `/api/mentoring-applications/${id}/accept`, {
         reviewNotes: notes,
         ...(extra || {}),
       });
-      return res.json();
+      const data = await res.json();
+      return { ...data, _contactId: contactId, _contactName: contactName };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/mentoring-applications"] });
       queryClient.invalidateQueries({ queryKey: ["/api/mentoring-relationships/enriched"] });
       toast({ title: "Application accepted", description: "Mentoring relationship created" });
+      if (data._contactId && data._contactName) {
+        setSchedulePrompt({ contactId: data._contactId, contactName: data._contactName });
+      }
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -484,7 +491,10 @@ export function MenteesTab() {
                 key={app.id}
                 application={app}
                 contacts={(contacts || []) as any[]}
-                onAccept={(id, notes, extra) => acceptApp.mutate({ id, notes, extra })}
+                onAccept={(id, notes, extra) => {
+                  const c = (contacts as any[])?.find((ct: any) => ct.id === app.contactId);
+                  acceptApp.mutate({ id, notes, extra, contactId: c?.id, contactName: c?.name });
+                }}
                 onDecline={(id, notes) => declineApp.mutate({ id, notes })}
                 onDefer={(id, notes) => deferApp.mutate({ id, notes })}
               />
@@ -538,6 +548,36 @@ export function MenteesTab() {
       )}
 
       <AddMenteeDialog open={showAddMentee} onOpenChange={setShowAddMentee} />
+
+      {schedulePrompt && !schedulePrompt.showScheduler && (
+        <Dialog open={true} onOpenChange={(v) => { if (!v) setSchedulePrompt(null); }}>
+          <DialogContent className="sm:max-w-[380px]">
+            <DialogHeader>
+              <DialogTitle>Schedule First Session?</DialogTitle>
+              <DialogDescription>
+                {schedulePrompt.contactName} has been accepted. Would you like to schedule their first mentoring session now?
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setSchedulePrompt(null)} data-testid="button-skip-schedule">
+                Not now
+              </Button>
+              <Button onClick={() => setSchedulePrompt({ ...schedulePrompt, showScheduler: true })} data-testid="button-schedule-first">
+                <CalendarIcon className="w-4 h-4 mr-2" />
+                Schedule Session
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+      {schedulePrompt?.showScheduler && (
+        <ScheduleSessionDialog
+          open={true}
+          onOpenChange={(v) => { if (!v) setSchedulePrompt(null); }}
+          prefillContactId={schedulePrompt.contactId}
+          prefillContactName={schedulePrompt.contactName}
+        />
+      )}
     </div>
   );
 }

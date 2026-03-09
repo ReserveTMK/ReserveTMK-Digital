@@ -240,9 +240,13 @@ export function ApplicationCard({ application, contacts, onAccept, onDecline, on
           applicationId={application.id}
           contactName={contact?.name || "Unknown"}
           onConfirm={(id, notes, extra) => {
-            if (reviewAction === "accept") onAccept(id, notes, extra);
-            else if (reviewAction === "decline") onDecline(id, notes);
-            else onDefer(id, notes);
+            if (reviewAction === "accept") {
+              onAccept(id, notes, extra);
+            } else if (reviewAction === "decline") {
+              onDecline(id, notes);
+            } else {
+              onDefer(id, notes);
+            }
             setReviewAction(null);
           }}
           isPending={false}
