@@ -1,0 +1,81 @@
+Refine Debrief system with workflow improvements, navigation changes, and enhanced contact linking:
+
+1. NAVIGATION RENAME:
+   Change tabs from "Calendar | All Debriefs" to:
+   - "Queue" = waiting/overdue/in progress debriefs (to be debriefed)
+   - "Archive" = completed debriefs
+
+2. INSIDE DEBRIEF (Core View) CHANGES:
+
+   A) IMPACT TAGS:
+   - Auto-select tags based on AI extraction
+   - Pre-checked based on what AI detected
+   - User can uncheck/adjust if needed
+   - No manual hunting through taxonomy
+
+   B) LINKED COMMUNITY MEMBERS:
+   - Split into two sections:
+     * Primary (main people involved)
+     * Secondary (others mentioned)
+   - Can add multiple to each section
+   - Remove "Role" field entirely
+   - Add [+ Quick Add Person] button in each section
+   - Quick-add creates new contact in "Our Community" tier (engaged, kakano stage)
+   - Quick-add modal: Name, Email, Phone (minimal fields, fast entry)
+
+   C) ACTION ITEMS:
+   - AI suggests action items (don't auto-create)
+   - Show suggestions in collapsible section
+   - User can click to add suggested items or ignore
+   - Can manually add custom action items
+
+   D) MILESTONES:
+   - Keep as is (no changes)
+
+3. QUEUE VIEW (formerly Calendar):
+
+   A) DISMISS FUNCTIONALITY:
+   - Add X button (top right of each waiting/overdue debrief card)
+   - Click X = dismiss debrief
+   - Dismissed items hidden from Queue
+   - Can be un-dismissed later (show dismissed filter toggle)
+   - Calendar event remains (only debrief requirement dismissed)
+
+   B) STREAMLINED RECONCILE WORKFLOW:
+   
+   Current flow (broken):
+   Queue → Reconcile → Audio UI → Create Debrief → Goes to Archive → User has to navigate back
+   
+   New flow (streamlined):
+   Queue → Click [Reconcile] → Audio Recording UI → Click [Create Debrief] → AUTO-NAVIGATE to Debrief Core View (auto-analyzing) → AI completes → User reviews/edits → Click [Complete/Save] → AUTO-NAVIGATE back to Queue
+   
+   User stays in Queue context throughout debriefing workflow.
+   Only goes to Archive when specifically wanting to review past debriefs.
+
+4. WORKFLOW LOGIC:
+
+   Step 1: In Queue view, click [Reconcile] on event
+   Step 2: Audio recording modal opens
+   Step 3: Record audio, click [Create Debrief]
+   Step 4: System auto-navigates to debrief core view (full page)
+   Step 5: AI auto-analyzes (shows progress)
+   Step 6: User reviews AI-generated content (tags pre-selected, contacts linked, action items suggested)
+   Step 7: User edits as needed, adds missing info
+   Step 8: Click [Complete] or [Save Draft]
+   Step 9: System auto-navigates back to Queue view
+   Step 10: Completed debrief removed from Queue, appears in Archive
+
+5. QUEUE VIEW FEATURES:
+
+   - List view (not calendar)
+   - Show: Waiting | Overdue | In Progress | Dismissed (toggle)
+   - Each item shows: Event name, date, status, [Reconcile] button, [X Dismiss]
+   - Dismissed items greyed out with [Un-dismiss] button when filter enabled
+
+6. ARCHIVE VIEW:
+
+   - Shows completed debriefs only
+   - Search/filter by date, tags, people
+   - Read-only unless user clicks [Edit]
+
+Implement streamlined navigation flow that keeps users in Queue context during active debriefing, only visiting Archive for review purposes.
