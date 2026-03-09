@@ -38,6 +38,7 @@ import BookingDetailPage from "@/pages/booking-detail";
 import PublicSurveyPage from "@/pages/public-survey";
 import BookerPortalPage from "@/pages/booker-portal";
 import CatchUpPage from "@/pages/catch-up";
+import RegularBookersPage from "@/pages/regular-bookers";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -154,6 +155,10 @@ function Router() {
 
         <Route path="/programmes">
           <ProtectedRoute component={Programmes} />
+        </Route>
+
+        <Route path="/regular-bookers">
+          <ProtectedRoute component={RegularBookersPage} />
         </Route>
 
         <Route path="/bookings/:id">

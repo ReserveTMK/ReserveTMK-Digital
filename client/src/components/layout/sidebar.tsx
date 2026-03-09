@@ -24,6 +24,7 @@ import {
   CalendarClock,
   Rocket,
   PhoneCall,
+  UserCheck,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "../ui/beautiful-button";
@@ -57,6 +58,7 @@ const navigation: NavItem[] = [
     children: [
       { name: "Mentoring", href: "/mentoring", icon: Users },
       { name: "Bookings", href: "/bookings", icon: Building2 },
+      { name: "Regular Bookers", href: "/regular-bookers", icon: UserCheck },
       { name: "Programmes", href: "/programmes", icon: Layers },
       { name: "Projects", href: "/projects", icon: Rocket },
       { name: "Agreements", href: "/agreements", icon: Handshake },
