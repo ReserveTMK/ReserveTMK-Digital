@@ -532,6 +532,7 @@ function EventCard({
 
   const isGcal = entry.type === "gcal" && entry.gcal;
   const isApp = entry.type === "app" && entry.app;
+  const isManualLog = isApp && entry.app?.source === "internal";
 
   const linkedAppEvent = isGcal
     ? appEvents.find(e => e.googleCalendarEventId === entry.gcal!.id)
@@ -791,11 +792,14 @@ function EventCard({
           </div>
         </button>
 
+        {(!isManualLog || location || (attendance && attendance.length > 0)) && (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <Clock className="w-3 h-3" />
-            {formatTime(startStr)} - {formatTime(endStr)}
-          </span>
+          {!isManualLog && (
+            <span className="flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              {formatTime(startStr)} - {formatTime(endStr)}
+            </span>
+          )}
           {location && (
             <span className="flex items-center gap-1">
               <MapPin className="w-3 h-3" />
@@ -815,9 +819,15 @@ function EventCard({
             </span>
           )}
         </div>
+        )}
+
+        {isManualLog && entry.app?.description && (
+          <p className="text-xs text-muted-foreground whitespace-pre-line">{entry.app.description}</p>
+        )}
 
         {expanded && (
           <div className="space-y-3 pt-2 border-t border-border/50 mt-2">
+            {!isManualLog && (
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Event Type</Label>
               <Select
@@ -840,6 +850,7 @@ function EventCard({
                 </SelectContent>
               </Select>
             </div>
+            )}
 
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Community Members</Label>
@@ -1070,7 +1081,7 @@ function EventCard({
               </div>
             )}
 
-            {entry.isPast && (
+            {entry.isPast && !isManualLog && (
               <div className="flex items-center gap-2 pt-1 mb-1">
                 {debriefInfo ? (
                   <Badge
@@ -1099,7 +1110,7 @@ function EventCard({
             )}
 
             <div className="flex gap-2 pt-1">
-              {entry.isPast && debriefInfo ? (
+              {!isManualLog && entry.isPast && debriefInfo ? (
                 <Button
                   size="sm"
                   variant="outline"
@@ -1110,7 +1121,7 @@ function EventCard({
                   <Eye className="w-3.5 h-3.5 mr-1" />
                   View Debrief
                 </Button>
-              ) : entry.isPast ? (
+              ) : !isManualLog && entry.isPast ? (
                 <Button
                   size="sm"
                   variant="default"
@@ -1153,11 +1164,13 @@ function EventCard({
 
         {!expanded && (
           <p className="text-xs text-muted-foreground italic">
-            {entry.isPast
-              ? debriefInfo
-                ? "Tap to edit type, tag members, or view debrief"
-                : "Tap to edit type, tag members, or log debrief"
-              : "Tap to edit type or tag members"}
+            {isManualLog
+              ? "Tap to tag members"
+              : entry.isPast
+                ? debriefInfo
+                  ? "Tap to edit type, tag members, or view debrief"
+                  : "Tap to edit type, tag members, or log debrief"
+                : "Tap to edit type or tag members"}
           </p>
         )}
       </div>
@@ -1735,7 +1748,7 @@ export default function CalendarPage() {
   }, [currentMonth]);
 
   const pastEventsNeedingDebrief = useMemo(() => {
-    return filteredEvents.filter(e => e.isPast && e.type !== "booking").length;
+    return filteredEvents.filter(e => e.isPast && e.type !== "booking" && !(e.type === "app" && e.app?.source === "internal")).length;
   }, [filteredEvents]);
 
   type SpaceOccupancyItem = {
@@ -2058,8 +2071,10 @@ export default function CalendarPage() {
                   );
                   const allDots: { color: string; key: string; reconciled?: boolean }[] = [];
                   dayEvents.forEach((e, i) => {
-                    const info = e.type !== "booking" ? getDebriefInfo(e) : null;
-                    allDots.push({ color: getEventDotColor(e), key: `ev-${i}`, reconciled: e.type !== "booking" && e.isPast ? !!info : undefined });
+                    const isManual = e.type === "app" && e.app?.source === "internal";
+                    const skipReconcile = e.type === "booking" || isManual;
+                    const info = !skipReconcile ? getDebriefInfo(e) : null;
+                    allDots.push({ color: getEventDotColor(e), key: `ev-${i}`, reconciled: !skipReconcile && e.isPast ? !!info : undefined });
                   });
                   daySpaceItems.forEach((item, i) => allDots.push({ color: item.kind === "programme" ? "bg-indigo-400" : "bg-orange-400", key: `sp-${i}` }));
 
