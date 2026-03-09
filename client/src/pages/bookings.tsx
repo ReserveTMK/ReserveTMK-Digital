@@ -2572,6 +2572,7 @@ function RegularBookersManagementView({
 
   const [editingBooker, setEditingBooker] = useState<RegularBooker | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [createdPortalUrl, setCreatedPortalUrl] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [agreementFilter, setAgreementFilter] = useState<string>("all");
   const [tierFilter, setTierFilter] = useState<string>("all");
@@ -3157,8 +3158,13 @@ function RegularBookersManagementView({
               await updateMutation.mutateAsync({ id: editingBooker.id, data });
               toast({ title: "Updated", description: "Regular booker updated" });
             } else {
-              await createMutation.mutateAsync(data);
-              toast({ title: "Created", description: "Regular booker added" });
+              const result = await createMutation.mutateAsync(data);
+              if (result?.portalUrl) {
+                setCreatedPortalUrl(result.portalUrl);
+                navigator.clipboard.writeText(result.portalUrl).catch(() => {});
+              } else {
+                toast({ title: "Created", description: "Regular booker added" });
+              }
             }
             setFormOpen(false);
             setEditingBooker(null);
@@ -3171,6 +3177,45 @@ function RegularBookersManagementView({
         }}
         isPending={createMutation.isPending || updateMutation.isPending}
       />
+
+      <Dialog open={!!createdPortalUrl} onOpenChange={(v) => { if (!v) setCreatedPortalUrl(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-green-600" />
+              Regular Booker Created
+            </DialogTitle>
+            <DialogDescription>
+              A unique portal link has been generated and copied to your clipboard. Share this link with the booker so they can access their portal.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 p-3 rounded-lg border bg-muted/50">
+              <Link2 className="w-4 h-4 text-muted-foreground shrink-0" />
+              <code className="flex-1 text-xs break-all select-all" data-testid="text-created-portal-url">{createdPortalUrl}</code>
+              <Button
+                variant="ghost"
+                size="sm"
+                data-testid="button-copy-created-portal-url"
+                onClick={() => {
+                  if (createdPortalUrl) {
+                    navigator.clipboard.writeText(createdPortalUrl).then(() => {
+                      toast({ title: "Link copied" });
+                    });
+                  }
+                }}
+              >
+                <Copy className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setCreatedPortalUrl(null)} data-testid="button-dismiss-portal-url">
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -3197,6 +3242,7 @@ function RegularBookersDialog({
 
   const [editingBooker, setEditingBooker] = useState<RegularBooker | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [createdPortalUrl, setCreatedPortalUrl] = useState<string | null>(null);
 
   const getAgreementLabel = (booker: RegularBooker) => {
     if (booker.membershipId) {
@@ -3414,8 +3460,13 @@ function RegularBookersDialog({
               await updateMutation.mutateAsync({ id: editingBooker.id, data });
               toast({ title: "Updated", description: "Regular booker updated" });
             } else {
-              await createMutation.mutateAsync(data);
-              toast({ title: "Created", description: "Regular booker added" });
+              const result = await createMutation.mutateAsync(data);
+              if (result?.portalUrl) {
+                setCreatedPortalUrl(result.portalUrl);
+                navigator.clipboard.writeText(result.portalUrl).catch(() => {});
+              } else {
+                toast({ title: "Created", description: "Regular booker added" });
+              }
             }
             setFormOpen(false);
             setEditingBooker(null);
@@ -3425,6 +3476,45 @@ function RegularBookersDialog({
         }}
         isPending={createMutation.isPending || updateMutation.isPending}
       />
+
+      <Dialog open={!!createdPortalUrl} onOpenChange={(v) => { if (!v) setCreatedPortalUrl(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-green-600" />
+              Regular Booker Created
+            </DialogTitle>
+            <DialogDescription>
+              A unique portal link has been generated and copied to your clipboard. Share this link with the booker so they can access their portal.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 p-3 rounded-lg border bg-muted/50">
+              <Link2 className="w-4 h-4 text-muted-foreground shrink-0" />
+              <code className="flex-1 text-xs break-all select-all" data-testid="text-created-portal-url-2">{createdPortalUrl}</code>
+              <Button
+                variant="ghost"
+                size="sm"
+                data-testid="button-copy-created-portal-url-2"
+                onClick={() => {
+                  if (createdPortalUrl) {
+                    navigator.clipboard.writeText(createdPortalUrl).then(() => {
+                      toast({ title: "Link copied" });
+                    });
+                  }
+                }}
+              >
+                <Copy className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setCreatedPortalUrl(null)} data-testid="button-dismiss-portal-url-2">
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -4023,16 +4113,9 @@ function RegularBookerFormDialog({
 
           <div className="space-y-3 border-t pt-4">
             <Label className="text-sm font-semibold">Portal Access</Label>
-            <div>
-              <Label className="text-xs text-muted-foreground">Login Email</Label>
-              <Input
-                type="email"
-                value={loginEmail}
-                onChange={(e) => setLoginEmail(e.target.value)}
-                placeholder="Portal login email"
-                data-testid="input-booker-login-email"
-              />
-            </div>
+            {!booker && (
+              <p className="text-xs text-muted-foreground">A unique portal link will be generated automatically when you save.</p>
+            )}
             {booker && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -4046,7 +4129,7 @@ function RegularBookerFormDialog({
                       data-testid="button-generate-portal-link"
                     >
                       {generateLinkMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Link2 className="w-3 h-3 mr-1" />}
-                      Individual
+                      Generate Link
                     </Button>
                     {(booker.groupId || groupId) && (
                       <Button
@@ -4057,7 +4140,7 @@ function RegularBookerFormDialog({
                         data-testid="button-generate-group-link"
                       >
                         {generateLinkMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Users className="w-3 h-3 mr-1" />}
-                        Group
+                        Group Link
                       </Button>
                     )}
                   </div>
@@ -4068,9 +4151,11 @@ function RegularBookerFormDialog({
                         <div key={link.id} className="flex items-center gap-2 text-xs p-2 rounded border bg-muted/30">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-mono truncate text-muted-foreground">{link.token.slice(0, 12)}...</span>
                               {link.isGroupLink && <Badge variant="secondary" className="text-[9px]">Group</Badge>}
                               {link.label && !link.isGroupLink && <Badge variant="secondary" className="text-[9px]">{link.label}</Badge>}
+                            </div>
+                            <div className="font-mono text-[10px] text-muted-foreground mt-0.5 break-all">
+                              {link.portalUrl}
                             </div>
                             <div className="text-muted-foreground mt-0.5">
                               Created {format(new Date(link.createdAt), "d MMM yyyy")}
@@ -4078,16 +4163,19 @@ function RegularBookerFormDialog({
                             </div>
                           </div>
                           <Button
-                            variant="ghost"
+                            variant="outline"
                             size="sm"
-                            onClick={() => navigator.clipboard.writeText(link.portalUrl).then(() => toast({ title: "Link copied" }))}
+                            className="shrink-0"
+                            onClick={() => navigator.clipboard.writeText(link.portalUrl).then(() => toast({ title: "Link copied" })).catch(() => toast({ title: "Portal URL", description: link.portalUrl }))}
                             data-testid={`button-copy-link-${link.id}`}
                           >
-                            <Copy className="w-3 h-3" />
+                            <Copy className="w-3 h-3 mr-1" />
+                            Copy
                           </Button>
                           <Button
                             variant="ghost"
                             size="sm"
+                            className="shrink-0"
                             onClick={() => deleteLinkMutation.mutate(link.id)}
                             data-testid={`button-delete-link-${link.id}`}
                           >
@@ -4097,10 +4185,21 @@ function RegularBookerFormDialog({
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-muted-foreground italic">No portal links generated yet</p>
+                  <p className="text-xs text-muted-foreground italic">No portal links yet. Click "Generate Link" above.</p>
                 )}
               </div>
             )}
+            <div className="pt-1">
+              <Label className="text-xs text-muted-foreground">Login Email (optional fallback)</Label>
+              <Input
+                type="email"
+                value={loginEmail}
+                onChange={(e) => setLoginEmail(e.target.value)}
+                placeholder="Email for magic link login"
+                className="mt-1"
+                data-testid="input-booker-login-email"
+              />
+            </div>
           </div>
 
           <div>

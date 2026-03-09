@@ -70,7 +70,10 @@ export function useRegularBookers() {
 
 export function useCreateRegularBooker() {
   return useMutation({
-    mutationFn: (data: any) => apiRequest('POST', '/api/regular-bookers', data),
+    mutationFn: async (data: any) => {
+      const res = await apiRequest('POST', '/api/regular-bookers', data);
+      return res.json();
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/regular-bookers'] }),
   });
 }
