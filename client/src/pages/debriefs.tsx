@@ -109,10 +109,10 @@ function ListView() {
 
           <Tabs value={activeTab} onValueChange={handleTabChange}>
             <TabsList className="w-full grid grid-cols-4" data-testid="tabs-debriefs">
-              <TabsTrigger value="queue" data-testid="tab-queue">Queue</TabsTrigger>
-              <TabsTrigger value="archive" data-testid="tab-archive">Archive</TabsTrigger>
-              <TabsTrigger value="weekly" data-testid="tab-weekly">Weekly</TabsTrigger>
-              <TabsTrigger value="updates" data-testid="tab-updates">Updates</TabsTrigger>
+              <TabsTrigger value="queue" className="min-h-[44px] text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-queue">Queue</TabsTrigger>
+              <TabsTrigger value="archive" className="min-h-[44px] text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-archive">Archive</TabsTrigger>
+              <TabsTrigger value="weekly" className="min-h-[44px] text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-weekly">Weekly</TabsTrigger>
+              <TabsTrigger value="updates" className="min-h-[44px] text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-updates">Updates</TabsTrigger>
             </TabsList>
 
             <TabsContent value="queue" className="mt-4">

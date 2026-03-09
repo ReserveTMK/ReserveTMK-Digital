@@ -233,7 +233,7 @@ export function CalendarDebriefTab({ reconcileId }: { reconcileId: string | null
                   className={`border-l-4 ${config.borderColor} p-4`}
                   data-testid={`queue-card-${item.id}`}
                 >
-                  <div className="flex items-start justify-between gap-4">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <Badge variant={config.variant} className="text-xs shrink-0" data-testid={`queue-badge-${item.id}`}>
@@ -275,31 +275,30 @@ export function CalendarDebriefTab({ reconcileId }: { reconcileId: string | null
                         </span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
                       <Button
                         variant="ghost"
                         size="icon"
                         onClick={() => { setDismissDialogEventId(item.id); setDismissReason(""); }}
-                        className="text-muted-foreground"
+                        className="text-muted-foreground min-h-[44px] min-w-[44px]"
                         data-testid={`button-dismiss-${item.id}`}
                       >
-                        <X className="w-4 h-4" />
+                        <X className="w-5 h-5" />
                       </Button>
                       {item.existingDebriefId ? (
-                        <Link href={`/debriefs/${item.existingDebriefId}`} data-testid={`button-continue-${item.id}`}>
-                          <Button size="sm" variant="outline" className="gap-1">
-                            <FileText className="w-3.5 h-3.5" /> Continue
+                        <Link href={`/debriefs/${item.existingDebriefId}`} className="flex-1 sm:flex-none" data-testid={`button-continue-${item.id}`}>
+                          <Button variant="outline" className="gap-1 w-full sm:w-auto min-h-[44px]">
+                            <FileText className="w-4 h-4" /> Continue
                           </Button>
                         </Link>
                       ) : (
                         <Button
-                          size="sm"
                           variant="default"
-                          className="gap-1"
+                          className="gap-1 flex-1 sm:flex-none min-h-[44px]"
                           onClick={() => setReconcileEventId(item.id)}
                           data-testid={`button-reconcile-${item.id}`}
                         >
-                          <Mic className="w-3.5 h-3.5" /> Reconcile
+                          <Mic className="w-4 h-4" /> Reconcile
                         </Button>
                       )}
                     </div>
@@ -319,7 +318,7 @@ export function CalendarDebriefTab({ reconcileId }: { reconcileId: string | null
                     className="border-l-4 border-l-muted p-4 opacity-60"
                     data-testid={`dismissed-card-${item.id}`}
                   >
-                    <div className="flex items-start justify-between gap-4">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <Badge variant="secondary" className="text-xs shrink-0" data-testid={`dismissed-badge-${item.id}`}>
@@ -350,19 +349,18 @@ export function CalendarDebriefTab({ reconcileId }: { reconcileId: string | null
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
                         <Button
                           variant="outline"
-                          size="sm"
-                          className="gap-1"
+                          className="gap-1 flex-1 sm:flex-none min-h-[44px]"
                           onClick={() => undismissMutation.mutate(item.id)}
                           disabled={undismissMutation.isPending}
                           data-testid={`button-undismiss-${item.id}`}
                         >
                           {undismissMutation.isPending ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <Loader2 className="w-4 h-4 animate-spin" />
                           ) : (
-                            <RotateCcw className="w-3.5 h-3.5" />
+                            <RotateCcw className="w-4 h-4" />
                           )}
                           Un-dismiss
                         </Button>

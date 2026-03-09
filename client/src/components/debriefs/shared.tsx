@@ -205,7 +205,7 @@ export function DebriefCardList({
               <Button
                 variant="ghost"
                 size="icon"
-                className="shrink-0"
+                className="shrink-0 min-h-[44px] min-w-[44px]"
                 onClick={(e) => { e.stopPropagation(); onDelete(log); }}
                 data-testid={`button-delete-debrief-${log.id}`}
               >
@@ -269,7 +269,7 @@ export function ContactSearchPicker({
           Search and link a community member...
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[300px] p-0" align="start">
+      <PopoverContent className="w-[min(300px,calc(100vw-2rem))] p-0" align="start">
         <Command>
           <CommandInput
             placeholder="Type a name to search..."

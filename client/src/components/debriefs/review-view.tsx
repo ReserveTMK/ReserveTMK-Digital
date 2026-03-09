@@ -556,7 +556,7 @@ export function ReviewView({ id }: { id: number }) {
   };
 
   return (
-    <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
+    <main className="flex-1 p-4 md:p-8 pb-36 md:pb-24 overflow-y-auto">
         <div className="max-w-7xl mx-auto space-y-6">
           <div className="flex items-center gap-4 flex-wrap">
             <Button variant="ghost" size="icon" onClick={() => setLocation("/debriefs")} data-testid="button-back">
@@ -1026,10 +1026,11 @@ export function ReviewView({ id }: { id: number }) {
                               <Button
                                 variant="ghost"
                                 size="icon"
+                                className="min-h-[44px] min-w-[44px]"
                                 onClick={() => setImpactTags(impactTags.filter((_: any, j: number) => j !== i))}
                                 data-testid={`button-remove-tag-${i}`}
                               >
-                                <X className="w-3 h-3" />
+                                <X className="w-4 h-4" />
                               </Button>
                             </div>
                           </div>
@@ -1097,17 +1098,18 @@ export function ReviewView({ id }: { id: number }) {
               <Card className="p-5">
                 <h3 className="font-bold font-display mb-3">Milestones</h3>
                 {milestones.length > 0 && (
-                  <div className="space-y-2 mb-3">
+                  <div className="space-y-3 mb-3">
                     {milestones.map((m, i) => (
                       <div key={i} className="flex items-center gap-2">
                         <span className="text-sm flex-1">{m}</span>
                         <Button
                           variant="ghost"
                           size="icon"
+                          className="min-h-[44px] min-w-[44px]"
                           onClick={() => setMilestones(milestones.filter((_, j) => j !== i))}
                           data-testid={`button-remove-milestone-${i}`}
                         >
-                          <X className="w-3 h-3" />
+                          <X className="w-4 h-4" />
                         </Button>
                       </div>
                     ))}
@@ -1215,10 +1217,11 @@ export function ReviewView({ id }: { id: number }) {
                         <Button
                           variant="ghost"
                           size="icon"
+                          className="min-h-[44px] min-w-[44px]"
                           onClick={() => setActionItemsList(actionItemsList.filter((_: any, j: number) => j !== i))}
                           data-testid={`button-remove-action-${i}`}
                         >
-                          <X className="w-3 h-3" />
+                          <X className="w-4 h-4" />
                         </Button>
                       </div>
                     ))}
@@ -1346,8 +1349,8 @@ export function ReviewView({ id }: { id: number }) {
                             )}
                           </div>
                         </div>
-                        <Button variant="ghost" size="icon" onClick={() => setCommunityActions(communityActions.filter((_: any, j: number) => j !== i))} data-testid={`button-remove-community-action-${i}`}>
-                          <X className="w-3 h-3" />
+                        <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]" onClick={() => setCommunityActions(communityActions.filter((_: any, j: number) => j !== i))} data-testid={`button-remove-community-action-${i}`}>
+                          <X className="w-4 h-4" />
                         </Button>
                       </div>
                     ))}
@@ -1371,7 +1374,7 @@ export function ReviewView({ id }: { id: number }) {
                         {suggestedCommunityActions.map((item: any, i: number) => (
                           <div
                             key={i}
-                            className="flex items-center gap-2 p-2 bg-purple-50 dark:bg-purple-950/20 rounded-lg border border-purple-200 dark:border-purple-900 cursor-pointer hover-elevate"
+                            className="flex items-center gap-2 p-3 bg-purple-50 dark:bg-purple-950/20 rounded-lg border border-purple-200 dark:border-purple-900 cursor-pointer hover-elevate min-h-[48px]"
                             onClick={() => {
                               setCommunityActions([...communityActions, item]);
                               setSuggestedCommunityActions(suggestedCommunityActions.filter((_: any, j: number) => j !== i));
@@ -1436,8 +1439,8 @@ export function ReviewView({ id }: { id: number }) {
                             )}
                           </div>
                         </div>
-                        <Button variant="ghost" size="icon" onClick={() => setOperationalActions(operationalActions.filter((_: any, j: number) => j !== i))} data-testid={`button-remove-operational-action-${i}`}>
-                          <X className="w-3 h-3" />
+                        <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]" onClick={() => setOperationalActions(operationalActions.filter((_: any, j: number) => j !== i))} data-testid={`button-remove-operational-action-${i}`}>
+                          <X className="w-4 h-4" />
                         </Button>
                       </div>
                     ))}
@@ -1461,7 +1464,7 @@ export function ReviewView({ id }: { id: number }) {
                         {suggestedOperationalActions.map((item: any, i: number) => (
                           <div
                             key={i}
-                            className="flex items-center gap-2 p-2 bg-purple-50 dark:bg-purple-950/20 rounded-lg border border-purple-200 dark:border-purple-900 cursor-pointer hover-elevate"
+                            className="flex items-center gap-2 p-3 bg-purple-50 dark:bg-purple-950/20 rounded-lg border border-purple-200 dark:border-purple-900 cursor-pointer hover-elevate min-h-[48px]"
                             onClick={() => {
                               setOperationalActions([...operationalActions, item]);
                               setSuggestedOperationalActions(suggestedOperationalActions.filter((_: any, j: number) => j !== i));
@@ -1514,12 +1517,12 @@ export function ReviewView({ id }: { id: number }) {
                   <div className="rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900 p-3" data-testid="reflections-wins">
                     <h4 className="text-xs font-semibold text-green-700 dark:text-green-400 uppercase tracking-wide mb-2">Wins</h4>
                     {reflections.wins.length > 0 ? (
-                      <ul className="space-y-1">
+                      <ul className="space-y-2">
                         {reflections.wins.map((w, i) => (
                           <li key={i} className="flex items-start gap-2 text-sm">
                             <span className="flex-1">{w}</span>
-                            <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={() => setReflections({ ...reflections, wins: reflections.wins.filter((_, j) => j !== i) })} data-testid={`button-remove-win-${i}`}>
-                              <X className="w-3 h-3" />
+                            <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] shrink-0" onClick={() => setReflections({ ...reflections, wins: reflections.wins.filter((_, j) => j !== i) })} data-testid={`button-remove-win-${i}`}>
+                              <X className="w-4 h-4" />
                             </Button>
                           </li>
                         ))}
@@ -1529,12 +1532,12 @@ export function ReviewView({ id }: { id: number }) {
                   <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 p-3" data-testid="reflections-concerns">
                     <h4 className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-2">Concerns</h4>
                     {reflections.concerns.length > 0 ? (
-                      <ul className="space-y-1">
+                      <ul className="space-y-2">
                         {reflections.concerns.map((c, i) => (
                           <li key={i} className="flex items-start gap-2 text-sm">
                             <span className="flex-1">{c}</span>
-                            <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={() => setReflections({ ...reflections, concerns: reflections.concerns.filter((_, j) => j !== i) })} data-testid={`button-remove-concern-${i}`}>
-                              <X className="w-3 h-3" />
+                            <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] shrink-0" onClick={() => setReflections({ ...reflections, concerns: reflections.concerns.filter((_, j) => j !== i) })} data-testid={`button-remove-concern-${i}`}>
+                              <X className="w-4 h-4" />
                             </Button>
                           </li>
                         ))}
@@ -1544,12 +1547,12 @@ export function ReviewView({ id }: { id: number }) {
                   <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 p-3" data-testid="reflections-learnings">
                     <h4 className="text-xs font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wide mb-2">Learnings</h4>
                     {reflections.learnings.length > 0 ? (
-                      <ul className="space-y-1">
+                      <ul className="space-y-2">
                         {reflections.learnings.map((l, i) => (
                           <li key={i} className="flex items-start gap-2 text-sm">
                             <span className="flex-1">{l}</span>
-                            <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={() => setReflections({ ...reflections, learnings: reflections.learnings.filter((_, j) => j !== i) })} data-testid={`button-remove-learning-${i}`}>
-                              <X className="w-3 h-3" />
+                            <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] shrink-0" onClick={() => setReflections({ ...reflections, learnings: reflections.learnings.filter((_, j) => j !== i) })} data-testid={`button-remove-learning-${i}`}>
+                              <X className="w-4 h-4" />
                             </Button>
                           </li>
                         ))}
@@ -1591,12 +1594,13 @@ export function ReviewView({ id }: { id: number }) {
           </div>
         </div>
 
-        <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border p-4 z-40">
-          <div className="max-w-7xl mx-auto flex items-center justify-end gap-3">
+        <div className="fixed bottom-[60px] md:bottom-0 left-0 right-0 bg-card border-t border-border p-4 z-40 safe-area-bottom">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
             <Button
               variant="outline"
               onClick={() => handleSave("draft")}
               disabled={updateMutation.isPending}
+              className="min-h-[44px] w-full sm:w-auto"
               data-testid="button-save-draft"
             >
               {updateMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
@@ -1605,6 +1609,7 @@ export function ReviewView({ id }: { id: number }) {
             <Button
               onClick={() => handleSave("confirmed")}
               disabled={updateMutation.isPending}
+              className="min-h-[44px] w-full sm:w-auto"
               data-testid="button-confirm-save"
             >
               {updateMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}

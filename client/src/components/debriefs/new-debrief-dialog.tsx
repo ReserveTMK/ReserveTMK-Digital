@@ -209,7 +209,7 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
         <DialogHeader>
           <DialogTitle>New Debrief</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-2 max-h-[75vh] overflow-y-auto px-1">
+        <div className="space-y-4 py-2 max-h-[calc(100vh-8rem)] sm:max-h-[75vh] overflow-y-auto px-1">
           <div className="space-y-2">
             <Label htmlFor="debrief-title">Title</Label>
             <Input
