@@ -50,6 +50,7 @@ export type EnrichedRelationship = MentoringRelationship & {
   stage?: string;
   ventureType?: string;
   whatTheyAreBuilding?: string;
+  supportType?: string[];
   completedSessionCount: number;
   upcomingSessionCount: number;
   totalSessionCount: number;

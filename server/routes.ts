@@ -1152,7 +1152,13 @@ export async function registerRoutes(
       const all = await storage.getMentoringRelationships();
       const userContacts = await storage.getContacts(userId);
       const userContactIds = new Set(userContacts.map(c => c.id));
-      const filtered = all.filter(r => userContactIds.has(r.contactId));
+      const filtered = all.filter(r => {
+        if (!userContactIds.has(r.contactId)) return false;
+        const contact = userContacts.find(c => c.id === r.contactId);
+        if (!contact) return false;
+        if (!contact.supportType || !contact.supportType.includes("mentoring")) return false;
+        return true;
+      });
 
       const profiles = await storage.getMentorProfiles(userId);
       const mentorUserIds = new Set<string>();
@@ -1182,6 +1188,7 @@ export async function registerRoutes(
           stage: contact?.stage,
           ventureType: contact?.ventureType,
           whatTheyAreBuilding: contact?.whatTheyAreBuilding,
+          supportType: contact?.supportType,
           completedSessionCount: completedSessions.length,
           upcomingSessionCount: upcomingSessions.length,
           totalSessionCount: sessions.filter(s => s.status !== "cancelled").length,
@@ -8434,28 +8441,11 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
         updates.isInnovator = true;
         updates.movedToInnovatorsAt = new Date();
         newTier = "our_innovators";
-      } else if (!contact.isVip) {
-        updates.isVip = true;
-        updates.movedToVipAt = new Date();
-        if (req.body.vipReason) updates.vipReason = req.body.vipReason;
-        newTier = "vip";
       } else {
-        return res.json({ contact, newTier: "vip", groupsUpdated: 0, message: "Already at highest tier" });
+        return res.json({ contact, newTier: "innovator", groupsUpdated: 0, message: "Already at highest tier" });
       }
 
       const updated = await storage.updateContact(contactId, updates);
-
-      if (newTier === "vip") {
-        try {
-          await storage.addToCatchUpList({
-            userId,
-            contactId,
-            priority: "urgent",
-            note: "VIP -- flagged for catch up",
-          });
-        } catch (e: any) {
-        }
-      }
 
       let groupsUpdated = 0;
       const updatedGroupIds = new Set<number>();
@@ -8505,11 +8495,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
       const updates: any = {};
       let newTier = "";
-      if (contact.isVip) {
-        updates.isVip = false;
-        updates.movedToVipAt = null;
-        newTier = "our_innovators";
-      } else if (contact.isInnovator) {
+      if (contact.isInnovator) {
         updates.isInnovator = false;
         updates.movedToInnovatorsAt = null;
         newTier = "our_community";
@@ -8583,6 +8569,46 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       res.json({ contact: updated, newTier, groupsUpdated });
     } catch (err: any) {
       res.status(500).json({ message: "Failed to demote contact" });
+    }
+  });
+
+  app.post("/api/contacts/:id/toggle-vip", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const contactId = parseInt(req.params.id);
+      const contact = await storage.getContact(contactId);
+      if (!contact || contact.userId !== userId) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+
+      const nowVip = !contact.isVip;
+      const updates: any = {
+        isVip: nowVip,
+        movedToVipAt: nowVip ? new Date() : null,
+      };
+      if (nowVip && req.body.vipReason) {
+        updates.vipReason = req.body.vipReason;
+      }
+      if (!nowVip) {
+        updates.vipReason = null;
+      }
+
+      const updated = await storage.updateContact(contactId, updates);
+
+      if (nowVip) {
+        try {
+          await storage.addToCatchUpList({
+            userId,
+            contactId,
+            priority: "urgent",
+            note: "VIP -- flagged for catch up",
+          });
+        } catch (e: any) {}
+      }
+
+      res.json({ contact: updated, isVip: nowVip });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to toggle VIP status" });
     }
   });
 

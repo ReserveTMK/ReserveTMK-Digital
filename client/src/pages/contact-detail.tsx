@@ -219,7 +219,7 @@ export default function ContactDetail() {
     }
   }, [showSwipeHint, id]);
 
-  const currentTier = contact?.isVip ? "vip" : contact?.isInnovator ? "innovator" : contact?.isCommunityMember ? "community" : "all";
+  const currentTier = contact?.isInnovator ? "innovator" : contact?.isCommunityMember ? "community" : "all";
 
   const promoteMutation = useMutation({
     mutationFn: async () => {
@@ -230,7 +230,7 @@ export default function ContactDetail() {
       queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
       queryClient.invalidateQueries({ queryKey: ['/api/contacts', id] });
       queryClient.invalidateQueries({ queryKey: ["/api/catch-up-list"] });
-      toast({ title: `Promoted to ${data.newTier === 'vip' ? 'VIP' : data.newTier === 'innovator' ? 'Innovator' : 'Community'}` });
+      toast({ title: `Promoted to ${data.newTier === 'innovator' ? 'Innovator' : 'Community'}` });
     },
     onError: () => {
       toast({ title: "Failed to promote", variant: "destructive" });
@@ -249,6 +249,22 @@ export default function ContactDetail() {
     },
     onError: () => {
       toast({ title: "Failed to demote", variant: "destructive" });
+    },
+  });
+
+  const toggleVipMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/contacts/${id}/toggle-vip`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts', id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ecosystem/vip"] });
+      toast({ title: data.isVip ? "Marked as VIP" : "VIP removed" });
+    },
+    onError: () => {
+      toast({ title: "Failed to toggle VIP", variant: "destructive" });
     },
   });
 
@@ -383,20 +399,29 @@ export default function ContactDetail() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-muted-foreground text-lg" data-testid="text-contact-role">{contact.role === "Other" && contact.roleOther ? `Other - ${contact.roleOther}` : contact.role}</p>
                     <Badge
-                      variant={currentTier === "vip" ? "default" : currentTier === "innovator" ? "default" : currentTier === "community" ? "secondary" : "outline"}
-                      className={cn("text-xs capitalize", currentTier === "vip" && "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300", currentTier === "innovator" && "bg-amber-500/15 text-amber-700 dark:text-amber-300")}
+                      variant={currentTier === "innovator" ? "default" : currentTier === "community" ? "secondary" : "outline"}
+                      className={cn("text-xs capitalize", currentTier === "innovator" && "bg-amber-500/15 text-amber-700 dark:text-amber-300")}
                       data-testid="badge-tier"
                     >
-                      {currentTier === "vip" ? (
-                        <><Star className="w-3 h-3 mr-1 fill-current" /> VIP</>
-                      ) : currentTier === "innovator" ? (
-                        <><Star className="w-3 h-3 mr-1" /> Innovator</>
+                      {currentTier === "innovator" ? (
+                        <><Rocket className="w-3 h-3 mr-1" /> Innovator</>
                       ) : currentTier === "community" ? (
                         <><Users className="w-3 h-3 mr-1" /> Community</>
                       ) : (
                         "All"
                       )}
                     </Badge>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-1.5"
+                      onClick={() => toggleVipMutation.mutate()}
+                      disabled={toggleVipMutation.isPending}
+                      title={contact.isVip ? "Remove VIP" : "Mark as VIP"}
+                      data-testid="button-toggle-vip-detail"
+                    >
+                      <Star className={`w-4 h-4 ${contact.isVip ? "text-yellow-500 fill-yellow-500" : "text-muted-foreground"}`} />
+                    </Button>
                     {contact.ventureType && (
                       <Badge variant="outline" className="text-xs capitalize" data-testid="badge-venture-type">
                         {({
@@ -517,14 +542,14 @@ export default function ContactDetail() {
                             </DropdownMenuItem>
                           </>
                         )}
-                        {currentTier !== "vip" && (
+                        {currentTier !== "innovator" && (
                           <DropdownMenuItem
                             onClick={() => promoteMutation.mutate()}
                             disabled={promoteMutation.isPending}
                             data-testid="menu-promote-contact"
                           >
                             <ArrowUp className="w-4 h-4 mr-2" />
-                            Promote to {currentTier === "all" ? "Community" : currentTier === "community" ? "Innovator" : "VIP"}
+                            Promote to {currentTier === "all" ? "Community" : "Innovator"}
                           </DropdownMenuItem>
                         )}
                         {currentTier !== "all" && (
@@ -534,7 +559,7 @@ export default function ContactDetail() {
                             data-testid="menu-demote-contact"
                           >
                             <ArrowDown className="w-4 h-4 mr-2" />
-                            Demote to {currentTier === "vip" ? "Innovator" : currentTier === "innovator" ? "Community" : "All"}
+                            Demote to {currentTier === "innovator" ? "Community" : "All"}
                           </DropdownMenuItem>
                         )}
                       </DropdownMenuContent>
@@ -634,7 +659,7 @@ export default function ContactDetail() {
                       </Popover>
                     )}
                     <div className="flex items-center gap-2">
-                      {currentTier !== "vip" && (
+                      {currentTier !== "innovator" && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -647,7 +672,7 @@ export default function ContactDetail() {
                           ) : (
                             <ArrowUp className="w-4 h-4 mr-1" />
                           )}
-                          Promote to {currentTier === "all" ? "Community" : currentTier === "community" ? "Innovator" : "VIP"}
+                          Promote to {currentTier === "all" ? "Community" : "Innovator"}
                         </Button>
                       )}
                       {currentTier !== "all" && (
@@ -663,7 +688,7 @@ export default function ContactDetail() {
                           ) : (
                             <ArrowDown className="w-4 h-4 mr-1" />
                           )}
-                          Demote to {currentTier === "vip" ? "Innovator" : currentTier === "innovator" ? "Community" : "All"}
+                          Demote to {currentTier === "innovator" ? "Community" : "All"}
                         </Button>
                       )}
                     </div>

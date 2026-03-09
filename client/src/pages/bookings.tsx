@@ -917,27 +917,13 @@ export default function Bookings() {
             <DialogTitle>Booking Settings</DialogTitle>
             <DialogDescription>Configure venues and bookers</DialogDescription>
           </DialogHeader>
-          <Tabs defaultValue="regular-bookers">
+          <Tabs defaultValue="venue-instructions">
             <TabsList className="flex-wrap">
-              <TabsTrigger value="regular-bookers" data-testid="tab-booking-regular-bookers">Regular Bookers</TabsTrigger>
               <TabsTrigger value="venue-instructions" data-testid="tab-booking-venue-instructions">Venue Instructions</TabsTrigger>
               <TabsTrigger value="venues" data-testid="tab-booking-venues">Venues</TabsTrigger>
               <TabsTrigger value="after-hours" data-testid="tab-booking-after-hours">After Hours</TabsTrigger>
               <TabsTrigger value="xero" data-testid="tab-booking-xero">Xero</TabsTrigger>
             </TabsList>
-            <TabsContent value="regular-bookers" className="mt-4">
-              <div className="space-y-3">
-                <p className="text-sm text-muted-foreground">Regular bookers are now managed from their own dedicated page.</p>
-                <Button
-                  variant="outline"
-                  onClick={() => { setSettingsOpen(false); setLocation("/regular-bookers"); }}
-                  data-testid="button-open-regular-bookers"
-                >
-                  <Users className="w-4 h-4 mr-2" />
-                  Go to Regular Bookers
-                </Button>
-              </div>
-            </TabsContent>
             <TabsContent value="venue-instructions" className="mt-4">
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">Configure instructions sent to bookers with their confirmation emails.</p>

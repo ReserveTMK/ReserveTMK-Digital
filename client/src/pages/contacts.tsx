@@ -276,19 +276,12 @@ export default function Contacts() {
   });
 
   const handlePromote = (contactId: number) => {
-    const contact = contacts?.find((c: any) => c.id === contactId);
-    if (contact && (contact as any).isInnovator) {
-      setVipReasonContactId(contactId);
-      setVipReasonText("");
-      setVipReasonDialogOpen(true);
-    } else {
-      promoteMutation.mutate({ id: contactId });
-    }
+    promoteMutation.mutate({ id: contactId });
   };
 
   const confirmVipPromotion = () => {
     if (!vipReasonContactId) return;
-    promoteMutation.mutate({ id: vipReasonContactId, vipReason: vipReasonText.trim() || undefined });
+    toggleVipMutation.mutate({ id: vipReasonContactId, vipReason: vipReasonText.trim() || undefined });
   };
 
   const demoteMutation = useMutation({
@@ -309,6 +302,36 @@ export default function Contacts() {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     },
   });
+
+  const toggleVipMutation = useMutation({
+    mutationFn: async ({ id, vipReason }: { id: number; vipReason?: string }) => {
+      const body = vipReason ? { vipReason } : undefined;
+      const res = await apiRequest("POST", `/api/contacts/${id}/toggle-vip`, body);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ecosystem/vip"] });
+      toast({ title: data.isVip ? "Marked as VIP" : "VIP removed", description: data.isVip ? "Contact flagged as VIP." : "VIP status removed." });
+      setVipReasonDialogOpen(false);
+      setVipReasonContactId(null);
+      setVipReasonText("");
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleToggleVip = (contactId: number) => {
+    const contact = contacts?.find((c: any) => c.id === contactId);
+    if (contact && !contact.isVip) {
+      setVipReasonContactId(contactId);
+      setVipReasonText("");
+      setVipReasonDialogOpen(true);
+    } else {
+      toggleVipMutation.mutate({ id: contactId });
+    }
+  };
 
   const toggleContactSelection = (id: number) => {
     setSelectedContacts(prev => {
@@ -1042,7 +1065,7 @@ export default function Contacts() {
                   </div>
                 </div>
               ) : layoutView === "table" ? (
-                <ContactsTableView contacts={filteredContacts || []} allContacts={(contacts as any[]) || []} editMode={editMode} selectedContacts={selectedContacts} toggleContactSelection={toggleContactSelection} toggleSelectAll={toggleSelectAll} onToggleCommunity={(id, isCommunityMember) => communityStatusMutation.mutate({ id, isCommunityMember })} drilldownTier={viewMode} onPromote={(id) => handlePromote(id)} promotePending={promoteMutation.isPending} />
+                <ContactsTableView contacts={filteredContacts || []} allContacts={(contacts as any[]) || []} editMode={editMode} selectedContacts={selectedContacts} toggleContactSelection={toggleContactSelection} toggleSelectAll={toggleSelectAll} onToggleCommunity={(id, isCommunityMember) => communityStatusMutation.mutate({ id, isCommunityMember })} drilldownTier={viewMode} onPromote={(id) => handlePromote(id)} promotePending={promoteMutation.isPending} onToggleVip={(id) => handleToggleVip(id)} toggleVipPending={toggleVipMutation.isPending} />
               ) : (
             <div className="space-y-2">
               {(filteredContacts || []).map((contact: any) => (
@@ -1092,6 +1115,18 @@ export default function Contacts() {
                     )}
                   </Link>
 
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="shrink-0"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleToggleVip(contact.id); }}
+                    disabled={toggleVipMutation.isPending}
+                    title={contact.isVip ? "Remove VIP" : "Mark as VIP"}
+                    data-testid={`button-toggle-vip-${contact.id}`}
+                  >
+                    <Star className={`w-4 h-4 ${contact.isVip ? "text-yellow-500 fill-yellow-500" : "text-muted-foreground"}`} />
+                  </Button>
+
                   {viewMode === "community" && !contact.isInnovator && (
                     <Button
                       size="icon"
@@ -1103,20 +1138,6 @@ export default function Contacts() {
                       data-testid={`button-promote-innovator-${contact.id}`}
                     >
                       <Lightbulb className="w-4 h-4 text-amber-500" />
-                    </Button>
-                  )}
-
-                  {viewMode === "community" && contact.isInnovator && !contact.isVip && (
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="shrink-0"
-                      onClick={() => handlePromote(contact.id)}
-                      disabled={promoteMutation.isPending}
-                      title="Promote to VIP"
-                      data-testid={`button-promote-vip-${contact.id}`}
-                    >
-                      <Star className="w-4 h-4 text-yellow-500" />
                     </Button>
                   )}
 
@@ -1234,9 +1255,9 @@ export default function Contacts() {
             <Button variant="outline" onClick={() => { setVipReasonDialogOpen(false); setVipReasonContactId(null); setVipReasonText(""); }} data-testid="button-cancel-vip-reason">
               Cancel
             </Button>
-            <Button onClick={confirmVipPromotion} disabled={promoteMutation.isPending} data-testid="button-confirm-vip-promote">
-              {promoteMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Promote to VIP
+            <Button onClick={confirmVipPromotion} disabled={toggleVipMutation.isPending} data-testid="button-confirm-vip-promote">
+              {toggleVipMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Mark as VIP
             </Button>
           </DialogFooter>
         </DialogContent>

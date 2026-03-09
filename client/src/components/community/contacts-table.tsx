@@ -32,6 +32,8 @@ interface ContactsTableViewProps {
   drilldownTier?: string | null;
   onPromote?: (id: number) => void;
   promotePending?: boolean;
+  onToggleVip?: (id: number) => void;
+  toggleVipPending?: boolean;
 }
 
 type CatchUpItemData = {
@@ -40,7 +42,7 @@ type CatchUpItemData = {
   priority: string | null;
 };
 
-export function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, toggleContactSelection, toggleSelectAll, onToggleCommunity, drilldownTier, onPromote, promotePending }: ContactsTableViewProps) {
+export function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, toggleContactSelection, toggleSelectAll, onToggleCommunity, drilldownTier, onPromote, promotePending, onToggleVip, toggleVipPending }: ContactsTableViewProps) {
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [backfilling, setBackfilling] = useState(false);
@@ -254,39 +256,35 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
                     </td>
                   )}
                   <td className="px-4 py-2">
-                    <Link href={`/contacts/${contact.id}`} className="flex items-center gap-2 transition-colors" data-testid={`table-link-${contact.id}`}>
-                      <div className="w-7 h-7 rounded-md bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
-                        {contact.name[0]}
-                      </div>
-                      <span className="font-medium truncate max-w-[180px]">{contact.name}</span>
-                      {contact.isVip && (
-                        <Star className="w-3.5 h-3.5 text-yellow-500 shrink-0" data-testid={`icon-vip-${contact.id}`} />
-                      )}
-                    </Link>
+                    <div className="flex items-center gap-1">
+                      <Link href={`/contacts/${contact.id}`} className="flex items-center gap-2 transition-colors flex-1 min-w-0" data-testid={`table-link-${contact.id}`}>
+                        <div className="w-7 h-7 rounded-md bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
+                          {contact.name[0]}
+                        </div>
+                        <span className="font-medium truncate max-w-[180px]">{contact.name}</span>
+                      </Link>
+                      <button
+                        className="shrink-0 p-0.5 rounded hover:bg-muted transition-colors"
+                        onClick={() => onToggleVip?.(contact.id)}
+                        disabled={toggleVipPending}
+                        title={contact.isVip ? "Remove VIP" : "Mark as VIP"}
+                        data-testid={`button-toggle-vip-${contact.id}`}
+                      >
+                        <Star className={`w-3.5 h-3.5 ${contact.isVip ? "text-yellow-500 fill-yellow-500" : "text-muted-foreground/40"}`} />
+                      </button>
+                    </div>
                   </td>
                   {drilldownTier !== "innovators" && drilldownTier !== "vip" && (
                     <td className="px-3 py-2">
                       {drilldownTier === "community" ? (
                         contact.isInnovator ? (
-                          <div className="flex items-center gap-1">
-                            <Badge
-                              className="text-[10px] h-5 px-2 bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/20"
-                              data-testid={`badge-innovator-${contact.id}`}
-                            >
-                              <Lightbulb className="w-3 h-3 mr-1" />
-                              Yes
-                            </Badge>
-                            {!contact.isVip && (
-                              <Badge
-                                variant="outline"
-                                className="text-[10px] h-5 px-1.5 cursor-pointer hover:bg-yellow-500/10 hover:text-yellow-700 dark:hover:text-yellow-300 transition-colors"
-                                onClick={() => onPromote?.(contact.id)}
-                                data-testid={`button-promote-vip-${contact.id}`}
-                              >
-                                <Star className="w-3 h-3" />
-                              </Badge>
-                            )}
-                          </div>
+                          <Badge
+                            className="text-[10px] h-5 px-2 bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/20"
+                            data-testid={`badge-innovator-${contact.id}`}
+                          >
+                            <Lightbulb className="w-3 h-3 mr-1" />
+                            Yes
+                          </Badge>
                         ) : (
                           <Badge
                             variant="outline"
