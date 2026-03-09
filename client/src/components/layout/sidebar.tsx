@@ -49,6 +49,7 @@ const navigation: NavItem[] = [
       { name: "People", href: "/community/people", icon: Users },
       { name: "Groups", href: "/community/groups", icon: Network },
       { name: "Ecosystems", href: "/community/ecosystems", icon: Handshake },
+      { name: "Gmail Import", href: "/gmail-import", icon: Mail },
     ],
   },
   {
@@ -68,6 +69,7 @@ const navigation: NavItem[] = [
       { name: "Debriefs", href: "/debriefs", icon: Mic },
       { name: "Catch Up", href: "/catch-up", icon: PhoneCall },
       { name: "Community Spend", href: "/community-spend", icon: DollarSign },
+      { name: "Funders", href: "/funders", icon: Handshake },
     ],
   },
   {
@@ -79,10 +81,9 @@ const navigation: NavItem[] = [
     ],
   },
   {
-    name: "Settings", href: "/gmail-import", icon: Settings,
+    name: "Settings", href: "/scheduling", icon: Settings,
     children: [
       { name: "Availability", href: "/scheduling", icon: CalendarClock },
-      { name: "Gmail Import", href: "/gmail-import", icon: Mail },
     ],
   },
 ];

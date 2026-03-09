@@ -54,6 +54,7 @@ const navGroups: NavGroup[] = [
       { name: "People", href: "/community/people", icon: Users, description: "Manage contacts & mentees" },
       { name: "Groups", href: "/community/groups", icon: Network, description: "Organisations & collectives" },
       { name: "Ecosystems", href: "/community/ecosystems", icon: Handshake, description: "Organisation network overview" },
+      { name: "Gmail Import", href: "/gmail-import", icon: Mail, description: "Import contacts from email" },
     ],
   },
   {
@@ -75,6 +76,7 @@ const navGroups: NavGroup[] = [
       { name: "Debriefs", href: "/debriefs", icon: Mic, description: "Interactions, calendar & weekly debriefs" },
       { name: "Catch Up", href: "/catch-up", icon: PhoneCall, description: "Plan who to connect with next" },
       { name: "Community Spend", href: "/community-spend", icon: DollarSign, description: "Track community investment" },
+      { name: "Funders", href: "/funders", icon: Handshake, description: "Manage funding relationships" },
     ],
   },
   {
@@ -91,11 +93,6 @@ const navGroups: NavGroup[] = [
     href: "/scheduling",
     children: [
       { name: "Availability", href: "/scheduling", icon: CalendarClock, description: "Manage staff & mentor availability" },
-      { name: "Venues & Bookings", href: "/bookings", icon: Building2, description: "Venue hire & booking settings" },
-      { name: "Mentoring", href: "/mentoring", icon: Users, description: "Mentoring programme settings" },
-      { name: "Reporting", href: "/legacy-reports", icon: BarChart3, description: "Report configuration & uploads" },
-      { name: "Funders", href: "/funders", icon: Handshake, description: "Manage funding relationships" },
-      { name: "Gmail Import", href: "/gmail-import", icon: Mail, description: "Import contacts from email" },
     ],
   },
 ];
