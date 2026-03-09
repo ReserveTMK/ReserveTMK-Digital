@@ -50,6 +50,7 @@ PostgreSQL is used as the database, integrated with Drizzle ORM. The schema incl
 -   **Xero Integration**: OAuth2 connection for automated invoice generation and contact/invoice syncing.
 -   **Gmail Sync**: Multi-account Gmail import with smart filtering, mailing list detection, and user-managed exclusion lists. Includes a cleanup tool for marketing contacts.
 -   **Mobile Swipe Navigation**: Contact detail page supports horizontal swipe to navigate between contacts on mobile, with subtle edge chevron indicators.
+-   **Public Programme Registration**: Programmes can enable public registration with auto-generated slugs, shareable links, and QR codes. Public page at `/register/:slug` collects registrations (name, email, phone, dietary, accessibility, referral). Registrations auto-match or create contacts. Registration management dialog with attendance tracking, CSV export. Registrations appear in contact detail timeline. Schema: `programme_registrations` table + `publicRegistrations`/`slug`/`capacity` on `programmes`.
 -   **UI Terminology**: Uses "People" for contacts and 12-hour time format.
 
 ## External Dependencies

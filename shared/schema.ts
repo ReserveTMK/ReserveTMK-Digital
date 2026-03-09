@@ -429,6 +429,9 @@ export const programmes = pgTable("programmes", {
   attendees: integer("attendees").array(),
   funderTags: text("funder_tags").array(),
   notes: text("notes"),
+  publicRegistrations: boolean("public_registrations").default(false),
+  slug: text("slug").unique(),
+  capacity: integer("capacity"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1995,3 +1998,35 @@ export const insertCatchUpItemSchema = createInsertSchema(catchUpList).omit({
 });
 export type CatchUpItem = typeof catchUpList.$inferSelect;
 export type InsertCatchUpItem = z.infer<typeof insertCatchUpItemSchema>;
+
+export const REGISTRATION_STATUSES = ["registered", "cancelled", "waitlisted"] as const;
+export type RegistrationStatus = typeof REGISTRATION_STATUSES[number];
+
+export const programmeRegistrations = pgTable("programme_registrations", {
+  id: serial("id").primaryKey(),
+  programmeId: integer("programme_id").notNull(),
+  contactId: integer("contact_id"),
+  userId: text("user_id").notNull(),
+  firstName: text("first_name").notNull(),
+  lastName: text("last_name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone"),
+  organization: text("organization"),
+  dietaryRequirements: text("dietary_requirements"),
+  accessibilityNeeds: text("accessibility_needs"),
+  referralSource: text("referral_source"),
+  status: text("status").notNull().default("registered"),
+  attended: boolean("attended").default(false),
+  registeredAt: timestamp("registered_at").defaultNow(),
+  cancelledAt: timestamp("cancelled_at"),
+});
+
+export const insertProgrammeRegistrationSchema = createInsertSchema(programmeRegistrations).omit({
+  id: true,
+  registeredAt: true,
+  cancelledAt: true,
+}).extend({
+  status: z.enum(REGISTRATION_STATUSES).default("registered"),
+});
+export type ProgrammeRegistration = typeof programmeRegistrations.$inferSelect;
+export type InsertProgrammeRegistration = z.infer<typeof insertProgrammeRegistrationSchema>;

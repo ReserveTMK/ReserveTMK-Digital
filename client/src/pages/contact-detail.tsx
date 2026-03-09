@@ -11,7 +11,7 @@ import { Card } from "@/components/ui/card";
 import { useRoute, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Loader2, Mic, StopCircle, ArrowLeft, Brain, TrendingUp, Sparkles, AlertCircle, DollarSign, Settings, Rocket, Network, Shield, FileText, CheckSquare, Calendar, Clock, ChevronDown, ChevronLeft, ChevronRight, History, MessageSquare, Pencil, Check, X, ArrowUp, ArrowDown, Star, Users, Coffee, Trash2, Plus, MoreVertical } from "lucide-react";
+import { Loader2, Mic, StopCircle, ArrowLeft, Brain, TrendingUp, Sparkles, AlertCircle, DollarSign, Settings, Rocket, Network, Shield, FileText, CheckSquare, Calendar, Clock, ChevronDown, ChevronLeft, ChevronRight, History, MessageSquare, Pencil, Check, X, ArrowUp, ArrowDown, Star, Users, Coffee, Trash2, Plus, MoreVertical, ClipboardList } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -57,6 +57,12 @@ export default function ContactDetail() {
   const { data: activityData, isLoading: activityLoading } = useQuery({
     queryKey: ['/api/contacts', id, 'activity'],
     queryFn: () => fetch(`/api/contacts/${id}/activity`, { credentials: 'include' }).then(r => r.json()),
+    enabled: !!id,
+  });
+
+  const { data: programmeRegistrations } = useQuery<any[]>({
+    queryKey: ['/api/contacts', id, 'programme-registrations'],
+    queryFn: () => fetch(`/api/contacts/${id}/programme-registrations`, { credentials: 'include' }).then(r => r.json()),
     enabled: !!id,
   });
 
@@ -304,7 +310,7 @@ export default function ContactDetail() {
 
   const timelineItems: Array<{
     date: Date;
-    type: 'impact_log' | 'action_item' | 'interaction' | 'consent';
+    type: 'impact_log' | 'action_item' | 'interaction' | 'consent' | 'programme_registration';
     data: any;
   }> = [];
 
@@ -329,6 +335,14 @@ export default function ContactDetail() {
       date: new Date(interaction.date),
       type: 'interaction',
       data: interaction,
+    });
+  });
+
+  (programmeRegistrations || []).forEach((reg: any) => {
+    timelineItems.push({
+      date: new Date(reg.registeredAt),
+      type: 'programme_registration',
+      data: reg,
     });
   });
 
@@ -1134,6 +1148,42 @@ export default function ContactDetail() {
             </TabsContent>
 
             <TabsContent value="activity" className="space-y-4" data-testid="activity-content">
+              {programmeRegistrations && programmeRegistrations.length > 0 && (
+                <Card className="p-5" data-testid="programme-registrations-section">
+                  <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                    <ClipboardList className="w-4 h-4 text-purple-500" />
+                    Programme Registrations
+                  </h4>
+                  <div className="space-y-2">
+                    {programmeRegistrations.map((reg: any) => (
+                      <div key={reg.id} className="flex items-center gap-3 text-sm" data-testid={`programme-reg-${reg.id}`}>
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
+                          reg.attended ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-purple-500/10 text-purple-600 dark:text-purple-400'
+                        }`}>
+                          {reg.attended ? <Check className="w-3.5 h-3.5" /> : <ClipboardList className="w-3.5 h-3.5" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium" data-testid={`programme-reg-title-${reg.id}`}>
+                            {reg.attended ? 'Attended' : 'Registered for'} {reg.programmeName}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {format(new Date(reg.registeredAt), 'MMM d, yyyy')}
+                          </p>
+                        </div>
+                        <Badge variant="secondary" className={`text-xs shrink-0 ${
+                          reg.attended ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' :
+                          reg.status === 'cancelled' ? 'bg-red-500/15 text-red-700 dark:text-red-300' :
+                          reg.status === 'waitlisted' ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300' :
+                          'bg-purple-500/15 text-purple-700 dark:text-purple-300'
+                        }`} data-testid={`programme-reg-status-${reg.id}`}>
+                          {reg.attended ? 'Attended' : reg.status}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
+
               {activityLoading ? (
                 <div className="flex justify-center py-12">
                   <Loader2 className="w-8 h-8 animate-spin text-primary" data-testid="activity-loading" />
@@ -1193,6 +1243,7 @@ function TimelineCard({ item }: { item: { date: Date; type: string; data: any } 
     impact_log: { icon: FileText, color: "text-violet-500", label: "Impact Log" },
     action_item: { icon: CheckSquare, color: "text-blue-500", label: "Action Item" },
     interaction: { icon: Calendar, color: "text-emerald-500", label: "Interaction" },
+    programme_registration: { icon: ClipboardList, color: "text-purple-500", label: "Programme" },
   };
 
   const config = iconMap[item.type] || iconMap.interaction;
@@ -1309,6 +1360,24 @@ function TimelineCard({ item }: { item: { date: Date; type: string; data: any } 
               {item.data.notes && (
                 <p className="text-sm text-muted-foreground">{item.data.notes}</p>
               )}
+            </div>
+          )}
+
+          {item.type === 'programme_registration' && (
+            <div>
+              <p className="font-semibold text-sm" data-testid={`timeline-programme-reg-${item.data.id}`}>
+                {item.data.attended ? 'Attended' : 'Registered for'} {item.data.programmeName}
+              </p>
+              <div className="flex items-center gap-2 flex-wrap mt-1">
+                <Badge variant="secondary" className={`text-xs ${
+                  item.data.attended ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' :
+                  item.data.status === 'cancelled' ? 'bg-red-500/15 text-red-700 dark:text-red-300' :
+                  item.data.status === 'waitlisted' ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300' :
+                  'bg-purple-500/15 text-purple-700 dark:text-purple-300'
+                }`}>
+                  {item.data.attended ? 'Attended' : item.data.status}
+                </Badge>
+              </div>
             </div>
           )}
         </div>

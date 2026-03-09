@@ -184,6 +184,9 @@ import {
   catchUpList,
   type CatchUpItem,
   type InsertCatchUpItem,
+  programmeRegistrations,
+  type ProgrammeRegistration,
+  type InsertProgrammeRegistration,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, sql, max, count } from "drizzle-orm";
 
@@ -536,6 +539,16 @@ export interface IStorage {
   updateCatchUpItem(id: number, updates: Partial<InsertCatchUpItem>): Promise<CatchUpItem>;
   dismissCatchUpItem(id: number): Promise<CatchUpItem>;
   removeCatchUpItem(id: number): Promise<void>;
+
+  // Programme Registrations
+  createProgrammeRegistration(data: InsertProgrammeRegistration): Promise<ProgrammeRegistration>;
+  getProgrammeRegistrations(programmeId: number): Promise<ProgrammeRegistration[]>;
+  getProgrammeRegistration(id: number): Promise<ProgrammeRegistration | undefined>;
+  updateProgrammeRegistration(id: number, updates: Partial<InsertProgrammeRegistration>): Promise<ProgrammeRegistration>;
+  deleteProgrammeRegistration(id: number): Promise<void>;
+  getProgrammeRegistrationsByContact(contactId: number): Promise<ProgrammeRegistration[]>;
+  getProgrammeRegistrationCount(programmeId: number): Promise<number>;
+  getProgrammeBySlug(slug: string): Promise<Programme | undefined>;
 
   // Auth (re-exported or separate)
   auth: IAuthStorage;
@@ -2273,6 +2286,51 @@ export class DatabaseStorage implements IStorage {
       .where(eq(contacts.id, contactId))
       .returning();
     return result;
+  }
+  // Programme Registrations
+  async createProgrammeRegistration(data: InsertProgrammeRegistration): Promise<ProgrammeRegistration> {
+    const [registration] = await db.insert(programmeRegistrations).values(data).returning();
+    return registration;
+  }
+
+  async getProgrammeRegistrations(programmeId: number): Promise<ProgrammeRegistration[]> {
+    return db.select().from(programmeRegistrations)
+      .where(eq(programmeRegistrations.programmeId, programmeId))
+      .orderBy(desc(programmeRegistrations.registeredAt));
+  }
+
+  async getProgrammeRegistration(id: number): Promise<ProgrammeRegistration | undefined> {
+    const [registration] = await db.select().from(programmeRegistrations).where(eq(programmeRegistrations.id, id));
+    return registration;
+  }
+
+  async updateProgrammeRegistration(id: number, updates: Partial<InsertProgrammeRegistration>): Promise<ProgrammeRegistration> {
+    const [updated] = await db.update(programmeRegistrations).set(updates).where(eq(programmeRegistrations.id, id)).returning();
+    return updated;
+  }
+
+  async deleteProgrammeRegistration(id: number): Promise<void> {
+    await db.delete(programmeRegistrations).where(eq(programmeRegistrations.id, id));
+  }
+
+  async getProgrammeRegistrationsByContact(contactId: number): Promise<ProgrammeRegistration[]> {
+    return db.select().from(programmeRegistrations)
+      .where(eq(programmeRegistrations.contactId, contactId))
+      .orderBy(desc(programmeRegistrations.registeredAt));
+  }
+
+  async getProgrammeRegistrationCount(programmeId: number): Promise<number> {
+    const [result] = await db.select({ count: count() }).from(programmeRegistrations)
+      .where(and(
+        eq(programmeRegistrations.programmeId, programmeId),
+        eq(programmeRegistrations.status, "registered")
+      ));
+    return result?.count || 0;
+  }
+
+  async getProgrammeBySlug(slug: string): Promise<Programme | undefined> {
+    const [programme] = await db.select().from(programmes).where(eq(programmes.slug, slug));
+    return programme;
   }
 }
 

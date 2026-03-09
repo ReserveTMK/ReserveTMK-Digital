@@ -15,6 +15,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient } from "@/lib/queryClient";
 import { useProgrammes, useCreateProgramme, useUpdateProgramme, useDeleteProgramme } from "@/hooks/use-programmes";
 import { useContacts, useCreateContact } from "@/hooks/use-contacts";
 import { useToast } from "@/hooks/use-toast";
@@ -43,6 +45,10 @@ import {
   Columns3,
   GripVertical,
   BarChart3,
+  ClipboardList,
+  Download,
+  ExternalLink,
+  Link2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -51,6 +57,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
+import { QRCodeSVG } from "qrcode.react";
 import { PROGRAMME_CLASSIFICATIONS, PROGRAMME_STATUSES, type Programme, type Contact } from "@shared/schema";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { MetricCard } from "@/components/ui/metric-card";
@@ -90,6 +97,7 @@ export default function Programmes() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [createOpen, setCreateOpen] = useState(false);
   const [editProgramme, setEditProgramme] = useState<Programme | null>(null);
+  const [registrationsProgramme, setRegistrationsProgramme] = useState<Programme | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "kanban" | "monthly">("kanban");
 
   const filtered = programmes?.filter((p) => {
@@ -456,6 +464,7 @@ export default function Programmes() {
                 onEdit={setEditProgramme}
                 onDuplicate={handleDuplicate}
                 onDelete={handleDelete}
+                onRegistrations={setRegistrationsProgramme}
                 formatDateTime={formatDateTime}
                 getFacilitatorNames={getFacilitatorNames}
                 getTotalBudget={getTotalBudget}
@@ -468,6 +477,7 @@ export default function Programmes() {
               onEdit={setEditProgramme}
               onDuplicate={handleDuplicate}
               onDelete={handleDelete}
+              onRegistrations={setRegistrationsProgramme}
               formatDateTime={formatDateTime}
               getFacilitatorNames={getFacilitatorNames}
               getTotalBudget={getTotalBudget}
@@ -575,6 +585,12 @@ export default function Programmes() {
                             <Pencil className="w-4 h-4 mr-2" />
                             Edit
                           </DropdownMenuItem>
+                          {programme.publicRegistrations && (
+                            <DropdownMenuItem onClick={() => setRegistrationsProgramme(programme)} data-testid={`button-registrations-${programme.id}`}>
+                              <ClipboardList className="w-4 h-4 mr-2" />
+                              Registrations
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem onClick={() => handleDuplicate(programme)} data-testid={`button-duplicate-programme-${programme.id}`}>
                             <Copy className="w-4 h-4 mr-2" />
                             Duplicate
@@ -648,7 +664,214 @@ export default function Programmes() {
           isPending={updateMutation.isPending}
         />
       )}
+
+      {registrationsProgramme && (
+        <RegistrationsDialog
+          programme={registrationsProgramme}
+          open={!!registrationsProgramme}
+          onOpenChange={(open) => { if (!open) setRegistrationsProgramme(null); }}
+        />
+      )}
     </>
+  );
+}
+
+function RegistrationsDialog({ programme, open, onOpenChange }: { programme: Programme; open: boolean; onOpenChange: (open: boolean) => void }) {
+  const { toast } = useToast();
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  const { data, isLoading, refetch } = useQuery<{ registrations: any[]; count: number; capacity: number | null }>({
+    queryKey: ['/api/programmes', programme.id, 'registrations'],
+    queryFn: async () => {
+      const res = await fetch(`/api/programmes/${programme.id}/registrations`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch');
+      return res.json();
+    },
+    enabled: open,
+  });
+
+  const registrationUrl = programme.slug ? `${window.location.origin}/register/${programme.slug}` : "";
+
+  const toggleAttendanceMutation = useMutation({
+    mutationFn: async ({ regId, attended }: { regId: number; attended: boolean }) => {
+      const res = await fetch(`/api/programmes/${programme.id}/registrations/${regId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ attended }),
+      });
+      if (!res.ok) throw new Error('Failed to update');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/programmes', programme.id, 'registrations'] });
+    },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: async (regId: number) => {
+      const res = await fetch(`/api/programmes/${programme.id}/registrations/${regId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to delete');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/programmes', programme.id, 'registrations'] });
+      toast({ title: "Registration removed" });
+    },
+  });
+
+  const handleExport = () => {
+    window.open(`/api/programmes/${programme.id}/registrations/export`, '_blank');
+  };
+
+  const handleDownloadQR = () => {
+    const svg = document.querySelector('[data-testid="qr-registrations-dialog"]');
+    if (!svg) return;
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const canvas = document.createElement('canvas');
+    canvas.width = 400;
+    canvas.height = 400;
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    img.onload = () => {
+      ctx?.drawImage(img, 0, 0, 400, 400);
+      const a = document.createElement('a');
+      a.download = `${programme.name.replace(/[^a-zA-Z0-9]/g, '_')}_QR.png`;
+      a.href = canvas.toDataURL('image/png');
+      a.click();
+    };
+    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+  };
+
+  const registrations = data?.registrations || [];
+  const count = data?.count || 0;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle data-testid="text-registrations-title">Registrations - {programme.name}</DialogTitle>
+          <DialogDescription>
+            {data?.capacity ? `${count} registered / ${data.capacity} capacity` : `${count} registered`}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {registrationUrl && (
+            <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">Registration Link</Label>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7"
+                    onClick={() => {
+                      navigator.clipboard.writeText(registrationUrl);
+                      setLinkCopied(true);
+                      setTimeout(() => setLinkCopied(false), 2000);
+                    }}
+                    data-testid="button-copy-reg-link-dialog"
+                  >
+                    {linkCopied ? <CheckCircle2 className="w-3 h-3 mr-1" /> : <Copy className="w-3 h-3 mr-1" />}
+                    {linkCopied ? "Copied" : "Copy Link"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7"
+                    onClick={() => window.open(registrationUrl, '_blank')}
+                    data-testid="button-open-reg-link"
+                  >
+                    <ExternalLink className="w-3 h-3 mr-1" />
+                    Open
+                  </Button>
+                </div>
+              </div>
+              <code className="text-xs bg-background rounded px-2 py-1 block truncate border" data-testid="text-reg-url-dialog">
+                {registrationUrl}
+              </code>
+              <div className="flex items-end gap-4">
+                <div className="flex justify-center">
+                  <QRCodeSVG value={registrationUrl} size={120} data-testid="qr-registrations-dialog" />
+                </div>
+                <Button size="sm" variant="outline" className="h-7" onClick={handleDownloadQR} data-testid="button-download-qr">
+                  <Download className="w-3 h-3 mr-1" />
+                  Download QR
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium" data-testid="text-registration-count">
+              {count} registration{count !== 1 ? 's' : ''}
+            </h3>
+            <Button size="sm" variant="outline" onClick={handleExport} disabled={!registrations.length} data-testid="button-export-csv">
+              <Download className="w-3 h-3 mr-1" />
+              Export CSV
+            </Button>
+          </div>
+
+          {isLoading ? (
+            <div className="flex justify-center p-8">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : registrations.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground text-sm" data-testid="text-no-registrations">
+              No registrations yet. Share the registration link to get started.
+            </div>
+          ) : (
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/30">
+                    <th className="px-3 py-2 text-left font-medium">Name</th>
+                    <th className="px-3 py-2 text-left font-medium">Email</th>
+                    <th className="px-3 py-2 text-left font-medium hidden md:table-cell">Organisation</th>
+                    <th className="px-3 py-2 text-center font-medium">Attended</th>
+                    <th className="px-3 py-2 text-right font-medium"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {registrations.map((reg: any) => (
+                    <tr key={reg.id} className="border-b last:border-0 hover:bg-muted/20">
+                      <td className="px-3 py-2">
+                        <span className="font-medium" data-testid={`text-reg-name-${reg.id}`}>{reg.firstName} {reg.lastName}</span>
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground" data-testid={`text-reg-email-${reg.id}`}>{reg.email}</td>
+                      <td className="px-3 py-2 text-muted-foreground hidden md:table-cell">{reg.organization || "-"}</td>
+                      <td className="px-3 py-2 text-center">
+                        <input
+                          type="checkbox"
+                          checked={reg.attended || false}
+                          onChange={(e) => toggleAttendanceMutation.mutate({ regId: reg.id, attended: e.target.checked })}
+                          className="h-4 w-4 rounded border-gray-300"
+                          data-testid={`checkbox-attended-${reg.id}`}
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          onClick={() => cancelMutation.mutate(reg.id)}
+                          data-testid={`button-cancel-reg-${reg.id}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -680,6 +903,7 @@ function MonthlyView({
   onEdit,
   onDuplicate,
   onDelete,
+  onRegistrations,
   formatDateTime,
   getFacilitatorNames,
   getTotalBudget,
@@ -688,6 +912,7 @@ function MonthlyView({
   onEdit: (p: Programme) => void;
   onDuplicate: (p: Programme) => void;
   onDelete: (id: number) => void;
+  onRegistrations: (p: Programme) => void;
   formatDateTime: (p: Programme) => { date: string; time: string | null } | null;
   getFacilitatorNames: (p: Programme) => string[];
   getTotalBudget: (p: Programme) => number;
@@ -801,6 +1026,12 @@ function MonthlyView({
                             <Pencil className="w-3.5 h-3.5 mr-2" />
                             Edit
                           </DropdownMenuItem>
+                          {programme.publicRegistrations && (
+                            <DropdownMenuItem onClick={() => onRegistrations(programme)} data-testid={`button-monthly-registrations-${programme.id}`}>
+                              <ClipboardList className="w-3.5 h-3.5 mr-2" />
+                              Registrations
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem onClick={() => onDuplicate(programme)} data-testid={`button-monthly-duplicate-${programme.id}`}>
                             <Copy className="w-3.5 h-3.5 mr-2" />
                             Duplicate
@@ -829,6 +1060,7 @@ function KanbanBoard({
   onEdit,
   onDuplicate,
   onDelete,
+  onRegistrations,
   formatDateTime,
   getFacilitatorNames,
   getTotalBudget,
@@ -839,6 +1071,7 @@ function KanbanBoard({
   onEdit: (p: Programme) => void;
   onDuplicate: (p: Programme) => void;
   onDelete: (id: number) => void;
+  onRegistrations: (p: Programme) => void;
   formatDateTime: (p: Programme) => { date: string; time: string | null } | null;
   getFacilitatorNames: (p: Programme) => string[];
   getTotalBudget: (p: Programme) => number;
@@ -899,6 +1132,12 @@ function KanbanBoard({
                                       <Pencil className="w-3.5 h-3.5 mr-2" />
                                       Edit
                                     </DropdownMenuItem>
+                                    {programme.publicRegistrations && (
+                                      <DropdownMenuItem onClick={() => onRegistrations(programme)} data-testid={`kanban-registrations-${programme.id}`}>
+                                        <ClipboardList className="w-3.5 h-3.5 mr-2" />
+                                        Registrations
+                                      </DropdownMenuItem>
+                                    )}
                                     <DropdownMenuItem onClick={() => onDuplicate(programme)} data-testid={`kanban-duplicate-${programme.id}`}>
                                       <Copy className="w-3.5 h-3.5 mr-2" />
                                       Duplicate
@@ -1030,6 +1269,23 @@ function ProgrammeFormDialog({
   const [newPersonPhone, setNewPersonPhone] = useState("");
   const [funderTags, setFunderTags] = useState<string[]>(programme?.funderTags || []);
   const [funderTagInput, setFunderTagInput] = useState("");
+  const [publicRegistrations, setPublicRegistrations] = useState(programme?.publicRegistrations || false);
+  const [capacity, setCapacity] = useState(programme?.capacity?.toString() || "");
+  const [slug, setSlug] = useState(programme?.slug || "");
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  const generateSlug = (text: string) => {
+    return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80);
+  };
+
+  const handleTogglePublicRegistrations = (checked: boolean) => {
+    setPublicRegistrations(checked);
+    if (checked && !slug && name) {
+      setSlug(generateSlug(name));
+    }
+  };
+
+  const registrationUrl = slug ? `${window.location.origin}/register/${slug}` : "";
 
   const totalBudget = parseFloat(facilitatorCost || "0") + parseFloat(cateringCost || "0") + parseFloat(promoCost || "0");
 
@@ -1092,6 +1348,9 @@ function ProgrammeFormDialog({
       attendees: selectedAttendees.length > 0 ? selectedAttendees : undefined,
       notes: notes.trim() || undefined,
       funderTags: funderTags.length > 0 ? funderTags : [],
+      publicRegistrations,
+      slug: publicRegistrations ? (slug || generateSlug(name)) : null,
+      capacity: capacity ? parseInt(capacity) : null,
     };
     onSubmit(data);
   };
@@ -1547,6 +1806,72 @@ function ProgrammeFormDialog({
                 placeholder="Any additional notes..."
                 data-testid="input-programme-notes"
               />
+            </div>
+
+            <div className="border-t pt-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-sm font-medium">Public Registrations</Label>
+                  <p className="text-xs text-muted-foreground">Allow people to register via a public link</p>
+                </div>
+                <Switch
+                  checked={publicRegistrations}
+                  onCheckedChange={handleTogglePublicRegistrations}
+                  data-testid="switch-public-registrations"
+                />
+              </div>
+
+              {publicRegistrations && (
+                <div className="space-y-3 pl-0">
+                  <div>
+                    <Label>Capacity</Label>
+                    <Input
+                      type="number"
+                      value={capacity}
+                      onChange={(e) => setCapacity(e.target.value)}
+                      placeholder="Leave empty for unlimited"
+                      data-testid="input-programme-capacity"
+                    />
+                  </div>
+                  <div>
+                    <Label>URL Slug</Label>
+                    <Input
+                      value={slug}
+                      onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                      placeholder="auto-generated-from-name"
+                      data-testid="input-programme-slug"
+                    />
+                  </div>
+                  {registrationUrl && (
+                    <div className="bg-muted/50 rounded-lg p-3 space-y-2">
+                      <Label className="text-xs text-muted-foreground">Registration Link</Label>
+                      <div className="flex items-center gap-2">
+                        <code className="text-xs bg-background rounded px-2 py-1 flex-1 truncate border" data-testid="text-registration-url">
+                          {registrationUrl}
+                        </code>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0 h-7"
+                          onClick={() => {
+                            navigator.clipboard.writeText(registrationUrl);
+                            setLinkCopied(true);
+                            setTimeout(() => setLinkCopied(false), 2000);
+                          }}
+                          data-testid="button-copy-registration-link"
+                        >
+                          {linkCopied ? <CheckCircle2 className="w-3 h-3 mr-1" /> : <Copy className="w-3 h-3 mr-1" />}
+                          {linkCopied ? "Copied" : "Copy"}
+                        </Button>
+                      </div>
+                      <div className="flex justify-center pt-2">
+                        <QRCodeSVG value={registrationUrl} size={120} data-testid="qr-registration" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

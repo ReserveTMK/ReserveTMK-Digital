@@ -8,7 +8,7 @@ import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON } from "./replit_integrations/anthropic/client";
 import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getReachMetrics, getDeliveryMetrics, getImpactMetrics, type ReportFilters } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations } from "@shared/schema";
+import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema } from "@shared/schema";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { ObjectStorageService } from "./replit_integrations/object_storage";
 import crypto from "crypto";
@@ -1796,6 +1796,107 @@ export async function registerRoutes(
     }
   });
 
+  // === Public Programme Registration API ===
+
+  app.get('/api/public/programme/:slug', async (req, res) => {
+    try {
+      const programme = await storage.getProgrammeBySlug(req.params.slug);
+      if (!programme || !programme.publicRegistrations) {
+        return res.status(404).json({ message: "Programme not found" });
+      }
+      const registrationCount = await storage.getProgrammeRegistrationCount(programme.id);
+      const spotsRemaining = programme.capacity ? programme.capacity - registrationCount : null;
+      res.json({
+        id: programme.id,
+        name: programme.name,
+        description: programme.description,
+        classification: programme.classification,
+        startDate: programme.startDate,
+        endDate: programme.endDate,
+        startTime: programme.startTime,
+        endTime: programme.endTime,
+        location: programme.location,
+        capacity: programme.capacity,
+        registrationCount,
+        spotsRemaining,
+        isFull: programme.capacity ? registrationCount >= programme.capacity : false,
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch programme" });
+    }
+  });
+
+  app.post('/api/public/programme/:slug/register', async (req, res) => {
+    try {
+      const programme = await storage.getProgrammeBySlug(req.params.slug);
+      if (!programme || !programme.publicRegistrations) {
+        return res.status(404).json({ message: "Programme not found" });
+      }
+
+      const { firstName, lastName, email, phone, organization, dietaryRequirements, accessibilityNeeds, referralSource } = req.body;
+      if (!firstName || !lastName || !email) {
+        return res.status(400).json({ message: "First name, last name, and email are required" });
+      }
+
+      const registrationCount = await storage.getProgrammeRegistrationCount(programme.id);
+      if (programme.capacity && registrationCount >= programme.capacity) {
+        return res.status(400).json({ message: "This programme is at full capacity", code: "FULL" });
+      }
+
+      const existingRegs = await storage.getProgrammeRegistrations(programme.id);
+      const alreadyRegistered = existingRegs.find(
+        r => r.email.toLowerCase() === email.toLowerCase() && r.status === "registered"
+      );
+      if (alreadyRegistered) {
+        return res.status(400).json({ message: "You are already registered for this programme", code: "DUPLICATE" });
+      }
+
+      let contactId: number | null = null;
+      const ownerContacts = await storage.getContacts(programme.userId);
+      const existingContact = ownerContacts.find(
+        c => c.email && c.email.toLowerCase() === email.toLowerCase()
+      );
+
+      if (existingContact) {
+        contactId = existingContact.id;
+        await storage.updateContact(existingContact.id, { updatedAt: new Date() });
+      } else {
+        const newContact = await storage.createContact({
+          userId: programme.userId,
+          name: `${firstName} ${lastName}`,
+          email,
+          phone: phone || null,
+          role: "Other",
+          stage: "kakano",
+          active: true,
+          source: "programme_registration",
+        } as any);
+        contactId = newContact.id;
+      }
+
+      const registration = await storage.createProgrammeRegistration({
+        programmeId: programme.id,
+        contactId,
+        userId: programme.userId,
+        firstName,
+        lastName,
+        email,
+        phone: phone || null,
+        organization: organization || null,
+        dietaryRequirements: dietaryRequirements || null,
+        accessibilityNeeds: accessibilityNeeds || null,
+        referralSource: referralSource || null,
+        status: "registered",
+        attended: false,
+      });
+
+      res.json({ success: true, registration });
+    } catch (err) {
+      console.error("Registration error:", err);
+      res.status(500).json({ message: "Failed to register" });
+    }
+  });
+
   // === Events API ===
 
   app.get(api.events.list.path, isAuthenticated, async (req, res) => {
@@ -3122,6 +3223,139 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     }
     await storage.removeProgrammeEvent(id);
     res.status(204).send();
+  });
+
+  // === Programme Registrations API (Authenticated) ===
+
+  app.get('/api/programmes/:id/registrations', isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const programmeId = parseInt(req.params.id);
+      const programme = await storage.getProgramme(programmeId);
+      if (!programme || programme.userId !== userId) {
+        return res.status(404).json({ message: "Programme not found" });
+      }
+      const registrations = await storage.getProgrammeRegistrations(programmeId);
+      const count = await storage.getProgrammeRegistrationCount(programmeId);
+      res.json({ registrations, count, capacity: programme.capacity });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch registrations" });
+    }
+  });
+
+  app.patch('/api/programmes/:id/registrations/:regId', isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const programmeId = parseInt(req.params.id);
+      const regId = parseInt(req.params.regId);
+      const programme = await storage.getProgramme(programmeId);
+      if (!programme || programme.userId !== userId) {
+        return res.status(404).json({ message: "Programme not found" });
+      }
+      const reg = await storage.getProgrammeRegistration(regId);
+      if (!reg || reg.programmeId !== programmeId) {
+        return res.status(404).json({ message: "Registration not found" });
+      }
+      const { attended, status } = req.body;
+      const allowedUpdates: Record<string, any> = {};
+      if (typeof attended === 'boolean') allowedUpdates.attended = attended;
+      if (status && ['registered', 'cancelled', 'waitlisted'].includes(status)) allowedUpdates.status = status;
+      if (status === 'cancelled') allowedUpdates.cancelledAt = new Date();
+      const updated = await storage.updateProgrammeRegistration(regId, allowedUpdates);
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update registration" });
+    }
+  });
+
+  app.post('/api/programmes/:id/registrations/bulk-attendance', isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const programmeId = parseInt(req.params.id);
+      const programme = await storage.getProgramme(programmeId);
+      if (!programme || programme.userId !== userId) {
+        return res.status(404).json({ message: "Programme not found" });
+      }
+      const { updates } = req.body;
+      if (!Array.isArray(updates)) {
+        return res.status(400).json({ message: "Updates array required" });
+      }
+      const results = [];
+      for (const { regId, attended } of updates) {
+        if (typeof attended !== 'boolean') continue;
+        const reg = await storage.getProgrammeRegistration(regId);
+        if (!reg || reg.programmeId !== programmeId) continue;
+        const updated = await storage.updateProgrammeRegistration(regId, { attended });
+        results.push(updated);
+      }
+      res.json({ updated: results.length });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update attendance" });
+    }
+  });
+
+  app.delete('/api/programmes/:id/registrations/:regId', isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const programmeId = parseInt(req.params.id);
+      const regId = parseInt(req.params.regId);
+      const programme = await storage.getProgramme(programmeId);
+      if (!programme || programme.userId !== userId) {
+        return res.status(404).json({ message: "Programme not found" });
+      }
+      const reg = await storage.getProgrammeRegistration(regId);
+      if (!reg || reg.programmeId !== programmeId) {
+        return res.status(404).json({ message: "Registration not found" });
+      }
+      await storage.deleteProgrammeRegistration(regId);
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete registration" });
+    }
+  });
+
+  app.get('/api/programmes/:id/registrations/export', isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const programmeId = parseInt(req.params.id);
+      const programme = await storage.getProgramme(programmeId);
+      if (!programme || programme.userId !== userId) {
+        return res.status(404).json({ message: "Programme not found" });
+      }
+      const registrations = await storage.getProgrammeRegistrations(programmeId);
+      const headers = ["First Name", "Last Name", "Email", "Phone", "Organization", "Dietary Requirements", "Accessibility Needs", "Referral Source", "Status", "Attended", "Registered At"];
+      const rows = registrations.map(r => [
+        r.firstName, r.lastName, r.email, r.phone || "", r.organization || "",
+        r.dietaryRequirements || "", r.accessibilityNeeds || "", r.referralSource || "",
+        r.status, r.attended ? "Yes" : "No",
+        r.registeredAt ? new Date(r.registeredAt).toLocaleDateString("en-NZ") : "",
+      ]);
+      const csv = [headers.join(","), ...rows.map(r => r.map(v => `"${(v || "").replace(/"/g, '""')}"`).join(","))].join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="${programme.name.replace(/[^a-zA-Z0-9]/g, '_')}_registrations.csv"`);
+      res.send(csv);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to export registrations" });
+    }
+  });
+
+  app.get('/api/contacts/:id/programme-registrations', isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const contactId = parseInt(req.params.id);
+      const contact = await storage.getContact(contactId);
+      if (!contact || contact.userId !== userId) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+      const registrations = await storage.getProgrammeRegistrationsByContact(contactId);
+      const enriched = await Promise.all(registrations.map(async r => {
+        const programme = await storage.getProgramme(r.programmeId);
+        return { ...r, programmeName: programme?.name || "Unknown" };
+      }));
+      res.json(enriched);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch registrations" });
+    }
   });
 
   // === Memberships API ===
