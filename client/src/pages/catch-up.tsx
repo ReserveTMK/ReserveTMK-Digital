@@ -37,12 +37,12 @@ import {
   ChevronDown,
   Clock,
   AlertTriangle,
-  ArrowRight,
   Coffee,
   Search,
   X,
   History,
   Users,
+  Star,
 } from "lucide-react";
 import type { Contact } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
@@ -61,6 +61,11 @@ type CatchUpItemData = {
   contactConnectionStrength: string | null;
   contactIsInnovator: boolean | null;
   contactIsCommunityMember: boolean | null;
+  contactIsVip: boolean | null;
+  contactVipReason: string | null;
+  contactLastInteractionDate: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
 };
 
 const PRIORITY_CONFIG: Record<string, { label: string; color: string; icon: typeof AlertTriangle }> = {
@@ -88,9 +93,17 @@ const STAGE_COLORS: Record<string, string> = {
   inactive: "bg-gray-500/15 text-gray-700 dark:text-gray-300",
 };
 
+function formatLastInteraction(dateStr: string | null): string {
+  if (!dateStr) return "No interactions yet";
+  try {
+    return `Last interaction ${formatDistanceToNow(new Date(dateStr), { addSuffix: true })}`;
+  } catch {
+    return "No interactions yet";
+  }
+}
+
 export default function CatchUpPage() {
   const { toast } = useToast();
-  const [searchQuery, setSearchQuery] = useState("");
   const [addContactSearch, setAddContactSearch] = useState("");
   const [selectedContactId, setSelectedContactId] = useState<number | null>(null);
   const [addNote, setAddNote] = useState("");
@@ -99,6 +112,7 @@ export default function CatchUpPage() {
   const [editNote, setEditNote] = useState("");
   const [editPriority, setEditPriority] = useState("soon");
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [vipOpen, setVipOpen] = useState(true);
   const [showContactDropdown, setShowContactDropdown] = useState(false);
 
   const { data: catchUpItems, isLoading } = useQuery<CatchUpItemData[]>({
@@ -107,6 +121,10 @@ export default function CatchUpPage() {
 
   const { data: historyItems } = useQuery<CatchUpItemData[]>({
     queryKey: ["/api/catch-up-list/history"],
+  });
+
+  const { data: lastCaughtUpData } = useQuery<{ contactId: number; lastDismissedAt: string }[]>({
+    queryKey: ["/api/catch-up-list/last-caught-up"],
   });
 
   const { data: contacts } = useQuery<Contact[]>({
@@ -148,6 +166,7 @@ export default function CatchUpPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/catch-up-list"] });
       queryClient.invalidateQueries({ queryKey: ["/api/catch-up-list/history"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/catch-up-list/last-caught-up"] });
       toast({ title: "Marked as done" });
     },
   });
@@ -184,6 +203,36 @@ export default function CatchUpPage() {
     soon: grouped.soon.length,
     whenever: grouped.whenever.length,
   }), [items, grouped]);
+
+  const vipContacts = useMemo(() => {
+    if (!contacts) return [];
+    return contacts.filter(c => c.isVip);
+  }, [contacts]);
+
+  const catchUpContactIds = useMemo(() => new Set(items.map(i => i.contactId)), [items]);
+
+  const vipNeedAttention = useMemo(() => {
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+    return vipContacts.filter(c => {
+      if (!catchUpContactIds.has(c.id)) return true;
+      if (!c.lastInteractionDate) return true;
+      const d = new Date(c.lastInteractionDate as string);
+      if (isNaN(d.getTime())) return true;
+      return d < fourteenDaysAgo;
+    }).length;
+  }, [vipContacts, catchUpContactIds]);
+
+  const lastCaughtUpMap = useMemo(() => {
+    const map = new Map<number, string>();
+    if (!lastCaughtUpData) return map;
+    for (const entry of lastCaughtUpData) {
+      if (entry.lastDismissedAt) {
+        map.set(entry.contactId, entry.lastDismissedAt);
+      }
+    }
+    return map;
+  }, [lastCaughtUpData]);
 
   const filteredContacts = useMemo(() => {
     if (!contacts || !addContactSearch.trim()) return [];
@@ -249,6 +298,17 @@ export default function CatchUpPage() {
               </p>
             </div>
             <div className="flex items-center gap-2 flex-wrap" data-testid="text-catch-up-counts">
+              {vipContacts.length > 0 && (
+                <Badge variant="secondary" className="bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 gap-1" data-testid="badge-vip-count">
+                  <Star className="w-3 h-3 fill-current" />
+                  {vipContacts.length} VIP{vipContacts.length !== 1 ? "s" : ""}
+                </Badge>
+              )}
+              {vipNeedAttention > 0 && (
+                <Badge variant="secondary" className="bg-orange-500/15 text-orange-700 dark:text-orange-300" data-testid="badge-vip-attention">
+                  {vipNeedAttention} need attention
+                </Badge>
+              )}
               <Badge variant="secondary" className={PRIORITY_CONFIG.urgent.color}>
                 {counts.urgent} urgent
               </Badge>
@@ -264,6 +324,123 @@ export default function CatchUpPage() {
             </div>
           </div>
         </div>
+
+        {vipContacts.length > 0 && (
+          <Collapsible open={vipOpen} onOpenChange={setVipOpen}>
+            <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/[0.03] dark:bg-yellow-500/[0.05]">
+              <CollapsibleTrigger asChild>
+                <button
+                  className="flex items-center gap-2 w-full p-3 text-left"
+                  data-testid="button-toggle-vip-section"
+                >
+                  <Star className="w-4 h-4 text-yellow-600 fill-yellow-500" />
+                  <span className="text-sm font-semibold text-foreground">VIP Catch Ups</span>
+                  <Badge variant="secondary" className="bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 text-[10px]">
+                    {vipContacts.length}
+                  </Badge>
+                  {vipNeedAttention > 0 && (
+                    <span className="text-xs text-orange-600 dark:text-orange-400 font-medium">
+                      {vipNeedAttention} need attention
+                    </span>
+                  )}
+                  <ChevronDown className={`w-3.5 h-3.5 ml-auto text-muted-foreground transition-transform ${vipOpen ? "rotate-180" : ""}`} />
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="px-3 pb-3 space-y-2">
+                  {vipContacts.map((vip) => {
+                    const onCatchUpList = catchUpContactIds.has(vip.id);
+                    const catchUpItem = items.find(i => i.contactId === vip.id);
+                    const lastCaughtUp = lastCaughtUpMap.get(vip.id);
+                    const stageColor = STAGE_COLORS[vip.stage || ""] || "bg-gray-500/15 text-gray-700 dark:text-gray-300";
+                    const interactionDate = vip.lastInteractionDate as string | null;
+                    const parsedDate = interactionDate ? new Date(interactionDate) : null;
+                    const validDate = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate : null;
+                    const isStale = !validDate || (new Date().getTime() - validDate.getTime()) > 14 * 24 * 60 * 60 * 1000;
+
+                    return (
+                      <Card
+                        key={vip.id}
+                        className={`p-3 ${isStale && !onCatchUpList ? "border-orange-300/50 dark:border-orange-500/30" : ""}`}
+                        data-testid={`vip-card-${vip.id}`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <Star className="w-4 h-4 text-yellow-500 fill-yellow-500 mt-0.5 shrink-0" />
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Link href={`/contacts/${vip.id}`}>
+                                <span className="text-sm font-semibold hover:underline cursor-pointer" data-testid={`link-vip-${vip.id}`}>
+                                  {vip.name}
+                                </span>
+                              </Link>
+                              {vip.role && (
+                                <Badge variant="secondary" className="text-[10px]">{vip.role}</Badge>
+                              )}
+                              {vip.stage && (
+                                <Badge variant="secondary" className={`text-[10px] ${stageColor}`}>{vip.stage}</Badge>
+                              )}
+                              {onCatchUpList && (
+                                <Badge variant="secondary" className="text-[10px] bg-green-500/15 text-green-700 dark:text-green-300">On list</Badge>
+                              )}
+                            </div>
+                            {vip.vipReason && (
+                              <p className="text-xs text-yellow-700/80 dark:text-yellow-400/80" data-testid={`text-vip-reason-${vip.id}`}>
+                                {vip.vipReason}
+                              </p>
+                            )}
+                            <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
+                              <span data-testid={`text-vip-interaction-${vip.id}`}>
+                                {formatLastInteraction(interactionDate)}
+                              </span>
+                              {lastCaughtUp ? (
+                                <span>Caught up {formatDistanceToNow(new Date(lastCaughtUp), { addSuffix: true })}</span>
+                              ) : (
+                                <span className="text-orange-600 dark:text-orange-400">Never caught up</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Link href={`/calendar?newMeeting=true&contactId=${vip.id}`}>
+                              <Button size="sm" variant="outline" className="gap-1 h-7 text-xs" data-testid={`button-vip-schedule-${vip.id}`}>
+                                <CalendarPlus className="w-3 h-3" />
+                                <span className="hidden sm:inline">Schedule</span>
+                              </Button>
+                            </Link>
+                            {onCatchUpList && catchUpItem ? (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7"
+                                onClick={() => dismissMutation.mutate(catchUpItem.id)}
+                                disabled={dismissMutation.isPending}
+                                title="Mark caught up"
+                                data-testid={`button-vip-done-${vip.id}`}
+                              >
+                                <Check className="w-4 h-4 text-green-600" />
+                              </Button>
+                            ) : !onCatchUpList ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="gap-1 h-7 text-xs"
+                                onClick={() => addMutation.mutate({ contactId: vip.id, note: "VIP follow-up", priority: "urgent" })}
+                                disabled={addMutation.isPending}
+                                data-testid={`button-vip-add-${vip.id}`}
+                              >
+                                <Plus className="w-3 h-3" />
+                                <span className="hidden sm:inline">Add</span>
+                              </Button>
+                            ) : null}
+                          </div>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </CollapsibleContent>
+            </div>
+          </Collapsible>
+        )}
 
         <Card className="p-4" data-testid="card-add-catch-up">
           <div className="flex flex-col gap-3">
@@ -312,6 +489,7 @@ export default function CatchUpPage() {
                             }}
                             data-testid={`option-contact-${c.id}`}
                           >
+                            {c.isVip && <Star className="w-3 h-3 text-yellow-500 fill-yellow-500 shrink-0" />}
                             <span className="truncate flex-1">{c.name}</span>
                             {c.role && (
                               <span className="text-xs text-muted-foreground shrink-0">{c.role}</span>
@@ -415,9 +593,10 @@ export default function CatchUpPage() {
                     data-testid={`history-item-${item.id}`}
                   >
                     <Check className="w-4 h-4 text-green-600 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 flex items-center gap-2">
+                      {item.contactIsVip && <Star className="w-3 h-3 text-yellow-500 fill-yellow-500 shrink-0" />}
                       <p className="text-sm font-medium truncate">{item.contactName || "Unknown"}</p>
-                      {item.note && <p className="text-xs text-muted-foreground truncate">{item.note}</p>}
+                      {item.note && <p className="text-xs text-muted-foreground truncate hidden sm:block">{item.note}</p>}
                     </div>
                     {item.dismissedAt && (
                       <span className="text-xs text-muted-foreground shrink-0">
@@ -502,6 +681,9 @@ function CatchUpCard({
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0 space-y-1.5">
           <div className="flex items-center gap-2 flex-wrap">
+            {item.contactIsVip && (
+              <Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500 shrink-0" />
+            )}
             <Link href={`/contacts/${item.contactId}`}>
               <span className="text-sm font-semibold hover:underline cursor-pointer" data-testid={`link-contact-${item.contactId}`}>
                 {item.contactName || "Unknown Contact"}
@@ -523,6 +705,11 @@ function CatchUpCard({
               {item.note}
             </p>
           )}
+          {item.contactIsVip && item.contactVipReason && (
+            <p className="text-xs text-yellow-700/80 dark:text-yellow-400/80" data-testid={`text-vip-reason-${item.id}`}>
+              VIP: {item.contactVipReason}
+            </p>
+          )}
           <div className="flex items-center gap-3 flex-wrap">
             {item.createdAt && (
               <span className="text-xs text-muted-foreground" data-testid={`text-added-${item.id}`}>
@@ -534,6 +721,9 @@ function CatchUpCard({
                 Connection: {item.contactConnectionStrength}
               </span>
             )}
+            <span className="text-xs text-muted-foreground" data-testid={`text-last-interaction-${item.id}`}>
+              {formatLastInteraction(item.contactLastInteractionDate)}
+            </span>
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">

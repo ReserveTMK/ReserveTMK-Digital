@@ -535,6 +535,7 @@ export interface IStorage {
   // Catch Up List
   getCatchUpList(userId: string): Promise<any[]>;
   getCatchUpListHistory(userId: string): Promise<any[]>;
+  getLastCaughtUpDates(userId: string): Promise<{ contactId: number; lastDismissedAt: string }[]>;
   addToCatchUpList(data: InsertCatchUpItem): Promise<CatchUpItem>;
   updateCatchUpItem(id: number, updates: Partial<InsertCatchUpItem>): Promise<CatchUpItem>;
   dismissCatchUpItem(id: number): Promise<CatchUpItem>;
@@ -2209,6 +2210,11 @@ export class DatabaseStorage implements IStorage {
       contactConnectionStrength: contacts.connectionStrength,
       contactIsInnovator: contacts.isInnovator,
       contactIsCommunityMember: contacts.isCommunityMember,
+      contactIsVip: contacts.isVip,
+      contactVipReason: contacts.vipReason,
+      contactLastInteractionDate: contacts.lastInteractionDate,
+      contactEmail: contacts.email,
+      contactPhone: contacts.phone,
     })
     .from(catchUpList)
     .leftJoin(contacts, eq(catchUpList.contactId, contacts.id))
@@ -2230,6 +2236,9 @@ export class DatabaseStorage implements IStorage {
       contactName: contacts.name,
       contactRole: contacts.role,
       contactStage: contacts.stage,
+      contactIsVip: contacts.isVip,
+      contactVipReason: contacts.vipReason,
+      contactLastInteractionDate: contacts.lastInteractionDate,
     })
     .from(catchUpList)
     .leftJoin(contacts, eq(catchUpList.contactId, contacts.id))
@@ -2239,6 +2248,20 @@ export class DatabaseStorage implements IStorage {
       gte(catchUpList.dismissedAt, thirtyDaysAgo),
     ))
     .orderBy(desc(catchUpList.dismissedAt));
+  }
+
+  async getLastCaughtUpDates(userId: string): Promise<{ contactId: number; lastDismissedAt: string }[]> {
+    const result = await db.select({
+      contactId: catchUpList.contactId,
+      lastDismissedAt: sql<string>`max(${catchUpList.dismissedAt})`,
+    })
+    .from(catchUpList)
+    .where(and(
+      eq(catchUpList.userId, userId),
+      sql`${catchUpList.dismissedAt} IS NOT NULL`,
+    ))
+    .groupBy(catchUpList.contactId);
+    return result as { contactId: number; lastDismissedAt: string }[];
   }
 
   async addToCatchUpList(data: InsertCatchUpItem): Promise<CatchUpItem> {

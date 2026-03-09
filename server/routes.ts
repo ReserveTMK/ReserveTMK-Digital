@@ -7269,6 +7269,16 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     }
   });
 
+  app.get("/api/catch-up-list/last-caught-up", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const dates = await storage.getLastCaughtUpDates(userId);
+      res.json(dates);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch last caught-up dates" });
+    }
+  });
+
   app.get("/api/catch-up-list", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
