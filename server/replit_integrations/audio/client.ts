@@ -96,13 +96,17 @@ export async function convertToWav(audioBuffer: Buffer): Promise<Buffer> {
  */
 export async function ensureCompatibleFormat(
   audioBuffer: Buffer
-): Promise<{ buffer: Buffer; format: "wav" | "mp3" }> {
+): Promise<{ buffer: Buffer; format: "wav" | "mp3" | "webm" }> {
   const detected = detectAudioFormat(audioBuffer);
   if (detected === "wav") return { buffer: audioBuffer, format: "wav" };
   if (detected === "mp3") return { buffer: audioBuffer, format: "mp3" };
-  // Convert WebM, MP4, OGG, or unknown to WAV
-  const wavBuffer = await convertToWav(audioBuffer);
-  return { buffer: wavBuffer, format: "wav" };
+  if (detected === "webm") return { buffer: audioBuffer, format: "webm" };
+  try {
+    const wavBuffer = await convertToWav(audioBuffer);
+    return { buffer: wavBuffer, format: "wav" };
+  } catch {
+    return { buffer: audioBuffer, format: "webm" };
+  }
 }
 
 /**
@@ -241,7 +245,8 @@ export async function speechToText(
   audioBuffer: Buffer,
   format: "wav" | "mp3" | "webm" = "wav"
 ): Promise<string> {
-  const file = await toFile(audioBuffer, `audio.${format}`);
+  const ext = format === "webm" ? "webm" : format;
+  const file = await toFile(audioBuffer, `audio.${ext}`);
   const response = await openai.audio.transcriptions.create({
     file,
     model: "gpt-4o-mini-transcribe",

@@ -46,6 +46,7 @@ import {
   UserPlus,
   Settings,
   Sparkles,
+  Save,
 } from "lucide-react";
 import type { ImpactLog, Contact } from "@shared/schema";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -107,6 +108,7 @@ export function ReviewView({ id }: { id: number }) {
   const [isFollowUpTranscribing, setIsFollowUpTranscribing] = useState(false);
   const [isAppending, setIsAppending] = useState(false);
   const [followUpTab, setFollowUpTab] = useState("record");
+  const [isSavingAudio, setIsSavingAudio] = useState(false);
   const followUpMediaRecorderRef = useRef<MediaRecorder | null>(null);
   const followUpChunksRef = useRef<Blob[]>([]);
   const followUpTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -303,7 +305,28 @@ export function ReviewView({ id }: { id: number }) {
     }
   };
 
-  const needsRecording = impactLog && impactLog.status === "draft" && !impactLog.transcript && !extraction;
+  const saveAudioToLog = async () => {
+    if (!audioBlob) return;
+    setIsSavingAudio(true);
+    try {
+      const uploadRes = await fetch(`/api/impact-logs/${id}/audio`, {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: audioBlob,
+        credentials: "include",
+      });
+      if (!uploadRes.ok) throw new Error("Failed to upload audio");
+      queryClient.invalidateQueries({ queryKey: ["/api/impact-logs", id] });
+      toast({ title: "Audio saved", description: "Recording saved to this debrief." });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to save audio", variant: "destructive" });
+    } finally {
+      setIsSavingAudio(false);
+    }
+  };
+
+  const hasTranscriptPlaceholder = impactLog?.transcript === "(Audio saved - transcription pending)";
+  const needsRecording = impactLog && impactLog.status === "draft" && (!impactLog.transcript || hasTranscriptPlaceholder) && !extraction;
 
   useEffect(() => {
     if (impactLog && extraction && !initialized) {
@@ -502,6 +525,16 @@ export function ReviewView({ id }: { id: number }) {
                   <h2 className="font-bold text-lg font-display mb-3" data-testid="text-record-heading">Record Your Debrief</h2>
                   <p className="text-sm text-muted-foreground mb-4">Record audio or paste text to capture your debrief, then analyse it for impact data.</p>
 
+                  {impactLog.audioUrl && (
+                    <div className="mb-4 p-4 bg-muted/30 rounded-lg border border-border space-y-2">
+                      <Label className="text-sm font-medium">Saved Recording</Label>
+                      <div className="flex items-center gap-3">
+                        <Play className="w-5 h-5 text-muted-foreground shrink-0" />
+                        <audio controls src={impactLog.audioUrl} className="flex-1 h-10" data-testid="audio-saved-playback" />
+                      </div>
+                    </div>
+                  )}
+
                   <Tabs value={recordingTab} onValueChange={setRecordingTab}>
                     <TabsList className="w-full">
                       <TabsTrigger value="record" className="flex-1" data-testid="tab-record-audio-review">Record Audio</TabsTrigger>
@@ -554,24 +587,41 @@ export function ReviewView({ id }: { id: number }) {
                             </Button>
                           </div>
                           {!recordingTranscript && (
-                            <Button
-                              onClick={transcribeAudio}
-                              disabled={isTranscribing}
-                              className="w-full"
-                              data-testid="button-transcribe-review"
-                            >
-                              {isTranscribing ? (
-                                <>
-                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                  Transcribing...
-                                </>
-                              ) : (
-                                <>
-                                  <FileText className="w-4 h-4 mr-2" />
-                                  Transcribe
-                                </>
-                              )}
-                            </Button>
+                            <div className="flex gap-2">
+                              <Button
+                                onClick={transcribeAudio}
+                                disabled={isTranscribing || isSavingAudio}
+                                className="flex-1"
+                                data-testid="button-transcribe-review"
+                              >
+                                {isTranscribing ? (
+                                  <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Transcribing...
+                                  </>
+                                ) : (
+                                  <>
+                                    <FileText className="w-4 h-4 mr-2" />
+                                    Transcribe
+                                  </>
+                                )}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                onClick={saveAudioToLog}
+                                disabled={isSavingAudio || isTranscribing}
+                                data-testid="button-save-audio-review"
+                              >
+                                {isSavingAudio ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <>
+                                    <Save className="w-4 h-4 mr-2" />
+                                    Save Audio
+                                  </>
+                                )}
+                              </Button>
+                            </div>
                           )}
                           {recordingTranscript && (
                             <div className="space-y-2">
@@ -620,6 +670,15 @@ export function ReviewView({ id }: { id: number }) {
                 </Card>
               ) : (
                 <>
+                {impactLog?.audioUrl && (
+                  <Card className="p-5">
+                    <Label className="text-sm font-medium">Saved Recording</Label>
+                    <div className="flex items-center gap-3 mt-2">
+                      <Play className="w-5 h-5 text-muted-foreground shrink-0" />
+                      <audio controls src={impactLog.audioUrl} className="flex-1 h-10" data-testid="audio-saved-playback-detail" />
+                    </div>
+                  </Card>
+                )}
                 <Card className="p-5">
                   <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
                     <h2 className="font-bold text-lg font-display" data-testid="text-transcript-heading">Transcript</h2>

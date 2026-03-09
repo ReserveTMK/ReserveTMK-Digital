@@ -2455,8 +2455,19 @@ export async function registerRoutes(
   app.post("/api/impact-extract", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { transcript, title, existingLogId } = req.body;
+      const { transcript, title, existingLogId, skipAnalysis } = req.body;
       if (!transcript) return res.status(400).json({ message: "Transcript text required" });
+
+      if (skipAnalysis) {
+        const impactLog = await storage.createImpactLog({
+          userId,
+          title: title || "Untitled Debrief",
+          transcript,
+          summary: "",
+          status: "draft",
+        });
+        return res.status(201).json({ id: impactLog.id, impactLog });
+      }
 
       const taxonomy = await storage.getTaxonomy(userId);
       const keywords = await storage.getKeywords(userId);
@@ -2604,7 +2615,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
           milestones: extraction.milestones || [],
           keyQuotes: extraction.keyQuotes || [],
         });
-        res.status(200).json({ impactLog: updated, extraction });
+        res.status(200).json({ id: updated.id, impactLog: updated, extraction });
       } else {
         const impactLog = await storage.createImpactLog({
           userId,
@@ -2617,7 +2628,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
           milestones: extraction.milestones || [],
           keyQuotes: extraction.keyQuotes || [],
         });
-        res.status(201).json({ impactLog, extraction });
+        res.status(201).json({ id: impactLog.id, impactLog, extraction });
       }
     } catch (error) {
       console.error("Impact extraction error:", error);
@@ -2648,6 +2659,52 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       });
     } catch (error) {
       console.error("Transcription route error:", error);
+      res.status(500).json({ message: "Failed to process audio" });
+    }
+  });
+
+  app.post("/api/impact-logs/:id/audio", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const logId = parseInt(req.params.id);
+      const log = await storage.getImpactLog(logId);
+      if (!log) return res.status(404).json({ message: "Impact log not found" });
+      if (log.userId !== userId) return res.status(403).json({ message: "Not authorized" });
+
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk: Buffer) => chunks.push(chunk));
+      req.on("end", async () => {
+        try {
+          const audioBuffer = Buffer.concat(chunks);
+          if (audioBuffer.length === 0) {
+            return res.status(400).json({ message: "No audio data received" });
+          }
+
+          const { ObjectStorageService, objectStorageClient } = await import("./replit_integrations/object_storage/objectStorage");
+          const objStorage = new ObjectStorageService();
+          const privateDir = objStorage.getPrivateObjectDir();
+          const fileName = `debrief-audio/${logId}-${Date.now()}.webm`;
+          const fullPath = `${privateDir}/${fileName}`;
+
+          const pathParts = fullPath.startsWith("/") ? fullPath.slice(1).split("/") : fullPath.split("/");
+          const bucketName = pathParts[0];
+          const objectName = pathParts.slice(1).join("/");
+
+          const bucket = objectStorageClient.bucket(bucketName);
+          const file = bucket.file(objectName);
+          await file.save(audioBuffer, { contentType: "audio/webm" });
+
+          const audioUrl = `/objects/${fileName}`;
+          await storage.updateImpactLog(logId, { audioUrl });
+
+          res.json({ audioUrl });
+        } catch (err) {
+          console.error("Audio save error:", err);
+          res.status(500).json({ message: "Failed to save audio" });
+        }
+      });
+    } catch (error) {
+      console.error("Audio save route error:", error);
       res.status(500).json({ message: "Failed to process audio" });
     }
   });

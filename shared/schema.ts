@@ -242,6 +242,7 @@ export const impactLogs = pgTable("impact_logs", {
   funderTags: text("funder_tags").array(),
   reviewedAt: timestamp("reviewed_at"),
   reviewedBy: text("reviewed_by"),
+  audioUrl: text("audio_url"),
   confirmedAt: timestamp("confirmed_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });

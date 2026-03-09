@@ -21,6 +21,7 @@ import {
   Play,
   Trash2,
   FileText,
+  Save,
 } from "lucide-react";
 
 export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
@@ -33,6 +34,8 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isSavingAudio, setIsSavingAudio] = useState(false);
+  const [transcriptionFailed, setTranscriptionFailed] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -49,6 +52,8 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
     setAudioUrl(null);
     setIsTranscribing(false);
     setIsAnalyzing(false);
+    setIsSavingAudio(false);
+    setTranscriptionFailed(false);
     chunksRef.current = [];
     if (timerRef.current) clearInterval(timerRef.current);
   }, []);
@@ -89,6 +94,7 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
   const transcribeAudio = async () => {
     if (!audioBlob) return;
     setIsTranscribing(true);
+    setTranscriptionFailed(false);
     try {
       const res = await fetch("/api/impact-transcribe", {
         method: "POST",
@@ -101,9 +107,48 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
       setTranscript(data.transcript || data.text || "");
       toast({ title: "Transcribed", description: "Audio transcription complete." });
     } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Transcription failed", variant: "destructive" });
+      setTranscriptionFailed(true);
+      toast({ title: "Transcription failed", description: "You can save the audio recording and try again later, or type the transcript manually.", variant: "destructive" });
     } finally {
       setIsTranscribing(false);
+    }
+  };
+
+  const saveAudioOnly = async () => {
+    if (!audioBlob) return;
+    if (!title.trim()) {
+      toast({ title: "Missing title", description: "Please enter a title before saving.", variant: "destructive" });
+      return;
+    }
+
+    setIsSavingAudio(true);
+    try {
+      const createRes = await fetch("/api/impact-extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: transcript.trim() || "(Audio saved - transcription pending)", title, skipAnalysis: true }),
+        credentials: "include",
+      });
+      if (!createRes.ok) throw new Error("Failed to create debrief");
+      const logData = await createRes.json();
+
+      const uploadRes = await fetch(`/api/impact-logs/${logData.id}/audio`, {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: audioBlob,
+        credentials: "include",
+      });
+      if (!uploadRes.ok) throw new Error("Failed to upload audio");
+
+      queryClient.invalidateQueries({ queryKey: ['/api/impact-logs'] });
+      resetState();
+      onOpenChange(false);
+      setLocation(`/debriefs/${logData.id}`);
+      toast({ title: "Audio saved", description: "Recording saved to debrief. You can transcribe and analyse later." });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to save audio", variant: "destructive" });
+    } finally {
+      setIsSavingAudio(false);
     }
   };
 
@@ -127,6 +172,19 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
       });
       if (!res.ok) throw new Error("Extraction failed");
       const data = await res.json();
+
+      if (audioBlob) {
+        try {
+          await fetch(`/api/impact-logs/${data.id}/audio`, {
+            method: "POST",
+            headers: { "Content-Type": "application/octet-stream" },
+            body: audioBlob,
+            credentials: "include",
+          });
+        } catch {
+        }
+      }
+
       queryClient.invalidateQueries({ queryKey: ['/api/impact-logs'] });
       resetState();
       onOpenChange(false);
@@ -210,31 +268,53 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => { setAudioBlob(null); setAudioUrl(null); }}
+                      onClick={() => { setAudioBlob(null); setAudioUrl(null); setTranscriptionFailed(false); }}
                       data-testid="button-discard-recording"
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>
                   </div>
                   {!transcript && (
-                    <Button
-                      onClick={transcribeAudio}
-                      disabled={isTranscribing}
-                      className="w-full"
-                      data-testid="button-transcribe"
-                    >
-                      {isTranscribing ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Transcribing...
-                        </>
-                      ) : (
-                        <>
-                          <FileText className="w-4 h-4 mr-2" />
-                          Transcribe
-                        </>
-                      )}
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={transcribeAudio}
+                        disabled={isTranscribing || isSavingAudio}
+                        className="flex-1"
+                        data-testid="button-transcribe"
+                      >
+                        {isTranscribing ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Transcribing...
+                          </>
+                        ) : (
+                          <>
+                            <FileText className="w-4 h-4 mr-2" />
+                            Transcribe
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={saveAudioOnly}
+                        disabled={isSavingAudio || isTranscribing || !title.trim()}
+                        data-testid="button-save-audio"
+                      >
+                        {isSavingAudio ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <>
+                            <Save className="w-4 h-4 mr-2" />
+                            Save Audio
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                  {transcriptionFailed && !transcript && (
+                    <p className="text-sm text-muted-foreground text-center">
+                      Transcription failed. You can save the audio and type the transcript manually later.
+                    </p>
                   )}
                   {transcript && (
                     <div className="space-y-2">
