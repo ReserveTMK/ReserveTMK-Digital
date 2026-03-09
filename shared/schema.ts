@@ -618,6 +618,7 @@ export const memberships = pgTable("memberships", {
   venueHireHours: integer("venue_hire_hours").default(0),
   bookingAllowance: integer("booking_allowance").default(0),
   allowancePeriod: text("allowance_period").default("quarterly"),
+  bookingCategories: text("booking_categories").array().default([]),
   membershipYear: integer("membership_year"),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
@@ -644,6 +645,7 @@ export const mous = pgTable("mous", {
   inKindValue: numeric("in_kind_value", { precision: 10, scale: 2 }).default("0"),
   bookingAllowance: integer("booking_allowance").default(0),
   allowancePeriod: text("allowance_period").default("quarterly"),
+  bookingCategories: text("booking_categories").array().default([]),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
   status: text("status").notNull().default("draft"),
@@ -2030,3 +2032,79 @@ export const insertProgrammeRegistrationSchema = createInsertSchema(programmeReg
 });
 export type ProgrammeRegistration = typeof programmeRegistrations.$inferSelect;
 export type InsertProgrammeRegistration = z.infer<typeof insertProgrammeRegistrationSchema>;
+
+// === BOOKABLE RESOURCES ===
+
+export const RESOURCE_CATEGORIES = ["venue_hire", "hot_desking", "gear"] as const;
+export type ResourceCategory = typeof RESOURCE_CATEGORIES[number];
+
+export const bookableResources = pgTable("bookable_resources", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  category: text("category").notNull(),
+  description: text("description"),
+  capacity: integer("capacity"),
+  requiresApproval: boolean("requires_approval").default(false),
+  active: boolean("active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertBookableResourceSchema = createInsertSchema(bookableResources).omit({
+  id: true,
+  createdAt: true,
+});
+export type BookableResource = typeof bookableResources.$inferSelect;
+export type InsertBookableResource = z.infer<typeof insertBookableResourceSchema>;
+
+export const DESK_BOOKING_STATUSES = ["booked", "cancelled"] as const;
+export type DeskBookingStatus = typeof DESK_BOOKING_STATUSES[number];
+
+export const deskBookings = pgTable("desk_bookings", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  resourceId: integer("resource_id").notNull(),
+  regularBookerId: integer("regular_booker_id").notNull(),
+  date: timestamp("date").notNull(),
+  startTime: text("start_time").notNull(),
+  endTime: text("end_time").notNull(),
+  isRecurring: boolean("is_recurring").default(false),
+  recurringPattern: jsonb("recurring_pattern"),
+  recurringGroupId: text("recurring_group_id"),
+  status: text("status").notNull().default("booked"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertDeskBookingSchema = createInsertSchema(deskBookings).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  status: z.enum(DESK_BOOKING_STATUSES).default("booked"),
+});
+export type DeskBooking = typeof deskBookings.$inferSelect;
+export type InsertDeskBooking = z.infer<typeof insertDeskBookingSchema>;
+
+export const GEAR_BOOKING_STATUSES = ["booked", "returned", "late", "cancelled"] as const;
+export type GearBookingStatus = typeof GEAR_BOOKING_STATUSES[number];
+
+export const gearBookings = pgTable("gear_bookings", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  resourceId: integer("resource_id").notNull(),
+  regularBookerId: integer("regular_booker_id").notNull(),
+  date: timestamp("date").notNull(),
+  status: text("status").notNull().default("booked"),
+  returnedAt: timestamp("returned_at"),
+  approved: boolean("approved").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertGearBookingSchema = createInsertSchema(gearBookings).omit({
+  id: true,
+  createdAt: true,
+  returnedAt: true,
+}).extend({
+  status: z.enum(GEAR_BOOKING_STATUSES).default("booked"),
+});
+export type GearBooking = typeof gearBookings.$inferSelect;
+export type InsertGearBooking = z.infer<typeof insertGearBookingSchema>;

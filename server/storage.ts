@@ -172,6 +172,15 @@ import {
   mentoringOnboardingQuestions,
   type MentoringOnboardingQuestion,
   type InsertMentoringOnboardingQuestion,
+  bookableResources,
+  deskBookings,
+  gearBookings,
+  type BookableResource,
+  type InsertBookableResource,
+  type DeskBooking,
+  type InsertDeskBooking,
+  type GearBooking,
+  type InsertGearBooking,
   monthlySnapshots,
   reportHighlights,
   type MonthlySnapshot,
@@ -550,6 +559,36 @@ export interface IStorage {
   getProgrammeRegistrationsByContact(contactId: number): Promise<ProgrammeRegistration[]>;
   getProgrammeRegistrationCount(programmeId: number): Promise<number>;
   getProgrammeBySlug(slug: string): Promise<Programme | undefined>;
+
+  // Bookable Resources
+  getBookableResources(userId: string): Promise<BookableResource[]>;
+  getBookableResourcesByCategory(userId: string, category: string): Promise<BookableResource[]>;
+  getBookableResource(id: number): Promise<BookableResource | undefined>;
+  createBookableResource(data: InsertBookableResource): Promise<BookableResource>;
+  updateBookableResource(id: number, updates: Partial<InsertBookableResource>): Promise<BookableResource>;
+  deleteBookableResource(id: number): Promise<void>;
+
+  // Desk Bookings
+  getDeskBookings(userId: string): Promise<DeskBooking[]>;
+  getDeskBookingsByResource(resourceId: number): Promise<DeskBooking[]>;
+  getDeskBookingsByBooker(regularBookerId: number): Promise<DeskBooking[]>;
+  getDeskBookingsByDateRange(userId: string, startDate: Date, endDate: Date): Promise<DeskBooking[]>;
+  getDeskBooking(id: number): Promise<DeskBooking | undefined>;
+  createDeskBooking(data: InsertDeskBooking): Promise<DeskBooking>;
+  updateDeskBooking(id: number, updates: Partial<InsertDeskBooking>): Promise<DeskBooking>;
+  deleteDeskBooking(id: number): Promise<void>;
+
+  // Gear Bookings
+  getGearBookings(userId: string): Promise<GearBooking[]>;
+  getGearBookingsByResource(resourceId: number): Promise<GearBooking[]>;
+  getGearBookingsByBooker(regularBookerId: number): Promise<GearBooking[]>;
+  getGearBookingsByDate(userId: string, date: Date): Promise<GearBooking[]>;
+  getGearBooking(id: number): Promise<GearBooking | undefined>;
+  createGearBooking(data: InsertGearBooking): Promise<GearBooking>;
+  updateGearBooking(id: number, updates: Partial<InsertGearBooking>): Promise<GearBooking>;
+  deleteGearBooking(id: number): Promise<void>;
+  markGearReturned(id: number): Promise<GearBooking>;
+  getLateGearReturns(userId: string): Promise<GearBooking[]>;
 
   // Auth (re-exported or separate)
   auth: IAuthStorage;
@@ -2354,6 +2393,152 @@ export class DatabaseStorage implements IStorage {
   async getProgrammeBySlug(slug: string): Promise<Programme | undefined> {
     const [programme] = await db.select().from(programmes).where(eq(programmes.slug, slug));
     return programme;
+  }
+
+  async getBookableResources(userId: string): Promise<BookableResource[]> {
+    return db.select().from(bookableResources)
+      .where(eq(bookableResources.userId, userId))
+      .orderBy(bookableResources.name);
+  }
+
+  async getBookableResourcesByCategory(userId: string, category: string): Promise<BookableResource[]> {
+    return db.select().from(bookableResources)
+      .where(and(eq(bookableResources.userId, userId), eq(bookableResources.category, category)))
+      .orderBy(bookableResources.name);
+  }
+
+  async getBookableResource(id: number): Promise<BookableResource | undefined> {
+    const [resource] = await db.select().from(bookableResources).where(eq(bookableResources.id, id));
+    return resource;
+  }
+
+  async createBookableResource(data: InsertBookableResource): Promise<BookableResource> {
+    const [resource] = await db.insert(bookableResources).values(data).returning();
+    return resource;
+  }
+
+  async updateBookableResource(id: number, updates: Partial<InsertBookableResource>): Promise<BookableResource> {
+    const [resource] = await db.update(bookableResources).set(updates).where(eq(bookableResources.id, id)).returning();
+    return resource;
+  }
+
+  async deleteBookableResource(id: number): Promise<void> {
+    await db.delete(bookableResources).where(eq(bookableResources.id, id));
+  }
+
+  async getDeskBookings(userId: string): Promise<DeskBooking[]> {
+    return db.select().from(deskBookings)
+      .where(eq(deskBookings.userId, userId))
+      .orderBy(desc(deskBookings.date));
+  }
+
+  async getDeskBookingsByResource(resourceId: number): Promise<DeskBooking[]> {
+    return db.select().from(deskBookings)
+      .where(eq(deskBookings.resourceId, resourceId))
+      .orderBy(desc(deskBookings.date));
+  }
+
+  async getDeskBookingsByBooker(regularBookerId: number): Promise<DeskBooking[]> {
+    return db.select().from(deskBookings)
+      .where(eq(deskBookings.regularBookerId, regularBookerId))
+      .orderBy(desc(deskBookings.date));
+  }
+
+  async getDeskBookingsByDateRange(userId: string, startDate: Date, endDate: Date): Promise<DeskBooking[]> {
+    return db.select().from(deskBookings)
+      .where(and(
+        eq(deskBookings.userId, userId),
+        gte(deskBookings.date, startDate),
+        lte(deskBookings.date, endDate),
+      ))
+      .orderBy(deskBookings.date);
+  }
+
+  async getDeskBooking(id: number): Promise<DeskBooking | undefined> {
+    const [booking] = await db.select().from(deskBookings).where(eq(deskBookings.id, id));
+    return booking;
+  }
+
+  async createDeskBooking(data: InsertDeskBooking): Promise<DeskBooking> {
+    const [booking] = await db.insert(deskBookings).values(data).returning();
+    return booking;
+  }
+
+  async updateDeskBooking(id: number, updates: Partial<InsertDeskBooking>): Promise<DeskBooking> {
+    const [booking] = await db.update(deskBookings).set(updates).where(eq(deskBookings.id, id)).returning();
+    return booking;
+  }
+
+  async deleteDeskBooking(id: number): Promise<void> {
+    await db.delete(deskBookings).where(eq(deskBookings.id, id));
+  }
+
+  async getGearBookings(userId: string): Promise<GearBooking[]> {
+    return db.select().from(gearBookings)
+      .where(eq(gearBookings.userId, userId))
+      .orderBy(desc(gearBookings.date));
+  }
+
+  async getGearBookingsByResource(resourceId: number): Promise<GearBooking[]> {
+    return db.select().from(gearBookings)
+      .where(eq(gearBookings.resourceId, resourceId))
+      .orderBy(desc(gearBookings.date));
+  }
+
+  async getGearBookingsByBooker(regularBookerId: number): Promise<GearBooking[]> {
+    return db.select().from(gearBookings)
+      .where(eq(gearBookings.regularBookerId, regularBookerId))
+      .orderBy(desc(gearBookings.date));
+  }
+
+  async getGearBookingsByDate(userId: string, date: Date): Promise<GearBooking[]> {
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+    return db.select().from(gearBookings)
+      .where(and(
+        eq(gearBookings.userId, userId),
+        gte(gearBookings.date, startOfDay),
+        lte(gearBookings.date, endOfDay),
+      ))
+      .orderBy(gearBookings.date);
+  }
+
+  async getGearBooking(id: number): Promise<GearBooking | undefined> {
+    const [booking] = await db.select().from(gearBookings).where(eq(gearBookings.id, id));
+    return booking;
+  }
+
+  async createGearBooking(data: InsertGearBooking): Promise<GearBooking> {
+    const [booking] = await db.insert(gearBookings).values(data).returning();
+    return booking;
+  }
+
+  async updateGearBooking(id: number, updates: Partial<InsertGearBooking>): Promise<GearBooking> {
+    const [booking] = await db.update(gearBookings).set(updates).where(eq(gearBookings.id, id)).returning();
+    return booking;
+  }
+
+  async deleteGearBooking(id: number): Promise<void> {
+    await db.delete(gearBookings).where(eq(gearBookings.id, id));
+  }
+
+  async markGearReturned(id: number): Promise<GearBooking> {
+    const [booking] = await db.update(gearBookings)
+      .set({ status: "returned", returnedAt: new Date() })
+      .where(eq(gearBookings.id, id))
+      .returning();
+    return booking;
+  }
+
+  async getLateGearReturns(userId: string): Promise<GearBooking[]> {
+    return db.select().from(gearBookings)
+      .where(and(
+        eq(gearBookings.userId, userId),
+        eq(gearBookings.status, "late"),
+      ))
+      .orderBy(desc(gearBookings.date));
   }
 }
 

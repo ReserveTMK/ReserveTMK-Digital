@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { Venue, Booking, BookingPricingDefaults, RegularBooker, VenueInstruction } from "@shared/schema";
+import type { Venue, Booking, BookingPricingDefaults, RegularBooker, VenueInstruction, BookableResource, DeskBooking, GearBooking } from "@shared/schema";
 
 export function useVenues() {
   return useQuery<Venue[]>({ queryKey: ['/api/venues'] });
@@ -119,4 +119,105 @@ export function useDeleteVenueInstruction() {
 
 export function useAllBookerLinks() {
   return useQuery<any[]>({ queryKey: ['/api/all-booker-links'] });
+}
+
+export function useBookableResources(category?: string) {
+  const url = category ? `/api/bookable-resources?category=${category}` : '/api/bookable-resources';
+  return useQuery<BookableResource[]>({
+    queryKey: ['/api/bookable-resources', category],
+    queryFn: async () => {
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+  });
+}
+
+export function useCreateBookableResource() {
+  return useMutation({
+    mutationFn: (data: any) => apiRequest('POST', '/api/bookable-resources', data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/bookable-resources'] }),
+  });
+}
+
+export function useUpdateBookableResource() {
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => apiRequest('PATCH', `/api/bookable-resources/${id}`, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/bookable-resources'] }),
+  });
+}
+
+export function useDeleteBookableResource() {
+  return useMutation({
+    mutationFn: (id: number) => apiRequest('DELETE', `/api/bookable-resources/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/bookable-resources'] }),
+  });
+}
+
+export function useDeskBookings(dateRange?: { start: string; end: string }) {
+  const url = dateRange ? `/api/desk-bookings?startDate=${dateRange.start}&endDate=${dateRange.end}` : '/api/desk-bookings';
+  return useQuery<DeskBooking[]>({
+    queryKey: ['/api/desk-bookings', dateRange?.start, dateRange?.end],
+    queryFn: async () => {
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+  });
+}
+
+export function useCreateDeskBooking() {
+  return useMutation({
+    mutationFn: (data: any) => apiRequest('POST', '/api/desk-bookings', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/desk-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/desk-availability'] });
+    },
+  });
+}
+
+export function useGearBookings(dateRange?: { start: string; end: string }) {
+  const url = dateRange ? `/api/gear-bookings?startDate=${dateRange.start}&endDate=${dateRange.end}` : '/api/gear-bookings';
+  return useQuery<GearBooking[]>({
+    queryKey: ['/api/gear-bookings', dateRange?.start, dateRange?.end],
+    queryFn: async () => {
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+  });
+}
+
+export function useCreateGearBooking() {
+  return useMutation({
+    mutationFn: (data: any) => apiRequest('POST', '/api/gear-bookings', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/gear-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/gear-availability'] });
+    },
+  });
+}
+
+export function useMarkGearReturned() {
+  return useMutation({
+    mutationFn: (id: number) => apiRequest('PATCH', `/api/gear-bookings/${id}`, { status: 'returned', returnedAt: new Date().toISOString() }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/gear-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/gear-availability'] });
+    },
+  });
+}
+
+export function useDeskAvailability(date: string) {
+  return useQuery<any[]>({
+    queryKey: ['/api/desk-availability', date],
+    enabled: !!date,
+  });
+}
+
+export function useGearAvailability(date: string) {
+  return useQuery<any[]>({
+    queryKey: ['/api/gear-availability', date],
+    enabled: !!date,
+  });
 }

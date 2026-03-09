@@ -40,6 +40,7 @@ import BookerPortalPage from "@/pages/booker-portal";
 import CatchUpPage from "@/pages/catch-up";
 import RegularBookersPage from "@/pages/regular-bookers";
 import PublicRegistrationPage from "@/pages/public-registration";
+import ResourceCalendarPage from "@/pages/resource-calendar";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -216,6 +217,10 @@ function Router() {
 
         <Route path="/catch-up">
           <ProtectedRoute component={CatchUpPage} />
+        </Route>
+
+        <Route path="/resource-calendar">
+          <ProtectedRoute component={ResourceCalendarPage} />
         </Route>
 
         <Route path="/register/:slug">

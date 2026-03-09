@@ -8,7 +8,7 @@ import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON } from "./replit_integrations/anthropic/client";
 import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getReachMetrics, getDeliveryMetrics, getImpactMetrics, type ReportFilters } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema } from "@shared/schema";
+import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings } from "@shared/schema";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { ObjectStorageService } from "./replit_integrations/object_storage";
 import crypto from "crypto";
@@ -10112,6 +10112,381 @@ Rules:
     }
   });
 
+  app.get("/api/booker/categories/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const linkResult = await storage.getBookerByLinkToken(token);
+      if (!linkResult || (linkResult.link.tokenExpiry && new Date(linkResult.link.tokenExpiry) < new Date()) || !linkResult.link.enabled) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+      }
+      const booker = linkResult.booker;
+
+      let categories: string[] = ["venue_hire"];
+
+      let agreement: any = null;
+      if (booker.membershipId) {
+        agreement = await storage.getMembership(booker.membershipId);
+      } else if (booker.mouId) {
+        agreement = await storage.getMou(booker.mouId);
+      }
+
+      if (agreement) {
+        const agreementCategories = agreement.bookingCategories || [];
+        if (agreementCategories.length > 0) {
+          categories = agreementCategories;
+        }
+
+        const now = new Date();
+        const isActive = agreement.status === "active" &&
+          (!agreement.startDate || new Date(agreement.startDate) <= now) &&
+          (!agreement.endDate || new Date(agreement.endDate) >= now);
+
+        if (!isActive) {
+          categories = categories.filter((c: string) => c === "venue_hire");
+        }
+      }
+
+      res.json({
+        categories,
+        agreement: agreement ? {
+          type: booker.membershipId ? "membership" : "mou",
+          status: agreement.status,
+          startDate: agreement.startDate,
+          endDate: agreement.endDate,
+          bookingAllowance: agreement.bookingAllowance,
+          allowancePeriod: agreement.allowancePeriod,
+        } : null,
+      });
+    } catch (err: any) {
+      console.error("Booker categories error:", err);
+      res.status(500).json({ message: "Failed to fetch categories" });
+    }
+  });
+
+  app.get("/api/booker/desk-availability/:token/:date", async (req, res) => {
+    try {
+      const { token, date } = req.params;
+      const linkResult = await storage.getBookerByLinkToken(token);
+      if (!linkResult || (linkResult.link.tokenExpiry && new Date(linkResult.link.tokenExpiry) < new Date()) || !linkResult.link.enabled) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+      }
+      const booker = linkResult.booker;
+
+      const targetDate = new Date(date);
+      if (isNaN(targetDate.getTime())) {
+        return res.status(400).json({ message: "Invalid date" });
+      }
+
+      const resources = await storage.getBookableResourcesByCategory(booker.userId, "hot_desking");
+      const activeResources = resources.filter(r => r.active);
+
+      const dayStart = new Date(targetDate);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(targetDate);
+      dayEnd.setHours(23, 59, 59, 999);
+      const allDeskBookings = await storage.getDeskBookingsByDateRange(booker.userId, dayStart, dayEnd);
+
+      const availability = activeResources.map(resource => {
+        const resourceBookings = allDeskBookings.filter(b => b.resourceId === resource.id && b.status === "booked");
+        return {
+          resourceId: resource.id,
+          resourceName: resource.name,
+          description: resource.description,
+          slots: resourceBookings.map(b => ({
+            startTime: b.startTime,
+            endTime: b.endTime,
+            isYours: b.regularBookerId === booker.id,
+          })),
+          isAvailable: resourceBookings.length === 0,
+        };
+      });
+
+      res.json({ date, availability });
+    } catch (err: any) {
+      console.error("Booker desk availability error:", err);
+      res.status(500).json({ message: "Failed to fetch desk availability" });
+    }
+  });
+
+  app.get("/api/booker/gear-availability/:token/:date", async (req, res) => {
+    try {
+      const { token, date } = req.params;
+      const linkResult = await storage.getBookerByLinkToken(token);
+      if (!linkResult || (linkResult.link.tokenExpiry && new Date(linkResult.link.tokenExpiry) < new Date()) || !linkResult.link.enabled) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+      }
+      const booker = linkResult.booker;
+
+      const targetDate = new Date(date);
+      if (isNaN(targetDate.getTime())) {
+        return res.status(400).json({ message: "Invalid date" });
+      }
+
+      const resources = await storage.getBookableResourcesByCategory(booker.userId, "gear");
+      const activeResources = resources.filter(r => r.active);
+
+      const allGearBookings = await storage.getGearBookingsByDate(booker.userId, targetDate);
+
+      const availability = activeResources.map(resource => {
+        const resourceBookings = allGearBookings.filter(b => b.resourceId === resource.id && b.status === "booked");
+        return {
+          resourceId: resource.id,
+          resourceName: resource.name,
+          description: resource.description,
+          requiresApproval: resource.requiresApproval,
+          isAvailable: resourceBookings.length === 0,
+          isYours: resourceBookings.some(b => b.regularBookerId === booker.id),
+        };
+      });
+
+      res.json({ date, availability });
+    } catch (err: any) {
+      console.error("Booker gear availability error:", err);
+      res.status(500).json({ message: "Failed to fetch gear availability" });
+    }
+  });
+
+  app.post("/api/booker/desk-bookings/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const linkResult = await storage.getBookerByLinkToken(token);
+      if (!linkResult || (linkResult.link.tokenExpiry && new Date(linkResult.link.tokenExpiry) < new Date()) || !linkResult.link.enabled) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+      }
+      const booker = linkResult.booker;
+
+      let agreement: any = null;
+      if (booker.membershipId) agreement = await storage.getMembership(booker.membershipId);
+      else if (booker.mouId) agreement = await storage.getMou(booker.mouId);
+
+      const categories = agreement?.bookingCategories || [];
+      if (!categories.includes("hot_desking")) {
+        return res.status(403).json({ message: "Hot desking access not enabled on your agreement" });
+      }
+
+      const now = new Date();
+      if (agreement) {
+        const isActive = agreement.status === "active" &&
+          (!agreement.startDate || new Date(agreement.startDate) <= now) &&
+          (!agreement.endDate || new Date(agreement.endDate) >= now);
+        if (!isActive) {
+          return res.status(403).json({ message: "Your agreement is not currently active" });
+        }
+      }
+
+      const { resourceId, date, startTime, endTime } = req.body;
+      if (!resourceId || !date || !startTime || !endTime) {
+        return res.status(400).json({ message: "resourceId, date, startTime, and endTime are required" });
+      }
+
+      const resource = await storage.getBookableResource(resourceId);
+      if (!resource || resource.category !== "hot_desking" || !resource.active) {
+        return res.status(400).json({ message: "Invalid desk resource" });
+      }
+
+      const bookingDate = new Date(date);
+      const dayStart = new Date(bookingDate);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(bookingDate);
+      dayEnd.setHours(23, 59, 59, 999);
+
+      const existingBookings = await storage.getDeskBookingsByDateRange(booker.userId, dayStart, dayEnd);
+      const conflicts = existingBookings.filter(b => {
+        if (b.resourceId !== resourceId || b.status === "cancelled") return false;
+        return timesOverlap(startTime, endTime, b.startTime, b.endTime);
+      });
+
+      if (conflicts.length > 0) {
+        return res.status(409).json({ message: "Time slot conflicts with existing desk booking" });
+      }
+
+      const deskBooking = await storage.createDeskBooking({
+        userId: booker.userId,
+        resourceId,
+        regularBookerId: booker.id,
+        date: bookingDate,
+        startTime,
+        endTime,
+        status: "booked",
+      });
+
+      res.json(deskBooking);
+    } catch (err: any) {
+      console.error("Booker desk booking error:", err);
+      res.status(500).json({ message: err.message || "Failed to create desk booking" });
+    }
+  });
+
+  app.post("/api/booker/gear-bookings/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const linkResult = await storage.getBookerByLinkToken(token);
+      if (!linkResult || (linkResult.link.tokenExpiry && new Date(linkResult.link.tokenExpiry) < new Date()) || !linkResult.link.enabled) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+      }
+      const booker = linkResult.booker;
+
+      let agreement: any = null;
+      if (booker.membershipId) agreement = await storage.getMembership(booker.membershipId);
+      else if (booker.mouId) agreement = await storage.getMou(booker.mouId);
+
+      const categories = agreement?.bookingCategories || [];
+      if (!categories.includes("gear")) {
+        return res.status(403).json({ message: "Gear booking access not enabled on your agreement" });
+      }
+
+      const now = new Date();
+      if (agreement) {
+        const isActive = agreement.status === "active" &&
+          (!agreement.startDate || new Date(agreement.startDate) <= now) &&
+          (!agreement.endDate || new Date(agreement.endDate) >= now);
+        if (!isActive) {
+          return res.status(403).json({ message: "Your agreement is not currently active" });
+        }
+      }
+
+      const { resourceId, date } = req.body;
+      if (!resourceId || !date) {
+        return res.status(400).json({ message: "resourceId and date are required" });
+      }
+
+      const resource = await storage.getBookableResource(resourceId);
+      if (!resource || resource.category !== "gear" || !resource.active) {
+        return res.status(400).json({ message: "Invalid gear resource" });
+      }
+
+      const bookingDate = new Date(date);
+      const existingBookings = await storage.getGearBookingsByDate(booker.userId, bookingDate);
+      const alreadyBooked = existingBookings.some(b => b.resourceId === resourceId && b.status === "booked");
+      if (alreadyBooked) {
+        return res.status(409).json({ message: "This gear item is already booked for this date" });
+      }
+
+      const gearBooking = await storage.createGearBooking({
+        userId: booker.userId,
+        resourceId,
+        regularBookerId: booker.id,
+        date: bookingDate,
+        status: "booked",
+        approved: !resource.requiresApproval,
+      });
+
+      res.json({
+        ...gearBooking,
+        requiresApproval: resource.requiresApproval,
+        approvalPending: resource.requiresApproval && !gearBooking.approved,
+      });
+    } catch (err: any) {
+      console.error("Booker gear booking error:", err);
+      res.status(500).json({ message: err.message || "Failed to create gear booking" });
+    }
+  });
+
+  app.get("/api/booker/all-bookings/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const linkResult = await storage.getBookerByLinkToken(token);
+      if (!linkResult || (linkResult.link.tokenExpiry && new Date(linkResult.link.tokenExpiry) < new Date()) || !linkResult.link.enabled) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+      }
+      const booker = linkResult.booker;
+
+      const isGroupLink = linkResult.link.isGroupLink === true;
+
+      const allVenueBookings = await storage.getBookings(booker.userId);
+      let venueBookings;
+      if (isGroupLink && booker.groupId) {
+        venueBookings = allVenueBookings.filter(b => b.bookerGroupId === booker.groupId);
+      } else if (booker.contactId) {
+        venueBookings = allVenueBookings.filter(b => b.bookerId === booker.contactId || b.bookerGroupId === booker.groupId);
+      } else {
+        venueBookings = allVenueBookings.filter(b => b.bookerId === booker.contactId);
+      }
+
+      const deskBookingsList = await storage.getDeskBookingsByBooker(booker.id);
+      const gearBookingsList = await storage.getGearBookingsByBooker(booker.id);
+
+      const allResources = await storage.getBookableResources(booker.userId);
+      const resourceMap = new Map(allResources.map(r => [r.id, r]));
+
+      res.json({
+        venue: venueBookings.map(b => ({
+          ...b,
+          bookingType: "venue_hire",
+        })),
+        desk: deskBookingsList.map(b => ({
+          ...b,
+          bookingType: "hot_desking",
+          resourceName: resourceMap.get(b.resourceId)?.name || "Unknown Desk",
+        })),
+        gear: gearBookingsList.map(b => ({
+          ...b,
+          bookingType: "gear",
+          resourceName: resourceMap.get(b.resourceId)?.name || "Unknown Gear",
+          requiresApproval: resourceMap.get(b.resourceId)?.requiresApproval || false,
+        })),
+      });
+    } catch (err: any) {
+      console.error("Booker all bookings error:", err);
+      res.status(500).json({ message: "Failed to fetch bookings" });
+    }
+  });
+
+  app.delete("/api/booker/desk-bookings/:token/:id", async (req, res) => {
+    try {
+      const { token, id } = req.params;
+      const linkResult = await storage.getBookerByLinkToken(token);
+      if (!linkResult || (linkResult.link.tokenExpiry && new Date(linkResult.link.tokenExpiry) < new Date()) || !linkResult.link.enabled) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+      }
+      const booker = linkResult.booker;
+
+      const bookingId = parseInt(id);
+      const booking = await storage.getDeskBooking(bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Desk booking not found" });
+      }
+      if (booking.regularBookerId !== booker.id) {
+        return res.status(403).json({ message: "You can only cancel your own bookings" });
+      }
+
+      await storage.updateDeskBooking(bookingId, { status: "cancelled" });
+      res.json({ success: true, message: "Desk booking cancelled" });
+    } catch (err: any) {
+      console.error("Booker desk cancel error:", err);
+      res.status(500).json({ message: "Failed to cancel desk booking" });
+    }
+  });
+
+  app.delete("/api/booker/gear-bookings/:token/:id", async (req, res) => {
+    try {
+      const { token, id } = req.params;
+      const linkResult = await storage.getBookerByLinkToken(token);
+      if (!linkResult || (linkResult.link.tokenExpiry && new Date(linkResult.link.tokenExpiry) < new Date()) || !linkResult.link.enabled) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+      }
+      const booker = linkResult.booker;
+
+      const bookingId = parseInt(id);
+      const booking = await storage.getGearBooking(bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Gear booking not found" });
+      }
+      if (booking.regularBookerId !== booker.id) {
+        return res.status(403).json({ message: "You can only cancel your own bookings" });
+      }
+      if (booking.status === "returned") {
+        return res.status(400).json({ message: "Cannot cancel a returned gear booking" });
+      }
+
+      await storage.updateGearBooking(bookingId, { status: "cancelled" as any });
+      res.json({ success: true, message: "Gear booking cancelled" });
+    } catch (err: any) {
+      console.error("Booker gear cancel error:", err);
+      res.status(500).json({ message: "Failed to cancel gear booking" });
+    }
+  });
+
   app.get("/api/operating-hours", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
@@ -10367,6 +10742,293 @@ Rules:
   }
 
   setInterval(runAfterHoursAutoSend, 30 * 60 * 1000);
+  // === Bookable Resources API ===
+
+  app.get("/api/bookable-resources", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const category = req.query.category as string | undefined;
+      if (category) {
+        const resources = await storage.getBookableResourcesByCategory(userId, category);
+        return res.json(resources);
+      }
+      const resources = await storage.getBookableResources(userId);
+      res.json(resources);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bookable-resources", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const data = insertBookableResourceSchema.parse({ ...req.body, userId });
+      const resource = await storage.createBookableResource(data);
+      res.status(201).json(resource);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
+      }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/bookable-resources/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getBookableResource(id);
+      if (!existing) return res.status(404).json({ message: "Resource not found" });
+      if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+      const resource = await storage.updateBookableResource(id, req.body);
+      res.json(resource);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/bookable-resources/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getBookableResource(id);
+      if (!existing) return res.status(404).json({ message: "Resource not found" });
+      if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+      await storage.deleteBookableResource(id);
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // === Desk Bookings API ===
+
+  app.get("/api/desk-bookings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { startDate, endDate, resourceId } = req.query;
+      if (startDate && endDate) {
+        const bookingsResult = await storage.getDeskBookingsByDateRange(userId, new Date(startDate as string), new Date(endDate as string));
+        if (resourceId) {
+          return res.json(bookingsResult.filter(b => b.resourceId === parseInt(resourceId as string)));
+        }
+        return res.json(bookingsResult);
+      }
+      if (resourceId) {
+        const bookingsResult = await storage.getDeskBookingsByResource(parseInt(resourceId as string));
+        return res.json(bookingsResult.filter(b => b.userId === userId));
+      }
+      const allBookings = await storage.getDeskBookings(userId);
+      res.json(allBookings);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/desk-bookings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const body = { ...req.body, userId };
+      if (body.date && typeof body.date === "string") body.date = new Date(body.date);
+
+      if (body.isRecurring && body.recurringPattern) {
+        const pattern = body.recurringPattern as { dayOfWeek: number; frequency: string; endDate: string };
+        const recurringGroupId = crypto.randomUUID();
+        const createdBookings = [];
+        const startDate = new Date(body.date);
+        const endDate = new Date(pattern.endDate);
+        const current = new Date(startDate);
+
+        while (current <= endDate) {
+          if (current.getDay() === pattern.dayOfWeek || !pattern.dayOfWeek) {
+            const bookingData = insertDeskBookingSchema.parse({
+              ...body,
+              date: new Date(current),
+              isRecurring: true,
+              recurringPattern: pattern,
+              recurringGroupId,
+            });
+            const created = await storage.createDeskBooking(bookingData);
+            createdBookings.push(created);
+          }
+          const increment = pattern.frequency === "fortnightly" ? 14 : 7;
+          current.setDate(current.getDate() + increment);
+        }
+        return res.status(201).json(createdBookings);
+      }
+
+      const data = insertDeskBookingSchema.parse(body);
+      const booking = await storage.createDeskBooking(data);
+      res.status(201).json(booking);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
+      }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/desk-bookings/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getDeskBooking(id);
+      if (!existing) return res.status(404).json({ message: "Desk booking not found" });
+      if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+      const updated = await storage.updateDeskBooking(id, req.body);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/desk-bookings/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getDeskBooking(id);
+      if (!existing) return res.status(404).json({ message: "Desk booking not found" });
+      if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+      await storage.deleteDeskBooking(id);
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // === Gear Bookings API ===
+
+  app.get("/api/gear-bookings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { date, resourceId } = req.query;
+      if (date) {
+        const bookingsResult = await storage.getGearBookingsByDate(userId, new Date(date as string));
+        if (resourceId) {
+          return res.json(bookingsResult.filter(b => b.resourceId === parseInt(resourceId as string)));
+        }
+        return res.json(bookingsResult);
+      }
+      if (resourceId) {
+        const bookingsResult = await storage.getGearBookingsByResource(parseInt(resourceId as string));
+        return res.json(bookingsResult.filter(b => b.userId === userId));
+      }
+      const allBookings = await storage.getGearBookings(userId);
+      res.json(allBookings);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/gear-bookings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const body = { ...req.body, userId };
+      if (body.date && typeof body.date === "string") body.date = new Date(body.date);
+
+      const resource = await storage.getBookableResource(body.resourceId);
+      if (!resource) return res.status(404).json({ message: "Resource not found" });
+
+      if (resource.requiresApproval) {
+        body.approved = false;
+      } else {
+        body.approved = true;
+      }
+
+      const data = insertGearBookingSchema.parse(body);
+      const booking = await storage.createGearBooking(data);
+      res.status(201).json(booking);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
+      }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/gear-bookings/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getGearBooking(id);
+      if (!existing) return res.status(404).json({ message: "Gear booking not found" });
+      if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+
+      if (req.body.markReturned) {
+        const updated = await storage.markGearReturned(id);
+        return res.json(updated);
+      }
+
+      const updated = await storage.updateGearBooking(id, req.body);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // === Desk Availability API ===
+
+  app.get("/api/desk-availability/:date", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const date = new Date(req.params.date);
+      const dayStart = new Date(date);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(date);
+      dayEnd.setHours(23, 59, 59, 999);
+
+      const desks = await storage.getBookableResourcesByCategory(userId, "hot_desking");
+      const dayBookings = await storage.getDeskBookingsByDateRange(userId, dayStart, dayEnd);
+
+      const availability = desks.map(desk => {
+        const deskBookings = dayBookings.filter(b => b.resourceId === desk.id && b.status === "booked");
+        return {
+          resourceId: desk.id,
+          resourceName: desk.name,
+          active: desk.active,
+          bookings: deskBookings.map(b => ({
+            id: b.id,
+            startTime: b.startTime,
+            endTime: b.endTime,
+            status: b.status,
+          })),
+          isAvailable: deskBookings.length === 0,
+        };
+      });
+
+      res.json(availability);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // === Gear Availability API ===
+
+  app.get("/api/gear-availability/:date", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const date = new Date(req.params.date);
+
+      const gear = await storage.getBookableResourcesByCategory(userId, "gear");
+      const dayBookings = await storage.getGearBookingsByDate(userId, date);
+
+      const availability = gear.map(item => {
+        const itemBookings = dayBookings.filter(b => b.resourceId === item.id && b.status !== "returned");
+        return {
+          resourceId: item.id,
+          resourceName: item.name,
+          requiresApproval: item.requiresApproval,
+          active: item.active,
+          bookings: itemBookings.map(b => ({
+            id: b.id,
+            status: b.status,
+            approved: b.approved,
+          })),
+          isAvailable: itemBookings.length === 0,
+        };
+      });
+
+      res.json(availability);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   setTimeout(runAfterHoursAutoSend, 10000);
 
   startAutoSync();

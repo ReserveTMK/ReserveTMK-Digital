@@ -25,6 +25,7 @@ import {
   BarChart3,
   PhoneCall,
   UserCheck,
+  Monitor,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useRef, useEffect } from "react";
@@ -68,6 +69,7 @@ const navGroups: NavGroup[] = [
       { name: "Programmes", href: "/programmes", icon: Layers, description: "Workshops & activations" },
       { name: "Projects", href: "/projects", icon: Rocket, description: "Initiatives & work streams" },
       { name: "Agreements", href: "/agreements", icon: Handshake, description: "Memberships & MOUs" },
+      { name: "Resource Calendar", href: "/resource-calendar", icon: Monitor, description: "Desks, gear & venue availability" },
     ],
   },
   {

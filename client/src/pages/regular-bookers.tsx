@@ -45,6 +45,9 @@ import {
   ChevronDown,
   ChevronUp,
   FileText,
+  Monitor,
+  Wrench,
+  Home,
 } from "lucide-react";
 import {
   Table,
@@ -116,6 +119,7 @@ export default function RegularBookersPage() {
   const [tierFilter, setTierFilter] = useState<string>("all");
   const [linkFilter, setLinkFilter] = useState<string>("all");
   const [packageFilter, setPackageFilter] = useState<string>("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [suggestionsOpen, setSuggestionsOpen] = useState(true);
   const [prefillData, setPrefillData] = useState<{ contactId?: number; groupId?: number; billingEmail?: string; organizationName?: string } | null>(null);
 
@@ -190,6 +194,15 @@ export default function RegularBookersPage() {
     return { status: "active" as const, label: lastAccessed ? `Active` : "Active (unused)", links: activeLinks, lastAccessed };
   };
 
+  const getBookerCategories = (booker: RegularBooker): string[] => {
+    const agreement = getAgreementInfo(booker);
+    if (!agreement) return ["venue_hire"];
+    const ag = agreement.agreement as any;
+    const cats = ag?.bookingCategories;
+    if (Array.isArray(cats) && cats.length > 0) return cats;
+    return ["venue_hire"];
+  };
+
   const getPackageInfo = (booker: RegularBooker) => {
     const agreement = getAgreementInfo(booker);
     if (agreement) {
@@ -210,6 +223,56 @@ export default function RegularBookersPage() {
       return { used, total, remaining, period: booker.packageExpiresAt ? `expires ${format(new Date(booker.packageExpiresAt), "d MMM yyyy")}` : null, source: "package" as const };
     }
     return null;
+  };
+
+  const getCategoryStatusInfo = (booker: RegularBooker) => {
+    const agreement = getAgreementInfo(booker);
+    if (!agreement) return null;
+    const ag = agreement.agreement as any;
+    const cats: string[] = ag?.bookingCategories || [];
+    const endDate = ag?.endDate;
+    const result: { category: string; label: string; status: "active" | "expired" | "allowance" }[] = [];
+
+    if (cats.includes("venue_hire")) {
+      const allowance = ag?.bookingAllowance;
+      if (allowance) {
+        const type = booker.membershipId ? "membership" as const : "mou" as const;
+        const id = (booker.membershipId || booker.mouId)!;
+        const period = ag?.allowancePeriod || "quarterly";
+        const used = getAgreementAllowanceUsage(allBookings, type, id, period);
+        result.push({ category: "venue_hire", label: `${used}/${allowance} bookings used`, status: "allowance" });
+      }
+    }
+
+    if (cats.includes("hot_desking")) {
+      if (endDate) {
+        const exp = new Date(endDate);
+        const isExpired = exp < new Date();
+        result.push({
+          category: "hot_desking",
+          label: isExpired ? `Expired ${format(exp, "d MMM yyyy")}` : `Active (expires ${format(exp, "d MMM yyyy")})`,
+          status: isExpired ? "expired" : "active",
+        });
+      } else {
+        result.push({ category: "hot_desking", label: "Active (no expiry)", status: "active" });
+      }
+    }
+
+    if (cats.includes("gear")) {
+      if (endDate) {
+        const exp = new Date(endDate);
+        const isExpired = exp < new Date();
+        result.push({
+          category: "gear",
+          label: isExpired ? `Expired ${format(exp, "d MMM yyyy")}` : `Active (expires ${format(exp, "d MMM yyyy")})`,
+          status: isExpired ? "expired" : "active",
+        });
+      } else {
+        result.push({ category: "gear", label: "Active (no expiry)", status: "active" });
+      }
+    }
+
+    return result.length > 0 ? result : null;
   };
 
   const copyLink = (portalUrl: string) => {
@@ -249,9 +312,13 @@ export default function RegularBookersPage() {
         if (packageFilter === "has" && !pkg) return false;
         if (packageFilter === "none" && pkg) return false;
       }
+      if (categoryFilter !== "all") {
+        const cats = getBookerCategories(booker);
+        if (!cats.includes(categoryFilter)) return false;
+      }
       return true;
     });
-  }, [regularBookers, search, agreementFilter, tierFilter, linkFilter, packageFilter, allBookerLinks, allMemberships, allMous, allBookings]);
+  }, [regularBookers, search, agreementFilter, tierFilter, linkFilter, packageFilter, categoryFilter, allBookerLinks, allMemberships, allMous, allBookings]);
 
   const handleDelete = async (id: number) => {
     try {
@@ -262,7 +329,7 @@ export default function RegularBookersPage() {
     }
   };
 
-  const hasFilters = agreementFilter !== "all" || tierFilter !== "all" || linkFilter !== "all" || packageFilter !== "all";
+  const hasFilters = agreementFilter !== "all" || tierFilter !== "all" || linkFilter !== "all" || packageFilter !== "all" || categoryFilter !== "all";
 
   const totalSuggestions = (suggestions?.venueContacts?.length || 0) + (suggestions?.agreementContacts?.length || 0) + (suggestions?.agreementGroups?.length || 0);
 
@@ -404,6 +471,17 @@ export default function RegularBookersPage() {
             <SelectItem value="expired">Expired</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+          <SelectTrigger className="w-[150px]" data-testid="select-category-filter">
+            <SelectValue placeholder="Category" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Categories</SelectItem>
+            <SelectItem value="venue_hire">Venue Hire</SelectItem>
+            <SelectItem value="hot_desking">Hot Desking</SelectItem>
+            <SelectItem value="gear">Gear Borrowers</SelectItem>
+          </SelectContent>
+        </Select>
         <Select value={packageFilter} onValueChange={setPackageFilter}>
           <SelectTrigger className="w-[140px]" data-testid="select-package-filter">
             <SelectValue placeholder="Package" />
@@ -418,7 +496,7 @@ export default function RegularBookersPage() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => { setAgreementFilter("all"); setTierFilter("all"); setLinkFilter("all"); setPackageFilter("all"); }}
+            onClick={() => { setAgreementFilter("all"); setTierFilter("all"); setLinkFilter("all"); setPackageFilter("all"); setCategoryFilter("all"); }}
             data-testid="button-clear-filters"
           >
             <X className="w-4 h-4" />
@@ -450,8 +528,9 @@ export default function RegularBookersPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="min-w-[200px]" data-testid="th-booker-name">Booker</TableHead>
+                <TableHead className="min-w-[120px]" data-testid="th-categories">Categories</TableHead>
                 <TableHead className="min-w-[120px]" data-testid="th-agreement">Agreement</TableHead>
-                <TableHead className="min-w-[130px]" data-testid="th-package">Package / Balance</TableHead>
+                <TableHead className="min-w-[180px]" data-testid="th-package">Package / Balance</TableHead>
                 <TableHead className="min-w-[100px]" data-testid="th-pricing">Pricing</TableHead>
                 <TableHead className="min-w-[120px]" data-testid="th-link">Portal Link</TableHead>
                 <TableHead className="min-w-[80px]" data-testid="th-status">Status</TableHead>
@@ -464,6 +543,8 @@ export default function RegularBookersPage() {
                 const linkStatus = getLinkStatus(booker);
                 const pkg = getPackageInfo(booker);
                 const groupName = getBookerGroupName(booker);
+                const categories = getBookerCategories(booker);
+                const categoryStatus = getCategoryStatusInfo(booker);
 
                 return (
                   <TableRow key={booker.id} data-testid={`row-booker-${booker.id}`}>
@@ -489,6 +570,28 @@ export default function RegularBookersPage() {
                       </div>
                     </TableCell>
                     <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {categories.includes("venue_hire") && (
+                          <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800" data-testid={`badge-cat-venue-${booker.id}`}>
+                            <Home className="w-3 h-3 mr-0.5" />
+                            Venue
+                          </Badge>
+                        )}
+                        {categories.includes("hot_desking") && (
+                          <Badge variant="outline" className="text-[10px] bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800" data-testid={`badge-cat-desk-${booker.id}`}>
+                            <Monitor className="w-3 h-3 mr-0.5" />
+                            Desk
+                          </Badge>
+                        )}
+                        {categories.includes("gear") && (
+                          <Badge variant="outline" className="text-[10px] bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800" data-testid={`badge-cat-gear-${booker.id}`}>
+                            <Wrench className="w-3 h-3 mr-0.5" />
+                            Gear
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
                       {agreement ? (
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -506,7 +609,20 @@ export default function RegularBookersPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      {pkg ? (
+                      {categoryStatus && categoryStatus.length > 0 ? (
+                        <div className="space-y-1">
+                          {categoryStatus.map((cs) => (
+                            <div key={cs.category} className="text-xs flex items-center gap-1.5" data-testid={`text-cat-status-${cs.category}-${booker.id}`}>
+                              {cs.category === "venue_hire" && <Home className="w-3 h-3 text-blue-600 dark:text-blue-400 shrink-0" />}
+                              {cs.category === "hot_desking" && <Monitor className="w-3 h-3 text-purple-600 dark:text-purple-400 shrink-0" />}
+                              {cs.category === "gear" && <Wrench className="w-3 h-3 text-orange-600 dark:text-orange-400 shrink-0" />}
+                              <span className={cs.status === "expired" ? "text-red-600 dark:text-red-400" : cs.status === "active" ? "text-green-700 dark:text-green-400" : ""}>
+                                {cs.label}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : pkg ? (
                         <div className="text-xs">
                           <span className={`font-medium ${pkg.remaining === 0 ? "text-red-600 dark:text-red-400" : ""}`}>
                             {pkg.used}/{pkg.total}

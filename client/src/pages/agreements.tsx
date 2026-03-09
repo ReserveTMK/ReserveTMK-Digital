@@ -48,7 +48,9 @@ import {
   Network,
   Undo2,
   TrendingDown,
+  Info,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -366,6 +368,15 @@ export default function Agreements() {
                                   {membership.membershipYear}
                                 </Badge>
                               )}
+                              {(membership.bookingCategories || []).includes("venue_hire") && (
+                                <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800" data-testid={`badge-category-venue-${membership.id}`}>Venue</Badge>
+                              )}
+                              {(membership.bookingCategories || []).includes("hot_desking") && (
+                                <Badge variant="outline" className="text-[10px] bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800" data-testid={`badge-category-desk-${membership.id}`}>Desk</Badge>
+                              )}
+                              {(membership.bookingCategories || []).includes("gear") && (
+                                <Badge variant="outline" className="text-[10px] bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800" data-testid={`badge-category-gear-${membership.id}`}>Gear</Badge>
+                              )}
                             </div>
                             <p className="text-sm text-muted-foreground mb-2" data-testid={`text-membership-name-${membership.id}`}>
                               {membership.name}
@@ -510,6 +521,15 @@ export default function Agreements() {
                               <Badge variant="outline" className="text-xs" data-testid={`badge-mou-status-${mou.id}`}>
                                 {mou.status}
                               </Badge>
+                              {(mou.bookingCategories || []).includes("venue_hire") && (
+                                <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800" data-testid={`badge-mou-category-venue-${mou.id}`}>Venue</Badge>
+                              )}
+                              {(mou.bookingCategories || []).includes("hot_desking") && (
+                                <Badge variant="outline" className="text-[10px] bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800" data-testid={`badge-mou-category-desk-${mou.id}`}>Desk</Badge>
+                              )}
+                              {(mou.bookingCategories || []).includes("gear") && (
+                                <Badge variant="outline" className="text-[10px] bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800" data-testid={`badge-mou-category-gear-${mou.id}`}>Gear</Badge>
+                              )}
                             </div>
                             {(groupName || mou.partnerName || contactName) && (
                               <p className="text-sm text-muted-foreground mb-2 flex items-center gap-1.5 flex-wrap" data-testid={`text-mou-partner-${mou.id}`}>
@@ -708,14 +728,31 @@ function MembershipFormDialog({
   const [quickGroupName, setQuickGroupName] = useState("");
   const [standardValue, setStandardValue] = useState(membership?.standardValue || "0");
   const [annualFee, setAnnualFee] = useState(membership?.annualFee || "0");
+  const [bookingCategories, setBookingCategories] = useState<string[]>(
+    membership?.bookingCategories || []
+  );
   const [bookingAllowance, setBookingAllowance] = useState((membership?.bookingAllowance || 0).toString());
   const [allowancePeriod, setAllowancePeriod] = useState(membership?.allowancePeriod || "quarterly");
   const [membershipYear, setMembershipYear] = useState(
     (membership?.membershipYear || new Date().getFullYear()).toString()
   );
+  const [startDate, setStartDate] = useState(
+    membership?.startDate ? format(new Date(membership.startDate), "yyyy-MM-dd") : ""
+  );
+  const [endDate, setEndDate] = useState(
+    membership?.endDate ? format(new Date(membership.endDate), "yyyy-MM-dd") : ""
+  );
   const [status, setStatus] = useState(membership?.status || "active");
   const [paymentStatus, setPaymentStatus] = useState(membership?.paymentStatus || "unpaid");
   const [notes, setNotes] = useState(membership?.notes || "");
+
+  const toggleCategory = (cat: string) => {
+    setBookingCategories((prev) =>
+      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
+    );
+  };
+
+  const hasHotDeskingOrGear = bookingCategories.includes("hot_desking") || bookingCategories.includes("gear");
 
   const filteredContacts = useMemo(() => {
     if (!contacts || !contactSearch.trim()) return [];
@@ -759,17 +796,20 @@ function MembershipFormDialog({
   const handleSubmit = () => {
     if (!name.trim()) return;
     const year = parseInt(membershipYear) || new Date().getFullYear();
+    const computedStartDate = startDate ? new Date(startDate).toISOString() : new Date(`${year}-01-01`).toISOString();
+    const computedEndDate = endDate ? new Date(endDate).toISOString() : new Date(`${year}-12-31`).toISOString();
     const data: any = {
       name: name.trim(),
       contactId: contactId || undefined,
       groupId: groupId || undefined,
       standardValue: standardValue || "0",
       annualFee: annualFee || "0",
+      bookingCategories,
       bookingAllowance: parseInt(bookingAllowance) || 0,
       allowancePeriod,
       membershipYear: year,
-      startDate: new Date(`${year}-01-01`).toISOString(),
-      endDate: new Date(`${year}-12-31`).toISOString(),
+      startDate: computedStartDate,
+      endDate: computedEndDate,
       status,
       paymentStatus,
       notes: notes.trim() || undefined,
@@ -1026,30 +1066,75 @@ function MembershipFormDialog({
             </div>
           </div>
 
+          <div>
+            <Label>Booking Categories</Label>
+            <p className="text-[10px] text-muted-foreground mb-2">Select which resource types this membership grants access to</p>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer" data-testid="checkbox-membership-venue-hire">
+                <Checkbox
+                  checked={bookingCategories.includes("venue_hire")}
+                  onCheckedChange={() => toggleCategory("venue_hire")}
+                />
+                <span className="text-sm">Venue Hire</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer" data-testid="checkbox-membership-hot-desking">
+                <Checkbox
+                  checked={bookingCategories.includes("hot_desking")}
+                  onCheckedChange={() => toggleCategory("hot_desking")}
+                />
+                <span className="text-sm">Hot Desking</span>
+              </label>
+              {bookingCategories.includes("hot_desking") && (
+                <div className="ml-6 flex items-start gap-1.5 text-xs text-muted-foreground bg-muted/30 rounded-md p-2">
+                  <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>Unlimited desk access within the agreement date range</span>
+                </div>
+              )}
+              <label className="flex items-center gap-2 cursor-pointer" data-testid="checkbox-membership-gear">
+                <Checkbox
+                  checked={bookingCategories.includes("gear")}
+                  onCheckedChange={() => toggleCategory("gear")}
+                />
+                <span className="text-sm">Gear Booking</span>
+              </label>
+              {bookingCategories.includes("gear") && (
+                <div className="ml-6 flex items-start gap-1.5 text-xs text-muted-foreground bg-muted/30 rounded-md p-2">
+                  <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>Unlimited gear access within the agreement date range</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {bookingCategories.includes("venue_hire") && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Booking Allowance</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={bookingAllowance}
+                  onChange={(e) => setBookingAllowance(e.target.value)}
+                  placeholder="Full-day bookings"
+                  data-testid="input-membership-booking-allowance"
+                />
+              </div>
+              <div>
+                <Label>Period</Label>
+                <Select value={allowancePeriod} onValueChange={setAllowancePeriod}>
+                  <SelectTrigger data-testid="select-membership-allowance-period">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="quarterly">Quarterly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-3 gap-3">
-            <div>
-              <Label>Booking Allowance</Label>
-              <Input
-                type="number"
-                min="0"
-                value={bookingAllowance}
-                onChange={(e) => setBookingAllowance(e.target.value)}
-                placeholder="Full-day bookings"
-                data-testid="input-membership-booking-allowance"
-              />
-            </div>
-            <div>
-              <Label>Period</Label>
-              <Select value={allowancePeriod} onValueChange={setAllowancePeriod}>
-                <SelectTrigger data-testid="select-membership-allowance-period">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="monthly">Monthly</SelectItem>
-                  <SelectItem value="quarterly">Quarterly</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
             <div>
               <Label>Year</Label>
               <Select value={membershipYear} onValueChange={setMembershipYear}>
@@ -1063,7 +1148,31 @@ function MembershipFormDialog({
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label>Start Date{hasHotDeskingOrGear ? " *" : ""}</Label>
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                data-testid="input-membership-start-date"
+              />
+            </div>
+            <div>
+              <Label>End Date{hasHotDeskingOrGear ? " *" : ""}</Label>
+              <Input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                data-testid="input-membership-end-date"
+              />
+            </div>
           </div>
+          {hasHotDeskingOrGear && !startDate && !endDate && (
+            <div className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-900/20 rounded-md p-2">
+              <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span>Start and end dates define the access window for hot desking and gear booking</span>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -1155,6 +1264,9 @@ function MouFormDialog({
   const [receiving, setReceiving] = useState(mou?.receiving || "");
   const [actualValue, setActualValue] = useState(mou?.actualValue || "0");
   const [inKindValue, setInKindValue] = useState(mou?.inKindValue || "0");
+  const [bookingCategories, setBookingCategories] = useState<string[]>(
+    mou?.bookingCategories || []
+  );
   const [bookingAllowance, setBookingAllowance] = useState((mou?.bookingAllowance || 0).toString());
   const [allowancePeriod, setAllowancePeriod] = useState(mou?.allowancePeriod || "quarterly");
   const [startDate, setStartDate] = useState(
@@ -1165,6 +1277,14 @@ function MouFormDialog({
   );
   const [status, setStatus] = useState(mou?.status || "active");
   const [notes, setNotes] = useState(mou?.notes || "");
+
+  const toggleMouCategory = (cat: string) => {
+    setBookingCategories((prev) =>
+      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
+    );
+  };
+
+  const mouHasHotDeskingOrGear = bookingCategories.includes("hot_desking") || bookingCategories.includes("gear");
 
   const filteredContacts = useMemo(() => {
     if (!contacts || !contactSearch.trim()) return [];
@@ -1216,6 +1336,7 @@ function MouFormDialog({
       receiving: receiving.trim() || undefined,
       actualValue: actualValue || "0",
       inKindValue: inKindValue || "0",
+      bookingCategories,
       bookingAllowance: parseInt(bookingAllowance) || 0,
       allowancePeriod,
       startDate: startDate ? new Date(startDate).toISOString() : null,
@@ -1504,35 +1625,77 @@ function MouFormDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Booking Allowance</Label>
-              <Input
-                type="number"
-                min="0"
-                value={bookingAllowance}
-                onChange={(e) => setBookingAllowance(e.target.value)}
-                placeholder="Free bookings per period"
-                data-testid="input-mou-booking-allowance"
-              />
-            </div>
-            <div>
-              <Label>Allowance Period</Label>
-              <Select value={allowancePeriod} onValueChange={setAllowancePeriod}>
-                <SelectTrigger data-testid="select-mou-allowance-period">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="monthly">Monthly</SelectItem>
-                  <SelectItem value="quarterly">Quarterly</SelectItem>
-                </SelectContent>
-              </Select>
+          <div>
+            <Label>Booking Categories</Label>
+            <p className="text-[10px] text-muted-foreground mb-2">Select which resource types this MOU grants access to</p>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer" data-testid="checkbox-mou-venue-hire">
+                <Checkbox
+                  checked={bookingCategories.includes("venue_hire")}
+                  onCheckedChange={() => toggleMouCategory("venue_hire")}
+                />
+                <span className="text-sm">Venue Hire</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer" data-testid="checkbox-mou-hot-desking">
+                <Checkbox
+                  checked={bookingCategories.includes("hot_desking")}
+                  onCheckedChange={() => toggleMouCategory("hot_desking")}
+                />
+                <span className="text-sm">Hot Desking</span>
+              </label>
+              {bookingCategories.includes("hot_desking") && (
+                <div className="ml-6 flex items-start gap-1.5 text-xs text-muted-foreground bg-muted/30 rounded-md p-2">
+                  <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>Unlimited desk access within the agreement date range</span>
+                </div>
+              )}
+              <label className="flex items-center gap-2 cursor-pointer" data-testid="checkbox-mou-gear">
+                <Checkbox
+                  checked={bookingCategories.includes("gear")}
+                  onCheckedChange={() => toggleMouCategory("gear")}
+                />
+                <span className="text-sm">Gear Booking</span>
+              </label>
+              {bookingCategories.includes("gear") && (
+                <div className="ml-6 flex items-start gap-1.5 text-xs text-muted-foreground bg-muted/30 rounded-md p-2">
+                  <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>Unlimited gear access within the agreement date range</span>
+                </div>
+              )}
             </div>
           </div>
 
+          {bookingCategories.includes("venue_hire") && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Booking Allowance</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={bookingAllowance}
+                  onChange={(e) => setBookingAllowance(e.target.value)}
+                  placeholder="Free bookings per period"
+                  data-testid="input-mou-booking-allowance"
+                />
+              </div>
+              <div>
+                <Label>Allowance Period</Label>
+                <Select value={allowancePeriod} onValueChange={setAllowancePeriod}>
+                  <SelectTrigger data-testid="select-mou-allowance-period">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="quarterly">Quarterly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Start Date</Label>
+              <Label>Start Date{mouHasHotDeskingOrGear ? " *" : ""}</Label>
               <Input
                 type="date"
                 value={startDate}
@@ -1541,7 +1704,7 @@ function MouFormDialog({
               />
             </div>
             <div>
-              <Label>End Date</Label>
+              <Label>End Date{mouHasHotDeskingOrGear ? " *" : ""}</Label>
               <Input
                 type="date"
                 value={endDate}
@@ -1550,6 +1713,12 @@ function MouFormDialog({
               />
             </div>
           </div>
+          {mouHasHotDeskingOrGear && !startDate && !endDate && (
+            <div className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-900/20 rounded-md p-2">
+              <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span>Start and end dates define the access window for hot desking and gear booking</span>
+            </div>
+          )}
 
           <div>
             <Label>Status</Label>
