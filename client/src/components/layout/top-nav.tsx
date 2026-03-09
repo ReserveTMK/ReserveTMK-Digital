@@ -55,6 +55,7 @@ const navGroups: NavGroup[] = [
       { name: "People", href: "/community/people", icon: Users, description: "Manage contacts & mentees" },
       { name: "Groups", href: "/community/groups", icon: Network, description: "Organisations & collectives" },
       { name: "Ecosystems", href: "/community/ecosystems", icon: Handshake, description: "Organisation network overview" },
+      { name: "Regular Bookers", href: "/regular-bookers", icon: UserCheck, description: "Manage recurring bookers" },
       { name: "Gmail Import", href: "/gmail-import", icon: Mail, description: "Import contacts from email" },
     ],
   },
@@ -64,7 +65,6 @@ const navGroups: NavGroup[] = [
     children: [
       { name: "Mentoring", href: "/mentoring", icon: Users, description: "1:1 sessions & scheduling" },
       { name: "Bookings", href: "/bookings", icon: Building2, description: "Venue hire & spaces" },
-      { name: "Regular Bookers", href: "/regular-bookers", icon: UserCheck, description: "Manage recurring bookers" },
       { name: "Programmes", href: "/programmes", icon: Layers, description: "Workshops & activations" },
       { name: "Projects", href: "/projects", icon: Rocket, description: "Initiatives & work streams" },
       { name: "Agreements", href: "/agreements", icon: Handshake, description: "Memberships & MOUs" },
