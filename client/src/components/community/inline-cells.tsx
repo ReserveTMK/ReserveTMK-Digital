@@ -6,7 +6,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Pencil, Check, Loader2, ArrowUp, ArrowDown, ArrowUpDown, Sprout, TreePine, Sun, Pause } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { Pencil, Check, Loader2, ArrowUp, ArrowDown, ArrowUpDown, Sprout, TreePine, Sun, Pause, Plus, X, Building2 } from "lucide-react";
 import { CONTACT_ROLES } from "@shared/schema";
 
 export const TABLE_ETHNICITY_OPTIONS = [
@@ -515,7 +516,143 @@ export function ConnectionStrengthDisplay({ connectionStrength }: { connectionSt
   );
 }
 
-export type SortField = "name" | "role" | "ethnicity" | "age" | "suburb" | "lastActive" | "community" | "stage" | "support" | "connection";
+export function InlineGroupCell({ contactId, groups, allGroups }: { contactId: number; groups: { id: number; groupId: number; name: string }[]; allGroups: { id: number; name: string; type: string }[] }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [creating, setCreating] = useState(false);
+  const { toast } = useToast();
+
+  const linkedGroupIds = new Set(groups.map((g) => g.groupId));
+
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/contacts/:id/groups", contactId] });
+    queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/group-memberships/all"] });
+  };
+
+  const linkMutation = useMutation({
+    mutationFn: async (groupId: number) => {
+      await apiRequest("POST", `/api/contacts/${contactId}/link-group`, { groupId });
+    },
+    onSuccess: invalidateAll,
+  });
+
+  const unlinkMutation = useMutation({
+    mutationFn: async (groupId: number) => {
+      await apiRequest("DELETE", `/api/contacts/${contactId}/unlink-group/${groupId}`);
+    },
+    onSuccess: invalidateAll,
+  });
+
+  const createAndLinkMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await apiRequest("POST", "/api/groups", { name, type: "Business" });
+      const newGroup = await res.json();
+      await apiRequest("POST", `/api/contacts/${contactId}/link-group`, { groupId: newGroup.id });
+      return newGroup;
+    },
+    onSuccess: () => {
+      invalidateAll();
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+      setSearch("");
+      setCreating(false);
+      toast({ title: "Group created and linked" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return [];
+    const term = search.toLowerCase();
+    return allGroups
+      .filter((g) => !linkedGroupIds.has(g.id) && g.name.toLowerCase().includes(term))
+      .slice(0, 10);
+  }, [search, allGroups, linkedGroupIds]);
+
+  const exactMatch = allGroups.some((g) => g.name.toLowerCase() === search.trim().toLowerCase());
+
+  return (
+    <Popover open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setSearch(""); setCreating(false); } }}>
+      <PopoverTrigger asChild>
+        <button className="w-full text-left" data-testid={`inline-group-${contactId}`}>
+          {groups.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {groups.map((g) => (
+                <Badge key={g.id} variant="secondary" className="text-[10px] truncate max-w-[120px]">
+                  {g.name}
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <span className="text-xs text-muted-foreground">--</span>
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[260px] p-0" align="start">
+        <div className="p-2 space-y-2">
+          {groups.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {groups.map((g) => (
+                <Badge key={g.id} variant="secondary" className="text-[10px] gap-1 pr-1">
+                  {g.name}
+                  <button
+                    onClick={() => unlinkMutation.mutate(g.groupId)}
+                    className="ml-0.5 hover:text-destructive transition-colors"
+                    data-testid={`button-unlink-group-${g.groupId}`}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          )}
+          <Input
+            placeholder="Search or create group..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-8 text-xs"
+            data-testid={`input-group-search-${contactId}`}
+          />
+          {search.trim() && (
+            <div className="max-h-[160px] overflow-y-auto space-y-0.5">
+              {filtered.map((g) => (
+                <button
+                  key={g.id}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs hover:bg-muted/50 transition-colors text-left"
+                  onClick={() => { linkMutation.mutate(g.id); setSearch(""); }}
+                  data-testid={`item-link-group-${g.id}`}
+                >
+                  <Building2 className="w-3 h-3 text-muted-foreground shrink-0" />
+                  <span className="truncate">{g.name}</span>
+                  <Badge variant="secondary" className="text-[9px] ml-auto shrink-0">{g.type}</Badge>
+                </button>
+              ))}
+              {!exactMatch && search.trim().length >= 2 && (
+                <button
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs hover:bg-primary/5 transition-colors text-left text-primary"
+                  onClick={() => createAndLinkMutation.mutate(search.trim())}
+                  disabled={createAndLinkMutation.isPending}
+                  data-testid={`button-create-group-${contactId}`}
+                >
+                  {createAndLinkMutation.isPending ? (
+                    <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+                  ) : (
+                    <Plus className="w-3 h-3 shrink-0" />
+                  )}
+                  <span>Create "{search.trim()}"</span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+export type SortField = "name" | "role" | "ethnicity" | "age" | "suburb" | "lastActive" | "community" | "stage" | "support" | "connection" | "group";
 export type SortDir = "asc" | "desc";
 
 export function SortHeader({ label, field, activeField, dir, onSort, className }: { label: string; field: SortField; activeField: SortField | null; dir: SortDir; onSort: (f: SortField) => void; className?: string }) {

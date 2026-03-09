@@ -16,6 +16,7 @@ import {
   InlineSupportCell,
   InlineConnectionCell,
   InlineRoleCell,
+  InlineGroupCell,
   SortHeader,
 } from "@/components/community/inline-cells";
 import type { SortField, SortDir } from "@/components/community/inline-cells";
@@ -48,6 +49,24 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
   const { data: catchUpItems } = useQuery<CatchUpItemData[]>({
     queryKey: ["/api/catch-up-list"],
   });
+
+  const { data: allGroupMemberships } = useQuery<{ id: number; groupId: number; contactId: number; name: string; type: string }[]>({
+    queryKey: ["/api/group-memberships/all"],
+  });
+
+  const { data: allGroups } = useQuery<{ id: number; name: string; type: string }[]>({
+    queryKey: ["/api/groups"],
+  });
+
+  const contactGroupsMap = useMemo(() => {
+    const map = new Map<number, { id: number; groupId: number; name: string }[]>();
+    (allGroupMemberships || []).forEach((m) => {
+      const list = map.get(m.contactId) || [];
+      list.push({ id: m.id, groupId: m.groupId, name: m.name });
+      map.set(m.contactId, list);
+    });
+    return map;
+  }, [allGroupMemberships]);
 
   const catchUpContactIds = useMemo(() => {
     const map = new Map<number, CatchUpItemData>();
@@ -125,6 +144,10 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
           av = (a.role || "").toLowerCase();
           bv = (b.role || "").toLowerCase();
           break;
+        case "group":
+          av = (contactGroupsMap.get(a.id) || []).map((g: any) => g.name).join(", ").toLowerCase();
+          bv = (contactGroupsMap.get(b.id) || []).map((g: any) => g.name).join(", ").toLowerCase();
+          break;
         case "stage": {
           const stageOrder = ["kakano", "tipu", "ora", "inactive"];
           av = stageOrder.indexOf(a.stage || "");
@@ -199,6 +222,7 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
                   <SortHeader label={drilldownTier === "community" ? "Innovator" : "Community"} field="community" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-28" />
                 )}
                 <SortHeader label="Role" field="role" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
+                <SortHeader label="Group" field="group" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[130px]" />
                 {(drilldownTier === "innovators" || drilldownTier === "vip") ? (
                   <>
                     <SortHeader label="Stage" field="stage" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
@@ -298,6 +322,13 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
                   )}
                   <td className="px-3 py-2">
                     <InlineRoleCell role={contact.role} roleOther={contact.roleOther} contactId={contact.id} />
+                  </td>
+                  <td className="px-3 py-2">
+                    <InlineGroupCell
+                      contactId={contact.id}
+                      groups={contactGroupsMap.get(contact.id) || []}
+                      allGroups={(allGroups || []) as { id: number; name: string; type: string }[]}
+                    />
                   </td>
                   {(drilldownTier === "innovators" || drilldownTier === "vip") ? (
                     <>

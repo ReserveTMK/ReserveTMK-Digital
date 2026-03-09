@@ -8,12 +8,12 @@ import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON } from "./replit_integrations/anthropic/client";
 import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getReachMetrics, getDeliveryMetrics, getImpactMetrics, type ReportFilters } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic } from "@shared/schema";
+import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations } from "@shared/schema";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { ObjectStorageService } from "./replit_integrations/object_storage";
 import crypto from "crypto";
 import { db } from "./db";
-import { eq, and, sql, gte, lte } from "drizzle-orm";
+import { eq, and, or, sql, gte, lte } from "drizzle-orm";
 
 const reportCache = new Map<string, { data: any; expiresAt: number }>();
 const inflightReports = new Map<string, Promise<any>>();
@@ -4260,6 +4260,86 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     res.status(204).send();
   });
 
+  app.get("/api/groups/:id/associations", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const groupId = parseInt(req.params.id);
+      const group = await storage.getGroup(groupId);
+      if (!group || group.userId !== userId) return res.status(404).json({ message: "Group not found" });
+      const associations = await db.select().from(groupAssociations).where(
+        or(eq(groupAssociations.groupId, groupId), eq(groupAssociations.associatedGroupId, groupId))
+      );
+      res.json(associations);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/groups/:id/associations", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const groupId = parseInt(req.params.id);
+      const { associatedGroupId } = req.body;
+      if (!associatedGroupId || groupId === associatedGroupId) {
+        return res.status(400).json({ message: "Invalid association" });
+      }
+      const group = await storage.getGroup(groupId);
+      if (!group || group.userId !== userId) return res.status(404).json({ message: "Group not found" });
+      const assocGroup = await storage.getGroup(associatedGroupId);
+      if (!assocGroup || assocGroup.userId !== userId) return res.status(404).json({ message: "Associated group not found" });
+      const existing = await db.select().from(groupAssociations).where(
+        or(
+          and(eq(groupAssociations.groupId, groupId), eq(groupAssociations.associatedGroupId, associatedGroupId)),
+          and(eq(groupAssociations.groupId, associatedGroupId), eq(groupAssociations.associatedGroupId, groupId))
+        )
+      );
+      if (existing.length > 0) {
+        return res.status(409).json({ message: "Association already exists" });
+      }
+      const [association] = await db.insert(groupAssociations).values({ groupId, associatedGroupId }).returning();
+      res.status(201).json(association);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/groups/:id/associations/:associationId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const groupId = parseInt(req.params.id);
+      const group = await storage.getGroup(groupId);
+      if (!group || group.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+      const associationId = parseInt(req.params.associationId);
+      const [assoc] = await db.select().from(groupAssociations).where(eq(groupAssociations.id, associationId));
+      if (!assoc || (assoc.groupId !== groupId && assoc.associatedGroupId !== groupId)) {
+        return res.status(404).json({ message: "Association not found" });
+      }
+      await db.delete(groupAssociations).where(eq(groupAssociations.id, associationId));
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/group-memberships/all", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const rows = await db.select({
+        id: groupMembers.id,
+        groupId: groupMembers.groupId,
+        contactId: groupMembers.contactId,
+        name: groups.name,
+        type: groups.type,
+      })
+        .from(groupMembers)
+        .innerJoin(groups, eq(groupMembers.groupId, groups.id))
+        .where(eq(groups.userId, userId));
+      res.json(rows);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // Contact's group memberships
   app.get("/api/contacts/:id/groups", isAuthenticated, async (req, res) => {
     const contactId = parseInt(req.params.id);
@@ -7897,11 +7977,10 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       }
 
       const existing = await storage.getContactGroups(contactId);
-      for (const m of existing) {
-        await storage.removeGroupMember(m.id);
+      const alreadyLinked = existing.some((m: any) => m.groupId === groupId);
+      if (!alreadyLinked) {
+        await storage.addGroupMember({ groupId, contactId, role: 'member' });
       }
-
-      await storage.addGroupMember({ groupId, contactId, role: 'member' });
 
       if (contact.isCommunityMember && group.relationshipTier === 'mentioned') {
         await storage.updateGroup(groupId, { relationshipTier: 'collaborate' });

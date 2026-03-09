@@ -205,6 +205,59 @@ export function useSaveGroupTaxonomyLinks() {
   });
 }
 
+export function useGroupAssociations(groupId: number) {
+  return useQuery({
+    queryKey: ["/api/groups/:id/associations", groupId],
+    queryFn: async () => {
+      const res = await fetch(`/api/groups/${groupId}/associations`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch associations");
+      return res.json();
+    },
+    enabled: !!groupId,
+  });
+}
+
+export function useAddGroupAssociation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ groupId, associatedGroupId }: { groupId: number; associatedGroupId: number }) => {
+      const res = await fetch(`/api/groups/${groupId}/associations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ associatedGroupId }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to add association");
+      }
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups/:id/associations", variables.groupId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups/:id/associations", variables.associatedGroupId] });
+    },
+  });
+}
+
+export function useRemoveGroupAssociation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ groupId, associationId }: { groupId: number; associationId: number }) => {
+      const res = await fetch(`/api/groups/${groupId}/associations/${associationId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to remove association");
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups/:id/associations", variables.groupId] });
+    },
+  });
+}
+
 export function useRemoveGroupMember() {
   const queryClient = useQueryClient();
 

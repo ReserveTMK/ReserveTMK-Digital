@@ -390,6 +390,13 @@ export const groupTaxonomyLinks = pgTable("group_taxonomy_links", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const groupAssociations = pgTable("group_associations", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id").notNull(),
+  associatedGroupId: integer("associated_group_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const dismissedDuplicates = pgTable("dismissed_duplicates", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
@@ -1161,6 +1168,11 @@ export const insertGroupMemberSchema = createInsertSchema(groupMembers).omit({
   createdAt: true,
 });
 
+export const insertGroupAssociationSchema = createInsertSchema(groupAssociations).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertGroupTaxonomyLinkSchema = createInsertSchema(groupTaxonomyLinks).omit({
   id: true,
   createdAt: true,
@@ -1232,6 +1244,8 @@ export type Group = typeof groups.$inferSelect;
 export type InsertGroup = z.infer<typeof insertGroupSchema>;
 
 export type GroupMember = typeof groupMembers.$inferSelect;
+export type GroupAssociation = typeof groupAssociations.$inferSelect;
+export type InsertGroupAssociation = z.infer<typeof insertGroupAssociationSchema>;
 export type InsertGroupMember = z.infer<typeof insertGroupMemberSchema>;
 
 export type GroupTaxonomyLink = typeof groupTaxonomyLinks.$inferSelect;

@@ -1,8 +1,8 @@
 import { Button } from "@/components/ui/beautiful-button";
-import { useGroups, useCreateGroup, useUpdateGroup, useDeleteGroup, useGroupMembers, useAddGroupMember, useRemoveGroupMember, useEnrichGroup, useGroupTaxonomyLinks, useSaveGroupTaxonomyLinks } from "@/hooks/use-groups";
+import { useGroups, useCreateGroup, useUpdateGroup, useDeleteGroup, useGroupMembers, useAddGroupMember, useRemoveGroupMember, useEnrichGroup, useGroupTaxonomyLinks, useSaveGroupTaxonomyLinks, useGroupAssociations, useAddGroupAssociation, useRemoveGroupAssociation } from "@/hooks/use-groups";
 import { useContacts } from "@/hooks/use-contacts";
 import { useTaxonomy } from "@/hooks/use-taxonomy";
-import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe, Target, Pencil, Edit3, CheckSquare, UserCheck, Merge, List, Table, ArrowUp, ArrowDown, ArrowUpDown, Lightbulb, MoreVertical, Star } from "lucide-react";
+import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe, Target, Pencil, Edit3, CheckSquare, UserCheck, Merge, List, Table, ArrowUp, ArrowDown, ArrowUpDown, Lightbulb, MoreVertical, Star, Link2 } from "lucide-react";
 import { Link } from "wouter";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -682,6 +682,7 @@ export default function Groups() {
             onOpenChange={(open) => { if (!open) setSelectedGroup(null); }}
             contacts={contacts || []}
             onEdit={() => { setSelectedGroup(null); openEditDialog(selectedGroup); }}
+            allGroups={groups || []}
           />
         )}
 
@@ -1390,12 +1391,13 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
   );
 }
 
-function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit }: {
+function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit, allGroups }: {
   group: Group;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   contacts: any[];
   onEdit: () => void;
+  allGroups: Group[];
 }) {
   const { data: members, isLoading: membersLoading } = useGroupMembers(group.id);
   const addMember = useAddGroupMember();
@@ -1405,6 +1407,11 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit }: {
   const saveTaxonomyLinks = useSaveGroupTaxonomyLinks();
   const { data: taxonomyLinks } = useGroupTaxonomyLinks(group.id);
   const { data: taxonomyCategories } = useTaxonomy();
+  const { data: associations } = useGroupAssociations(group.id);
+  const addAssociation = useAddGroupAssociation();
+  const removeAssociation = useRemoveGroupAssociation();
+  const [assocSearch, setAssocSearch] = useState("");
+  const [assocPopoverOpen, setAssocPopoverOpen] = useState(false);
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [memberSearch, setMemberSearch] = useState("");
   const [selectedRole, setSelectedRole] = useState("Member");
@@ -1769,6 +1776,118 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit }: {
               </div>
             </div>
           )}
+
+          <div className="border-t pt-4">
+            <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+              <h3 className="font-semibold text-sm flex items-center gap-2">
+                <Link2 className="w-4 h-4" />
+                Associated Groups ({(() => {
+                  const assocIds = new Set<number>();
+                  (associations || []).forEach((a: any) => {
+                    if (a.groupId === group.id) assocIds.add(a.associatedGroupId);
+                    else assocIds.add(a.groupId);
+                  });
+                  return assocIds.size;
+                })()})
+              </h3>
+              <Popover open={assocPopoverOpen} onOpenChange={setAssocPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button size="sm" variant="outline" data-testid="button-add-association">
+                    <Plus className="w-3.5 h-3.5 mr-1.5" />
+                    Link Group
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[280px] p-0" align="end">
+                  <Command>
+                    <CommandInput
+                      placeholder="Search groups..."
+                      value={assocSearch}
+                      onValueChange={setAssocSearch}
+                      data-testid="input-search-association"
+                    />
+                    <CommandList>
+                      <CommandEmpty>No groups found</CommandEmpty>
+                      <CommandGroup>
+                        {(() => {
+                          const linkedIds = new Set<number>([group.id]);
+                          (associations || []).forEach((a: any) => {
+                            linkedIds.add(a.groupId);
+                            linkedIds.add(a.associatedGroupId);
+                          });
+                          return allGroups
+                            .filter((g) => !linkedIds.has(g.id) && g.name.toLowerCase().includes(assocSearch.toLowerCase()))
+                            .slice(0, 20)
+                            .map((g) => (
+                              <CommandItem
+                                key={g.id}
+                                value={g.name}
+                                onSelect={() => {
+                                  addAssociation.mutate({ groupId: group.id, associatedGroupId: g.id });
+                                  setAssocPopoverOpen(false);
+                                  setAssocSearch("");
+                                }}
+                                data-testid={`item-add-association-${g.id}`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
+                                  <span className="text-sm">{g.name}</span>
+                                  <Badge variant="secondary" className="text-[9px] ml-auto">{g.type}</Badge>
+                                </div>
+                              </CommandItem>
+                            ));
+                        })()}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
+            {(() => {
+              const assocEntries: { id: number; linkedGroup: Group }[] = [];
+              (associations || []).forEach((a: any) => {
+                const otherId = a.groupId === group.id ? a.associatedGroupId : a.groupId;
+                const other = allGroups.find((g) => g.id === otherId);
+                if (other) assocEntries.push({ id: a.id, linkedGroup: other });
+              });
+              if (assocEntries.length === 0) {
+                return (
+                  <div className="text-center py-4 text-sm text-muted-foreground">
+                    <Link2 className="w-5 h-5 mx-auto mb-1.5 opacity-40" />
+                    <p>No associated groups yet</p>
+                  </div>
+                );
+              }
+              return (
+                <div className="space-y-1">
+                  {assocEntries.map(({ id, linkedGroup }) => (
+                    <div
+                      key={id}
+                      className="flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-muted/50 group"
+                      data-testid={`row-association-${id}`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center text-xs font-bold text-primary shrink-0">
+                          {linkedGroup.name[0]}
+                        </div>
+                        <span className="text-sm font-medium truncate">{linkedGroup.name}</span>
+                        <Badge variant="secondary" className="text-[10px] shrink-0">{linkedGroup.type}</Badge>
+                      </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                        style={{ visibility: "visible" }}
+                        onClick={() => removeAssociation.mutate({ groupId: group.id, associationId: id })}
+                        data-testid={`button-remove-association-${id}`}
+                      >
+                        <X className="w-3.5 h-3.5 text-muted-foreground" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
 
           <div className="border-t pt-4">
             <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
