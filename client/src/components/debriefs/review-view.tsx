@@ -148,12 +148,13 @@ export function ReviewView({ id }: { id: number }) {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
       mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        const mimeType = mediaRecorder.mimeType || "audio/webm";
+        const blob = new Blob(chunksRef.current, { type: mimeType });
         setAudioBlob(blob);
         setAudioUrl(URL.createObjectURL(blob));
         stream.getTracks().forEach((t) => t.stop());
       };
-      mediaRecorder.start();
+      mediaRecorder.start(1000);
       setIsRecording(true);
       setRecordingTime(0);
       timerRef.current = setInterval(() => setRecordingTime((t) => t + 1), 1000);
@@ -169,7 +170,10 @@ export function ReviewView({ id }: { id: number }) {
   };
 
   const transcribeAudio = async () => {
-    if (!audioBlob) return;
+    if (!audioBlob || audioBlob.size < 100) {
+      toast({ title: "Recording too short", description: "Please record a longer audio clip.", variant: "destructive" });
+      return;
+    }
     setIsTranscribing(true);
     try {
       const res = await fetch("/api/impact-transcribe", {
@@ -231,12 +235,13 @@ export function ReviewView({ id }: { id: number }) {
         if (e.data.size > 0) followUpChunksRef.current.push(e.data);
       };
       mediaRecorder.onstop = () => {
-        const blob = new Blob(followUpChunksRef.current, { type: "audio/webm" });
+        const mimeType = mediaRecorder.mimeType || "audio/webm";
+        const blob = new Blob(followUpChunksRef.current, { type: mimeType });
         setFollowUpAudioBlob(blob);
         setFollowUpAudioUrl(URL.createObjectURL(blob));
         stream.getTracks().forEach((t) => t.stop());
       };
-      mediaRecorder.start();
+      mediaRecorder.start(1000);
       setIsFollowUpRecording(true);
       setFollowUpRecordingTime(0);
       followUpTimerRef.current = setInterval(() => setFollowUpRecordingTime((t) => t + 1), 1000);
@@ -252,7 +257,10 @@ export function ReviewView({ id }: { id: number }) {
   };
 
   const transcribeFollowUpAudio = async () => {
-    if (!followUpAudioBlob) return;
+    if (!followUpAudioBlob || followUpAudioBlob.size < 100) {
+      toast({ title: "Recording too short", description: "Please record a longer audio clip.", variant: "destructive" });
+      return;
+    }
     setIsFollowUpTranscribing(true);
     try {
       const res = await fetch("/api/impact-transcribe", {

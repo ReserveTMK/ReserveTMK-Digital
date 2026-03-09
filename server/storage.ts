@@ -2261,7 +2261,7 @@ export class DatabaseStorage implements IStorage {
       contactIsCommunityMember: contacts.isCommunityMember,
       contactIsVip: contacts.isVip,
       contactVipReason: contacts.vipReason,
-      contactLastInteractionDate: contacts.lastInteractionDate,
+      contactLastActiveDate: contacts.lastActiveDate,
       contactEmail: contacts.email,
       contactPhone: contacts.phone,
     })
@@ -2287,7 +2287,7 @@ export class DatabaseStorage implements IStorage {
       contactStage: contacts.stage,
       contactIsVip: contacts.isVip,
       contactVipReason: contacts.vipReason,
-      contactLastInteractionDate: contacts.lastInteractionDate,
+      contactLastActiveDate: contacts.lastActiveDate,
     })
     .from(catchUpList)
     .leftJoin(contacts, eq(catchUpList.contactId, contacts.id))

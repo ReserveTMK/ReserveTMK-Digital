@@ -63,7 +63,7 @@ type CatchUpItemData = {
   contactIsCommunityMember: boolean | null;
   contactIsVip: boolean | null;
   contactVipReason: string | null;
-  contactLastInteractionDate: string | null;
+  contactLastActiveDate: string | null;
   contactEmail: string | null;
   contactPhone: string | null;
 };
@@ -722,7 +722,7 @@ function CatchUpCard({
               </span>
             )}
             <span className="text-xs text-muted-foreground" data-testid={`text-last-interaction-${item.id}`}>
-              {formatLastInteraction(item.contactLastInteractionDate)}
+              {formatLastInteraction(item.contactLastActiveDate)}
             </span>
           </div>
         </div>

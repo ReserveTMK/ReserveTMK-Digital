@@ -492,7 +492,7 @@ export async function getOutcomeMovement(filters: ReportFilters) {
   const result = await getImpactMetrics(filters);
   const averageChange: Record<string, number> = {};
   const positiveMovementPercent: Record<string, number> = {};
-  for (const [key, val] of Object.entries(result.growthMetrics)) {
+  for (const [key, val] of Object.entries(result.growthMetrics || {})) {
     averageChange[key] = val.averageScore;
     positiveMovementPercent[key] = val.positiveMovementPercent;
   }
@@ -684,8 +684,9 @@ export async function generateNarrative(
       let impText = `## What Changed\n\n`;
       if (impact.communitySpend > 0) impText += `$${impact.communitySpend.toLocaleString()} was invested directly into community. `;
       if (impact.milestoneCount > 0) impText += `${impact.milestoneCount} milestones were achieved. `;
-      if (impact.contactsWithMetrics > 0) {
-        impText += `${impact.contactsWithMetrics} people have tracked growth - mindset shifted positively for ${impact.growthMetrics.mindset.positiveMovementPercent}%, skill for ${impact.growthMetrics.skill.positiveMovementPercent}%, and confidence for ${impact.growthMetrics.confidence.positiveMovementPercent}%.`;
+      if (impact.contactsWithMetrics > 0 && impact.growthMetrics) {
+        const gm = impact.growthMetrics;
+        impText += `${impact.contactsWithMetrics} people have tracked growth - mindset shifted positively for ${gm.mindset?.positiveMovementPercent ?? 0}%, skill for ${gm.skill?.positiveMovementPercent ?? 0}%, and confidence for ${gm.confidence?.positiveMovementPercent ?? 0}%.`;
       }
       if (impact.connectionMovement > 0) impText += ` ${impact.connectionMovement} people deepened their connection strength.`;
       if (topCategories.length > 0) {
@@ -726,9 +727,10 @@ export async function generateNarrative(
     let impText = `## Impact\n\n`;
     if (impact.communitySpend > 0) impText += `Community investment: $${impact.communitySpend.toLocaleString()}. `;
     impText += `${impact.milestoneCount} milestones achieved. ${impact.contactsWithMetrics} people with tracked growth.`;
-    if (impact.contactsWithMetrics > 0) {
-      impText += ` Average scores - mindset: ${impact.growthMetrics.mindset.averageScore}, skill: ${impact.growthMetrics.skill.averageScore}, confidence: ${impact.growthMetrics.confidence.averageScore}.`;
-      impText += ` Positive movement - mindset: ${impact.growthMetrics.mindset.positiveMovementPercent}%, skill: ${impact.growthMetrics.skill.positiveMovementPercent}%, confidence: ${impact.growthMetrics.confidence.positiveMovementPercent}%.`;
+    if (impact.contactsWithMetrics > 0 && impact.growthMetrics) {
+      const gm = impact.growthMetrics;
+      impText += ` Average scores - mindset: ${gm.mindset?.averageScore ?? 0}, skill: ${gm.skill?.averageScore ?? 0}, confidence: ${gm.confidence?.averageScore ?? 0}.`;
+      impText += ` Positive movement - mindset: ${gm.mindset?.positiveMovementPercent ?? 0}%, skill: ${gm.skill?.positiveMovementPercent ?? 0}%, confidence: ${gm.confidence?.positiveMovementPercent ?? 0}%.`;
     }
     if (impact.connectionMovement > 0) impText += ` ${impact.connectionMovement} connections deepened.`;
     if (topCategories.length > 0) {
@@ -1585,7 +1587,7 @@ export async function getFullMonthlyReport(filters: ReportFilters) {
 
   const averageChange: Record<string, number> = {};
   const positiveMovement: Record<string, number> = {};
-  for (const [key, val] of Object.entries(impact.growthMetrics)) {
+  for (const [key, val] of Object.entries(impact.growthMetrics || {})) {
     averageChange[key] = val.averageScore;
     positiveMovement[key] = val.positiveMovementPercent;
   }

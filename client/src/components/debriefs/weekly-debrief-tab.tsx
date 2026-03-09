@@ -130,12 +130,13 @@ function WeeklyDebriefCard({ debrief }: { debrief: WeeklyDebrief }) {
         if (e.data.size > 0) summaryChunksRef.current.push(e.data);
       };
       mediaRecorder.onstop = () => {
-        const blob = new Blob(summaryChunksRef.current, { type: "audio/webm" });
+        const mimeType = mediaRecorder.mimeType || "audio/webm";
+        const blob = new Blob(summaryChunksRef.current, { type: mimeType });
         setSummaryAudioBlob(blob);
         setSummaryAudioUrl(URL.createObjectURL(blob));
         stream.getTracks().forEach((t) => t.stop());
       };
-      mediaRecorder.start();
+      mediaRecorder.start(1000);
       setIsRecordingSummary(true);
       setSummaryRecordingTime(0);
       summaryTimerRef.current = setInterval(() => setSummaryRecordingTime((t) => t + 1), 1000);
@@ -151,7 +152,10 @@ function WeeklyDebriefCard({ debrief }: { debrief: WeeklyDebrief }) {
   };
 
   const transcribeSummaryAudio = async () => {
-    if (!summaryAudioBlob) return;
+    if (!summaryAudioBlob || summaryAudioBlob.size < 100) {
+      toast({ title: "Recording too short", description: "Please record a longer audio clip.", variant: "destructive" });
+      return;
+    }
     setIsSummaryTranscribing(true);
     try {
       const res = await fetch("/api/impact-transcribe", {

@@ -70,13 +70,14 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
       };
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        const mimeType = mediaRecorder.mimeType || "audio/webm";
+        const blob = new Blob(chunksRef.current, { type: mimeType });
         setAudioBlob(blob);
         setAudioUrl(URL.createObjectURL(blob));
         stream.getTracks().forEach((t) => t.stop());
       };
 
-      mediaRecorder.start();
+      mediaRecorder.start(1000);
       setIsRecording(true);
       setRecordingTime(0);
       timerRef.current = setInterval(() => setRecordingTime((t) => t + 1), 1000);
@@ -92,7 +93,10 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
   };
 
   const transcribeAudio = async () => {
-    if (!audioBlob) return;
+    if (!audioBlob || audioBlob.size < 100) {
+      toast({ title: "Recording too short", description: "Please record a longer audio clip.", variant: "destructive" });
+      return;
+    }
     setIsTranscribing(true);
     setTranscriptionFailed(false);
     try {
