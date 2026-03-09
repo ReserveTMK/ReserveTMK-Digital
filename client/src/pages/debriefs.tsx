@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -19,6 +20,8 @@ import {
   Loader2,
   Trash2,
   HeartHandshake,
+  Search,
+  Pencil,
 } from "lucide-react";
 import type { ImpactLog } from "@shared/schema";
 import { useMutation } from "@tanstack/react-query";
@@ -51,7 +54,7 @@ function ListView() {
   const params = new URLSearchParams(searchString);
   const tabParam = params.get("tab");
   const reconcileId = params.get("reconcile");
-  const [activeTab, setActiveTab] = useState(tabParam || "all");
+  const [activeTab, setActiveTab] = useState(tabParam || "queue");
 
   useEffect(() => {
     if (tabParam && tabParam !== activeTab) {
@@ -61,7 +64,7 @@ function ListView() {
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
-    const url = tab === "all" ? "/debriefs" : `/debriefs?tab=${tab}`;
+    const url = tab === "queue" ? "/debriefs" : `/debriefs?tab=${tab}`;
     window.history.replaceState(null, "", url);
   };
 
@@ -81,6 +84,7 @@ function ListView() {
 
   const allLogs = logs || [];
   const manualUpdates = useMemo(() => allLogs.filter(l => l.type === "manual_update"), [allLogs]);
+  const archivedLogs = useMemo(() => allLogs.filter(l => l.status === "confirmed"), [allLogs]);
 
   return (
     <>
@@ -105,24 +109,23 @@ function ListView() {
 
           <Tabs value={activeTab} onValueChange={handleTabChange}>
             <TabsList className="w-full grid grid-cols-4" data-testid="tabs-debriefs">
-              <TabsTrigger value="all" data-testid="tab-all">All Debriefs</TabsTrigger>
-              <TabsTrigger value="calendar" data-testid="tab-calendar">Calendar</TabsTrigger>
+              <TabsTrigger value="queue" data-testid="tab-queue">Queue</TabsTrigger>
+              <TabsTrigger value="archive" data-testid="tab-archive">Archive</TabsTrigger>
               <TabsTrigger value="weekly" data-testid="tab-weekly">Weekly</TabsTrigger>
               <TabsTrigger value="updates" data-testid="tab-updates">Updates</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="all" className="mt-4">
-              <DebriefCardList
-                logs={allLogs}
+            <TabsContent value="queue" className="mt-4">
+              <CalendarDebriefTab reconcileId={reconcileId} />
+            </TabsContent>
+
+            <TabsContent value="archive" className="mt-4">
+              <ArchiveView
+                logs={archivedLogs}
                 isLoading={isLoading}
                 onSelect={(id) => setLocation(`/debriefs/${id}`)}
                 onDelete={setDeleteTarget}
-                onCreateNew={() => setCreateOpen(true)}
               />
-            </TabsContent>
-
-            <TabsContent value="calendar" className="mt-4">
-              <CalendarDebriefTab reconcileId={reconcileId} />
             </TabsContent>
 
             <TabsContent value="weekly" className="mt-4">
@@ -174,5 +177,49 @@ function ListView() {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function ArchiveView({ logs, isLoading, onSelect, onDelete }: {
+  logs: ImpactLog[];
+  isLoading: boolean;
+  onSelect: (id: number) => void;
+  onDelete: (log: ImpactLog) => void;
+}) {
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredLogs = useMemo(() => {
+    if (!searchQuery.trim()) return logs;
+    const q = searchQuery.toLowerCase();
+    return logs.filter(l =>
+      l.title?.toLowerCase().includes(q) ||
+      l.summary?.toLowerCase().includes(q)
+    );
+  }, [logs, searchQuery]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search archived debriefs..."
+            className="pl-9"
+            data-testid="input-archive-search"
+          />
+        </div>
+      </div>
+
+      <DebriefCardList
+        logs={filteredLogs}
+        isLoading={isLoading}
+        onSelect={onSelect}
+        onDelete={onDelete}
+        emptyTitle={searchQuery ? "No matching debriefs" : "No completed debriefs yet"}
+        emptyDescription={searchQuery ? "Try a different search term." : "Complete debriefs from the Queue to see them here."}
+      />
+    </div>
   );
 }

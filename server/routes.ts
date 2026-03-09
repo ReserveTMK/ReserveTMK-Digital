@@ -1968,6 +1968,10 @@ export async function registerRoutes(
       const eventId = parseInt(req.params.id);
       const { reason } = req.body;
 
+      const event = await storage.getEvent(eventId);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+      if (event.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
       if (!reason) {
         return res.status(400).json({ message: "Reason is required to skip debrief" });
       }
@@ -1981,6 +1985,58 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Skip debrief error:", err);
       res.status(500).json({ message: "Failed to skip debrief" });
+    }
+  });
+
+  app.delete("/api/events/:id/skip-debrief", isAuthenticated, async (req, res) => {
+    try {
+      const eventId = parseInt(req.params.id);
+      const event = await storage.getEvent(eventId);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+      if (event.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+
+      const updated = await storage.undismissEvent(eventId);
+      res.json(updated);
+    } catch (err) {
+      console.error("Un-dismiss debrief error:", err);
+      res.status(500).json({ message: "Failed to un-dismiss debrief" });
+    }
+  });
+
+  app.get("/api/events/dismissed-debriefs", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const userEvents = await storage.getEvents(userId);
+      const allDebriefs = await storage.getImpactLogs(userId);
+
+      const confirmedEventIds = new Set(
+        allDebriefs
+          .filter(d => d.eventId && d.status === "confirmed")
+          .map(d => d.eventId)
+      );
+
+      const dismissed = userEvents.filter(e => {
+        if (e.eventStatus === "cancelled") return false;
+        if (!e.debriefSkippedReason) return false;
+        if (confirmedEventIds.has(e.id)) return false;
+        const eventEnd = new Date(e.endTime || e.startTime);
+        if (eventEnd > new Date()) return false;
+        return true;
+      });
+
+      const enriched = dismissed.map(e => ({
+        ...e,
+        queueStatus: "dismissed" as const,
+        existingDebriefId: null,
+        existingDebriefStatus: null,
+        dismissReason: e.debriefSkippedReason,
+      }));
+
+      enriched.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+      res.json(enriched);
+    } catch (err) {
+      console.error("Dismissed debriefs error:", err);
+      res.status(500).json({ message: "Failed to fetch dismissed debriefs" });
     }
   });
 

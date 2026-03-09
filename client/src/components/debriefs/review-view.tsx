@@ -47,7 +47,9 @@ import {
   Settings,
   Sparkles,
   Save,
+  Check,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import type { ImpactLog, Contact } from "@shared/schema";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
@@ -65,6 +67,9 @@ export function ReviewView({ id }: { id: number }) {
   const updateMutation = useUpdateImpactLog();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+
+  const fromQueue = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("from") === "queue";
+  const [autoAnalyzeTriggered, setAutoAnalyzeTriggered] = useState(false);
 
   const impactLog = log as ImpactLog | undefined;
   const extraction = impactLog?.status === "confirmed"
@@ -84,6 +89,12 @@ export function ReviewView({ id }: { id: number }) {
   const [metrics, setMetrics] = useState<Record<string, number>>({});
   const [communityActions, setCommunityActions] = useState<any[]>([]);
   const [operationalActions, setOperationalActions] = useState<any[]>([]);
+  const [suggestedActions, setSuggestedActions] = useState<any[]>([]);
+  const [suggestedCommunityActions, setSuggestedCommunityActions] = useState<any[]>([]);
+  const [suggestedOperationalActions, setSuggestedOperationalActions] = useState<any[]>([]);
+  const [showSuggestedActions, setShowSuggestedActions] = useState(true);
+  const [showSuggestedCommunity, setShowSuggestedCommunity] = useState(true);
+  const [showSuggestedOperational, setShowSuggestedOperational] = useState(true);
   const [reflections, setReflections] = useState<{ wins: string[]; concerns: string[]; learnings: string[] }>({ wins: [], concerns: [], learnings: [] });
   const [initialized, setInitialized] = useState(false);
 
@@ -329,17 +340,78 @@ export function ReviewView({ id }: { id: number }) {
   const needsRecording = impactLog && impactLog.status === "draft" && (!impactLog.transcript || hasTranscriptPlaceholder) && !extraction;
 
   useEffect(() => {
+    if (fromQueue && impactLog && impactLog.status === "draft" && impactLog.transcript && !extraction && !autoAnalyzeTriggered && !isAnalyzing) {
+      setAutoAnalyzeTriggered(true);
+      (async () => {
+        setIsAnalyzing(true);
+        try {
+          const res = await fetch("/api/impact-extract", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ transcript: impactLog.transcript, title: impactLog.title, existingLogId: id }),
+            credentials: "include",
+          });
+          if (!res.ok) throw new Error("Analysis failed");
+          queryClient.invalidateQueries({ queryKey: ["/api/impact-logs"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/impact-logs", id] });
+          setInitialized(false);
+          toast({ title: "Analysis complete", description: "Review the extracted impact data." });
+        } catch (err: any) {
+          toast({ title: "Error", description: err.message || "Auto-analysis failed", variant: "destructive" });
+        } finally {
+          setIsAnalyzing(false);
+        }
+      })();
+    }
+  }, [fromQueue, impactLog, extraction, autoAnalyzeTriggered, isAnalyzing]);
+
+  useEffect(() => {
     if (impactLog && extraction && !initialized) {
       setSummary(extraction.summary || impactLog.summary || "");
       setSentiment(extraction.sentiment || impactLog.sentiment || "neutral");
       setMilestones(extraction.milestones || impactLog.milestones || []);
-      setActionItemsList(extraction.actionItems || []);
-      setImpactTags(extraction.impactTags || []);
-      setPeople(extraction.people || []);
+      setImpactTags((extraction.impactTags || []).map((tag: any) => ({
+        ...tag,
+        selected: tag.selected !== undefined ? tag.selected : !!(tag.taxonomyId),
+      })));
+      setPeople((extraction.people || []).map((p: any) => ({
+        ...p,
+        section: p.section || (["primary", "mentor", "mentee"].includes(p.role) ? "primary" : "secondary"),
+      })));
       setMetrics(extraction.metrics || {});
-      setCommunityActions(extraction.communityActions || []);
-      setOperationalActions(extraction.operationalActions || []);
       setReflections(extraction.reflections || { wins: [], concerns: [], learnings: [] });
+
+      const isConfirmed = impactLog.status === "confirmed";
+      if (isConfirmed) {
+        setActionItemsList(extraction.actionItems || []);
+        setCommunityActions(extraction.communityActions || []);
+        setOperationalActions(extraction.operationalActions || []);
+        setSuggestedActions([]);
+        setSuggestedCommunityActions([]);
+        setSuggestedOperationalActions([]);
+      } else {
+        const reviewed = impactLog.reviewedData as any;
+        const hasReviewedActions = reviewed?.actionItems?.length > 0 || reviewed?.communityActions?.length > 0 || reviewed?.operationalActions?.length > 0;
+        if (hasReviewedActions) {
+          setActionItemsList(reviewed.actionItems || []);
+          setCommunityActions(reviewed.communityActions || []);
+          setOperationalActions(reviewed.operationalActions || []);
+          setSuggestedActions([]);
+          setSuggestedCommunityActions([]);
+          setSuggestedOperationalActions([]);
+        } else {
+          setActionItemsList([]);
+          setCommunityActions([]);
+          setOperationalActions([]);
+          setSuggestedActions(extraction.actionItems || []);
+          setSuggestedCommunityActions(extraction.communityActions || []);
+          setSuggestedOperationalActions(extraction.operationalActions || []);
+          setShowSuggestedActions(true);
+          setShowSuggestedCommunity(true);
+          setShowSuggestedOperational(true);
+        }
+      }
+
       setInitialized(true);
     }
   }, [impactLog, extraction, initialized]);
@@ -372,18 +444,19 @@ export function ReviewView({ id }: { id: number }) {
       if (status === "confirmed") {
         for (const person of people) {
           if (person.contactId) {
+            const role = person.section === "primary" || (!person.section && ["primary", "mentor", "mentee"].includes(person.role)) ? "primary" : "mentioned";
             try {
               await apiRequest('POST', `/api/impact-logs/${id}/contacts`, {
                 impactLogId: id,
                 contactId: person.contactId,
-                role: person.role || "mentioned",
+                role,
               });
             } catch {}
           }
         }
 
         for (const tag of impactTags) {
-          if (tag.taxonomyId) {
+          if (tag.taxonomyId && tag.selected !== false) {
             try {
               await apiRequest('POST', `/api/impact-logs/${id}/tags`, {
                 impactLogId: id,
@@ -405,7 +478,9 @@ export function ReviewView({ id }: { id: number }) {
       });
 
       if (status === "confirmed") {
-        setLocation("/debriefs");
+        setLocation(fromQueue ? "/debriefs?tab=queue" : "/debriefs?tab=archive");
+      } else if (status === "draft" && fromQueue) {
+        setLocation("/debriefs?tab=queue");
       }
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Failed to save", variant: "destructive" });
@@ -886,6 +961,7 @@ export function ReviewView({ id }: { id: number }) {
 
               <Card className="p-5">
                 <h3 className="font-bold font-display mb-3">Impact Tags</h3>
+                <p className="text-xs text-muted-foreground mb-3">Tags with matched taxonomy are pre-selected. Uncheck any you don't want saved.</p>
                 {impactTags.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No tags extracted</p>
                 ) : (
@@ -894,62 +970,75 @@ export function ReviewView({ id }: { id: number }) {
                       const matchedTaxonomy = tag.taxonomyId
                         ? taxonomyCategories?.find((t: any) => t.id === tag.taxonomyId)
                         : null;
+                      const isSelected = tag.selected !== false;
                       return (
-                        <div key={i} className="space-y-1.5">
-                          <div className="flex items-center justify-between gap-2">
-                            {tag.taxonomyId && matchedTaxonomy ? (
-                              <div className="flex items-center gap-2 min-w-0 flex-1">
-                                {matchedTaxonomy.color && (
-                                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: matchedTaxonomy.color }} />
-                                )}
-                                <span className="text-sm font-medium truncate">{matchedTaxonomy.name}</span>
-                              </div>
-                            ) : (
-                              <Select
-                                value={tag.taxonomyId ? String(tag.taxonomyId) : ""}
-                                onValueChange={(val) => {
-                                  const selectedTax = taxonomyCategories?.find((t: any) => t.id === Number(val));
-                                  const updated = [...impactTags];
-                                  updated[i] = {
-                                    ...updated[i],
-                                    taxonomyId: Number(val),
-                                    category: selectedTax?.name || updated[i].category,
-                                  };
-                                  setImpactTags(updated);
-                                }}
+                        <div key={i} className={`space-y-1.5 p-3 rounded-lg border transition-colors ${isSelected ? "bg-muted/30 border-border" : "bg-muted/10 border-border/50 opacity-60"}`} data-testid={`impact-tag-entry-${i}`}>
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={(checked) => {
+                                const updated = [...impactTags];
+                                updated[i] = { ...updated[i], selected: !!checked };
+                                setImpactTags(updated);
+                              }}
+                              data-testid={`checkbox-tag-${i}`}
+                            />
+                            <div className="flex items-center justify-between gap-2 flex-1 min-w-0">
+                              {tag.taxonomyId && matchedTaxonomy ? (
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                  {matchedTaxonomy.color && (
+                                    <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: matchedTaxonomy.color }} />
+                                  )}
+                                  <span className="text-sm font-medium truncate">{matchedTaxonomy.name}</span>
+                                </div>
+                              ) : (
+                                <Select
+                                  value={tag.taxonomyId ? String(tag.taxonomyId) : ""}
+                                  onValueChange={(val) => {
+                                    const selectedTax = taxonomyCategories?.find((t: any) => t.id === Number(val));
+                                    const updated = [...impactTags];
+                                    updated[i] = {
+                                      ...updated[i],
+                                      taxonomyId: Number(val),
+                                      category: selectedTax?.name || updated[i].category,
+                                      selected: true,
+                                    };
+                                    setImpactTags(updated);
+                                  }}
+                                >
+                                  <SelectTrigger className="flex-1" data-testid={`select-tag-category-${i}`}>
+                                    <SelectValue placeholder="Select taxonomy category..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {(taxonomyCategories || []).filter((t: any) => t.active !== false).map((t: any) => (
+                                      <SelectItem key={t.id} value={String(t.id)}>
+                                        <div className="flex items-center gap-2">
+                                          {t.color && (
+                                            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
+                                          )}
+                                          <span>{t.name}</span>
+                                        </div>
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setImpactTags(impactTags.filter((_: any, j: number) => j !== i))}
+                                data-testid={`button-remove-tag-${i}`}
                               >
-                                <SelectTrigger className="flex-1" data-testid={`select-tag-category-${i}`}>
-                                  <SelectValue placeholder="Select taxonomy category..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {(taxonomyCategories || []).filter((t: any) => t.active !== false).map((t: any) => (
-                                    <SelectItem key={t.id} value={String(t.id)}>
-                                      <div className="flex items-center gap-2">
-                                        {t.color && (
-                                          <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
-                                        )}
-                                        <span>{t.name}</span>
-                                      </div>
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => setImpactTags(impactTags.filter((_: any, j: number) => j !== i))}
-                              data-testid={`button-remove-tag-${i}`}
-                            >
-                              <X className="w-3 h-3" />
-                            </Button>
+                                <X className="w-3 h-3" />
+                              </Button>
+                            </div>
                           </div>
                           {!tag.taxonomyId && tag.category && tag.category !== "New Tag" && (
-                            <p className="text-xs text-amber-600 dark:text-amber-400">
+                            <p className="text-xs text-amber-600 dark:text-amber-400 ml-6">
                               AI suggested: "{tag.category}" -- select a taxonomy category above to save this tag
                             </p>
                           )}
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 ml-6">
                             <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
                               <div
                                 className={`h-full rounded-full transition-all ${confidenceColor(tag.confidence || 0)}`}
@@ -959,7 +1048,7 @@ export function ReviewView({ id }: { id: number }) {
                             <span className="text-xs text-muted-foreground w-10 text-right">{tag.confidence || 0}%</span>
                           </div>
                           {tag.evidence && (
-                            <p className="text-xs text-muted-foreground italic">{tag.evidence}</p>
+                            <p className="text-xs text-muted-foreground italic ml-6">{tag.evidence}</p>
                           )}
                         </div>
                       );
@@ -970,7 +1059,7 @@ export function ReviewView({ id }: { id: number }) {
                   variant="outline"
                   size="sm"
                   className="mt-3 w-full"
-                  onClick={() => setImpactTags([...impactTags, { category: "", confidence: 50, evidence: "", taxonomyId: null }])}
+                  onClick={() => setImpactTags([...impactTags, { category: "", confidence: 50, evidence: "", taxonomyId: null, selected: true }])}
                   data-testid="button-add-tag"
                 >
                   <Plus className="w-3 h-3 mr-1" />
@@ -979,115 +1068,30 @@ export function ReviewView({ id }: { id: number }) {
               </Card>
 
               <Card className="p-5">
-                <div className="flex items-center justify-between gap-2 mb-3">
-                  <h3 className="font-bold font-display">Linked Community Members</h3>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPeople([...people, { name: "", role: "mentioned", contactId: null }])}
-                    data-testid="button-add-person"
-                  >
-                    <UserPlus className="w-3 h-3 mr-1" />
-                    Add Person
-                  </Button>
-                </div>
-                {people.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No community members linked to this debrief yet. Click "Add Person" to link one.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {people.map((person: any, i: number) => {
-                      const linkedContact = person.contactId ? contacts?.find((c) => c.id === person.contactId) : null;
-                      return (
-                        <div key={i} className="p-3 bg-muted/30 rounded-lg border border-border space-y-2" data-testid={`person-entry-${i}`}>
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0 space-y-2">
-                              {linkedContact ? (
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <Link2 className="w-3.5 h-3.5 text-primary shrink-0" />
-                                  <span className="text-sm font-medium text-primary">{linkedContact.name}</span>
-                                  {linkedContact.role && (
-                                    <Badge variant="secondary" className="text-xs">{linkedContact.role}</Badge>
-                                  )}
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-xs text-muted-foreground"
-                                    onClick={() => {
-                                      const updated = [...people];
-                                      updated[i] = { ...updated[i], contactId: null };
-                                      setPeople(updated);
-                                    }}
-                                    data-testid={`button-unlink-${i}`}
-                                  >
-                                    <Unlink className="w-3 h-3 mr-1" />
-                                    Unlink
-                                  </Button>
-                                </div>
-                              ) : (
-                                <div className="space-y-2">
-                                  {person.name && (
-                                    <p className="text-sm text-muted-foreground">
-                                      AI identified: <span className="font-medium text-foreground">{person.name}</span>
-                                      {person.confidence && <span className="text-xs ml-1">({person.confidence}% match)</span>}
-                                    </p>
-                                  )}
-                                  <ContactSearchPicker
-                                    contacts={contacts || []}
-                                    onSelect={(contactId) => {
-                                      const contact = contacts?.find(c => c.id === contactId);
-                                      const updated = [...people];
-                                      updated[i] = {
-                                        ...updated[i],
-                                        contactId,
-                                        name: contact?.name || updated[i].name,
-                                      };
-                                      setPeople(updated);
-                                      if (contact) {
-                                        toast({ title: "Linked", description: `Linked to ${contact.name}` });
-                                      }
-                                    }}
-                                    testId={`search-link-contact-${i}`}
-                                  />
-                                </div>
-                              )}
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="shrink-0"
-                              onClick={() => setPeople(people.filter((_: any, j: number) => j !== i))}
-                              data-testid={`button-remove-person-${i}`}
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </Button>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Label className="text-xs text-muted-foreground shrink-0">Role:</Label>
-                            <Select
-                              value={person.role || "mentioned"}
-                              onValueChange={(val) => {
-                                const updated = [...people];
-                                updated[i] = { ...updated[i], role: val };
-                                setPeople(updated);
-                              }}
-                            >
-                              <SelectTrigger className="h-7 text-xs w-auto" data-testid={`select-person-role-${i}`}>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="mentioned">Mentioned</SelectItem>
-                                <SelectItem value="primary">Primary</SelectItem>
-                                <SelectItem value="participant">Participant</SelectItem>
-                                <SelectItem value="mentor">Mentor</SelectItem>
-                                <SelectItem value="mentee">Mentee</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                <h3 className="font-bold font-display mb-4">Linked Community Members</h3>
+                <PeopleSection
+                  label="Primary"
+                  description="Main people involved"
+                  people={people.filter((p: any) => p.section === "primary" || (!p.section && ["primary", "mentor", "mentee"].includes(p.role)))}
+                  allPeople={people}
+                  setPeople={setPeople}
+                  contacts={contacts || []}
+                  toast={toast}
+                  section="primary"
+                  testIdPrefix="primary"
+                />
+                <div className="my-4 border-t border-border" />
+                <PeopleSection
+                  label="Secondary"
+                  description="Others mentioned"
+                  people={people.filter((p: any) => p.section === "secondary" || (!p.section && !["primary", "mentor", "mentee"].includes(p.role)))}
+                  allPeople={people}
+                  setPeople={setPeople}
+                  contacts={contacts || []}
+                  toast={toast}
+                  section="secondary"
+                  testIdPrefix="secondary"
+                />
               </Card>
 
               <Card className="p-5">
@@ -1220,6 +1224,63 @@ export function ReviewView({ id }: { id: number }) {
                     ))}
                   </div>
                 )}
+
+                {suggestedActions.length > 0 && (
+                  <div className="mb-3">
+                    <button
+                      type="button"
+                      className="flex items-center gap-2 text-sm font-medium text-purple-600 dark:text-purple-400 mb-2"
+                      onClick={() => setShowSuggestedActions(!showSuggestedActions)}
+                      data-testid="button-toggle-suggested-actions"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      AI Suggestions ({suggestedActions.length})
+                      {showSuggestedActions ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    </button>
+                    {showSuggestedActions && (
+                      <div className="space-y-2">
+                        {suggestedActions.map((item: any, i: number) => (
+                          <div
+                            key={i}
+                            className="flex items-center gap-2 p-2 bg-purple-50 dark:bg-purple-950/20 rounded-lg border border-purple-200 dark:border-purple-900 cursor-pointer hover-elevate"
+                            onClick={() => {
+                              setActionItemsList([...actionItemsList, item]);
+                              setSuggestedActions(suggestedActions.filter((_: any, j: number) => j !== i));
+                            }}
+                            data-testid={`suggested-action-${i}`}
+                          >
+                            <Plus className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{item.title}</p>
+                              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                {item.owner && <span className="text-xs text-muted-foreground">{item.owner}</span>}
+                                {item.priority && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    {item.priority}
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full text-xs text-purple-600 dark:text-purple-400"
+                          onClick={() => {
+                            setActionItemsList([...actionItemsList, ...suggestedActions]);
+                            setSuggestedActions([]);
+                          }}
+                          data-testid="button-accept-all-actions"
+                        >
+                          <Check className="w-3 h-3 mr-1" />
+                          Accept All
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="space-y-2 p-3 bg-muted/20 rounded-lg border border-border">
                   <Input
                     value={newAction.title}
@@ -1292,7 +1353,64 @@ export function ReviewView({ id }: { id: number }) {
                     ))}
                   </div>
                 )}
-                {communityActions.length === 0 && <p className="text-xs text-muted-foreground italic mb-3">No community actions extracted.</p>}
+
+                {suggestedCommunityActions.length > 0 && (
+                  <div className="mb-3">
+                    <button
+                      type="button"
+                      className="flex items-center gap-2 text-sm font-medium text-purple-600 dark:text-purple-400 mb-2"
+                      onClick={() => setShowSuggestedCommunity(!showSuggestedCommunity)}
+                      data-testid="button-toggle-suggested-community"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      AI Suggestions ({suggestedCommunityActions.length})
+                      {showSuggestedCommunity ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    </button>
+                    {showSuggestedCommunity && (
+                      <div className="space-y-2">
+                        {suggestedCommunityActions.map((item: any, i: number) => (
+                          <div
+                            key={i}
+                            className="flex items-center gap-2 p-2 bg-purple-50 dark:bg-purple-950/20 rounded-lg border border-purple-200 dark:border-purple-900 cursor-pointer hover-elevate"
+                            onClick={() => {
+                              setCommunityActions([...communityActions, item]);
+                              setSuggestedCommunityActions(suggestedCommunityActions.filter((_: any, j: number) => j !== i));
+                            }}
+                            data-testid={`suggested-community-action-${i}`}
+                          >
+                            <Plus className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium">{item.task}</p>
+                              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                {item.contactMentioned && <Badge variant="outline" className="text-xs"><Users className="w-3 h-3 mr-1" />{item.contactMentioned}</Badge>}
+                                {item.priority && (
+                                  <Badge variant={item.priority === "high" ? "destructive" : "secondary"} className="text-xs capitalize">
+                                    {item.priority}
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full text-xs text-purple-600 dark:text-purple-400"
+                          onClick={() => {
+                            setCommunityActions([...communityActions, ...suggestedCommunityActions]);
+                            setSuggestedCommunityActions([]);
+                          }}
+                          data-testid="button-accept-all-community"
+                        >
+                          <Check className="w-3 h-3 mr-1" />
+                          Accept All
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {communityActions.length === 0 && suggestedCommunityActions.length === 0 && <p className="text-xs text-muted-foreground italic mb-3">No community actions extracted.</p>}
               </Card>
 
               <Card className="p-5">
@@ -1325,7 +1443,66 @@ export function ReviewView({ id }: { id: number }) {
                     ))}
                   </div>
                 )}
-                {operationalActions.length === 0 && <p className="text-xs text-muted-foreground italic mb-3">No operational actions extracted.</p>}
+
+                {suggestedOperationalActions.length > 0 && (
+                  <div className="mb-3">
+                    <button
+                      type="button"
+                      className="flex items-center gap-2 text-sm font-medium text-purple-600 dark:text-purple-400 mb-2"
+                      onClick={() => setShowSuggestedOperational(!showSuggestedOperational)}
+                      data-testid="button-toggle-suggested-operational"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      AI Suggestions ({suggestedOperationalActions.length})
+                      {showSuggestedOperational ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    </button>
+                    {showSuggestedOperational && (
+                      <div className="space-y-2">
+                        {suggestedOperationalActions.map((item: any, i: number) => (
+                          <div
+                            key={i}
+                            className="flex items-center gap-2 p-2 bg-purple-50 dark:bg-purple-950/20 rounded-lg border border-purple-200 dark:border-purple-900 cursor-pointer hover-elevate"
+                            onClick={() => {
+                              setOperationalActions([...operationalActions, item]);
+                              setSuggestedOperationalActions(suggestedOperationalActions.filter((_: any, j: number) => j !== i));
+                            }}
+                            data-testid={`suggested-operational-action-${i}`}
+                          >
+                            <Plus className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium">{item.task}</p>
+                              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                {item.category && (
+                                  <Badge variant="outline" className="text-xs capitalize">{item.category}</Badge>
+                                )}
+                                {item.priority && (
+                                  <Badge variant={item.priority === "high" ? "destructive" : "secondary"} className="text-xs capitalize">
+                                    {item.priority}
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full text-xs text-purple-600 dark:text-purple-400"
+                          onClick={() => {
+                            setOperationalActions([...operationalActions, ...suggestedOperationalActions]);
+                            setSuggestedOperationalActions([]);
+                          }}
+                          data-testid="button-accept-all-operational"
+                        >
+                          <Check className="w-3 h-3 mr-1" />
+                          Accept All
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {operationalActions.length === 0 && suggestedOperationalActions.length === 0 && <p className="text-xs text-muted-foreground italic mb-3">No operational actions extracted.</p>}
               </Card>
 
               <Card className="p-5">
@@ -1461,5 +1638,249 @@ export function ReviewView({ id }: { id: number }) {
           </DialogContent>
         </Dialog>
       </main>
+  );
+}
+
+function PersonEntry({ person, onRemove, onUnlink, onLink, contacts, testIdPrefix, index }: {
+  person: any;
+  onRemove: () => void;
+  onUnlink: () => void;
+  onLink: (contactId: number, name: string) => void;
+  contacts: Contact[];
+  testIdPrefix: string;
+  index: number;
+}) {
+  const linkedContact = person.contactId ? contacts.find((c) => c.id === person.contactId) : null;
+  return (
+    <div className="p-3 bg-muted/30 rounded-lg border border-border space-y-2" data-testid={`${testIdPrefix}-person-${index}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0 space-y-2">
+          {linkedContact ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              <Link2 className="w-3.5 h-3.5 text-primary shrink-0" />
+              <span className="text-sm font-medium text-primary">{linkedContact.name}</span>
+              {linkedContact.role && (
+                <Badge variant="secondary" className="text-xs">{linkedContact.role}</Badge>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-muted-foreground"
+                onClick={onUnlink}
+                data-testid={`${testIdPrefix}-unlink-${index}`}
+              >
+                <Unlink className="w-3 h-3 mr-1" />
+                Unlink
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {person.name && (
+                <p className="text-sm text-muted-foreground">
+                  AI identified: <span className="font-medium text-foreground">{person.name}</span>
+                  {person.confidence && <span className="text-xs ml-1">({person.confidence}% match)</span>}
+                </p>
+              )}
+              <ContactSearchPicker
+                contacts={contacts}
+                onSelect={(contactId) => {
+                  const contact = contacts.find(c => c.id === contactId);
+                  onLink(contactId, contact?.name || person.name);
+                }}
+                testId={`${testIdPrefix}-search-${index}`}
+              />
+            </div>
+          )}
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="shrink-0"
+          onClick={onRemove}
+          data-testid={`${testIdPrefix}-remove-${index}`}
+        >
+          <X className="w-3.5 h-3.5" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function PeopleSection({ label, description, people, allPeople, setPeople, contacts, toast, section, testIdPrefix }: {
+  label: string;
+  description: string;
+  people: any[];
+  allPeople: any[];
+  setPeople: (p: any[]) => void;
+  contacts: Contact[];
+  toast: any;
+  section: "primary" | "secondary";
+  testIdPrefix: string;
+}) {
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
+
+  const addPerson = () => {
+    setPeople([...allPeople, { name: "", role: section === "primary" ? "primary" : "mentioned", section, contactId: null }]);
+  };
+
+  const handleQuickAddDone = (contactId: number, contactName: string) => {
+    setPeople([...allPeople, { name: contactName, role: section === "primary" ? "primary" : "mentioned", section, contactId }]);
+    toast({ title: "Person added", description: `${contactName} linked as ${label.toLowerCase()}.` });
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div>
+          <h4 className="text-sm font-semibold">{label}</h4>
+          <p className="text-xs text-muted-foreground">{description}</p>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setQuickAddOpen(true)}
+            data-testid={`${testIdPrefix}-quick-add`}
+          >
+            <Plus className="w-3 h-3 mr-1" />
+            Quick Add
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={addPerson}
+            data-testid={`${testIdPrefix}-add-person`}
+          >
+            <UserPlus className="w-3 h-3 mr-1" />
+            Link Existing
+          </Button>
+        </div>
+      </div>
+      {people.length === 0 ? (
+        <p className="text-xs text-muted-foreground italic py-2">No {label.toLowerCase()} people linked yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {people.map((person: any, localIdx: number) => {
+            const globalIdx = allPeople.indexOf(person);
+            return (
+              <PersonEntry
+                key={globalIdx}
+                person={person}
+                index={localIdx}
+                contacts={contacts}
+                testIdPrefix={testIdPrefix}
+                onRemove={() => setPeople(allPeople.filter((_: any, j: number) => j !== globalIdx))}
+                onUnlink={() => {
+                  const updated = [...allPeople];
+                  updated[globalIdx] = { ...updated[globalIdx], contactId: null };
+                  setPeople(updated);
+                }}
+                onLink={(contactId, name) => {
+                  const updated = [...allPeople];
+                  updated[globalIdx] = { ...updated[globalIdx], contactId, name };
+                  setPeople(updated);
+                  toast({ title: "Linked", description: `Linked to ${name}` });
+                }}
+              />
+            );
+          })}
+        </div>
+      )}
+
+      <QuickAddPersonDialog
+        open={quickAddOpen}
+        onOpenChange={setQuickAddOpen}
+        onDone={handleQuickAddDone}
+      />
+    </div>
+  );
+}
+
+function QuickAddPersonDialog({ open, onOpenChange, onDone }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onDone: (contactId: number, name: string) => void;
+}) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const { toast } = useToast();
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/contacts", {
+        name: name.trim(),
+        email: email.trim() || undefined,
+        phone: phone.trim() || undefined,
+        tier: "community",
+        journeyStage: "kakano",
+        engagementLevel: "engaged",
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      onDone(data.id, data.name);
+      onOpenChange(false);
+      setName("");
+      setEmail("");
+      setPhone("");
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to create contact", variant: "destructive" });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Quick Add Person</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label className="text-sm">Name *</Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Full name"
+              data-testid="input-quick-add-name"
+            />
+          </div>
+          <div>
+            <Label className="text-sm">Email</Label>
+            <Input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email (optional)"
+              type="email"
+              data-testid="input-quick-add-email"
+            />
+          </div>
+          <div>
+            <Label className="text-sm">Phone</Label>
+            <Input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="Phone (optional)"
+              data-testid="input-quick-add-phone"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-quick-add">
+            Cancel
+          </Button>
+          <Button
+            disabled={!name.trim() || createMutation.isPending}
+            onClick={() => createMutation.mutate()}
+            data-testid="button-confirm-quick-add"
+          >
+            {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
+            Add Person
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

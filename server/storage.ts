@@ -306,6 +306,8 @@ export interface IStorage {
   dismissCalendarEvent(data: InsertDismissedCalendarEvent): Promise<DismissedCalendarEvent>;
   restoreCalendarEvent(id: number): Promise<void>;
 
+  undismissEvent(eventId: number): Promise<Event>;
+
   // Calendar Settings
   getCalendarSettings(userId: string): Promise<CalendarSetting[]>;
   addCalendarSetting(data: InsertCalendarSetting): Promise<CalendarSetting>;
@@ -1164,6 +1166,14 @@ export class DatabaseStorage implements IStorage {
 
   async restoreCalendarEvent(id: number): Promise<void> {
     await db.delete(dismissedCalendarEvents).where(eq(dismissedCalendarEvents.id, id));
+  }
+
+  async undismissEvent(eventId: number): Promise<Event> {
+    const [updated] = await db.update(events)
+      .set({ debriefSkippedReason: null })
+      .where(eq(events.id, eventId))
+      .returning();
+    return updated;
   }
 
   // Calendar Settings

@@ -304,7 +304,7 @@ export default function Dashboard() {
         statusColor: item.queueStatus === "overdue"
           ? "bg-red-500/15 text-red-700 dark:text-red-300"
           : "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-        link: `/debriefs?tab=calendar&reconcile=${item.id}`,
+        link: `/debriefs?tab=queue&reconcile=${item.id}`,
         type: "event",
       });
     });

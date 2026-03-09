@@ -63,6 +63,22 @@ export type QueueItem = {
   existingDebriefStatus: string | null;
 };
 
+export type DismissedQueueItem = {
+  id: number;
+  name: string;
+  type: string;
+  startTime: string;
+  endTime: string;
+  location: string | null;
+  attendeeCount: number | null;
+  description: string | null;
+  linkedProgrammeId: number | null;
+  queueStatus: "dismissed";
+  existingDebriefId: null;
+  existingDebriefStatus: null;
+  dismissReason: string | null;
+};
+
 export type WeeklyDebrief = {
   id: number;
   userId: number;

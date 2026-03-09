@@ -33,17 +33,20 @@ import {
   FileText,
   AlertTriangle,
   Clock,
-  SkipForward,
+  X,
   MapPin,
   Users,
   Calendar,
   Check,
   ClipboardCheck,
   Link2,
+  Eye,
+  EyeOff,
+  RotateCcw,
 } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format, formatDistanceToNow } from "date-fns";
-import type { QueueItem } from "./shared";
+import type { QueueItem, DismissedQueueItem } from "./shared";
 
 const QUEUE_STATUS_CONFIG = {
   overdue: {
@@ -69,14 +72,20 @@ const QUEUE_STATUS_CONFIG = {
 export function CalendarDebriefTab({ reconcileId }: { reconcileId: string | null }) {
   const { toast } = useToast();
   const [, navigate] = useLocation();
-  const [skipDialogEventId, setSkipDialogEventId] = useState<number | null>(null);
-  const [skipReason, setSkipReason] = useState("");
-  const [skipCustomReason, setSkipCustomReason] = useState("");
+  const [dismissDialogEventId, setDismissDialogEventId] = useState<number | null>(null);
+  const [dismissReason, setDismissReason] = useState("");
+  const [dismissCustomReason, setDismissCustomReason] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [showDismissed, setShowDismissed] = useState(false);
   const [reconcileEventId, setReconcileEventId] = useState<number | null>(null);
 
   const { data: queue, isLoading } = useQuery<QueueItem[]>({
     queryKey: ["/api/events/needs-debrief"],
+  });
+
+  const { data: dismissedItems } = useQuery<DismissedQueueItem[]>({
+    queryKey: ["/api/events/dismissed-debriefs"],
+    enabled: showDismissed,
   });
 
   useEffect(() => {
@@ -89,15 +98,30 @@ export function CalendarDebriefTab({ reconcileId }: { reconcileId: string | null
     }
   }, [reconcileId, queue]);
 
-  const skipMutation = useMutation({
+  const dismissMutation = useMutation({
     mutationFn: async ({ eventId, reason }: { eventId: number; reason: string }) => {
       await apiRequest("POST", `/api/events/${eventId}/skip-debrief`, { reason });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events/needs-debrief"] });
-      toast({ title: "Debrief skipped", description: "Event removed from queue." });
-      setSkipDialogEventId(null);
-      setSkipReason("");
+      queryClient.invalidateQueries({ queryKey: ["/api/events/dismissed-debriefs"] });
+      toast({ title: "Event dismissed", description: "Event removed from queue." });
+      setDismissDialogEventId(null);
+      setDismissReason("");
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const undismissMutation = useMutation({
+    mutationFn: async (eventId: number) => {
+      await apiRequest("DELETE", `/api/events/${eventId}/skip-debrief`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/events/needs-debrief"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/events/dismissed-debriefs"] });
+      toast({ title: "Event restored", description: "Event has been returned to the queue." });
     },
     onError: (err: any) => {
       toast({ title: "Failed", description: err.message, variant: "destructive" });
@@ -112,6 +136,7 @@ export function CalendarDebriefTab({ reconcileId }: { reconcileId: string | null
   const overdueCt = queue?.filter(q => q.queueStatus === "overdue").length || 0;
   const dueCt = queue?.filter(q => q.queueStatus === "due").length || 0;
   const inProgressCt = queue?.filter(q => q.queueStatus === "in_progress").length || 0;
+  const dismissedCt = dismissedItems?.length || 0;
 
   const reconcileEvent = reconcileEventId ? queue?.find(q => q.id === reconcileEventId) : null;
 
@@ -174,9 +199,20 @@ export function CalendarDebriefTab({ reconcileId }: { reconcileId: string | null
               <FileText className="w-3 h-3 mr-1" /> In Progress ({inProgressCt})
             </Button>
           )}
+
+          <Button
+            variant={showDismissed ? "default" : "outline"}
+            size="sm"
+            onClick={() => setShowDismissed(prev => !prev)}
+            className={!showDismissed ? "text-muted-foreground" : ""}
+            data-testid="filter-show-dismissed"
+          >
+            {showDismissed ? <EyeOff className="w-3 h-3 mr-1" /> : <Eye className="w-3 h-3 mr-1" />}
+            {showDismissed ? "Hide Dismissed" : "Show Dismissed"}
+          </Button>
         </div>
 
-        {filteredQueue.length === 0 ? (
+        {filteredQueue.length === 0 && (!showDismissed || dismissedCt === 0) ? (
           <Card className="p-8 text-center" data-testid="empty-queue">
             <ClipboardCheck className="w-12 h-12 text-green-500 mx-auto mb-3" />
             <h3 className="text-lg font-semibold mb-1">All caught up!</h3>
@@ -242,12 +278,12 @@ export function CalendarDebriefTab({ reconcileId }: { reconcileId: string | null
                     <div className="flex items-center gap-2 shrink-0">
                       <Button
                         variant="ghost"
-                        size="sm"
-                        onClick={() => { setSkipDialogEventId(item.id); setSkipReason(""); }}
-                        className="text-muted-foreground hover:text-foreground"
-                        data-testid={`button-skip-${item.id}`}
+                        size="icon"
+                        onClick={() => { setDismissDialogEventId(item.id); setDismissReason(""); }}
+                        className="text-muted-foreground"
+                        data-testid={`button-dismiss-${item.id}`}
                       >
-                        <SkipForward className="w-4 h-4" />
+                        <X className="w-4 h-4" />
                       </Button>
                       {item.existingDebriefId ? (
                         <Link href={`/debriefs/${item.existingDebriefId}`} data-testid={`button-continue-${item.id}`}>
@@ -271,20 +307,85 @@ export function CalendarDebriefTab({ reconcileId }: { reconcileId: string | null
                 </Card>
               );
             })}
+
+            {showDismissed && dismissedItems && dismissedItems.length > 0 && (
+              <div className="space-y-3 mt-6">
+                <h4 className="text-sm font-medium text-muted-foreground" data-testid="heading-dismissed">
+                  Dismissed ({dismissedItems.length})
+                </h4>
+                {dismissedItems.map((item) => (
+                  <Card
+                    key={item.id}
+                    className="border-l-4 border-l-muted p-4 opacity-60"
+                    data-testid={`dismissed-card-${item.id}`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <Badge variant="secondary" className="text-xs shrink-0" data-testid={`dismissed-badge-${item.id}`}>
+                            Dismissed
+                          </Badge>
+                          <Badge variant="outline" className="text-xs shrink-0">
+                            {item.type}
+                          </Badge>
+                          {item.dismissReason && (
+                            <span className="text-xs text-muted-foreground italic">
+                              {item.dismissReason}
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="font-semibold text-base truncate" data-testid={`dismissed-name-${item.id}`}>
+                          {item.name}
+                        </h3>
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-sm text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3.5 h-3.5" />
+                            {format(new Date(item.startTime), "d MMM yyyy, h:mm a")}
+                          </span>
+                          {item.location && (
+                            <span className="flex items-center gap-1">
+                              <MapPin className="w-3.5 h-3.5" />
+                              {item.location}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1"
+                          onClick={() => undismissMutation.mutate(item.id)}
+                          disabled={undismissMutation.isPending}
+                          data-testid={`button-undismiss-${item.id}`}
+                        >
+                          {undismissMutation.isPending ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          )}
+                          Un-dismiss
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      <Dialog open={skipDialogEventId !== null} onOpenChange={(open) => { if (!open) { setSkipDialogEventId(null); setSkipReason(""); } }}>
+      <Dialog open={dismissDialogEventId !== null} onOpenChange={(open) => { if (!open) { setDismissDialogEventId(null); setDismissReason(""); } }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Skip Debrief</DialogTitle>
+            <DialogTitle>Dismiss Event</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground mb-2">
-            Provide a reason for skipping the debrief. This event will be removed from the queue.
+            Provide a reason for dismissing this event. It will be removed from the queue but can be restored later.
           </p>
-          <Select value={skipReason} onValueChange={(val) => { setSkipReason(val); if (val !== "Other") setSkipCustomReason(""); }}>
-            <SelectTrigger data-testid="select-skip-reason">
+          <Select value={dismissReason} onValueChange={(val) => { setDismissReason(val); if (val !== "Other") setDismissCustomReason(""); }}>
+            <SelectTrigger data-testid="select-dismiss-reason">
               <SelectValue placeholder="Select a reason..." />
             </SelectTrigger>
             <SelectContent>
@@ -295,29 +396,29 @@ export function CalendarDebriefTab({ reconcileId }: { reconcileId: string | null
               <SelectItem value="Other">Other</SelectItem>
             </SelectContent>
           </Select>
-          {skipReason === "Other" && (
+          {dismissReason === "Other" && (
             <Input
-              value={skipCustomReason}
-              onChange={(e) => setSkipCustomReason(e.target.value)}
+              value={dismissCustomReason}
+              onChange={(e) => setDismissCustomReason(e.target.value)}
               placeholder="Please specify a reason..."
-              data-testid="input-skip-custom-reason"
+              data-testid="input-dismiss-custom-reason"
             />
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setSkipDialogEventId(null); setSkipReason(""); setSkipCustomReason(""); }} data-testid="button-cancel-skip">
+            <Button variant="outline" onClick={() => { setDismissDialogEventId(null); setDismissReason(""); setDismissCustomReason(""); }} data-testid="button-cancel-dismiss">
               Cancel
             </Button>
             <Button
               variant="destructive"
-              disabled={!skipReason || (skipReason === "Other" && !skipCustomReason.trim()) || skipMutation.isPending}
-              onClick={() => skipDialogEventId && skipMutation.mutate({
-                eventId: skipDialogEventId,
-                reason: skipReason === "Other" ? skipCustomReason.trim() : skipReason,
+              disabled={!dismissReason || (dismissReason === "Other" && !dismissCustomReason.trim()) || dismissMutation.isPending}
+              onClick={() => dismissDialogEventId && dismissMutation.mutate({
+                eventId: dismissDialogEventId,
+                reason: dismissReason === "Other" ? dismissCustomReason.trim() : dismissReason,
               })}
-              data-testid="button-confirm-skip"
+              data-testid="button-confirm-dismiss"
             >
-              {skipMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <SkipForward className="w-4 h-4 mr-1" />}
-              Skip Debrief
+              {dismissMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <X className="w-4 h-4 mr-1" />}
+              Dismiss
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -328,7 +429,7 @@ export function CalendarDebriefTab({ reconcileId }: { reconcileId: string | null
         open={reconcileEventId !== null}
         onClose={() => {
           setReconcileEventId(null);
-          navigate("/debriefs?tab=calendar", { replace: true });
+          navigate("/debriefs?tab=queue", { replace: true });
         }}
       />
     </>
@@ -436,9 +537,15 @@ function ReconcileDialog({ event, open, onClose }: { event: QueueItem | null; op
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/events/needs-debrief"] });
       queryClient.invalidateQueries({ queryKey: ["/api/impact-logs"] });
-      setCreatedId(data?.id || null);
-      setStep("done");
-      toast({ title: "Debrief created", description: "Your debrief has been linked to the event." });
+      const newId = data?.id;
+      if (newId) {
+        onClose();
+        setLocation(`/debriefs/${newId}?from=queue`);
+      } else {
+        setCreatedId(null);
+        setStep("done");
+      }
+      toast({ title: "Debrief created", description: "Navigating to review..." });
     },
     onError: () => {
       setStep("input");
