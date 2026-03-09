@@ -477,6 +477,8 @@ export const bookings = pgTable("bookings", {
   discountPercentage: numeric("discount_percentage", { precision: 5, scale: 2 }).default("0"),
   discountAmount: numeric("discount_amount", { precision: 10, scale: 2 }).default("0"),
   usePackageCredit: boolean("use_package_credit").default(false),
+  isRangatahi: boolean("is_rangatahi").default(false),
+  rangatahiCount: integer("rangatahi_count"),
   isAfterHours: boolean("is_after_hours").default(false),
   autoInstructionsSent: boolean("auto_instructions_sent").default(false),
   autoInstructionsSentAt: timestamp("auto_instructions_sent_at"),

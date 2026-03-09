@@ -143,6 +143,7 @@ const EVENT_TYPE_DOT_COLORS: Record<string, string> = {
   "Personal Development": "bg-violet-400",
   "Planning": "bg-rose-400",
   "Programme": "bg-indigo-400",
+  "Venue Hire": "bg-amber-400",
 };
 
 const EVENT_TYPE_BADGE_COLORS: Record<string, string> = {
@@ -152,6 +153,7 @@ const EVENT_TYPE_BADGE_COLORS: Record<string, string> = {
   "Personal Development": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
   "Planning": "bg-rose-500/10 text-rose-700 dark:text-rose-300",
   "Programme": "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
+  "Venue Hire": "bg-amber-500/10 text-amber-700 dark:text-amber-300",
 };
 
 const EVENT_TYPE_CARD_TINTS: Record<string, string> = {
@@ -206,20 +208,264 @@ function classifyGcalEvent(gcal: GoogleCalendarEvent): string {
   return "Meeting";
 }
 
-function getEventType(e: { type: "gcal" | "app"; gcal?: GoogleCalendarEvent; app?: AppEvent }): string {
+type CombinedEvent = { date: Date; type: "gcal" | "app" | "booking"; gcal?: GoogleCalendarEvent; app?: AppEvent; booking?: Booking; isPast: boolean; isDismissed?: boolean };
+
+function getEventType(e: CombinedEvent): string {
+  if (e.type === "booking" && e.booking) return "Venue Hire";
   if (e.type === "app" && e.app) return e.app.type;
   if (e.type === "gcal" && e.gcal) return classifyGcalEvent(e.gcal);
   return "Meeting";
 }
 
-function getEventDotColor(e: { type: "gcal" | "app"; gcal?: GoogleCalendarEvent; app?: AppEvent }) {
+function getEventDotColor(e: CombinedEvent) {
   const eventType = getEventType(e);
   return EVENT_TYPE_DOT_COLORS[eventType] || "bg-gray-400";
 }
 
-type CombinedEvent = { date: Date; type: "gcal" | "app"; gcal?: GoogleCalendarEvent; app?: AppEvent; isPast: boolean; isDismissed?: boolean };
-
 type DebriefInfo = { debriefId: number; status: string } | null;
+
+const BOOKING_BADGE_COLORS: Record<string, string> = {
+  "Workshop": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
+  "Community Event": "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  "Private Hire": "bg-orange-500/10 text-orange-700 dark:text-orange-300",
+  "Rehearsal": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
+  "Meeting": "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
+  "Pop-up": "bg-pink-500/10 text-pink-700 dark:text-pink-300",
+  "Other": "bg-gray-500/10 text-gray-700 dark:text-gray-300",
+  "Community Workshop": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
+  "Creative Workshop": "bg-purple-500/10 text-purple-700 dark:text-purple-300",
+  "Youth Workshop": "bg-pink-500/10 text-pink-700 dark:text-pink-300",
+  "Talks": "bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  "Networking": "bg-green-500/10 text-green-700 dark:text-green-300",
+};
+
+const BOOKING_CARD_COLORS: Record<string, string> = {
+  "Workshop": "border-blue-500/30 bg-blue-500/5",
+  "Community Event": "border-green-500/30 bg-green-500/5",
+  "Private Hire": "border-orange-500/30 bg-orange-500/5",
+  "Rehearsal": "border-purple-500/30 bg-purple-500/5",
+  "Meeting": "border-slate-500/30 bg-slate-500/5",
+  "Pop-up": "border-pink-500/30 bg-pink-500/5",
+  "Other": "border-gray-500/30 bg-gray-500/5",
+};
+
+function BookingCalendarCard({ booking, venueMap, allContacts }: {
+  booking: Booking;
+  venueMap: Record<number, string>;
+  allContacts: Contact[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [attendeeCount, setAttendeeCount] = useState<string>(booking.attendeeCount?.toString() || "");
+  const [rangatahiCount, setRangatahiCount] = useState<string>((booking as any).rangatahiCount?.toString() || "");
+  const [isRangatahi, setIsRangatahi] = useState<boolean>((booking as any).isRangatahi || false);
+  const [attendeeSearch, setAttendeeSearch] = useState("");
+  const [taggedIds, setTaggedIds] = useState<number[]>(booking.attendees || []);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    setAttendeeCount(booking.attendeeCount?.toString() || "");
+    setRangatahiCount((booking as any).rangatahiCount?.toString() || "");
+    setIsRangatahi((booking as any).isRangatahi || false);
+    setTaggedIds(booking.attendees || []);
+  }, [booking]);
+
+  const attendanceMutation = useMutation({
+    mutationFn: async (data: { attendeeCount?: number | null; rangatahiCount?: number | null; attendees?: number[]; isRangatahi?: boolean }) => {
+      const res = await apiRequest("PATCH", `/api/bookings/${booking.id}/attendance`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to save attendance", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const saveAttendance = () => {
+    attendanceMutation.mutate({
+      attendeeCount: attendeeCount ? parseInt(attendeeCount) : null,
+      rangatahiCount: rangatahiCount ? parseInt(rangatahiCount) : null,
+      attendees: taggedIds,
+      isRangatahi,
+    });
+  };
+
+  const toggleRangatahi = () => {
+    const next = !isRangatahi;
+    setIsRangatahi(next);
+    attendanceMutation.mutate({
+      isRangatahi: next,
+      attendeeCount: attendeeCount ? parseInt(attendeeCount) : null,
+      rangatahiCount: rangatahiCount ? parseInt(rangatahiCount) : null,
+      attendees: taggedIds,
+    });
+  };
+
+  const addAttendee = (contactId: number) => {
+    if (taggedIds.includes(contactId)) return;
+    const next = [...taggedIds, contactId];
+    setTaggedIds(next);
+    setAttendeeSearch("");
+    attendanceMutation.mutate({ attendees: next });
+  };
+
+  const removeAttendee = (contactId: number) => {
+    const next = taggedIds.filter(id => id !== contactId);
+    setTaggedIds(next);
+    attendanceMutation.mutate({ attendees: next });
+  };
+
+  const filteredContacts = useMemo(() => {
+    if (!attendeeSearch.trim()) return [];
+    const q = attendeeSearch.toLowerCase();
+    return allContacts.filter(c => c.name?.toLowerCase().includes(q) && !taggedIds.includes(c.id)).slice(0, 8);
+  }, [attendeeSearch, allContacts, taggedIds]);
+
+  const venueName = venueMap[booking.venueId] || null;
+  const cardColor = BOOKING_CARD_COLORS[booking.classification] || BOOKING_CARD_COLORS["Other"];
+
+  return (
+    <Card
+      className={`p-4 overflow-visible ${cardColor}`}
+      data-testid={`card-booking-calendar-${booking.id}`}
+    >
+      <div
+        className="cursor-pointer"
+        onClick={() => setExpanded(!expanded)}
+        data-testid={`button-expand-booking-${booking.id}`}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            <h4 className="font-medium text-sm truncate">{booking.title}</h4>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground mt-1">
+              {booking.startTime && (
+                <span className="flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  {booking.startTime}{booking.endTime ? ` - ${booking.endTime}` : ""}
+                </span>
+              )}
+              {venueName && (
+                <span className="flex items-center gap-1">
+                  <Building2 className="w-3 h-3" />
+                  {venueName}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {isRangatahi && (
+              <Badge className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">Rangatahi</Badge>
+            )}
+            <Badge className={`text-[10px] ${BOOKING_BADGE_COLORS[booking.classification] || ""}`}>
+              {booking.classification}
+            </Badge>
+            <Badge className={`text-[10px] ${booking.status === "completed" ? "bg-green-500/10 text-green-700 dark:text-green-300" : "bg-blue-500/10 text-blue-700 dark:text-blue-300"}`}>
+              {booking.status}
+            </Badge>
+            {expanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
+          </div>
+        </div>
+        {!expanded && (taggedIds.length > 0 || booking.attendeeCount) && (
+          <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
+            <Users className="w-3 h-3" />
+            {booking.attendeeCount ? `${booking.attendeeCount} attendees` : ""}
+            {taggedIds.length > 0 ? `${booking.attendeeCount ? " / " : ""}${taggedIds.length} tagged` : ""}
+          </div>
+        )}
+      </div>
+
+      {expanded && (
+        <div className="mt-3 pt-3 border-t space-y-3" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between">
+            <button
+              onClick={toggleRangatahi}
+              className={`flex items-center gap-2 text-sm px-3 py-1.5 rounded-md border transition-colors ${isRangatahi ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300" : "border-border text-muted-foreground hover:bg-muted"}`}
+              data-testid={`toggle-rangatahi-${booking.id}`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              {isRangatahi ? "Rangatahi Event" : "Mark as Rangatahi"}
+            </button>
+            {attendanceMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label className="text-xs text-muted-foreground">Head Count</Label>
+              <Input
+                type="number"
+                placeholder="0"
+                value={attendeeCount}
+                onChange={e => setAttendeeCount(e.target.value)}
+                onBlur={saveAttendance}
+                className="h-8 text-sm"
+                data-testid={`input-attendee-count-${booking.id}`}
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Rangatahi Count</Label>
+              <Input
+                type="number"
+                placeholder="0"
+                value={rangatahiCount}
+                onChange={e => setRangatahiCount(e.target.value)}
+                onBlur={saveAttendance}
+                className="h-8 text-sm"
+                data-testid={`input-rangatahi-count-${booking.id}`}
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1 block">Tag Community Members</Label>
+            <div className="relative">
+              <Search className="absolute left-2 top-2 w-3.5 h-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Search people..."
+                value={attendeeSearch}
+                onChange={e => setAttendeeSearch(e.target.value)}
+                className="h-8 text-sm pl-7"
+                data-testid={`input-attendee-search-${booking.id}`}
+              />
+            </div>
+            {filteredContacts.length > 0 && (
+              <div className="mt-1 border rounded-md bg-popover max-h-32 overflow-y-auto">
+                {filteredContacts.map(c => (
+                  <button
+                    key={c.id}
+                    onClick={() => addAttendee(c.id)}
+                    className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted flex items-center gap-2"
+                    data-testid={`button-add-attendee-${booking.id}-${c.id}`}
+                  >
+                    <UserPlus className="w-3 h-3 text-muted-foreground" />
+                    {c.name}
+                    {c.role && <span className="text-xs text-muted-foreground">({c.role})</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {taggedIds.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {taggedIds.map(cId => {
+                const contact = allContacts.find(c => c.id === cId);
+                return (
+                  <Badge key={cId} variant="secondary" className="text-xs gap-1 pr-1" data-testid={`badge-attendee-${booking.id}-${cId}`}>
+                    {contact?.name || `#${cId}`}
+                    <button onClick={() => removeAttendee(cId)} className="ml-0.5 hover:text-destructive">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </Badge>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
 
 function EventCard({
   entry,
@@ -1138,7 +1384,7 @@ export default function CalendarPage() {
     },
   });
 
-  const ACTIVITY_TYPES = ["Hub Activity", "Drop-in", "Catch Up", "Community Event", "Other"] as const;
+  const ACTIVITY_TYPES = ["Hub Activity", "Drop-in", "Meeting", "Community Event", "Venue Hire", "Other"] as const;
 
   const logActivityMutation = useMutation({
     mutationFn: async (data: { name: string; type: string; date: string; description: string; contacts: Contact[]; groups: { id: number; name: string }[] }) => {
@@ -1344,8 +1590,31 @@ export default function CalendarPage() {
       combined.push({ date: d, type: "app", app: e, isPast: new Date(e.endTime) < new Date() });
     });
 
+    const linkedBookingIds = new Set(
+      (appEvents || []).filter(e => e.linkedBookingId).map(e => e.linkedBookingId)
+    );
+    (allBookings || []).forEach((b: Booking) => {
+      if (b.status !== "confirmed" && b.status !== "completed") return;
+      if (linkedBookingIds.has(b.id)) return;
+      if (!b.startDate) return;
+      const d = new Date(b.startDate);
+      let endMoment: Date;
+      if (b.endDate) {
+        endMoment = new Date(b.endDate);
+      } else {
+        endMoment = new Date(d);
+      }
+      if (b.endTime) {
+        const [h, m] = b.endTime.split(":").map(Number);
+        endMoment.setHours(h, m, 59);
+      } else {
+        endMoment.setHours(23, 59, 59);
+      }
+      combined.push({ date: d, type: "booking", booking: b, isPast: endMoment < new Date() });
+    });
+
     return combined;
-  }, [gcalEvents, appEvents, dismissedIds]);
+  }, [gcalEvents, appEvents, dismissedIds, allBookings]);
 
   const filteredEvents = useMemo(() => {
     let events = allEvents;
@@ -1466,7 +1735,7 @@ export default function CalendarPage() {
   }, [currentMonth]);
 
   const pastEventsNeedingDebrief = useMemo(() => {
-    return filteredEvents.filter(e => e.isPast).length;
+    return filteredEvents.filter(e => e.isPast && e.type !== "booking").length;
   }, [filteredEvents]);
 
   type SpaceOccupancyItem = {
@@ -1494,20 +1763,7 @@ export default function CalendarPage() {
     "Other": "bg-gray-400",
   };
 
-  const BOOKING_BADGE_COLORS: Record<string, string> = {
-    "Workshop": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
-    "Community Event": "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-    "Private Hire": "bg-orange-500/10 text-orange-700 dark:text-orange-300",
-    "Rehearsal": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
-    "Meeting": "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
-    "Pop-up": "bg-pink-500/10 text-pink-700 dark:text-pink-300",
-    "Other": "bg-gray-500/10 text-gray-700 dark:text-gray-300",
-    "Community Workshop": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
-    "Creative Workshop": "bg-purple-500/10 text-purple-700 dark:text-purple-300",
-    "Youth Workshop": "bg-pink-500/10 text-pink-700 dark:text-pink-300",
-    "Talks": "bg-amber-500/10 text-amber-700 dark:text-amber-300",
-    "Networking": "bg-green-500/10 text-green-700 dark:text-green-300",
-  };
+  
 
   const SPACE_STATUS_COLORS: Record<string, string> = {
     enquiry: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300",
@@ -1802,8 +2058,8 @@ export default function CalendarPage() {
                   );
                   const allDots: { color: string; key: string; reconciled?: boolean }[] = [];
                   dayEvents.forEach((e, i) => {
-                    const info = getDebriefInfo(e);
-                    allDots.push({ color: getEventDotColor(e), key: `ev-${i}`, reconciled: e.isPast ? !!info : undefined });
+                    const info = e.type !== "booking" ? getDebriefInfo(e) : null;
+                    allDots.push({ color: getEventDotColor(e), key: `ev-${i}`, reconciled: e.type !== "booking" && e.isPast ? !!info : undefined });
                   });
                   daySpaceItems.forEach((item, i) => allDots.push({ color: item.kind === "programme" ? "bg-indigo-400" : "bg-orange-400", key: `sp-${i}` }));
 
@@ -1863,6 +2119,14 @@ export default function CalendarPage() {
             ) : (showSchedule && selectedDayEvents.length > 0) || (showSpace && selectedDaySpace.length > 0) ? (
               <div className="space-y-3">
                 {showSchedule && selectedDayEvents.map((entry) => (
+                  entry.type === "booking" && entry.booking ? (
+                    <BookingCalendarCard
+                      key={`booking-${entry.booking.id}`}
+                      booking={entry.booking}
+                      venueMap={venueMap}
+                      allContacts={(allContacts || []) as Contact[]}
+                    />
+                  ) : (
                   <div key={entry.type === "gcal" ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`} className="relative">
                     {entry.isDismissed && (
                       <div className="absolute inset-0 bg-background/60 z-10 flex items-center justify-center rounded-md">
@@ -1901,6 +2165,7 @@ export default function CalendarPage() {
                       onViewDebrief={(debriefId) => navigate(`/debriefs/${debriefId}`)}
                     />
                   </div>
+                  )
                 ))}
                 {showSpace && selectedDaySpace.map((item) => (
                   <Card

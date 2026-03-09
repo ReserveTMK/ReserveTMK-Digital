@@ -3938,6 +3938,27 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     }
   });
 
+  app.patch("/api/bookings/:id/attendance", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const bookingId = parseInt(req.params.id);
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+      if (booking.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      const updates: any = {};
+      if (req.body.attendeeCount !== undefined) updates.attendeeCount = req.body.attendeeCount;
+      if (req.body.rangatahiCount !== undefined) updates.rangatahiCount = req.body.rangatahiCount;
+      if (req.body.attendees !== undefined) updates.attendees = req.body.attendees;
+      if (req.body.isRangatahi !== undefined) updates.isRangatahi = req.body.isRangatahi;
+
+      const updated = await storage.updateBooking(bookingId, updates);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.post("/api/bookings/:id/resend-confirmation", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
