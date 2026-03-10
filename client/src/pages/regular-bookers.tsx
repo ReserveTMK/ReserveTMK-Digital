@@ -1144,7 +1144,7 @@ function RegularBookerFormDialog({
               {agreementUsage && (
                 <div className="bg-muted/50 rounded-md p-3 text-xs space-y-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Booking Allowance</span>
+                    <span className="text-muted-foreground">Venue Hire Allowance</span>
                     <span className="font-medium">{agreementUsage.used}/{agreementUsage.allowance} used ({agreementUsage.remaining} remaining)</span>
                   </div>
                   <div className="flex items-center justify-between">
@@ -1266,7 +1266,7 @@ function RegularBookerFormDialog({
               )}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label className="text-sm font-semibold">Prepaid Booking Package</Label>
+                  <Label className="text-sm font-semibold">Prepaid Venue Hire Package</Label>
                   <Switch
                     checked={hasBookingPackage}
                     onCheckedChange={setHasBookingPackage}
@@ -1277,7 +1277,7 @@ function RegularBookerFormDialog({
                   <div className="space-y-2">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <Label className="text-xs text-muted-foreground">Total Bookings</Label>
+                        <Label className="text-xs text-muted-foreground">Total Venue Hires</Label>
                         <Input
                           type="number"
                           min="0"
@@ -1287,7 +1287,7 @@ function RegularBookerFormDialog({
                         />
                       </div>
                       <div>
-                        <Label className="text-xs text-muted-foreground">Used Bookings</Label>
+                        <Label className="text-xs text-muted-foreground">Used Venue Hires</Label>
                         <Input
                           type="number"
                           min="0"
@@ -1329,7 +1329,7 @@ function RegularBookerFormDialog({
           )}
 
           <div>
-            <Label>Usual Booking Needs</Label>
+            <Label>Usual Venue Hire Needs</Label>
             <Textarea
               value={usualBookingNeeds}
               onChange={(e) => setUsualBookingNeeds(e.target.value)}

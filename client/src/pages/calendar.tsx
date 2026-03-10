@@ -2210,7 +2210,7 @@ export default function CalendarPage() {
                           </span>
                         )}
                         <Badge className={`text-[10px] ${item.kind === "programme" ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300" : "bg-orange-500/10 text-orange-700 dark:text-orange-300"}`}>
-                          {item.kind === "programme" ? "Programme" : "Booking"}
+                          {item.kind === "programme" ? "Programme" : "Venue Hire"}
                         </Badge>
                         <Badge className={`text-[10px] ${SPACE_STATUS_COLORS[item.status] || ""}`}>
                           {item.status}

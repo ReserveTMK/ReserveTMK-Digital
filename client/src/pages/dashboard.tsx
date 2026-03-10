@@ -276,7 +276,7 @@ export default function Dashboard() {
           date: format(d, "yyyy-MM-dd"),
           name: b.title || "",
           time: b.startTime ? formatTimeSlot(b.startTime) : "TBC",
-          type: "Booking",
+          type: "Venue Hire",
           typeColor: "bg-orange-500/15 text-orange-700 dark:text-orange-300",
           id: `book-${b.id}`,
         });
@@ -882,7 +882,7 @@ export default function Dashboard() {
                   <DollarSign className="w-5 h-5 text-green-600" />
                 </div>
                 <div>
-                  <h3 className="font-display font-semibold" data-testid="text-revenue-heading">Booking Revenue</h3>
+                  <h3 className="font-display font-semibold" data-testid="text-revenue-heading">Venue Hire Revenue</h3>
                   <p className="text-xs text-muted-foreground">{format(new Date(), "MMMM yyyy")}</p>
                 </div>
               </div>
@@ -914,7 +914,7 @@ export default function Dashboard() {
               <div className="mt-3 pt-3 border-t border-border">
                 <Link href="/bookings">
                   <Button variant="ghost" size="sm" className="w-full gap-1 text-primary" data-testid="button-view-bookings">
-                    <Building2 className="w-3.5 h-3.5" /> View Bookings <ArrowRight className="w-3 h-3 ml-auto" />
+                    <Building2 className="w-3.5 h-3.5" /> View Venue Hires <ArrowRight className="w-3 h-3 ml-auto" />
                   </Button>
                 </Link>
               </div>
@@ -1049,7 +1049,7 @@ export default function Dashboard() {
                 <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-400" /> Meetings</span>
                 <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-violet-400" /> Events</span>
                 <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-indigo-400" /> Programmes</span>
-                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-orange-400" /> Bookings</span>
+                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-orange-400" /> Venue Hire</span>
               </div>
 
               <Card className="p-4 md:p-6">

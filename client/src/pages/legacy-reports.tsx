@@ -58,7 +58,7 @@ const METRIC_KEY_TO_LABEL: Record<string, string> = {
   activations_events: "Events",
   activations_partner_meetings: "Partner Meetings",
   hub_foottraffic: "Hub Foot Traffic",
-  bookings_total: "Total Bookings",
+  bookings_total: "Total Venue Hires",
 };
 
 const METRIC_KEY_TO_SNAPSHOT_FIELD: Record<string, keyof LegacyReportSnapshot> = {

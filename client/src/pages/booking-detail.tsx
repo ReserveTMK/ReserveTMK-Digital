@@ -114,7 +114,7 @@ export default function BookingDetail() {
     mutationFn: () => apiRequest('POST', `/api/bookings/${bookingId}/accept`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
-      toast({ title: "Booking Accepted", description: "Booking has been confirmed and confirmation email sent." });
+      toast({ title: "Venue Hire Accepted", description: "Venue hire has been confirmed and confirmation email sent." });
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -127,7 +127,7 @@ export default function BookingDetail() {
       queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
       setDeclineOpen(false);
       setDeclineReason("");
-      toast({ title: "Booking Declined", description: "Booking has been cancelled." });
+      toast({ title: "Venue Hire Declined", description: "Venue hire has been cancelled." });
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -141,8 +141,8 @@ export default function BookingDetail() {
       queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
       queryClient.invalidateQueries({ queryKey: ['/api/bookings', bookingId, 'survey'] });
       toast({
-        title: "Booking Completed",
-        description: data.surveyDecision || "Booking marked as completed.",
+        title: "Venue Hire Completed",
+        description: data.surveyDecision || "Venue hire marked as completed.",
       });
     },
     onError: (err: Error) => {
@@ -177,7 +177,7 @@ export default function BookingDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/bookings', bookingId, 'survey'] });
       queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
-      toast({ title: "Survey Sent", description: "Post-booking survey has been sent." });
+      toast({ title: "Survey Sent", description: "Post-venue hire survey has been sent." });
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -198,11 +198,11 @@ export default function BookingDetail() {
         <div className="max-w-4xl mx-auto">
           <Card className="p-12 text-center">
             <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <h2 className="text-lg font-semibold mb-2" data-testid="text-booking-not-found">Booking Not Found</h2>
-            <p className="text-muted-foreground mb-4">This booking doesn't exist or you don't have access to it.</p>
+            <h2 className="text-lg font-semibold mb-2" data-testid="text-booking-not-found">Venue Hire Not Found</h2>
+            <p className="text-muted-foreground mb-4">This venue hire doesn't exist or you don't have access to it.</p>
             <Button onClick={() => setLocation("/bookings")} data-testid="button-back-bookings">
               <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Bookings
+              Back to Venue Hire
             </Button>
           </Card>
         </div>
@@ -238,7 +238,7 @@ export default function BookingDetail() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 flex-wrap">
                 <h1 className="text-2xl font-display font-bold" data-testid="text-booking-header">
-                  {booking.title || venue?.name || "Booking"}
+                  {booking.title || venue?.name || "Venue Hire"}
                 </h1>
                 <Badge className={STATUS_BADGE_STYLES[booking.status] || ""} data-testid="badge-booking-status">
                   <StatusIcon className="w-3 h-3 mr-1" />
@@ -246,7 +246,7 @@ export default function BookingDetail() {
                 </Badge>
               </div>
               <p className="text-sm text-muted-foreground mt-0.5">
-                Booking #{booking.id}
+                Venue Hire #{booking.id}
                 {booking.createdAt && ` — Created ${formatDate(booking.createdAt)}`}
               </p>
             </div>
@@ -257,7 +257,7 @@ export default function BookingDetail() {
               <div className="flex items-center gap-3 flex-wrap">
                 <div className="flex-1">
                   <h3 className="font-semibold text-sm" data-testid="text-action-required">Action Required</h3>
-                  <p className="text-sm text-muted-foreground">This booking enquiry is awaiting your decision.</p>
+                  <p className="text-sm text-muted-foreground">This venue hire enquiry is awaiting your decision.</p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <Button
@@ -275,7 +275,7 @@ export default function BookingDetail() {
                     data-testid="button-accept-booking"
                   >
                     {acceptMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
-                    Accept Booking
+                    Accept Venue Hire
                   </Button>
                 </div>
               </div>
@@ -286,7 +286,7 @@ export default function BookingDetail() {
             <Card className="p-4 border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10">
               <div className="flex items-center gap-3 flex-wrap">
                 <div className="flex-1">
-                  <h3 className="font-semibold text-sm" data-testid="text-confirmed-status">Booking Confirmed</h3>
+                  <h3 className="font-semibold text-sm" data-testid="text-confirmed-status">Venue Hire Confirmed</h3>
                   <p className="text-sm text-muted-foreground">
                     {booking.confirmationSent ? "Confirmation email has been sent." : "Confirmation email not yet sent."}
                   </p>
@@ -322,7 +322,7 @@ export default function BookingDetail() {
                     {booking.isAfterHours ? (
                       <>
                         <Moon className="w-4 h-4 text-amber-600" />
-                        After-Hours Booking
+                        After-Hours Venue Hire
                       </>
                     ) : (
                       <>
@@ -339,7 +339,7 @@ export default function BookingDetail() {
                           After-hours reminder sent {booking.autoInstructionsSentAt ? `on ${format(new Date(booking.autoInstructionsSentAt), "d MMM, h:mm a")}` : ""}
                         </>
                       ) : (
-                        "After-hours reminder will be sent automatically before the booking"
+                        "After-hours reminder will be sent automatically before the venue hire"
                       )
                     ) : (
                       "Instructions were included with the confirmation email"
@@ -374,7 +374,7 @@ export default function BookingDetail() {
             <Card className="p-5 space-y-4">
               <h2 className="font-semibold text-base flex items-center gap-2" data-testid="text-section-details">
                 <Calendar className="w-4 h-4 text-muted-foreground" />
-                Booking Details
+                Venue Hire Details
               </h2>
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between gap-2">
@@ -501,7 +501,7 @@ export default function BookingDetail() {
                       <div className="flex items-center gap-2">
                         <FileText className="w-3.5 h-3.5 text-muted-foreground" />
                         <span className="text-xs font-semibold">
-                          {isFromBooking ? "Booking Agreement" : "Booker's Agreement"}
+                          {isFromBooking ? "Venue Hire Agreement" : "Booker's Agreement"}
                         </span>
                       </div>
                       {membership && (() => {
@@ -640,11 +640,11 @@ export default function BookingDetail() {
               <Card className="p-5 space-y-4">
                 <h2 className="font-semibold text-base flex items-center gap-2" data-testid="text-section-package">
                   <Package className="w-4 h-4 text-muted-foreground" />
-                  Booking Package
+                  Venue Hire Package
                 </h2>
                 <div className="space-y-3 text-sm">
                   <div className="flex justify-between gap-2">
-                    <span className="text-muted-foreground">Total Bookings</span>
+                    <span className="text-muted-foreground">Total Venue Hires</span>
                     <span className="font-medium" data-testid="text-package-total">{regularBooker.packageTotalBookings || 0}</span>
                   </div>
                   <div className="flex justify-between gap-2">
@@ -702,7 +702,7 @@ export default function BookingDetail() {
             <Card className="p-5 space-y-4">
               <h2 className="font-semibold text-base flex items-center gap-2" data-testid="text-section-survey">
                 <Star className="w-4 h-4 text-muted-foreground" />
-                Post-Booking Survey
+                Post-Venue Hire Survey
               </h2>
               {survey ? (
                 <div className="space-y-3 text-sm">
@@ -756,8 +756,8 @@ export default function BookingDetail() {
                 <div className="space-y-3">
                   <p className="text-sm text-muted-foreground" data-testid="text-no-survey">
                     {booking.postSurveySent === false && regularBooker
-                      ? "Not sent (regular booker, not first booking)"
-                      : "No survey has been sent for this booking."}
+                      ? "Not sent (regular booker, not first venue hire)"
+                      : "No survey has been sent for this venue hire."}
                   </p>
                   {bookerContact?.email && (
                     <Button
@@ -780,8 +780,8 @@ export default function BookingDetail() {
               <div className="flex items-center gap-2">
                 <Ban className="w-5 h-5 text-muted-foreground" />
                 <div>
-                  <h3 className="font-semibold text-sm" data-testid="text-cancelled-status">Booking Cancelled</h3>
-                  <p className="text-sm text-muted-foreground">This booking has been declined or cancelled.</p>
+                  <h3 className="font-semibold text-sm" data-testid="text-cancelled-status">Venue Hire Cancelled</h3>
+                  <p className="text-sm text-muted-foreground">This venue hire has been declined or cancelled.</p>
                 </div>
               </div>
             </Card>
@@ -827,9 +827,9 @@ export default function BookingDetail() {
       <Dialog open={declineOpen} onOpenChange={setDeclineOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Decline Booking</DialogTitle>
+            <DialogTitle>Decline Venue Hire</DialogTitle>
             <DialogDescription>
-              Provide a reason for declining this booking. The booking will be cancelled.
+              Provide a reason for declining this venue hire. The venue hire will be cancelled.
             </DialogDescription>
           </DialogHeader>
           <Textarea
@@ -848,7 +848,7 @@ export default function BookingDetail() {
               data-testid="button-confirm-decline"
             >
               {declineMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <XCircle className="w-4 h-4 mr-2" />}
-              Decline Booking
+              Decline Venue Hire
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -859,7 +859,7 @@ export default function BookingDetail() {
           <DialogHeader>
             <DialogTitle>Survey Response</DialogTitle>
             <DialogDescription>
-              Responses from the post-booking survey.
+              Responses from the post-venue hire survey.
             </DialogDescription>
           </DialogHeader>
           {survey?.questions && survey?.responses && (
@@ -973,7 +973,7 @@ function XeroInvoiceCard({ booking }: { booking: Booking }) {
   }
 
   if (isSkipped) {
-    const reason = booking.pricingTier === "free_koha" ? "Koha / free booking"
+    const reason = booking.pricingTier === "free_koha" ? "Koha / free venue hire"
       : booking.usePackageCredit ? "Package credit used"
       : "No charge amount";
     return (

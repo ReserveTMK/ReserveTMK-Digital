@@ -125,7 +125,7 @@ function LoginView({ onSent }: { onSent: () => void }) {
       <Card className="w-full max-w-md p-8">
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold" data-testid="heading-booker-login">Reserve Tamaki</h1>
-          <p className="text-sm text-muted-foreground mt-1" data-testid="text-login-subtitle">Booking Portal</p>
+          <p className="text-sm text-muted-foreground mt-1" data-testid="text-login-subtitle">Venue Hire Portal</p>
         </div>
         <div className="space-y-4">
           <div className="space-y-2">
@@ -292,7 +292,7 @@ function DashboardView({
           <Card className="p-5" data-testid="card-package">
             <div className="flex items-center gap-2 mb-3 flex-wrap">
               <Package className="w-5 h-5 text-primary" />
-              <h3 className="font-semibold">Booking Package</h3>
+              <h3 className="font-semibold">Venue Hire Package</h3>
               {packageExpiryText && (
                 <Badge variant="secondary" className="text-xs" data-testid="badge-package-expiry">
                   {packageExpiryText}
@@ -326,7 +326,7 @@ function DashboardView({
                       <p className="text-sm font-medium" data-testid="text-venue-category-label">Venue Hire</p>
                       {agreement && agreement.bookingAllowance > 0 ? (
                         <p className="text-xs text-muted-foreground" data-testid="text-venue-status">
-                          {agreementUsage} of {agreement.bookingAllowance} bookings used this {getPeriodLabel(agreement.allowancePeriod)}
+                          {agreementUsage} of {agreement.bookingAllowance} venue hires used this {getPeriodLabel(agreement.allowancePeriod)}
                         </p>
                       ) : (
                         <p className="text-xs text-muted-foreground">Book meeting rooms and venues</p>
@@ -385,14 +385,14 @@ function DashboardView({
         )}
 
         <div>
-          <h3 className="font-semibold mb-3" data-testid="heading-recent-bookings">{isGroupLink ? "Group Bookings" : "My Bookings"}</h3>
+          <h3 className="font-semibold mb-3" data-testid="heading-recent-bookings">{isGroupLink ? "Group Bookings" : "My Bookings & Hires"}</h3>
           {bookingsLoading ? (
             <div className="space-y-2">
               <Skeleton className="h-16 w-full" />
               <Skeleton className="h-16 w-full" />
             </div>
           ) : allBookingsList.length === 0 ? (
-            <p className="text-sm text-muted-foreground" data-testid="text-no-bookings">No bookings yet</p>
+            <p className="text-sm text-muted-foreground" data-testid="text-no-bookings">No bookings or hires yet</p>
           ) : (
             <div className="space-y-2">
               {allBookingsList.map((b: any) => {
@@ -1167,9 +1167,9 @@ function CalendarView({
               <Check className="w-7 h-7 text-green-600" />
             </div>
           </div>
-          <h2 className="text-xl font-bold mb-2" data-testid="heading-booking-confirmed">Booking Request Submitted</h2>
+          <h2 className="text-xl font-bold mb-2" data-testid="heading-booking-confirmed">Venue Hire Request Submitted</h2>
           <p className="text-sm text-muted-foreground mb-4" data-testid="text-booking-confirmed">
-            Your booking request has been submitted as an enquiry. The Reserve Tamaki team will review and confirm it shortly.
+            Your venue hire request has been submitted as an enquiry. The Reserve Tamaki team will review and confirm it shortly.
           </p>
           <div className="bg-muted/50 rounded-lg p-4 space-y-2 text-sm text-left mb-4">
             <div className="flex justify-between gap-2 flex-wrap">
@@ -1246,7 +1246,7 @@ function CalendarView({
                 {pricingData.coveredByAgreement && (
                   <>
                     <p className="text-sm font-medium" data-testid="text-agreement-status">
-                      Bookings covered by your {authData.membership ? "membership" : "MOU"} agreement
+                      Venue hires covered by your {authData.membership ? "membership" : "MOU"} agreement
                     </p>
                     {authData.membership?.bookingAllowance > 0 && (
                       <p className="text-xs text-muted-foreground mt-1" data-testid="text-agreement-allowance">
@@ -1255,7 +1255,7 @@ function CalendarView({
                           const total = authData.membership.bookingAllowance;
                           const remaining = Math.max(0, total - used);
                           const period = getPeriodLabel(authData.membership.allowancePeriod);
-                          return `${remaining} of ${total} bookings remaining this ${period}`;
+                          return `${remaining} of ${total} venue hires remaining this ${period}`;
                         })()}
                       </p>
                     )}
@@ -1266,7 +1266,7 @@ function CalendarView({
                           const total = authData.mou.bookingAllowance;
                           const remaining = Math.max(0, total - used);
                           const period = getPeriodLabel(authData.mou.allowancePeriod);
-                          return `${remaining} of ${total} bookings remaining this ${period}`;
+                          return `${remaining} of ${total} venue hires remaining this ${period}`;
                         })()}
                       </p>
                     )}
@@ -1278,7 +1278,7 @@ function CalendarView({
                       {pricingData.packageRemaining} package credit{pricingData.packageRemaining !== 1 ? "s" : ""} remaining
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Toggle "Use package credit" when booking to apply
+                      Toggle "Use package credit" when hiring a venue to apply
                     </p>
                   </>
                 )}
@@ -1404,7 +1404,7 @@ function CalendarView({
 
                 {selectedDateInfo && (selectedDateInfo as any).bookings?.length > 0 && (
                   <div className="space-y-1">
-                    <p className="text-xs font-medium text-muted-foreground">Existing bookings:</p>
+                    <p className="text-xs font-medium text-muted-foreground">Existing venue hires:</p>
                     {(selectedDateInfo as any).bookings.map((b: any, idx: number) => (
                       <div key={idx} className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">
                         {b.startTime && b.endTime ? `${formatTimeSlot(b.startTime)} - ${formatTimeSlot(b.endTime)}` : "All day"}: {b.title || "Booked"}

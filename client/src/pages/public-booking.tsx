@@ -294,7 +294,7 @@ export default function PublicBookingPage() {
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.message || "Booking failed");
+        throw new Error(err.message || "Venue hire request failed");
       }
       return res.json();
     },

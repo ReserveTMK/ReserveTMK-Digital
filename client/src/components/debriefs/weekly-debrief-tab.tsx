@@ -262,7 +262,7 @@ function WeeklyDebriefCard({ debrief }: { debrief: WeeklyDebrief }) {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <WeeklyMetricItem label="Confirmed Debriefs" value={formatMetric(metrics.confirmedDebriefs)} id={`metric-confirmed-debriefs-${debrief.id}`} />
               <WeeklyMetricItem label="Completed Programmes" value={formatMetric(metrics.completedProgrammes)} id={`metric-completed-programmes-${debrief.id}`} />
-              <WeeklyMetricItem label="Completed Bookings" value={formatMetric(metrics.completedBookings)} id={`metric-completed-bookings-${debrief.id}`} />
+              <WeeklyMetricItem label="Completed Venue Hires" value={formatMetric(metrics.completedBookings)} id={`metric-completed-bookings-${debrief.id}`} />
               <WeeklyMetricItem label="Milestones Created" value={formatMetric(metrics.milestonesCreated)} id={`metric-milestones-${debrief.id}`} />
               <WeeklyMetricItem label="Outstanding (This Week)" value={formatMetric(metrics.outstandingDebriefs)} id={`metric-outstanding-${debrief.id}`} />
               {metrics.backlogDebriefs != null && metrics.backlogDebriefs > (metrics.outstandingDebriefs || 0) && (

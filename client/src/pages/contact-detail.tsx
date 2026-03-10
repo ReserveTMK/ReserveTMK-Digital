@@ -1203,7 +1203,7 @@ export default function ContactDetail() {
                       });
                       const typeLabels: Record<string, string> = {
                         interaction: 'Interactions',
-                        booking: 'Bookings',
+                        booking: 'Venue Hire',
                         programme: 'Programmes',
                         event: 'Events',
                         membership: 'Memberships',

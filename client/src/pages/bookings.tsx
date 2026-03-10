@@ -327,7 +327,7 @@ export default function Bookings() {
         bookerGroupId: b.bookerGroupId || undefined,
         notes: b.notes || undefined,
       });
-      toast({ title: "Duplicated", description: `Booking has been duplicated` });
+      toast({ title: "Duplicated", description: `Venue hire has been duplicated` });
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Failed to duplicate", variant: "destructive" });
     }
@@ -336,7 +336,7 @@ export default function Bookings() {
   const handleDelete = async (id: number) => {
     try {
       await deleteMutation.mutateAsync(id);
-      toast({ title: "Deleted", description: "Booking removed successfully" });
+      toast({ title: "Deleted", description: "Venue hire removed successfully" });
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Failed to delete", variant: "destructive" });
     }
@@ -355,9 +355,9 @@ export default function Bookings() {
       setCompletionInvoiceLoading(false);
       setCompletionServedLoading(false);
       setCompletionDialogOpen(true);
-      toast({ title: "Booking completed", description: data.surveyDecision || "Booking marked as completed" });
+      toast({ title: "Venue hire completed", description: data.surveyDecision || "Venue hire marked as completed" });
     } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to complete booking", variant: "destructive" });
+      toast({ title: "Error", description: err.message || "Failed to complete venue hire", variant: "destructive" });
     }
   }, [toast]);
 
@@ -393,7 +393,7 @@ export default function Bookings() {
       await apiRequest('POST', `/api/bookings/${completionBooking.id}/mark-served`);
       queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
       setCompletionServedDone(true);
-      toast({ title: "Marked as served", description: "Booking has been marked as served" });
+      toast({ title: "Marked as served", description: "Venue hire has been marked as served" });
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Failed to mark as served", variant: "destructive" });
     } finally {
@@ -416,7 +416,7 @@ export default function Bookings() {
 
     try {
       await updateMutation.mutateAsync({ id: bookingId, data: { status: newStatus } });
-      toast({ title: "Status updated", description: `Booking moved to ${STATUS_LABELS[newStatus]}` });
+      toast({ title: "Status updated", description: `Venue hire moved to ${STATUS_LABELS[newStatus]}` });
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Failed to update status", variant: "destructive" });
     }
@@ -441,8 +441,8 @@ export default function Bookings() {
         <div className={`${viewMode === "kanban" ? "max-w-[1600px]" : "max-w-6xl"} mx-auto space-y-6`}>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-display font-bold" data-testid="text-bookings-title">Bookings</h1>
-              <p className="text-muted-foreground mt-1">Manage venue hire and community space bookings.</p>
+              <h1 className="text-3xl font-display font-bold" data-testid="text-bookings-title">Venue Hire</h1>
+              <p className="text-muted-foreground mt-1">Manage venue hire and community space usage.</p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <div className="flex items-center border border-border rounded-lg overflow-hidden" data-testid="view-toggle">
@@ -477,14 +477,14 @@ export default function Bookings() {
               </Button>
               <Button className="shadow-lg" onClick={() => setCreateOpen(true)} data-testid="button-create-booking">
                 <Plus className="w-4 h-4 mr-2" />
-                New Booking
+                New Venue Hire
               </Button>
             </div>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <MetricCard
-              title="Total Bookings"
+              title="Total Venue Hires"
               value={stats.total}
               icon={<Calendar className="w-4 h-4" />}
               color="primary"
@@ -518,7 +518,7 @@ export default function Bookings() {
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Search bookings..."
+                placeholder="Search venue hires..."
                 className="pl-10"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -558,17 +558,17 @@ export default function Bookings() {
               <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
                 <Calendar className="w-8 h-8 text-muted-foreground" />
               </div>
-              <h3 className="text-lg font-semibold mb-2" data-testid="text-no-bookings">No bookings yet</h3>
-              <p className="text-muted-foreground mb-4">Create your first booking to start managing venue hire.</p>
+              <h3 className="text-lg font-semibold mb-2" data-testid="text-no-bookings">No venue hires yet</h3>
+              <p className="text-muted-foreground mb-4">Create your first venue hire to get started.</p>
               <Button onClick={() => setCreateOpen(true)} data-testid="button-create-booking-empty">
                 <Plus className="w-4 h-4 mr-2" />
-                Create Booking
+                Create Venue Hire
               </Button>
             </Card>
           ) : viewMode === "kanban" ? (
             filtered?.length === 0 ? (
               <Card className="p-8 text-center">
-                <p className="text-muted-foreground">No bookings match your filters.</p>
+                <p className="text-muted-foreground">No venue hires match your filters.</p>
               </Card>
             ) : (
               <DragDropContext onDragEnd={handleDragEnd}>
@@ -719,7 +719,7 @@ export default function Bookings() {
             <div className="space-y-3">
               {!filtered?.length ? (
                 <Card className="p-8 text-center">
-                  <p className="text-muted-foreground">No bookings match your filters.</p>
+                  <p className="text-muted-foreground">No venue hires match your filters.</p>
                 </Card>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -888,7 +888,7 @@ export default function Bookings() {
           try {
             await createMutation.mutateAsync(data);
             setCreateOpen(false);
-            toast({ title: "Created", description: "Booking created successfully" });
+            toast({ title: "Created", description: "Venue hire created successfully" });
           } catch (err: any) {
             toast({ title: "Error", description: err.message || "Failed to create", variant: "destructive" });
           }
@@ -907,7 +907,7 @@ export default function Bookings() {
             try {
               await updateMutation.mutateAsync({ id: editBooking.id, data });
               setEditBooking(null);
-              toast({ title: "Updated", description: "Booking updated successfully" });
+              toast({ title: "Updated", description: "Venue hire updated successfully" });
             } catch (err: any) {
               toast({ title: "Error", description: err.message || "Failed to update", variant: "destructive" });
             }
@@ -920,7 +920,7 @@ export default function Bookings() {
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Booking Settings</DialogTitle>
+            <DialogTitle>Venue Hire Settings</DialogTitle>
             <DialogDescription>Configure venues and bookers</DialogDescription>
           </DialogHeader>
           <Tabs defaultValue="resources">
@@ -977,10 +977,10 @@ export default function Bookings() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2" data-testid="text-completion-title">
               <CheckCircle2 className="w-5 h-5 text-green-500" />
-              Booking Completed
+              Venue Hire Completed
             </DialogTitle>
             <DialogDescription>
-              Take follow-up actions for this completed booking.
+              Take follow-up actions for this completed venue hire.
             </DialogDescription>
           </DialogHeader>
 
@@ -1168,7 +1168,7 @@ function AfterHoursSettingsTab() {
     <div className="space-y-6">
       <div>
         <h3 className="font-semibold text-sm mb-1">Auto-Send Reminders</h3>
-        <p className="text-xs text-muted-foreground mb-3">Automatically send venue instructions before after-hours bookings.</p>
+        <p className="text-xs text-muted-foreground mb-3">Automatically send venue instructions before after-hours venue hires.</p>
         <div className="flex items-center gap-3">
           <Switch
             checked={autoSendEnabled}
@@ -1188,7 +1188,7 @@ function AfterHoursSettingsTab() {
                 <SelectItem value="24">1 day before</SelectItem>
                 <SelectItem value="4">4 hours before</SelectItem>
                 <SelectItem value="2">2 hours before</SelectItem>
-                <SelectItem value="0">8am on day of booking</SelectItem>
+                <SelectItem value="0">8am on day of venue hire</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1199,7 +1199,7 @@ function AfterHoursSettingsTab() {
         <div className="flex items-center justify-between mb-3">
           <div>
             <h3 className="font-semibold text-sm">Operating Hours</h3>
-            <p className="text-xs text-muted-foreground">Bookings outside these hours are flagged as after-hours.</p>
+            <p className="text-xs text-muted-foreground">Venue hires outside these hours are flagged as after-hours.</p>
           </div>
           <Button variant="outline" size="sm" onClick={handleQuickSetup} data-testid="button-quick-setup">
             Quick Setup
@@ -1233,7 +1233,7 @@ function AfterHoursSettingsTab() {
                   />
                 </div>
               ) : (
-                <span className="text-xs text-muted-foreground">Unstaffed - all bookings are after-hours</span>
+                <span className="text-xs text-muted-foreground">Unstaffed - all venue hires are after-hours</span>
               )}
             </div>
           ))}
@@ -1341,7 +1341,7 @@ function XeroSettingsTab() {
           <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300 dark:bg-green-900 dark:text-green-200" data-testid="badge-xero-connected">Connected</Badge>
         </div>
         <p className="text-sm text-muted-foreground">
-          Invoices will be automatically generated in Xero when bookings are accepted. Bookings with koha, package credits, or zero amounts are skipped.
+          Invoices will be automatically generated in Xero when venue hires are accepted. Venue hires with koha, package credits, or zero amounts are skipped.
         </p>
         <Button
           variant="outline"
@@ -1359,7 +1359,7 @@ function XeroSettingsTab() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Connect to Xero to automatically generate invoices when bookings are confirmed. You'll need to create a Xero app first.
+        Connect to Xero to automatically generate invoices when venue hires are confirmed. You'll need to create a Xero app first.
       </p>
       <div className="p-3 rounded-lg border bg-muted/50 text-sm space-y-2">
         <p className="font-medium">Setup instructions:</p>
@@ -2296,10 +2296,10 @@ function BookingFormDialog({
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle data-testid="text-booking-dialog-title">
-            {booking ? "Edit Booking" : "New Booking"}
+            {booking ? "Edit Venue Hire" : "New Venue Hire"}
           </DialogTitle>
           <DialogDescription>
-            {booking ? "Update booking details and schedule." : "Create a new venue booking."}
+            {booking ? "Update venue hire details and schedule." : "Create a new venue hire."}
           </DialogDescription>
         </DialogHeader>
 
@@ -2400,7 +2400,7 @@ function BookingFormDialog({
           </div>
 
           <div className="space-y-2">
-            <Label className="text-sm font-semibold">Booking Group / Organisation</Label>
+            <Label className="text-sm font-semibold">Venue Hire Group / Organisation</Label>
             {groupId && (
               <div className="flex items-center gap-2">
                 <Badge variant="secondary" className="text-xs gap-1 pr-1" data-testid="badge-selected-booking-group">
@@ -2663,7 +2663,7 @@ function BookingFormDialog({
               <div className="space-y-1.5 pl-6">
                 {conflictData!.conflicts.map((c) => (
                   <div key={`${c.type}-${c.id}`} className="flex items-center gap-2 text-xs" data-testid={`conflict-item-${c.type}-${c.id}`}>
-                    <Badge variant="secondary" className="text-[10px]">{c.type === "booking" ? "Booking" : "Programme"}</Badge>
+                    <Badge variant="secondary" className="text-[10px]">{c.type === "booking" ? "Venue Hire" : "Programme"}</Badge>
                     <span className="text-muted-foreground">{c.title || "Untitled"}</span>
                     <span className="text-muted-foreground">{c.time}</span>
                   </div>
@@ -2911,7 +2911,7 @@ function BookingFormDialog({
             data-testid="button-save-booking"
           >
             {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            {booking ? "Save Changes" : "Create Booking"}
+            {booking ? "Save Changes" : "Create Venue Hire"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -3181,7 +3181,7 @@ function VenueInstructionFormDialog({
             {instruction ? "Edit Instruction" : "Add Instruction"}
           </DialogTitle>
           <DialogDescription>
-            {instruction ? "Update the venue instruction." : "Add a new instruction for venue bookings."}
+            {instruction ? "Update the venue instruction." : "Add a new instruction for venue hires."}
           </DialogDescription>
         </DialogHeader>
 

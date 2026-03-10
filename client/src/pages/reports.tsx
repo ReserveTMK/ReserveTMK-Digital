@@ -530,7 +530,7 @@ export default function Reports() {
       rows.push(["Source: Events", String(reach.sourceBreakdown.events || 0)]);
       rows.push(["Source: External Events", String(reach.sourceBreakdown.externalEvents || 0)]);
       rows.push(["Source: Emails", String(reach.sourceBreakdown.emails || 0)]);
-      rows.push(["Source: Bookings", String(reach.sourceBreakdown.bookings || 0)]);
+      rows.push(["Source: Venue Hires", String(reach.sourceBreakdown.bookings || 0)]);
       rows.push(["Source: Programmes", String(reach.sourceBreakdown.programmes || 0)]);
     }
     rows.push([]);
@@ -538,7 +538,7 @@ export default function Reports() {
     rows.push(["=== DELIVERY ==="]);
     rows.push(["Total Activations", String(d.delivery?.totalActivations || 0)]);
     rows.push(["Events", String(d.delivery?.events?.total || 0)]);
-    rows.push(["Bookings", String(d.delivery?.bookings?.total || 0)]);
+    rows.push(["Venue Hires", String(d.delivery?.bookings?.total || 0)]);
     rows.push(["Mentoring Sessions", String(d.delivery?.mentoringSessions || 0)]);
     rows.push(["Partner Meetings", String(d.delivery?.partnerMeetings || 0)]);
     rows.push(["Workshops", String(d.delivery?.workshops || 0)]);
@@ -589,7 +589,7 @@ export default function Reports() {
     }
     if (d.communityDiscounts) {
       rows.push(["Community Discounts Given", `$${d.communityDiscounts.totalDiscountValue || 0}`]);
-      rows.push(["Discounted Bookings", String(d.communityDiscounts.discountedBookingsCount || 0)]);
+      rows.push(["Discounted Venue Hires", String(d.communityDiscounts.discountedBookingsCount || 0)]);
     }
     if (imp?.taxonomyBreakdown) {
       rows.push([]);
@@ -1021,7 +1021,7 @@ export default function Reports() {
                   {communityLens !== "all" && (
                     <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded-md px-3 py-2" data-testid="notice-delivery-unfiltered">
                       <Info className="w-3.5 h-3.5 shrink-0" />
-                      <span>Events, bookings, and programmes show organisation-level data (not filtered by community lens). Mentoring metrics are filtered.</span>
+                      <span>Events, venue hires, and programmes show organisation-level data (not filtered by community lens). Mentoring metrics are filtered.</span>
                     </div>
                   )}
 
@@ -1042,7 +1042,7 @@ export default function Reports() {
 
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                     <StatCard icon={CalendarDays} label="Events" value={del?.events?.total || 0} color="blue" testId="stat-events" />
-                    <StatCard icon={Building2} label="Bookings" value={del?.bookings?.total || 0} color="orange" testId="stat-bookings" />
+                    <StatCard icon={Building2} label="Venue Hires" value={del?.bookings?.total || 0} color="orange" testId="stat-bookings" />
                     <StatCard icon={Users} label="Mentoring Sessions" value={del?.mentoringSessions || 0} color="purple" testId="stat-mentoring-sessions" />
                     <StatCard icon={Handshake} label="Partner Meetings" value={(del?.partnerMeetings || 0) + (isBlended && lm ? lm.activationsPartnerMeetings || 0 : 0)} color="teal" testId="stat-partner-meetings" />
                     <StatCard icon={Activity} label="Workshops" value={(del?.workshops || 0) + (isBlended && lm ? lm.activationsWorkshops || 0 : 0)} color="amber" testId="stat-workshops" />
@@ -1075,7 +1075,7 @@ export default function Reports() {
                       )}
                       {del?.bookings?.byClassification && Object.keys(del.bookings.byClassification).length > 0 && (
                         <div>
-                          <h4 className="text-sm font-semibold mb-3">Bookings by Type</h4>
+                          <h4 className="text-sm font-semibold mb-3">Venue Hires by Type</h4>
                           <ResponsiveContainer width="100%" height={200}>
                             <BarChart data={Object.entries(del.bookings.byClassification).map(([name, value]) => ({ name, value }))}>
                               <CartesianGrid strokeDasharray="3 3" />
@@ -1552,7 +1552,7 @@ export default function Reports() {
                           <Card key={tier} className="p-3">
                             <p className="text-sm text-muted-foreground capitalize">{tier.replace("_", " ")}</p>
                             <p className="text-lg font-bold">${data.revenue?.toLocaleString()}</p>
-                            <p className="text-xs text-muted-foreground">{data.count} bookings</p>
+                            <p className="text-xs text-muted-foreground">{data.count} venue hires</p>
                           </Card>
                         ))}
                       </div>
@@ -1569,7 +1569,7 @@ export default function Reports() {
                               <th className="text-left p-3">Membership</th>
                               <th className="text-right p-3">Value</th>
                               <th className="text-right p-3">Pays</th>
-                              <th className="text-right p-3">Bookings</th>
+                              <th className="text-right p-3">Venue Hires</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1637,7 +1637,7 @@ export default function Reports() {
                         color="cyan"
                       />
                       <MetricBenchmarkCard
-                        title="Bookings"
+                        title="Venue Hires"
                         benchmarks={benchmarkData.benchmarks?.bookings}
                         color="orange"
                       />

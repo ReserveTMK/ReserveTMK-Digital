@@ -57,7 +57,7 @@ const navigation: NavItem[] = [
     name: "Delivery", href: "/programmes", icon: Layers,
     children: [
       { name: "Mentoring", href: "/mentoring", icon: Users },
-      { name: "Bookings", href: "/bookings", icon: Building2 },
+      { name: "Venue Hire", href: "/bookings", icon: Building2 },
       { name: "Regular Bookers", href: "/regular-bookers", icon: UserCheck },
       { name: "Programmes", href: "/programmes", icon: Layers },
       { name: "Projects", href: "/projects", icon: Rocket },

@@ -181,7 +181,7 @@ function VenuesCalendar({ currentDate, viewMode }: { currentDate: Date; viewMode
                             ? "bg-destructive/20 dark:bg-destructive/30"
                             : "bg-emerald-100/60 dark:bg-emerald-900/20"
                         }`}
-                        title={`${shortDay(day)} - ${hasBooking ? `${dayBookings.length} booking(s)` : "Available"}`}
+                        title={`${shortDay(day)} - ${hasBooking ? `${dayBookings.length} venue hire(s)` : "Available"}`}
                       >
                         {hasBooking && (
                           <span className="text-[10px] font-medium text-destructive dark:text-red-300">
