@@ -20,7 +20,10 @@ import type { Meeting } from "@shared/schema";
 const HOURS = Array.from({ length: 15 }, (_, i) => i + 7);
 
 function formatDate(date: Date): string {
-  return date.toISOString().split("T")[0];
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 function addDays(date: Date, days: number): Date {
@@ -46,7 +49,7 @@ function parseTime(timeStr: string | null | undefined): number | null {
   return parseInt(parts[0]) + parseInt(parts[1]) / 60;
 }
 
-type BookingBlock = { start: number; end: number; type: "venue_hire" | "internal" };
+type BookingBlock = { start: number; end: number; type: "venue_hire" | "internal" | "desk" };
 
 function TimeSlotGrid({ bookingBlocks }: { bookingBlocks: BookingBlock[] }) {
   return (
@@ -58,13 +61,17 @@ function TimeSlotGrid({ bookingBlocks }: { bookingBlocks: BookingBlock[] }) {
         const internalBlock = bookingBlocks.find(
           (block) => block.type === "internal" && block.start < hour + 1 && block.end > hour
         );
-        const isBooked = !!venueBlock || !!internalBlock;
+        const deskBlock = bookingBlocks.find(
+          (block) => block.type === "desk" && block.start < hour + 1 && block.end > hour
+        );
         const bgClass = venueBlock
           ? "bg-amber-200/60 dark:bg-amber-800/30"
           : internalBlock
           ? "bg-blue-200/60 dark:bg-blue-800/30"
+          : deskBlock
+          ? "bg-violet-200/60 dark:bg-violet-800/30"
           : "bg-emerald-100/60 dark:bg-emerald-900/20";
-        const label = venueBlock ? "Venue Hire" : internalBlock ? "Internal" : "Available";
+        const label = venueBlock ? "Venue Hire" : internalBlock ? "Internal" : deskBlock ? "Desk Booking" : "Available";
         return (
           <div
             key={hour}
@@ -109,6 +116,10 @@ function SpacesLegend() {
       <div className="flex items-center gap-1.5">
         <div className="w-3 h-3 rounded-sm bg-blue-200/60 dark:bg-blue-800/30 border border-border/40" />
         <span className="text-xs text-muted-foreground">Internal</span>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <div className="w-3 h-3 rounded-sm bg-violet-200/60 dark:bg-violet-800/30 border border-border/40" />
+        <span className="text-xs text-muted-foreground">Desk Booking</span>
       </div>
     </div>
   );
@@ -367,7 +378,7 @@ function SpacesCalendarTab() {
                                 <div
                                   key={day.toISOString()}
                                   className={`flex-1 h-10 border-r border-border/40 last:border-r-0 flex items-center justify-center ${
-                                    hasBooking ? "bg-destructive/20 dark:bg-destructive/30" : "bg-emerald-100/60 dark:bg-emerald-900/20"
+                                    hasBooking ? "bg-violet-200/60 dark:bg-violet-800/30" : "bg-emerald-100/60 dark:bg-emerald-900/20"
                                   }`}
                                   title={`${shortDay(day)} - ${hasBooking ? "Booked" : "Available"}`}
                                 />
@@ -386,14 +397,22 @@ function SpacesCalendarTab() {
                       <TimeHeader />
                       {activeDesks.map((desk) => {
                         const availability = (deskAvailability || []).find((a: any) => a.resourceId === desk.id);
-                        const blocks: BookingBlock[] = (availability?.bookings || [])
-                          .map((b: any) => {
-                            const start = parseTime(b.startTime);
-                            const end = parseTime(b.endTime);
-                            if (start === null || end === null) return null;
-                            return { start, end, type: "venue_hire" as const };
-                          })
-                          .filter(Boolean) as BookingBlock[];
+                        const isBooked = availability ? !availability.isAvailable : false;
+                        let blocks: BookingBlock[] = [];
+                        if (isBooked) {
+                          const bookingList = availability?.bookings || [];
+                          const parsed = bookingList
+                            .map((b: any) => {
+                              const start = parseTime(b.startTime);
+                              const end = parseTime(b.endTime);
+                              if (start === null || end === null) return null;
+                              return { start, end, type: "desk" as const };
+                            })
+                            .filter(Boolean) as BookingBlock[];
+                          blocks = parsed.length > 0
+                            ? parsed
+                            : [{ start: HOURS[0], end: HOURS[HOURS.length - 1] + 1, type: "desk" as const }];
+                        }
                         return (
                           <div key={desk.id} className="flex items-center border-t border-border/40">
                             <div className="w-40 shrink-0 flex items-center gap-2 py-1 pr-2">
