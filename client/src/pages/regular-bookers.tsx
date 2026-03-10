@@ -1081,16 +1081,6 @@ function RegularBookerFormDialog({
             )}
           </div>
 
-          <div>
-            <Label>Organisation Name</Label>
-            <Input
-              value={organizationName}
-              onChange={(e) => setOrganizationName(e.target.value)}
-              placeholder="e.g. Tamaki Community Trust"
-              data-testid="input-booker-org-name"
-            />
-          </div>
-
           {(activeMemberships.length > 0 || activeMous.length > 0) && (
             <div className="space-y-3 border-t pt-4">
               <Label className="text-sm font-semibold">Linked Agreement</Label>
