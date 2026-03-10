@@ -123,6 +123,9 @@ import {
   xeroSettings,
   type XeroSettings,
   type InsertXeroSettings,
+  surveySettings,
+  type SurveySettings,
+  type InsertSurveySettings,
   bookerLinks,
   type BookerLink,
   type InsertBookerLink,
@@ -377,6 +380,10 @@ export interface IStorage {
   createVenueInstruction(data: InsertVenueInstruction): Promise<VenueInstruction>;
   updateVenueInstruction(id: number, updates: Partial<InsertVenueInstruction>): Promise<VenueInstruction>;
   deleteVenueInstruction(id: number): Promise<void>;
+
+  // Survey Settings
+  getSurveySettings(userId: string): Promise<SurveySettings | undefined>;
+  upsertSurveySettings(userId: string, data: Partial<InsertSurveySettings>): Promise<SurveySettings>;
 
   // Surveys
   getSurveys(userId: string): Promise<Survey[]>;
@@ -1414,6 +1421,26 @@ export class DatabaseStorage implements IStorage {
 
   async deleteXeroSettings(userId: string): Promise<void> {
     await db.delete(xeroSettings).where(eq(xeroSettings.userId, userId));
+  }
+
+  async getSurveySettings(userId: string): Promise<SurveySettings | undefined> {
+    const [settings] = await db.select().from(surveySettings).where(eq(surveySettings.userId, userId));
+    return settings;
+  }
+
+  async upsertSurveySettings(userId: string, data: Partial<InsertSurveySettings>): Promise<SurveySettings> {
+    const existing = await this.getSurveySettings(userId);
+    if (existing) {
+      const [updated] = await db.update(surveySettings)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(surveySettings.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(surveySettings)
+      .values({ userId, ...data } as any)
+      .returning();
+    return created;
   }
 
   // Regular Bookers

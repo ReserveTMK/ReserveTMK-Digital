@@ -381,7 +381,8 @@ export async function sendSurveyEmail(
   contactEmail: string,
   contactName: string,
   bookingDate: Date | string | null | undefined,
-  surveyToken: string
+  surveyToken: string,
+  options?: { subject?: string; intro?: string; signoff?: string }
 ): Promise<void> {
   const dateStr = formatDate(bookingDate);
   const baseUrl = process.env.REPLIT_DEV_DOMAIN
@@ -391,6 +392,20 @@ export async function sendSurveyEmail(
     : "https://app.reservetmk.co.nz";
 
   const surveyUrl = `${baseUrl}/survey/${surveyToken}`;
+
+  const introText = options?.intro
+    ? options.intro.replace(/\{name\}/gi, contactName).replace(/\{date\}/gi, dateStr)
+    : `Thanks for using our space on ${dateStr}!\n\nWe'd love to hear about your experience. It'll only take 2 minutes.`;
+
+  const signoffText = options?.signoff || `Ng\u0101 mihi,\nReserve T\u0101maki Team`;
+
+  const introHtml = introText.split("\n").map(line => 
+    `<p style="margin:10px 0;font-size:14px;color:#374151;">${line || "&nbsp;"}</p>`
+  ).join("");
+
+  const signoffHtml = signoffText.split("\n").map((line, i) => 
+    i === 0 ? `<p style="margin:15px 0 0;font-size:14px;color:#374151;">${line}` : `<br><strong>${line}</strong></p>`
+  ).join("");
 
   const htmlBody = `
 <!DOCTYPE html>
@@ -404,16 +419,13 @@ export async function sendSurveyEmail(
 
   <tr><td style="padding:25px 30px;">
     <p style="margin:0;font-size:16px;color:#111827;">Hi ${contactName},</p>
-    <p style="margin:10px 0;font-size:14px;color:#374151;">Thanks for using our space on ${dateStr}!</p>
-    <p style="margin:10px 0;font-size:14px;color:#374151;">We'd love to hear about your experience. It'll only take 2 minutes.</p>
+    ${introHtml}
 
     <div style="text-align:center;margin:25px 0;">
       <a href="${surveyUrl}" style="display:inline-block;padding:14px 32px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:6px;font-size:16px;font-weight:600;">Take Survey</a>
     </div>
 
-    <p style="margin:10px 0;font-size:14px;color:#374151;">Your feedback helps us improve and helps other wh\u0101nau find great spaces.</p>
-    <p style="margin:15px 0 0;font-size:14px;color:#374151;">Ng\u0101 mihi,<br><strong>Reserve T\u0101maki Team</strong></p>
-    <p style="margin:10px 0 0;font-size:12px;color:#9ca3af;">P.S. If you had a great experience, we'd love a testimonial!</p>
+    ${signoffHtml}
   </td></tr>
 
   <tr><td style="padding:15px 30px;background:#f9fafb;text-align:center;">
@@ -423,7 +435,7 @@ export async function sendSurveyEmail(
 </body>
 </html>`;
 
-  const subject = "How was your experience at Reserve T\u0101maki?";
+  const subject = options?.subject || "How was your experience at Reserve T\u0101maki?";
   await sendEmail(contactEmail, subject, htmlBody);
 }
 

@@ -4531,13 +4531,15 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       if (shouldSendSurvey && booking.bookerId) {
         const contact = await storage.getContact(booking.bookerId);
         if (contact?.email) {
+          const surveyConfig = await storage.getSurveySettings(userId);
+          const questions = (surveyConfig?.questions && surveyConfig.questions.length > 0) ? surveyConfig.questions : DEFAULT_SURVEY_QUESTIONS;
           const surveyToken = crypto.randomUUID();
           const survey = await storage.createSurvey({
             userId,
             surveyType: "post_booking",
             relatedId: bookingId,
             contactId: booking.bookerId,
-            questions: DEFAULT_SURVEY_QUESTIONS,
+            questions,
             status: "pending",
             manuallyTriggered: false,
             surveyToken,
@@ -4545,7 +4547,11 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
           try {
             const { sendSurveyEmail } = await import("./email");
-            await sendSurveyEmail(contact.email, contact.name || contact.email, booking.startDate, surveyToken);
+            await sendSurveyEmail(contact.email, contact.name || contact.email, booking.startDate, surveyToken, {
+              subject: surveyConfig?.emailSubject || undefined,
+              intro: surveyConfig?.emailIntro || undefined,
+              signoff: surveyConfig?.emailSignoff || undefined,
+            });
             await storage.updateSurvey(survey.id, { status: "sent", sentAt: new Date() } as any);
             await storage.updateBooking(bookingId, { postSurveySent: true, isFirstBooking } as any);
             surveyCreated = true;
@@ -4628,6 +4634,49 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     }
   });
 
+  // === Survey Settings API ===
+  app.get("/api/survey-settings", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const settings = await storage.getSurveySettings(userId);
+    res.json(settings || { questions: null, googleReviewUrl: null, emailSubject: null, emailIntro: null, emailSignoff: null });
+  });
+
+  app.put("/api/survey-settings", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const { questions, googleReviewUrl, emailSubject, emailIntro, emailSignoff } = req.body;
+
+    if (googleReviewUrl && typeof googleReviewUrl === "string") {
+      const trimmed = googleReviewUrl.trim();
+      if (trimmed && !trimmed.startsWith("https://")) {
+        return res.status(400).json({ message: "Google Review URL must start with https://" });
+      }
+    }
+
+    if (questions != null) {
+      if (!Array.isArray(questions)) {
+        return res.status(400).json({ message: "Questions must be an array" });
+      }
+      for (const q of questions) {
+        if (typeof q.id !== "number" || typeof q.question !== "string" || typeof q.type !== "string") {
+          return res.status(400).json({ message: "Each question must have id (number), question (string), and type (string)" });
+        }
+        const validTypes = ["rating", "yes_no", "text", "testimonial"];
+        if (!validTypes.includes(q.type)) {
+          return res.status(400).json({ message: `Invalid question type: ${q.type}` });
+        }
+      }
+    }
+
+    const settings = await storage.upsertSurveySettings(userId, {
+      questions: questions || null,
+      googleReviewUrl: (typeof googleReviewUrl === "string" && googleReviewUrl.trim()) ? googleReviewUrl.trim() : null,
+      emailSubject: (typeof emailSubject === "string" && emailSubject.trim()) ? emailSubject.trim() : null,
+      emailIntro: (typeof emailIntro === "string" && emailIntro.trim()) ? emailIntro.trim() : null,
+      emailSignoff: (typeof emailSignoff === "string" && emailSignoff.trim()) ? emailSignoff.trim() : null,
+    });
+    res.json(settings);
+  });
+
   // === Surveys API ===
   app.get("/api/surveys", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
@@ -4660,13 +4709,15 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         return res.status(400).json({ message: "Survey already exists for this booking" });
       }
 
+      const surveyConfig = await storage.getSurveySettings(userId);
+      const questions = (surveyConfig?.questions && surveyConfig.questions.length > 0) ? surveyConfig.questions : DEFAULT_SURVEY_QUESTIONS;
       const surveyToken = crypto.randomUUID();
       const survey = await storage.createSurvey({
         userId,
         surveyType: "post_booking",
         relatedId: bookingId,
         contactId: booking.bookerId,
-        questions: DEFAULT_SURVEY_QUESTIONS,
+        questions,
         status: "pending",
         manuallyTriggered: true,
         triggeredBy: booking.bookerId,
@@ -4675,7 +4726,11 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
       try {
         const { sendSurveyEmail } = await import("./email");
-        await sendSurveyEmail(contact.email, contact.name || contact.email, booking.startDate, surveyToken);
+        await sendSurveyEmail(contact.email, contact.name || contact.email, booking.startDate, surveyToken, {
+          subject: surveyConfig?.emailSubject || undefined,
+          intro: surveyConfig?.emailIntro || undefined,
+          signoff: surveyConfig?.emailSignoff || undefined,
+        });
         await storage.updateSurvey(survey.id, { status: "sent", sentAt: new Date() } as any);
         await storage.updateBooking(bookingId, { postSurveySent: true } as any);
       } catch (emailErr: any) {
@@ -4693,9 +4748,11 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     try {
       const survey = await storage.getSurveyByToken(req.params.token);
       if (!survey) return res.status(404).json({ message: "Survey not found" });
-      if (survey.status === "completed") return res.json({ ...survey, alreadyCompleted: true });
+      const surveyConfig = await storage.getSurveySettings(survey.userId);
+      const googleReviewUrl = surveyConfig?.googleReviewUrl || null;
+      if (survey.status === "completed") return res.json({ ...survey, alreadyCompleted: true, googleReviewUrl });
       if (survey.status === "expired") return res.status(410).json({ message: "Survey has expired" });
-      res.json(survey);
+      res.json({ ...survey, googleReviewUrl });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

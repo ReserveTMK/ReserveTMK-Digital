@@ -1497,6 +1497,25 @@ export const insertXeroSettingsSchema = createInsertSchema(xeroSettings).omit({
 export type XeroSettings = typeof xeroSettings.$inferSelect;
 export type InsertXeroSettings = z.infer<typeof insertXeroSettingsSchema>;
 
+export const surveySettings = pgTable("survey_settings", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  questions: jsonb("questions").$type<any[]>(),
+  googleReviewUrl: text("google_review_url"),
+  emailSubject: text("email_subject"),
+  emailIntro: text("email_intro"),
+  emailSignoff: text("email_signoff"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertSurveySettingsSchema = createInsertSchema(surveySettings).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type SurveySettings = typeof surveySettings.$inferSelect;
+export type InsertSurveySettings = z.infer<typeof insertSurveySettingsSchema>;
+
 export const insertRegularBookerSchema = createInsertSchema(regularBookers).omit({
   id: true,
   createdAt: true,
