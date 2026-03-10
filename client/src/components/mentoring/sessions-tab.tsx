@@ -18,6 +18,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useCreateMeeting } from "@/hooks/use-meetings";
 import { useContacts } from "@/hooks/use-contacts";
 import { useVenues } from "@/hooks/use-bookings";
@@ -94,6 +95,7 @@ export function ScheduleSessionDialog({
   const [attendees, setAttendees] = useState<Attendee[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
   const [showInvites, setShowInvites] = useState(false);
+  const [sendInvites, setSendInvites] = useState(false);
   const [ventureDescription, setVentureDescription] = useState("");
   const [currentStage, setCurrentStage] = useState("");
   const [whatNeedHelpWith, setWhatNeedHelpWith] = useState("");
@@ -169,6 +171,7 @@ export function ScheduleSessionDialog({
     if (attendees.length > 0) {
       body.attendees = attendees;
     }
+    body.sendInvites = sendInvites;
     if (isDiscovery) {
       body.discoveryGoals = {
         ventureDescription: ventureDescription || null,
@@ -200,6 +203,7 @@ export function ScheduleSessionDialog({
     setAttendees([]);
     setInviteEmail("");
     setShowInvites(false);
+    setSendInvites(false);
     setVentureDescription("");
     setCurrentStage("");
     setWhatNeedHelpWith("");
@@ -496,12 +500,18 @@ export function ScheduleSessionDialog({
             <Textarea placeholder="Any notes..." value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} data-testid="input-notes" />
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={!contactId || !date || createMeeting.isPending} data-testid="button-submit-session">
-            {createMeeting.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-            Schedule
-          </Button>
+        <DialogFooter className="flex-col sm:flex-row gap-3">
+          <label className="flex items-center gap-2 cursor-pointer mr-auto" data-testid="toggle-send-invites">
+            <Checkbox checked={sendInvites} onCheckedChange={(v) => setSendInvites(v === true)} />
+            <span className="text-sm">Send calendar invites</span>
+          </label>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button onClick={handleSubmit} disabled={!contactId || !date || createMeeting.isPending} data-testid="button-submit-session">
+              {createMeeting.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Schedule
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -788,7 +788,7 @@ export async function registerRoutes(
   });
 
   // === Google Calendar Event Helper ===
-  async function createCalendarEventForMeeting(meeting: any, options?: { mentorEmail?: string; coMentorEmail?: string; menteeEmail?: string; calendarId?: string }) {
+  async function createCalendarEventForMeeting(meeting: any, options?: { mentorEmail?: string; coMentorEmail?: string; menteeEmail?: string; calendarId?: string; sendInvites?: boolean }) {
     try {
       const { getUncachableGoogleCalendarClient } = await import("./replit_integrations/google-calendar/client");
       const calendar = await getUncachableGoogleCalendarClient();
@@ -800,7 +800,7 @@ export async function registerRoutes(
 
       const event = await calendar.events.insert({
         calendarId: options?.calendarId || "primary",
-        sendUpdates: "all",
+        sendUpdates: options?.sendInvites ? "all" : "none",
         requestBody: {
           summary: meeting.title,
           description: [
@@ -825,7 +825,7 @@ export async function registerRoutes(
     }
   }
 
-  async function updateCalendarEventAttendees(googleCalendarEventId: string, attendees: { email: string }[], calendarId?: string) {
+  async function updateCalendarEventAttendees(googleCalendarEventId: string, attendees: { email: string }[], calendarId?: string, sendInvites?: boolean) {
     try {
       const { getUncachableGoogleCalendarClient } = await import("./replit_integrations/google-calendar/client");
       const calendar = await getUncachableGoogleCalendarClient();
@@ -835,7 +835,7 @@ export async function registerRoutes(
       await calendar.events.patch({
         calendarId: calId,
         eventId: googleCalendarEventId,
-        sendUpdates: "all",
+        sendUpdates: sendInvites ? "all" : "none",
         requestBody: {
           attendees,
         },
@@ -976,6 +976,7 @@ export async function registerRoutes(
       }
 
       // Create Google Calendar event asynchronously
+      const sendInvites = req.body.sendInvites === true;
       (async () => {
         try {
           const profiles = await storage.getMentorProfiles(userId);
@@ -992,6 +993,7 @@ export async function registerRoutes(
             mentorEmail,
             menteeEmail,
             calendarId,
+            sendInvites,
           });
 
           if (extraEmails.length > 0 && eventId) {
@@ -1003,7 +1005,7 @@ export async function registerRoutes(
                 allAttendees.push({ email });
               }
             });
-            await updateCalendarEventAttendees(eventId, allAttendees, calendarId);
+            await updateCalendarEventAttendees(eventId, allAttendees, calendarId, sendInvites);
           }
         } catch (e) {
           console.warn("Calendar event creation failed silently:", e);
@@ -1074,7 +1076,7 @@ export async function registerRoutes(
                 calAttendees.push({ email: a.email });
               }
             });
-            await updateCalendarEventAttendees(updated.googleCalendarEventId!, calAttendees, mentorProfile?.googleCalendarId || undefined);
+            await updateCalendarEventAttendees(updated.googleCalendarEventId!, calAttendees, mentorProfile?.googleCalendarId || undefined, true);
           } catch (e) {
             console.warn("Calendar attendee update failed silently:", e);
           }
@@ -1733,6 +1735,7 @@ export async function registerRoutes(
             mentorEmail: mentorEmail || undefined,
             menteeEmail: email || undefined,
             calendarId: resolved.googleCalendarId || undefined,
+            sendInvites: true,
           });
         } catch (e) {
           console.warn("Calendar event creation failed silently:", e);
