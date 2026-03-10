@@ -383,7 +383,7 @@ export async function registerRoutes(
       if (!existing) return res.status(404).json({ message: "Contact not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
 
-      const allowedFields = ["name", "nickname", "businessName", "ventureType", "role", "roleOther", "email", "phone", "age", "ethnicity", "location", "suburb", "localBoard", "tags", "revenueBand", "metrics", "notes", "active", "consentStatus", "consentDate", "consentNotes", "stage", "whatTheyAreBuilding", "relationshipStage", "isCommunityMember", "communityMemberOverride", "isInnovator", "supportType", "connectionStrength", "relationshipCircle", "relationshipCircleOverride", "vipReason"];
+      const allowedFields = ["name", "nickname", "businessName", "ventureType", "role", "roleOther", "email", "phone", "age", "ethnicity", "location", "suburb", "area", "localBoard", "tags", "revenueBand", "metrics", "notes", "active", "consentStatus", "consentDate", "consentNotes", "stage", "whatTheyAreBuilding", "relationshipStage", "isCommunityMember", "communityMemberOverride", "isInnovator", "supportType", "connectionStrength", "relationshipCircle", "relationshipCircleOverride", "vipReason"];
       const filteredBody: Record<string, any> = {};
       for (const field of allowedFields) {
         if (req.body[field] !== undefined) {
@@ -8898,7 +8898,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       if (!contact || contact.userId !== userId) {
         return res.status(404).json({ message: "Contact not found" });
       }
-      const allowedFields = ["isInnovator", "name", "email", "phone", "role", "roleOther", "businessName", "nickname", "ventureType", "age", "ethnicity", "location", "suburb", "localBoard", "tags", "revenueBand", "notes", "active", "stage", "whatTheyAreBuilding", "supportType", "connectionStrength"];
+      const allowedFields = ["isInnovator", "name", "email", "phone", "role", "roleOther", "businessName", "nickname", "ventureType", "age", "ethnicity", "location", "suburb", "area", "localBoard", "tags", "revenueBand", "notes", "active", "stage", "whatTheyAreBuilding", "supportType", "connectionStrength"];
       const updates: Record<string, any> = {};
       for (const key of Object.keys(req.body)) {
         if (allowedFields.includes(key)) {

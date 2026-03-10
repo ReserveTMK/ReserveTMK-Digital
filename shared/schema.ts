@@ -67,6 +67,7 @@ export const contacts = pgTable("contacts", {
   ethnicity: text("ethnicity").array(),
   location: text("location"),
   suburb: text("suburb"),
+  area: text("area"),
   localBoard: text("local_board"),
   tags: text("tags").array(),
   revenueBand: text("revenue_band"),

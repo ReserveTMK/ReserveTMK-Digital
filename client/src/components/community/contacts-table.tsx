@@ -17,6 +17,7 @@ import {
   InlineConnectionCell,
   InlineRoleCell,
   InlineGroupCell,
+  InlineAreaCell,
   SortHeader,
 } from "@/components/community/inline-cells";
 import type { SortField, SortDir } from "@/components/community/inline-cells";
@@ -179,6 +180,10 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
           av = (a.suburb || "").toLowerCase();
           bv = (b.suburb || "").toLowerCase();
           break;
+        case "area":
+          av = a.area || "";
+          bv = b.area || "";
+          break;
         case "lastActive":
           av = a.lastActiveDate || a.lastInteractionDate || "";
           bv = b.lastActiveDate || b.lastInteractionDate || "";
@@ -239,6 +244,9 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
                 <SortHeader label="Ethnicity" field="ethnicity" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[160px]" />
                 <SortHeader label="Age" field="age" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-20" />
                 <SortHeader label="Suburb" field="suburb" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
+                {drilldownTier === "innovators" && (
+                  <SortHeader label="Area" field="area" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-20" />
+                )}
                 <SortHeader label="Last Active" field="lastActive" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
                 <th className="px-2 py-3 w-10"></th>
               </tr>
@@ -358,6 +366,11 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
                   <td className="px-1 py-2">
                     <InlineTextCell contactId={contact.id} field="suburb" value={contact.suburb || ""} placeholder="—" />
                   </td>
+                  {drilldownTier === "innovators" && (
+                    <td className="px-1 py-2">
+                      <InlineAreaCell contactId={contact.id} area={contact.area} />
+                    </td>
+                  )}
                   <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap" data-testid={`table-active-${contact.id}`}>
                     {(contact.lastActiveDate || contact.lastInteractionDate)
                       ? format(new Date(contact.lastActiveDate || contact.lastInteractionDate), "MMM d, yyyy")

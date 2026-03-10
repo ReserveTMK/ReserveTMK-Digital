@@ -652,7 +652,83 @@ export function InlineGroupCell({ contactId, groups, allGroups }: { contactId: n
   );
 }
 
-export type SortField = "name" | "role" | "ethnicity" | "age" | "suburb" | "lastActive" | "community" | "stage" | "support" | "connection" | "group";
+export type SortField = "name" | "role" | "ethnicity" | "age" | "suburb" | "area" | "lastActive" | "community" | "stage" | "support" | "connection" | "group";
+
+export const NZ_AREA_CODES = [
+  { code: "09", label: "Auckland / Northland" },
+  { code: "07", label: "Waikato / Bay of Plenty" },
+  { code: "06", label: "Taranaki / Manawatū / Hawke's Bay / Gisborne" },
+  { code: "04", label: "Wellington" },
+  { code: "03", label: "South Island / Chatham Islands" },
+];
+
+export function InlineAreaCell({ contactId, area }: { contactId: number; area?: string | null }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const handleSelect = async (val: string | null) => {
+    if (val === area) { setOpen(false); return; }
+    setSaving(true);
+    try {
+      await apiRequest("PATCH", `/api/contacts/${contactId}`, { area: val });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast({ title: val ? "Area updated" : "Area cleared" });
+      setOpen(false);
+    } catch {
+      toast({ title: "Failed to update", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const match = NZ_AREA_CODES.find(a => a.code === area);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button className="text-left px-2 py-1 rounded hover:bg-muted/60 transition-colors cursor-pointer group flex items-center gap-1" data-testid={`table-cell-area-${contactId}`}>
+          {match ? (
+            <span className="text-xs font-medium">{match.code}</span>
+          ) : (
+            <span className="text-muted-foreground/50 text-[10px]">+ Set</span>
+          )}
+          <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-2" align="start">
+        <div className="space-y-0.5">
+          {NZ_AREA_CODES.map(ac => {
+            const isActive = ac.code === area;
+            return (
+              <button
+                key={ac.code}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm hover:bg-accent/50 transition-colors ${isActive ? "bg-accent" : ""}`}
+                onClick={() => handleSelect(ac.code)}
+                disabled={saving}
+                data-testid={`area-opt-${ac.code}-${contactId}`}
+              >
+                <span className="font-medium w-6">{ac.code}</span>
+                <span className="text-muted-foreground text-xs">{ac.label}</span>
+                {isActive && <Check className="w-3.5 h-3.5 ml-auto text-primary" />}
+              </button>
+            );
+          })}
+          {area && (
+            <button
+              className="w-full text-xs text-muted-foreground hover:text-foreground px-2 py-1.5 rounded hover:bg-accent/50 transition-colors"
+              onClick={() => handleSelect(null)}
+              disabled={saving}
+              data-testid={`area-opt-clear-${contactId}`}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 export type SortDir = "asc" | "desc";
 
 export function SortHeader({ label, field, activeField, dir, onSort, className }: { label: string; field: SortField; activeField: SortField | null; dir: SortDir; onSort: (f: SortField) => void; className?: string }) {
