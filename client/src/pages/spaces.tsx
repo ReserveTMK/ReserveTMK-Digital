@@ -11,10 +11,12 @@ import {
   Monitor,
   Calendar as CalendarIcon,
   CalendarDays,
+  Package,
 } from "lucide-react";
 import { useBookings, useVenues, useBookableResources, useDeskAvailability, useDeskBookings } from "@/hooks/use-bookings";
 import { useQuery } from "@tanstack/react-query";
 import Bookings from "./bookings";
+import ResourcesTab from "@/components/spaces/resources-tab";
 import type { Meeting } from "@shared/schema";
 
 const HOURS = Array.from({ length: 15 }, (_, i) => i + 7);
@@ -537,7 +539,7 @@ function HotDeskingTab() {
   );
 }
 
-const VALID_TABS = ["calendar", "venue-hire", "hot-desking"] as const;
+const VALID_TABS = ["calendar", "venue-hire", "hot-desking", "resources"] as const;
 
 function getTabFromUrl(): string {
   const params = new URLSearchParams(window.location.search);
@@ -565,7 +567,7 @@ export default function SpacesPage() {
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-4">
       <div>
         <h1 className="text-2xl font-bold" data-testid="text-page-title">Spaces</h1>
-        <p className="text-sm text-muted-foreground">Manage your spaces, venue hire, and hot desking</p>
+        <p className="text-sm text-muted-foreground">Manage your spaces, venue hire, hot desking, and resources</p>
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange}>
@@ -582,6 +584,10 @@ export default function SpacesPage() {
             <Monitor className="w-4 h-4 mr-1.5" />
             Hot Desking
           </TabsTrigger>
+          <TabsTrigger value="resources" data-testid="tab-resources">
+            <Package className="w-4 h-4 mr-1.5" />
+            Resources
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="calendar">
@@ -594,6 +600,10 @@ export default function SpacesPage() {
 
         <TabsContent value="hot-desking">
           <HotDeskingTab />
+        </TabsContent>
+
+        <TabsContent value="resources">
+          <ResourcesTab />
         </TabsContent>
       </Tabs>
     </div>

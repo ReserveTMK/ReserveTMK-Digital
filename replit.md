@@ -37,7 +37,7 @@ PostgreSQL is used as the database, integrated with Drizzle ORM. The schema incl
 -   **Calendar as Tracking Hub**: Integrates Google Calendar sync, manual activity logging, and daily/monthly foot traffic input.
 -   **Community Structure**: A 4-tier system (All Contacts / Our Community / Our Innovators / VIP) with dynamic filtering, contact roles, and group management.
 -   **Debriefs/Impact Tracking**: Queue for events needing debriefs, automated AI analysis of interactions, user review, and action item suggestions.
--   **Spaces Hub**: Unified hub for venue and desk availability, venue hire management (with automated workflows, conflict checking, post-hire surveys), and hot desking.
+-   **Spaces Hub**: Unified hub at `/spaces` with 4 tabs: Calendar (venue + desk availability grid), Venue Hire (booking management with kanban/list views), Hot Desking (desk availability cards), Resources (manage venues/desks/gear with sub-tabs, includes default pricing). Venue Hire Settings (gear icon) contains: Venue Instructions, After Hours, Survey, Xero. Resource management components extracted to `client/src/components/spaces/resources-tab.tsx`.
 -   **Gear Management**: Standalone page for equipment inventory, checkout tracking, and admin approval for specific items.
 -   **Booking Categories**: Unified framework for Venue Hire, Hot Desking, and Gear Booking, managed via bookable resources and linked agreements.
 -   **Regular Booker Portal**: Self-service portal with magic link authentication, showing category-specific usage, subscription status, and booking flows.
