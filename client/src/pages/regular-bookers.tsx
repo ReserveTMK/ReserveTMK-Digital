@@ -140,7 +140,7 @@ export default function RegularBookersPage() {
       queryClient.invalidateQueries({ queryKey: ['/api/all-booker-links'] });
       if (data.portalUrl) {
         navigator.clipboard.writeText(data.portalUrl).then(() => {
-          toast({ title: "Link generated and copied" });
+          toast({ title: "Link generated and copied", description: data.portalUrl });
         }).catch(() => {
           toast({ title: "Link generated", description: data.portalUrl });
         });
@@ -277,7 +277,7 @@ export default function RegularBookersPage() {
 
   const copyLink = (portalUrl: string) => {
     navigator.clipboard.writeText(portalUrl).then(() => {
-      toast({ title: "Link copied to clipboard" });
+      toast({ title: "Link copied to clipboard", description: portalUrl });
     }).catch(() => {
       toast({ title: "Portal URL", description: portalUrl });
     });
@@ -355,77 +355,6 @@ export default function RegularBookersPage() {
           Add Booker
         </Button>
       </div>
-
-      {totalSuggestions > 0 && (
-        <Collapsible open={suggestionsOpen} onOpenChange={setSuggestionsOpen}>
-          <Card className="border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20" data-testid="card-suggested-bookers">
-            <CollapsibleTrigger asChild>
-              <div className="flex items-center justify-between gap-2 p-3 cursor-pointer" data-testid="button-toggle-suggestions">
-                <div className="flex items-center gap-2">
-                  <UserPlus className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                  <span className="text-sm font-medium">Suggested Bookers</span>
-                  <Badge variant="secondary" className="text-[10px]" data-testid="badge-suggestion-count">{totalSuggestions}</Badge>
-                </div>
-                {suggestionsOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-              </div>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <div className="px-3 pb-3 space-y-1">
-                {suggestions?.venueContacts?.map(contact => (
-                  <div key={`vc-${contact.id}`} className="flex items-center justify-between gap-3 py-1.5 px-2 rounded-md hover:bg-muted/50" data-testid={`suggestion-venue-contact-${contact.id}`}>
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <Users className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                      <div className="min-w-0">
-                        <span className="text-sm font-medium truncate block" data-testid={`text-suggestion-name-vc-${contact.id}`}>{contact.name}</span>
-                        {contact.email && <span className="text-xs text-muted-foreground truncate block">{contact.email}</span>}
-                      </div>
-                    </div>
-                    <Badge variant="secondary" className="text-[10px] shrink-0">
-                      {contact.supportType?.includes("venue_hire") ? "Venue hire contact" : "Hot desking contact"}
-                    </Badge>
-                    <Button size="sm" variant="outline" onClick={() => handleSetupSuggestion("venueContact", contact)} data-testid={`button-setup-suggestion-vc-${contact.id}`}>
-                      <UserPlus className="w-3.5 h-3.5 mr-1.5" />
-                      Set up
-                    </Button>
-                  </div>
-                ))}
-                {suggestions?.agreementContacts?.map(contact => (
-                  <div key={`ac-${contact.id}`} className="flex items-center justify-between gap-3 py-1.5 px-2 rounded-md hover:bg-muted/50" data-testid={`suggestion-agreement-contact-${contact.id}`}>
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <Users className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                      <div className="min-w-0">
-                        <span className="text-sm font-medium truncate block" data-testid={`text-suggestion-name-ac-${contact.id}`}>{contact.name}</span>
-                        {contact.email && <span className="text-xs text-muted-foreground truncate block">{contact.email}</span>}
-                      </div>
-                    </div>
-                    <Badge variant="secondary" className="text-[10px] shrink-0">Has active membership</Badge>
-                    <Button size="sm" variant="outline" onClick={() => handleSetupSuggestion("agreementContact", contact)} data-testid={`button-setup-suggestion-ac-${contact.id}`}>
-                      <UserPlus className="w-3.5 h-3.5 mr-1.5" />
-                      Set up
-                    </Button>
-                  </div>
-                ))}
-                {suggestions?.agreementGroups?.map(group => (
-                  <div key={`ag-${group.id}`} className="flex items-center justify-between gap-3 py-1.5 px-2 rounded-md hover:bg-muted/50" data-testid={`suggestion-agreement-group-${group.id}`}>
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <Building className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                      <div className="min-w-0">
-                        <span className="text-sm font-medium truncate block" data-testid={`text-suggestion-name-ag-${group.id}`}>{group.name}</span>
-                        {group.type && <span className="text-xs text-muted-foreground truncate block">{group.type}</span>}
-                      </div>
-                    </div>
-                    <Badge variant="secondary" className="text-[10px] shrink-0">Has active agreement</Badge>
-                    <Button size="sm" variant="outline" onClick={() => handleSetupSuggestion("agreementGroup", group)} data-testid={`button-setup-suggestion-ag-${group.id}`}>
-                      <UserPlus className="w-3.5 h-3.5 mr-1.5" />
-                      Set up
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </CollapsibleContent>
-          </Card>
-        </Collapsible>
-      )}
 
       <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
         <div className="relative flex-1 min-w-[200px]">
@@ -750,6 +679,77 @@ export default function RegularBookersPage() {
         <span data-testid="text-booker-count">{filtered.length} of {regularBookers?.length || 0} booker{(regularBookers?.length || 0) !== 1 ? "s" : ""}</span>
         {hasFilters && <span>Filters active</span>}
       </div>
+
+      {totalSuggestions > 0 && (
+        <Collapsible open={suggestionsOpen} onOpenChange={setSuggestionsOpen}>
+          <Card className="border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20" data-testid="card-suggested-bookers">
+            <CollapsibleTrigger asChild>
+              <div className="flex items-center justify-between gap-2 p-3 cursor-pointer" data-testid="button-toggle-suggestions">
+                <div className="flex items-center gap-2">
+                  <UserPlus className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                  <span className="text-sm font-medium">Suggested Bookers</span>
+                  <Badge variant="secondary" className="text-[10px]" data-testid="badge-suggestion-count">{totalSuggestions}</Badge>
+                </div>
+                {suggestionsOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+              </div>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="px-3 pb-3 space-y-1">
+                {suggestions?.venueContacts?.map(contact => (
+                  <div key={`vc-${contact.id}`} className="flex items-center justify-between gap-3 py-1.5 px-2 rounded-md hover:bg-muted/50" data-testid={`suggestion-venue-contact-${contact.id}`}>
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <Users className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      <div className="min-w-0">
+                        <span className="text-sm font-medium truncate block" data-testid={`text-suggestion-name-vc-${contact.id}`}>{contact.name}</span>
+                        {contact.email && <span className="text-xs text-muted-foreground truncate block">{contact.email}</span>}
+                      </div>
+                    </div>
+                    <Badge variant="secondary" className="text-[10px] shrink-0">
+                      {contact.supportType?.includes("venue_hire") ? "Venue hire contact" : "Hot desking contact"}
+                    </Badge>
+                    <Button size="sm" variant="outline" onClick={() => handleSetupSuggestion("venueContact", contact)} data-testid={`button-setup-suggestion-vc-${contact.id}`}>
+                      <UserPlus className="w-3.5 h-3.5 mr-1.5" />
+                      Set up
+                    </Button>
+                  </div>
+                ))}
+                {suggestions?.agreementContacts?.map(contact => (
+                  <div key={`ac-${contact.id}`} className="flex items-center justify-between gap-3 py-1.5 px-2 rounded-md hover:bg-muted/50" data-testid={`suggestion-agreement-contact-${contact.id}`}>
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <Users className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      <div className="min-w-0">
+                        <span className="text-sm font-medium truncate block" data-testid={`text-suggestion-name-ac-${contact.id}`}>{contact.name}</span>
+                        {contact.email && <span className="text-xs text-muted-foreground truncate block">{contact.email}</span>}
+                      </div>
+                    </div>
+                    <Badge variant="secondary" className="text-[10px] shrink-0">Has active membership</Badge>
+                    <Button size="sm" variant="outline" onClick={() => handleSetupSuggestion("agreementContact", contact)} data-testid={`button-setup-suggestion-ac-${contact.id}`}>
+                      <UserPlus className="w-3.5 h-3.5 mr-1.5" />
+                      Set up
+                    </Button>
+                  </div>
+                ))}
+                {suggestions?.agreementGroups?.map(group => (
+                  <div key={`ag-${group.id}`} className="flex items-center justify-between gap-3 py-1.5 px-2 rounded-md hover:bg-muted/50" data-testid={`suggestion-agreement-group-${group.id}`}>
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <Building className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      <div className="min-w-0">
+                        <span className="text-sm font-medium truncate block" data-testid={`text-suggestion-name-ag-${group.id}`}>{group.name}</span>
+                        {group.type && <span className="text-xs text-muted-foreground truncate block">{group.type}</span>}
+                      </div>
+                    </div>
+                    <Badge variant="secondary" className="text-[10px] shrink-0">Has active agreement</Badge>
+                    <Button size="sm" variant="outline" onClick={() => handleSetupSuggestion("agreementGroup", group)} data-testid={`button-setup-suggestion-ag-${group.id}`}>
+                      <UserPlus className="w-3.5 h-3.5 mr-1.5" />
+                      Set up
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
+      )}
 
       <RegularBookerFormDialog
         open={formOpen}

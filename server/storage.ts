@@ -197,7 +197,7 @@ import {
   type ProgrammeRegistration,
   type InsertProgrammeRegistration,
 } from "@shared/schema";
-import { eq, desc, and, gte, lte, sql, max, count } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, max, count, inArray } from "drizzle-orm";
 
 import { authStorage, type IAuthStorage } from "./replit_integrations/auth/storage";
 
@@ -1464,7 +1464,7 @@ export class DatabaseStorage implements IStorage {
     const userBookers = await db.select({ id: regularBookers.id }).from(regularBookers).where(eq(regularBookers.userId, userId));
     if (userBookers.length === 0) return [];
     const bookerIds = userBookers.map(b => b.id);
-    return await db.select().from(bookerLinks).where(sql`${bookerLinks.regularBookerId} = ANY(${bookerIds})`).orderBy(desc(bookerLinks.createdAt));
+    return await db.select().from(bookerLinks).where(inArray(bookerLinks.regularBookerId, bookerIds)).orderBy(desc(bookerLinks.createdAt));
   }
 
   async createBookerLink(data: InsertBookerLink): Promise<BookerLink> {

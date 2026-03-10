@@ -4331,6 +4331,20 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const booker = await storage.getRegularBooker(id);
       if (!booker || booker.userId !== userId) return res.status(403).json({ message: "Forbidden" });
 
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.REPL_SLUG
+        ? `https://${process.env.REPL_SLUG}.replit.app`
+        : "https://app.reservetmk.co.nz";
+
+      const existingLinks = await storage.getBookerLinks(id);
+      const now = new Date();
+      const activeLink = existingLinks.find(l => l.enabled !== false && (!l.tokenExpiry || new Date(l.tokenExpiry) > now));
+      if (activeLink) {
+        const portalUrl = `${baseUrl}/booker/portal/${activeLink.token}`;
+        return res.json({ ...activeLink, portalUrl });
+      }
+
       const token = crypto.randomUUID();
       const label = req.body.label || "Portal link";
       const isGroupLink = req.body.isGroupLink === true;
@@ -4342,13 +4356,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         isGroupLink,
       });
 
-      const baseUrl = process.env.REPLIT_DEV_DOMAIN
-        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : process.env.REPL_SLUG
-        ? `https://${process.env.REPL_SLUG}.replit.app`
-        : "https://app.reservetmk.co.nz";
       const portalUrl = `${baseUrl}/booker/portal/${token}`;
-
       res.json({ ...link, portalUrl });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
