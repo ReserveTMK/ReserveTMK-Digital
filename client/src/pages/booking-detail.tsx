@@ -200,7 +200,7 @@ export default function BookingDetail() {
             <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
             <h2 className="text-lg font-semibold mb-2" data-testid="text-booking-not-found">Venue Hire Not Found</h2>
             <p className="text-muted-foreground mb-4">This venue hire doesn't exist or you don't have access to it.</p>
-            <Button onClick={() => setLocation("/bookings")} data-testid="button-back-bookings">
+            <Button onClick={() => setLocation("/spaces?tab=venue-hire")} data-testid="button-back-bookings">
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Venue Hire
             </Button>
@@ -232,7 +232,7 @@ export default function BookingDetail() {
       <main className="flex-1 p-4 md:p-8 overflow-y-auto">
         <div className="max-w-4xl mx-auto space-y-6">
           <div className="flex items-center gap-3 flex-wrap">
-            <Button variant="ghost" size="icon" onClick={() => setLocation("/bookings")} data-testid="button-back">
+            <Button variant="ghost" size="icon" onClick={() => setLocation("/spaces?tab=venue-hire")} data-testid="button-back">
               <ArrowLeft className="w-4 h-4" />
             </Button>
             <div className="flex-1 min-w-0">

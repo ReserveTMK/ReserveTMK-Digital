@@ -26,6 +26,7 @@ import {
   PhoneCall,
   UserCheck,
   Monitor,
+  Wrench,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useRef, useEffect } from "react";
@@ -56,7 +57,6 @@ const navGroups: NavGroup[] = [
       { name: "People", href: "/community/people", icon: Users, description: "Manage contacts & mentees" },
       { name: "Groups", href: "/community/groups", icon: Network, description: "Organisations & collectives" },
       { name: "Ecosystems", href: "/community/ecosystems", icon: Handshake, description: "Organisation network overview" },
-      { name: "Regular Bookers", href: "/regular-bookers", icon: UserCheck, description: "Manage recurring bookers" },
       { name: "Gmail Import", href: "/gmail-import", icon: Mail, description: "Import contacts from email" },
     ],
   },
@@ -65,11 +65,12 @@ const navGroups: NavGroup[] = [
     href: "/programmes",
     children: [
       { name: "Mentoring", href: "/mentoring", icon: Users, description: "1:1 sessions & scheduling" },
-      { name: "Venue Hire", href: "/bookings", icon: Building2, description: "Venue hire & spaces" },
+      { name: "Spaces", href: "/spaces", icon: Building2, description: "Spaces, venue hire & hot desking" },
+      { name: "Gear", href: "/gear", icon: Wrench, description: "Equipment lending & tracking" },
+      { name: "Regular Bookers", href: "/regular-bookers", icon: UserCheck, description: "Manage recurring bookers" },
       { name: "Programmes", href: "/programmes", icon: Layers, description: "Workshops & activations" },
       { name: "Projects", href: "/projects", icon: Rocket, description: "Initiatives & work streams" },
       { name: "Agreements", href: "/agreements", icon: Handshake, description: "Memberships & MOUs" },
-      { name: "Resource Calendar", href: "/resource-calendar", icon: Monitor, description: "Desks, gear & venue availability" },
     ],
   },
   {

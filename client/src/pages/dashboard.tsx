@@ -912,7 +912,7 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="mt-3 pt-3 border-t border-border">
-                <Link href="/bookings">
+                <Link href="/spaces?tab=venue-hire">
                   <Button variant="ghost" size="sm" className="w-full gap-1 text-primary" data-testid="button-view-bookings">
                     <Building2 className="w-3.5 h-3.5" /> View Venue Hires <ArrowRight className="w-3 h-3 ml-auto" />
                   </Button>
@@ -1200,7 +1200,7 @@ export default function Dashboard() {
                         <div
                           key={`bk-${bk.id}`}
                           className="w-full text-left p-3 rounded-lg border border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20 cursor-pointer hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors"
-                          onClick={() => navigate("/bookings")}
+                          onClick={() => navigate("/spaces?tab=venue-hire")}
                           data-testid={`card-dashboard-booking-${bk.id}`}
                         >
                           <div className="flex items-start gap-3">

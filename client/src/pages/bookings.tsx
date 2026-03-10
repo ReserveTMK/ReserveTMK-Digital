@@ -185,7 +185,7 @@ function formatTimeSlot(time: string) {
   return `${displayHour}:${m.toString().padStart(2, "0")} ${period}`;
 }
 
-export default function Bookings() {
+export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
   const { data: bookings, isLoading } = useBookings();
   const { data: venues } = useVenues();
   const { data: contacts } = useContacts();
@@ -435,16 +435,16 @@ export default function Bookings() {
     return columns;
   }, [filtered]);
 
-  return (
-    <>
-    <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
+  const content = (
         <div className={`${viewMode === "kanban" ? "max-w-[1600px]" : "max-w-6xl"} mx-auto space-y-6`}>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-display font-bold" data-testid="text-bookings-title">Venue Hire</h1>
-              <p className="text-muted-foreground mt-1">Manage venue hire and community space usage.</p>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
+            {!embedded && (
+              <div>
+                <h1 className="text-3xl font-display font-bold" data-testid="text-bookings-title">Venue Hire</h1>
+                <p className="text-muted-foreground mt-1">Manage venue hire and community space usage.</p>
+              </div>
+            )}
+            <div className={`flex items-center gap-2 flex-wrap ${embedded ? "w-full justify-between" : ""}`}>
               <div className="flex items-center border border-border rounded-lg overflow-hidden" data-testid="view-toggle">
                 <Button
                   variant={viewMode === "kanban" ? "default" : "ghost"}
@@ -467,18 +467,20 @@ export default function Bookings() {
                   List
                 </Button>
               </div>
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => setSettingsOpen(true)}
-                data-testid="button-bookings-settings"
-              >
-                <Settings className="w-5 h-5" />
-              </Button>
-              <Button className="shadow-lg" onClick={() => setCreateOpen(true)} data-testid="button-create-booking">
-                <Plus className="w-4 h-4 mr-2" />
-                New Venue Hire
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setSettingsOpen(true)}
+                  data-testid="button-bookings-settings"
+                >
+                  <Settings className="w-5 h-5" />
+                </Button>
+                <Button className="shadow-lg" onClick={() => setCreateOpen(true)} data-testid="button-create-booking">
+                  <Plus className="w-4 h-4 mr-2" />
+                  New Venue Hire
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -878,7 +880,15 @@ export default function Bookings() {
             </div>
           )}
         </div>
-      </main>
+  );
+
+  return (
+    <>
+      {embedded ? content : (
+        <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
+          {content}
+        </main>
+      )}
 
       <BookingFormDialog
         open={createOpen}

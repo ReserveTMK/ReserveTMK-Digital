@@ -2186,7 +2186,7 @@ export default function CalendarPage() {
                   <Card
                     key={`${item.kind}-${item.id}`}
                     className="p-4 border-orange-500/20 bg-orange-500/5 dark:bg-orange-500/5 cursor-pointer overflow-visible hover-elevate"
-                    onClick={() => navigate(item.kind === "booking" ? "/bookings" : "/programmes")}
+                    onClick={() => navigate(item.kind === "booking" ? "/spaces?tab=venue-hire" : "/programmes")}
                     data-testid={`card-space-${item.kind}-${item.id}`}
                   >
                     <div className="space-y-2">

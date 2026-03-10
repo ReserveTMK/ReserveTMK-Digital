@@ -20,6 +20,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCreateMeeting } from "@/hooks/use-meetings";
 import { useContacts } from "@/hooks/use-contacts";
+import { useVenues } from "@/hooks/use-bookings";
 import { useQuery } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import {
@@ -77,8 +78,10 @@ export function ScheduleSessionDialog({
   const { data: meetingTypes } = useQuery<MeetingType[]>({
     queryKey: ["/api/meeting-types"],
   });
+  const { data: venues } = useVenues();
   const createMeeting = useCreateMeeting();
   const [mentorUserId, setMentorUserId] = useState("");
+  const [venueId, setVenueId] = useState<string>("");
   const [contactId, setContactId] = useState(prefillContactId ? String(prefillContactId) : "");
   const [contactSearch, setContactSearch] = useState("");
   const [date, setDate] = useState("");
@@ -157,6 +160,7 @@ export function ScheduleSessionDialog({
       notes: notes || null,
       mentoringFocus: effectiveFocus || null,
       ...(mentorUserId ? { mentorUserId } : {}),
+      ...(venueId ? { venueId: parseInt(venueId) } : {}),
     };
 
     if (selectedType && selectedTypeId !== "discovery" && selectedTypeId !== "custom") {
@@ -183,6 +187,7 @@ export function ScheduleSessionDialog({
 
   const resetForm = () => {
     setMentorUserId("");
+    setVenueId("");
     setContactId(prefillContactId ? String(prefillContactId) : "");
     setContactSearch("");
     setDate("");
@@ -402,9 +407,25 @@ export function ScheduleSessionDialog({
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label>Location (optional)</Label>
-            <Input placeholder="e.g., Reserve TMK office" value={location} onChange={(e) => setLocation(e.target.value)} data-testid="input-location" />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Room (optional)</Label>
+              <Select value={venueId} onValueChange={(v) => setVenueId(v === "none" ? "" : v)}>
+                <SelectTrigger data-testid="select-venue">
+                  <SelectValue placeholder="No specific room" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No specific room</SelectItem>
+                  {(venues || []).filter(v => v.active !== false).map((v) => (
+                    <SelectItem key={v.id} value={String(v.id)} data-testid={`venue-option-${v.id}`}>{v.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Location (optional)</Label>
+              <Input placeholder="e.g., Reserve TMK office" value={location} onChange={(e) => setLocation(e.target.value)} data-testid="input-location" />
+            </div>
           </div>
 
           <Collapsible open={showInvites} onOpenChange={setShowInvites}>

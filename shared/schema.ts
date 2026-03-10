@@ -153,6 +153,7 @@ export const meetings = pgTable("meetings", {
   meetingTypeId: integer("meeting_type_id"),
   attendees: jsonb("attendees"),
   googleCalendarEventId: text("google_calendar_event_id"),
+  venueId: integer("venue_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

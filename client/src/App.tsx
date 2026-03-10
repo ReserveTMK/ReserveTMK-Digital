@@ -41,6 +41,8 @@ import CatchUpPage from "@/pages/catch-up";
 import RegularBookersPage from "@/pages/regular-bookers";
 import PublicRegistrationPage from "@/pages/public-registration";
 import ResourceCalendarPage from "@/pages/resource-calendar";
+import SpacesPage from "@/pages/spaces";
+import GearPage from "@/pages/gear";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -163,12 +165,20 @@ function Router() {
           <ProtectedRoute component={RegularBookersPage} />
         </Route>
 
+        <Route path="/spaces">
+          <ProtectedRoute component={SpacesPage} />
+        </Route>
+
+        <Route path="/gear">
+          <ProtectedRoute component={GearPage} />
+        </Route>
+
         <Route path="/bookings/:id">
           <ProtectedRoute component={BookingDetailPage} />
         </Route>
 
         <Route path="/bookings">
-          <ProtectedRoute component={Bookings} />
+          <Redirect to="/spaces?tab=venue-hire" />
         </Route>
 
         <Route path="/agreements">
@@ -220,7 +230,7 @@ function Router() {
         </Route>
 
         <Route path="/resource-calendar">
-          <ProtectedRoute component={ResourceCalendarPage} />
+          <Redirect to="/spaces" />
         </Route>
 
         <Route path="/register/:slug">
