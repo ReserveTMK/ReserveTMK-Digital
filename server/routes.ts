@@ -2840,6 +2840,113 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     }
   });
 
+  app.post("/api/impact-logs/:id/reanalyse-tags", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const logId = parseId(req.params.id);
+      if (isNaN(logId)) return res.status(400).json({ message: "Invalid log ID" });
+
+      const log = await storage.getImpactLog(logId);
+      if (!log || log.userId !== userId) return res.status(404).json({ message: "Not found" });
+      if (!log.transcript) return res.status(400).json({ message: "No transcript available for re-analysis" });
+
+      const taxonomy = await storage.getTaxonomy(userId);
+      const keywords = await storage.getKeywords(userId);
+      const contacts = await storage.getContacts(userId);
+
+      const taxonomyContext = taxonomy.filter(t => t.active).map(t =>
+        `- ${t.name}: ${t.description || 'No description'}`
+      ).join('\n');
+
+      const keywordContext = keywords.map(k => {
+        const tax = taxonomy.find(t => t.id === k.taxonomyId);
+        return `"${k.phrase}" → ${tax?.name || 'unknown'}`;
+      }).join('\n');
+
+      const tagPrompt = `You are an impact analysis system for Reserve Tāmaki, a Māori and Pasifika entrepreneurship hub in Aotearoa New Zealand. Analyze the following debrief transcript and extract impact tags ONLY.
+
+IMPACT TAXONOMY (use these categories for tagging):
+${taxonomyContext || `- Hub Engagement: Track facility usage and programme participation metrics
+- Venture Progress: Capture venture development and economic outcomes across businesses, social enterprises, creative projects, and movements
+- Skills & Capability Growth: Measure competency development and confidence building
+- Network & Ecosystem Connection: Document relationship formation and ecosystem integration
+- Rangatahi Development: Track youth-specific engagement and outcomes`}
+
+SEMANTIC INDICATORS (phrases/meanings that map to categories):
+Hub Engagement: registered as member, attended workshop, came to event, used coworking space, participated in programme, joined session, turned up to, booked in for, regular user, used recording studio, booked creative space, joined movement group
+Venture Progress: made first sale, got customer, launched business, registered company, earned revenue, hired someone, secured contract, still trading, business growing, sustainable income, wholesale client, repeat customer, launched brand, first sponsorship, content going viral, secured partnership, built audience, social media growth, earned first income, grant received, movement growing
+Skills & Capability Growth: learned how to, now understand, figured out how, gained confidence, feel capable, can now do, developed skill in, understand pricing, know how to market, improved at, making better decisions, ready to take next step, learned to create content, built website, designed brand, filmed first video, built portfolio, developed social media strategy
+Network & Ecosystem Connection: met someone who, introduced to, connected with, found mentor, got referral to, partnered with, collaborated with, supported by, linked to, now working with, relationships with, found sponsor, connected with brand, partnered with collective
+Rangatahi Development: young entrepreneur, rangatahi participated, youth attended, first business idea, school leaver, starting out, early career, young person, student entrepreneur, developing mindset, youth-led initiative, young creative, digital creator, rangatahi movement, first brand
+
+KEYWORD DICTIONARY (additional user-configured phrase mappings):
+${keywordContext || 'No additional keywords configured.'}
+
+CLASSIFICATION LOGIC:
+1. Multi-label output: Return ALL applicable categories for the transcript
+2. Semantic matching: Match on meaning and context, not just literal keyword presence
+3. Language handling: Support Te Reo Māori terms and New Zealand colloquialisms
+4. Priority ordering: Return categories ranked by relevance strength in source text
+
+LANGUAGE NOTES:
+- Handle te reo Māori: whānau (family), rangatahi (youth), mahi (work), kaupapa (purpose), kōrero (talk/discussion), hui (meeting), wānanga (workshop/learning), aroha (care/compassion), manaaki (hospitality/support), tautoko (support)
+- NZ slang: sorted (arranged), keen as (very interested), sweet (confirmed), stoked (very happy), hard out (enthusiastically), all good (fine/ok), buzzing (excited), choice (great)
+
+TRANSCRIPT:
+"""
+${log.transcript}
+"""
+
+Return a JSON object with EXACTLY this structure:
+{
+  "impactTags": [
+    {
+      "category": "taxonomy category name",
+      "confidence": 0-100,
+      "evidence": "brief quote or paraphrase from transcript supporting this tag"
+    }
+  ]
+}
+
+Be precise. Only tag impact categories where there is clear evidence in the transcript. Set confidence scores honestly — lower if the evidence is ambiguous.`;
+
+      const extraction = await claudeJSON({
+        model: "claude-sonnet-4-6",
+        prompt: tagPrompt,
+        temperature: 0.3,
+      });
+
+      const existingTags = await storage.getImpactTags(logId);
+      for (const existingTag of existingTags) {
+        await storage.removeImpactTag(existingTag.id);
+      }
+      const extractedTags = extraction.impactTags || [];
+      for (const tag of extractedTags) {
+        const matchedTax = taxonomy.find(t => t.active && t.name.toLowerCase() === (tag.category || "").toLowerCase());
+        if (matchedTax) {
+          tag.taxonomyId = matchedTax.id;
+          await storage.addImpactTag({
+            impactLogId: logId,
+            taxonomyId: matchedTax.id,
+            confidence: tag.confidence || 50,
+            notes: tag.evidence || null,
+            evidence: tag.evidence || null,
+          });
+        }
+      }
+
+      const existingExtraction = (log.rawExtraction as any) || {};
+      existingExtraction.impactTags = extractedTags;
+      await storage.updateImpactLog(logId, { rawExtraction: existingExtraction });
+
+      const updatedTags = await storage.getImpactTags(logId);
+      res.json({ tags: updatedTags, impactTags: extractedTags });
+    } catch (error) {
+      console.error("Impact tag re-analysis error:", error);
+      res.status(500).json({ message: "Failed to re-analyse impact tags" });
+    }
+  });
+
   app.get("/api/impact-logs/:id/tags", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;

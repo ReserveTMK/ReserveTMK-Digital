@@ -22,6 +22,7 @@ import {
   Trash2,
   Mic,
   HeartHandshake,
+  RotateCcw,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { ImpactLog, Contact } from "@shared/schema";
@@ -132,6 +133,8 @@ export function DebriefCardList({
   onSelect,
   onDelete,
   onCreateNew,
+  onReanalyse,
+  reanalysingId,
   emptyIcon,
   emptyTitle,
   emptyDescription,
@@ -142,6 +145,8 @@ export function DebriefCardList({
   onSelect: (id: number) => void;
   onDelete: (log: ImpactLog) => void;
   onCreateNew: () => void;
+  onReanalyse?: (log: ImpactLog) => void;
+  reanalysingId?: number | null;
   emptyIcon?: React.ReactNode;
   emptyTitle?: string;
   emptyDescription?: string;
@@ -201,6 +206,18 @@ export function DebriefCardList({
                 <Badge variant="secondary" className={`text-xs ${SENTIMENT_COLORS[log.sentiment] || ""}`} data-testid={`badge-sentiment-${log.id}`}>
                   {log.sentiment}
                 </Badge>
+              )}
+              {onReanalyse && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0 min-h-[44px] min-w-[44px]"
+                  disabled={reanalysingId === log.id}
+                  onClick={(e) => { e.stopPropagation(); onReanalyse(log); }}
+                  data-testid={`button-reanalyse-debrief-${log.id}`}
+                >
+                  <RotateCcw className={`w-4 h-4 text-muted-foreground ${reanalysingId === log.id ? "animate-spin" : ""}`} />
+                </Button>
               )}
               <Button
                 variant="ghost"

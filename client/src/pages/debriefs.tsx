@@ -187,6 +187,25 @@ function ArchiveView({ logs, isLoading, onSelect, onDelete }: {
   onDelete: (log: ImpactLog) => void;
 }) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [reanalysingId, setReanalysingId] = useState<number | null>(null);
+  const { toast } = useToast();
+
+  const reanalyseMutation = useMutation({
+    mutationFn: async (log: ImpactLog) => {
+      setReanalysingId(log.id);
+      const res = await apiRequest("POST", `/api/impact-logs/${log.id}/reanalyse-tags`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/impact-logs"] });
+      toast({ title: "Impact tags updated", description: "Tags have been re-analysed from the transcript." });
+      setReanalysingId(null);
+    },
+    onError: () => {
+      toast({ title: "Re-analysis failed", description: "Could not re-analyse impact tags. Please try again.", variant: "destructive" });
+      setReanalysingId(null);
+    },
+  });
 
   const filteredLogs = useMemo(() => {
     if (!searchQuery.trim()) return logs;
@@ -218,6 +237,8 @@ function ArchiveView({ logs, isLoading, onSelect, onDelete }: {
         onSelect={onSelect}
         onDelete={onDelete}
         onCreateNew={() => {}}
+        onReanalyse={(log) => reanalyseMutation.mutate(log)}
+        reanalysingId={reanalysingId}
         emptyTitle={searchQuery ? "No matching debriefs" : "No completed debriefs yet"}
         emptyDescription={searchQuery ? "Try a different search term." : "Complete debriefs from the Queue to see them here."}
       />
