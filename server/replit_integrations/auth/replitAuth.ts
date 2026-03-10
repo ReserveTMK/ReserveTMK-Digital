@@ -44,7 +44,6 @@ export function getSession() {
     ttl: sessionTtl,
     tableName: "sessions",
   });
-  const isProd = process.env.NODE_ENV === "production";
   return session({
     secret: process.env.SESSION_SECRET!,
     store: sessionStore,
@@ -52,8 +51,8 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: isProd,
-      sameSite: isProd ? ("none" as const) : ("lax" as const),
+      secure: true,
+      sameSite: "none" as const,
       maxAge: sessionTtl,
     },
   });
@@ -109,6 +108,13 @@ export async function setupAuth(app: Express) {
 
   const registeredStrategies = new Set<string>();
 
+  function getAuthDomain(req: any): string {
+    if (process.env.REPLIT_DEV_DOMAIN) {
+      return process.env.REPLIT_DEV_DOMAIN;
+    }
+    return req.hostname;
+  }
+
   const ensureStrategy = async (domain: string) => {
     const strategyName = `replitauth:${domain}`;
     if (!registeredStrategies.has(strategyName)) {
@@ -132,8 +138,9 @@ export async function setupAuth(app: Express) {
 
   app.get("/api/login", async (req, res, next) => {
     try {
-      await ensureStrategy(req.hostname);
-      passport.authenticate(`replitauth:${req.hostname}`, {
+      const domain = getAuthDomain(req);
+      await ensureStrategy(domain);
+      passport.authenticate(`replitauth:${domain}`, {
         prompt: "login",
         scope: ["openid", "email", "profile", "offline_access"],
       })(req, res, next);
@@ -145,8 +152,9 @@ export async function setupAuth(app: Express) {
 
   app.get("/api/callback", async (req, res, next) => {
     try {
-      await ensureStrategy(req.hostname);
-      passport.authenticate(`replitauth:${req.hostname}`, {
+      const domain = getAuthDomain(req);
+      await ensureStrategy(domain);
+      passport.authenticate(`replitauth:${domain}`, {
         successReturnToOrRedirect: "/",
         failureRedirect: "/api/login",
       })(req, res, next);
@@ -163,7 +171,7 @@ export async function setupAuth(app: Express) {
         res.redirect(
           client.buildEndSessionUrl(config, {
             client_id: process.env.REPL_ID!,
-            post_logout_redirect_uri: `${req.protocol}://${req.hostname}`,
+            post_logout_redirect_uri: `https://${getAuthDomain(req)}`,
           }).href
         );
       });
