@@ -1,9 +1,9 @@
 import { db } from "./db";
-import { sql, eq, ne, and, gte, lte, inArray, count, countDistinct, sum, avg } from "drizzle-orm";
+import { sql, eq, ne, and, gte, lte, inArray, count, sum } from "drizzle-orm";
 import {
   impactLogs, impactLogContacts, impactLogGroups, impactTags, impactTaxonomy,
   contacts, groups, groupMembers, events, eventAttendance,
-  programmes, programmeEvents, bookings, memberships, mous, venues,
+  programmes, bookings, memberships, mous,
   milestones, relationshipStageHistory, communitySpend, meetings, interactions,
   meetingTypes, monthlySnapshots, footTrafficTouchpoints, dailyFootTraffic,
 } from "@shared/schema";
@@ -26,20 +26,33 @@ export const PASIFIKA_ETHNICITIES = [
   "Fijian", "Hawaiian", "Tahitian", "Other Polynesian", "Micronesian", "Melanesian",
 ];
 
+function parseDate(d: string) { return new Date(d); }
+
+function safeNum(val: any): number { return Number(val) || 0; }
+
+function confirmedDebriefWhere(filters: ReportFilters) {
+  const conds = [
+    eq(impactLogs.userId, filters.userId),
+    eq(impactLogs.status, "confirmed"),
+    gte(impactLogs.createdAt, parseDate(filters.startDate)),
+    lte(impactLogs.createdAt, parseDate(filters.endDate)),
+  ];
+  if (filters.programmeIds?.length) {
+    conds.push(inArray(impactLogs.programmeId, filters.programmeIds));
+  }
+  return and(...conds)!;
+}
+
 export async function getCommunityLensContactIds(filters: ReportFilters): Promise<Set<number> | null> {
   const lens = filters.communityLens;
   if (!lens || lens === "all") return null;
 
   let targetEthnicities: string[];
-  if (lens === "maori") {
-    targetEthnicities = MAORI_ETHNICITIES;
-  } else if (lens === "pasifika") {
-    targetEthnicities = PASIFIKA_ETHNICITIES;
-  } else {
-    targetEthnicities = [...MAORI_ETHNICITIES, ...PASIFIKA_ETHNICITIES];
-  }
+  if (lens === "maori") targetEthnicities = MAORI_ETHNICITIES;
+  else if (lens === "pasifika") targetEthnicities = PASIFIKA_ETHNICITIES;
+  else targetEthnicities = [...MAORI_ETHNICITIES, ...PASIFIKA_ETHNICITIES];
 
-  const matchingContacts = await db
+  const rows = await db
     .select({ id: contacts.id })
     .from(contacts)
     .where(and(
@@ -47,196 +60,212 @@ export async function getCommunityLensContactIds(filters: ReportFilters): Promis
       sql`${contacts.ethnicity} && ${sql`ARRAY[${sql.join(targetEthnicities.map(e => sql`${e}`), sql`, `)}]::text[]`}`,
     ));
 
-  return new Set(matchingContacts.map(c => c.id));
+  return new Set(rows.map(r => r.id));
 }
 
-function parseDate(d: string) { return new Date(d); }
-
-function confirmedDebriefConditions(filters: ReportFilters) {
-  const conditions = [
-    eq(impactLogs.userId, filters.userId),
-    eq(impactLogs.status, "confirmed"),
-    gte(impactLogs.createdAt, parseDate(filters.startDate)),
-    lte(impactLogs.createdAt, parseDate(filters.endDate)),
-  ];
-  if (filters.programmeIds?.length) {
-    conditions.push(inArray(impactLogs.programmeId, filters.programmeIds));
-  }
-  return and(...conditions)!;
+async function getMentoringTypeNames(userId: string): Promise<string[]> {
+  const rows = await db
+    .select({ name: meetingTypes.name })
+    .from(meetingTypes)
+    .where(and(
+      eq(meetingTypes.userId, userId),
+      eq(meetingTypes.category, "mentoring"),
+      eq(meetingTypes.isActive, true),
+    ));
+  return rows.length > 0
+    ? rows.map(t => t.name.toLowerCase())
+    : ["mentoring", "catchup", "follow-up"];
 }
 
 export async function getReachMetrics(filters: ReportFilters) {
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
-  const lensContactIds = await getCommunityLensContactIds(filters);
+  const lensIds = await getCommunityLensContactIds(filters);
 
-  const contactTouchpoints = new Map<number, number>();
-  function addTouchpoint(contactId: number | null | undefined) {
-    if (contactId == null) return;
-    if (lensContactIds && !lensContactIds.has(contactId)) return;
-    contactTouchpoints.set(contactId, (contactTouchpoints.get(contactId) || 0) + 1);
+  const touchpoints = new Map<number, number>();
+  function addTouch(id: number | null | undefined) {
+    if (id == null) return;
+    if (lensIds && !lensIds.has(id)) return;
+    touchpoints.set(id, (touchpoints.get(id) || 0) + 1);
   }
 
-  const sourceBreakdown = { debriefs: 0, meetings: 0, events: 0, externalEvents: 0, emails: 0, bookings: 0, programmes: 0, touchpoints: 0 };
+  const src = { debriefs: 0, meetings: 0, events: 0, externalEvents: 0, emails: 0, bookings: 0, programmes: 0, touchpoints: 0 };
 
-  const debriefWhere = confirmedDebriefConditions(filters);
   const debriefContacts = await db
     .select({ contactId: impactLogContacts.contactId })
     .from(impactLogContacts)
     .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
-    .where(debriefWhere);
-  for (const r of debriefContacts) { addTouchpoint(r.contactId); sourceBreakdown.debriefs++; }
+    .where(confirmedDebriefWhere(filters));
+  for (const r of debriefContacts) { addTouch(r.contactId); src.debriefs++; }
 
-  const meetingsInRange = await db.select().from(meetings).where(and(
-    eq(meetings.userId, filters.userId),
-    inArray(meetings.status, ["completed", "confirmed"]),
-    gte(meetings.startTime, start), lte(meetings.startTime, end),
-  ));
-  for (const m of meetingsInRange) { addTouchpoint(m.contactId); sourceBreakdown.meetings++; }
+  const mtgRows = await db
+    .select({ contactId: meetings.contactId })
+    .from(meetings)
+    .where(and(
+      eq(meetings.userId, filters.userId),
+      inArray(meetings.status, ["completed", "confirmed"]),
+      gte(meetings.startTime, start),
+      lte(meetings.startTime, end),
+    ));
+  for (const r of mtgRows) { addTouch(r.contactId); src.meetings++; }
 
-  const eventsInRange = await db.select().from(events).where(and(
-    eq(events.userId, filters.userId), eq(events.eventStatus, "active"),
-    gte(events.startTime, start), lte(events.startTime, end),
-  ));
-  const eventIds = eventsInRange.map(e => e.id);
-  let attendanceRows: { eventId: number; contactId: number }[] = [];
-  if (eventIds.length > 0) {
-    attendanceRows = await db.select({ eventId: eventAttendance.eventId, contactId: eventAttendance.contactId })
-      .from(eventAttendance).where(inArray(eventAttendance.eventId, eventIds));
+  const evtRows = await db
+    .select({ id: events.id, type: events.type, attendeeCount: events.attendeeCount })
+    .from(events)
+    .where(and(
+      eq(events.userId, filters.userId),
+      eq(events.eventStatus, "active"),
+      gte(events.startTime, start),
+      lte(events.startTime, end),
+    ));
+  const evtIds = evtRows.map(e => e.id);
+  if (evtIds.length > 0) {
+    const attRows = await db
+      .select({ eventId: eventAttendance.eventId, contactId: eventAttendance.contactId })
+      .from(eventAttendance)
+      .where(inArray(eventAttendance.eventId, evtIds));
+    const typeMap = new Map(evtRows.map(e => [e.id, e.type]));
+    for (const a of attRows) {
+      addTouch(a.contactId);
+      if (typeMap.get(a.eventId) === "External Event") src.externalEvents++;
+      else src.events++;
+    }
   }
-  const eventTypeMap = new Map(eventsInRange.map(e => [e.id, e.type]));
-  for (const a of attendanceRows) {
-    addTouchpoint(a.contactId);
-    const etype = eventTypeMap.get(a.eventId);
-    if (etype === "External Event") { sourceBreakdown.externalEvents++; } else { sourceBreakdown.events++; }
-  }
 
-  const emailInteractions = await db.select({ contactId: interactions.contactId }).from(interactions)
+  const emailRows = await db
+    .select({ contactId: interactions.contactId })
+    .from(interactions)
     .innerJoin(contacts, eq(interactions.contactId, contacts.id))
     .where(and(
       eq(contacts.userId, filters.userId),
       eq(interactions.type, "Email"),
-      gte(interactions.date, start), lte(interactions.date, end),
+      gte(interactions.date, start),
+      lte(interactions.date, end),
     ));
-  for (const e of emailInteractions) { addTouchpoint(e.contactId); sourceBreakdown.emails++; }
+  for (const r of emailRows) { addTouch(r.contactId); src.emails++; }
 
-  const bookingsInRange = await db.select().from(bookings).where(and(
-    eq(bookings.userId, filters.userId),
-    inArray(bookings.status, ["confirmed", "completed"]),
-    gte(bookings.startDate, start), lte(bookings.startDate, end),
-  ));
-  for (const b of bookingsInRange) {
-    addTouchpoint(b.bookerId);
-    if (b.attendees) { for (const aid of b.attendees) addTouchpoint(aid); }
-    sourceBreakdown.bookings++;
+  const bkgRows = await db
+    .select({ bookerId: bookings.bookerId, attendees: bookings.attendees })
+    .from(bookings)
+    .where(and(
+      eq(bookings.userId, filters.userId),
+      inArray(bookings.status, ["confirmed", "completed"]),
+      gte(bookings.startDate, start),
+      lte(bookings.startDate, end),
+    ));
+  for (const b of bkgRows) {
+    addTouch(b.bookerId);
+    if (b.attendees) for (const aid of b.attendees) addTouch(aid);
+    src.bookings++;
   }
 
-  const programmesInRange = await db.select().from(programmes).where(and(
-    eq(programmes.userId, filters.userId),
-    inArray(programmes.status, ["active", "completed"]),
-    gte(programmes.startDate, start), lte(programmes.startDate, end),
-  ));
-  for (const p of programmesInRange) {
-    if (p.attendees) { for (const aid of p.attendees) addTouchpoint(aid); }
-    sourceBreakdown.programmes++;
+  const progRows = await db
+    .select({ attendees: programmes.attendees })
+    .from(programmes)
+    .where(and(
+      eq(programmes.userId, filters.userId),
+      inArray(programmes.status, ["active", "completed"]),
+      gte(programmes.startDate, start),
+      lte(programmes.startDate, end),
+    ));
+  for (const p of progRows) {
+    if (p.attendees) for (const aid of p.attendees) addTouch(aid);
+    src.programmes++;
   }
 
-  const snapshotsInRange = await db.select({ id: monthlySnapshots.id }).from(monthlySnapshots).where(and(
-    eq(monthlySnapshots.userId, filters.userId),
-    gte(monthlySnapshots.month, start), lte(monthlySnapshots.month, end),
-  ));
-  const snapshotIds = snapshotsInRange.map(s => s.id);
-  if (snapshotIds.length > 0) {
-    const touchpointRows = await db.select({ contactId: footTrafficTouchpoints.contactId })
-      .from(footTrafficTouchpoints).where(inArray(footTrafficTouchpoints.snapshotId, snapshotIds));
-    for (const t of touchpointRows) {
-      if (t.contactId) { addTouchpoint(t.contactId); sourceBreakdown.touchpoints++; }
+  const snapRows = await db
+    .select({ id: monthlySnapshots.id })
+    .from(monthlySnapshots)
+    .where(and(
+      eq(monthlySnapshots.userId, filters.userId),
+      gte(monthlySnapshots.month, start),
+      lte(monthlySnapshots.month, end),
+    ));
+  const snapIds = snapRows.map(s => s.id);
+  if (snapIds.length > 0) {
+    const ftRows = await db
+      .select({ contactId: footTrafficTouchpoints.contactId })
+      .from(footTrafficTouchpoints)
+      .where(inArray(footTrafficTouchpoints.snapshotId, snapIds));
+    for (const t of ftRows) {
+      if (t.contactId) { addTouch(t.contactId); src.touchpoints++; }
     }
   }
 
-  const uniqueContacts = contactTouchpoints.size;
-  const totalEngagements = Array.from(contactTouchpoints.values()).reduce((s, v) => s + v, 0);
+  const uniqueContacts = touchpoints.size;
+  const totalEngagements = Array.from(touchpoints.values()).reduce((s, v) => s + v, 0);
 
-  const dailyFTRows = await db.select({ count: count() }).from(dailyFootTraffic)
-    .where(and(
-      eq(dailyFootTraffic.userId, filters.userId),
-      gte(dailyFootTraffic.date, start), lte(dailyFootTraffic.date, end),
-    ));
-  const hasDailyRows = Number(dailyFTRows[0]?.count || 0) > 0;
   let footTraffic = 0;
-  if (hasDailyRows) {
-    const dailyFTResult = await db
-      .select({ total: sum(dailyFootTraffic.count) })
-      .from(dailyFootTraffic)
-      .where(and(
-        eq(dailyFootTraffic.userId, filters.userId),
-        gte(dailyFootTraffic.date, start), lte(dailyFootTraffic.date, end),
-      ));
-    footTraffic = Number(dailyFTResult[0]?.total || 0);
+  const dailyCheck = await db.select({ cnt: count() }).from(dailyFootTraffic)
+    .where(and(eq(dailyFootTraffic.userId, filters.userId), gte(dailyFootTraffic.date, start), lte(dailyFootTraffic.date, end)));
+  if (safeNum(dailyCheck[0]?.cnt) > 0) {
+    const ftSum = await db.select({ total: sum(dailyFootTraffic.count) }).from(dailyFootTraffic)
+      .where(and(eq(dailyFootTraffic.userId, filters.userId), gte(dailyFootTraffic.date, start), lte(dailyFootTraffic.date, end)));
+    footTraffic = safeNum(ftSum[0]?.total);
   } else {
-    const legacyResult = await db
-      .select({ total: sum(monthlySnapshots.footTraffic) })
-      .from(monthlySnapshots)
-      .where(and(
-        eq(monthlySnapshots.userId, filters.userId),
-        gte(monthlySnapshots.month, start), lte(monthlySnapshots.month, end),
-      ));
-    footTraffic = Number(legacyResult[0]?.total || 0);
+    const legSum = await db.select({ total: sum(monthlySnapshots.footTraffic) }).from(monthlySnapshots)
+      .where(and(eq(monthlySnapshots.userId, filters.userId), gte(monthlySnapshots.month, start), lte(monthlySnapshots.month, end)));
+    footTraffic = safeNum(legSum[0]?.total);
   }
 
-  const repeatCount = Array.from(contactTouchpoints.values()).filter(v => v >= 2).length;
+  const repeatCount = Array.from(touchpoints.values()).filter(v => v >= 2).length;
 
   let newContactsCount = 0;
   let promotedToCommunity = 0;
   let promotedToInnovator = 0;
-  const allContactsList = await db.select({
-    id: contacts.id, createdAt: contacts.createdAt,
+  const allCRows = await db.select({
+    id: contacts.id,
+    createdAt: contacts.createdAt,
     movedToCommunityAt: contacts.movedToCommunityAt,
     movedToInnovatorsAt: contacts.movedToInnovatorsAt,
   }).from(contacts).where(eq(contacts.userId, filters.userId));
 
-  for (const c of allContactsList) {
-    const matchesLens = !lensContactIds || lensContactIds.has(c.id);
-    if (!matchesLens) continue;
+  for (const c of allCRows) {
+    if (lensIds && !lensIds.has(c.id)) continue;
     if (c.createdAt && c.createdAt >= start && c.createdAt <= end) newContactsCount++;
     if (c.movedToCommunityAt && c.movedToCommunityAt >= start && c.movedToCommunityAt <= end) promotedToCommunity++;
     if (c.movedToInnovatorsAt && c.movedToInnovatorsAt >= start && c.movedToInnovatorsAt <= end) promotedToInnovator++;
   }
 
-  const newGroupsResult = await db.select({ count: count() }).from(groups).where(and(
+  const newGrpResult = await db.select({ cnt: count() }).from(groups).where(and(
     eq(groups.userId, filters.userId),
-    gte(groups.createdAt, start), lte(groups.createdAt, end),
+    gte(groups.createdAt, start),
+    lte(groups.createdAt, end),
   ));
-  const newGroups = Number(newGroupsResult[0]?.count || 0);
+  const newGroups = safeNum(newGrpResult[0]?.cnt);
 
   let demographicBreakdown: Record<string, any> = {};
-  const contactIdsArr = Array.from(contactTouchpoints.keys());
+  const contactIdsArr = Array.from(touchpoints.keys());
   if (contactIdsArr.length > 0) {
-    const contactDetails = await db.select({
-      id: contacts.id, age: contacts.age, ethnicity: contacts.ethnicity,
-      location: contacts.location, consentStatus: contacts.consentStatus, stage: contacts.stage,
+    const cDetails = await db.select({
+      id: contacts.id,
+      age: contacts.age,
+      ethnicity: contacts.ethnicity,
+      location: contacts.location,
+      consentStatus: contacts.consentStatus,
+      stage: contacts.stage,
     }).from(contacts).where(and(eq(contacts.userId, filters.userId), inArray(contacts.id, contactIdsArr)));
 
-    const consentedContacts = contactDetails.filter(c => c.consentStatus === "given");
-    const ethnicityMap: Record<string, number> = {};
-    const locationMap: Record<string, number> = {};
-    const ageGroups: Record<string, number> = { "under_18": 0, "18_24": 0, "25_34": 0, "35_44": 0, "45_54": 0, "55_plus": 0, "unknown": 0 };
-    const stageMap: Record<string, number> = {};
+    const consented = cDetails.filter(c => c.consentStatus === "given");
+    const ethMap: Record<string, number> = {};
+    const locMap: Record<string, number> = {};
+    const ageGroups: Record<string, number> = { under_18: 0, "18_24": 0, "25_34": 0, "35_44": 0, "45_54": 0, "55_plus": 0, unknown: 0 };
+    const stgMap: Record<string, number> = {};
 
-    for (const c of consentedContacts) {
-      if (c.ethnicity) { for (const eth of c.ethnicity) ethnicityMap[eth] = (ethnicityMap[eth] || 0) + 1; }
-      if (c.location) locationMap[c.location] = (locationMap[c.location] || 0) + 1;
+    for (const c of consented) {
+      if (c.ethnicity) for (const eth of c.ethnicity) ethMap[eth] = (ethMap[eth] || 0) + 1;
+      if (c.location) locMap[c.location] = (locMap[c.location] || 0) + 1;
       if (c.age != null) {
-        if (c.age < 18) ageGroups["under_18"]++;
+        if (c.age < 18) ageGroups.under_18++;
         else if (c.age <= 24) ageGroups["18_24"]++;
         else if (c.age <= 34) ageGroups["25_34"]++;
         else if (c.age <= 44) ageGroups["35_44"]++;
         else if (c.age <= 54) ageGroups["45_54"]++;
         else ageGroups["55_plus"]++;
-      } else { ageGroups["unknown"]++; }
-      if (c.stage) stageMap[c.stage] = (stageMap[c.stage] || 0) + 1;
+      } else ageGroups.unknown++;
+      if (c.stage) stgMap[c.stage] = (stgMap[c.stage] || 0) + 1;
     }
-    demographicBreakdown = { totalConsented: consentedContacts.length, ethnicity: ethnicityMap, location: locationMap, ageGroups, relationshipStage: stageMap };
+    demographicBreakdown = { totalConsented: consented.length, ethnicity: ethMap, location: locMap, ageGroups, relationshipStage: stgMap };
   }
 
   return {
@@ -244,7 +273,7 @@ export async function getReachMetrics(filters: ReportFilters) {
     uniqueContacts,
     footTraffic,
     totalEngagements,
-    sourceBreakdown,
+    sourceBreakdown: src,
     ecosystemGrowth: { newContacts: newContactsCount, promotedToCommunity, promotedToInnovator, newGroups },
     repeatEngagementRate: uniqueContacts > 0 ? Math.round((repeatCount / uniqueContacts) * 100) : 0,
     repeatEngagementCount: repeatCount,
@@ -260,150 +289,192 @@ export async function getDeliveryMetrics(filters: ReportFilters) {
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
 
-  const eventsInRange = await db.select().from(events).where(and(
-    eq(events.userId, filters.userId), ne(events.eventStatus, "cancelled"),
-    gte(events.startTime, start), lte(events.startTime, end),
+  const evtRows = await db.select({
+    id: events.id,
+    type: events.type,
+    attendeeCount: events.attendeeCount,
+  }).from(events).where(and(
+    eq(events.userId, filters.userId),
+    ne(events.eventStatus, "cancelled"),
+    gte(events.startTime, start),
+    lte(events.startTime, end),
   ));
 
   const eventsByType: Record<string, number> = {};
   let totalAttendees = 0;
-  for (const e of eventsInRange) {
-    eventsByType[e.type] = (eventsByType[e.type] || 0) + 1;
+  for (const e of evtRows) {
+    const t = e.type || "Other";
+    eventsByType[t] = (eventsByType[t] || 0) + 1;
     if (e.attendeeCount && e.attendeeCount > 0) totalAttendees += e.attendeeCount;
   }
 
-  const bookingsInRange = await db.select().from(bookings).where(and(
-    eq(bookings.userId, filters.userId), inArray(bookings.status, ["confirmed", "completed"]),
-    gte(bookings.startDate, start), lte(bookings.startDate, end),
+  const bkgRows = await db.select({
+    id: bookings.id,
+    classification: bookings.classification,
+    startTime: bookings.startTime,
+    endTime: bookings.endTime,
+    isMultiDay: bookings.isMultiDay,
+    startDate: bookings.startDate,
+    endDate: bookings.endDate,
+  }).from(bookings).where(and(
+    eq(bookings.userId, filters.userId),
+    inArray(bookings.status, ["confirmed", "completed"]),
+    gte(bookings.startDate, start),
+    lte(bookings.startDate, end),
   ));
 
-  const bookingsByClassification: Record<string, number> = {};
+  const bookingsByClass: Record<string, number> = {};
   let communityHours = 0;
-  for (const b of bookingsInRange) {
-    bookingsByClassification[b.classification] = (bookingsByClassification[b.classification] || 0) + 1;
+  for (const b of bkgRows) {
+    bookingsByClass[b.classification] = (bookingsByClass[b.classification] || 0) + 1;
     if (b.startTime && b.endTime) {
       const [sh, sm] = b.startTime.split(":").map(Number);
       const [eh, em] = b.endTime.split(":").map(Number);
-      const dailyHours = Math.max(0, (eh * 60 + em - sh * 60 - sm) / 60);
+      const dailyH = Math.max(0, (eh * 60 + (em || 0) - sh * 60 - (sm || 0)) / 60);
       if (b.isMultiDay && b.startDate && b.endDate) {
-        const daySpan = Math.max(1, Math.ceil((new Date(b.endDate).getTime() - new Date(b.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1);
-        communityHours += dailyHours * daySpan;
-      } else { communityHours += dailyHours; }
+        const span = Math.max(1, Math.ceil((new Date(b.endDate).getTime() - new Date(b.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1);
+        communityHours += dailyH * span;
+      } else communityHours += dailyH;
     }
   }
 
-  const userMentoringTypes = await db.select({ name: meetingTypes.name }).from(meetingTypes).where(and(
-    eq(meetingTypes.userId, filters.userId), eq(meetingTypes.category, "mentoring"), eq(meetingTypes.isActive, true),
-  ));
-  const MENTORING_TYPES = userMentoringTypes.length > 0
-    ? userMentoringTypes.map(t => t.name.toLowerCase())
-    : ["mentoring", "catchup", "follow-up"];
+  const MENTORING_TYPES = await getMentoringTypeNames(filters.userId);
 
-  const allMeetingsInRange = await db.select().from(meetings).where(and(
+  const allMtgRows = await db.select({
+    id: meetings.id,
+    type: meetings.type,
+    status: meetings.status,
+  }).from(meetings).where(and(
     eq(meetings.userId, filters.userId),
     inArray(meetings.status, ["completed", "confirmed"]),
-    gte(meetings.startTime, start), lte(meetings.startTime, end),
+    gte(meetings.startTime, start),
+    lte(meetings.startTime, end),
   ));
-  const mentoringMeetings = allMeetingsInRange.filter(m => m.type && MENTORING_TYPES.includes(m.type.toLowerCase()));
-  const partnerMeetings = allMeetingsInRange.filter(m => m.type && !MENTORING_TYPES.includes(m.type.toLowerCase()));
 
-  const workshopCount = eventsInRange.filter(e =>
-    e.type && e.type.toLowerCase().includes("workshop")
-  ).length;
+  const mentoringMeetings = allMtgRows.filter(m => m.type && MENTORING_TYPES.includes(m.type.toLowerCase()));
+  const partnerMeetings = allMtgRows.filter(m => m.type && !MENTORING_TYPES.includes(m.type.toLowerCase()));
+  const workshopCount = evtRows.filter(e => e.type && e.type.toLowerCase().includes("workshop")).length;
 
-  const programmesInRange = await db.select().from(programmes).where(and(
-    eq(programmes.userId, filters.userId), ne(programmes.status, "cancelled"),
-    gte(programmes.startDate, start), lte(programmes.startDate, end),
+  const progRows = await db.select({
+    id: programmes.id,
+    classification: programmes.classification,
+    status: programmes.status,
+    attendees: programmes.attendees,
+  }).from(programmes).where(and(
+    eq(programmes.userId, filters.userId),
+    ne(programmes.status, "cancelled"),
+    gte(programmes.startDate, start),
+    lte(programmes.startDate, end),
   ));
-  const programmesByClassification: Record<string, number> = {};
-  let programmesCompleted = 0;
-  let programmeAttendees = 0;
-  for (const p of programmesInRange) {
-    programmesByClassification[p.classification] = (programmesByClassification[p.classification] || 0) + 1;
-    if (p.status === "completed") programmesCompleted++;
-    if (p.attendees) programmeAttendees += p.attendees.length;
+
+  const progByClass: Record<string, number> = {};
+  let progCompleted = 0;
+  let progAttendees = 0;
+  for (const p of progRows) {
+    progByClass[p.classification] = (progByClass[p.classification] || 0) + 1;
+    if (p.status === "completed") progCompleted++;
+    if (p.attendees) progAttendees += p.attendees.length;
   }
 
-  const totalActivations = eventsInRange.length + bookingsInRange.length + mentoringMeetings.length + programmesInRange.length + partnerMeetings.length;
+  const totalActivations = evtRows.length + bkgRows.length + mentoringMeetings.length + progRows.length + partnerMeetings.length;
 
   return {
     totalActivations,
-    events: { total: eventsInRange.length, byType: eventsByType, totalAttendees },
-    bookings: {
-      total: bookingsInRange.length, byClassification: bookingsByClassification,
-      communityHours: Math.round(communityHours * 10) / 10,
-    },
+    events: { total: evtRows.length, byType: eventsByType, totalAttendees },
+    bookings: { total: bkgRows.length, byClassification: bookingsByClass, communityHours: Math.round(communityHours * 10) / 10 },
     mentoringSessions: mentoringMeetings.length,
     partnerMeetings: partnerMeetings.length,
     workshops: workshopCount,
-    programmes: {
-      total: programmesInRange.length, byClassification: programmesByClassification,
-      completed: programmesCompleted,
-    },
+    programmes: { total: progRows.length, byClassification: progByClass, completed: progCompleted },
     communityHours: Math.round(communityHours * 10) / 10,
-    totalAttendees: totalAttendees + programmeAttendees,
+    totalAttendees: totalAttendees + progAttendees,
     communityLensApplied: false,
   };
 }
 
+const ALL_METRIC_KEYS = ["mindset", "skill", "confidence", "bizConfidence", "systemsInPlace", "fundingReadiness", "networkStrength", "communityImpact", "digitalPresence"] as const;
+
 export async function getImpactMetrics(filters: ReportFilters) {
-  const where = confirmedDebriefConditions(filters);
-  const lensContactIds = await getCommunityLensContactIds(filters);
+  const where = confirmedDebriefWhere(filters);
+  const lensIds = await getCommunityLensContactIds(filters);
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
 
   let communitySpendTotal = 0;
   try {
-    const spendResult = await db.select({ total: sum(communitySpend.amount) }).from(communitySpend)
+    const spendResult = await db
+      .select({ total: sum(communitySpend.amount) })
+      .from(communitySpend)
       .where(and(eq(communitySpend.userId, filters.userId), gte(communitySpend.date, start), lte(communitySpend.date, end)));
-    communitySpendTotal = Math.round(Number(spendResult[0]?.total || 0) * 100) / 100;
-  } catch (err) { console.error("[reporting] Community spend query failed:", err); }
+    communitySpendTotal = Math.round(safeNum(spendResult[0]?.total) * 100) / 100;
+  } catch {}
 
-  const confirmedLogIds = await db.select({ id: impactLogs.id }).from(impactLogs).where(where);
-  const logIds = confirmedLogIds.map(r => r.id);
+  const logIdRows = await db.select({ id: impactLogs.id }).from(impactLogs).where(where);
+  const logIds = logIdRows.map(r => r.id);
 
   let taxonomyBreakdown: any[] = [];
   if (logIds.length > 0) {
-    const tagConditions = filters.taxonomyIds?.length
+    const tagConds = filters.taxonomyIds?.length
       ? and(inArray(impactTags.impactLogId, logIds), inArray(impactTags.taxonomyId, filters.taxonomyIds))
       : inArray(impactTags.impactLogId, logIds);
 
     const allTags = await db.select({
-      taxonomyId: impactTags.taxonomyId, taxonomyName: impactTaxonomy.name, taxonomyColor: impactTaxonomy.color,
-      impactLogId: impactTags.impactLogId, confidence: impactTags.confidence, notes: impactTags.notes, evidence: impactTags.evidence,
-    }).from(impactTags).innerJoin(impactTaxonomy, eq(impactTags.taxonomyId, impactTaxonomy.id)).where(tagConditions!);
+      taxonomyId: impactTags.taxonomyId,
+      taxonomyName: impactTaxonomy.name,
+      taxonomyColor: impactTaxonomy.color,
+      impactLogId: impactTags.impactLogId,
+      confidence: impactTags.confidence,
+      notes: impactTags.notes,
+      evidence: impactTags.evidence,
+    }).from(impactTags)
+      .innerJoin(impactTaxonomy, eq(impactTags.taxonomyId, impactTaxonomy.id))
+      .where(tagConds!);
 
-    const contactsByLog = await db.select({ impactLogId: impactLogContacts.impactLogId, contactId: impactLogContacts.contactId })
-      .from(impactLogContacts).where(inArray(impactLogContacts.impactLogId, logIds));
+    const contactsByLog = await db
+      .select({ impactLogId: impactLogContacts.impactLogId, contactId: impactLogContacts.contactId })
+      .from(impactLogContacts)
+      .where(inArray(impactLogContacts.impactLogId, logIds));
+
     const contactsByLogMap = new Map<number, number[]>();
     for (const row of contactsByLog) {
-      if (lensContactIds && !lensContactIds.has(row.contactId)) continue;
+      if (lensIds && !lensIds.has(row.contactId)) continue;
       if (!contactsByLogMap.has(row.impactLogId)) contactsByLogMap.set(row.impactLogId, []);
       contactsByLogMap.get(row.impactLogId)!.push(row.contactId);
     }
 
-    const quotesByLog = await db.select({ id: impactLogs.id, keyQuotes: impactLogs.keyQuotes })
-      .from(impactLogs).where(inArray(impactLogs.id, logIds));
+    const quoteRows = await db
+      .select({ id: impactLogs.id, keyQuotes: impactLogs.keyQuotes })
+      .from(impactLogs)
+      .where(inArray(impactLogs.id, logIds));
     const quotesMap = new Map<number, string[]>();
-    for (const row of quotesByLog) { if (row.keyQuotes) quotesMap.set(row.id, row.keyQuotes); }
+    for (const r of quoteRows) { if (r.keyQuotes) quotesMap.set(r.id, r.keyQuotes); }
 
-    const grouped = new Map<number, { taxonomyId: number; taxonomyName: string; taxonomyColor: string | null; debriefCount: number; weightedScore: number; contactIds: Set<number>; quotes: string[]; evidenceSnippets: string[]; logIds: Set<number> }>();
+    const grouped = new Map<number, {
+      taxonomyId: number; taxonomyName: string; taxonomyColor: string | null;
+      debriefCount: number; weightedScore: number; contactIds: Set<number>;
+      quotes: string[]; evidenceSnippets: string[]; logIds: Set<number>;
+    }>();
+
     for (const tag of allTags) {
       if (!grouped.has(tag.taxonomyId)) {
-        grouped.set(tag.taxonomyId, { taxonomyId: tag.taxonomyId, taxonomyName: tag.taxonomyName, taxonomyColor: tag.taxonomyColor, debriefCount: 0, weightedScore: 0, contactIds: new Set(), quotes: [], evidenceSnippets: [], logIds: new Set() });
+        grouped.set(tag.taxonomyId, {
+          taxonomyId: tag.taxonomyId, taxonomyName: tag.taxonomyName, taxonomyColor: tag.taxonomyColor,
+          debriefCount: 0, weightedScore: 0, contactIds: new Set(), quotes: [], evidenceSnippets: [], logIds: new Set(),
+        });
       }
       const g = grouped.get(tag.taxonomyId)!;
       if (!g.logIds.has(tag.impactLogId)) { g.debriefCount++; g.logIds.add(tag.impactLogId); }
-      g.weightedScore += tag.confidence || 0;
-      const logContacts = contactsByLogMap.get(tag.impactLogId) || [];
-      for (const cid of logContacts) g.contactIds.add(cid);
+      g.weightedScore += safeNum(tag.confidence);
+      for (const cid of (contactsByLogMap.get(tag.impactLogId) || [])) g.contactIds.add(cid);
       if (tag.evidence) g.evidenceSnippets.push(tag.evidence);
       if (tag.notes) g.evidenceSnippets.push(tag.notes);
-      if ((tag.confidence || 0) >= 70) {
-        const logQuotes = quotesMap.get(tag.impactLogId) || [];
-        for (const q of logQuotes) { if (!g.quotes.includes(q)) g.quotes.push(q); }
+      if (safeNum(tag.confidence) >= 70) {
+        for (const q of (quotesMap.get(tag.impactLogId) || [])) {
+          if (!g.quotes.includes(q)) g.quotes.push(q);
+        }
       }
     }
+
     taxonomyBreakdown = Array.from(grouped.values()).map(g => ({
       name: g.taxonomyName, color: g.taxonomyColor, debriefCount: g.debriefCount,
       peopleAffected: g.contactIds.size, impactScore: g.weightedScore,
@@ -411,21 +482,26 @@ export async function getImpactMetrics(filters: ReportFilters) {
     })).sort((a, b) => b.impactScore - a.impactScore);
   }
 
-  let engagedContactIds = await db.selectDistinct({ contactId: impactLogContacts.contactId })
-    .from(impactLogContacts).innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id)).where(where);
-  if (lensContactIds) engagedContactIds = engagedContactIds.filter(r => lensContactIds.has(r.contactId));
-  const cIds = engagedContactIds.map(r => r.contactId);
+  let engagedRows = await db
+    .selectDistinct({ contactId: impactLogContacts.contactId })
+    .from(impactLogContacts)
+    .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
+    .where(where);
+  if (lensIds) engagedRows = engagedRows.filter(r => lensIds.has(r.contactId));
+  const cIds = engagedRows.map(r => r.contactId);
 
-  const ALL_METRIC_KEYS = ["mindset", "skill", "confidence", "bizConfidence", "systemsInPlace", "fundingReadiness", "networkStrength", "communityImpact", "digitalPresence"] as const;
   const metricArrays: Record<string, number[]> = {};
   for (const key of ALL_METRIC_KEYS) metricArrays[key] = [];
   let contactsWithMetrics = 0;
+
   if (cIds.length > 0) {
-    const contactMetrics = await db.select({ id: contacts.id, metrics: contacts.metrics })
-      .from(contacts).where(and(eq(contacts.userId, filters.userId), inArray(contacts.id, cIds)));
-    for (const c of contactMetrics) {
+    const cMetrics = await db
+      .select({ id: contacts.id, metrics: contacts.metrics })
+      .from(contacts)
+      .where(and(eq(contacts.userId, filters.userId), inArray(contacts.id, cIds)));
+    for (const c of cMetrics) {
       const m = c.metrics as any;
-      if (!m || Object.keys(m).length === 0) continue;
+      if (!m || typeof m !== "object" || Object.keys(m).length === 0) continue;
       contactsWithMetrics++;
       for (const key of ALL_METRIC_KEYS) {
         if (m[key] != null) metricArrays[key].push(m[key]);
@@ -434,15 +510,28 @@ export async function getImpactMetrics(filters: ReportFilters) {
   }
 
   const avgFn = (arr: number[]) => arr.length ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10 : 0;
-  const positivePercent = (arr: number[]) => arr.length ? Math.round((arr.filter(v => v > 0).length / arr.length) * 100) : 0;
+  const posPct = (arr: number[]) => arr.length ? Math.round((arr.filter(v => v > 0).length / arr.length) * 100) : 0;
 
-  const confirmedLogs = await db.select({ id: impactLogs.id, milestones: impactLogs.milestones }).from(impactLogs).where(where);
-  let milestonesFromTable = await db.select().from(milestones).where(and(
-    eq(milestones.userId, filters.userId), gte(milestones.createdAt, start), lte(milestones.createdAt, end),
-  ));
-  if (lensContactIds) {
-    milestonesFromTable = milestonesFromTable.filter(m => m.linkedContactId && lensContactIds.has(m.linkedContactId));
+  const confirmedLogs = await db
+    .select({ id: impactLogs.id, milestones: impactLogs.milestones })
+    .from(impactLogs)
+    .where(where);
+
+  let milestonesFromTable = await db
+    .select({
+      id: milestones.id,
+      linkedContactId: milestones.linkedContactId,
+      title: milestones.title,
+      milestoneType: milestones.milestoneType,
+      impactLogId: milestones.linkedImpactLogId,
+    })
+    .from(milestones)
+    .where(and(eq(milestones.userId, filters.userId), gte(milestones.createdAt, start), lte(milestones.createdAt, end)));
+
+  if (lensIds) {
+    milestonesFromTable = milestonesFromTable.filter(m => m.linkedContactId && lensIds.has(m.linkedContactId));
   }
+
   let inlineMilestoneCount = 0;
   const tableMilestoneLogIds = new Set(milestonesFromTable.map(m => m.impactLogId).filter(Boolean));
   for (const log of confirmedLogs) {
@@ -451,29 +540,33 @@ export async function getImpactMetrics(filters: ReportFilters) {
     }
   }
 
-  let connectionMovement = 0;
   const CONNECTION_ORDER = ["known", "connected", "engaged", "embedded", "partnering"];
-  const stageHistory = await db.select().from(relationshipStageHistory).where(and(
+  const stageHist = await db.select({
+    entityId: relationshipStageHistory.entityId,
+    previousStage: relationshipStageHistory.previousStage,
+    newStage: relationshipStageHistory.newStage,
+  }).from(relationshipStageHistory).where(and(
     eq(relationshipStageHistory.entityType, "contact"),
-    gte(relationshipStageHistory.changedAt, start), lte(relationshipStageHistory.changedAt, end),
+    gte(relationshipStageHistory.changedAt, start),
+    lte(relationshipStageHistory.changedAt, end),
   ));
-  const deepenedContacts = new Set<number>();
-  for (const sh of stageHistory) {
-    if (lensContactIds && !lensContactIds.has(sh.entityId)) continue;
+
+  const deepened = new Set<number>();
+  for (const sh of stageHist) {
+    if (lensIds && !lensIds.has(sh.entityId)) continue;
     const prevIdx = sh.previousStage ? CONNECTION_ORDER.indexOf(sh.previousStage) : -1;
     const newIdx = CONNECTION_ORDER.indexOf(sh.newStage);
-    if (newIdx > prevIdx && newIdx >= 0) deepenedContacts.add(sh.entityId);
+    if (newIdx > prevIdx && newIdx >= 0) deepened.add(sh.entityId);
   }
-  connectionMovement = deepenedContacts.size;
 
   return {
     communitySpend: communitySpendTotal,
     milestoneCount: milestonesFromTable.length + inlineMilestoneCount,
     growthMetrics: Object.fromEntries(
-      ALL_METRIC_KEYS.map(key => [key, { averageScore: avgFn(metricArrays[key]), positiveMovementPercent: positivePercent(metricArrays[key]) }])
+      ALL_METRIC_KEYS.map(key => [key, { averageScore: avgFn(metricArrays[key]), positiveMovementPercent: posPct(metricArrays[key]) }])
     ) as Record<string, { averageScore: number; positiveMovementPercent: number }>,
     contactsWithMetrics,
-    connectionMovement,
+    connectionMovement: deepened.size,
     taxonomyBreakdown,
   };
 }
@@ -509,116 +602,109 @@ export async function getValueContribution(filters: ReportFilters) {
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
 
-  const bookingsInRange = await db
-    .select()
-    .from(bookings)
-    .where(and(
-      eq(bookings.userId, filters.userId),
-      gte(bookings.startDate, start),
-      lte(bookings.startDate, end),
-    ));
+  const bkgRows = await db.select({
+    id: bookings.id,
+    amount: bookings.amount,
+    pricingTier: bookings.pricingTier,
+    membershipId: bookings.membershipId,
+  }).from(bookings).where(and(
+    eq(bookings.userId, filters.userId),
+    gte(bookings.startDate, start),
+    lte(bookings.startDate, end),
+  ));
 
   let totalRevenue = 0;
-  let bookingsByTier: Record<string, { count: number; revenue: number }> = {};
-
-  for (const b of bookingsInRange) {
-    const amt = Number(b.amount) || 0;
+  const bookingsByTier: Record<string, { count: number; revenue: number }> = {};
+  for (const b of bkgRows) {
+    const amt = safeNum(b.amount);
     totalRevenue += amt;
-    if (!bookingsByTier[b.pricingTier]) bookingsByTier[b.pricingTier] = { count: 0, revenue: 0 };
-    bookingsByTier[b.pricingTier].count++;
-    bookingsByTier[b.pricingTier].revenue += amt;
+    const tier = b.pricingTier || "full_price";
+    if (!bookingsByTier[tier]) bookingsByTier[tier] = { count: 0, revenue: 0 };
+    bookingsByTier[tier].count++;
+    bookingsByTier[tier].revenue += amt;
   }
 
   const startYear = start.getFullYear();
   const endYear = end.getFullYear();
-  const activeMemberships = await db
-    .select()
-    .from(memberships)
-    .where(and(
-      eq(memberships.userId, filters.userId),
-      eq(memberships.status, "active"),
-      gte(memberships.membershipYear, startYear),
-      lte(memberships.membershipYear, endYear),
-    ));
+  const activeMems = await db.select({
+    id: memberships.id,
+    name: memberships.name,
+    membershipYear: memberships.membershipYear,
+    annualFee: memberships.annualFee,
+    standardValue: memberships.standardValue,
+    bookingAllowance: memberships.bookingAllowance,
+  }).from(memberships).where(and(
+    eq(memberships.userId, filters.userId),
+    eq(memberships.status, "active"),
+    gte(memberships.membershipYear, startYear),
+    lte(memberships.membershipYear, endYear),
+  ));
 
   let membershipRevenue = 0;
   let totalStandardValue = 0;
-  const membershipDetails = [];
+  const membershipDetails = activeMems.map(m => {
+    const fee = safeNum(m.annualFee);
+    const sv = safeNum(m.standardValue);
+    membershipRevenue += fee;
+    totalStandardValue += sv;
+    const usedBookings = bkgRows.filter(b => b.membershipId === m.id);
+    return {
+      id: m.id, name: m.name, membershipYear: m.membershipYear,
+      standardValue: sv, annualFee: fee,
+      bookingAllowance: m.bookingAllowance || 0, bookingsUsed: usedBookings.length,
+    };
+  });
 
-  for (const m of activeMemberships) {
-    membershipRevenue += Number(m.annualFee) || 0;
-    totalStandardValue += Number(m.standardValue) || 0;
-
-    const usedBookings = bookingsInRange.filter(b => b.membershipId === m.id);
-
-    membershipDetails.push({
-      id: m.id,
-      name: m.name,
-      membershipYear: m.membershipYear,
-      standardValue: Number(m.standardValue) || 0,
-      annualFee: Number(m.annualFee) || 0,
-      bookingAllowance: m.bookingAllowance || 0,
-      bookingsUsed: usedBookings.length,
-    });
-  }
-
-  const activeMous = await db
-    .select()
-    .from(mous)
-    .where(and(
-      eq(mous.userId, filters.userId),
-      eq(mous.status, "active"),
-      lte(mous.startDate, end),
-      gte(mous.endDate, start),
-    ));
+  const activeMous = await db.select({
+    id: mous.id,
+    title: mous.title,
+    partnerName: mous.partnerName,
+    providing: mous.providing,
+    receiving: mous.receiving,
+    inKindValue: mous.inKindValue,
+    actualValue: mous.actualValue,
+  }).from(mous).where(and(
+    eq(mous.userId, filters.userId),
+    eq(mous.status, "active"),
+    lte(mous.startDate, end),
+    gte(mous.endDate, start),
+  ));
 
   let totalInKindValue = 0;
   let totalMouActualValue = 0;
-  const mouSummary = [];
-
-  for (const m of activeMous) {
-    const ikv = Number(m.inKindValue) || 0;
-    const av = Number(m.actualValue) || 0;
+  const mouSummary = activeMous.map(m => {
+    const ikv = safeNum(m.inKindValue);
+    const av = safeNum(m.actualValue);
     totalInKindValue += ikv;
     totalMouActualValue += av;
-    mouSummary.push({
-      id: m.id,
-      title: m.title,
-      partnerName: m.partnerName,
-      providing: m.providing,
-      receiving: m.receiving,
-      actualValue: av,
-      inKindValue: ikv,
-    });
-  }
+    return { id: m.id, title: m.title, partnerName: m.partnerName, providing: m.providing, receiving: m.receiving, actualValue: av, inKindValue: ikv };
+  });
 
-  const programmesInRange = await db
-    .select()
-    .from(programmes)
-    .where(and(
-      eq(programmes.userId, filters.userId),
-      gte(programmes.startDate, start),
-      lte(programmes.startDate, end),
-    ));
+  const progRows = await db.select({
+    id: programmes.id,
+    name: programmes.name,
+    classification: programmes.classification,
+    facilitatorCost: programmes.facilitatorCost,
+    cateringCost: programmes.cateringCost,
+    promoCost: programmes.promoCost,
+  }).from(programmes).where(and(
+    eq(programmes.userId, filters.userId),
+    gte(programmes.startDate, start),
+    lte(programmes.startDate, end),
+  ));
 
-  const programmeCosts = programmesInRange.map(p => ({
-    id: p.id,
-    name: p.name,
-    classification: p.classification,
-    facilitatorCost: Number(p.facilitatorCost) || 0,
-    cateringCost: Number(p.cateringCost) || 0,
-    promoCost: Number(p.promoCost) || 0,
-    totalCost: (Number(p.facilitatorCost) || 0) + (Number(p.cateringCost) || 0) + (Number(p.promoCost) || 0),
-  }));
+  const programmeCosts = progRows.map(p => {
+    const fc = safeNum(p.facilitatorCost);
+    const cc = safeNum(p.cateringCost);
+    const pc = safeNum(p.promoCost);
+    return { id: p.id, name: p.name, classification: p.classification, facilitatorCost: fc, cateringCost: cc, promoCost: pc, totalCost: fc + cc + pc };
+  });
 
   return {
-    revenue: {
-      total: Math.round(totalRevenue * 100) / 100,
-      byPricingTier: bookingsByTier,
-    },
+    revenue: { total: Math.round(totalRevenue * 100) / 100, byPricingTier: bookingsByTier },
     inKindValue: Math.round(totalInKindValue * 100) / 100,
     memberships: {
-      active: activeMemberships.length,
+      active: activeMems.length,
       totalRevenue: Math.round(membershipRevenue * 100) / 100,
       totalStandardValue: Math.round(totalStandardValue * 100) / 100,
       totalValueGiven: Math.round(Math.max(0, totalStandardValue - membershipRevenue) * 100) / 100,
@@ -757,258 +843,175 @@ export async function generateNarrative(
   return {
     narrative: sections.join("\n\n"),
     narrativeStyle,
-    sections: {
-      reach,
-      delivery,
-      impact,
-      value,
-    },
+    sections: { reach, delivery, impact, value },
   };
 }
 
 export async function getCommunityComparison(filters: ReportFilters) {
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
-  const where = confirmedDebriefConditions(filters);
+  const where = confirmedDebriefWhere(filters);
 
   const maoriIds = await getCommunityLensContactIds({ ...filters, communityLens: "maori" });
   const pasifikaIds = await getCommunityLensContactIds({ ...filters, communityLens: "pasifika" });
 
-  const allEngagedContacts = await db
+  const allEngaged = await db
     .selectDistinct({ contactId: impactLogContacts.contactId })
     .from(impactLogContacts)
     .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
     .where(where);
-
-  const allEngagedIds = new Set(allEngagedContacts.map(r => r.contactId));
+  const allEngagedIds = new Set(allEngaged.map(r => r.contactId));
 
   const allContactDetails = allEngagedIds.size > 0
-    ? await db
-        .select({ id: contacts.id, age: contacts.age, metrics: contacts.metrics })
+    ? await db.select({ id: contacts.id, age: contacts.age, metrics: contacts.metrics })
         .from(contacts)
         .where(and(eq(contacts.userId, filters.userId), inArray(contacts.id, Array.from(allEngagedIds))))
     : [];
 
-  const newContactsInPeriod = await db
-    .select({ id: contacts.id })
-    .from(contacts)
-    .where(and(
-      eq(contacts.userId, filters.userId),
-      gte(contacts.createdAt, start),
-      lte(contacts.createdAt, end),
-    ));
-  const newContactIds = new Set(newContactsInPeriod.map(c => c.id));
+  const newInPeriod = await db.select({ id: contacts.id }).from(contacts)
+    .where(and(eq(contacts.userId, filters.userId), gte(contacts.createdAt, start), lte(contacts.createdAt, end)));
+  const newIds = new Set(newInPeriod.map(c => c.id));
 
-  const businessProgrammes = await db
-    .select({ id: programmes.id, attendees: programmes.attendees })
-    .from(programmes)
-    .where(and(
-      eq(programmes.userId, filters.userId),
-      gte(programmes.startDate, start),
-      lte(programmes.startDate, end),
-    ));
+  const bizProgs = await db.select({ id: programmes.id, attendees: programmes.attendees }).from(programmes)
+    .where(and(eq(programmes.userId, filters.userId), gte(programmes.startDate, start), lte(programmes.startDate, end)));
+  const bizProgContacts = new Set<number>();
+  for (const p of bizProgs) { if (p.attendees) for (const a of p.attendees) bizProgContacts.add(a); }
 
-  const contactsInBusinessProgrammes = new Set<number>();
-  for (const p of businessProgrammes) {
-    if (p.attendees) {
-      for (const a of p.attendees) contactsInBusinessProgrammes.add(a);
-    }
-  }
-
-  const allMilestones = await db
-    .select()
-    .from(milestones)
-    .where(and(
-      eq(milestones.userId, filters.userId),
-      gte(milestones.createdAt, start),
-      lte(milestones.createdAt, end),
-    ));
+  const allMiles = await db.select({
+    id: milestones.id,
+    linkedContactId: milestones.linkedContactId,
+  }).from(milestones).where(and(
+    eq(milestones.userId, filters.userId), gte(milestones.createdAt, start), lte(milestones.createdAt, end),
+  ));
 
   function computeMetrics(lensIds: Set<number> | null) {
     if (!lensIds) return { uniqueParticipants: 0, rangatahiUnder25: 0, activeInBusinessProgrammes: 0, confidenceGrowthPercent: 0, milestonesAchieved: 0, newContactsThisPeriod: 0 };
-
     const engaged = Array.from(allEngagedIds).filter(id => lensIds.has(id));
-    const uniqueParticipants = engaged.length;
-
     const contactMap = new Map(allContactDetails.map(c => [c.id, c]));
-    let rangatahiUnder25 = 0;
-    let confidencePositive = 0;
-    let confidenceTotal = 0;
-    let activeInBiz = 0;
-
+    let rangatahi = 0, confPos = 0, confTotal = 0, activeBiz = 0;
     for (const id of engaged) {
       const c = contactMap.get(id);
       if (c) {
-        if (c.age != null && c.age < 25) rangatahiUnder25++;
+        if (c.age != null && c.age < 25) rangatahi++;
         const m = c.metrics as any;
-        if (m?.confidence != null) {
-          confidenceTotal++;
-          if (m.confidence > 0) confidencePositive++;
-        }
+        if (m?.confidence != null) { confTotal++; if (m.confidence > 0) confPos++; }
       }
-      if (contactsInBusinessProgrammes.has(id)) activeInBiz++;
+      if (bizProgContacts.has(id)) activeBiz++;
     }
-
-    const milestonesAchieved = allMilestones.filter(m =>
-      m.linkedContactId && lensIds.has(m.linkedContactId)
-    ).length;
-
-    const newContacts = Array.from(newContactIds).filter(id => lensIds.has(id)).length;
-
     return {
-      uniqueParticipants,
-      rangatahiUnder25,
-      activeInBusinessProgrammes: activeInBiz,
-      confidenceGrowthPercent: confidenceTotal > 0 ? Math.round((confidencePositive / confidenceTotal) * 100) : 0,
-      milestonesAchieved,
-      newContactsThisPeriod: newContacts,
+      uniqueParticipants: engaged.length,
+      rangatahiUnder25: rangatahi,
+      activeInBusinessProgrammes: activeBiz,
+      confidenceGrowthPercent: confTotal > 0 ? Math.round((confPos / confTotal) * 100) : 0,
+      milestonesAchieved: allMiles.filter(m => m.linkedContactId && lensIds.has(m.linkedContactId)).length,
+      newContactsThisPeriod: Array.from(newIds).filter(id => lensIds.has(id)).length,
     };
   }
 
   const maoriMetrics = computeMetrics(maoriIds);
   const pasifikaMetrics = computeMetrics(pasifikaIds);
-
-  const totalParticipants = maoriMetrics.uniqueParticipants + pasifikaMetrics.uniqueParticipants;
-  const maoriPercent = totalParticipants > 0 ? Math.round((maoriMetrics.uniqueParticipants / totalParticipants) * 100) : 0;
-  const pasifikaPercent = totalParticipants > 0 ? 100 - maoriPercent : 0;
+  const total = maoriMetrics.uniqueParticipants + pasifikaMetrics.uniqueParticipants;
+  const maoriPct = total > 0 ? Math.round((maoriMetrics.uniqueParticipants / total) * 100) : 0;
 
   return {
     maori: maoriMetrics,
     pasifika: pasifikaMetrics,
-    communitySplit: {
-      maoriPercent,
-      pasifikaPercent,
-      totalParticipants,
-    },
+    communitySplit: { maoriPercent: maoriPct, pasifikaPercent: total > 0 ? 100 - maoriPct : 0, totalParticipants: total },
   };
 }
 
 export async function getTamakiOraAlignment(filters: ReportFilters) {
   const maoriFilters = { ...filters, communityLens: "maori" as const };
   const maoriIds = await getCommunityLensContactIds(maoriFilters);
-  if (!maoriIds || maoriIds.size === 0) {
-    return {
-      whaiRawaOra: { contactsInBusinessProgrammes: 0, fundingMilestones: 0, stageProgressions: 0 },
-      teHaporiOra: { contactsInCommunityEvents: 0, rangatahiCount: 0, repeatEngagementRate: 0, activeGroupsWithMaori: 0 },
-      huatauOra: { rangatahiInInnovation: 0, newVentureMilestones: 0, averageMindsetShift: 0 },
-    };
-  }
+  const empty = {
+    whaiRawaOra: { contactsInBusinessProgrammes: 0, fundingMilestones: 0, stageProgressions: 0 },
+    teHaporiOra: { contactsInCommunityEvents: 0, rangatahiCount: 0, repeatEngagementRate: 0, activeGroupsWithMaori: 0 },
+    huatauOra: { rangatahiInInnovation: 0, newVentureMilestones: 0, averageMindsetShift: 0 },
+  };
+  if (!maoriIds || maoriIds.size === 0) return empty;
 
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
-  const where = confirmedDebriefConditions(filters);
+  const where = confirmedDebriefWhere(filters);
 
-  const allProgrammes = await db
-    .select({ id: programmes.id, classification: programmes.classification, attendees: programmes.attendees })
-    .from(programmes)
-    .where(and(
-      eq(programmes.userId, filters.userId),
-      gte(programmes.startDate, start),
-      lte(programmes.startDate, end),
-    ));
+  const allProgs = await db.select({
+    id: programmes.id,
+    classification: programmes.classification,
+    attendees: programmes.attendees,
+  }).from(programmes).where(and(
+    eq(programmes.userId, filters.userId), gte(programmes.startDate, start), lte(programmes.startDate, end),
+  ));
 
-  const businessClassifications = ["business", "entrepreneurship", "enterprise", "startup"];
-  const innovationClassifications = ["innovation", "youth", "rangatahi", "digital", "technology"];
+  const bizClass = ["business", "entrepreneurship", "enterprise", "startup"];
+  const innovClass = ["innovation", "youth", "rangatahi", "digital", "technology"];
 
-  let contactsInBusinessProgrammes = 0;
-  let rangatahiInInnovation = 0;
-  const maoriInBizSet = new Set<number>();
+  const maoriContactDetails = await db.select({
+    id: contacts.id, age: contacts.age, metrics: contacts.metrics,
+  }).from(contacts).where(and(
+    eq(contacts.userId, filters.userId), inArray(contacts.id, Array.from(maoriIds)),
+  ));
+  const maoriMap = new Map(maoriContactDetails.map(c => [c.id, c]));
 
-  const maoriContactDetails = await db
-    .select({ id: contacts.id, age: contacts.age, metrics: contacts.metrics, relationshipStage: contacts.relationshipStage })
-    .from(contacts)
-    .where(and(
-      eq(contacts.userId, filters.userId),
-      inArray(contacts.id, Array.from(maoriIds)),
-    ));
-  const maoriContactMap = new Map(maoriContactDetails.map(c => [c.id, c]));
-
-  for (const p of allProgrammes) {
+  let contactsInBiz = 0, rangatahiInInnovation = 0;
+  const bizSet = new Set<number>();
+  for (const p of allProgs) {
     if (!p.attendees) continue;
-    const isBiz = businessClassifications.some(bc => p.classification.toLowerCase().includes(bc));
-    const isInnovation = innovationClassifications.some(ic => p.classification.toLowerCase().includes(ic));
-
-    for (const attendeeId of p.attendees) {
-      if (!maoriIds.has(attendeeId)) continue;
-      if (isBiz && !maoriInBizSet.has(attendeeId)) {
-        maoriInBizSet.add(attendeeId);
-        contactsInBusinessProgrammes++;
-      }
-      if (isInnovation) {
-        const c = maoriContactMap.get(attendeeId);
-        if (c && c.age != null && c.age < 25) {
-          rangatahiInInnovation++;
-        }
-      }
+    const isBiz = bizClass.some(bc => p.classification.toLowerCase().includes(bc));
+    const isInnov = innovClass.some(ic => p.classification.toLowerCase().includes(ic));
+    for (const aid of p.attendees) {
+      if (!maoriIds.has(aid)) continue;
+      if (isBiz && !bizSet.has(aid)) { bizSet.add(aid); contactsInBiz++; }
+      if (isInnov) { const c = maoriMap.get(aid); if (c && c.age != null && c.age < 25) rangatahiInInnovation++; }
     }
   }
 
-  const allMilestones = await db
-    .select()
-    .from(milestones)
-    .where(and(
-      eq(milestones.userId, filters.userId),
-      gte(milestones.createdAt, start),
-      lte(milestones.createdAt, end),
-    ));
+  const allMiles = await db.select({
+    id: milestones.id,
+    linkedContactId: milestones.linkedContactId,
+    milestoneType: milestones.milestoneType,
+  }).from(milestones).where(and(
+    eq(milestones.userId, filters.userId), gte(milestones.createdAt, start), lte(milestones.createdAt, end),
+  ));
 
-  const fundingTypes = ["funding_secured", "revenue_milestone"];
-  const ventureTypes = ["business_launched", "prototype_completed"];
-
-  let fundingMilestones = 0;
-  let newVentureMilestones = 0;
-  for (const m of allMilestones) {
+  let fundingMilestones = 0, newVentureMilestones = 0;
+  for (const m of allMiles) {
     if (!m.linkedContactId || !maoriIds.has(m.linkedContactId)) continue;
-    if (fundingTypes.includes(m.milestoneType)) fundingMilestones++;
-    if (ventureTypes.includes(m.milestoneType)) newVentureMilestones++;
+    if (["funding_secured", "revenue_milestone"].includes(m.milestoneType || "")) fundingMilestones++;
+    if (["business_launched", "prototype_completed"].includes(m.milestoneType || "")) newVentureMilestones++;
   }
 
-  const stageHistory = await db
-    .select()
-    .from(relationshipStageHistory)
-    .where(and(
-      eq(relationshipStageHistory.entityType, "contact"),
-      gte(relationshipStageHistory.changedAt, start),
-      lte(relationshipStageHistory.changedAt, end),
-    ));
+  const stageHist = await db.select({
+    entityId: relationshipStageHistory.entityId,
+    previousStage: relationshipStageHistory.previousStage,
+    newStage: relationshipStageHistory.newStage,
+  }).from(relationshipStageHistory).where(and(
+    eq(relationshipStageHistory.entityType, "contact"),
+    gte(relationshipStageHistory.changedAt, start), lte(relationshipStageHistory.changedAt, end),
+  ));
 
   let stageProgressions = 0;
   const stageOrder = ["new", "engaged", "active", "deepening", "partner", "alumni"];
-  for (const sh of stageHistory) {
+  for (const sh of stageHist) {
     if (!maoriIds.has(sh.entityId)) continue;
     const prevIdx = sh.previousStage ? stageOrder.indexOf(sh.previousStage) : -1;
-    const newIdx = stageOrder.indexOf(sh.newStage);
-    if (newIdx > prevIdx) stageProgressions++;
+    if (stageOrder.indexOf(sh.newStage) > prevIdx) stageProgressions++;
   }
 
-  const eventsInRange = await db
-    .select({ id: events.id })
-    .from(events)
-    .where(and(
-      eq(events.userId, filters.userId),
-      gte(events.startTime, start),
-      lte(events.startTime, end),
-    ));
+  const evtIds = (await db.select({ id: events.id }).from(events).where(and(
+    eq(events.userId, filters.userId), gte(events.startTime, start), lte(events.startTime, end),
+  ))).map(e => e.id);
 
-  const eventIds = eventsInRange.map(e => e.id);
-  let contactsInCommunityEvents = 0;
-  if (eventIds.length > 0) {
-    const attendance = await db
-      .select({ contactId: eventAttendance.contactId })
-      .from(eventAttendance)
-      .where(inArray(eventAttendance.eventId, eventIds));
-
-    const maoriAttendees = new Set<number>();
-    for (const a of attendance) {
-      if (maoriIds.has(a.contactId)) maoriAttendees.add(a.contactId);
-    }
-    contactsInCommunityEvents = maoriAttendees.size;
+  let contactsInEvents = 0;
+  if (evtIds.length > 0) {
+    const att = await db.select({ contactId: eventAttendance.contactId }).from(eventAttendance)
+      .where(inArray(eventAttendance.eventId, evtIds));
+    const maoriAtt = new Set<number>();
+    for (const a of att) { if (maoriIds.has(a.contactId)) maoriAtt.add(a.contactId); }
+    contactsInEvents = maoriAtt.size;
   }
 
   let rangatahiCount = 0;
-  for (const c of maoriContactDetails) {
-    if (c.age != null && c.age < 25) rangatahiCount++;
-  }
+  for (const c of maoriContactDetails) { if (c.age != null && c.age < 25) rangatahiCount++; }
 
   const engagedContacts = await db
     .select({ contactId: impactLogContacts.contactId, cnt: count() })
@@ -1016,291 +1019,232 @@ export async function getTamakiOraAlignment(filters: ReportFilters) {
     .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
     .where(where)
     .groupBy(impactLogContacts.contactId);
-
   const maoriEngaged = engagedContacts.filter(r => maoriIds.has(r.contactId));
-  const maoriRepeat = maoriEngaged.filter(r => Number(r.cnt) >= 2).length;
-  const repeatEngagementRate = maoriEngaged.length > 0 ? Math.round((maoriRepeat / maoriEngaged.length) * 100) : 0;
+  const maoriRepeat = maoriEngaged.filter(r => safeNum(r.cnt) >= 2).length;
+  const repeatRate = maoriEngaged.length > 0 ? Math.round((maoriRepeat / maoriEngaged.length) * 100) : 0;
 
-  const maoriIdArray = Array.from(maoriIds);
   let activeGroupsWithMaori = 0;
-  if (maoriIdArray.length > 0) {
-    const groupsWithMaori = await db
-      .selectDistinct({ groupId: groupMembers.groupId })
+  const maoriArr = Array.from(maoriIds);
+  if (maoriArr.length > 0) {
+    const grpRows = await db.selectDistinct({ groupId: groupMembers.groupId })
       .from(groupMembers)
       .innerJoin(groups, eq(groupMembers.groupId, groups.id))
-      .where(and(
-        eq(groups.userId, filters.userId),
-        eq(groups.active, true),
-        inArray(groupMembers.contactId, maoriIdArray),
-      ));
-    activeGroupsWithMaori = groupsWithMaori.length;
+      .where(and(eq(groups.userId, filters.userId), eq(groups.active, true), inArray(groupMembers.contactId, maoriArr)));
+    activeGroupsWithMaori = grpRows.length;
   }
 
-  let mindsetValues: number[] = [];
+  const mindsetVals: number[] = [];
   for (const c of maoriContactDetails) {
     const m = c.metrics as any;
-    if (m?.mindset != null) mindsetValues.push(m.mindset);
+    if (m?.mindset != null) mindsetVals.push(m.mindset);
   }
-  const averageMindsetShift = mindsetValues.length > 0
-    ? Math.round((mindsetValues.reduce((a, b) => a + b, 0) / mindsetValues.length) * 10) / 10
+  const avgMindset = mindsetVals.length > 0
+    ? Math.round((mindsetVals.reduce((a, b) => a + b, 0) / mindsetVals.length) * 10) / 10
     : 0;
 
   return {
-    whaiRawaOra: {
-      contactsInBusinessProgrammes,
-      fundingMilestones,
-      stageProgressions,
-    },
-    teHaporiOra: {
-      contactsInCommunityEvents,
-      rangatahiCount,
-      repeatEngagementRate,
-      activeGroupsWithMaori,
-    },
-    huatauOra: {
-      rangatahiInInnovation,
-      newVentureMilestones,
-      averageMindsetShift,
-    },
+    whaiRawaOra: { contactsInBusinessProgrammes: contactsInBiz, fundingMilestones, stageProgressions },
+    teHaporiOra: { contactsInCommunityEvents: contactsInEvents, rangatahiCount, repeatEngagementRate: repeatRate, activeGroupsWithMaori },
+    huatauOra: { rangatahiInInnovation, newVentureMilestones, averageMindsetShift: avgMindset },
   };
 }
 
 export async function getMentoringMetrics(filters: ReportFilters) {
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
-  const lensContactIds = await getCommunityLensContactIds(filters);
+  const lensIds = await getCommunityLensContactIds(filters);
+  const MENTORING_TYPES = await getMentoringTypeNames(filters.userId);
 
-  const userMentoringTypes = await db
-    .select({ name: meetingTypes.name })
-    .from(meetingTypes)
-    .where(and(
-      eq(meetingTypes.userId, filters.userId),
-      eq(meetingTypes.category, "mentoring"),
-      eq(meetingTypes.isActive, true),
-    ));
-  const MENTORING_TYPES = userMentoringTypes.length > 0
-    ? userMentoringTypes.map(t => t.name.toLowerCase())
-    : ["mentoring", "catchup", "follow-up"];
+  const allRows = await db.select({
+    id: meetings.id,
+    contactId: meetings.contactId,
+    type: meetings.type,
+    status: meetings.status,
+    duration: meetings.duration,
+    bookingSource: meetings.bookingSource,
+    mentoringFocus: meetings.mentoringFocus,
+    interactionId: meetings.interactionId,
+    startTime: meetings.startTime,
+  }).from(meetings).where(and(
+    eq(meetings.userId, filters.userId),
+    inArray(meetings.type, MENTORING_TYPES),
+    gte(meetings.startTime, start),
+    lte(meetings.startTime, end),
+  ));
 
-  const allMentoringMeetings = await db
-    .select()
-    .from(meetings)
-    .where(and(
+  const mentoringMeetings = lensIds
+    ? allRows.filter(m => m.contactId && lensIds.has(m.contactId))
+    : allRows;
+
+  const delivered = mentoringMeetings.filter(m => m.status === "completed");
+  const totalSessions = mentoringMeetings.length;
+  const completedSessions = delivered.length;
+  const totalHours = Math.round(delivered.reduce((s, m) => s + (m.duration || 30), 0) / 60 * 10) / 10;
+
+  const menteeIds = new Set(mentoringMeetings.map(m => m.contactId).filter(Boolean) as number[]);
+  const uniqueMentees = menteeIds.size;
+  const avgSessionsPerMentee = uniqueMentees > 0 ? Math.round((totalSessions / uniqueMentees) * 10) / 10 : 0;
+
+  let newMentees = 0;
+  const contactIds = Array.from(menteeIds);
+  if (contactIds.length > 0) {
+    const firstSessions = await db.select({
+      contactId: meetings.contactId,
+      firstSession: sql<Date>`MIN(${meetings.startTime})`.as("first_session"),
+    }).from(meetings).where(and(
       eq(meetings.userId, filters.userId),
       inArray(meetings.type, MENTORING_TYPES),
-      gte(meetings.startTime, start),
-      lte(meetings.startTime, end),
-    ));
+      inArray(meetings.contactId, contactIds),
+    )).groupBy(meetings.contactId);
 
-  const mentoringMeetings = lensContactIds
-    ? allMentoringMeetings.filter(m => m.contactId && lensContactIds.has(m.contactId))
-    : allMentoringMeetings;
-
-  const deliveredSessions = mentoringMeetings.filter(m => m.status === "completed");
-  const totalSessions = mentoringMeetings.length;
-  const completedSessions = deliveredSessions.length;
-  const totalHours = Math.round(
-    deliveredSessions.reduce((sum, m) => sum + (m.duration || 30), 0) / 60 * 10
-  ) / 10;
-
-  const uniqueMenteeIds = new Set(mentoringMeetings.map(m => m.contactId));
-  const uniqueMentees = uniqueMenteeIds.size;
-
-  const avgSessionsPerMentee = uniqueMentees > 0
-    ? Math.round((totalSessions / uniqueMentees) * 10) / 10
-    : 0;
-
-  const contactIds = Array.from(uniqueMenteeIds);
-  let newMentees = 0;
-  if (contactIds.length > 0) {
-    const allMentoringForContacts = await db
-      .select({
-        contactId: meetings.contactId,
-        firstSession: sql<Date>`MIN(${meetings.startTime})`.as("first_session"),
-      })
-      .from(meetings)
-      .where(and(
-        eq(meetings.userId, filters.userId),
-        inArray(meetings.type, MENTORING_TYPES),
-        inArray(meetings.contactId, contactIds),
-      ))
-      .groupBy(meetings.contactId);
-
-    for (const row of allMentoringForContacts) {
-      const firstDate = new Date(row.firstSession);
-      if (firstDate >= start && firstDate <= end) {
-        newMentees++;
-      }
+    for (const row of firstSessions) {
+      const d = new Date(row.firstSession);
+      if (d >= start && d <= end) newMentees++;
     }
   }
 
   const bySource: Record<string, number> = {};
   for (const m of mentoringMeetings) {
-    const source = m.bookingSource || "internal";
-    bySource[source] = (bySource[source] || 0) + 1;
+    const s = m.bookingSource || "internal";
+    bySource[s] = (bySource[s] || 0) + 1;
   }
 
   const FOCUS_LABELS: Record<string, string> = {
     general: "General", strategy: "Strategy", wellbeing: "Wellbeing",
-    skills: "Skills Development", "skills development": "Skills Development",
-    "skills_development": "Skills Development",
-    business: "Business", career: "Career",
-    leadership: "Leadership", innovation: "Innovation", community: "Community",
-    creative: "Creative", financial: "Financial", digital: "Digital",
-    unspecified: "Unspecified",
+    skills: "Skills Development", "skills development": "Skills Development", skills_development: "Skills Development",
+    business: "Business", career: "Career", leadership: "Leadership",
+    innovation: "Innovation", community: "Community", creative: "Creative",
+    financial: "Financial", digital: "Digital", unspecified: "Unspecified",
   };
   const byFocus: Record<string, number> = {};
   for (const m of mentoringMeetings) {
-    const rawFocus = (m.mentoringFocus || "unspecified").trim().toLowerCase().replace(/[-_]+/g, " ").replace(/\s+/g, " ");
-    const label = FOCUS_LABELS[rawFocus] || rawFocus.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+    const raw = (m.mentoringFocus || "unspecified").trim().toLowerCase().replace(/[-_]+/g, " ").replace(/\s+/g, " ");
+    const label = FOCUS_LABELS[raw] || raw.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
     byFocus[label] = (byFocus[label] || 0) + 1;
   }
 
   const completedCount = mentoringMeetings.filter(m => m.status === "completed").length;
   const cancelledCount = mentoringMeetings.filter(m => m.status === "cancelled").length;
   const noShowCount = mentoringMeetings.filter(m => m.status === "no-show").length;
-  const resolvedCount = completedCount + cancelledCount + noShowCount;
-  const completionRate = resolvedCount > 0
-    ? Math.round((completedCount / resolvedCount) * 100)
-    : 0;
-
+  const resolved = completedCount + cancelledCount + noShowCount;
+  const completionRate = resolved > 0 ? Math.round((completedCount / resolved) * 100) : 0;
   const withInteraction = mentoringMeetings.filter(m => m.status === "completed" && m.interactionId != null).length;
-  const debriefRate = completedCount > 0
-    ? Math.round((withInteraction / completedCount) * 100)
-    : 0;
+  const debriefRate = completedCount > 0 ? Math.round((withInteraction / completedCount) * 100) : 0;
 
-  return {
-    totalSessions,
-    completedSessions,
-    totalHours,
-    uniqueMentees,
-    avgSessionsPerMentee,
-    newMentees,
-    bySource,
-    byFocus,
-    completionRate,
-    debriefRate,
-  };
+  return { totalSessions, completedSessions, totalHours, uniqueMentees, avgSessionsPerMentee, newMentees, bySource, byFocus, completionRate, debriefRate };
 }
 
 export async function getOrganisationsEngaged(filters: ReportFilters) {
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
 
-  const debriefWhere = confirmedDebriefConditions(filters);
   const debriefContactIds = await db
     .selectDistinct({ contactId: impactLogContacts.contactId })
     .from(impactLogContacts)
     .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
-    .where(debriefWhere);
+    .where(confirmedDebriefWhere(filters));
 
-  const meetingsInRange = await db.select({ contactId: meetings.contactId }).from(meetings).where(and(
+  const mtgRows = await db.select({ contactId: meetings.contactId }).from(meetings).where(and(
     eq(meetings.userId, filters.userId),
     inArray(meetings.status, ["completed", "confirmed"]),
     gte(meetings.startTime, start), lte(meetings.startTime, end),
   ));
 
-  const eventIds = (await db.select({ id: events.id }).from(events).where(and(
+  const evtIds = (await db.select({ id: events.id }).from(events).where(and(
     eq(events.userId, filters.userId), eq(events.eventStatus, "active"),
     gte(events.startTime, start), lte(events.startTime, end),
   ))).map(e => e.id);
-  let eventContactIds: { contactId: number }[] = [];
-  if (eventIds.length > 0) {
-    eventContactIds = await db.selectDistinct({ contactId: eventAttendance.contactId })
-      .from(eventAttendance).where(inArray(eventAttendance.eventId, eventIds));
+
+  let evtContactIds: { contactId: number }[] = [];
+  if (evtIds.length > 0) {
+    evtContactIds = await db.selectDistinct({ contactId: eventAttendance.contactId })
+      .from(eventAttendance).where(inArray(eventAttendance.eventId, evtIds));
   }
 
-  const bookingsInRange = await db.select({ bookerId: bookings.bookerId, attendees: bookings.attendees }).from(bookings).where(and(
+  const bkgRows = await db.select({ bookerId: bookings.bookerId, attendees: bookings.attendees }).from(bookings).where(and(
     eq(bookings.userId, filters.userId),
     inArray(bookings.status, ["confirmed", "completed"]),
     gte(bookings.startDate, start), lte(bookings.startDate, end),
   ));
 
-  const programmesInRange = await db.select({ attendees: programmes.attendees }).from(programmes).where(and(
+  const progRows = await db.select({ attendees: programmes.attendees }).from(programmes).where(and(
     eq(programmes.userId, filters.userId),
     inArray(programmes.status, ["active", "completed"]),
     gte(programmes.startDate, start), lte(programmes.startDate, end),
   ));
 
-  const engagedContactIds = new Set<number>();
-  for (const r of debriefContactIds) if (r.contactId) engagedContactIds.add(r.contactId);
-  for (const r of meetingsInRange) if (r.contactId) engagedContactIds.add(r.contactId);
-  for (const r of eventContactIds) if (r.contactId) engagedContactIds.add(r.contactId);
-  for (const b of bookingsInRange) {
-    if (b.bookerId) engagedContactIds.add(b.bookerId);
-    if (b.attendees) for (const a of b.attendees) engagedContactIds.add(a);
+  const engagedCIds = new Set<number>();
+  for (const r of debriefContactIds) if (r.contactId) engagedCIds.add(r.contactId);
+  for (const r of mtgRows) if (r.contactId) engagedCIds.add(r.contactId);
+  for (const r of evtContactIds) if (r.contactId) engagedCIds.add(r.contactId);
+  for (const b of bkgRows) {
+    if (b.bookerId) engagedCIds.add(b.bookerId);
+    if (b.attendees) for (const a of b.attendees) engagedCIds.add(a);
   }
-  for (const p of programmesInRange) {
-    if (p.attendees) for (const a of p.attendees) engagedContactIds.add(a);
-  }
+  for (const p of progRows) { if (p.attendees) for (const a of p.attendees) engagedCIds.add(a); }
 
-  const snapshotsInRange = await db.select({ id: monthlySnapshots.id }).from(monthlySnapshots).where(and(
-    eq(monthlySnapshots.userId, filters.userId),
-    gte(monthlySnapshots.month, start), lte(monthlySnapshots.month, end),
+  const snapRows = await db.select({ id: monthlySnapshots.id }).from(monthlySnapshots).where(and(
+    eq(monthlySnapshots.userId, filters.userId), gte(monthlySnapshots.month, start), lte(monthlySnapshots.month, end),
   ));
-  const snapshotIds = snapshotsInRange.map(s => s.id);
+  const snapIds = snapRows.map(s => s.id);
   const touchpointGroupIds = new Set<number>();
-  if (snapshotIds.length > 0) {
-    const touchpointRows = await db.select({ contactId: footTrafficTouchpoints.contactId, groupId: footTrafficTouchpoints.groupId })
-      .from(footTrafficTouchpoints).where(inArray(footTrafficTouchpoints.snapshotId, snapshotIds));
-    for (const t of touchpointRows) {
-      if (t.contactId) engagedContactIds.add(t.contactId);
+  if (snapIds.length > 0) {
+    const ftRows = await db.select({ contactId: footTrafficTouchpoints.contactId, groupId: footTrafficTouchpoints.groupId })
+      .from(footTrafficTouchpoints).where(inArray(footTrafficTouchpoints.snapshotId, snapIds));
+    for (const t of ftRows) {
+      if (t.contactId) engagedCIds.add(t.contactId);
       if (t.groupId) touchpointGroupIds.add(t.groupId);
     }
   }
 
-  if (engagedContactIds.size === 0 && touchpointGroupIds.size === 0) return [];
+  if (engagedCIds.size === 0 && touchpointGroupIds.size === 0) return [];
 
-  const engagedArr = Array.from(engagedContactIds);
-  const memberRows = engagedArr.length > 0 ? await db.select({
-    groupId: groupMembers.groupId,
-    contactId: groupMembers.contactId,
-  }).from(groupMembers).where(inArray(groupMembers.contactId, engagedArr)) : [];
+  const engagedArr = Array.from(engagedCIds);
+  const memberRows = engagedArr.length > 0
+    ? await db.select({ groupId: groupMembers.groupId, contactId: groupMembers.contactId })
+        .from(groupMembers).where(inArray(groupMembers.contactId, engagedArr))
+    : [];
 
   const groupIds = new Set(memberRows.map(r => r.groupId));
-  for (const gid of touchpointGroupIds) groupIds.add(gid);
-  const newGroups = await db.select({ id: groups.id }).from(groups).where(and(
-    eq(groups.userId, filters.userId),
-    gte(groups.createdAt, start), lte(groups.createdAt, end),
+  Array.from(touchpointGroupIds).forEach(gid => groupIds.add(gid));
+
+  const newGrps = await db.select({ id: groups.id }).from(groups).where(and(
+    eq(groups.userId, filters.userId), gte(groups.createdAt, start), lte(groups.createdAt, end),
   ));
-  for (const g of newGroups) groupIds.add(g.id);
+  for (const g of newGrps) groupIds.add(g.id);
 
   if (groupIds.size === 0) return [];
 
   const groupDetails = await db.select({
     id: groups.id,
     name: groups.name,
-    organizationType: groups.organizationType,
+    type: groups.type,
     isCommunity: groups.isCommunity,
     isInnovator: groups.isInnovator,
     createdAt: groups.createdAt,
   }).from(groups).where(inArray(groups.id, Array.from(groupIds)));
 
-  const allMemberRows = await db.select({
-    groupId: groupMembers.groupId,
-    contactId: groupMembers.contactId,
-  }).from(groupMembers).where(inArray(groupMembers.groupId, Array.from(groupIds)));
+  const allMembers = await db.select({ groupId: groupMembers.groupId, contactId: groupMembers.contactId })
+    .from(groupMembers).where(inArray(groupMembers.groupId, Array.from(groupIds)));
 
   const membersPerGroup = new Map<number, number>();
-  const engagedMembersPerGroup = new Map<number, number>();
-  for (const r of allMemberRows) {
+  const engagedPerGroup = new Map<number, number>();
+  for (const r of allMembers) {
     membersPerGroup.set(r.groupId, (membersPerGroup.get(r.groupId) || 0) + 1);
-    if (engagedContactIds.has(r.contactId)) {
-      engagedMembersPerGroup.set(r.groupId, (engagedMembersPerGroup.get(r.groupId) || 0) + 1);
+    if (engagedCIds.has(r.contactId)) {
+      engagedPerGroup.set(r.groupId, (engagedPerGroup.get(r.groupId) || 0) + 1);
     }
   }
 
   return groupDetails.map(g => {
     const isNew = g.createdAt && g.createdAt >= start && g.createdAt <= end;
-    const context = isNew ? "New this period" :
-      g.isInnovator ? "Innovator" :
-      g.isCommunity ? "Community member" : "Contact";
+    const context = isNew ? "New this period" : g.isInnovator ? "Innovator" : g.isCommunity ? "Community member" : "Contact";
     return {
       id: g.id,
       name: g.name,
-      type: g.organizationType || "Other",
+      type: g.type || "Other",
       context,
-      engagedMembers: engagedMembersPerGroup.get(g.id) || 0,
+      engagedMembers: engagedPerGroup.get(g.id) || 0,
       totalMembers: membersPerGroup.get(g.id) || 0,
     };
   }).sort((a, b) => b.engagedMembers - a.engagedMembers);
@@ -1309,28 +1253,29 @@ export async function getOrganisationsEngaged(filters: ReportFilters) {
 export async function getPeopleFeatured(filters: ReportFilters) {
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
-  const lensContactIds = await getCommunityLensContactIds(filters);
+  const lensIds = await getCommunityLensContactIds(filters);
 
-  const debriefWhere = confirmedDebriefConditions(filters);
   const debriefContactRows = await db
     .select({ contactId: impactLogContacts.contactId, impactLogId: impactLogContacts.impactLogId })
     .from(impactLogContacts)
     .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
-    .where(debriefWhere);
+    .where(confirmedDebriefWhere(filters));
 
   const contactDebriefCount = new Map<number, number>();
   for (const r of debriefContactRows) {
-    if (lensContactIds && !lensContactIds.has(r.contactId)) continue;
+    if (lensIds && !lensIds.has(r.contactId)) continue;
     contactDebriefCount.set(r.contactId, (contactDebriefCount.get(r.contactId) || 0) + 1);
   }
 
-  let milestonesInRange = await db.select().from(milestones).where(and(
-    eq(milestones.userId, filters.userId),
-    gte(milestones.createdAt, start), lte(milestones.createdAt, end),
+  let milestonesInRange = await db.select({
+    id: milestones.id,
+    linkedContactId: milestones.linkedContactId,
+    title: milestones.title,
+  }).from(milestones).where(and(
+    eq(milestones.userId, filters.userId), gte(milestones.createdAt, start), lte(milestones.createdAt, end),
   ));
-  if (lensContactIds) {
-    milestonesInRange = milestonesInRange.filter(m => m.linkedContactId && lensContactIds.has(m.linkedContactId));
-  }
+  if (lensIds) milestonesInRange = milestonesInRange.filter(m => m.linkedContactId && lensIds.has(m.linkedContactId));
+
   const contactMilestones = new Map<number, string[]>();
   for (const m of milestonesInRange) {
     if (!m.linkedContactId) continue;
@@ -1338,63 +1283,65 @@ export async function getPeopleFeatured(filters: ReportFilters) {
     contactMilestones.get(m.linkedContactId)!.push(m.title);
   }
 
-  const userContactIds = (await db.select({ id: contacts.id }).from(contacts).where(eq(contacts.userId, filters.userId))).map(c => c.id);
-  const stageHistory = userContactIds.length > 0 ? await db.select().from(relationshipStageHistory).where(and(
-    eq(relationshipStageHistory.entityType, "contact"),
-    inArray(relationshipStageHistory.entityId, userContactIds),
-    gte(relationshipStageHistory.changedAt, start), lte(relationshipStageHistory.changedAt, end),
-  )) : [];
+  const userCIds = (await db.select({ id: contacts.id }).from(contacts).where(eq(contacts.userId, filters.userId))).map(c => c.id);
+  const stageHist = userCIds.length > 0
+    ? await db.select({
+        entityId: relationshipStageHistory.entityId,
+        previousStage: relationshipStageHistory.previousStage,
+        newStage: relationshipStageHistory.newStage,
+      }).from(relationshipStageHistory).where(and(
+        eq(relationshipStageHistory.entityType, "contact"),
+        inArray(relationshipStageHistory.entityId, userCIds),
+        gte(relationshipStageHistory.changedAt, start), lte(relationshipStageHistory.changedAt, end),
+      ))
+    : [];
+
   const JOURNEY_ORDER = ["kakano", "tipu", "ora"];
-  const contactJourneyProgress = new Map<number, { from: string; to: string }>();
-  for (const sh of stageHistory) {
-    if (lensContactIds && !lensContactIds.has(sh.entityId)) continue;
+  const contactJourney = new Map<number, { from: string; to: string }>();
+  for (const sh of stageHist) {
+    if (lensIds && !lensIds.has(sh.entityId)) continue;
     const prevIdx = sh.previousStage ? JOURNEY_ORDER.indexOf(sh.previousStage) : -1;
     const newIdx = JOURNEY_ORDER.indexOf(sh.newStage);
     if (newIdx > prevIdx && newIdx >= 0) {
-      contactJourneyProgress.set(sh.entityId, { from: sh.previousStage || "new", to: sh.newStage });
+      contactJourney.set(sh.entityId, { from: sh.previousStage || "new", to: sh.newStage });
     }
   }
 
-  const allContactsList = await db.select({
-    id: contacts.id,
-    movedToInnovatorsAt: contacts.movedToInnovatorsAt,
-  }).from(contacts).where(eq(contacts.userId, filters.userId));
+  const allCList = await db.select({ id: contacts.id, movedToInnovatorsAt: contacts.movedToInnovatorsAt })
+    .from(contacts).where(eq(contacts.userId, filters.userId));
   const newInnovatorIds = new Set<number>();
-  for (const c of allContactsList) {
+  for (const c of allCList) {
     if (c.movedToInnovatorsAt && c.movedToInnovatorsAt >= start && c.movedToInnovatorsAt <= end) {
-      if (!lensContactIds || lensContactIds.has(c.id)) {
-        newInnovatorIds.add(c.id);
-      }
+      if (!lensIds || lensIds.has(c.id)) newInnovatorIds.add(c.id);
     }
   }
 
-  const snapshotsInRange = await db.select({ id: monthlySnapshots.id }).from(monthlySnapshots).where(and(
-    eq(monthlySnapshots.userId, filters.userId),
-    gte(monthlySnapshots.month, start), lte(monthlySnapshots.month, end),
+  const snapRows = await db.select({ id: monthlySnapshots.id }).from(monthlySnapshots).where(and(
+    eq(monthlySnapshots.userId, filters.userId), gte(monthlySnapshots.month, start), lte(monthlySnapshots.month, end),
   ));
-  const snapshotIds = snapshotsInRange.map(s => s.id);
+  const snapIds = snapRows.map(s => s.id);
   const contactTouchpointReasons = new Map<number, string[]>();
-  if (snapshotIds.length > 0) {
-    const touchpointRows = await db.select({ contactId: footTrafficTouchpoints.contactId, description: footTrafficTouchpoints.description })
-      .from(footTrafficTouchpoints).where(inArray(footTrafficTouchpoints.snapshotId, snapshotIds));
-    for (const t of touchpointRows) {
+  if (snapIds.length > 0) {
+    const ftRows = await db.select({ contactId: footTrafficTouchpoints.contactId, description: footTrafficTouchpoints.description })
+      .from(footTrafficTouchpoints).where(inArray(footTrafficTouchpoints.snapshotId, snapIds));
+    for (const t of ftRows) {
       if (!t.contactId) continue;
-      if (lensContactIds && !lensContactIds.has(t.contactId)) continue;
+      if (lensIds && !lensIds.has(t.contactId)) continue;
       if (!contactTouchpointReasons.has(t.contactId)) contactTouchpointReasons.set(t.contactId, []);
       contactTouchpointReasons.get(t.contactId)!.push(`Foot traffic note: ${t.description}`);
     }
   }
 
   const featuredIds = new Set<number>();
-  for (const id of contactDebriefCount.keys()) featuredIds.add(id);
-  for (const id of contactMilestones.keys()) featuredIds.add(id);
-  for (const id of contactJourneyProgress.keys()) featuredIds.add(id);
-  for (const id of newInnovatorIds) featuredIds.add(id);
-  for (const id of contactTouchpointReasons.keys()) featuredIds.add(id);
+  Array.from(contactDebriefCount.keys()).forEach(id => featuredIds.add(id));
+  Array.from(contactMilestones.keys()).forEach(id => featuredIds.add(id));
+  Array.from(contactJourney.keys()).forEach(id => featuredIds.add(id));
+  Array.from(newInnovatorIds).forEach(id => featuredIds.add(id));
+  Array.from(contactTouchpointReasons.keys()).forEach(id => featuredIds.add(id));
 
   if (featuredIds.size === 0) return [];
 
-  const contactDetails = await db.select({
+  const cDetails = await db.select({
     id: contacts.id,
     name: contacts.name,
     role: contacts.role,
@@ -1407,24 +1354,20 @@ export async function getPeopleFeatured(filters: ReportFilters) {
     inArray(contacts.id, Array.from(featuredIds)),
   ));
 
-  return contactDetails.map(c => {
+  return cDetails.map(c => {
     const reasons: string[] = [];
     const debriefs = contactDebriefCount.get(c.id);
     if (debriefs) reasons.push(`${debriefs} debrief${debriefs > 1 ? "s" : ""}`);
     const mils = contactMilestones.get(c.id);
     if (mils) reasons.push(`Milestone${mils.length > 1 ? "s" : ""}: ${mils.slice(0, 2).join(", ")}`);
-    const journey = contactJourneyProgress.get(c.id);
+    const journey = contactJourney.get(c.id);
     if (journey) reasons.push(`Stage: ${journey.from} \u2192 ${journey.to}`);
     if (newInnovatorIds.has(c.id)) reasons.push("New innovator");
-    const touchpointNotes = contactTouchpointReasons.get(c.id);
-    if (touchpointNotes) reasons.push(...touchpointNotes.slice(0, 3));
+    const tpNotes = contactTouchpointReasons.get(c.id);
+    if (tpNotes) reasons.push(...tpNotes.slice(0, 3));
 
     const m = c.metrics as any;
-    const growthScores = m ? {
-      mindset: m.mindset ?? null,
-      skill: m.skill ?? null,
-      confidence: m.confidence ?? null,
-    } : null;
+    const growthScores = m ? { mindset: m.mindset ?? null, skill: m.skill ?? null, confidence: m.confidence ?? null } : null;
 
     return {
       id: c.id,
@@ -1441,9 +1384,8 @@ export async function getPeopleFeatured(filters: ReportFilters) {
 export async function getJourneyStageProgression(filters: ReportFilters) {
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
-  const lensContactIds = await getCommunityLensContactIds(filters);
-
-  const JOURNEY_STAGE_ORDER = ["kakano", "tipu", "ora"];
+  const lensIds = await getCommunityLensContactIds(filters);
+  const STAGE_ORDER = ["kakano", "tipu", "ora"];
 
   const allContacts = await db.select({
     id: contacts.id,
@@ -1451,28 +1393,22 @@ export async function getJourneyStageProgression(filters: ReportFilters) {
     stageProgression: contacts.stageProgression,
   }).from(contacts).where(eq(contacts.userId, filters.userId));
 
-  const filteredContacts = lensContactIds
-    ? allContacts.filter(c => lensContactIds.has(c.id))
-    : allContacts;
+  const filtered = lensIds ? allContacts.filter(c => lensIds.has(c.id)) : allContacts;
 
-  const transitions: { from: string; to: string; count: number }[] = [];
   const transitionMap = new Map<string, number>();
   let totalProgressions = 0;
 
-  for (const c of filteredContacts) {
+  for (const c of filtered) {
     const prog = c.stageProgression as Array<{ stage: string; date: string; notes?: string }> | null;
     if (!prog || !Array.isArray(prog)) continue;
-
     const sorted = [...prog].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     for (let i = 1; i < sorted.length; i++) {
-      const entryDate = new Date(sorted[i].date);
-      if (entryDate >= start && entryDate <= end) {
-        const fromStage = sorted[i - 1].stage;
-        const toStage = sorted[i].stage;
-        const fromIdx = JOURNEY_STAGE_ORDER.indexOf(fromStage);
-        const toIdx = JOURNEY_STAGE_ORDER.indexOf(toStage);
+      const d = new Date(sorted[i].date);
+      if (d >= start && d <= end) {
+        const fromIdx = STAGE_ORDER.indexOf(sorted[i - 1].stage);
+        const toIdx = STAGE_ORDER.indexOf(sorted[i].stage);
         if (toIdx > fromIdx) {
-          const key = `${fromStage}→${toStage}`;
+          const key = `${sorted[i - 1].stage}\u2192${sorted[i].stage}`;
           transitionMap.set(key, (transitionMap.get(key) || 0) + 1);
           totalProgressions++;
         }
@@ -1480,13 +1416,13 @@ export async function getJourneyStageProgression(filters: ReportFilters) {
     }
   }
 
-  for (const [key, count] of transitionMap.entries()) {
-    const [from, to] = key.split("→");
-    transitions.push({ from, to, count });
-  }
+  const transitions = Array.from(transitionMap.entries()).map(([key, cnt]) => {
+    const [from, to] = key.split("\u2192");
+    return { from, to, count: cnt };
+  });
 
   const currentDistribution: Record<string, number> = { kakano: 0, tipu: 0, ora: 0 };
-  for (const c of filteredContacts) {
+  for (const c of filtered) {
     const stage = c.stage || "kakano";
     if (stage in currentDistribution) currentDistribution[stage]++;
   }
@@ -1498,7 +1434,7 @@ export async function getCommunityDiscounts(filters: ReportFilters) {
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
 
-  const bookingsInRange = await db.select({
+  const rows = await db.select({
     amount: bookings.amount,
     discountPercentage: bookings.discountPercentage,
     discountAmount: bookings.discountAmount,
@@ -1509,90 +1445,61 @@ export async function getCommunityDiscounts(filters: ReportFilters) {
     lte(bookings.startDate, end),
   ));
 
-  let totalDiscountValue = 0;
-  let discountedBookingsCount = 0;
-  let totalDiscountPercent = 0;
-
-  for (const b of bookingsInRange) {
-    const pct = Number(b.discountPercentage) || 0;
-    const amt = Number(b.discountAmount) || 0;
-    const bookingAmt = Number(b.amount) || 0;
-
+  let totalDiscountValue = 0, discountedCount = 0, totalPct = 0;
+  for (const b of rows) {
+    const pct = safeNum(b.discountPercentage);
+    const amt = safeNum(b.discountAmount);
+    const bAmt = safeNum(b.amount);
     if (pct > 0 || amt > 0) {
-      discountedBookingsCount++;
-      totalDiscountPercent += pct;
-      if (amt > 0) {
-        totalDiscountValue += amt;
-      } else if (pct > 0 && bookingAmt > 0) {
-        totalDiscountValue += Math.round(bookingAmt * pct) / 100;
-      }
+      discountedCount++;
+      totalPct += pct;
+      totalDiscountValue += amt > 0 ? amt : (pct > 0 && bAmt > 0 ? Math.round(bAmt * pct) / 100 : 0);
     }
   }
 
   return {
     totalDiscountValue: Math.round(totalDiscountValue * 100) / 100,
-    discountedBookingsCount,
-    averageDiscountPercent: discountedBookingsCount > 0
-      ? Math.round(totalDiscountPercent / discountedBookingsCount)
-      : 0,
+    discountedBookingsCount: discountedCount,
+    averageDiscountPercent: discountedCount > 0 ? Math.round(totalPct / discountedCount) : 0,
   };
 }
 
 export async function getConnectionStrengthDistribution(filters: ReportFilters) {
-  const lensContactIds = await getCommunityLensContactIds(filters);
-  const CONNECTION_LEVELS = ["known", "connected", "engaged", "embedded", "partnering"];
+  const lensIds = await getCommunityLensContactIds(filters);
+  const LEVELS = ["known", "connected", "engaged", "embedded", "partnering"];
 
   const allContacts = await db.select({
     id: contacts.id,
     connectionStrength: contacts.connectionStrength,
   }).from(contacts).where(eq(contacts.userId, filters.userId));
 
-  const filteredContacts = lensContactIds
-    ? allContacts.filter(c => lensContactIds.has(c.id))
-    : allContacts;
+  const filtered = lensIds ? allContacts.filter(c => lensIds.has(c.id)) : allContacts;
 
   const distMap = new Map<string, number>();
-  for (const level of CONNECTION_LEVELS) distMap.set(level, 0);
-
-  for (const c of filteredContacts) {
-    const strength = c.connectionStrength || "known";
-    distMap.set(strength, (distMap.get(strength) || 0) + 1);
+  for (const l of LEVELS) distMap.set(l, 0);
+  for (const c of filtered) {
+    const s = c.connectionStrength || "known";
+    distMap.set(s, (distMap.get(s) || 0) + 1);
   }
 
-  const distribution = CONNECTION_LEVELS.map(strength => ({
-    strength,
-    count: distMap.get(strength) || 0,
-  }));
-
   return {
-    distribution,
-    total: filteredContacts.length,
+    distribution: LEVELS.map(s => ({ strength: s, count: distMap.get(s) || 0 })),
+    total: filtered.length,
   };
 }
 
 export async function getFullMonthlyReport(filters: ReportFilters) {
-  const safeCall = async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
-    try {
-      const result = await fn();
-      console.log(`Report section ${name}: OK`);
-      return result;
-    } catch (err) {
-      console.error(`Report section ${name} FAILED:`, err);
-      throw err;
-    }
-  };
-
   const [reach, delivery, impact, value, mentoring, organisationsEngaged, peopleFeatured, journeyProgression, communityDiscounts, connectionStrength] = await Promise.all([
-    safeCall("reach", () => getReachMetrics(filters)),
-    safeCall("delivery", () => getDeliveryMetrics(filters)),
-    safeCall("impact", () => getImpactMetrics(filters)),
-    safeCall("value", () => getValueContribution(filters)),
-    safeCall("mentoring", () => getMentoringMetrics(filters)),
-    safeCall("organisations", () => getOrganisationsEngaged(filters)),
-    safeCall("peopleFeatured", () => getPeopleFeatured(filters)),
-    safeCall("journeyProgression", () => getJourneyStageProgression(filters)),
-    safeCall("communityDiscounts", () => getCommunityDiscounts(filters)),
-    safeCall("connectionStrength", () => getConnectionStrengthDistribution(filters)),
+    getReachMetrics(filters),
+    getDeliveryMetrics(filters),
+    getImpactMetrics(filters),
+    getValueContribution(filters),
+    getMentoringMetrics(filters),
+    getOrganisationsEngaged(filters),
+    getPeopleFeatured(filters),
+    getJourneyStageProgression(filters),
+    getCommunityDiscounts(filters),
+    getConnectionStrengthDistribution(filters),
   ]);
 
   const averageChange: Record<string, number> = {};
@@ -1605,8 +1512,10 @@ export async function getFullMonthlyReport(filters: ReportFilters) {
   return {
     period: { startDate: filters.startDate, endDate: filters.endDate },
     filters: {
-      programmeIds: filters.programmeIds, taxonomyIds: filters.taxonomyIds,
-      demographicSegments: filters.demographicSegments, communityLens: filters.communityLens,
+      programmeIds: filters.programmeIds,
+      taxonomyIds: filters.taxonomyIds,
+      demographicSegments: filters.demographicSegments,
+      communityLens: filters.communityLens,
     },
     reach,
     delivery,
