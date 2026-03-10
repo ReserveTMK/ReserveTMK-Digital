@@ -1396,8 +1396,7 @@ export async function getPeopleFeatured(filters: ReportFilters) {
 
   const contactDetails = await db.select({
     id: contacts.id,
-    firstName: contacts.firstName,
-    lastName: contacts.lastName,
+    name: contacts.name,
     role: contacts.role,
     stage: contacts.stage,
     metrics: contacts.metrics,
@@ -1429,7 +1428,7 @@ export async function getPeopleFeatured(filters: ReportFilters) {
 
     return {
       id: c.id,
-      name: `${c.firstName || ""} ${c.lastName || ""}`.trim(),
+      name: c.name || "",
       role: c.role || null,
       stage: c.stage || null,
       isInnovator: c.isInnovator || false,

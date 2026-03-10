@@ -1848,9 +1848,9 @@ function QuickAddPersonDialog({ open, onOpenChange, onDone }: {
         name: name.trim(),
         email: email.trim() || undefined,
         phone: phone.trim() || undefined,
-        tier: "community",
-        journeyStage: "kakano",
-        engagementLevel: "engaged",
+        role: "Other",
+        isCommunityMember: true,
+        stage: "kakano",
       });
       return res.json();
     },
