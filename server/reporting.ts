@@ -1571,17 +1571,28 @@ export async function getConnectionStrengthDistribution(filters: ReportFilters) 
 }
 
 export async function getFullMonthlyReport(filters: ReportFilters) {
+  const safeCall = async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
+    try {
+      const result = await fn();
+      console.log(`Report section ${name}: OK`);
+      return result;
+    } catch (err) {
+      console.error(`Report section ${name} FAILED:`, err);
+      throw err;
+    }
+  };
+
   const [reach, delivery, impact, value, mentoring, organisationsEngaged, peopleFeatured, journeyProgression, communityDiscounts, connectionStrength] = await Promise.all([
-    getReachMetrics(filters),
-    getDeliveryMetrics(filters),
-    getImpactMetrics(filters),
-    getValueContribution(filters),
-    getMentoringMetrics(filters),
-    getOrganisationsEngaged(filters),
-    getPeopleFeatured(filters),
-    getJourneyStageProgression(filters),
-    getCommunityDiscounts(filters),
-    getConnectionStrengthDistribution(filters),
+    safeCall("reach", () => getReachMetrics(filters)),
+    safeCall("delivery", () => getDeliveryMetrics(filters)),
+    safeCall("impact", () => getImpactMetrics(filters)),
+    safeCall("value", () => getValueContribution(filters)),
+    safeCall("mentoring", () => getMentoringMetrics(filters)),
+    safeCall("organisations", () => getOrganisationsEngaged(filters)),
+    safeCall("peopleFeatured", () => getPeopleFeatured(filters)),
+    safeCall("journeyProgression", () => getJourneyStageProgression(filters)),
+    safeCall("communityDiscounts", () => getCommunityDiscounts(filters)),
+    safeCall("connectionStrength", () => getConnectionStrengthDistribution(filters)),
   ]);
 
   const averageChange: Record<string, number> = {};
