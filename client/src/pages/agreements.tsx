@@ -218,7 +218,7 @@ export default function Agreements() {
     toast({
       title: `${type === "membership" ? "Membership" : "MOU"} deleted`,
       description: "Click undo to restore",
-      action: createElement(ToastAction, {
+      action: createElement(ToastAction as any, {
         altText: "Undo delete",
         onClick: () => {
           if (deleteExecuted.current) return;
@@ -230,7 +230,7 @@ export default function Agreements() {
           toast({ title: "Restored", description: `${type === "membership" ? "Membership" : "MOU"} restored` });
         },
         "data-testid": "button-undo-delete",
-      }, "Undo"),
+      }, "Undo") as any,
     });
   }, [deleteMembershipMutation, deleteMouMutation, toast]);
 

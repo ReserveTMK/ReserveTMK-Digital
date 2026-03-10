@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type CreateInteractionRequest, type AnalyzeInteractionRequest } from "@shared/routes";
+import { api } from "@shared/routes";
+import type { CreateInteractionRequest, AnalyzeInteractionRequest } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 
 // GET /api/interactions (optional filter by contactId)

@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -94,6 +95,7 @@ export function CreateContactDialogContent({ onSuccess }: { onSuccess: () => voi
     <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle>Add New Community Member</DialogTitle>
+        <DialogDescription className="sr-only">Add a new community member</DialogDescription>
       </DialogHeader>
       <form onSubmit={form.handleSubmit(onSubmit, (errors) => console.error("Form validation errors:", errors))} className="space-y-4 py-4 max-h-[80vh] overflow-y-auto px-1">
         {Object.keys(form.formState.errors).length > 0 && (
@@ -414,6 +416,7 @@ export function BulkUploadDialog({ open, onOpenChange }: { open: boolean; onOpen
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Bulk Upload Contacts</DialogTitle>
+          <DialogDescription className="sr-only">Upload contacts in bulk from a file</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="text-sm text-muted-foreground space-y-2">
@@ -624,6 +627,7 @@ export function CleanUpDialog({ open, onOpenChange }: { open: boolean; onOpenCha
       <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Clean Up Junk Contacts</DialogTitle>
+          <DialogDescription className="sr-only">Remove junk or invalid contacts</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           {isLoading ? (

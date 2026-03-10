@@ -73,5 +73,13 @@ PostgreSQL is used as the database, integrated with Drizzle ORM. The schema incl
 -   **OpenAI (gpt-audio)**: For voice chat and text-to-speech.
 -   **OpenAI (gpt-image-1)**: For image generation.
 
+### Security & Code Quality
+-   **Auth Cookies**: Environment-aware cookie settings in `server/replit_integrations/auth/replitAuth.ts` — `secure: true` / `sameSite: "none"` in production, permissive in dev.
+-   **IDOR Protection**: Ownership checks (`resource.userId === userId`) on milestones, relationship-stage-history, weekly-hub-debriefs, regular-bookers, and booking survey endpoints.
+-   **Type-Safe Params**: `parseId()`, `parseStr()`, `parseDate()` helpers at top of `server/routes.ts` for Express `req.params`/`req.query`.
+-   **Response Logging**: API logger in `server/index.ts` only logs method, path, status, duration — truncated error message for 4xx/5xx only.
+-   **Dialog Accessibility**: All `DialogContent` components have matching `DialogDescription` (sr-only where no visible description needed).
+-   **TypeScript**: Zero compilation errors across entire codebase.
+
 ### System Dependencies
 -   **ffmpeg**: Essential for server-side audio format conversion.

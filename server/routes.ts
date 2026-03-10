@@ -15,6 +15,21 @@ import crypto from "crypto";
 import { db } from "./db";
 import { eq, and, or, sql, gte, lte } from "drizzle-orm";
 
+function parseId(val: unknown): number {
+  if (Array.isArray(val)) return parseInt(String(val[0]), 10);
+  return parseInt(String(val ?? ""), 10);
+}
+
+function parseStr(val: unknown): string {
+  if (Array.isArray(val)) return String(val[0]);
+  return String(val ?? "");
+}
+
+function parseDate(val: unknown): Date {
+  if (Array.isArray(val)) return new Date(String(val[0]));
+  return new Date(String(val));
+}
+
 const reportCache = new Map<string, { data: any; expiresAt: number }>();
 const inflightReports = new Map<string, Promise<any>>();
 
@@ -240,10 +255,10 @@ export async function registerRoutes(
       const dismissed = await db.select().from(dismissedDuplicates).where(and(eq(dismissedDuplicates.userId, userId), eq(dismissedDuplicates.entityType, "contact")));
       const dismissedSet = new Set(dismissed.map(d => `${Math.min(d.entityId1, d.entityId2)}-${Math.max(d.entityId1, d.entityId2)}`));
 
-      function normalize(s: string | null | undefined): string {
+      const normalize = (s: string | null | undefined): string => {
         return (s || "").toLowerCase().trim().replace(/\s+/g, " ");
-      }
-      function similarity(a: string, b: string): number {
+      };
+      const similarity = (a: string, b: string): number => {
         if (a === b) return 1;
         if (!a || !b) return 0;
         const longer = a.length > b.length ? a : b;
@@ -321,7 +336,7 @@ export async function registerRoutes(
   });
 
   app.get(api.contacts.get.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const contact = await storage.getContact(id);
     
     if (!contact) {
@@ -363,7 +378,7 @@ export async function registerRoutes(
 
   app.patch(api.contacts.update.path, isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getContact(id);
       if (!existing) return res.status(404).json({ message: "Contact not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -399,8 +414,8 @@ export async function registerRoutes(
             startDate: new Date(),
             sessionFrequency: "monthly",
             journeyStage: updated.stage || "kakano",
-            focusAreas: []
-          });
+            focusAreas: "" as any
+          } as any);
         }
       }
 
@@ -417,7 +432,7 @@ export async function registerRoutes(
   });
 
   app.delete(api.contacts.delete.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const existing = await storage.getContact(id);
     if (!existing) return res.status(404).json({ message: "Contact not found" });
     if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -446,8 +461,8 @@ export async function registerRoutes(
               startDate: new Date(),
               sessionFrequency: "monthly",
               journeyStage: contact.stage || "kakano",
-              focusAreas: []
-            });
+              focusAreas: "" as any
+            } as any);
             createdCount++;
           }
         }
@@ -460,7 +475,7 @@ export async function registerRoutes(
 
   app.get("/api/contacts/:id/debriefs", isAuthenticated, async (req, res) => {
     try {
-      const contactId = parseInt(req.params.id);
+      const contactId = parseId(req.params.id);
       const contact = await storage.getContact(contactId);
       if (!contact) return res.status(404).json({ message: "Contact not found" });
       if (contact.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -484,7 +499,7 @@ export async function registerRoutes(
 
   app.get("/api/contacts/:id/activity", isAuthenticated, async (req, res) => {
     try {
-      const contactId = parseInt(req.params.id);
+      const contactId = parseId(req.params.id);
       const contact = await storage.getContact(contactId);
       if (!contact) return res.status(404).json({ message: "Contact not found" });
       const userId = (req.user as any).claims.sub;
@@ -540,7 +555,7 @@ export async function registerRoutes(
             type: "event",
             subType: event.type || "Event",
             date: event.startTime || event.createdAt,
-            title: event.title || "Event",
+            title: (event as any).title || event.name || "Event",
             details: event.location || null,
             id: event.id,
           });
@@ -554,7 +569,7 @@ export async function registerRoutes(
             type: "membership",
             subType: "Membership",
             date: m.startDate || m.createdAt,
-            title: `${m.type || "Membership"} - ${m.status || "active"}`,
+            title: `${(m as any).type || "Membership"} - ${m.status || "active"}`,
             details: null,
             id: m.id,
           });
@@ -679,7 +694,7 @@ export async function registerRoutes(
 
   app.get(api.interactions.list.path, isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
-    const contactId = req.query.contactId ? parseInt(req.query.contactId as string) : undefined;
+    const contactId = req.query.contactId ? parseId(req.query.contactId) : undefined;
     
     if (contactId) {
       const contact = await storage.getContact(contactId);
@@ -846,7 +861,7 @@ export async function registerRoutes(
       profileMap.set(p.id, p.name);
     }
     const allMeetings = [];
-    for (const mid of mentorUserIds) {
+    for (const mid of Array.from(mentorUserIds)) {
       const m = await storage.getMeetings(mid);
       allMeetings.push(...m.map(mtg => ({
         ...mtg,
@@ -870,7 +885,7 @@ export async function registerRoutes(
       });
 
       let allMeetings: any[] = [];
-      for (const mid of mentorUserIds) {
+      for (const mid of Array.from(mentorUserIds)) {
         const m = await storage.getMeetings(mid);
         allMeetings.push(...m);
       }
@@ -910,7 +925,7 @@ export async function registerRoutes(
   });
 
   app.get(api.meetings.get.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const meeting = await storage.getMeeting(id);
     if (!meeting) return res.status(404).json({ message: "Meeting not found" });
     if (meeting.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -1009,7 +1024,7 @@ export async function registerRoutes(
 
   app.patch(api.meetings.update.path, isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const userId = (req.user as any).claims.sub;
       const existing = await storage.getMeeting(id);
       if (!existing) return res.status(404).json({ message: "Meeting not found" });
@@ -1059,7 +1074,7 @@ export async function registerRoutes(
                 calAttendees.push({ email: a.email });
               }
             });
-            await updateCalendarEventAttendees(updated.googleCalendarEventId, calAttendees, mentorProfile?.googleCalendarId || undefined);
+            await updateCalendarEventAttendees(updated.googleCalendarEventId!, calAttendees, mentorProfile?.googleCalendarId || undefined);
           } catch (e) {
             console.warn("Calendar attendee update failed silently:", e);
           }
@@ -1079,7 +1094,7 @@ export async function registerRoutes(
   });
 
   app.delete(api.meetings.delete.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const existing = await storage.getMeeting(id);
     if (!existing) return res.status(404).json({ message: "Meeting not found" });
     if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -1090,7 +1105,7 @@ export async function registerRoutes(
 
   app.post('/api/meetings/:id/debrief', isAuthenticated, async (req, res) => {
     try {
-      const meetingId = parseInt(req.params.id);
+      const meetingId = parseId(req.params.id);
       const userId = (req.user as any).claims.sub;
       const meeting = await storage.getMeeting(meetingId);
       if (!meeting) return res.status(404).json({ message: "Meeting not found" });
@@ -1114,7 +1129,6 @@ export async function registerRoutes(
       let interaction;
       try {
         interaction = await storage.createInteraction({
-          userId,
           contactId: meeting.contactId,
           date: new Date(),
           type: type || "Mentoring Debrief",
@@ -1122,7 +1136,7 @@ export async function registerRoutes(
           summary: summary || null,
           analysis: analysis || null,
           keywords: analysis?.keyInsights || [],
-        });
+        } as any);
       } catch (createErr: any) {
         console.error("Failed to create interaction for debrief:", createErr);
         return res.status(500).json({ message: "Failed to create debrief interaction" });
@@ -1169,7 +1183,7 @@ export async function registerRoutes(
       });
 
       let allMeetings: any[] = [];
-      for (const mid of mentorUserIds) {
+      for (const mid of Array.from(mentorUserIds)) {
         const m = await storage.getMeetings(mid);
         allMeetings.push(...m.filter(mt => mt.type === "mentoring" || !mt.type));
       }
@@ -1207,7 +1221,7 @@ export async function registerRoutes(
 
   app.post('/api/mentoring-applications/:id/accept', isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const userId = (req.user as any).claims.sub;
       const application = await storage.getMentoringApplication(id);
       if (!application) return res.status(404).json({ message: "Application not found" });
@@ -1291,7 +1305,7 @@ export async function registerRoutes(
   });
 
   app.patch('/api/mentor-profiles/:id', isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const userId = (req.user as any).claims.sub;
     const existing = await storage.getMentorProfile(id);
     if (!existing) return res.status(404).json({ message: "Mentor not found" });
@@ -1307,7 +1321,7 @@ export async function registerRoutes(
   });
 
   app.delete('/api/mentor-profiles/:id', isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const userId = (req.user as any).claims.sub;
     const existing = await storage.getMentorProfile(id);
     if (!existing) return res.status(404).json({ message: "Mentor not found" });
@@ -1318,8 +1332,8 @@ export async function registerRoutes(
 
   app.get('/api/mentor-availability', isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
-    const forMentor = req.query.mentorUserId as string | undefined;
-    const category = req.query.category as string | undefined;
+    const forMentor = parseStr(req.query.mentorUserId) || undefined;
+    const category = parseStr(req.query.category) || undefined;
     if (forMentor) {
       const allowed = await isMentorOwner(userId, forMentor);
       if (!allowed) return res.status(403).json({ message: "Forbidden" });
@@ -1342,7 +1356,7 @@ export async function registerRoutes(
   });
 
   app.patch('/api/mentor-availability/:id', isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const userId = (req.user as any).claims.sub;
     const existing = await storage.getMentorAvailabilityById(id);
     if (!existing) return res.status(404).json({ message: "Availability slot not found" });
@@ -1353,7 +1367,7 @@ export async function registerRoutes(
   });
 
   app.delete('/api/mentor-availability/:id', isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const userId = (req.user as any).claims.sub;
     const existing = await storage.getMentorAvailabilityById(id);
     if (!existing) return res.status(404).json({ message: "Availability slot not found" });
@@ -1368,7 +1382,7 @@ export async function registerRoutes(
   app.get('/api/meeting-types', isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const category = req.query.category as string | undefined;
+      const category = parseStr(req.query.category) || undefined;
       let types = await storage.getMeetingTypes(userId);
       if (types.length === 0) {
         const defaults = [
@@ -1406,7 +1420,7 @@ export async function registerRoutes(
 
   app.patch('/api/meeting-types/:id', isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const userId = (req.user as any).claims.sub;
       const existing = await storage.getMeetingType(id);
       if (!existing) return res.status(404).json({ message: "Meeting type not found" });
@@ -1420,7 +1434,7 @@ export async function registerRoutes(
 
   app.delete('/api/meeting-types/:id', isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const userId = (req.user as any).claims.sub;
       const existing = await storage.getMeetingType(id);
       if (!existing) return res.status(404).json({ message: "Meeting type not found" });
@@ -1437,7 +1451,7 @@ export async function registerRoutes(
   app.get('/api/public/mentoring/:userId/meeting-types', async (req, res) => {
     try {
       const { userId } = req.params;
-      const category = req.query.category as string | undefined;
+      const category = parseStr(req.query.category) || undefined;
       const resolved = await resolveMentorUserId(userId);
       const ownerUserId = resolved.ownerUserId || resolved.availabilityUserId;
       const types = await storage.getMeetingTypes(ownerUserId);
@@ -1463,7 +1477,7 @@ export async function registerRoutes(
   app.get('/api/public/mentoring/:userId/availability', async (req, res) => {
     try {
       const { userId } = req.params;
-      const category = req.query.category as string | undefined;
+      const category = parseStr(req.query.category) || undefined;
       const slots = await storage.getMentorAvailability(userId);
       let activeSlots = slots.filter(s => s.isActive);
       if (category) {
@@ -1742,8 +1756,8 @@ export async function registerRoutes(
   app.get('/api/public/mentoring/:userId/check-mentee', async (req, res) => {
     try {
       const { userId } = req.params;
-      const email = req.query.email as string;
-      const name = req.query.name as string;
+      const email = parseStr(req.query.email);
+      const name = parseStr(req.query.name);
       const resolved = await resolveMentorUserId(userId);
       const ownerUserId = resolved.ownerUserId || resolved.availabilityUserId;
       const allContacts = await storage.getContacts(ownerUserId);
@@ -1859,7 +1873,7 @@ export async function registerRoutes(
 
       if (existingContact) {
         contactId = existingContact.id;
-        await storage.updateContact(existingContact.id, { updatedAt: new Date() });
+        await storage.updateContact(existingContact.id, { updatedAt: new Date() } as any);
       } else {
         const newContact = await storage.createContact({
           userId: programme.userId,
@@ -1965,7 +1979,7 @@ export async function registerRoutes(
   app.post("/api/events/:id/skip-debrief", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const eventId = parseInt(req.params.id);
+      const eventId = parseId(req.params.id);
       const { reason } = req.body;
 
       const event = await storage.getEvent(eventId);
@@ -1990,7 +2004,7 @@ export async function registerRoutes(
 
   app.delete("/api/events/:id/skip-debrief", isAuthenticated, async (req, res) => {
     try {
-      const eventId = parseInt(req.params.id);
+      const eventId = parseId(req.params.id);
       const event = await storage.getEvent(eventId);
       if (!event) return res.status(404).json({ message: "Event not found" });
       if (event.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -2041,7 +2055,7 @@ export async function registerRoutes(
   });
 
   app.get(api.events.get.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const event = await storage.getEvent(id);
     if (!event) return res.status(404).json({ message: "Event not found" });
     if (event.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -2072,7 +2086,7 @@ export async function registerRoutes(
 
   app.patch(api.events.update.path, isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getEvent(id);
       if (!existing) return res.status(404).json({ message: "Event not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -2096,7 +2110,7 @@ export async function registerRoutes(
   });
 
   app.delete(api.events.delete.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const userId = (req.user as any).claims.sub;
     const existing = await storage.getEvent(id);
     if (!existing) return res.status(404).json({ message: "Event not found" });
@@ -2110,7 +2124,7 @@ export async function registerRoutes(
       userId,
       action: "delete",
       entityType: "event",
-      entityId: String(id),
+      entityId: id as any,
       changes: { reason, deletedEvent: existing.name },
     });
 
@@ -2123,7 +2137,7 @@ export async function registerRoutes(
   app.post("/api/events/:id/link-programme", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const event = await storage.getEvent(id);
       if (!event) return res.status(404).json({ message: "Event not found" });
       if (event.userId !== userId) return res.status(403).json({ message: "Forbidden" });
@@ -2149,7 +2163,7 @@ export async function registerRoutes(
   app.post("/api/events/:id/convert-to-programme", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const event = await storage.getEvent(id);
       if (!event) return res.status(404).json({ message: "Event not found" });
       if (event.userId !== userId) return res.status(403).json({ message: "Forbidden" });
@@ -2187,7 +2201,7 @@ export async function registerRoutes(
   app.post("/api/events/:id/mark-personal", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const event = await storage.getEvent(id);
       if (!event) return res.status(404).json({ message: "Event not found" });
       if (event.userId !== userId) return res.status(403).json({ message: "Forbidden" });
@@ -2208,7 +2222,7 @@ export async function registerRoutes(
   app.post("/api/events/:id/unlink", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const event = await storage.getEvent(id);
       if (!event) return res.status(404).json({ message: "Event not found" });
       if (event.userId !== userId) return res.status(403).json({ message: "Forbidden" });
@@ -2230,7 +2244,7 @@ export async function registerRoutes(
 
   app.get(api.eventAttendance.list.path, isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
-    const eventId = parseInt(req.params.eventId);
+    const eventId = parseId(req.params.eventId);
     const event = await storage.getEvent(eventId);
     if (!event) return res.status(404).json({ message: "Event not found" });
     if (event.userId !== userId) return res.status(403).json({ message: "Forbidden" });
@@ -2263,7 +2277,7 @@ export async function registerRoutes(
   });
 
   app.delete(api.eventAttendance.remove.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     await storage.removeEventAttendance(id);
     res.status(204).send();
   });
@@ -2277,7 +2291,7 @@ export async function registerRoutes(
   });
 
   app.get(api.impactLogs.get.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const log = await storage.getImpactLog(id);
     if (!log) return res.status(404).json({ message: "Impact log not found" });
     if (log.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -2306,7 +2320,7 @@ export async function registerRoutes(
 
   app.patch(api.impactLogs.update.path, isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getImpactLog(id);
       if (!existing) return res.status(404).json({ message: "Impact log not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -2337,7 +2351,7 @@ export async function registerRoutes(
   });
 
   app.delete(api.impactLogs.delete.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const existing = await storage.getImpactLog(id);
     if (!existing) return res.status(404).json({ message: "Impact log not found" });
     if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -2347,7 +2361,7 @@ export async function registerRoutes(
 
   // Impact Log Contacts
   app.get(api.impactLogs.contacts.list.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const log = await storage.getImpactLog(id);
     if (!log) return res.status(404).json({ message: "Impact log not found" });
     if (log.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -2357,7 +2371,7 @@ export async function registerRoutes(
 
   app.post(api.impactLogs.contacts.add.path, isAuthenticated, async (req, res) => {
     try {
-      const impactLogId = parseInt(req.params.id);
+      const impactLogId = parseId(req.params.id);
       const log = await storage.getImpactLog(impactLogId);
       if (!log) return res.status(404).json({ message: "Impact log not found" });
       if (log.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -2383,14 +2397,14 @@ export async function registerRoutes(
   });
 
   app.delete(api.impactLogs.contacts.remove.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     await storage.removeImpactLogContact(id);
     res.status(204).send();
   });
 
   // Impact Log Tags
   app.get(api.impactLogs.tags.list.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const log = await storage.getImpactLog(id);
     if (!log) return res.status(404).json({ message: "Impact log not found" });
     if (log.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -2400,7 +2414,7 @@ export async function registerRoutes(
 
   app.post(api.impactLogs.tags.add.path, isAuthenticated, async (req, res) => {
     try {
-      const impactLogId = parseInt(req.params.id);
+      const impactLogId = parseId(req.params.id);
       const log = await storage.getImpactLog(impactLogId);
       if (!log) return res.status(404).json({ message: "Impact log not found" });
       if (log.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -2422,7 +2436,7 @@ export async function registerRoutes(
   });
 
   app.delete(api.impactLogs.tags.remove.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     await storage.removeImpactTag(id);
     res.status(204).send();
   });
@@ -2457,7 +2471,7 @@ export async function registerRoutes(
 
   app.patch(api.taxonomy.update.path, isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const input = api.taxonomy.update.input.parse(req.body);
       const updated = await storage.updateTaxonomyItem(id, input);
       res.json(updated);
@@ -2473,7 +2487,7 @@ export async function registerRoutes(
   });
 
   app.delete(api.taxonomy.delete.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     await storage.deleteTaxonomyItem(id);
     res.status(204).send();
   });
@@ -2507,7 +2521,7 @@ export async function registerRoutes(
   });
 
   app.delete(api.keywords.delete.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     await storage.deleteKeyword(id);
     res.status(204).send();
   });
@@ -2516,7 +2530,7 @@ export async function registerRoutes(
 
   app.get(api.actionItems.list.path, isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
-    const contactId = req.query.contactId ? parseInt(req.query.contactId as string) : undefined;
+    const contactId = req.query.contactId ? parseId(req.query.contactId) : undefined;
     if (contactId) {
       const items = await storage.getContactActionItems(contactId);
       return res.json(items);
@@ -2553,7 +2567,7 @@ export async function registerRoutes(
 
   app.patch(api.actionItems.update.path, isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const input = api.actionItems.update.input.parse(req.body);
       const updated = await storage.updateActionItem(id, input);
       res.json(updated);
@@ -2569,7 +2583,7 @@ export async function registerRoutes(
   });
 
   app.delete(api.actionItems.delete.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     await storage.deleteActionItem(id);
     res.status(204).send();
   });
@@ -2577,7 +2591,7 @@ export async function registerRoutes(
   // === Consent API ===
 
   app.get(api.consent.list.path, isAuthenticated, async (req, res) => {
-    const contactId = parseInt(req.params.id);
+    const contactId = parseId(req.params.id);
     const contact = await storage.getContact(contactId);
     if (!contact) return res.status(404).json({ message: "Contact not found" });
     if (contact.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -2588,7 +2602,7 @@ export async function registerRoutes(
   app.post(api.consent.create.path, isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const contactId = parseInt(req.params.id);
+      const contactId = parseId(req.params.id);
       const contact = await storage.getContact(contactId);
       if (!contact) return res.status(404).json({ message: "Contact not found" });
       if (contact.userId !== userId) return res.status(403).json({ message: "Forbidden" });
@@ -2829,7 +2843,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.get("/api/impact-logs/:id/tags", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const logId = parseInt(req.params.id);
+      const logId = parseId(req.params.id);
       if (isNaN(logId)) return res.status(400).json({ message: "Invalid log ID" });
       const log = await storage.getImpactLog(logId);
       if (!log || log.userId !== userId) return res.status(404).json({ message: "Not found" });
@@ -2844,7 +2858,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.post("/api/impact-logs/:id/tags", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const logId = parseInt(req.params.id);
+      const logId = parseId(req.params.id);
       if (isNaN(logId)) return res.status(400).json({ message: "Invalid log ID" });
       const log = await storage.getImpactLog(logId);
       if (!log || log.userId !== userId) return res.status(404).json({ message: "Not found" });
@@ -2871,7 +2885,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.post("/api/impact-logs/:id/contacts", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const logId = parseInt(req.params.id);
+      const logId = parseId(req.params.id);
       if (isNaN(logId)) return res.status(400).json({ message: "Invalid log ID" });
       const log = await storage.getImpactLog(logId);
       if (!log || log.userId !== userId) return res.status(404).json({ message: "Not found" });
@@ -2892,7 +2906,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.delete("/api/impact-tags/:tagId", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const tagId = parseInt(req.params.tagId);
+      const tagId = parseId(req.params.tagId);
       if (isNaN(tagId)) return res.status(400).json({ message: "Invalid tag ID" });
 
       const [tag] = await db.select().from(impactTags).where(eq(impactTags.id, tagId));
@@ -2941,7 +2955,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.post("/api/impact-logs/:id/audio", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const logId = parseInt(req.params.id);
+      const logId = parseId(req.params.id);
       const log = await storage.getImpactLog(logId);
       if (!log) return res.status(404).json({ message: "Impact log not found" });
       if (log.userId !== userId) return res.status(403).json({ message: "Not authorized" });
@@ -2987,8 +3001,8 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   // === Audit Logs API ===
 
   app.get(api.auditLogs.list.path, isAuthenticated, async (req, res) => {
-    const entityType = req.query.entityType as string;
-    const entityId = parseInt(req.query.entityId as string);
+    const entityType = parseStr(req.query.entityType);
+    const entityId = parseId(req.query.entityId);
     if (!entityType || !entityId) {
       return res.status(400).json({ message: "entityType and entityId query params required" });
     }
@@ -3004,8 +3018,8 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const { getUncachableGoogleCalendarClient } = await import("./replit_integrations/google-calendar/client");
       const calendar = await getUncachableGoogleCalendarClient();
 
-      const timeMin = (req.query.timeMin as string) || new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-      const timeMax = (req.query.timeMax as string) || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const timeMin = (parseStr(req.query.timeMin)) || new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+      const timeMax = (parseStr(req.query.timeMax)) || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
       const additionalCalendars = await storage.getCalendarSettings(userId);
       const calendarIds = ["primary", ...additionalCalendars.filter(c => c.active).map(c => c.calendarId)];
@@ -3220,7 +3234,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   });
 
   app.delete("/api/dismissed-calendar-events/:id", isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     await storage.restoreCalendarEvent(id);
     res.json({ success: true });
   });
@@ -3243,7 +3257,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   });
 
   app.delete("/api/calendar-settings/:id", isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     await storage.deleteCalendarSetting(id);
     res.json({ success: true });
   });
@@ -3257,7 +3271,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   });
 
   app.get(api.programmes.get.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const programme = await storage.getProgramme(id);
     if (!programme) return res.status(404).json({ message: "Programme not found" });
     if (programme.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -3300,7 +3314,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
   app.patch(api.programmes.update.path, isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getProgramme(id);
       if (!existing) return res.status(404).json({ message: "Programme not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -3341,7 +3355,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   });
 
   app.delete(api.programmes.delete.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const existing = await storage.getProgramme(id);
     if (!existing) return res.status(404).json({ message: "Programme not found" });
     if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -3350,7 +3364,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   });
 
   app.get(api.programmes.events.list.path, isAuthenticated, async (req, res) => {
-    const programmeId = parseInt(req.params.id);
+    const programmeId = parseId(req.params.id);
     const programme = await storage.getProgramme(programmeId);
     if (!programme) return res.status(404).json({ message: "Programme not found" });
     if (programme.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -3360,7 +3374,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
   app.post(api.programmes.events.add.path, isAuthenticated, async (req, res) => {
     try {
-      const programmeId = parseInt(req.params.id);
+      const programmeId = parseId(req.params.id);
       const programme = await storage.getProgramme(programmeId);
       if (!programme) return res.status(404).json({ message: "Programme not found" });
       if (programme.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -3376,7 +3390,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   });
 
   app.delete(api.programmes.events.remove.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const userId = (req.user as any).claims.sub;
     const allProgrammes = await storage.getProgrammes(userId);
     const programmeIds = new Set(allProgrammes.map(p => p.id));
@@ -3397,7 +3411,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.get('/api/programmes/:id/registrations', isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const programmeId = parseInt(req.params.id);
+      const programmeId = parseId(req.params.id);
       const programme = await storage.getProgramme(programmeId);
       if (!programme || programme.userId !== userId) {
         return res.status(404).json({ message: "Programme not found" });
@@ -3413,8 +3427,8 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.patch('/api/programmes/:id/registrations/:regId', isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const programmeId = parseInt(req.params.id);
-      const regId = parseInt(req.params.regId);
+      const programmeId = parseId(req.params.id);
+      const regId = parseId(req.params.regId);
       const programme = await storage.getProgramme(programmeId);
       if (!programme || programme.userId !== userId) {
         return res.status(404).json({ message: "Programme not found" });
@@ -3438,7 +3452,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.post('/api/programmes/:id/registrations/bulk-attendance', isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const programmeId = parseInt(req.params.id);
+      const programmeId = parseId(req.params.id);
       const programme = await storage.getProgramme(programmeId);
       if (!programme || programme.userId !== userId) {
         return res.status(404).json({ message: "Programme not found" });
@@ -3464,8 +3478,8 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.delete('/api/programmes/:id/registrations/:regId', isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const programmeId = parseInt(req.params.id);
-      const regId = parseInt(req.params.regId);
+      const programmeId = parseId(req.params.id);
+      const regId = parseId(req.params.regId);
       const programme = await storage.getProgramme(programmeId);
       if (!programme || programme.userId !== userId) {
         return res.status(404).json({ message: "Programme not found" });
@@ -3484,7 +3498,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.get('/api/programmes/:id/registrations/export', isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const programmeId = parseInt(req.params.id);
+      const programmeId = parseId(req.params.id);
       const programme = await storage.getProgramme(programmeId);
       if (!programme || programme.userId !== userId) {
         return res.status(404).json({ message: "Programme not found" });
@@ -3509,7 +3523,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.get('/api/contacts/:id/programme-registrations', isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const contactId = parseInt(req.params.id);
+      const contactId = parseId(req.params.id);
       const contact = await storage.getContact(contactId);
       if (!contact || contact.userId !== userId) {
         return res.status(404).json({ message: "Contact not found" });
@@ -3534,7 +3548,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   });
 
   app.get(api.memberships.get.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const membership = await storage.getMembership(id);
     if (!membership) return res.status(404).json({ message: "Membership not found" });
     if (membership.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -3558,7 +3572,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
   app.patch(api.memberships.update.path, isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getMembership(id);
       if (!existing) return res.status(404).json({ message: "Membership not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -3574,7 +3588,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   });
 
   app.delete(api.memberships.delete.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const existing = await storage.getMembership(id);
     if (!existing) return res.status(404).json({ message: "Membership not found" });
     if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -3591,7 +3605,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   });
 
   app.get(api.mous.get.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const mou = await storage.getMou(id);
     if (!mou) return res.status(404).json({ message: "MOU not found" });
     if (mou.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -3615,7 +3629,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
   app.patch(api.mous.update.path, isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getMou(id);
       if (!existing) return res.status(404).json({ message: "MOU not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -3631,7 +3645,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   });
 
   app.delete(api.mous.delete.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const existing = await storage.getMou(id);
     if (!existing) return res.status(404).json({ message: "MOU not found" });
     if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -3648,7 +3662,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   });
 
   app.get(api.venues.get.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const venue = await storage.getVenue(id);
     if (!venue) return res.status(404).json({ message: "Venue not found" });
     if (venue.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -3672,7 +3686,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
   app.patch(api.venues.update.path, isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getVenue(id);
       if (!existing) return res.status(404).json({ message: "Venue not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -3688,7 +3702,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   });
 
   app.delete(api.venues.delete.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const existing = await storage.getVenue(id);
     if (!existing) return res.status(404).json({ message: "Venue not found" });
     if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -3705,7 +3719,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   });
 
   app.get(api.bookings.get.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const booking = await storage.getBooking(id);
     if (!booking) return res.status(404).json({ message: "Booking not found" });
     if (booking.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -3714,7 +3728,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
   app.get("/api/bookings/:id/allowance", isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const booking = await storage.getBooking(id);
       if (!booking) return res.status(404).json({ message: "Booking not found" });
       if (booking.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -3779,7 +3793,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         conflicts.push({
           type: "booking",
           id: b.id,
-          title: b.title,
+          title: b.title || "",
           date: b.startDate ? new Date(b.startDate).toISOString().slice(0, 10) : "",
           time: b.startTime && b.endTime ? `${b.startTime} - ${b.endTime}` : "All day",
         });
@@ -3896,7 +3910,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
   app.patch(api.bookings.update.path, isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getBooking(id);
       if (!existing) return res.status(404).json({ message: "Booking not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -3938,7 +3952,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   });
 
   app.delete(api.bookings.delete.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const existing = await storage.getBooking(id);
     if (!existing) return res.status(404).json({ message: "Booking not found" });
     if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -3980,7 +3994,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.patch("/api/venue-instructions/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getVenueInstructions(userId);
       if (!existing.find(i => i.id === id)) return res.status(403).json({ message: "Forbidden" });
       const instruction = await storage.updateVenueInstruction(id, req.body);
@@ -3992,7 +4006,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
   app.delete("/api/venue-instructions/:id", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const existing = await storage.getVenueInstructions(userId);
     if (!existing.find(i => i.id === id)) return res.status(403).json({ message: "Forbidden" });
     await storage.deleteVenueInstruction(id);
@@ -4105,13 +4119,16 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   });
 
   app.get("/api/regular-bookers/:id", isAuthenticated, async (req, res) => {
-    const booker = await storage.getRegularBooker(parseInt(req.params.id));
-    if (!booker) return res.status(404).json({ message: "Regular booker not found" });
+    const userId = (req.user as any).claims.sub;
+    const booker = await storage.getRegularBooker(parseId(req.params.id));
+    if (!booker || booker.userId !== userId) return res.status(404).json({ message: "Regular booker not found" });
     res.json(booker);
   });
 
   app.get("/api/regular-bookers/by-contact/:contactId", isAuthenticated, async (req, res) => {
-    const booker = await storage.getRegularBookerByContactId(parseInt(req.params.contactId));
+    const userId = (req.user as any).claims.sub;
+    const booker = await storage.getRegularBookerByContactId(parseId(req.params.contactId));
+    if (booker && booker.userId !== userId) return res.status(404).json({ message: "Not found" });
     res.json(booker || null);
   });
 
@@ -4145,7 +4162,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.patch("/api/regular-bookers/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getRegularBooker(id);
       if (!existing || existing.userId !== userId) return res.status(403).json({ message: "Forbidden" });
       const { userId: _, ...updates } = req.body;
@@ -4158,7 +4175,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
   app.delete("/api/regular-bookers/:id", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const existing = await storage.getRegularBooker(id);
     if (!existing || existing.userId !== userId) return res.status(403).json({ message: "Forbidden" });
     await storage.deleteRegularBooker(id);
@@ -4184,7 +4201,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.get("/api/regular-bookers/:id/links", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const booker = await storage.getRegularBooker(id);
       if (!booker || booker.userId !== userId) return res.status(403).json({ message: "Forbidden" });
       const links = await storage.getBookerLinks(id);
@@ -4203,7 +4220,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.post("/api/regular-bookers/:id/links", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const booker = await storage.getRegularBooker(id);
       if (!booker || booker.userId !== userId) return res.status(403).json({ message: "Forbidden" });
 
@@ -4234,7 +4251,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.delete("/api/booker-links/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const links = await db.select().from(bookerLinks).where(eq(bookerLinks.id, id));
       if (!links.length) return res.status(404).json({ message: "Link not found" });
       const booker = await storage.getRegularBooker(links[0].regularBookerId);
@@ -4260,7 +4277,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.post("/api/bookings/:id/accept", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const bookingId = parseInt(req.params.id);
+      const bookingId = parseId(req.params.id);
       const booking = await storage.getBooking(bookingId);
       if (!booking) return res.status(404).json({ message: "Booking not found" });
       if (booking.userId !== userId) return res.status(403).json({ message: "Forbidden" });
@@ -4344,7 +4361,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.post("/api/bookings/:id/decline", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const bookingId = parseInt(req.params.id);
+      const bookingId = parseId(req.params.id);
       const { reason } = req.body;
       const booking = await storage.getBooking(bookingId);
       if (!booking) return res.status(404).json({ message: "Booking not found" });
@@ -4364,7 +4381,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.post("/api/bookings/:id/complete", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const bookingId = parseInt(req.params.id);
+      const bookingId = parseId(req.params.id);
       const booking = await storage.getBooking(bookingId);
       if (!booking) return res.status(404).json({ message: "Booking not found" });
       if (booking.userId !== userId) return res.status(403).json({ message: "Forbidden" });
@@ -4443,7 +4460,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.post("/api/bookings/:id/mark-served", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const bookingId = parseInt(req.params.id);
+      const bookingId = parseId(req.params.id);
       const booking = await storage.getBooking(bookingId);
       if (!booking) return res.status(404).json({ message: "Booking not found" });
       if (booking.userId !== userId) return res.status(403).json({ message: "Forbidden" });
@@ -4457,7 +4474,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.patch("/api/bookings/:id/attendance", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const bookingId = parseInt(req.params.id);
+      const bookingId = parseId(req.params.id);
       const booking = await storage.getBooking(bookingId);
       if (!booking) return res.status(404).json({ message: "Booking not found" });
       if (booking.userId !== userId) return res.status(403).json({ message: "Forbidden" });
@@ -4478,7 +4495,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.post("/api/bookings/:id/resend-confirmation", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const bookingId = parseInt(req.params.id);
+      const bookingId = parseId(req.params.id);
       const booking = await storage.getBooking(bookingId);
       if (!booking) return res.status(404).json({ message: "Booking not found" });
       if (booking.userId !== userId) return res.status(403).json({ message: "Forbidden" });
@@ -4501,14 +4518,17 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   });
 
   app.get("/api/bookings/:id/survey", isAuthenticated, async (req, res) => {
-    const survey = await storage.getSurveyByBookingId(parseInt(req.params.id));
+    const userId = (req.user as any).claims.sub;
+    const booking = await storage.getBooking(parseId(req.params.id));
+    if (!booking || booking.userId !== userId) return res.status(404).json({ message: "Not found" });
+    const survey = await storage.getSurveyByBookingId(booking.id);
     res.json(survey || null);
   });
 
   app.post("/api/bookings/:id/send-survey", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const bookingId = parseInt(req.params.id);
+      const bookingId = parseId(req.params.id);
       const booking = await storage.getBooking(bookingId);
       if (!booking) return res.status(404).json({ message: "Booking not found" });
       if (booking.userId !== userId) return res.status(403).json({ message: "Forbidden" });
@@ -4624,10 +4644,10 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const dismissed = await db.select().from(dismissedDuplicates).where(and(eq(dismissedDuplicates.userId, userId), eq(dismissedDuplicates.entityType, "group")));
       const dismissedSet = new Set(dismissed.map(d => `${Math.min(d.entityId1, d.entityId2)}-${Math.max(d.entityId1, d.entityId2)}`));
 
-      function normalize(s: string | null | undefined): string {
+      const normalize = (s: string | null | undefined): string => {
         return (s || "").toLowerCase().trim().replace(/\s+/g, " ");
-      }
-      function similarity(a: string, b: string): number {
+      };
+      const similarity = (a: string, b: string): number => {
         if (a === b) return 1;
         if (!a || !b) return 0;
         const longer = a.length > b.length ? a : b;
@@ -4703,7 +4723,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   });
 
   app.get(api.groups.get.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid group ID" });
     const group = await storage.getGroup(id);
     if (!group) return res.status(404).json({ message: "Group not found" });
@@ -4730,7 +4750,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
   app.patch(api.groups.update.path, isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getGroup(id);
       if (!existing) return res.status(404).json({ message: "Group not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -4743,7 +4763,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   });
 
   app.delete(api.groups.delete.path, isAuthenticated, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseId(req.params.id);
     const existing = await storage.getGroup(id);
     if (!existing) return res.status(404).json({ message: "Group not found" });
     if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -4753,14 +4773,14 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
   // Group Members
   app.get(api.groups.members.list.path, isAuthenticated, async (req, res) => {
-    const groupId = parseInt(req.params.id);
+    const groupId = parseId(req.params.id);
     const members = await storage.getGroupMembers(groupId);
     res.json(members);
   });
 
   app.post(api.groups.members.add.path, isAuthenticated, async (req, res) => {
     try {
-      const groupId = parseInt(req.params.id);
+      const groupId = parseId(req.params.id);
       const body = { ...req.body, groupId };
       const input = api.groups.members.add.input.parse(body);
       const member = await storage.addGroupMember(input);
@@ -4771,7 +4791,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   });
 
   app.delete(api.groups.members.remove.path, isAuthenticated, async (req, res) => {
-    const memberId = parseInt(req.params.memberId);
+    const memberId = parseId(req.params.memberId);
     await storage.removeGroupMember(memberId);
     res.status(204).send();
   });
@@ -4779,7 +4799,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.get("/api/groups/:id/associations", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const groupId = parseInt(req.params.id);
+      const groupId = parseId(req.params.id);
       const group = await storage.getGroup(groupId);
       if (!group || group.userId !== userId) return res.status(404).json({ message: "Group not found" });
       const associations = await db.select().from(groupAssociations).where(
@@ -4794,7 +4814,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.post("/api/groups/:id/associations", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const groupId = parseInt(req.params.id);
+      const groupId = parseId(req.params.id);
       const { associatedGroupId } = req.body;
       if (!associatedGroupId || groupId === associatedGroupId) {
         return res.status(400).json({ message: "Invalid association" });
@@ -4822,10 +4842,10 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.delete("/api/groups/:id/associations/:associationId", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const groupId = parseInt(req.params.id);
+      const groupId = parseId(req.params.id);
       const group = await storage.getGroup(groupId);
       if (!group || group.userId !== userId) return res.status(403).json({ message: "Forbidden" });
-      const associationId = parseInt(req.params.associationId);
+      const associationId = parseId(req.params.associationId);
       const [assoc] = await db.select().from(groupAssociations).where(eq(groupAssociations.id, associationId));
       if (!assoc || (assoc.groupId !== groupId && assoc.associatedGroupId !== groupId)) {
         return res.status(404).json({ message: "Association not found" });
@@ -4858,7 +4878,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
   // Contact's group memberships
   app.get("/api/contacts/:id/groups", isAuthenticated, async (req, res) => {
-    const contactId = parseInt(req.params.id);
+    const contactId = parseId(req.params.id);
     const memberships = await storage.getContactGroups(contactId);
     res.json(memberships);
   });
@@ -4866,7 +4886,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   // === Group Taxonomy Links ===
   app.get("/api/groups/:id/taxonomy-links", isAuthenticated, async (req, res) => {
     try {
-      const group = await storage.getGroup(parseInt(req.params.id));
+      const group = await storage.getGroup(parseId(req.params.id));
       if (!group) return res.status(404).json({ message: "Group not found" });
       if (group.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
       const links = await storage.getGroupTaxonomyLinks(group.id);
@@ -4878,7 +4898,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
   app.post("/api/groups/:id/taxonomy-links", isAuthenticated, async (req, res) => {
     try {
-      const groupId = parseInt(req.params.id);
+      const groupId = parseId(req.params.id);
       const group = await storage.getGroup(groupId);
       if (!group) return res.status(404).json({ message: "Group not found" });
       const userId = (req.user as any).claims.sub;
@@ -4905,7 +4925,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   // === Group Data Enrichment ===
   app.post("/api/groups/:id/enrich", isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const group = await storage.getGroup(id);
       if (!group) return res.status(404).json({ message: "Group not found" });
       if (group.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -5337,7 +5357,7 @@ Important:
   app.get("/api/reports/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const report = await storage.getReport(parseInt(req.params.id));
+      const report = await storage.getReport(parseId(req.params.id));
       if (!report || report.userId !== userId) return res.status(404).json({ message: "Report not found" });
       res.json(report);
     } catch (err: any) {
@@ -5376,7 +5396,7 @@ Important:
   app.patch("/api/reports/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const report = await storage.getReport(id);
       if (!report || report.userId !== userId) return res.status(404).json({ message: "Report not found" });
 
@@ -5391,7 +5411,7 @@ Important:
   app.delete("/api/reports/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const report = await storage.getReport(id);
       if (!report || report.userId !== userId) return res.status(404).json({ message: "Report not found" });
       await storage.deleteReport(id);
@@ -5437,7 +5457,7 @@ Important:
   app.get("/api/legacy-reports/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const report = await storage.getLegacyReport(id);
       if (!report || report.userId !== userId) return res.status(404).json({ message: "Not found" });
       const snapshot = await storage.getLegacyReportSnapshot(id);
@@ -5519,7 +5539,7 @@ Important:
           const { PDFParse } = await import("pdf-parse");
           const pdfBuffer = Buffer.from(pdfData, "base64");
           const parser = new PDFParse({ data: pdfBuffer });
-          await parser.load();
+          await (parser as any).load();
           const pdfResult = await parser.getText();
           const pdfText = pdfResult.text || "";
 
@@ -5654,7 +5674,7 @@ Important:
   app.patch("/api/legacy-reports/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getLegacyReport(id);
       if (!existing || String(existing.userId) !== String(userId)) return res.status(404).json({ message: "Not found" });
 
@@ -5892,7 +5912,7 @@ Important:
   app.get("/api/legacy-reports/:id/taxonomy-suggestions", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const reportId = parseInt(req.params.id);
+      const reportId = parseId(req.params.id);
       const report = await storage.getLegacyReport(reportId);
       if (!report) return res.status(404).json({ message: "Legacy report not found" });
       if (report.userId !== userId) return res.status(403).json({ message: "Forbidden" });
@@ -5906,7 +5926,7 @@ Important:
           const { PDFParse: PdfParser } = await import("pdf-parse");
           const buffer = Buffer.from(report.pdfData, "base64");
           const parser = new PdfParser({ data: buffer });
-          await parser.load();
+          await (parser as any).load();
           const pdfResult = await parser.getText();
           pdfText = pdfResult.text || "";
         } catch (e) {
@@ -5967,7 +5987,7 @@ Return a JSON object with this exact structure:
   app.delete("/api/legacy-reports/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getLegacyReport(id);
       if (!existing || String(existing.userId) !== String(userId)) return res.status(404).json({ message: "Not found" });
       await storage.deleteLegacyReport(id);
@@ -6063,7 +6083,7 @@ Return a JSON object with this exact structure:
 
         const liveBookings = await storage.getBookings(userId);
         const liveBookingsInRange = liveBookings.filter(b => {
-          const d = new Date(b.startDate);
+          const d = new Date(b.startDate as any);
           return d >= currentStart && d <= currentEnd;
         });
 
@@ -6091,7 +6111,7 @@ Return a JSON object with this exact structure:
 
       quarterlyData.sort((a, b) => a.periodStart.getTime() - b.periodStart.getTime());
 
-      function computeMetricBenchmarks(values: number[], labels: string[]) {
+      const computeMetricBenchmarks = (values: number[], labels: string[]) => {
         const nonZero = values.filter(v => v > 0);
         const avg = nonZero.length > 0 ? Math.round(nonZero.reduce((s, v) => s + v, 0) / nonZero.length) : 0;
         const max = Math.max(...values, 0);
@@ -6110,7 +6130,7 @@ Return a JSON object with this exact structure:
           popChange: pop,
           pctVsAverage: pctVsAvg,
         };
-      }
+      };
 
       const labels = quarterlyData.map(q => q.label);
       const activationsBenchmarks = computeMetricBenchmarks(quarterlyData.map(q => q.activationsTotal), labels);
@@ -6205,19 +6225,21 @@ Return a JSON object with this exact structure:
 
   // ── Milestones ──
   app.get("/api/milestones", isAuthenticated, async (req, res) => {
-    const milestoneList = await storage.getMilestones(req.user!.id);
+    const milestoneList = await storage.getMilestones((req.user as any).claims.sub);
     res.json(milestoneList);
   });
 
   app.get("/api/milestones/:id", isAuthenticated, async (req, res) => {
-    const milestone = await storage.getMilestone(Number(req.params.id));
-    if (!milestone) return res.status(404).json({ message: "Milestone not found" });
+    const userId = (req.user as any).claims.sub;
+    const milestone = await storage.getMilestone(parseId(req.params.id));
+    if (!milestone || milestone.userId !== userId) return res.status(404).json({ message: "Milestone not found" });
     res.json(milestone);
   });
 
   app.post("/api/milestones", isAuthenticated, async (req, res) => {
     try {
-      const milestone = await storage.createMilestone({ ...req.body, userId: req.user!.id, createdBy: req.user!.id });
+      const userId = (req.user as any).claims.sub;
+      const milestone = await storage.createMilestone({ ...req.body, userId, createdBy: userId });
       res.status(201).json(milestone);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -6226,22 +6248,28 @@ Return a JSON object with this exact structure:
 
   app.patch("/api/milestones/:id", isAuthenticated, async (req, res) => {
     try {
-      const milestone = await storage.updateMilestone(Number(req.params.id), req.body);
-      res.json(milestone);
+      const userId = (req.user as any).claims.sub;
+      const milestone = await storage.getMilestone(parseId(req.params.id));
+      if (!milestone || milestone.userId !== userId) return res.status(404).json({ message: "Not found" });
+      const updated = await storage.updateMilestone(parseId(req.params.id), req.body);
+      res.json(updated);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
     }
   });
 
   app.delete("/api/milestones/:id", isAuthenticated, async (req, res) => {
-    await storage.deleteMilestone(Number(req.params.id));
+    const userId = (req.user as any).claims.sub;
+    const milestone = await storage.getMilestone(parseId(req.params.id));
+    if (!milestone || milestone.userId !== userId) return res.status(404).json({ message: "Not found" });
+    await storage.deleteMilestone(parseId(req.params.id));
     res.json({ success: true });
   });
 
   // ── Relationship Stage Updates ──
   app.patch("/api/contacts/:id/relationship-stage", isAuthenticated, async (req, res) => {
     try {
-      const id = Number(req.params.id);
+      const id = parseId(req.params.id);
       const { stage } = req.body;
       const contact = await storage.getContact(id);
       if (!contact) return res.status(404).json({ message: "Contact not found" });
@@ -6252,7 +6280,7 @@ Return a JSON object with this exact structure:
           entityId: id,
           previousStage,
           newStage: stage,
-          changedBy: req.user!.id,
+          changedBy: (req.user as any).claims.sub,
         });
       }
       const updated = await storage.updateContact(id, { relationshipStage: stage });
@@ -6264,7 +6292,7 @@ Return a JSON object with this exact structure:
 
   app.patch("/api/groups/:id/community-status", isAuthenticated, async (req, res) => {
     try {
-      const id = Number(req.params.id);
+      const id = parseId(req.params.id);
       const { isCommunity } = req.body;
       if (typeof isCommunity !== "boolean") return res.status(400).json({ message: "isCommunity must be boolean" });
       const group = await storage.getGroup(id);
@@ -6279,7 +6307,7 @@ Return a JSON object with this exact structure:
 
   app.patch("/api/groups/:id/relationship-tier", isAuthenticated, async (req, res) => {
     try {
-      const id = Number(req.params.id);
+      const id = parseId(req.params.id);
       const { tier } = req.body;
       if (!["support", "collaborate", "mentioned"].includes(tier)) {
         return res.status(400).json({ message: "Invalid tier. Must be support, collaborate, or mentioned" });
@@ -6361,7 +6389,7 @@ Return a JSON object with this exact structure:
 
   app.patch("/api/groups/:id/relationship-stage", isAuthenticated, async (req, res) => {
     try {
-      const id = Number(req.params.id);
+      const id = parseId(req.params.id);
       const { stage } = req.body;
       const group = await storage.getGroup(id);
       if (!group) return res.status(404).json({ message: "Group not found" });
@@ -6372,7 +6400,7 @@ Return a JSON object with this exact structure:
           entityId: id,
           previousStage,
           newStage: stage,
-          changedBy: req.user!.id,
+          changedBy: (req.user as any).claims.sub,
         });
       }
       const updated = await storage.updateGroup(id, { relationshipStage: stage });
@@ -6383,14 +6411,24 @@ Return a JSON object with this exact structure:
   });
 
   app.get("/api/relationship-stage-history/:entityType/:entityId", isAuthenticated, async (req, res) => {
-    const history = await storage.getRelationshipStageHistory(req.params.entityType, Number(req.params.entityId));
+    const userId = (req.user as any).claims.sub;
+    const entityType = parseStr(req.params.entityType);
+    const entityId = parseId(req.params.entityId);
+    if (entityType === 'contact') {
+      const contact = await storage.getContact(entityId);
+      if (!contact || contact.userId !== userId) return res.status(404).json({ message: "Not found" });
+    } else if (entityType === 'group') {
+      const group = await storage.getGroup(entityId);
+      if (!group || group.userId !== userId) return res.status(404).json({ message: "Not found" });
+    }
+    const history = await storage.getRelationshipStageHistory(entityType, entityId);
     res.json(history);
   });
 
   // ── Relationship Stage Dashboard Stats ──
   app.get("/api/dashboard/relationship-stages", isAuthenticated, async (req, res) => {
     try {
-      const userId = req.user!.id;
+      const userId = (req.user as any).claims.sub;
       const contactsList = await storage.getContacts(userId);
       const groupsList = await storage.getGroups(userId);
       const stages = ["new", "engaged", "active", "deepening", "partner", "alumni"];
@@ -6414,10 +6452,10 @@ Return a JSON object with this exact structure:
   // ── Milestone Dashboard Stats ──
   app.get("/api/dashboard/milestone-stats", isAuthenticated, async (req, res) => {
     try {
-      const userId = req.user!.id;
+      const userId = (req.user as any).claims.sub;
       const allMilestones = await storage.getMilestones(userId);
-      const startDate = req.query.startDate ? new Date(req.query.startDate as string) : null;
-      const endDate = req.query.endDate ? new Date(req.query.endDate as string) : null;
+      const startDate = req.query.startDate ? parseDate(req.query.startDate) : null;
+      const endDate = req.query.endDate ? parseDate(req.query.endDate) : null;
       const filtered = allMilestones.filter(m => {
         if (startDate && m.createdAt && new Date(m.createdAt) < startDate) return false;
         if (endDate && m.createdAt && new Date(m.createdAt) > endDate) return false;
@@ -6438,7 +6476,7 @@ Return a JSON object with this exact structure:
   // ── Programme Effectiveness ──
   app.get("/api/programme-effectiveness", isAuthenticated, async (req, res) => {
     try {
-      const userId = req.user!.id;
+      const userId = (req.user as any).claims.sub;
       const programmeList = await storage.getProgrammes(userId);
       const allMilestones = await storage.getMilestones(userId);
       const allImpactLogs = await storage.getImpactLogs(userId);
@@ -6505,7 +6543,7 @@ Return a JSON object with this exact structure:
   // ── Funder Tags List (distinct values across all entities) ──
   app.get("/api/funder-tags", isAuthenticated, async (req, res) => {
     try {
-      const userId = req.user!.id;
+      const userId = (req.user as any).claims.sub;
       const progs = await storage.getProgrammes(userId);
       const debriefs = await storage.getImpactLogs(userId);
       const bookingList = await storage.getBookings(userId);
@@ -6516,7 +6554,7 @@ Return a JSON object with this exact structure:
           item.funderTags.forEach((t: string) => tagSet.add(t));
         }
       });
-      res.json([...tagSet].sort());
+      res.json(Array.from(tagSet).sort());
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -6526,7 +6564,7 @@ Return a JSON object with this exact structure:
   app.post("/api/legacy-reports/:id/extract-metrics", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const report = await storage.getLegacyReport(id);
       if (!report || report.userId !== userId) return res.status(404).json({ message: "Not found" });
       if (!report.pdfData) return res.status(400).json({ message: "No PDF data attached to this report" });
@@ -6534,7 +6572,7 @@ Return a JSON object with this exact structure:
       const { PDFParse: PdfParser2 } = await import("pdf-parse");
       const pdfBuffer = Buffer.from(report.pdfData, "base64");
       const parser = new PdfParser2({ data: pdfBuffer });
-      await parser.load();
+      await (parser as any).load();
       const pdfResult = await parser.getText();
       const pdfText = pdfResult.text || "";
 
@@ -6597,7 +6635,7 @@ Return a JSON object with this exact structure:
   app.get("/api/legacy-report-extractions/:reportId", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const reportId = parseInt(req.params.reportId);
+      const reportId = parseId(req.params.reportId);
       const report = await storage.getLegacyReport(reportId);
       if (!report || report.userId !== userId) return res.status(404).json({ message: "Not found" });
 
@@ -6641,7 +6679,7 @@ Return a JSON object with this exact structure:
   app.patch("/api/legacy-report-extractions/:reportId", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const reportId = parseInt(req.params.reportId);
+      const reportId = parseId(req.params.reportId);
       const report = await storage.getLegacyReport(reportId);
       if (!report || report.userId !== userId) return res.status(404).json({ message: "Not found" });
 
@@ -6674,8 +6712,9 @@ Return a JSON object with this exact structure:
 
   app.get("/api/weekly-hub-debriefs/:id", isAuthenticated, async (req, res) => {
     try {
-      const debrief = await storage.getWeeklyHubDebrief(Number(req.params.id));
-      if (!debrief) return res.status(404).json({ message: "Not found" });
+      const userId = (req.user as any).claims.sub;
+      const debrief = await storage.getWeeklyHubDebrief(parseId(req.params.id));
+      if (!debrief || debrief.userId !== userId) return res.status(404).json({ message: "Not found" });
       res.json(debrief);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -6822,7 +6861,7 @@ Return a JSON object with this exact structure:
 
   app.post("/api/weekly-hub-debriefs/:id/refresh", isAuthenticated, async (req, res) => {
     try {
-      const id = Number(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getWeeklyHubDebrief(id);
       if (!existing) return res.status(404).json({ message: "Not found" });
       if (existing.status !== "draft") return res.status(400).json({ message: "Only draft debriefs can be refreshed" });
@@ -6954,7 +6993,7 @@ Return a JSON object with this exact structure:
 
   app.patch("/api/weekly-hub-debriefs/:id", isAuthenticated, async (req, res) => {
     try {
-      const id = Number(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getWeeklyHubDebrief(id);
       if (!existing) return res.status(404).json({ message: "Not found" });
 
@@ -6978,7 +7017,7 @@ Return a JSON object with this exact structure:
 
   app.delete("/api/weekly-hub-debriefs/:id", isAuthenticated, async (req, res) => {
     try {
-      await storage.deleteWeeklyHubDebrief(Number(req.params.id));
+      await storage.deleteWeeklyHubDebrief(parseId(req.params.id));
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -7032,8 +7071,8 @@ Return a JSON object with this exact structure:
         const interactions = await storage.getInteractions(contact.id);
         const recentInteractions = interactions.slice(0, 5);
         for (const interaction of recentInteractions) {
-          if (interaction.notes || interaction.transcript) {
-            const text = (interaction.notes || interaction.transcript || "").slice(0, 200);
+          if ((interaction as any).notes || interaction.transcript) {
+            const text = ((interaction as any).notes || interaction.transcript || "").slice(0, 200);
             interactionSummaries.push(`${contact.name} - ${interaction.type}: ${text}`);
           }
         }
@@ -7208,7 +7247,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   app.put("/api/community-spend/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getCommunitySpendItem(id);
       if (!existing || String(existing.userId) !== String(userId)) return res.status(404).json({ message: "Not found" });
       const body = coerceDateFields(req.body);
@@ -7224,7 +7263,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   app.delete("/api/community-spend/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getCommunitySpendItem(id);
       if (!existing || String(existing.userId) !== String(userId)) return res.status(404).json({ message: "Not found" });
       await storage.deleteCommunitySpend(id);
@@ -7299,7 +7338,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.delete("/api/monthly-snapshots/:id", isAuthenticated, async (req, res) => {
     try {
-      await storage.deleteMonthlySnapshot(parseInt(req.params.id));
+      await storage.deleteMonthlySnapshot(parseId(req.params.id));
       res.json({ success: true });
     } catch (err: any) {
       console.error("Delete monthly snapshot error:", err);
@@ -7312,7 +7351,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   app.get("/api/monthly-snapshots/:id/touchpoints", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const snapshot = await storage.getMonthlySnapshot(parseInt(req.params.id));
+      const snapshot = await storage.getMonthlySnapshot(parseId(req.params.id));
       if (!snapshot || snapshot.userId !== userId) {
         return res.status(404).json({ message: "Snapshot not found" });
       }
@@ -7327,7 +7366,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   app.post("/api/monthly-snapshots/:id/touchpoints", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const snapshotId = parseInt(req.params.id);
+      const snapshotId = parseId(req.params.id);
       const snapshot = await storage.getMonthlySnapshot(snapshotId);
       if (!snapshot || snapshot.userId !== userId) {
         return res.status(404).json({ message: "Snapshot not found" });
@@ -7353,11 +7392,11 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   app.delete("/api/monthly-snapshots/:id/touchpoints/:touchpointId", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const snapshot = await storage.getMonthlySnapshot(parseInt(req.params.id));
+      const snapshot = await storage.getMonthlySnapshot(parseId(req.params.id));
       if (!snapshot || snapshot.userId !== userId) {
         return res.status(404).json({ message: "Snapshot not found" });
       }
-      await storage.deleteFootTrafficTouchpoint(parseInt(req.params.touchpointId));
+      await storage.deleteFootTrafficTouchpoint(parseId(req.params.touchpointId));
       res.json({ success: true });
     } catch (err: any) {
       console.error("Delete touchpoint error:", err);
@@ -7370,7 +7409,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   app.get("/api/daily-foot-traffic", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const month = req.query.month as string;
+      const month = parseStr(req.query.month);
       if (!month) return res.status(400).json({ message: "month query param required" });
       const monthDate = new Date(month);
       const start = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
@@ -7480,7 +7519,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   app.patch("/api/catch-up-list/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getCatchUpList(userId);
       const history = await storage.getCatchUpListHistory(userId);
       const allItems = [...existing, ...history];
@@ -7509,7 +7548,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       const existing = await storage.getCatchUpList(userId);
       const history = await storage.getCatchUpListHistory(userId);
       const allItems = [...existing, ...history];
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       if (!allItems.find((item: any) => item.id === id)) {
         return res.status(404).json({ message: "Catch-up item not found" });
       }
@@ -7571,7 +7610,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.delete("/api/report-highlights/:id", isAuthenticated, async (req, res) => {
     try {
-      await storage.deleteReportHighlight(parseInt(req.params.id));
+      await storage.deleteReportHighlight(parseId(req.params.id));
       res.json({ success: true });
     } catch (err: any) {
       console.error("Delete report highlight error:", err);
@@ -7635,7 +7674,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   app.get("/api/gmail/history/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const item = await storage.getGmailImportHistoryItem(parseInt(req.params.id));
+      const item = await storage.getGmailImportHistoryItem(parseId(req.params.id));
       if (!item || item.userId !== userId) return res.status(404).json({ message: "Not found" });
       res.json(item);
     } catch (err: any) {
@@ -7675,7 +7714,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     try {
       const userId = (req.user as any).claims.sub;
       const exclusions = await storage.getGmailExclusions(userId);
-      const exclusion = exclusions.find(e => e.id === parseInt(req.params.id));
+      const exclusion = exclusions.find(e => e.id === parseId(req.params.id));
       if (!exclusion) return res.status(404).json({ message: "Not found" });
       await storage.deleteGmailExclusion(exclusion.id);
       res.json({ success: true });
@@ -7895,7 +7934,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   app.delete("/api/gmail/accounts/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const account = await storage.getGmailConnectedAccount(parseInt(req.params.id));
+      const account = await storage.getGmailConnectedAccount(parseId(req.params.id));
       if (!account || account.userId !== userId) {
         return res.status(404).json({ message: "Account not found" });
       }
@@ -8126,7 +8165,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   app.post("/api/groups/:id/promote-vip", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const groupId = parseInt(req.params.id);
+      const groupId = parseId(req.params.id);
       const group = await storage.getGroup(groupId);
       if (!group || group.userId !== userId) {
         return res.status(404).json({ message: "Group not found" });
@@ -8152,7 +8191,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   app.post("/api/groups/:id/demote-vip", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const groupId = parseInt(req.params.id);
+      const groupId = parseId(req.params.id);
       const group = await storage.getGroup(groupId);
       if (!group || group.userId !== userId) {
         return res.status(404).json({ message: "Group not found" });
@@ -8269,7 +8308,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       }
 
       let groupsUpdated = 0;
-      for (const groupId of affectedGroupIds) {
+      for (const groupId of Array.from(affectedGroupIds)) {
         const group = await storage.getGroup(groupId);
         if (!group || group.userId !== userId) continue;
 
@@ -8412,7 +8451,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
         await db.delete(contacts).where(eq(contacts.id, mergeId));
       }
 
-      const combinedEmail = [...allEmailsSet].join(", ");
+      const combinedEmail = Array.from(allEmailsSet).join(", ");
       if (combinedEmail && combinedEmail !== (primary.email || "")) {
         await db.update(contacts).set({ email: combinedEmail }).where(eq(contacts.id, primaryId));
       }
@@ -8460,7 +8499,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
           const domain = c.email.split('@')[1]?.toLowerCase();
           if (domain && !PUBLIC_DOMAINS.has(domain)) {
             const domainBase = domain.replace(/\.(co\.nz|org\.nz|com|nz|net|io|co)$/i, '').replace(/\./g, ' ');
-            for (const [gName, gId] of groupNameLower) {
+            for (const [gName, gId] of Array.from(groupNameLower)) {
               if (gName.includes(domainBase) || domainBase.includes(gName.replace(/\s+/g, ''))) {
                 matchedGroupId = gId;
                 break;
@@ -8489,7 +8528,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   app.post("/api/contacts/:id/link-group", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const contactId = parseInt(req.params.id);
+      const contactId = parseId(req.params.id);
       const { groupId } = req.body;
 
       const contact = await storage.getContact(contactId);
@@ -8521,8 +8560,8 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   app.delete("/api/contacts/:id/unlink-group/:groupId", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const contactId = parseInt(req.params.id);
-      const groupId = parseInt(req.params.groupId);
+      const contactId = parseId(req.params.id);
+      const groupId = parseId(req.params.groupId);
 
       const contact = await storage.getContact(contactId);
       if (!contact || contact.userId !== userId) {
@@ -8660,7 +8699,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
       const impactLogs = await storage.getImpactLogs(userId);
       for (const log of impactLogs) {
-        if (log.linkedContactId) trackDate(log.linkedContactId, log.createdAt ? new Date(log.createdAt) : null, true);
+        if ((log as any).linkedContactId) trackDate((log as any).linkedContactId, log.createdAt ? new Date(log.createdAt) : null, true);
       }
 
       const allEvents = await storage.getEvents(userId);
@@ -8739,7 +8778,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   app.patch("/api/contacts/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const contactId = parseInt(req.params.id);
+      const contactId = parseId(req.params.id);
       const contact = await storage.getContact(contactId);
       if (!contact || contact.userId !== userId) {
         return res.status(404).json({ message: "Contact not found" });
@@ -8785,7 +8824,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   app.patch("/api/contacts/:id/community-status", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const contactId = parseInt(req.params.id);
+      const contactId = parseId(req.params.id);
       const contact = await storage.getContact(contactId);
       if (!contact || contact.userId !== userId) {
         return res.status(404).json({ message: "Contact not found" });
@@ -8835,7 +8874,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   app.post("/api/contacts/:id/promote", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const contactId = parseInt(req.params.id);
+      const contactId = parseId(req.params.id);
       const contact = await storage.getContact(contactId);
       if (!contact || contact.userId !== userId) {
         return res.status(404).json({ message: "Contact not found" });
@@ -8876,14 +8915,14 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
         }
       }
 
-      if (updated.linkedGroupId && !updatedGroupIds.has(updated.linkedGroupId)) {
-        const linkedGroup = await storage.getGroup(updated.linkedGroupId);
+      if ((updated as any).linkedGroupId && !updatedGroupIds.has((updated as any).linkedGroupId)) {
+        const linkedGroup = await storage.getGroup((updated as any).linkedGroupId);
         if (linkedGroup && linkedGroup.userId === userId) {
           if (newTier === "our_community" && !linkedGroup.isCommunity) {
-            await storage.updateGroup(updated.linkedGroupId, { isCommunity: true, movedToCommunityAt: new Date() });
+            await storage.updateGroup((updated as any).linkedGroupId, { isCommunity: true, movedToCommunityAt: new Date() });
             groupsUpdated++;
           } else if (newTier === "our_innovators" && !linkedGroup.isInnovator) {
-            await storage.updateGroup(updated.linkedGroupId, { isInnovator: true, movedToInnovatorsAt: new Date() });
+            await storage.updateGroup((updated as any).linkedGroupId, { isInnovator: true, movedToInnovatorsAt: new Date() });
             groupsUpdated++;
           }
         }
@@ -8898,7 +8937,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   app.post("/api/contacts/:id/demote", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const contactId = parseInt(req.params.id);
+      const contactId = parseId(req.params.id);
       const contact = await storage.getContact(contactId);
       if (!contact || contact.userId !== userId) {
         return res.status(404).json({ message: "Contact not found" });
@@ -8950,27 +8989,27 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
         }
       }
 
-      if (updated.linkedGroupId && !updatedGroupIds.has(updated.linkedGroupId)) {
-        const linkedGroup = await storage.getGroup(updated.linkedGroupId);
+      if ((updated as any).linkedGroupId && !updatedGroupIds.has((updated as any).linkedGroupId)) {
+        const linkedGroup = await storage.getGroup((updated as any).linkedGroupId);
         if (linkedGroup && linkedGroup.userId === userId) {
           if (newTier === "our_community" && linkedGroup.isInnovator) {
-            const members = await storage.getGroupMembers(updated.linkedGroupId);
+            const members = await storage.getGroupMembers((updated as any).linkedGroupId);
             const otherContacts = await Promise.all(
               members.filter(mem => mem.contactId !== contactId).map(mem => storage.getContact(mem.contactId))
             );
             const hasOtherInnovators = otherContacts.some(c => c && c.isInnovator);
             if (!hasOtherInnovators) {
-              await storage.updateGroup(updated.linkedGroupId, { isInnovator: false });
+              await storage.updateGroup((updated as any).linkedGroupId, { isInnovator: false });
               groupsUpdated++;
             }
           } else if (newTier === "all_contacts" && linkedGroup.isCommunity) {
-            const members = await storage.getGroupMembers(updated.linkedGroupId);
+            const members = await storage.getGroupMembers((updated as any).linkedGroupId);
             const otherContacts = await Promise.all(
               members.filter(mem => mem.contactId !== contactId).map(mem => storage.getContact(mem.contactId))
             );
             const hasOtherCommunity = otherContacts.some(c => c && c.isCommunityMember);
             if (!hasOtherCommunity) {
-              await storage.updateGroup(updated.linkedGroupId, { isCommunity: false });
+              await storage.updateGroup((updated as any).linkedGroupId, { isCommunity: false });
               groupsUpdated++;
             }
           }
@@ -8986,7 +9025,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   app.post("/api/contacts/:id/toggle-vip", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const contactId = parseInt(req.params.id);
+      const contactId = parseId(req.params.id);
       const contact = await storage.getContact(contactId);
       if (!contact || contact.userId !== userId) {
         return res.status(404).json({ message: "Contact not found" });
@@ -9208,7 +9247,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.get("/api/funders/:id", isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const funder = await storage.getFunder(id);
       if (!funder) return res.status(404).json({ message: "Funder not found" });
       if (funder.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -9237,7 +9276,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.patch("/api/funders/:id", isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getFunder(id);
       if (!existing) return res.status(404).json({ message: "Funder not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -9252,7 +9291,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.delete("/api/funders/:id", isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getFunder(id);
       if (!existing) return res.status(404).json({ message: "Funder not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -9266,7 +9305,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.get("/api/funders/:id/documents", isAuthenticated, async (req, res) => {
     try {
-      const funderId = parseInt(req.params.id);
+      const funderId = parseId(req.params.id);
       const funder = await storage.getFunder(funderId);
       if (!funder) return res.status(404).json({ message: "Funder not found" });
       if (funder.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -9280,7 +9319,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.post("/api/funders/:id/documents", isAuthenticated, async (req, res) => {
     try {
-      const funderId = parseInt(req.params.id);
+      const funderId = parseId(req.params.id);
       const userId = (req.user as any).claims.sub;
       const funder = await storage.getFunder(funderId);
       if (!funder) return res.status(404).json({ message: "Funder not found" });
@@ -9303,7 +9342,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.get("/api/funder-documents/:docId/download", isAuthenticated, async (req, res) => {
     try {
-      const docId = parseInt(req.params.docId);
+      const docId = parseId(req.params.docId);
       const doc = await storage.getFunderDocument(docId);
       if (!doc) return res.status(404).json({ message: "Document not found" });
 
@@ -9318,7 +9357,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.delete("/api/funder-documents/:docId", isAuthenticated, async (req, res) => {
     try {
-      const docId = parseInt(req.params.docId);
+      const docId = parseId(req.params.docId);
       const doc = await storage.getFunderDocument(docId);
       if (!doc) return res.status(404).json({ message: "Document not found" });
 
@@ -9401,7 +9440,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.get("/api/mentoring-relationships/:id", isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const relationship = await storage.getMentoringRelationship(id);
       if (!relationship) return res.status(404).json({ message: "Not found" });
       const userId = (req.user as any).claims.sub;
@@ -9416,7 +9455,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.patch("/api/mentoring-relationships/:id", isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getMentoringRelationship(id);
       if (!existing) return res.status(404).json({ message: "Not found" });
       const userId = (req.user as any).claims.sub;
@@ -9437,7 +9476,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.delete("/api/mentoring-relationships/:id", isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getMentoringRelationship(id);
       if (!existing) return res.status(404).json({ message: "Not found" });
       const userId = (req.user as any).claims.sub;
@@ -9453,7 +9492,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.get("/api/contacts/:contactId/mentoring-relationships", isAuthenticated, async (req, res) => {
     try {
-      const contactId = parseInt(req.params.contactId);
+      const contactId = parseId(req.params.contactId);
       const userId = (req.user as any).claims.sub;
       if (!await verifyContactOwnership(contactId, userId)) {
         return res.status(403).json({ message: "Forbidden" });
@@ -9496,7 +9535,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.patch("/api/mentoring-applications/:id", isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getMentoringApplication(id);
       if (!existing) return res.status(404).json({ message: "Not found" });
       const userId = (req.user as any).claims.sub;
@@ -9518,7 +9557,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.delete("/api/mentoring-applications/:id", isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getMentoringApplication(id);
       if (!existing) return res.status(404).json({ message: "Not found" });
       const userId = (req.user as any).claims.sub;
@@ -9572,7 +9611,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.patch("/api/mentoring-onboarding-questions/:id", isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getMentoringOnboardingQuestion(id);
       if (!existing) return res.status(404).json({ message: "Not found" });
       const userId = (req.user as any).claims.sub;
@@ -9586,7 +9625,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.delete("/api/mentoring-onboarding-questions/:id", isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getMentoringOnboardingQuestion(id);
       if (!existing) return res.status(404).json({ message: "Not found" });
       const userId = (req.user as any).claims.sub;
@@ -9604,7 +9643,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.post("/api/contacts/:id/stage-progression", isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getContact(id);
       if (!existing) return res.status(404).json({ message: "Contact not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -9635,7 +9674,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.get("/api/projects/:id", isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const item = await storage.getProject(id);
       if (!item) return res.status(404).json({ message: "Project not found" });
       const userId = (req.user as any).claims.sub;
@@ -9668,7 +9707,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.patch("/api/projects/:id", isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getProject(id);
       if (!existing) return res.status(404).json({ message: "Project not found" });
       const userId = (req.user as any).claims.sub;
@@ -9694,7 +9733,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.delete("/api/projects/:id", isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getProject(id);
       if (!existing) return res.status(404).json({ message: "Project not found" });
       const userId = (req.user as any).claims.sub;
@@ -9708,7 +9747,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.get("/api/projects/:id/updates", isAuthenticated, async (req, res) => {
     try {
-      const projectId = parseInt(req.params.id);
+      const projectId = parseId(req.params.id);
       const project = await storage.getProject(projectId);
       if (!project) return res.status(404).json({ message: "Project not found" });
       const userId = (req.user as any).claims.sub;
@@ -9722,7 +9761,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.post("/api/projects/:id/updates", isAuthenticated, async (req, res) => {
     try {
-      const projectId = parseInt(req.params.id);
+      const projectId = parseId(req.params.id);
       const project = await storage.getProject(projectId);
       if (!project) return res.status(404).json({ message: "Project not found" });
       const userId = (req.user as any).claims.sub;
@@ -9752,7 +9791,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.get("/api/projects/:id/tasks", isAuthenticated, async (req, res) => {
     try {
-      const projectId = parseInt(req.params.id);
+      const projectId = parseId(req.params.id);
       const project = await storage.getProject(projectId);
       if (!project) return res.status(404).json({ message: "Project not found" });
       const userId = (req.user as any).claims.sub;
@@ -9766,7 +9805,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.post("/api/projects/:id/tasks", isAuthenticated, async (req, res) => {
     try {
-      const projectId = parseInt(req.params.id);
+      const projectId = parseId(req.params.id);
       const project = await storage.getProject(projectId);
       if (!project) return res.status(404).json({ message: "Project not found" });
       const userId = (req.user as any).claims.sub;
@@ -9784,7 +9823,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.patch("/api/projects/tasks/:taskId", isAuthenticated, async (req, res) => {
     try {
-      const taskId = parseInt(req.params.taskId);
+      const taskId = parseId(req.params.taskId);
       const task = await storage.getProjectTask(taskId);
       if (!task) return res.status(404).json({ message: "Task not found" });
       const project = await storage.getProject(task.projectId);
@@ -9805,7 +9844,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   app.delete("/api/projects/tasks/:taskId", isAuthenticated, async (req, res) => {
     try {
-      const taskId = parseInt(req.params.taskId);
+      const taskId = parseId(req.params.taskId);
       const task = await storage.getProjectTask(taskId);
       if (!task) return res.status(404).json({ message: "Task not found" });
       const project = await storage.getProject(task.projectId);
@@ -9976,7 +10015,7 @@ Rules:
         membership,
         mou,
         userId: booker.userId,
-        token: newToken,
+        token: activeToken,
         isGroupLink,
       });
     } catch (err: any) {
@@ -10056,8 +10095,8 @@ Rules:
       }
       const booker = linkResult.booker;
 
-      const venueId = parseInt(req.query.venueId as string);
-      const month = req.query.month as string;
+      const venueId = parseId(req.query.venueId);
+      const month = parseStr(req.query.month);
       if (!venueId || !month) {
         return res.status(400).json({ message: "venueId and month required" });
       }
@@ -10710,7 +10749,7 @@ Rules:
   app.post("/api/bookings/:id/send-instructions", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const bookingId = parseInt(req.params.id);
+      const bookingId = parseId(req.params.id);
       const booking = await storage.getBooking(bookingId);
       if (!booking) return res.status(404).json({ message: "Booking not found" });
       if (booking.userId !== userId) return res.status(403).json({ message: "Forbidden" });
@@ -10827,7 +10866,7 @@ Rules:
   app.post("/api/xero/sync-contact/:contactId", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const contactId = parseInt(req.params.contactId);
+      const contactId = parseId(req.params.contactId);
       const { syncContactToXero } = await import("./xero");
       const xeroContactId = await syncContactToXero(userId, contactId);
       res.json({ success: true, xeroContactId });
@@ -10839,7 +10878,7 @@ Rules:
   app.post("/api/bookings/:id/generate-invoice", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const bookingId = parseInt(req.params.id);
+      const bookingId = parseId(req.params.id);
       const booking = await storage.getBooking(bookingId);
       if (!booking) return res.status(404).json({ message: "Booking not found" });
       if (booking.userId !== userId) return res.status(403).json({ message: "Forbidden" });
@@ -10914,7 +10953,7 @@ Rules:
   app.get("/api/bookable-resources", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const category = req.query.category as string | undefined;
+      const category = parseStr(req.query.category) || undefined;
       if (category) {
         const resources = await storage.getBookableResourcesByCategory(userId, category);
         return res.json(resources);
@@ -10942,7 +10981,7 @@ Rules:
 
   app.patch("/api/bookable-resources/:id", isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getBookableResource(id);
       if (!existing) return res.status(404).json({ message: "Resource not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -10955,7 +10994,7 @@ Rules:
 
   app.delete("/api/bookable-resources/:id", isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getBookableResource(id);
       if (!existing) return res.status(404).json({ message: "Resource not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -11035,7 +11074,7 @@ Rules:
 
   app.patch("/api/desk-bookings/:id", isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getDeskBooking(id);
       if (!existing) return res.status(404).json({ message: "Desk booking not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -11048,7 +11087,7 @@ Rules:
 
   app.delete("/api/desk-bookings/:id", isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getDeskBooking(id);
       if (!existing) return res.status(404).json({ message: "Desk booking not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -11111,7 +11150,7 @@ Rules:
 
   app.patch("/api/gear-bookings/:id", isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseId(req.params.id);
       const existing = await storage.getGearBooking(id);
       if (!existing) return res.status(404).json({ message: "Gear booking not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
@@ -11133,7 +11172,7 @@ Rules:
   app.get("/api/desk-availability/:date", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const date = new Date(req.params.date);
+      const date = parseDate(req.params.date);
       const dayStart = new Date(date);
       dayStart.setHours(0, 0, 0, 0);
       const dayEnd = new Date(date);
@@ -11169,7 +11208,7 @@ Rules:
   app.get("/api/gear-availability/:date", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const date = new Date(req.params.date);
+      const date = parseDate(req.params.date);
 
       const gear = await storage.getBookableResourcesByCategory(userId, "gear");
       const dayBookings = await storage.getGearBookingsByDate(userId, date);

@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -378,6 +379,7 @@ export function CalendarDebriefTab({ reconcileId }: { reconcileId: string | null
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Dismiss Event</DialogTitle>
+            <DialogDescription className="sr-only">Confirm event dismissal</DialogDescription>
           </DialogHeader>
           <p className="text-sm text-muted-foreground mb-2">
             Provide a reason for dismissing this event. It will be removed from the queue but can be restored later.
@@ -565,6 +567,7 @@ function ReconcileDialog({ event, open, onClose }: { event: QueueItem | null; op
             <Mic className="w-5 h-5 text-primary" />
             Reconcile Event
           </DialogTitle>
+          <DialogDescription className="sr-only">Reconcile event debrief</DialogDescription>
         </DialogHeader>
 
         {step === "input" && (

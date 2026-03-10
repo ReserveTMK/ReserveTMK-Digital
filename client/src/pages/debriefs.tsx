@@ -217,6 +217,7 @@ function ArchiveView({ logs, isLoading, onSelect, onDelete }: {
         isLoading={isLoading}
         onSelect={onSelect}
         onDelete={onDelete}
+        onCreateNew={() => {}}
         emptyTitle={searchQuery ? "No matching debriefs" : "No completed debriefs yet"}
         emptyDescription={searchQuery ? "Try a different search term." : "Complete debriefs from the Queue to see them here."}
       />

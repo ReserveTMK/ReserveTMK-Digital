@@ -31,6 +31,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -311,6 +312,7 @@ function CreateProjectDialog({
             {step === 3 && "Review Tasks"}
             {step === 4 && "Create Project"}
           </DialogTitle>
+          <DialogDescription className="sr-only">Create a new project</DialogDescription>
         </DialogHeader>
 
         <div className="flex items-center gap-1 mb-4">

@@ -9,6 +9,7 @@ import { useState, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -384,6 +385,7 @@ export default function CommunitySpend() {
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
             <DialogTitle>Delete Spend Entry</DialogTitle>
+            <DialogDescription className="sr-only">Confirm spend entry deletion</DialogDescription>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
             Are you sure you want to delete this spend entry? This action cannot be undone.
@@ -517,6 +519,7 @@ function SpendFormDialog({ open, onOpenChange, item, contacts, groups, programme
       <DialogContent className="sm:max-w-[500px] max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{item ? "Edit Spend Entry" : "Add Spend Entry"}</DialogTitle>
+          <DialogDescription className="sr-only">{item ? "Edit spend entry details" : "Create a new spend entry"}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">

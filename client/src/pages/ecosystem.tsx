@@ -14,7 +14,7 @@ import {
   Star, Zap, Shield, Calendar, MoreVertical
 } from "lucide-react";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -534,6 +534,7 @@ export default function EcosystemPage() {
         <DialogContent data-testid="dialog-merge">
           <DialogHeader>
             <DialogTitle>Merge Groups</DialogTitle>
+            <DialogDescription className="sr-only">Merge selected groups</DialogDescription>
           </DialogHeader>
           <p className="text-sm text-muted-foreground mb-3">
             Select the primary group to keep. All members and taxonomy links from the other groups will be transferred here.
@@ -587,6 +588,7 @@ export default function EcosystemPage() {
         <DialogContent data-testid="dialog-delete-confirm">
           <DialogHeader>
             <DialogTitle>Delete Group</DialogTitle>
+            <DialogDescription className="sr-only">Confirm group deletion</DialogDescription>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
             Are you sure? This will remove the group, its members, and taxonomy links permanently.
@@ -615,6 +617,7 @@ export default function EcosystemPage() {
         <DialogContent data-testid="dialog-bulk-delete">
           <DialogHeader>
             <DialogTitle>Delete {selectedForMerge.length} Group{selectedForMerge.length !== 1 ? 's' : ''}</DialogTitle>
+            <DialogDescription className="sr-only">Confirm bulk group deletion</DialogDescription>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
             This will remove the selected groups, their member links, and taxonomy links permanently. This cannot be undone.
@@ -857,6 +860,7 @@ function RolesPopover({ group, open, onOpenChange, onUpdateGroup }: {
       <DialogContent className="sm:max-w-[320px]">
         <DialogHeader>
           <DialogTitle>Ecosystem Roles - {group.name}</DialogTitle>
+          <DialogDescription className="sr-only">Manage ecosystem roles for this group</DialogDescription>
         </DialogHeader>
         <div className="space-y-1">
           {ECOSYSTEM_ROLES.map(role => {

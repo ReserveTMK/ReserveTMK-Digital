@@ -1872,6 +1872,7 @@ function QuickAddPersonDialog({ open, onOpenChange, onDone }: {
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Quick Add Person</DialogTitle>
+          <DialogDescription className="sr-only">Quickly add a new person</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div>

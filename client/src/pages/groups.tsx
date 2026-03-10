@@ -12,6 +12,7 @@ import { useState, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -690,6 +691,7 @@ export default function Groups() {
           <DialogContent className="sm:max-w-[400px]">
             <DialogHeader>
               <DialogTitle>Delete Group</DialogTitle>
+              <DialogDescription className="sr-only">Confirm group deletion</DialogDescription>
             </DialogHeader>
             <p className="text-sm text-muted-foreground">
               This will remove the group and all its member links. Individual contacts will not be deleted. Are you sure?
@@ -718,6 +720,7 @@ export default function Groups() {
           <DialogContent className="sm:max-w-[400px]">
             <DialogHeader>
               <DialogTitle data-testid="text-bulk-delete-title">Delete {selectedGroups.size} groups?</DialogTitle>
+              <DialogDescription className="sr-only">Confirm bulk group deletion</DialogDescription>
             </DialogHeader>
             <p className="text-sm text-muted-foreground" data-testid="text-bulk-delete-description">
               This will remove all member links. This cannot be undone.
@@ -743,6 +746,7 @@ export default function Groups() {
           <DialogContent data-testid="dialog-merge-groups">
             <DialogHeader>
               <DialogTitle data-testid="text-merge-groups-title">Merge {selectedGroups.size} Groups</DialogTitle>
+              <DialogDescription className="sr-only">Merge selected groups into one</DialogDescription>
             </DialogHeader>
             <p className="text-sm text-muted-foreground">Choose the primary group to keep. Members, taxonomy links, and all related data from the other groups will be merged into it, and the duplicates will be removed.</p>
             <div className="space-y-2 max-h-60 overflow-y-auto py-2">
@@ -788,6 +792,7 @@ export default function Groups() {
           <DialogContent className="sm:max-w-[400px]" data-testid="dialog-bulk-set-type">
             <DialogHeader>
               <DialogTitle data-testid="text-bulk-type-title">Set Organization Type for {selectedGroups.size} group(s)</DialogTitle>
+              <DialogDescription className="sr-only">Set organization type for selected groups</DialogDescription>
             </DialogHeader>
             <div className="space-y-3">
               <Select value={bulkTypeValue} onValueChange={(v) => { setBulkTypeValue(v); if (v !== "Other") setBulkTypeOther(""); }}>
@@ -829,6 +834,7 @@ export default function Groups() {
           <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto" data-testid="dialog-duplicates-groups">
             <DialogHeader>
               <DialogTitle data-testid="text-duplicates-groups-title">Suggested Duplicates</DialogTitle>
+              <DialogDescription className="sr-only">Review and manage duplicate groups</DialogDescription>
             </DialogHeader>
             <p className="text-sm text-muted-foreground">These groups may be duplicates based on name or email similarity. Review and merge or dismiss.</p>
             {suggestedDuplicates && suggestedDuplicates.length > 0 ? (
@@ -897,6 +903,7 @@ export default function Groups() {
                 <Star className="w-5 h-5 text-yellow-500" />
                 Promote to VIP
               </DialogTitle>
+              <DialogDescription className="sr-only">Promote group to VIP status</DialogDescription>
             </DialogHeader>
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
@@ -1323,6 +1330,7 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>{group ? "Edit Group" : "New Group"}</DialogTitle>
+          <DialogDescription className="sr-only">{group ? "Edit group details" : "Create a new group"}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
@@ -1556,6 +1564,7 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit, allGro
               <Building2 className="w-5 h-5 text-primary" />
               {group.name}
             </DialogTitle>
+            <DialogDescription className="sr-only">Group details and management</DialogDescription>
             <div className="flex items-center gap-2">
               <Badge className={GROUP_TYPE_COLORS[group.type] || ""}>{displayGroupType(group)}</Badge>
               <Button

@@ -591,7 +591,7 @@ export default function PublicBookingPage() {
           </p>
         </div>
 
-        {step !== "pathway" && step !== "confirmed" && currentSteps.length > 0 && (
+        {step !== "pathway" && (step as string) !== "confirmed" && currentSteps.length > 0 && (
           <StepProgress currentStep={step} steps={currentSteps} />
         )}
 

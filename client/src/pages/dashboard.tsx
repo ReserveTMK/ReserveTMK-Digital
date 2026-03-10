@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -273,7 +274,7 @@ export default function Dashboard() {
       if (!isBefore(d, todayStart) && isBefore(d, weekEnd)) {
         items.push({
           date: format(d, "yyyy-MM-dd"),
-          name: b.title,
+          name: b.title || "",
           time: b.startTime ? formatTimeSlot(b.startTime) : "TBC",
           type: "Booking",
           typeColor: "bg-orange-500/15 text-orange-700 dark:text-orange-300",
@@ -1255,6 +1256,7 @@ export default function Dashboard() {
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Remove Event</DialogTitle>
+            <DialogDescription className="sr-only">Confirm event removal</DialogDescription>
           </DialogHeader>
           {deleteTarget && (
             <div className="space-y-4">
@@ -1300,6 +1302,7 @@ export default function Dashboard() {
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Dismiss Debrief</DialogTitle>
+            <DialogDescription className="sr-only">Confirm debrief dismissal</DialogDescription>
           </DialogHeader>
           {skipTarget && (
             <div className="space-y-4">
@@ -1364,6 +1367,7 @@ function ViewMeetingDialog({
       <DialogContent className="sm:max-w-[450px]">
         <DialogHeader>
           <DialogTitle>{meeting.title}</DialogTitle>
+          <DialogDescription className="sr-only">Meeting details</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">

@@ -1801,7 +1801,7 @@ export default function CalendarPage() {
       items.push({
         kind: "booking",
         id: b.id,
-        title: b.title,
+        title: b.title || "",
         date: sDate || new Date(b.createdAt || Date.now()),
         startDate: sDate,
         endDate: b.endDate ? new Date(b.endDate) : sDate,

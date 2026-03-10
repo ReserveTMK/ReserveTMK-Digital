@@ -18,6 +18,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -216,8 +217,8 @@ export default function CatchUpPage() {
     fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
     return vipContacts.filter(c => {
       if (!catchUpContactIds.has(c.id)) return true;
-      if (!c.lastInteractionDate) return true;
-      const d = new Date(c.lastInteractionDate as string);
+      if (!(c as any).lastInteractionDate) return true;
+      const d = new Date((c as any).lastInteractionDate as string);
       if (isNaN(d.getTime())) return true;
       return d < fourteenDaysAgo;
     }).length;
@@ -353,7 +354,7 @@ export default function CatchUpPage() {
                     const catchUpItem = items.find(i => i.contactId === vip.id);
                     const lastCaughtUp = lastCaughtUpMap.get(vip.id);
                     const stageColor = STAGE_COLORS[vip.stage || ""] || "bg-gray-500/15 text-gray-700 dark:text-gray-300";
-                    const interactionDate = vip.lastInteractionDate as string | null;
+                    const interactionDate = (vip as any).lastInteractionDate as string | null;
                     const parsedDate = interactionDate ? new Date(interactionDate) : null;
                     const validDate = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate : null;
                     const isStale = !validDate || (new Date().getTime() - validDate.getTime()) > 14 * 24 * 60 * 60 * 1000;
@@ -615,6 +616,7 @@ export default function CatchUpPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit Catch Up</DialogTitle>
+            <DialogDescription className="sr-only">Edit catch up item details</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>

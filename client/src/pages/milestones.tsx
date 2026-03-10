@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -404,6 +405,7 @@ export default function MilestonesPage() {
             <DialogTitle data-testid="text-dialog-title">
               {editingMilestone ? "Edit Milestone" : "New Milestone"}
             </DialogTitle>
+            <DialogDescription className="sr-only">{editingMilestone ? "Edit milestone details" : "Create a new milestone"}</DialogDescription>
           </DialogHeader>
 
           <Form {...form}>

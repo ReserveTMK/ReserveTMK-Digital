@@ -24,6 +24,7 @@ import { useState } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -605,6 +606,7 @@ function EventFormDialog({
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>{mode === "edit" ? "Edit Event" : "Add Event"}</DialogTitle>
+          <DialogDescription className="sr-only">{mode === "edit" ? "Edit event details" : "Create a new event"}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 py-2 max-h-[75vh] overflow-y-auto px-1">
           {formError && (

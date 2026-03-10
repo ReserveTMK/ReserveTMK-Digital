@@ -461,7 +461,7 @@ async function finalizeImport(
       const newGroup = await storage.createGroup({
         userId,
         name: orgName,
-        type: 'Organisation',
+        type: 'Partner Organization',
         contactEmail: org.memberEmails[0],
         website: org.domain,
         relationshipTier: tier,

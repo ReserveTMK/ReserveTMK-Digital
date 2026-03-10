@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -139,6 +139,7 @@ function EditProjectDialog({
       <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Project</DialogTitle>
+          <DialogDescription className="sr-only">Edit project details</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div>
@@ -300,6 +301,7 @@ function AddUpdateDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Add Update</DialogTitle>
+          <DialogDescription className="sr-only">Add an update to this project</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div>
@@ -493,6 +495,7 @@ function AddDebriefDialog({
             <ListTodo className="w-5 h-5 text-primary" />
             Add Tasks via Debrief
           </DialogTitle>
+          <DialogDescription className="sr-only">Add tasks to this project via debrief</DialogDescription>
         </DialogHeader>
 
         {step === "input" && (

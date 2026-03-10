@@ -976,6 +976,7 @@ function UploadDocumentDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Upload Document</DialogTitle>
+          <DialogDescription className="sr-only">Upload a document for this funder</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div

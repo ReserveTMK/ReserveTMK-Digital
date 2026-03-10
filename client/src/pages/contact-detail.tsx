@@ -20,7 +20,7 @@ import { RelationshipStageSelector } from "@/components/relationship-stage-selec
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Link } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -719,6 +719,7 @@ export default function ContactDetail() {
                     <DialogContent className="sm:max-w-[340px] max-h-[90vh] overflow-y-auto">
                       <DialogHeader>
                         <DialogTitle>Add to Catch Up List</DialogTitle>
+                        <DialogDescription className="sr-only">Add contact to catch up list</DialogDescription>
                       </DialogHeader>
                       <div className="space-y-3">
                         <div className="space-y-2">
@@ -1861,6 +1862,7 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
       <DialogContent className="sm:max-w-[500px] max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Contact Details</DialogTitle>
+          <DialogDescription className="sr-only">Edit contact information</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
           <div className="grid grid-cols-2 gap-4">
@@ -2375,6 +2377,7 @@ function LogInteractionDialog({ contactId }: { contactId: number }) {
     <DialogContent className="sm:max-w-[600px]">
       <DialogHeader>
         <DialogTitle>Log Interaction</DialogTitle>
+        <DialogDescription className="sr-only">Log a new interaction with this contact</DialogDescription>
       </DialogHeader>
       
       <div className="space-y-6 py-4">

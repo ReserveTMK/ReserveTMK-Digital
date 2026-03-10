@@ -9,6 +9,7 @@ import { format } from "date-fns";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -655,6 +656,7 @@ export default function Contacts() {
             <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle data-testid="text-bulk-delete-title">Delete {selectedContacts.size} contact{selectedContacts.size !== 1 ? 's' : ''}?</DialogTitle>
+                <DialogDescription className="sr-only">Confirm bulk contact deletion</DialogDescription>
               </DialogHeader>
               <p className="text-sm text-muted-foreground" data-testid="text-bulk-delete-description">
                 Delete {selectedContacts.size} contact{selectedContacts.size !== 1 ? 's' : ''}? This cannot be undone.
@@ -680,6 +682,7 @@ export default function Contacts() {
             <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle data-testid="text-bulk-role-title">Update Role for {selectedContacts.size} contact{selectedContacts.size !== 1 ? 's' : ''}</DialogTitle>
+                <DialogDescription className="sr-only">Update role for selected contacts</DialogDescription>
               </DialogHeader>
               <div className="py-4 space-y-3">
                 <Select value={bulkRoleValue} onValueChange={(v) => { setBulkRoleValue(v); if (v !== "Other") setBulkRoleOther(""); }}>
@@ -729,6 +732,7 @@ export default function Contacts() {
             <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle data-testid="text-bulk-relationship-title">Update Relationship for {selectedContacts.size} contact{selectedContacts.size !== 1 ? 's' : ''}</DialogTitle>
+                <DialogDescription className="sr-only">Update relationship stage for selected contacts</DialogDescription>
               </DialogHeader>
               <div className="py-4">
                 <Select value={bulkRelationshipValue} onValueChange={setBulkRelationshipValue}>
@@ -762,6 +766,7 @@ export default function Contacts() {
             <DialogContent className="max-h-[90vh] overflow-y-auto" data-testid="dialog-merge-contacts">
               <DialogHeader>
                 <DialogTitle data-testid="text-merge-title">Merge {selectedContacts.size} Contacts</DialogTitle>
+                <DialogDescription className="sr-only">Merge selected contacts into one</DialogDescription>
               </DialogHeader>
               <p className="text-sm text-muted-foreground">Choose the primary contact to keep. All data from the other contacts will be merged into it, and the duplicates will be removed.</p>
               <div className="space-y-2 max-h-60 overflow-y-auto py-2">
@@ -807,6 +812,7 @@ export default function Contacts() {
             <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto" data-testid="dialog-duplicates-contacts">
               <DialogHeader>
                 <DialogTitle data-testid="text-duplicates-title">Suggested Duplicates</DialogTitle>
+                <DialogDescription className="sr-only">Review and manage duplicate contacts</DialogDescription>
               </DialogHeader>
               <p className="text-sm text-muted-foreground">These contacts may be duplicates based on name, email, or phone similarity. Review and merge or dismiss.</p>
               {suggestedDuplicates && suggestedDuplicates.length > 0 ? (
@@ -868,6 +874,7 @@ export default function Contacts() {
             <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle data-testid="text-link-group-title">Link to Group</DialogTitle>
+                <DialogDescription className="sr-only">Link selected contacts to a group</DialogDescription>
               </DialogHeader>
               <div className="py-2 space-y-3">
                 <Input
@@ -1237,6 +1244,7 @@ export default function Contacts() {
               <Star className="w-5 h-5 text-yellow-500" />
               Promote to VIP
             </DialogTitle>
+            <DialogDescription className="sr-only">Promote contact to VIP status</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">

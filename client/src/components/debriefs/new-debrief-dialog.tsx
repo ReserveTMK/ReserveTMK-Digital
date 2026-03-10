@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -212,6 +213,7 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle>New Debrief</DialogTitle>
+          <DialogDescription className="sr-only">Create a new debrief</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2 max-h-[calc(100vh-8rem)] sm:max-h-[75vh] overflow-y-auto px-1">
           <div className="space-y-2">

@@ -89,7 +89,7 @@ function DebriefDialog({ meeting, contactName, open, onOpenChange }: { meeting: 
   const handleAnalyzeAndSave = async () => {
     if (!transcript.trim()) return;
     try {
-      const analysis = await analyze.mutateAsync({ transcript, contactName });
+      const analysis = await analyze.mutateAsync({ transcript, contactName } as any);
       debrief.mutate({ transcript, summary: summary || undefined, analysis });
     } catch {
       toast({ title: "Analysis failed", description: "Saving debrief without analysis", variant: "destructive" });
@@ -465,6 +465,7 @@ export function SessionCard({ meeting, contacts, showMentor, mentorProfiles, deb
           <DialogContent className="sm:max-w-[320px]">
             <DialogHeader>
               <DialogTitle>Select Co-mentor</DialogTitle>
+              <DialogDescription className="sr-only">Select a co-mentor for this session</DialogDescription>
             </DialogHeader>
             <Select value={meeting.coMentorProfileId ? String(meeting.coMentorProfileId) : "none"} onValueChange={(v) => { handleCoMentorChange(v); setShowCoMentorSelect(false); }}>
               <SelectTrigger data-testid={`mobile-select-co-mentor-${meeting.id}`}>

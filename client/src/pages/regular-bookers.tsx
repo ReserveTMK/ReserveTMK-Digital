@@ -153,7 +153,7 @@ export default function RegularBookersPage() {
 
   const getBookerDisplayName = (booker: RegularBooker) => {
     const contactName = booker.contactId ? (contacts || []).find(c => c.id === booker.contactId)?.name : null;
-    const groupName = booker.groupId ? (groups || []).find(g => g.id === booker.groupId)?.name : null;
+    const groupName = booker.groupId ? (groups || []).find((g: any) => g.id === booker.groupId)?.name : null;
     if (contactName && groupName) return contactName;
     if (groupName) return groupName;
     if (contactName) return contactName;
@@ -162,7 +162,7 @@ export default function RegularBookersPage() {
 
   const getBookerGroupName = (booker: RegularBooker) => {
     if (!booker.groupId) return null;
-    return (groups || []).find(g => g.id === booker.groupId)?.name || null;
+    return (groups || []).find((g: any) => g.id === booker.groupId)?.name || null;
   };
 
   const getAgreementInfo = (booker: RegularBooker) => {
