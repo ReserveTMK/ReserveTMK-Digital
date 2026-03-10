@@ -692,12 +692,12 @@ function ReconcileDialog({ event, open, onClose }: { event: QueueItem | null; op
                 Cancel
               </Button>
               <Button
-                disabled={!debriefTitle.trim() || createMutation.isPending}
+                disabled={!debriefTitle.trim() || !debriefTranscript.trim() || createMutation.isPending}
                 onClick={() => createMutation.mutate()}
                 data-testid="button-create-debrief"
               >
                 <ClipboardCheck className="w-4 h-4 mr-1" />
-                Create Debrief
+                Confirm Debrief
               </Button>
             </>
           )}
