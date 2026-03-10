@@ -191,6 +191,7 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
       }
 
       queryClient.invalidateQueries({ queryKey: ['/api/impact-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/impact-logs', data.id, 'tags'] });
       resetState();
       onOpenChange(false);
       setLocation(`/debriefs/${data.id}`);

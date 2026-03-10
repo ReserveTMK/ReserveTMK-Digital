@@ -224,6 +224,7 @@ export function ReviewView({ id }: { id: number }) {
 
       queryClient.invalidateQueries({ queryKey: ["/api/impact-logs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/impact-logs", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/impact-logs", id, "tags"] });
       setInitialized(false);
       toast({ title: "Analysis complete", description: "Review the extracted impact data." });
     } catch (err: any) {
@@ -329,6 +330,7 @@ export function ReviewView({ id }: { id: number }) {
       if (!res.ok) throw new Error("Re-analysis failed");
       queryClient.invalidateQueries({ queryKey: ["/api/impact-logs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/impact-logs", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/impact-logs", id, "tags"] });
       setInitialized(false);
       toast({ title: "Re-analysis complete", description: "Tags and insights updated from the full transcript." });
     } catch (err: any) {
@@ -376,6 +378,7 @@ export function ReviewView({ id }: { id: number }) {
           if (!res.ok) throw new Error("Analysis failed");
           queryClient.invalidateQueries({ queryKey: ["/api/impact-logs"] });
           queryClient.invalidateQueries({ queryKey: ["/api/impact-logs", id] });
+          queryClient.invalidateQueries({ queryKey: ["/api/impact-logs", id, "tags"] });
           setInitialized(false);
           toast({ title: "Analysis complete", description: "Review the extracted impact data." });
         } catch (err: any) {
