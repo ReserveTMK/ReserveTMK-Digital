@@ -20,6 +20,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { useImpactLog, useUpdateImpactLog } from "@/hooks/use-impact-logs";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -48,6 +61,7 @@ import {
   Sparkles,
   Save,
   Check,
+  Search,
 } from "lucide-react";
 import type { ImpactLog, Contact } from "@shared/schema";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -1753,15 +1767,41 @@ function PeopleSection({ label, description, people, allPeople, setPeople, conta
   section: "primary" | "secondary";
   testIdPrefix: string;
 }) {
-  const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
 
-  const addPerson = () => {
-    setPeople([...allPeople, { name: "", role: section === "primary" ? "primary" : "mentioned", section, contactId: null }]);
+  const linkedContactIds = new Set(allPeople.filter((p: any) => p.contactId).map((p: any) => p.contactId));
+
+  const availableContacts = (contacts || []).filter(c => !linkedContactIds.has(c.id));
+
+  const handleSelectContact = (contact: Contact) => {
+    setPeople([...allPeople, { name: contact.name, role: section === "primary" ? "primary" : "mentioned", section, contactId: contact.id }]);
+    toast({ title: "Person linked", description: `${contact.name} linked as ${label.toLowerCase()}.` });
+    setSearchValue("");
+    setSearchOpen(false);
   };
 
-  const handleQuickAddDone = (contactId: number, contactName: string) => {
-    setPeople([...allPeople, { name: contactName, role: section === "primary" ? "primary" : "mentioned", section, contactId }]);
-    toast({ title: "Person added", description: `${contactName} linked as ${label.toLowerCase()}.` });
+  const handleQuickCreate = async () => {
+    if (!searchValue.trim()) return;
+    setIsCreating(true);
+    try {
+      const res = await apiRequest("POST", "/api/contacts", {
+        name: searchValue.trim(),
+        role: "Other",
+        isCommunityMember: true,
+        stage: "kakano",
+      });
+      const newContact = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      setPeople([...allPeople, { name: newContact.name, role: section === "primary" ? "primary" : "mentioned", section, contactId: newContact.id }]);
+      toast({ title: "Person added", description: `${newContact.name} created and linked as ${label.toLowerCase()}.` });
+      setSearchValue("");
+      setSearchOpen(false);
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to create contact", variant: "destructive" });
+    }
+    setIsCreating(false);
   };
 
   return (
@@ -1771,31 +1811,9 @@ function PeopleSection({ label, description, people, allPeople, setPeople, conta
           <h4 className="text-sm font-semibold">{label}</h4>
           <p className="text-xs text-muted-foreground">{description}</p>
         </div>
-        <div className="flex items-center gap-1">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setQuickAddOpen(true)}
-            data-testid={`${testIdPrefix}-quick-add`}
-          >
-            <Plus className="w-3 h-3 mr-1" />
-            Quick Add
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={addPerson}
-            data-testid={`${testIdPrefix}-add-person`}
-          >
-            <UserPlus className="w-3 h-3 mr-1" />
-            Link Existing
-          </Button>
-        </div>
       </div>
-      {people.length === 0 ? (
-        <p className="text-xs text-muted-foreground italic py-2">No {label.toLowerCase()} people linked yet.</p>
-      ) : (
-        <div className="space-y-2">
+      {people.length > 0 && (
+        <div className="space-y-2 mb-3">
           {people.map((person: any, localIdx: number) => {
             const globalIdx = allPeople.indexOf(person);
             return (
@@ -1822,102 +1840,68 @@ function PeopleSection({ label, description, people, allPeople, setPeople, conta
           })}
         </div>
       )}
-
-      <QuickAddPersonDialog
-        open={quickAddOpen}
-        onOpenChange={setQuickAddOpen}
-        onDone={handleQuickAddDone}
-      />
+      <Popover open={searchOpen} onOpenChange={setSearchOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            className="w-full justify-start text-muted-foreground font-normal h-9 text-sm"
+            data-testid={`${testIdPrefix}-search-link`}
+          >
+            <Search className="w-3.5 h-3.5 mr-2 shrink-0" />
+            Search or add a person...
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[min(300px,calc(100vw-2rem))] p-0" align="start">
+          <Command>
+            <CommandInput
+              placeholder="Type a name..."
+              data-testid={`${testIdPrefix}-search-input`}
+              value={searchValue}
+              onValueChange={setSearchValue}
+            />
+            <CommandList>
+              <CommandEmpty>
+                <div className="py-2 px-1">
+                  <p className="text-xs text-muted-foreground mb-2">No contacts found</p>
+                  {searchValue.trim() && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full h-7 text-xs"
+                      onClick={handleQuickCreate}
+                      disabled={isCreating}
+                      data-testid={`${testIdPrefix}-quick-create`}
+                    >
+                      {isCreating ? (
+                        <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      ) : (
+                        <UserPlus className="w-3 h-3 mr-1" />
+                      )}
+                      Create "{searchValue.trim()}"
+                    </Button>
+                  )}
+                </div>
+              </CommandEmpty>
+              <CommandGroup>
+                {availableContacts.map((c) => (
+                  <CommandItem
+                    key={c.id}
+                    value={c.name}
+                    onSelect={() => handleSelectContact(c)}
+                    data-testid={`${testIdPrefix}-search-option-${c.id}`}
+                  >
+                    <span className="truncate">{c.name}</span>
+                    {c.businessName && (
+                      <span className="text-xs text-muted-foreground ml-1 truncate">({c.businessName})</span>
+                    )}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
 
-function QuickAddPersonDialog({ open, onOpenChange, onDone }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onDone: (contactId: number, name: string) => void;
-}) {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const { toast } = useToast();
-
-  const createMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/contacts", {
-        name: name.trim(),
-        email: email.trim() || undefined,
-        phone: phone.trim() || undefined,
-        role: "Other",
-        isCommunityMember: true,
-        stage: "kakano",
-      });
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-      onDone(data.id, data.name);
-      onOpenChange(false);
-      setName("");
-      setEmail("");
-      setPhone("");
-    },
-    onError: (err: any) => {
-      toast({ title: "Error", description: err.message || "Failed to create contact", variant: "destructive" });
-    },
-  });
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm">
-        <DialogHeader>
-          <DialogTitle>Quick Add Person</DialogTitle>
-          <DialogDescription className="sr-only">Quickly add a new person</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label className="text-sm">Name *</Label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Full name"
-              data-testid="input-quick-add-name"
-            />
-          </div>
-          <div>
-            <Label className="text-sm">Email</Label>
-            <Input
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email (optional)"
-              type="email"
-              data-testid="input-quick-add-email"
-            />
-          </div>
-          <div>
-            <Label className="text-sm">Phone</Label>
-            <Input
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="Phone (optional)"
-              data-testid="input-quick-add-phone"
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-quick-add">
-            Cancel
-          </Button>
-          <Button
-            disabled={!name.trim() || createMutation.isPending}
-            onClick={() => createMutation.mutate()}
-            data-testid="button-confirm-quick-add"
-          >
-            {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
-            Add Person
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
