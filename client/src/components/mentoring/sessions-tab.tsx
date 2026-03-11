@@ -80,6 +80,9 @@ export function ScheduleSessionDialog({
     queryKey: ["/api/meeting-types"],
   });
   const { data: venues } = useVenues();
+  const { data: allMeetings } = useQuery<(Meeting & { mentorName: string })[]>({
+    queryKey: ["/api/meetings/all-mentors"],
+  });
   const createMeeting = useCreateMeeting();
   const [mentorUserId, setMentorUserIdRaw] = useState("");
   const setMentorUserId = useCallback((val: string) => {
@@ -172,6 +175,36 @@ export function ScheduleSessionDialog({
     setDate(dayStr);
     setTime(timeStr);
   }, []);
+
+  const selectedMentorProfile = useMemo(() => {
+    if (!mentorUserId || !mentorProfiles) return null;
+    return mentorProfiles.find(p => getMentorBookingId(p) === mentorUserId) || null;
+  }, [mentorUserId, mentorProfiles]);
+
+  const dayMeetings = useMemo(() => {
+    if (!selectedDay || !allMeetings || !mentorUserId) return [];
+    const selectedProfile = mentorProfiles?.find(p => getMentorBookingId(p) === mentorUserId);
+    const matchIds = new Set<string>();
+    if (selectedProfile) {
+      if (selectedProfile.mentorUserId) matchIds.add(selectedProfile.mentorUserId);
+      matchIds.add(`mentor-${selectedProfile.id}`);
+    }
+    matchIds.add(mentorUserId);
+    return allMeetings
+      .filter(m => {
+        if (!matchIds.has(m.userId)) return false;
+        const mDate = new Date(m.startTime);
+        const mDateStr = `${mDate.getFullYear()}-${String(mDate.getMonth() + 1).padStart(2, "0")}-${String(mDate.getDate()).padStart(2, "0")}`;
+        return mDateStr === selectedDay && m.status !== "cancelled";
+      })
+      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+  }, [selectedDay, allMeetings, mentorUserId, mentorProfiles]);
+
+  const getVenueName = useCallback((vid: number | null | undefined) => {
+    if (!vid || !venues) return null;
+    const v = (venues as any[]).find((v: any) => v.id === vid);
+    return v?.name || null;
+  }, [venues]);
 
   const mentoringTypes = useMemo(() => {
     return (meetingTypes || []).filter(t => t.isActive && t.category === "mentoring");
@@ -468,38 +501,73 @@ export function ScheduleSessionDialog({
               </div>
 
               {selectedDay && (
-                <div className="space-y-2">
-                  {slotsLoading ? (
-                    <div className="flex items-center justify-center py-4">
-                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                      <span className="text-xs text-muted-foreground">Loading availability...</span>
+                <div className="space-y-3">
+                  {dayMeetings.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Your schedule</p>
+                      <div className="space-y-0.5">
+                        {dayMeetings.map(m => {
+                          const start = new Date(m.startTime);
+                          const end = new Date(m.endTime);
+                          const startStr = formatSlotTime(`${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}`);
+                          const endStr = formatSlotTime(`${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`);
+                          const venueName = getVenueName(m.venueId);
+                          const loc = venueName || m.location;
+                          return (
+                            <div
+                              key={m.id}
+                              className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-muted/60 text-xs"
+                              data-testid={`schedule-event-${m.id}`}
+                            >
+                              <span className="text-muted-foreground whitespace-nowrap">{startStr}–{endStr}</span>
+                              <span className="font-medium truncate flex-1">{m.title}</span>
+                              {loc && (
+                                <span className="text-[10px] text-muted-foreground flex items-center gap-0.5 shrink-0">
+                                  {venueName ? <Building2 className="w-2.5 h-2.5" /> : <MapPin className="w-2.5 h-2.5" />}
+                                  {loc}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  ) : availableSlots && availableSlots.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {availableSlots.map(slot => {
-                        const isChosen = date === selectedDay && time === slot.time;
-                        return (
-                          <button
-                            key={slot.time}
-                            type="button"
-                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                              isChosen
-                                ? "bg-primary text-primary-foreground"
-                                : "bg-muted hover:bg-primary/20 hover:text-primary"
-                            }`}
-                            onClick={() => handleSlotClick(selectedDay, slot.time)}
-                            data-testid={`slot-${slot.time}`}
-                          >
-                            {formatSlotTime(slot.time)}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground text-center py-3" data-testid="text-no-slots">
-                      No available slots on this day
-                    </p>
                   )}
+
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Available slots</p>
+                    {slotsLoading ? (
+                      <div className="flex items-center justify-center py-3">
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        <span className="text-xs text-muted-foreground">Loading...</span>
+                      </div>
+                    ) : availableSlots && availableSlots.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {availableSlots.map(slot => {
+                          const isChosen = date === selectedDay && time === slot.time;
+                          return (
+                            <button
+                              key={slot.time}
+                              type="button"
+                              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                                isChosen
+                                  ? "bg-primary text-primary-foreground"
+                                  : "bg-muted hover:bg-primary/20 hover:text-primary"
+                              }`}
+                              onClick={() => handleSlotClick(selectedDay, slot.time)}
+                              data-testid={`slot-${slot.time}`}
+                            >
+                              {formatSlotTime(slot.time)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground text-center py-2" data-testid="text-no-slots">
+                        No available slots
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -599,7 +667,7 @@ export function ScheduleSessionDialog({
             </div>
             {mentorProfiles && mentorProfiles.length > 0 && (
               <div className="flex flex-wrap gap-1">
-                {mentorProfiles.filter(p => !attendees.some(a => a.mentorProfileId === p.id)).map(p => (
+                {mentorProfiles.filter(p => !attendees.some(a => a.mentorProfileId === p.id) && getMentorBookingId(p) !== mentorUserId).map(p => (
                   <Button
                     key={p.id}
                     type="button"
