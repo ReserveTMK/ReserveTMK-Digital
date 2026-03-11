@@ -22,16 +22,6 @@ import { FREQUENCY_LABELS } from "@/components/mentoring/mentoring-hooks";
 import { MENTORING_FOCUS_AREAS } from "@shared/schema";
 import type { Meeting, MentoringApplication } from "@shared/schema";
 
-const BASELINE_METRICS = [
-  { key: "mindset", label: "Mindset" },
-  { key: "skill", label: "Skill" },
-  { key: "confidence", label: "Confidence" },
-  { key: "bizConfidence", label: "Biz Confidence" },
-  { key: "systemsInPlace", label: "Systems" },
-  { key: "fundingReadiness", label: "Funding" },
-  { key: "networkStrength", label: "Network" },
-] as const;
-
 const STAGE_OPTIONS = [
   { id: "kakano", label: "Kakano", desc: "Seed — early stage, exploring ideas", icon: Sprout, color: "text-amber-700 dark:text-amber-400", bg: "bg-amber-500/10 border-amber-200 dark:border-amber-800" },
   { id: "tipu", label: "Tipu", desc: "Growth — developing and building", icon: TreePine, color: "text-green-700 dark:text-green-400", bg: "bg-green-500/10 border-green-200 dark:border-green-800" },
@@ -67,9 +57,6 @@ export function DiscoveryFormDialog({
   const [transcript, setTranscript] = useState("");
   const [notes, setNotes] = useState("");
   const [outcome, setOutcome] = useState<Outcome>(null);
-  const [baselineMetrics, setBaselineMetrics] = useState<Record<string, number>>({
-    mindset: 5, skill: 5, confidence: 5, bizConfidence: 5, systemsInPlace: 5, fundingReadiness: 5, networkStrength: 5,
-  });
 
   const toggleFocusArea = (area: string) => {
     setSelectedFocusAreas(prev => {
@@ -93,7 +80,7 @@ export function DiscoveryFormDialog({
   });
 
   const acceptApp = useMutation({
-    mutationFn: async (data: { reviewNotes?: string; focusAreas?: string; sessionFrequency?: string; stage?: string; baselineMetrics?: Record<string, number> }) => {
+    mutationFn: async (data: { reviewNotes?: string; focusAreas?: string; sessionFrequency?: string; stage?: string }) => {
       const res = await apiRequest("POST", `/api/mentoring-applications/${application.id}/accept`, data);
       return res.json();
     },
@@ -143,7 +130,6 @@ export function DiscoveryFormDialog({
           focusAreas: buildFocusString(),
           sessionFrequency: frequency,
           stage,
-          baselineMetrics,
         });
         toast({ title: "Mentee accepted", description: `${contactName} has been accepted into the mentoring programme` });
       } else if (outcome === "defer") {
@@ -335,27 +321,6 @@ export function DiscoveryFormDialog({
                     className="mt-1.5"
                     data-testid="discovery-input-custom-focus"
                   />
-                </div>
-                <div className="space-y-2">
-                  <Label>Baseline Metrics (1-10)</Label>
-                  <p className="text-[10px] text-muted-foreground">Rate where they're at now — this becomes the starting point for tracking growth</p>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                    {BASELINE_METRICS.map(m => (
-                      <div key={m.key} className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground w-24 shrink-0">{m.label}</span>
-                        <input
-                          type="range"
-                          min={1}
-                          max={10}
-                          value={baselineMetrics[m.key] || 5}
-                          onChange={(e) => setBaselineMetrics(prev => ({ ...prev, [m.key]: parseInt(e.target.value) }))}
-                          className="flex-1 h-1.5 accent-primary"
-                          data-testid={`baseline-${m.key}`}
-                        />
-                        <span className="text-xs font-medium w-5 text-right tabular-nums">{baselineMetrics[m.key] || 5}</span>
-                      </div>
-                    ))}
-                  </div>
                 </div>
               </div>
             )}

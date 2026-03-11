@@ -14,7 +14,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import {
   Loader2,
@@ -24,7 +24,19 @@ import {
   Target,
   TrendingUp,
   ArrowRight,
+  Pencil,
+  Save,
 } from "lucide-react";
+
+const BASELINE_METRICS = [
+  { key: "mindset", label: "Mindset" },
+  { key: "skill", label: "Skill" },
+  { key: "confidence", label: "Confidence" },
+  { key: "bizConfidence", label: "Biz Confidence" },
+  { key: "systemsInPlace", label: "Systems" },
+  { key: "fundingReadiness", label: "Funding" },
+  { key: "networkStrength", label: "Network" },
+] as const;
 import { JourneyStepper } from "@/components/mentoring/journey-stepper";
 import {
   JOURNEY_STAGE_CONFIG,
@@ -89,8 +101,18 @@ export function StatusConfirmDialog({ open, onOpenChange, name, status, onConfir
 export function MenteeCard({ relationship }: { relationship: EnrichedRelationship }) {
   const [expanded, setExpanded] = useState(false);
   const [confirmStatus, setConfirmStatus] = useState<"graduated" | "ended" | null>(null);
+  const [editingBaseline, setEditingBaseline] = useState(false);
+  const [baselineDraft, setBaselineDraft] = useState<Record<string, number>>({
+    mindset: 5, skill: 5, confidence: 5, bizConfidence: 5, systemsInPlace: 5, fundingReadiness: 5, networkStrength: 5,
+  });
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (relationship.baselineMetrics) {
+      setBaselineDraft({ ...{ mindset: 5, skill: 5, confidence: 5, bizConfidence: 5, systemsInPlace: 5, fundingReadiness: 5, networkStrength: 5 }, ...relationship.baselineMetrics });
+    }
+  }, [relationship.baselineMetrics]);
 
   const updateRelationship = useMutation({
     mutationFn: async ({ id, ...data }: { id: number } & Record<string, any>) => {
@@ -247,15 +269,69 @@ export function MenteeCard({ relationship }: { relationship: EnrichedRelationshi
                     </div>
                   </div>
                 )}
-                {relationship.baselineMetrics && (
-                  <div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
                     <p className="text-[10px] font-medium text-muted-foreground flex items-center gap-1">
-                      <TrendingUp className="w-3 h-3" /> Growth Metrics
+                      <TrendingUp className="w-3 h-3" /> Baseline Metrics
                     </p>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1">
+                    {!editingBaseline ? (
+                      <button
+                        className="text-[10px] text-primary flex items-center gap-0.5 hover:underline"
+                        onClick={(e) => { e.stopPropagation(); setEditingBaseline(true); }}
+                        data-testid={`button-edit-baseline-${relationship.id}`}
+                      >
+                        <Pencil className="w-3 h-3" /> {relationship.baselineMetrics ? "Edit" : "Set Baseline"}
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <button
+                          className="text-[10px] text-muted-foreground hover:underline"
+                          onClick={(e) => { e.stopPropagation(); setEditingBaseline(false); }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className="text-[10px] text-primary flex items-center gap-0.5 hover:underline font-medium"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateRelationship.mutate({ id: relationship.id, baselineMetrics: baselineDraft });
+                            if (!relationship.baselineMetrics) {
+                              updateContact.mutate({ id: relationship.contactId, metrics: baselineDraft });
+                            }
+                            setEditingBaseline(false);
+                          }}
+                          disabled={updateRelationship.isPending}
+                          data-testid={`button-save-baseline-${relationship.id}`}
+                        >
+                          <Save className="w-3 h-3" /> Save
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {editingBaseline ? (
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                      {BASELINE_METRICS.map(m => (
+                        <div key={m.key} className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground w-24 shrink-0">{m.label}</span>
+                          <input
+                            type="range"
+                            min={1}
+                            max={10}
+                            value={baselineDraft[m.key] || 5}
+                            onChange={(e) => setBaselineDraft(prev => ({ ...prev, [m.key]: parseInt(e.target.value) }))}
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex-1 h-1.5 accent-primary"
+                            data-testid={`baseline-slider-${m.key}-${relationship.id}`}
+                          />
+                          <span className="text-xs font-medium w-5 text-right tabular-nums">{baselineDraft[m.key] || 5}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : relationship.baselineMetrics ? (
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                       {Object.entries(relationship.baselineMetrics).map(([key, baseline]) => {
                         const current = relationship.currentMetrics?.[key];
-                        const label = key === "bizConfidence" ? "Biz Confidence" : key === "systemsInPlace" ? "Systems" : key === "fundingReadiness" ? "Funding" : key === "networkStrength" ? "Network" : key.charAt(0).toUpperCase() + key.slice(1);
+                        const label = BASELINE_METRICS.find(m => m.key === key)?.label || key;
                         const grew = current != null && current > baseline;
                         return (
                           <div key={key} className="flex items-center gap-1.5" data-testid={`metric-${key}-${relationship.id}`}>
@@ -269,8 +345,10 @@ export function MenteeCard({ relationship }: { relationship: EnrichedRelationshi
                         );
                       })}
                     </div>
-                  </div>
-                )}
+                  ) : (
+                    <p className="text-[10px] text-muted-foreground italic">No baseline set yet</p>
+                  )}
+                </div>
               </div>
             )}
 
