@@ -1168,6 +1168,41 @@ export async function registerRoutes(
     }
   });
 
+  app.post('/api/meetings/:id/send-notes', isAuthenticated, async (req, res) => {
+    try {
+      const meetingId = parseId(req.params.id);
+      const userId = (req.user as any).claims.sub;
+      const meeting = await storage.getMeeting(meetingId);
+      if (!meeting) return res.status(404).json({ message: "Meeting not found" });
+
+      let authorized = meeting.userId === userId;
+      if (!authorized) {
+        const profiles = await storage.getMentorProfiles(userId);
+        const mentorUserIds = new Set<string>();
+        for (const p of profiles) {
+          if (p.mentorUserId) mentorUserIds.add(p.mentorUserId);
+          mentorUserIds.add(`mentor-${p.id}`);
+        }
+        authorized = mentorUserIds.has(meeting.userId);
+      }
+      if (!authorized) return res.status(403).json({ message: "Forbidden" });
+
+      const contact = await storage.getContact(meeting.contactId);
+      if (!contact?.email) return res.status(400).json({ message: "Mentee has no email address" });
+
+      const summary = meeting.notes;
+      if (!summary) return res.status(400).json({ message: "No session notes to send" });
+
+      const { sendSessionNotesEmail } = await import("./email");
+      await sendSessionNotesEmail(contact.email, contact.name, new Date(meeting.startTime), summary, meeting.nextSteps);
+
+      res.json({ message: "Session notes sent" });
+    } catch (err: any) {
+      console.error("Send session notes error:", err);
+      res.status(500).json({ message: "Failed to send session notes" });
+    }
+  });
+
   app.get('/api/mentoring-relationships/enriched', isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
@@ -1225,6 +1260,7 @@ export async function registerRoutes(
           whatNeedHelpWith: application?.whatNeedHelpWith || null,
           onboardingAnswers: application?.onboardingAnswers || null,
           applicationNotes: application?.reviewNotes || null,
+          applicationId: application?.id || null,
           currentMetrics: contact?.metrics || null,
         };
       });

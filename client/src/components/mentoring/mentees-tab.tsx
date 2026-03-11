@@ -496,12 +496,12 @@ export function MenteesTab() {
                 application={app}
                 contacts={(contacts || []) as any[]}
                 meetings={allMeetings || []}
+                isPending={acceptApp.isPending || declineApp.isPending}
                 onAccept={(id, notes, extra) => {
                   const c = (contacts as any[])?.find((ct: any) => ct.id === app.contactId);
                   acceptApp.mutate({ id, notes, extra, contactId: c?.id, contactName: c?.name });
                 }}
                 onDecline={(id, notes) => declineApp.mutate({ id, notes })}
-                onDefer={(id, notes) => deferApp.mutate({ id, notes })}
               />
             ))}
           </CollapsibleContent>

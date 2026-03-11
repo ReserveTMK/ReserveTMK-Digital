@@ -474,3 +474,54 @@ export async function sendBookerLoginEmail(
   const subject = "Your Reserve T\u0101maki Booking Portal Login";
   await sendEmail(email, subject, htmlBody);
 }
+
+export async function sendSessionNotesEmail(
+  menteeEmail: string,
+  menteeName: string,
+  sessionDate: Date,
+  summary: string,
+  nextSteps?: string | null
+): Promise<void> {
+  const dateStr = sessionDate.toLocaleDateString("en-NZ", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "Pacific/Auckland",
+  });
+
+  const nextStepsHtml = nextSteps
+    ? `<tr><td style="padding: 20px 30px;">
+        <h3 style="margin: 0 0 10px; color: #1a1a1a; font-size: 16px;">Next Steps / Homework</h3>
+        <p style="margin: 0; color: #444; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">${nextSteps}</p>
+      </td></tr>`
+    : "";
+
+  const htmlBody = `<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:40px 20px;">
+  <tr><td align="center">
+    <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e0e0e0;">
+      <tr><td style="padding: 30px; background: #1a1a1a; color: #ffffff;">
+        <h1 style="margin: 0; font-size: 20px;">Session Notes</h1>
+        <p style="margin: 8px 0 0; font-size: 14px; color: #ccc;">${dateStr}</p>
+      </td></tr>
+      <tr><td style="padding: 20px 30px;">
+        <p style="margin: 0 0 5px; color: #888; font-size: 13px;">Kia ora ${menteeName},</p>
+        <p style="margin: 0 0 15px; color: #666; font-size: 14px;">Here's a summary from our session:</p>
+        <h3 style="margin: 0 0 10px; color: #1a1a1a; font-size: 16px;">Summary</h3>
+        <p style="margin: 0; color: #444; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">${summary}</p>
+      </td></tr>
+      ${nextStepsHtml}
+      <tr><td style="padding: 20px 30px; border-top: 1px solid #eee;">
+        <p style="margin: 0; color: #999; font-size: 12px;">Reserve T\u0101maki Mentoring</p>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>`;
+
+  await sendEmail(menteeEmail, `Session Notes \u2014 ${dateStr}`, htmlBody);
+}

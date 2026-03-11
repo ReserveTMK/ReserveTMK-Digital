@@ -3,6 +3,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -26,7 +28,19 @@ import {
   ArrowRight,
   Pencil,
   Save,
+  Check,
+  X,
 } from "lucide-react";
+import { JourneyStepper } from "@/components/mentoring/journey-stepper";
+import {
+  JOURNEY_STAGE_CONFIG,
+  RELATIONSHIP_STATUS_CONFIG,
+  VENTURE_TYPE_LABELS,
+  FREQUENCY_LABELS,
+  isOverdue,
+} from "@/components/mentoring/mentoring-hooks";
+import { MENTORING_FOCUS_AREAS } from "@shared/schema";
+import type { EnrichedRelationship } from "@/components/mentoring/mentoring-hooks";
 
 const BASELINE_METRICS = [
   { key: "mindset", label: "Mindset" },
@@ -37,15 +51,6 @@ const BASELINE_METRICS = [
   { key: "fundingReadiness", label: "Funding" },
   { key: "networkStrength", label: "Network" },
 ] as const;
-import { JourneyStepper } from "@/components/mentoring/journey-stepper";
-import {
-  JOURNEY_STAGE_CONFIG,
-  RELATIONSHIP_STATUS_CONFIG,
-  VENTURE_TYPE_LABELS,
-  FREQUENCY_LABELS,
-  isOverdue,
-} from "@/components/mentoring/mentoring-hooks";
-import type { EnrichedRelationship } from "@/components/mentoring/mentoring-hooks";
 
 export function StatusConfirmDialog({ open, onOpenChange, name, status, onConfirm, isPending }: {
   open: boolean;
@@ -98,13 +103,73 @@ export function StatusConfirmDialog({ open, onOpenChange, name, status, onConfir
   );
 }
 
+function InlineEditText({ value, onSave, placeholder, multiline, testId }: {
+  value: string;
+  onSave: (v: string) => void;
+  placeholder: string;
+  multiline?: boolean;
+  testId: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => { setDraft(value); }, [value]);
+
+  if (editing) {
+    return (
+      <div className="flex items-start gap-1" onClick={(e) => e.stopPropagation()}>
+        {multiline ? (
+          <Textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder={placeholder}
+            rows={2}
+            className="text-xs flex-1"
+            autoFocus
+            data-testid={`${testId}-input`}
+          />
+        ) : (
+          <Input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder={placeholder}
+            className="text-xs h-7 flex-1"
+            autoFocus
+            data-testid={`${testId}-input`}
+          />
+        )}
+        <button className="p-1 text-primary hover:bg-muted rounded" onClick={() => { onSave(draft); setEditing(false); }}>
+          <Check className="w-3 h-3" />
+        </button>
+        <button className="p-1 text-muted-foreground hover:bg-muted rounded" onClick={() => { setDraft(value); setEditing(false); }}>
+          <X className="w-3 h-3" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      className="text-xs text-left group flex items-start gap-1 w-full"
+      onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+      data-testid={testId}
+    >
+      <span className={value ? "" : "text-muted-foreground italic"}>{value || placeholder}</span>
+      <Pencil className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-0.5" />
+    </button>
+  );
+}
+
 export function MenteeCard({ relationship }: { relationship: EnrichedRelationship }) {
   const [expanded, setExpanded] = useState(false);
   const [confirmStatus, setConfirmStatus] = useState<"graduated" | "ended" | null>(null);
   const [editingBaseline, setEditingBaseline] = useState(false);
+  const [editingFocus, setEditingFocus] = useState(false);
   const [baselineDraft, setBaselineDraft] = useState<Record<string, number>>({
     mindset: 5, skill: 5, confidence: 5, bizConfidence: 5, systemsInPlace: 5, fundingReadiness: 5, networkStrength: 5,
   });
+  const [focusDraft, setFocusDraft] = useState<string[]>([]);
+  const [customFocus, setCustomFocus] = useState("");
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -114,6 +179,12 @@ export function MenteeCard({ relationship }: { relationship: EnrichedRelationshi
     }
   }, [relationship.baselineMetrics]);
 
+  useEffect(() => {
+    if (relationship.focusAreas) {
+      setFocusDraft(relationship.focusAreas.split(",").map(a => a.trim()).filter(Boolean));
+    }
+  }, [relationship.focusAreas]);
+
   const updateRelationship = useMutation({
     mutationFn: async ({ id, ...data }: { id: number } & Record<string, any>) => {
       const res = await apiRequest("PATCH", `/api/mentoring-relationships/${id}`, data);
@@ -122,6 +193,19 @@ export function MenteeCard({ relationship }: { relationship: EnrichedRelationshi
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/mentoring-relationships/enriched"] });
       toast({ title: "Updated" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const updateApplication = useMutation({
+    mutationFn: async ({ id, ...data }: { id: number } & Record<string, any>) => {
+      const appId = id;
+      const res = await apiRequest("PATCH", `/api/mentoring-applications/${appId}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/mentoring-relationships/enriched"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/mentoring-applications"] });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -144,6 +228,22 @@ export function MenteeCard({ relationship }: { relationship: EnrichedRelationshi
   const daysSinceSession = relationship.lastSessionDate
     ? Math.floor((Date.now() - new Date(relationship.lastSessionDate).getTime()) / (1000 * 60 * 60 * 24))
     : null;
+
+  const toggleFocusArea = (area: string) => {
+    setFocusDraft(prev => {
+      if (prev.includes(area)) return prev.filter(a => a !== area);
+      if (prev.length >= 3) return prev;
+      return [...prev, area];
+    });
+  };
+
+  const saveFocusAreas = () => {
+    const parts = [...focusDraft];
+    if (customFocus.trim()) parts.push(customFocus.trim());
+    updateRelationship.mutate({ id: relationship.id, focusAreas: parts.join(", ") || null });
+    setEditingFocus(false);
+    setCustomFocus("");
+  };
 
   return (
     <Card className={`p-4 transition-colors ${overdueStatus ? "border-amber-300 dark:border-amber-700" : ""}`} data-testid={`mentee-card-${relationship.id}`}>
@@ -244,124 +344,214 @@ export function MenteeCard({ relationship }: { relationship: EnrichedRelationshi
               </div>
             </div>
 
-            {(relationship.ventureDescription || relationship.whatNeedHelpWith || relationship.baselineMetrics) && (
-              <div className="space-y-2 p-3 rounded-lg bg-muted/30 border border-border">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Discovery & Baseline</p>
-                {relationship.ventureDescription && (
-                  <div>
-                    <p className="text-[10px] font-medium text-muted-foreground">Venture / Idea</p>
-                    <p className="text-xs" data-testid={`text-venture-desc-${relationship.id}`}>{relationship.ventureDescription}</p>
-                  </div>
-                )}
-                {relationship.whatNeedHelpWith && (
-                  <div>
-                    <p className="text-[10px] font-medium text-muted-foreground">Needs Help With</p>
-                    <p className="text-xs" data-testid={`text-help-needed-${relationship.id}`}>{relationship.whatNeedHelpWith}</p>
-                  </div>
-                )}
-                {relationship.onboardingAnswers && Object.keys(relationship.onboardingAnswers).length > 0 && (
-                  <div>
-                    <p className="text-[10px] font-medium text-muted-foreground">Onboarding Responses</p>
-                    <div className="space-y-0.5 mt-0.5">
-                      {Object.entries(relationship.onboardingAnswers).map(([q, a]) => (
-                        <p key={q} className="text-xs"><span className="text-muted-foreground">{q}:</span> {a}</p>
-                      ))}
-                    </div>
-                  </div>
-                )}
+            <div className="space-y-2 p-3 rounded-lg bg-muted/30 border border-border">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Mentee Info</p>
+
+              <div>
+                <p className="text-[10px] font-medium text-muted-foreground mb-0.5">Venture / Idea</p>
+                <InlineEditText
+                  value={relationship.ventureDescription || ""}
+                  onSave={(v) => {
+                    if (relationship.applicationId) {
+                      updateApplication.mutate({ id: relationship.applicationId, ventureDescription: v || null } as any);
+                    }
+                    updateContact.mutate({ id: relationship.contactId, whatTheyAreBuilding: v || null });
+                  }}
+                  placeholder="What are they working on?"
+                  multiline
+                  testId={`edit-venture-${relationship.id}`}
+                />
+              </div>
+
+              <div>
+                <p className="text-[10px] font-medium text-muted-foreground mb-0.5">Needs Help With</p>
+                <InlineEditText
+                  value={relationship.whatNeedHelpWith || ""}
+                  onSave={(v) => {
+                    if (relationship.applicationId) {
+                      updateApplication.mutate({ id: relationship.applicationId, whatNeedHelpWith: v || null } as any);
+                    }
+                  }}
+                  placeholder="What do they need help with?"
+                  multiline
+                  testId={`edit-help-${relationship.id}`}
+                />
+              </div>
+
+              {relationship.onboardingAnswers && Object.keys(relationship.onboardingAnswers).length > 0 && (
                 <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-[10px] font-medium text-muted-foreground flex items-center gap-1">
-                      <TrendingUp className="w-3 h-3" /> Baseline Metrics
-                    </p>
-                    {!editingBaseline ? (
-                      <button
-                        className="text-[10px] text-primary flex items-center gap-0.5 hover:underline"
-                        onClick={(e) => { e.stopPropagation(); setEditingBaseline(true); }}
-                        data-testid={`button-edit-baseline-${relationship.id}`}
-                      >
-                        <Pencil className="w-3 h-3" /> {relationship.baselineMetrics ? "Edit" : "Set Baseline"}
-                      </button>
-                    ) : (
-                      <div className="flex items-center gap-1">
-                        <button
-                          className="text-[10px] text-muted-foreground hover:underline"
-                          onClick={(e) => { e.stopPropagation(); setEditingBaseline(false); }}
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          className="text-[10px] text-primary flex items-center gap-0.5 hover:underline font-medium"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            updateRelationship.mutate({ id: relationship.id, baselineMetrics: baselineDraft });
-                            if (!relationship.baselineMetrics) {
-                              updateContact.mutate({ id: relationship.contactId, metrics: baselineDraft });
-                            }
-                            setEditingBaseline(false);
-                          }}
-                          disabled={updateRelationship.isPending}
-                          data-testid={`button-save-baseline-${relationship.id}`}
-                        >
-                          <Save className="w-3 h-3" /> Save
-                        </button>
-                      </div>
-                    )}
+                  <p className="text-[10px] font-medium text-muted-foreground">Onboarding Responses</p>
+                  <div className="space-y-0.5 mt-0.5">
+                    {Object.entries(relationship.onboardingAnswers).map(([q, a]) => (
+                      <p key={q} className="text-xs"><span className="text-muted-foreground">{q}:</span> {a}</p>
+                    ))}
                   </div>
-                  {editingBaseline ? (
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                      {BASELINE_METRICS.map(m => (
-                        <div key={m.key} className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground w-24 shrink-0">{m.label}</span>
-                          <input
-                            type="range"
-                            min={1}
-                            max={10}
-                            value={baselineDraft[m.key] || 5}
-                            onChange={(e) => setBaselineDraft(prev => ({ ...prev, [m.key]: parseInt(e.target.value) }))}
-                            onClick={(e) => e.stopPropagation()}
-                            className="flex-1 h-1.5 accent-primary"
-                            data-testid={`baseline-slider-${m.key}-${relationship.id}`}
-                          />
-                          <span className="text-xs font-medium w-5 text-right tabular-nums">{baselineDraft[m.key] || 5}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : relationship.baselineMetrics ? (
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                      {Object.entries(relationship.baselineMetrics).map(([key, baseline]) => {
-                        const current = relationship.currentMetrics?.[key];
-                        const label = BASELINE_METRICS.find(m => m.key === key)?.label || key;
-                        const grew = current != null && current > baseline;
-                        return (
-                          <div key={key} className="flex items-center gap-1.5" data-testid={`metric-${key}-${relationship.id}`}>
-                            <span className="text-[10px] text-muted-foreground w-20 shrink-0">{label}</span>
-                            <div className="flex items-center gap-1 text-xs tabular-nums">
-                              <span className="text-muted-foreground">{baseline}</span>
-                              <ArrowRight className="w-3 h-3 text-muted-foreground/60" />
-                              <span className={grew ? "text-green-600 dark:text-green-400 font-medium" : ""}>{current ?? baseline}</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs font-medium">Session Frequency</p>
+              </div>
+              <div onClick={(e) => e.stopPropagation()}>
+                <Select
+                  value={relationship.sessionFrequency || "monthly"}
+                  onValueChange={(v) => updateRelationship.mutate({ id: relationship.id, sessionFrequency: v })}
+                >
+                  <SelectTrigger className="h-7 text-xs w-[180px]" data-testid={`select-frequency-${relationship.id}`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(FREQUENCY_LABELS).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs font-medium">Focus Areas</p>
+                {!editingFocus ? (
+                  <button
+                    className="text-[10px] text-primary flex items-center gap-0.5 hover:underline"
+                    onClick={(e) => { e.stopPropagation(); setEditingFocus(true); }}
+                    data-testid={`button-edit-focus-${relationship.id}`}
+                  >
+                    <Pencil className="w-3 h-3" /> Edit
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <button className="text-[10px] text-muted-foreground hover:underline" onClick={(e) => { e.stopPropagation(); setEditingFocus(false); }}>Cancel</button>
+                    <button
+                      className="text-[10px] text-primary flex items-center gap-0.5 hover:underline font-medium"
+                      onClick={(e) => { e.stopPropagation(); saveFocusAreas(); }}
+                      data-testid={`button-save-focus-${relationship.id}`}
+                    >
+                      <Save className="w-3 h-3" /> Save
+                    </button>
+                  </div>
+                )}
+              </div>
+              {editingFocus ? (
+                <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex flex-wrap gap-1.5">
+                    {MENTORING_FOCUS_AREAS.map(area => (
+                      <button
+                        key={area}
+                        type="button"
+                        className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                          focusDraft.includes(area)
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : focusDraft.length >= 3
+                              ? "bg-muted/50 text-muted-foreground border-border cursor-not-allowed opacity-50"
+                              : "bg-background hover:bg-muted border-border"
+                        }`}
+                        onClick={() => toggleFocusArea(area)}
+                        disabled={!focusDraft.includes(area) && focusDraft.length >= 3}
+                        data-testid={`focus-tag-${area.toLowerCase().replace(/\s+/g, "-")}-${relationship.id}`}
+                      >
+                        {area}
+                      </button>
+                    ))}
+                  </div>
+                  <Input
+                    placeholder="Other focus area (optional)"
+                    value={customFocus}
+                    onChange={(e) => setCustomFocus(e.target.value)}
+                    className="text-xs h-7"
+                    data-testid={`input-custom-focus-${relationship.id}`}
+                  />
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-1">
+                  {relationship.focusAreas ? (
+                    relationship.focusAreas.split(",").filter(a => a.trim()).map((area, i) => (
+                      <Badge key={i} variant="secondary" className="text-[10px]">{area.trim()}</Badge>
+                    ))
                   ) : (
-                    <p className="text-[10px] text-muted-foreground italic">No baseline set yet</p>
+                    <p className="text-[10px] text-muted-foreground italic">No focus areas set</p>
                   )}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
-            {relationship.focusAreas && (
-              <div>
-                <p className="text-xs font-medium mb-1">Focus Areas</p>
-                <div className="flex flex-wrap gap-1">
-                  {relationship.focusAreas.split(",").filter(a => a.trim()).map((area, i) => (
-                    <Badge key={i} variant="secondary" className="text-[10px]">{area.trim()}</Badge>
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[10px] font-medium text-muted-foreground flex items-center gap-1">
+                  <TrendingUp className="w-3 h-3" /> Baseline Metrics
+                </p>
+                {!editingBaseline ? (
+                  <button
+                    className="text-[10px] text-primary flex items-center gap-0.5 hover:underline"
+                    onClick={(e) => { e.stopPropagation(); setEditingBaseline(true); }}
+                    data-testid={`button-edit-baseline-${relationship.id}`}
+                  >
+                    <Pencil className="w-3 h-3" /> {relationship.baselineMetrics ? "Edit" : "Set Baseline"}
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <button className="text-[10px] text-muted-foreground hover:underline" onClick={(e) => { e.stopPropagation(); setEditingBaseline(false); }}>Cancel</button>
+                    <button
+                      className="text-[10px] text-primary flex items-center gap-0.5 hover:underline font-medium"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        updateRelationship.mutate({ id: relationship.id, baselineMetrics: baselineDraft });
+                        if (!relationship.baselineMetrics) {
+                          updateContact.mutate({ id: relationship.contactId, metrics: baselineDraft });
+                        }
+                        setEditingBaseline(false);
+                      }}
+                      disabled={updateRelationship.isPending}
+                      data-testid={`button-save-baseline-${relationship.id}`}
+                    >
+                      <Save className="w-3 h-3" /> Save
+                    </button>
+                  </div>
+                )}
+              </div>
+              {editingBaseline ? (
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2" onClick={(e) => e.stopPropagation()}>
+                  {BASELINE_METRICS.map(m => (
+                    <div key={m.key} className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground w-24 shrink-0">{m.label}</span>
+                      <input
+                        type="range"
+                        min={1}
+                        max={10}
+                        value={baselineDraft[m.key] || 5}
+                        onChange={(e) => setBaselineDraft(prev => ({ ...prev, [m.key]: parseInt(e.target.value) }))}
+                        className="flex-1 h-1.5 accent-primary"
+                        data-testid={`baseline-slider-${m.key}-${relationship.id}`}
+                      />
+                      <span className="text-xs font-medium w-5 text-right tabular-nums">{baselineDraft[m.key] || 5}</span>
+                    </div>
                   ))}
                 </div>
-              </div>
-            )}
+              ) : relationship.baselineMetrics ? (
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                  {Object.entries(relationship.baselineMetrics).map(([key, baseline]) => {
+                    const current = relationship.currentMetrics?.[key];
+                    const label = BASELINE_METRICS.find(m => m.key === key)?.label || key;
+                    const grew = current != null && current > baseline;
+                    return (
+                      <div key={key} className="flex items-center gap-1.5" data-testid={`metric-${key}-${relationship.id}`}>
+                        <span className="text-[10px] text-muted-foreground w-20 shrink-0">{label}</span>
+                        <div className="flex items-center gap-1 text-xs tabular-nums">
+                          <span className="text-muted-foreground">{baseline}</span>
+                          <ArrowRight className="w-3 h-3 text-muted-foreground/60" />
+                          <span className={grew ? "text-green-600 dark:text-green-400 font-medium" : ""}>{current ?? baseline}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-[10px] text-muted-foreground italic">No baseline set yet</p>
+              )}
+            </div>
 
             {relationship.outcomesAchieved && relationship.outcomesAchieved.length > 0 && (
               <div>

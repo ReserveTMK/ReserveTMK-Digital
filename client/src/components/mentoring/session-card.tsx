@@ -9,7 +9,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -25,7 +24,6 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
-import { DiscoveryFormDialog } from "@/components/mentoring/discovery-form-dialog";
 import {
   Loader2,
   Clock,
@@ -44,6 +42,8 @@ import {
   TreePine,
   Sun,
   Brain,
+  Send,
+  Save,
 } from "lucide-react";
 import { useAnalyzeInteraction } from "@/hooks/use-interactions";
 import { ScoreIndicator } from "@/components/mentoring/score-indicator";
@@ -64,101 +64,6 @@ export { STATUS_CONFIG };
 const STAGE_ICONS: Record<string, any> = { kakano: Sprout, tipu: TreePine, ora: Sun };
 
 type Attendee = { email: string; name?: string; mentorProfileId?: number };
-
-function DebriefDialog({ meeting, contactName, open, onOpenChange }: { meeting: Meeting; contactName: string; open: boolean; onOpenChange: (v: boolean) => void }) {
-  const [transcript, setTranscript] = useState("");
-  const [summary, setSummary] = useState("");
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const analyze = useAnalyzeInteraction();
-
-  const debrief = useMutation({
-    mutationFn: async (data: { transcript?: string; summary?: string; analysis?: any }) => {
-      const res = await apiRequest("POST", `/api/meetings/${meeting.id}/debrief`, data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/meetings"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/meetings/all-mentors"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/meetings/debrief-summaries"] });
-      toast({ title: "Debrief saved", description: "Session linked to interaction record" });
-      onOpenChange(false);
-    },
-    onError: (e: any) => toast({ title: "Debrief failed", description: e.message, variant: "destructive" }),
-  });
-
-  const handleAnalyzeAndSave = async () => {
-    if (!transcript.trim()) return;
-    try {
-      const analysis = await analyze.mutateAsync({ transcript, contactName } as any);
-      debrief.mutate({ transcript, summary: summary || undefined, analysis });
-    } catch {
-      toast({ title: "Analysis failed", description: "Saving debrief without analysis", variant: "destructive" });
-      debrief.mutate({ transcript, summary: summary || undefined });
-    }
-  };
-
-  const handleQuickSave = () => {
-    if (!summary.trim()) return;
-    debrief.mutate({ summary });
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px] max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Log Debrief: {contactName}</DialogTitle>
-          <DialogDescription>Record what happened in this mentoring session</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 py-2">
-          <div className="space-y-2">
-            <Label>Quick Summary</Label>
-            <Textarea
-              placeholder="Brief overview of the session..."
-              value={summary}
-              onChange={(e) => setSummary(e.target.value)}
-              rows={3}
-              data-testid="input-debrief-summary"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Full Transcript (optional)</Label>
-            <p className="text-xs text-muted-foreground">Paste a transcript for AI-powered analysis of mindset, skill, and confidence metrics</p>
-            <Textarea
-              placeholder="Paste conversation transcript here..."
-              value={transcript}
-              onChange={(e) => setTranscript(e.target.value)}
-              rows={6}
-              data-testid="input-debrief-transcript"
-            />
-          </div>
-        </div>
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          {transcript.trim() ? (
-            <Button
-              onClick={handleAnalyzeAndSave}
-              disabled={debrief.isPending || analyze.isPending}
-              data-testid="button-analyze-save"
-            >
-              {(debrief.isPending || analyze.isPending) && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-              Analyze & Save
-            </Button>
-          ) : (
-            <Button
-              onClick={handleQuickSave}
-              disabled={!summary.trim() || debrief.isPending}
-              data-testid="button-quick-save"
-            >
-              {debrief.isPending && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-              Save Debrief
-            </Button>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 function SessionPrepContext({ contactId, allMeetings, debriefSummaries, contacts }: {
   contactId: number;
@@ -212,6 +117,135 @@ function SessionPrepContext({ contactId, allMeetings, debriefSummaries, contacts
   );
 }
 
+function InlineSessionNotes({ meeting, contactName }: { meeting: Meeting; contactName: string }) {
+  const [notes, setNotes] = useState(meeting.notes || "");
+  const [nextSteps, setNextSteps] = useState((meeting as any).nextSteps || "");
+  const [sending, setSending] = useState(false);
+  const updateMeeting = useUpdateMeeting();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const analyze = useAnalyzeInteraction();
+
+  const debrief = useMutation({
+    mutationFn: async (data: { summary?: string; transcript?: string; analysis?: any }) => {
+      const res = await apiRequest("POST", `/api/meetings/${meeting.id}/debrief`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/meetings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/meetings/all-mentors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/meetings/debrief-summaries"] });
+    },
+  });
+
+  const hasChanges = notes !== (meeting.notes || "") || nextSteps !== ((meeting as any).nextSteps || "");
+  const hasDebrief = !!meeting.interactionId;
+
+  const handleSave = async () => {
+    updateMeeting.mutate({ id: meeting.id, notes, nextSteps } as any, {
+      onSuccess: async () => {
+        if (notes.trim() && !hasDebrief) {
+          try {
+            const analysis = await analyze.mutateAsync({ transcript: notes, contactName } as any);
+            await debrief.mutateAsync({ summary: notes, analysis });
+          } catch {
+            try {
+              await debrief.mutateAsync({ summary: notes });
+            } catch {}
+          }
+        }
+      },
+    });
+  };
+
+  const handleSend = async () => {
+    if (!notes.trim()) return;
+    if (hasChanges) {
+      updateMeeting.mutate({ id: meeting.id, notes, nextSteps } as any, {
+        onSuccess: async () => {
+          if (notes.trim() && !hasDebrief) {
+            try {
+              await debrief.mutateAsync({ summary: notes });
+            } catch {}
+          }
+          doSend();
+        },
+      });
+    } else {
+      doSend();
+    }
+  };
+
+  const doSend = async () => {
+    setSending(true);
+    try {
+      const res = await apiRequest("POST", `/api/meetings/${meeting.id}/send-notes`, {});
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message);
+      }
+      toast({ title: "Sent", description: `Session notes emailed to ${contactName}` });
+    } catch (e: any) {
+      toast({ title: "Failed to send", description: e.message, variant: "destructive" });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 pt-3 border-t space-y-3" data-testid={`session-notes-${meeting.id}`}>
+      <div className="space-y-1.5">
+        <Label className="text-xs">Session Notes</Label>
+        <Textarea
+          placeholder="Summary of the session..."
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={3}
+          className="text-sm"
+          data-testid={`input-session-notes-${meeting.id}`}
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label className="text-xs">Next Steps / Homework</Label>
+        <Textarea
+          placeholder="Action items, homework, follow-ups..."
+          value={nextSteps}
+          onChange={(e) => setNextSteps(e.target.value)}
+          rows={2}
+          className="text-sm"
+          data-testid={`input-next-steps-${meeting.id}`}
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          className="text-xs h-7"
+          onClick={handleSave}
+          disabled={updateMeeting.isPending || debrief.isPending || analyze.isPending}
+          data-testid={`button-save-notes-${meeting.id}`}
+        >
+          {(updateMeeting.isPending || debrief.isPending || analyze.isPending) ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Save className="w-3 h-3 mr-1" />}
+          Save
+        </Button>
+        {notes.trim() && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs h-7 text-blue-600 border-blue-200 dark:border-blue-800"
+            onClick={handleSend}
+            disabled={sending || updateMeeting.isPending}
+            data-testid={`button-send-notes-${meeting.id}`}
+          >
+            {sending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Send className="w-3 h-3 mr-1" />}
+            Send to Mentee
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function SessionCard({ meeting, contacts, showMentor, mentorProfiles, debriefSummary, allMeetings, allDebriefSummaries }: {
   meeting: Meeting & { mentorName?: string; coMentorName?: string | null };
   contacts: any[];
@@ -223,10 +257,9 @@ export function SessionCard({ meeting, contacts, showMentor, mentorProfiles, deb
 }) {
   const updateMeeting = useUpdateMeeting();
   const isMobile = useIsMobile();
-  const [showDebrief, setShowDebrief] = useState(false);
-  const [showDiscovery, setShowDiscovery] = useState(false);
   const [showCoMentorSelect, setShowCoMentorSelect] = useState(false);
   const [showInsights, setShowInsights] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
   const contact = contacts?.find((c: any) => c.id === meeting.contactId);
   const config = STATUS_CONFIG[meeting.status] || STATUS_CONFIG.scheduled;
   const StatusIcon = config.icon;
@@ -234,24 +267,15 @@ export function SessionCard({ meeting, contacts, showMentor, mentorProfiles, deb
   const hasDebrief = !!meeting.interactionId;
   const hasScores = debriefSummary && (debriefSummary.mindsetScore !== undefined || debriefSummary.skillScore !== undefined || debriefSummary.confidenceScore !== undefined);
   const isUpcoming = (meeting.status === "scheduled" || meeting.status === "confirmed") && !isPast;
-
-  const { data: applications } = useQuery<MentoringApplication[]>({
-    queryKey: ["/api/mentoring-applications"],
-  });
-  const pendingApplication = applications?.find(
-    a => a.contactId === meeting.contactId && a.status === "pending"
-  );
+  const isCompleted = meeting.status === "completed";
+  const hasNotes = !!meeting.notes;
 
   const meetingAttendees: Attendee[] = Array.isArray(meeting.attendees) ? meeting.attendees as Attendee[] : [];
 
   const handleComplete = () => {
     updateMeeting.mutate({ id: meeting.id, status: "completed" } as any, {
       onSuccess: () => {
-        if (pendingApplication) {
-          setShowDiscovery(true);
-        } else {
-          setShowDebrief(true);
-        }
+        setShowNotes(true);
       },
     });
   };
@@ -295,7 +319,7 @@ export function SessionCard({ meeting, contacts, showMentor, mentorProfiles, deb
               )}
               {hasDebrief && !hasScores && (
                 <Badge variant="secondary" className="text-[10px] h-5 px-1.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" data-testid={`badge-debriefed-${meeting.id}`}>
-                  <FileText className="w-3 h-3 mr-1" /> Debriefed
+                  <FileText className="w-3 h-3 mr-1" /> Notes
                 </Badge>
               )}
             </div>
@@ -314,7 +338,7 @@ export function SessionCard({ meeting, contacts, showMentor, mentorProfiles, deb
             {meeting.mentoringFocus && (
               <Badge variant="outline" className="mt-1.5 text-[10px] h-5">{meeting.mentoringFocus}</Badge>
             )}
-            {meeting.notes && (
+            {!showNotes && hasNotes && (
               <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{meeting.notes}</p>
             )}
             {meetingAttendees.length > 0 && (
@@ -363,6 +387,9 @@ export function SessionCard({ meeting, contacts, showMentor, mentorProfiles, deb
                 contacts={contacts}
               />
             )}
+            {showNotes && isCompleted && (
+              <InlineSessionNotes meeting={meeting} contactName={contact?.name || "Unknown"} />
+            )}
           </div>
           {isMobile ? (
             <div className="flex items-center gap-1 shrink-0">
@@ -376,16 +403,10 @@ export function SessionCard({ meeting, contacts, showMentor, mentorProfiles, deb
                   Complete
                 </Button>
               )}
-              {(meeting.status === "completed" || (isPast && meeting.status === "confirmed")) && !hasDebrief && (
-                pendingApplication ? (
-                  <Button size="sm" variant="outline" className="text-xs h-7 text-amber-600 border-amber-200" onClick={() => setShowDiscovery(true)} data-testid={`button-discovery-${meeting.id}`}>
-                    <Sprout className="w-3 h-3 mr-1" /> Discovery
-                  </Button>
-                ) : (
-                  <Button size="sm" variant="outline" className="text-xs h-7 text-purple-600 border-purple-200" onClick={() => setShowDebrief(true)} data-testid={`button-debrief-${meeting.id}`}>
-                    <MessageSquare className="w-3 h-3 mr-1" /> Debrief
-                  </Button>
-                )
+              {isCompleted && !showNotes && (
+                <Button size="sm" variant="outline" className="text-xs h-7 text-purple-600 border-purple-200" onClick={() => setShowNotes(true)} data-testid={`button-notes-${meeting.id}`}>
+                  <MessageSquare className="w-3 h-3 mr-1" /> Notes
+                </Button>
               )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -430,16 +451,10 @@ export function SessionCard({ meeting, contacts, showMentor, mentorProfiles, deb
                   Complete
                 </Button>
               )}
-              {(meeting.status === "completed" || (isPast && meeting.status === "confirmed")) && !hasDebrief && (
-                pendingApplication ? (
-                  <Button size="sm" variant="outline" className="text-xs h-7 text-amber-600 border-amber-200" onClick={() => setShowDiscovery(true)} data-testid={`button-discovery-${meeting.id}`}>
-                    <Sprout className="w-3 h-3 mr-1" /> Discovery Form
-                  </Button>
-                ) : (
-                  <Button size="sm" variant="outline" className="text-xs h-7 text-purple-600 border-purple-200" onClick={() => setShowDebrief(true)} data-testid={`button-debrief-${meeting.id}`}>
-                    <MessageSquare className="w-3 h-3 mr-1" /> Log Debrief
-                  </Button>
-                )
+              {isCompleted && !showNotes && (
+                <Button size="sm" variant="outline" className="text-xs h-7 text-purple-600 border-purple-200" onClick={() => setShowNotes(true)} data-testid={`button-notes-${meeting.id}`}>
+                  <MessageSquare className="w-3 h-3 mr-1" /> {hasNotes ? "Edit Notes" : "Add Notes"}
+                </Button>
               )}
               {mentorProfiles && mentorProfiles.length > 0 && meeting.status !== "cancelled" && (
                 showCoMentorSelect ? (
@@ -477,23 +492,6 @@ export function SessionCard({ meeting, contacts, showMentor, mentorProfiles, deb
           )}
         </div>
       </Card>
-      {showDebrief && (
-        <DebriefDialog
-          meeting={meeting}
-          contactName={contact?.name || "Unknown"}
-          open={showDebrief}
-          onOpenChange={setShowDebrief}
-        />
-      )}
-      {showDiscovery && pendingApplication && (
-        <DiscoveryFormDialog
-          meeting={meeting}
-          contactName={contact?.name || "Unknown"}
-          application={pendingApplication}
-          open={showDiscovery}
-          onOpenChange={setShowDiscovery}
-        />
-      )}
       {showCoMentorSelect && isMobile && mentorProfiles && (
         <Dialog open={showCoMentorSelect} onOpenChange={setShowCoMentorSelect}>
           <DialogContent className="sm:max-w-[320px]">

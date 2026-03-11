@@ -61,6 +61,7 @@ export type EnrichedRelationship = MentoringRelationship & {
   whatNeedHelpWith?: string | null;
   onboardingAnswers?: Record<string, string> | null;
   applicationNotes?: string | null;
+  applicationId?: number | null;
   baselineMetrics?: Record<string, number> | null;
   currentMetrics?: Record<string, number> | null;
 };

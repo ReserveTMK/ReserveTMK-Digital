@@ -155,6 +155,7 @@ export const meetings = pgTable("meetings", {
   attendees: jsonb("attendees"),
   googleCalendarEventId: text("google_calendar_event_id"),
   venueId: integer("venue_id"),
+  nextSteps: text("next_steps"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
