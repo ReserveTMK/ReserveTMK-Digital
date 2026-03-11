@@ -22,6 +22,8 @@ import {
   ChevronRight,
   AlertCircle,
   Target,
+  TrendingUp,
+  ArrowRight,
 } from "lucide-react";
 import { JourneyStepper } from "@/components/mentoring/journey-stepper";
 import {
@@ -220,9 +222,9 @@ export function MenteeCard({ relationship }: { relationship: EnrichedRelationshi
               </div>
             </div>
 
-            {(relationship.ventureDescription || relationship.whatNeedHelpWith) && (
+            {(relationship.ventureDescription || relationship.whatNeedHelpWith || relationship.baselineMetrics) && (
               <div className="space-y-2 p-3 rounded-lg bg-muted/30 border border-border">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Discovery Info</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Discovery & Baseline</p>
                 {relationship.ventureDescription && (
                   <div>
                     <p className="text-[10px] font-medium text-muted-foreground">Venture / Idea</p>
@@ -242,6 +244,30 @@ export function MenteeCard({ relationship }: { relationship: EnrichedRelationshi
                       {Object.entries(relationship.onboardingAnswers).map(([q, a]) => (
                         <p key={q} className="text-xs"><span className="text-muted-foreground">{q}:</span> {a}</p>
                       ))}
+                    </div>
+                  </div>
+                )}
+                {relationship.baselineMetrics && (
+                  <div>
+                    <p className="text-[10px] font-medium text-muted-foreground flex items-center gap-1">
+                      <TrendingUp className="w-3 h-3" /> Growth Metrics
+                    </p>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1">
+                      {Object.entries(relationship.baselineMetrics).map(([key, baseline]) => {
+                        const current = relationship.currentMetrics?.[key];
+                        const label = key === "bizConfidence" ? "Biz Confidence" : key === "systemsInPlace" ? "Systems" : key === "fundingReadiness" ? "Funding" : key === "networkStrength" ? "Network" : key.charAt(0).toUpperCase() + key.slice(1);
+                        const grew = current != null && current > baseline;
+                        return (
+                          <div key={key} className="flex items-center gap-1.5" data-testid={`metric-${key}-${relationship.id}`}>
+                            <span className="text-[10px] text-muted-foreground w-20 shrink-0">{label}</span>
+                            <div className="flex items-center gap-1 text-xs tabular-nums">
+                              <span className="text-muted-foreground">{baseline}</span>
+                              <ArrowRight className="w-3 h-3 text-muted-foreground/60" />
+                              <span className={grew ? "text-green-600 dark:text-green-400 font-medium" : ""}>{current ?? baseline}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}

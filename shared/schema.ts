@@ -1812,6 +1812,7 @@ export const mentoringRelationships = pgTable("mentoring_relationships", {
   totalSessions: integer("total_sessions").default(0),
   outcomesAchieved: jsonb("outcomes_achieved").$type<string[]>(),
   graduationNotes: text("graduation_notes"),
+  baselineMetrics: jsonb("baseline_metrics").$type<Record<string, number>>(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

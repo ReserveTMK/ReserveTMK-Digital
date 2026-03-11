@@ -1225,6 +1225,7 @@ export async function registerRoutes(
           whatNeedHelpWith: application?.whatNeedHelpWith || null,
           onboardingAnswers: application?.onboardingAnswers || null,
           applicationNotes: application?.reviewNotes || null,
+          currentMetrics: contact?.metrics || null,
         };
       });
 
@@ -1262,19 +1263,35 @@ export async function registerRoutes(
       const reqFrequency = req.body.sessionFrequency && (SESSION_FREQUENCIES as readonly string[]).includes(req.body.sessionFrequency) ? req.body.sessionFrequency : "monthly";
       const reqStage = req.body.stage && (JOURNEY_STAGES as readonly string[]).includes(req.body.stage) ? req.body.stage : "kakano";
 
+      const allowedMetricKeys = ['mindset', 'skill', 'confidence', 'bizConfidence', 'systemsInPlace', 'fundingReadiness', 'networkStrength'];
+      let reqBaseline: Record<string, number> | null = null;
+      if (req.body.baselineMetrics && typeof req.body.baselineMetrics === 'object') {
+        const sanitized: Record<string, number> = {};
+        for (const key of allowedMetricKeys) {
+          const val = Number(req.body.baselineMetrics[key]);
+          if (!isNaN(val)) sanitized[key] = Math.min(10, Math.max(1, Math.round(val)));
+        }
+        if (Object.keys(sanitized).length > 0) reqBaseline = sanitized;
+      }
+
       const relationship = await storage.createMentoringRelationship({
         contactId: application.contactId,
         status: "active",
         startDate: new Date(),
         focusAreas: reqFocusAreas || application.whatNeedHelpWith || application.ventureDescription || null,
         sessionFrequency: reqFrequency,
+        baselineMetrics: reqBaseline,
       });
 
+      const contactUpdate: any = {
+        isCommunityMember: true,
+        stage: reqStage,
+      };
+      if (reqBaseline) {
+        contactUpdate.metrics = reqBaseline;
+      }
       try {
-        await storage.updateContact(application.contactId, {
-          isCommunityMember: true,
-          stage: reqStage,
-        });
+        await storage.updateContact(application.contactId, contactUpdate);
       } catch (contactErr) {
         console.warn("Failed to update contact on acceptance:", contactErr);
       }
