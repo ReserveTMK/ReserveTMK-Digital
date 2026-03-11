@@ -23,7 +23,7 @@ import { useCreateMeeting } from "@/hooks/use-meetings";
 import { useContacts } from "@/hooks/use-contacts";
 import { useVenues } from "@/hooks/use-bookings";
 import { useQuery } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
   Plus,
   Loader2,
@@ -33,9 +33,12 @@ import {
   TreePine,
   Sun,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   X,
   UserPlus,
   Mail,
+  Clock,
 } from "lucide-react";
 import { SessionCard } from "@/components/mentoring/session-card";
 import {
@@ -81,7 +84,14 @@ export function ScheduleSessionDialog({
   });
   const { data: venues } = useVenues();
   const createMeeting = useCreateMeeting();
-  const [mentorUserId, setMentorUserId] = useState("");
+  const [mentorUserId, setMentorUserIdRaw] = useState("");
+  const setMentorUserId = useCallback((val: string) => {
+    setMentorUserIdRaw(val);
+    setDate("");
+    setTime("09:00");
+    setSelectedDay("");
+    setShowManualTime(false);
+  }, []);
   const [venueId, setVenueId] = useState<string>("");
   const [contactId, setContactId] = useState(prefillContactId ? String(prefillContactId) : "");
   const [contactSearch, setContactSearch] = useState("");
@@ -96,6 +106,75 @@ export function ScheduleSessionDialog({
   const [inviteEmail, setInviteEmail] = useState("");
   const [showInvites, setShowInvites] = useState(false);
   const [sendInvites, setSendInvites] = useState(false);
+  const [weekStart, setWeekStart] = useState<Date>(() => {
+    const now = new Date();
+    const day = now.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    const mon = new Date(now);
+    mon.setDate(now.getDate() + diff);
+    mon.setHours(0, 0, 0, 0);
+    return mon;
+  });
+  const [selectedDay, setSelectedDay] = useState<string>("");
+  const [showManualTime, setShowManualTime] = useState(false);
+
+  const formatLocalDate = useCallback((d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }, []);
+
+  const weekDays = useMemo(() => {
+    const days: { date: Date; label: string; dateStr: string; isPast: boolean }[] = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(weekStart);
+      d.setDate(weekStart.getDate() + i);
+      const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+      days.push({
+        date: d,
+        label: dayNames[i],
+        dateStr: formatLocalDate(d),
+        isPast: d < today,
+      });
+    }
+    return days;
+  }, [weekStart, formatLocalDate]);
+
+  const { data: availableSlots, isLoading: slotsLoading } = useQuery<{ time: string; endTime: string }[]>({
+    queryKey: ["/api/public/mentoring", mentorUserId, "slots", selectedDay],
+    queryFn: async () => {
+      if (!mentorUserId || !selectedDay) return [];
+      const res = await fetch(`/api/public/mentoring/${mentorUserId}/slots?date=${selectedDay}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.slots || [];
+    },
+    enabled: !!mentorUserId && !!selectedDay,
+  });
+
+  const formatSlotTime = useCallback((timeStr: string) => {
+    const [h, m] = timeStr.split(":").map(Number);
+    const period = h >= 12 ? "PM" : "AM";
+    const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
+  }, []);
+
+  const navigateWeek = useCallback((dir: number) => {
+    setWeekStart(prev => {
+      const next = new Date(prev);
+      next.setDate(prev.getDate() + dir * 7);
+      return next;
+    });
+    setSelectedDay("");
+  }, []);
+
+  const handleSlotClick = useCallback((dayStr: string, timeStr: string) => {
+    setDate(dayStr);
+    setTime(timeStr);
+  }, []);
 
   const mentoringTypes = useMemo(() => {
     return (meetingTypes || []).filter(t => t.isActive && t.category === "mentoring");
@@ -176,7 +255,7 @@ export function ScheduleSessionDialog({
   };
 
   const resetForm = () => {
-    setMentorUserId("");
+    setMentorUserIdRaw("");
     setVenueId("");
     setContactId(prefillContactId ? String(prefillContactId) : "");
     setContactSearch("");
@@ -191,9 +270,8 @@ export function ScheduleSessionDialog({
     setInviteEmail("");
     setShowInvites(false);
     setSendInvites(false);
-    setVentureDescription("");
-    setCurrentStage("");
-    setWhatNeedHelpWith("");
+    setSelectedDay("");
+    setShowManualTime(false);
   };
 
   return (
@@ -332,16 +410,136 @@ export function ScheduleSessionDialog({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>Date</Label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} data-testid="input-session-date" />
+          {mentorUserId ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>Availability</Label>
+                {date && time && (
+                  <span className="text-xs text-muted-foreground" data-testid="text-selected-datetime">
+                    {new Date(date + "T00:00:00").toLocaleDateString("en-NZ", { weekday: "short", day: "numeric", month: "short" })} at {formatSlotTime(time)}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0"
+                  onClick={() => navigateWeek(-1)}
+                  data-testid="button-prev-week"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <div className="grid grid-cols-7 gap-1 flex-1">
+                  {weekDays.map(d => {
+                    const isSelected = d.dateStr === selectedDay;
+                    const isBooked = d.dateStr === date;
+                    return (
+                      <button
+                        key={d.dateStr}
+                        type="button"
+                        disabled={d.isPast}
+                        className={`flex flex-col items-center py-1.5 px-0.5 rounded-lg text-center transition-all ${
+                          d.isPast
+                            ? "opacity-30 cursor-not-allowed"
+                            : isSelected
+                            ? "bg-primary text-primary-foreground"
+                            : isBooked
+                            ? "bg-primary/20 border border-primary"
+                            : "hover:bg-muted border border-transparent"
+                        }`}
+                        onClick={() => { setSelectedDay(d.dateStr); setDate(""); setTime("09:00"); }}
+                        data-testid={`day-${d.dateStr}`}
+                      >
+                        <span className="text-[10px] font-medium">{d.label}</span>
+                        <span className="text-sm font-semibold">{d.date.getDate()}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0"
+                  onClick={() => navigateWeek(1)}
+                  data-testid="button-next-week"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+
+              {selectedDay && (
+                <div className="space-y-2">
+                  {slotsLoading ? (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      <span className="text-xs text-muted-foreground">Loading availability...</span>
+                    </div>
+                  ) : availableSlots && availableSlots.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {availableSlots.map(slot => {
+                        const isChosen = date === selectedDay && time === slot.time;
+                        return (
+                          <button
+                            key={slot.time}
+                            type="button"
+                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                              isChosen
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted hover:bg-primary/20 hover:text-primary"
+                            }`}
+                            onClick={() => handleSlotClick(selectedDay, slot.time)}
+                            data-testid={`slot-${slot.time}`}
+                          >
+                            {formatSlotTime(slot.time)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground text-center py-3" data-testid="text-no-slots">
+                      No available slots on this day
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setShowManualTime(!showManualTime)}
+                data-testid="toggle-manual-time"
+              >
+                <Clock className="w-3 h-3" />
+                {showManualTime ? "Hide manual time" : "Set time manually"}
+              </button>
+              {showManualTime && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Date</Label>
+                    <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} data-testid="input-session-date" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Time</Label>
+                    <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} data-testid="input-session-time" />
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="space-y-2">
-              <Label>Time</Label>
-              <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} data-testid="input-session-time" />
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Date</Label>
+                <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} data-testid="input-session-date" />
+              </div>
+              <div className="space-y-2">
+                <Label>Time</Label>
+                <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} data-testid="input-session-time" />
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">

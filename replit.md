@@ -32,7 +32,7 @@ PostgreSQL is used as the database, integrated with Drizzle ORM. The schema incl
 
 ### Core Features
 -   **Reporting Engine**: Funder-focused reporting across 9 sections, including Reach, Delivery, Impact, and alignment with Tamaki Ora. Supports 9 growth metrics grouped by Personal/Venture/Community, journey stage progression tracking (kakano/tipu/ora), and mentoring focus theme summaries.
--   **Mentoring System**: Comprehensive management with AI debrief insights, journey stage tracking, application review, multi-attendee session creation with Google Calendar sync, and a streamlined complete-to-debrief workflow.
+-   **Mentoring System**: Comprehensive management with AI debrief insights, journey stage tracking, application review, multi-attendee session creation with Google Calendar sync, inline mentor availability calendar in the Schedule Session dialog, and a streamlined complete-to-debrief workflow.
 -   **Scheduling System**: Manages mentor/staff availability with Google Calendar sync and a public booking page for pathway-driven mentee scheduling.
 -   **Calendar as Tracking Hub**: Integrates Google Calendar sync, manual activity logging, and daily/monthly foot traffic input.
 -   **Community Structure**: A 4-tier system (All Contacts / Our Community / Our Innovators / VIP) with dynamic filtering, contact roles, and group management.
