@@ -12,6 +12,7 @@ import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSch
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { ObjectStorageService } from "./replit_integrations/object_storage";
 import crypto from "crypto";
+import { getBaseUrl } from "./url";
 import { db } from "./db";
 import { eq, and, or, sql, gte, lte } from "drizzle-orm";
 
@@ -4175,11 +4176,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
       const enriched = await Promise.all(bookers.map(async (booker) => {
         const links = await storage.getBookerLinks(booker.id);
-        const baseUrl = process.env.REPLIT_DEV_DOMAIN
-          ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-          : process.env.REPL_SLUG
-          ? `https://${process.env.REPL_SLUG}.replit.app`
-          : "https://app.reservetmk.co.nz";
+        const baseUrl = getBaseUrl();
 
         let contact = null;
         if (booker.contactId) {
@@ -4256,11 +4253,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         label: "Portal link",
       });
 
-      const baseUrl = process.env.REPLIT_DEV_DOMAIN
-        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : process.env.REPL_SLUG
-        ? `https://${process.env.REPL_SLUG}.replit.app`
-        : "https://app.reservetmk.co.nz";
+      const baseUrl = getBaseUrl();
       const portalUrl = `${baseUrl}/booker/portal/${token}`;
 
       res.json({ ...booker, portalUrl });
@@ -4296,11 +4289,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     try {
       const userId = (req.user as any).claims.sub;
       const links = await storage.getAllBookerLinks(userId);
-      const baseUrl = process.env.REPLIT_DEV_DOMAIN
-        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : process.env.REPL_SLUG
-        ? `https://${process.env.REPL_SLUG}.replit.app`
-        : "https://app.reservetmk.co.nz";
+      const baseUrl = getBaseUrl();
       const linksWithUrls = links.map(l => ({ ...l, portalUrl: `${baseUrl}/booker/portal/${l.token}` }));
       res.json(linksWithUrls);
     } catch (err: any) {
@@ -4315,11 +4304,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const booker = await storage.getRegularBooker(id);
       if (!booker || booker.userId !== userId) return res.status(403).json({ message: "Forbidden" });
       const links = await storage.getBookerLinks(id);
-      const baseUrl = process.env.REPLIT_DEV_DOMAIN
-        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : process.env.REPL_SLUG
-        ? `https://${process.env.REPL_SLUG}.replit.app`
-        : "https://app.reservetmk.co.nz";
+      const baseUrl = getBaseUrl();
       const linksWithUrls = links.map(l => ({ ...l, portalUrl: `${baseUrl}/booker/portal/${l.token}` }));
       res.json(linksWithUrls);
     } catch (err: any) {
@@ -4334,11 +4319,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const booker = await storage.getRegularBooker(id);
       if (!booker || booker.userId !== userId) return res.status(403).json({ message: "Forbidden" });
 
-      const baseUrl = process.env.REPLIT_DEV_DOMAIN
-        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : process.env.REPL_SLUG
-        ? `https://${process.env.REPL_SLUG}.replit.app`
-        : "https://app.reservetmk.co.nz";
+      const baseUrl = getBaseUrl();
 
       const existingLinks = await storage.getBookerLinks(id);
       const now = new Date();
@@ -10111,11 +10092,7 @@ Rules:
           label: "Email login link",
         });
 
-        const baseUrl = process.env.REPLIT_DEV_DOMAIN
-          ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-          : process.env.REPL_SLUG
-          ? `https://${process.env.REPL_SLUG}.replit.app`
-          : "https://app.reservetmk.co.nz";
+        const baseUrl = getBaseUrl();
         const loginUrl = `${baseUrl}/booker/portal/${token}`;
 
         const contact = booker.contactId ? await storage.getContact(booker.contactId) : null;

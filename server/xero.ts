@@ -1,6 +1,7 @@
 import { storage } from "./storage";
 import type { Booking, XeroSettings } from "@shared/schema";
 import crypto from "crypto";
+import { getBaseUrl } from "./url";
 
 const XERO_TOKEN_URL = "https://identity.xero.com/connect/token";
 const XERO_API_BASE = "https://api.xero.com/api.xro/2.0";
@@ -25,13 +26,7 @@ export function validateOAuthState(state: string): string | null {
 }
 
 function getRedirectUri(): string {
-  if (process.env.REPLIT_DEV_DOMAIN) {
-    return `https://${process.env.REPLIT_DEV_DOMAIN}/api/xero/callback`;
-  }
-  if (process.env.REPL_SLUG) {
-    return `https://${process.env.REPL_SLUG}.replit.app/api/xero/callback`;
-  }
-  return "https://app.reservetmk.co.nz/api/xero/callback";
+  return `${getBaseUrl()}/api/xero/callback`;
 }
 
 export function getXeroAuthUrl(settings: XeroSettings, state: string): string {

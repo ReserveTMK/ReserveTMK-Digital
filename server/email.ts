@@ -1,5 +1,6 @@
 import { getUncachableGmailClient } from "./replit_integrations/gmail/client";
 import { storage } from "./storage";
+import { getBaseUrl } from "./url";
 import type { Booking, VenueInstruction, RegularBooker } from "@shared/schema";
 
 async function sendEmail(to: string, subject: string, htmlBody: string): Promise<void> {
@@ -385,11 +386,7 @@ export async function sendSurveyEmail(
   options?: { subject?: string; intro?: string; signoff?: string }
 ): Promise<void> {
   const dateStr = formatDate(bookingDate);
-  const baseUrl = process.env.REPLIT_DEV_DOMAIN
-    ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-    : process.env.REPL_SLUG
-    ? `https://${process.env.REPL_SLUG}.replit.app`
-    : "https://app.reservetmk.co.nz";
+  const baseUrl = getBaseUrl();
 
   const surveyUrl = `${baseUrl}/survey/${surveyToken}`;
 

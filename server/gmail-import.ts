@@ -1,6 +1,7 @@
 import { storage } from './storage';
 import { claudeJSON } from './replit_integrations/anthropic/client';
 import { google } from 'googleapis';
+import { getBaseUrl } from './url';
 import type { GmailConnectedAccount } from '@shared/schema';
 
 const PUBLIC_DOMAINS = new Set([
@@ -144,11 +145,7 @@ export function getGmailOAuth2Client() {
   const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
   if (!clientId || !clientSecret) return null;
 
-  const baseUrl = process.env.REPLIT_DEV_DOMAIN
-    ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-    : process.env.REPL_SLUG
-      ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
-      : 'http://localhost:5000';
+  const baseUrl = getBaseUrl();
 
   return new google.auth.OAuth2(
     clientId,
