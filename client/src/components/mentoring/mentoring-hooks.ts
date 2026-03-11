@@ -57,6 +57,10 @@ export type EnrichedRelationship = MentoringRelationship & {
   lastSessionDate: string | null;
   lastSessionFocus: string | null;
   recentSessionIds: number[];
+  ventureDescription?: string | null;
+  whatNeedHelpWith?: string | null;
+  onboardingAnswers?: Record<string, string> | null;
+  applicationNotes?: string | null;
 };
 
 export type DebriefSummary = {

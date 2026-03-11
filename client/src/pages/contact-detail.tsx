@@ -11,7 +11,8 @@ import { Card } from "@/components/ui/card";
 import { useRoute, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Loader2, Mic, StopCircle, ArrowLeft, Brain, TrendingUp, Sparkles, AlertCircle, DollarSign, Settings, Rocket, Network, Shield, FileText, CheckSquare, Calendar, Clock, ChevronDown, ChevronLeft, ChevronRight, History, MessageSquare, Pencil, Check, X, ArrowUp, ArrowDown, Star, Users, Coffee, Trash2, Plus, MoreVertical, ClipboardList } from "lucide-react";
+import { Loader2, Mic, StopCircle, ArrowLeft, Brain, TrendingUp, Sparkles, AlertCircle, DollarSign, Settings, Rocket, Network, Shield, FileText, CheckSquare, Calendar, Clock, ChevronDown, ChevronLeft, ChevronRight, History, MessageSquare, Pencil, Check, X, ArrowUp, ArrowDown, Star, Users, Coffee, Trash2, Plus, MoreVertical, ClipboardList, Sprout } from "lucide-react";
+import type { MentoringApplication } from "@shared/schema";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -65,6 +66,11 @@ export default function ContactDetail() {
     queryFn: () => fetch(`/api/contacts/${id}/programme-registrations`, { credentials: 'include' }).then(r => r.json()),
     enabled: !!id,
   });
+
+  const { data: allApplications } = useQuery<MentoringApplication[]>({
+    queryKey: ["/api/mentoring-applications"],
+  });
+  const contactApplication = allApplications?.find(a => a.contactId === id);
 
   const { data: contactGroups } = useContactGroups(id);
   const { data: allGroups } = useGroups();
@@ -1063,6 +1069,65 @@ export default function ContactDetail() {
                   )}
                 </div>
               </div>
+              {contactApplication && (contactApplication.ventureDescription || contactApplication.whatNeedHelpWith || contactApplication.onboardingAnswers) && (
+                <div className="bg-card rounded-2xl p-6 border border-border shadow-sm">
+                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <Sprout className="w-5 h-5 text-primary" />
+                    Discovery / Onboarding Info
+                  </h3>
+                  <div className="space-y-3">
+                    {contactApplication.ventureDescription && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-0.5">Venture / Idea</p>
+                        <p className="text-sm" data-testid="text-contact-venture-desc">{contactApplication.ventureDescription}</p>
+                      </div>
+                    )}
+                    {contactApplication.whatNeedHelpWith && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-0.5">Needs Help With</p>
+                        <p className="text-sm" data-testid="text-contact-help-needed">{contactApplication.whatNeedHelpWith}</p>
+                      </div>
+                    )}
+                    {contactApplication.currentStage && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-0.5">Stage at Discovery</p>
+                        <Badge variant="secondary" className="text-xs capitalize" data-testid="badge-contact-discovery-stage">
+                          {({ kakano: "Kākano (Seed)", tipu: "Tipu (Growth)", ora: "Ora (Thriving)" } as Record<string, string>)[contactApplication.currentStage] || contactApplication.currentStage}
+                        </Badge>
+                      </div>
+                    )}
+                    {contactApplication.onboardingAnswers && typeof contactApplication.onboardingAnswers === "object" && Object.keys(contactApplication.onboardingAnswers).length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-1">Onboarding Responses</p>
+                        <div className="space-y-1 pl-2 border-l-2 border-border">
+                          {Object.entries(contactApplication.onboardingAnswers as Record<string, string>).map(([q, a]) => (
+                            <div key={q}>
+                              <p className="text-xs text-muted-foreground">{q}</p>
+                              <p className="text-sm">{a}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {contactApplication.reviewNotes && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-0.5">Mentor Notes</p>
+                        <p className="text-sm text-muted-foreground" data-testid="text-contact-review-notes">{contactApplication.reviewNotes}</p>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 pt-1">
+                      <Badge variant="outline" className="text-[10px] capitalize">
+                        {contactApplication.status}
+                      </Badge>
+                      {contactApplication.reviewedDate && (
+                        <span className="text-[10px] text-muted-foreground">
+                          Reviewed {new Date(contactApplication.reviewedDate).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" })}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </TabsContent>
 
             <TabsContent value="history" className="space-y-4">

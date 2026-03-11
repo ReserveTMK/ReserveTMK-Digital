@@ -220,6 +220,34 @@ export function MenteeCard({ relationship }: { relationship: EnrichedRelationshi
               </div>
             </div>
 
+            {(relationship.ventureDescription || relationship.whatNeedHelpWith) && (
+              <div className="space-y-2 p-3 rounded-lg bg-muted/30 border border-border">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Discovery Info</p>
+                {relationship.ventureDescription && (
+                  <div>
+                    <p className="text-[10px] font-medium text-muted-foreground">Venture / Idea</p>
+                    <p className="text-xs" data-testid={`text-venture-desc-${relationship.id}`}>{relationship.ventureDescription}</p>
+                  </div>
+                )}
+                {relationship.whatNeedHelpWith && (
+                  <div>
+                    <p className="text-[10px] font-medium text-muted-foreground">Needs Help With</p>
+                    <p className="text-xs" data-testid={`text-help-needed-${relationship.id}`}>{relationship.whatNeedHelpWith}</p>
+                  </div>
+                )}
+                {relationship.onboardingAnswers && Object.keys(relationship.onboardingAnswers).length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-medium text-muted-foreground">Onboarding Responses</p>
+                    <div className="space-y-0.5 mt-0.5">
+                      {Object.entries(relationship.onboardingAnswers).map(([q, a]) => (
+                        <p key={q} className="text-xs"><span className="text-muted-foreground">{q}:</span> {a}</p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {relationship.focusAreas && (
               <div>
                 <p className="text-xs font-medium mb-1">Focus Areas</p>

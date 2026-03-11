@@ -1196,12 +1196,16 @@ export async function registerRoutes(
         allMeetings.push(...m.filter(mt => mt.type === "mentoring" || !mt.type));
       }
 
+      const allApplications = await storage.getMentoringApplications();
+
       const enriched = filtered.map(r => {
         const contact = userContacts.find(c => c.id === r.contactId);
         const sessions = allMeetings.filter(m => m.contactId === r.contactId);
         const completedSessions = sessions.filter(s => s.status === "completed");
         const upcomingSessions = sessions.filter(s => new Date(s.startTime) >= new Date() && s.status !== "cancelled");
         const lastSession = completedSessions.sort((a: any, b: any) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())[0];
+
+        const application = allApplications.find(a => a.contactId === r.contactId);
 
         return {
           ...r,
@@ -1217,6 +1221,10 @@ export async function registerRoutes(
           lastSessionDate: lastSession ? lastSession.startTime : null,
           lastSessionFocus: lastSession ? lastSession.mentoringFocus : null,
           recentSessionIds: completedSessions.slice(0, 5).map((s: any) => s.id),
+          ventureDescription: application?.ventureDescription || null,
+          whatNeedHelpWith: application?.whatNeedHelpWith || null,
+          onboardingAnswers: application?.onboardingAnswers || null,
+          applicationNotes: application?.reviewNotes || null,
         };
       });
 
