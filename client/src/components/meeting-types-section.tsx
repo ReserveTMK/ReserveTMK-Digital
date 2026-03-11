@@ -36,19 +36,6 @@ const COLOR_OPTIONS = [
   { value: "#ec4899", label: "Pink" },
 ];
 
-const FOCUS_OPTIONS = [
-  "Venture Planning",
-  "Brand & Identity",
-  "Funding & Sustainability",
-  "Digital & Content",
-  "Skills & Capability",
-  "Networking & Connections",
-  "Goal Setting",
-  "General Catch-up",
-  "Follow-up",
-  "Other",
-];
-
 export function useMeetingTypes(category?: string) {
   const url = category ? `/api/meeting-types?category=${category}` : "/api/meeting-types";
   return useQuery<MeetingType[]>({
@@ -77,7 +64,6 @@ export function MeetingTypeDialog({
   const [name, setName] = useState(editingType?.name || "");
   const [description, setDescription] = useState(editingType?.description || "");
   const [duration, setDuration] = useState(String(editingType?.duration || 30));
-  const [focus, setFocus] = useState(editingType?.focus || "");
   const [color, setColor] = useState(editingType?.color || "#3b82f6");
   const [isActive, setIsActive] = useState(editingType?.isActive ?? true);
 
@@ -115,7 +101,6 @@ export function MeetingTypeDialog({
       name: name.trim(),
       description: description.trim() || null,
       duration: parseInt(duration),
-      focus: focus || null,
       color,
       isActive,
     };
@@ -172,19 +157,6 @@ export function MeetingTypeDialog({
                   <SelectItem value="30">30 min</SelectItem>
                   <SelectItem value="45">45 min</SelectItem>
                   <SelectItem value="60">60 min</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Focus</Label>
-              <Select value={focus} onValueChange={setFocus}>
-                <SelectTrigger data-testid="select-meeting-type-focus">
-                  <SelectValue placeholder="Select focus..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {FOCUS_OPTIONS.map((f) => (
-                    <SelectItem key={f} value={f}>{f}</SelectItem>
-                  ))}
                 </SelectContent>
               </Select>
             </div>
