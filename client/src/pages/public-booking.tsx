@@ -23,19 +23,10 @@ import {
   Coffee,
   Sprout,
   Lightbulb,
+  Plus,
+  X,
+  Mail,
 } from "lucide-react";
-
-const FOCUS_OPTIONS = [
-  "Venture Planning",
-  "Brand & Identity",
-  "Funding & Sustainability",
-  "Digital & Content",
-  "Skills & Capability",
-  "Networking & Connections",
-  "Goal Setting",
-  "General Catch-up",
-  "Other",
-];
 
 const GOAL_STAGE_OPTIONS = [
   { value: "just_an_idea", label: "Just an idea" },
@@ -74,7 +65,13 @@ interface OnboardingQuestion {
 }
 
 type Pathway = "mentoring" | "meeting";
-type StepId = "pathway" | "name" | "contact" | "goals" | "info" | "onboarding" | "type" | "date" | "details" | "confirmed";
+type StepId = "pathway" | "name" | "contact" | "goals" | "info" | "onboarding" | "mentor" | "type" | "date" | "details" | "confirmed";
+
+interface MentorOption {
+  id: number;
+  name: string;
+  mentorBookingId: string;
+}
 
 function formatDate(date: Date) {
   return date.toISOString().split("T")[0];
@@ -143,13 +140,15 @@ export default function PublicBookingPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [focus, setFocus] = useState("");
   const [notes, setNotes] = useState("");
   const [onboardingAnswers, setOnboardingAnswers] = useState<Record<string, any>>({});
 
   const [ventureDescription, setVentureDescription] = useState("");
   const [ventureStage, setVentureStage] = useState("");
   const [helpArea, setHelpArea] = useState("");
+  const [extras, setExtras] = useState<string[]>([]);
+  const [extraEmail, setExtraEmail] = useState("");
+  const [selectedMentor, setSelectedMentor] = useState<MentorOption | null>(null);
 
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [selectedSlot, setSelectedSlot] = useState<string>("");
@@ -172,26 +171,38 @@ export default function PublicBookingPage() {
     enabled: !!userId,
   });
 
+  const { data: mentorOptions } = useQuery<MentorOption[]>({
+    queryKey: ["/api/public/mentoring", userId, "mentors"],
+    queryFn: async () => {
+      const res = await fetch(`/api/public/mentoring/${userId}/mentors`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!userId,
+  });
+
+  const activeMentorId = selectedMentor?.mentorBookingId || userId;
+
   const { data: availability, isLoading: availabilityLoading } = useQuery({
-    queryKey: ["/api/public/mentoring", userId, "availability", pathway],
+    queryKey: ["/api/public/mentoring", activeMentorId, "availability", pathway],
     queryFn: async () => {
       const categoryParam = pathway ? `?category=${pathway}` : "";
-      const res = await fetch(`/api/public/mentoring/${userId}/availability${categoryParam}`);
+      const res = await fetch(`/api/public/mentoring/${activeMentorId}/availability${categoryParam}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
-    enabled: !!userId && !!pathway,
+    enabled: !!activeMentorId && !!pathway,
   });
 
   const { data: meetingTypes, isLoading: meetingTypesLoading } = useQuery<MeetingType[]>({
-    queryKey: ["/api/public/mentoring", userId, "meeting-types", pathway],
+    queryKey: ["/api/public/mentoring", activeMentorId, "meeting-types", pathway],
     queryFn: async () => {
       const categoryParam = pathway ? `?category=${pathway}` : "";
-      const res = await fetch(`/api/public/mentoring/${userId}/meeting-types${categoryParam}`);
+      const res = await fetch(`/api/public/mentoring/${activeMentorId}/meeting-types${categoryParam}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
-    enabled: !!userId && !!pathway,
+    enabled: !!activeMentorId && !!pathway,
   });
 
   const { data: onboardingQuestions } = useQuery<OnboardingQuestion[]>({
@@ -241,8 +252,7 @@ export default function PublicBookingPage() {
         if (data.isReturning) {
           setIsReturningMentee(true);
           setName(data.contactName);
-          const hasMT = meetingTypes && meetingTypes.length > 0;
-          setStep(hasMT ? "type" : "date");
+          setStep(getReturningNextStep());
         }
       } else {
         setEmailMatchName(null);
@@ -261,8 +271,7 @@ export default function PublicBookingPage() {
       setMenteeChecked(true);
       if (data.isReturning) {
         if (data.contactName) setName(data.contactName);
-        const hasMeetingTypes = meetingTypes && meetingTypes.length > 0;
-        setStep(hasMeetingTypes ? "type" : "date");
+        setStep(getReturningNextStep());
       } else {
         if (onboardingQuestions && onboardingQuestions.length > 0) {
           setStep("onboarding");
@@ -275,10 +284,10 @@ export default function PublicBookingPage() {
   });
 
   const { data: slotsData, isLoading: slotsLoading } = useQuery({
-    queryKey: ["/api/public/mentoring", userId, "slots", selectedDate, pathway],
+    queryKey: ["/api/public/mentoring", activeMentorId, "slots", selectedDate, pathway],
     queryFn: async () => {
       const categoryParam = pathway ? `&category=${pathway}` : "";
-      const res = await fetch(`/api/public/mentoring/${userId}/slots?date=${selectedDate}${categoryParam}`);
+      const res = await fetch(`/api/public/mentoring/${activeMentorId}/slots?date=${selectedDate}${categoryParam}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
@@ -287,7 +296,7 @@ export default function PublicBookingPage() {
 
   const bookMutation = useMutation({
     mutationFn: async (data: any) => {
-      const res = await fetch(`/api/public/mentoring/${userId}/book`, {
+      const res = await fetch(`/api/public/mentoring/${activeMentorId}/book`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -324,6 +333,7 @@ export default function PublicBookingPage() {
   }, [availability, selectedMeetingType]);
 
   const hasMeetingTypes = meetingTypes && meetingTypes.length > 0;
+  const hasMultipleMentors = mentorOptions && mentorOptions.length > 1;
 
   const isDiscoverySession = pathway === "mentoring" && !isReturningMentee && nameChecked;
 
@@ -334,6 +344,9 @@ export default function PublicBookingPage() {
       if (nameChecked && !isReturningMentee) {
         steps.push({ id: "contact", label: "Details" });
         steps.push({ id: "goals", label: "Goals" });
+      }
+      if (isReturningMentee && hasMultipleMentors) {
+        steps.push({ id: "mentor", label: "Mentor" });
       }
       if (hasMeetingTypes && isReturningMentee) {
         steps.push({ id: "type", label: "Session" });
@@ -346,10 +359,30 @@ export default function PublicBookingPage() {
       ...(hasMeetingTypes ? [{ id: "type" as StepId, label: "Session" }] : []),
       { id: "date", label: "When" },
     ];
-  }, [pathway, isReturningMentee, nameChecked, hasMeetingTypes]);
+  }, [pathway, isReturningMentee, nameChecked, hasMeetingTypes, hasMultipleMentors]);
+
+  const getReturningNextStep = (): StepId => {
+    if (hasMultipleMentors) return "mentor";
+    if (hasMeetingTypes) return "type";
+    return "date";
+  };
+
+  const handleSelectMentor = (mentor: MentorOption) => {
+    setSelectedMentor(mentor);
+    setSelectedDate("");
+    setSelectedSlot("");
+    setSelectedMeetingType(null);
+    setStep(hasMeetingTypes ? "type" : "date");
+  };
 
   const handleSelectPathway = (p: Pathway) => {
     setPathway(p);
+    setSelectedMentor(null);
+    setExtras([]);
+    setExtraEmail("");
+    setSelectedDate("");
+    setSelectedSlot("");
+    setSelectedMeetingType(null);
     setStep(p === "mentoring" ? "name" : "info");
   };
 
@@ -404,10 +437,10 @@ export default function PublicBookingPage() {
       date: selectedDate,
       time: selectedSlot,
       duration: slotDuration,
-      focus: focus || undefined,
       notes: notes.trim() || undefined,
       meetingTypeId: selectedMeetingType?.id || undefined,
       pathway: pathway,
+      extras: extras.length > 0 ? extras : undefined,
     };
     if (pathway === "mentoring" && !isReturningMentee && onboardingAnswers && Object.keys(onboardingAnswers).length > 0) {
       bookData.onboardingAnswers = onboardingAnswers;
@@ -428,7 +461,6 @@ export default function PublicBookingPage() {
     setName("");
     setEmail("");
     setPhone("");
-    setFocus("");
     setNotes("");
     setSelectedMeetingType(null);
     setBookingResult(null);
@@ -443,10 +475,14 @@ export default function PublicBookingPage() {
     setVentureDescription("");
     setVentureStage("");
     setHelpArea("");
+    setExtras([]);
+    setExtraEmail("");
+    setSelectedMentor(null);
     setStep("pathway");
   };
 
-  const mentorName = mentorInfo ? `${mentorInfo.firstName || ""} ${mentorInfo.lastName || ""}`.trim() : "";
+  const baseMentorName = mentorInfo ? `${mentorInfo.firstName || ""} ${mentorInfo.lastName || ""}`.trim() : "";
+  const mentorName = selectedMentor ? selectedMentor.name : baseMentorName;
   const orgName = mentorInfo?.orgName || "ReserveTMK";
 
   if (mentorError && !mentorLoading) {
@@ -668,8 +704,7 @@ export default function PublicBookingPage() {
                       className="text-xs"
                       onClick={() => {
                         setReturningConfirmed(true);
-                        const hasMT = meetingTypes && meetingTypes.length > 0;
-                        setStep(hasMT ? "type" : "date");
+                        setStep(getReturningNextStep());
                       }}
                       data-testid="button-confirm-returning"
                     >
@@ -930,12 +965,46 @@ export default function PublicBookingPage() {
             </div>
           )}
 
+          {step === "mentor" && (
+            <div className="p-5 sm:p-6 space-y-5 step-animate">
+              <button
+                className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-[44px]"
+                onClick={() => { setStep("name"); setNameChecked(false); }}
+                data-testid="button-back-from-mentor"
+              >
+                <ChevronLeft className="w-4 h-4" /> Back
+              </button>
+              <h3 className="font-semibold text-sm flex items-center gap-2">
+                <Users className="w-4 h-4" /> Choose Your Mentor
+              </h3>
+              <div className="grid gap-3">
+                {mentorOptions?.map((mentor) => (
+                  <button
+                    key={mentor.id}
+                    onClick={() => handleSelectMentor(mentor)}
+                    className={`flex items-center gap-3 rounded-lg border p-4 text-left transition-colors hover:bg-muted min-h-[44px] ${
+                      selectedMentor?.id === mentor.id ? "border-primary bg-primary/5" : "border-border"
+                    }`}
+                    data-testid={`card-mentor-${mentor.id}`}
+                  >
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <Users className="w-5 h-5 text-primary" />
+                    </div>
+                    <span className="font-medium text-sm" data-testid={`text-mentor-name-${mentor.id}`}>{mentor.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {step === "type" && (
             <div className="p-5 sm:p-6 space-y-5 step-animate">
               <button
                 className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-[44px]"
                 onClick={() => {
-                  if (pathway === "mentoring" && isReturningMentee) {
+                  if (pathway === "mentoring" && isReturningMentee && hasMultipleMentors) {
+                    setStep("mentor");
+                  } else if (pathway === "mentoring" && isReturningMentee) {
                     setStep("name");
                     setNameChecked(false);
                   } else if (pathway === "mentoring" && !isReturningMentee && onboardingQuestions && onboardingQuestions.length > 0) {
@@ -990,6 +1059,8 @@ export default function PublicBookingPage() {
                     setStep("goals");
                   } else if (hasMeetingTypes) {
                     setStep("type");
+                  } else if (pathway === "mentoring" && isReturningMentee && hasMultipleMentors) {
+                    setStep("mentor");
                   } else if (pathway === "mentoring" && isReturningMentee) {
                     setStep("name");
                     setNameChecked(false);
@@ -1139,39 +1210,81 @@ export default function PublicBookingPage() {
               {pathway === "meeting" && (
                 <div className="space-y-3">
                   <div className="space-y-2">
-                    <Label>What would you like to discuss?</Label>
-                    <Select value={focus} onValueChange={setFocus}>
-                      <SelectTrigger data-testid="select-book-focus">
-                        <SelectValue placeholder="Select a topic..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {FOCUS_OPTIONS.map(f => (
-                          <SelectItem key={f} value={f}>{f}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label>Anything you'd like to discuss?</Label>
+                    <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Any specific topics or questions..." data-testid="input-book-notes" />
                   </div>
                 </div>
               )}
 
               {pathway === "mentoring" && (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label>Focus area</Label>
-                    <Select value={focus} onValueChange={setFocus}>
-                      <SelectTrigger data-testid="select-book-focus">
-                        <SelectValue placeholder="What would you like to work on?" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {FOCUS_OPTIONS.filter(f => f !== "General Catch-up").map(f => (
-                          <SelectItem key={f} value={f}>{f}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label>What would you like to work on? <span className="text-destructive">*</span></Label>
+                    <Textarea
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      rows={3}
+                      placeholder="Tell us what you'd like to focus on in this session..."
+                      data-testid="input-book-notes"
+                    />
                   </div>
                   <div className="space-y-2">
-                    <Label>Anything else?</Label>
-                    <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Any specific topics or questions you'd like to cover..." data-testid="input-book-notes" />
+                    <Label className="flex items-center gap-1.5">
+                      <Mail className="w-3.5 h-3.5" /> Invite Others
+                    </Label>
+                    <p className="text-xs text-muted-foreground">Add email addresses for anyone else you'd like to join this session.</p>
+                    <div className="flex gap-2">
+                      <Input
+                        type="email"
+                        value={extraEmail}
+                        onChange={(e) => setExtraEmail(e.target.value)}
+                        placeholder="Email address"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            const trimmed = extraEmail.trim();
+                            if (trimmed && trimmed.includes("@") && !extras.includes(trimmed)) {
+                              setExtras([...extras, trimmed]);
+                              setExtraEmail("");
+                            }
+                          }
+                        }}
+                        data-testid="input-extra-email"
+                      />
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        type="button"
+                        disabled={!extraEmail.trim() || !extraEmail.includes("@")}
+                        onClick={() => {
+                          const trimmed = extraEmail.trim();
+                          if (trimmed && trimmed.includes("@") && !extras.includes(trimmed)) {
+                            setExtras([...extras, trimmed]);
+                            setExtraEmail("");
+                          }
+                        }}
+                        data-testid="button-add-extra"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    {extras.length > 0 && (
+                      <div className="flex flex-col gap-1.5 mt-1">
+                        {extras.map((e, i) => (
+                          <div key={i} className="flex items-center justify-between gap-2 bg-muted/50 rounded-md px-3 py-1.5 text-sm">
+                            <span className="truncate" data-testid={`text-extra-email-${i}`}>{e}</span>
+                            <button
+                              type="button"
+                              onClick={() => setExtras(extras.filter((_, idx) => idx !== i))}
+                              className="shrink-0 text-muted-foreground hover:text-foreground"
+                              data-testid={`button-remove-extra-${i}`}
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1276,7 +1389,7 @@ export default function PublicBookingPage() {
           <div className="sticky bottom-0 z-10 p-4 border-t bg-background sm:static sm:border-0 sm:bg-transparent sm:px-6 sm:pb-6 sm:pt-0">
             <Button
               className="w-full"
-              disabled={!name.trim() || bookMutation.isPending}
+              disabled={!name.trim() || bookMutation.isPending || (pathway === "mentoring" && !notes.trim())}
               onClick={handleBook}
               data-testid="button-confirm-booking"
             >

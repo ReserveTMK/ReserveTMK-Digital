@@ -283,9 +283,6 @@ export function MeetingTypesSection({ category }: { category?: string }) {
                     {mt.description && (
                       <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{mt.description}</p>
                     )}
-                    {mt.focus && (
-                      <Badge variant="secondary" className="text-[10px] h-5 mt-1.5">{mt.focus}</Badge>
-                    )}
                   </div>
                 </div>
                 <div className="flex flex-col gap-1 shrink-0 items-end">

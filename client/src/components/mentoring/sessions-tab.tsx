@@ -48,19 +48,6 @@ import {
 } from "@/components/mentoring/mentoring-hooks";
 import type { Meeting, MeetingType, MentorProfile } from "@shared/schema";
 
-export const FOCUS_OPTIONS = [
-  "Venture Planning",
-  "Brand & Identity",
-  "Funding & Sustainability",
-  "Digital & Content",
-  "Skills & Capability",
-  "Networking & Connections",
-  "Goal Setting",
-  "General Catch-up",
-  "Follow-up",
-  "Other",
-];
-
 type Attendee = { email: string; name?: string; mentorProfileId?: number };
 
 export function ScheduleSessionDialog({
@@ -100,7 +87,6 @@ export function ScheduleSessionDialog({
   const [time, setTime] = useState("09:00");
   const [selectedTypeId, setSelectedTypeId] = useState<string>("");
   const [customDuration, setCustomDuration] = useState("30");
-  const [customFocus, setCustomFocus] = useState("");
   const [notes, setNotes] = useState("");
   const [location, setLocation] = useState("");
   const [attendees, setAttendees] = useState<Attendee[]>([]);
@@ -217,7 +203,6 @@ export function ScheduleSessionDialog({
   }, [selectedTypeId, mentoringTypes]);
 
   const effectiveDuration = selectedType?.duration || parseInt(customDuration);
-  const effectiveFocus = selectedType?.focus || customFocus;
 
   const filteredContacts = useMemo(() => {
     if (!contacts || !contactSearch.trim()) return (contacts || []).slice(0, 10);
@@ -254,7 +239,7 @@ export function ScheduleSessionDialog({
     const body: any = {
       contactId: parseInt(contactId),
       title: `Mentoring: ${contact?.name || 'Session'}`,
-      description: effectiveFocus || null,
+      description: null,
       startTime,
       endTime,
       status: "scheduled",
@@ -263,7 +248,6 @@ export function ScheduleSessionDialog({
       duration: effectiveDuration,
       bookingSource: "internal",
       notes: notes || null,
-      mentoringFocus: effectiveFocus || null,
       ...(mentorUserId ? { mentorUserId } : {}),
       ...(isOnSite && venueId ? { venueId: parseInt(venueId) } : {}),
     };
@@ -294,7 +278,6 @@ export function ScheduleSessionDialog({
     setTime("09:00");
     setSelectedTypeId("");
     setCustomDuration("30");
-    setCustomFocus("");
     setNotes("");
     setLocation("");
     setAttendees([]);
@@ -408,35 +391,20 @@ export function ScheduleSessionDialog({
           </div>
 
           {selectedTypeId === "custom" && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Duration</Label>
-                <Select value={customDuration} onValueChange={setCustomDuration}>
-                  <SelectTrigger data-testid="select-duration">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="15">15 min</SelectItem>
-                    <SelectItem value="30">30 min</SelectItem>
-                    <SelectItem value="45">45 min</SelectItem>
-                    <SelectItem value="60">60 min</SelectItem>
-                    <SelectItem value="90">90 min</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Focus</Label>
-                <Select value={customFocus} onValueChange={setCustomFocus}>
-                  <SelectTrigger data-testid="select-focus">
-                    <SelectValue placeholder="Select focus..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {FOCUS_OPTIONS.map(f => (
-                      <SelectItem key={f} value={f}>{f}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-2">
+              <Label>Duration</Label>
+              <Select value={customDuration} onValueChange={setCustomDuration}>
+                <SelectTrigger data-testid="select-duration">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="15">15 min</SelectItem>
+                  <SelectItem value="30">30 min</SelectItem>
+                  <SelectItem value="45">45 min</SelectItem>
+                  <SelectItem value="60">60 min</SelectItem>
+                  <SelectItem value="90">90 min</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           )}
 

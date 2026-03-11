@@ -789,7 +789,7 @@ export async function registerRoutes(
   });
 
   // === Google Calendar Event Helper ===
-  async function createCalendarEventForMeeting(meeting: any, options?: { mentorEmail?: string; coMentorEmail?: string; menteeEmail?: string; calendarId?: string; sendInvites?: boolean }) {
+  async function createCalendarEventForMeeting(meeting: any, options?: { mentorEmail?: string; coMentorEmail?: string; menteeEmail?: string; calendarId?: string; sendInvites?: boolean; additionalAttendees?: string[] }) {
     try {
       const { getUncachableGoogleCalendarClient } = await import("./replit_integrations/google-calendar/client");
       const calendar = await getUncachableGoogleCalendarClient();
@@ -798,6 +798,11 @@ export async function registerRoutes(
       if (options?.mentorEmail) attendees.push({ email: options.mentorEmail });
       if (options?.coMentorEmail) attendees.push({ email: options.coMentorEmail });
       if (options?.menteeEmail) attendees.push({ email: options.menteeEmail });
+      if (options?.additionalAttendees) {
+        for (const ae of options.additionalAttendees) {
+          if (!attendees.some(a => a.email === ae)) attendees.push({ email: ae });
+        }
+      }
 
       const event = await calendar.events.insert({
         calendarId: options?.calendarId || "primary",
@@ -1451,6 +1456,23 @@ export async function registerRoutes(
 
   // === Public Booking API (no auth) ===
 
+  app.get('/api/public/mentoring/:userId/mentors', async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const resolved = await resolveMentorUserId(userId);
+      const ownerUserId = resolved.ownerUserId || resolved.availabilityUserId;
+      const profiles = await storage.getMentorProfiles(ownerUserId);
+      const activeMentors = profiles.filter(p => p.isActive);
+      res.json(activeMentors.map(p => ({
+        id: p.id,
+        name: p.name,
+        mentorBookingId: p.mentorUserId ? p.mentorUserId : `mentor-${p.id}`,
+      })));
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch mentors" });
+    }
+  });
+
   app.get('/api/public/mentoring/:userId/meeting-types', async (req, res) => {
     try {
       const { userId } = req.params;
@@ -1660,7 +1682,7 @@ export async function registerRoutes(
       const resolved = await resolveMentorUserId(rawId);
       const meetingUserId = resolved.availabilityUserId;
       const contactOwnerUserId = resolved.ownerUserId || resolved.availabilityUserId;
-      const { name, email, phone, date, time, duration, focus, notes, meetingTypeId, pathway, onboardingAnswers, discoveryGoals } = req.body;
+      const { name, email, phone, date, time, duration, notes, meetingTypeId, pathway, onboardingAnswers, discoveryGoals, extras } = req.body;
 
       if (!name || !date || !time) {
         return res.status(400).json({ message: "name, date, and time are required" });
@@ -1695,7 +1717,7 @@ export async function registerRoutes(
         userId: meetingUserId,
         contactId: contact.id,
         title: meetingTitle,
-        description: focus || null,
+        description: null,
         startTime,
         endTime,
         status: 'scheduled',
@@ -1704,7 +1726,6 @@ export async function registerRoutes(
         duration: slotDuration,
         bookingSource: 'public_link',
         notes: notes || null,
-        mentoringFocus: focus || null,
         meetingTypeId: meetingTypeId ? parseInt(meetingTypeId) : undefined,
       });
 
@@ -1732,11 +1753,13 @@ export async function registerRoutes(
           const mentorEmail = resolved.ownerUserId ? 
             (await storage.getMentorProfiles(resolved.ownerUserId))
               .find(p => p.mentorUserId === meetingUserId || `mentor-${p.id}` === meetingUserId)?.email : undefined;
+          const additionalAttendees = Array.isArray(extras) ? extras.filter((e: string) => e && e.includes('@')) : [];
           await createCalendarEventForMeeting(meeting, {
             mentorEmail: mentorEmail || undefined,
             menteeEmail: email || undefined,
             calendarId: resolved.googleCalendarId || undefined,
             sendInvites: true,
+            additionalAttendees: additionalAttendees.length > 0 ? additionalAttendees : undefined,
           });
         } catch (e) {
           console.warn("Calendar event creation failed silently:", e);
@@ -1748,7 +1771,6 @@ export async function registerRoutes(
         date,
         time,
         duration: slotDuration,
-        focus: focus || null,
         status: meeting.status,
       });
     } catch (err) {

@@ -22,9 +22,10 @@ import {
 import { useUpdateMeeting } from "@/hooks/use-meetings";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
+import { DiscoveryFormDialog } from "@/components/mentoring/discovery-form-dialog";
 import {
   Loader2,
   Clock,
@@ -47,7 +48,7 @@ import {
 import { useAnalyzeInteraction } from "@/hooks/use-interactions";
 import { ScoreIndicator } from "@/components/mentoring/score-indicator";
 import { JOURNEY_STAGE_CONFIG } from "@/components/mentoring/mentoring-hooks";
-import type { Meeting, MentorProfile } from "@shared/schema";
+import type { Meeting, MentorProfile, MentoringApplication } from "@shared/schema";
 import type { DebriefSummary } from "@/components/mentoring/mentoring-hooks";
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
@@ -223,6 +224,7 @@ export function SessionCard({ meeting, contacts, showMentor, mentorProfiles, deb
   const updateMeeting = useUpdateMeeting();
   const isMobile = useIsMobile();
   const [showDebrief, setShowDebrief] = useState(false);
+  const [showDiscovery, setShowDiscovery] = useState(false);
   const [showCoMentorSelect, setShowCoMentorSelect] = useState(false);
   const [showInsights, setShowInsights] = useState(false);
   const contact = contacts?.find((c: any) => c.id === meeting.contactId);
@@ -233,12 +235,23 @@ export function SessionCard({ meeting, contacts, showMentor, mentorProfiles, deb
   const hasScores = debriefSummary && (debriefSummary.mindsetScore !== undefined || debriefSummary.skillScore !== undefined || debriefSummary.confidenceScore !== undefined);
   const isUpcoming = (meeting.status === "scheduled" || meeting.status === "confirmed") && !isPast;
 
+  const { data: applications } = useQuery<MentoringApplication[]>({
+    queryKey: ["/api/mentoring-applications"],
+  });
+  const pendingApplication = applications?.find(
+    a => a.contactId === meeting.contactId && a.status === "pending"
+  );
+
   const meetingAttendees: Attendee[] = Array.isArray(meeting.attendees) ? meeting.attendees as Attendee[] : [];
 
   const handleComplete = () => {
     updateMeeting.mutate({ id: meeting.id, status: "completed" } as any, {
       onSuccess: () => {
-        setShowDebrief(true);
+        if (pendingApplication) {
+          setShowDiscovery(true);
+        } else {
+          setShowDebrief(true);
+        }
       },
     });
   };
@@ -364,9 +377,15 @@ export function SessionCard({ meeting, contacts, showMentor, mentorProfiles, deb
                 </Button>
               )}
               {(meeting.status === "completed" || (isPast && meeting.status === "confirmed")) && !hasDebrief && (
-                <Button size="sm" variant="outline" className="text-xs h-7 text-purple-600 border-purple-200" onClick={() => setShowDebrief(true)} data-testid={`button-debrief-${meeting.id}`}>
-                  <MessageSquare className="w-3 h-3 mr-1" /> Debrief
-                </Button>
+                pendingApplication ? (
+                  <Button size="sm" variant="outline" className="text-xs h-7 text-amber-600 border-amber-200" onClick={() => setShowDiscovery(true)} data-testid={`button-discovery-${meeting.id}`}>
+                    <Sprout className="w-3 h-3 mr-1" /> Discovery
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="outline" className="text-xs h-7 text-purple-600 border-purple-200" onClick={() => setShowDebrief(true)} data-testid={`button-debrief-${meeting.id}`}>
+                    <MessageSquare className="w-3 h-3 mr-1" /> Debrief
+                  </Button>
+                )
               )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -412,9 +431,15 @@ export function SessionCard({ meeting, contacts, showMentor, mentorProfiles, deb
                 </Button>
               )}
               {(meeting.status === "completed" || (isPast && meeting.status === "confirmed")) && !hasDebrief && (
-                <Button size="sm" variant="outline" className="text-xs h-7 text-purple-600 border-purple-200" onClick={() => setShowDebrief(true)} data-testid={`button-debrief-${meeting.id}`}>
-                  <MessageSquare className="w-3 h-3 mr-1" /> Log Debrief
-                </Button>
+                pendingApplication ? (
+                  <Button size="sm" variant="outline" className="text-xs h-7 text-amber-600 border-amber-200" onClick={() => setShowDiscovery(true)} data-testid={`button-discovery-${meeting.id}`}>
+                    <Sprout className="w-3 h-3 mr-1" /> Discovery Form
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="outline" className="text-xs h-7 text-purple-600 border-purple-200" onClick={() => setShowDebrief(true)} data-testid={`button-debrief-${meeting.id}`}>
+                    <MessageSquare className="w-3 h-3 mr-1" /> Log Debrief
+                  </Button>
+                )
               )}
               {mentorProfiles && mentorProfiles.length > 0 && meeting.status !== "cancelled" && (
                 showCoMentorSelect ? (
@@ -458,6 +483,15 @@ export function SessionCard({ meeting, contacts, showMentor, mentorProfiles, deb
           contactName={contact?.name || "Unknown"}
           open={showDebrief}
           onOpenChange={setShowDebrief}
+        />
+      )}
+      {showDiscovery && pendingApplication && (
+        <DiscoveryFormDialog
+          meeting={meeting}
+          contactName={contact?.name || "Unknown"}
+          application={pendingApplication}
+          open={showDiscovery}
+          onOpenChange={setShowDiscovery}
         />
       )}
       {showCoMentorSelect && isMobile && mentorProfiles && (
