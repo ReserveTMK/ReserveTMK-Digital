@@ -1388,9 +1388,9 @@ export async function registerRoutes(
       let types = await storage.getMeetingTypes(userId);
       if (types.length === 0) {
         const defaults = [
-          { userId, name: 'Quick Chat', description: 'A brief check-in or introduction', duration: 15, focus: 'general', color: '#22c55e', isActive: true, sortOrder: 0, category: 'mentoring' },
-          { userId, name: 'Standard Session', description: 'A regular mentoring session', duration: 30, focus: 'mentoring', color: '#3b82f6', isActive: true, sortOrder: 1, category: 'mentoring' },
-          { userId, name: 'Deep Dive', description: 'An in-depth working session', duration: 60, focus: 'strategy', color: '#8b5cf6', isActive: true, sortOrder: 2, category: 'mentoring' },
+          { userId, name: 'Quick Chat', description: 'A brief check-in or introduction', duration: 15, focus: 'General Catch-up', color: '#22c55e', isActive: true, sortOrder: 0, category: 'mentoring' },
+          { userId, name: 'Standard Session', description: 'A regular mentoring session', duration: 30, focus: 'Goal Setting', color: '#3b82f6', isActive: true, sortOrder: 1, category: 'mentoring' },
+          { userId, name: 'Deep Dive', description: 'An in-depth working session', duration: 60, focus: 'Venture Planning', color: '#8b5cf6', isActive: true, sortOrder: 2, category: 'mentoring' },
         ];
         for (const d of defaults) {
           await storage.createMeetingType(d);
