@@ -14,10 +14,11 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useState } from "react";
-import { Loader2, Sprout, TreePine, Sun } from "lucide-react";
+import { Loader2, Sprout, TreePine, Sun, FileText } from "lucide-react";
 import { FREQUENCY_LABELS } from "@/components/mentoring/mentoring-hooks";
 import { MENTORING_FOCUS_AREAS } from "@shared/schema";
-import type { MentoringApplication } from "@shared/schema";
+import type { Meeting, MentoringApplication } from "@shared/schema";
+import { DiscoveryFormDialog } from "@/components/mentoring/discovery-form-dialog";
 
 function ApplicationReviewDialog({ open, onOpenChange, action, applicationId, contactName, onConfirm, isPending }: {
   open: boolean;
@@ -178,25 +179,43 @@ function ApplicationReviewDialog({ open, onOpenChange, action, applicationId, co
   );
 }
 
-export function ApplicationCard({ application, contacts, onAccept, onDecline, onDefer }: {
+export function ApplicationCard({ application, contacts, meetings, onAccept, onDecline, onDefer }: {
   application: MentoringApplication;
   contacts: any[];
+  meetings?: Meeting[];
   onAccept: (id: number, notes?: string, extra?: { focusAreas?: string; sessionFrequency?: string; stage?: string }) => void;
   onDecline: (id: number, notes?: string) => void;
   onDefer: (id: number, notes?: string) => void;
 }) {
   const [reviewAction, setReviewAction] = useState<"accept" | "decline" | "defer" | null>(null);
+  const [showDiscovery, setShowDiscovery] = useState(false);
   const contact = contacts.find((c: any) => c.id === application.contactId);
+
+  const discoveryMeeting = meetings?.find(
+    (m) => m.contactId === application.contactId && (m.status === "completed" || m.status === "confirmed" || m.status === "scheduled")
+  );
+  const hasCompletedSession = discoveryMeeting && discoveryMeeting.status === "completed";
+
   return (
     <>
       <Card className="p-4 border-blue-200 dark:border-blue-800 bg-blue-500/5" data-testid={`application-card-${application.id}`}>
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0 space-y-1.5">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h4 className="font-medium text-sm">{contact?.name || "Unknown"}</h4>
               <Badge variant="outline" className="text-[10px] h-5 bg-blue-500/10 text-blue-700 dark:text-blue-400">
                 {application.status === "pending" ? "Pending Review" : application.status}
               </Badge>
+              {hasCompletedSession && (
+                <Badge variant="outline" className="text-[10px] h-5 bg-green-500/10 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800">
+                  Session Done
+                </Badge>
+              )}
+              {discoveryMeeting && !hasCompletedSession && (
+                <Badge variant="outline" className="text-[10px] h-5 bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800">
+                  Session Booked
+                </Badge>
+              )}
               {application.applicationDate && (
                 <span className="text-[10px] text-muted-foreground">
                   Applied {new Date(application.applicationDate).toLocaleDateString("en-NZ", { day: "numeric", month: "short" })}
@@ -205,6 +224,12 @@ export function ApplicationCard({ application, contacts, onAccept, onDecline, on
             </div>
             {application.ventureDescription && (
               <p className="text-xs text-muted-foreground line-clamp-2">{application.ventureDescription}</p>
+            )}
+            {application.whatNeedHelpWith && (
+              <div className="text-xs">
+                <span className="text-muted-foreground font-medium">Needs help with: </span>
+                <span className="text-muted-foreground">{application.whatNeedHelpWith}</span>
+              </div>
             )}
             {application.whatStuckOn && (
               <div className="text-xs">
@@ -219,16 +244,25 @@ export function ApplicationCard({ application, contacts, onAccept, onDecline, on
               </div>
             )}
           </div>
-          <div className="flex gap-1.5 shrink-0">
-            <Button size="sm" className="text-xs h-7" onClick={() => setReviewAction("accept")} data-testid={`button-accept-${application.id}`}>
-              Accept
-            </Button>
-            <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setReviewAction("defer")} data-testid={`button-defer-${application.id}`}>
-              Defer
-            </Button>
-            <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setReviewAction("decline")} data-testid={`button-decline-${application.id}`}>
-              Decline
-            </Button>
+          <div className="flex flex-col gap-1.5 shrink-0">
+            {hasCompletedSession && (
+              <Button size="sm" className="text-xs h-7 text-amber-600 border-amber-200" variant="outline" onClick={() => setShowDiscovery(true)} data-testid={`button-discovery-form-${application.id}`}>
+                <FileText className="w-3 h-3 mr-1" /> Discovery Form
+              </Button>
+            )}
+            {!hasCompletedSession && (
+              <>
+                <Button size="sm" className="text-xs h-7" onClick={() => setReviewAction("accept")} data-testid={`button-accept-${application.id}`}>
+                  Accept
+                </Button>
+                <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setReviewAction("defer")} data-testid={`button-defer-${application.id}`}>
+                  Defer
+                </Button>
+                <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setReviewAction("decline")} data-testid={`button-decline-${application.id}`}>
+                  Decline
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </Card>
@@ -250,6 +284,15 @@ export function ApplicationCard({ application, contacts, onAccept, onDecline, on
             setReviewAction(null);
           }}
           isPending={false}
+        />
+      )}
+      {showDiscovery && discoveryMeeting && (
+        <DiscoveryFormDialog
+          meeting={discoveryMeeting}
+          contactName={contact?.name || "Unknown"}
+          application={application}
+          open={showDiscovery}
+          onOpenChange={setShowDiscovery}
         />
       )}
     </>

@@ -20,8 +20,9 @@ import {
 } from "@/components/ui/collapsible";
 import { useContacts } from "@/hooks/use-contacts";
 import { useToast } from "@/hooks/use-toast";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import type { Meeting } from "@shared/schema";
 import { useState, useMemo } from "react";
 import {
   Plus,
@@ -401,6 +402,9 @@ export function MenteesTab() {
   const { data: enrichedRelationships, isLoading } = useEnrichedRelationships();
   const { data: applications, isLoading: appsLoading } = useMentoringApplications();
   const { data: contacts } = useContacts();
+  const { data: allMeetings } = useQuery<Meeting[]>({
+    queryKey: ["/api/meetings/all-mentors"],
+  });
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [showAddMentee, setShowAddMentee] = useState(false);
@@ -491,6 +495,7 @@ export function MenteesTab() {
                 key={app.id}
                 application={app}
                 contacts={(contacts || []) as any[]}
+                meetings={allMeetings || []}
                 onAccept={(id, notes, extra) => {
                   const c = (contacts as any[])?.find((ct: any) => ct.id === app.contactId);
                   acceptApp.mutate({ id, notes, extra, contactId: c?.id, contactName: c?.name });
