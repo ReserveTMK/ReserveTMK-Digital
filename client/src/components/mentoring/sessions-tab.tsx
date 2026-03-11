@@ -12,11 +12,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useCreateMeeting } from "@/hooks/use-meetings";
@@ -32,13 +27,15 @@ import {
   Sprout,
   TreePine,
   Sun,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   X,
   UserPlus,
   Mail,
   Clock,
+  MapPin,
+  Building2,
+  Globe,
 } from "lucide-react";
 import { SessionCard } from "@/components/mentoring/session-card";
 import {
@@ -93,6 +90,7 @@ export function ScheduleSessionDialog({
     setShowManualTime(false);
   }, []);
   const [venueId, setVenueId] = useState<string>("");
+  const [isOnSite, setIsOnSite] = useState(true);
   const [contactId, setContactId] = useState(prefillContactId ? String(prefillContactId) : "");
   const [contactSearch, setContactSearch] = useState("");
   const [date, setDate] = useState("");
@@ -104,7 +102,6 @@ export function ScheduleSessionDialog({
   const [location, setLocation] = useState("");
   const [attendees, setAttendees] = useState<Attendee[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [showInvites, setShowInvites] = useState(false);
   const [sendInvites, setSendInvites] = useState(false);
   const [weekStart, setWeekStart] = useState<Date>(() => {
     const now = new Date();
@@ -228,14 +225,14 @@ export function ScheduleSessionDialog({
       startTime,
       endTime,
       status: "scheduled",
-      location: location || null,
+      location: isOnSite ? null : (location || null),
       type: "mentoring",
       duration: effectiveDuration,
       bookingSource: "internal",
       notes: notes || null,
       mentoringFocus: effectiveFocus || null,
       ...(mentorUserId ? { mentorUserId } : {}),
-      ...(venueId ? { venueId: parseInt(venueId) } : {}),
+      ...(isOnSite && venueId ? { venueId: parseInt(venueId) } : {}),
     };
 
     if (selectedType && selectedTypeId !== "custom") {
@@ -257,6 +254,7 @@ export function ScheduleSessionDialog({
   const resetForm = () => {
     setMentorUserIdRaw("");
     setVenueId("");
+    setIsOnSite(true);
     setContactId(prefillContactId ? String(prefillContactId) : "");
     setContactSearch("");
     setDate("");
@@ -268,7 +266,6 @@ export function ScheduleSessionDialog({
     setLocation("");
     setAttendees([]);
     setInviteEmail("");
-    setShowInvites(false);
     setSendInvites(false);
     setSelectedDay("");
     setShowManualTime(false);
@@ -541,89 +538,110 @@ export function ScheduleSessionDialog({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>Room (optional)</Label>
-              <Select value={venueId} onValueChange={(v) => setVenueId(v === "none" ? "" : v)}>
+          <div className="space-y-2">
+            <Label>Location</Label>
+            <div className="flex gap-1 mb-2">
+              <button
+                type="button"
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all flex-1 justify-center ${
+                  isOnSite
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted hover:bg-muted/80"
+                }`}
+                onClick={() => { setIsOnSite(true); setLocation(""); }}
+                data-testid="toggle-onsite"
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                On-site
+              </button>
+              <button
+                type="button"
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all flex-1 justify-center ${
+                  !isOnSite
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted hover:bg-muted/80"
+                }`}
+                onClick={() => { setIsOnSite(false); setVenueId(""); }}
+                data-testid="toggle-offsite"
+              >
+                <Globe className="w-3.5 h-3.5" />
+                Off-site
+              </button>
+            </div>
+            {isOnSite ? (
+              <Select value={venueId} onValueChange={setVenueId}>
                 <SelectTrigger data-testid="select-venue">
-                  <SelectValue placeholder="No specific room" />
+                  <SelectValue placeholder="Select a room" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No specific room</SelectItem>
                   {(venues || []).filter(v => v.active !== false).map((v) => (
                     <SelectItem key={v.id} value={String(v.id)} data-testid={`venue-option-${v.id}`}>{v.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Location (optional)</Label>
-              <Input placeholder="e.g., Reserve TMK office" value={location} onChange={(e) => setLocation(e.target.value)} data-testid="input-location" />
-            </div>
+            ) : (
+              <Input
+                placeholder="e.g., Zoom, café, mentee's office..."
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                data-testid="input-location"
+              />
+            )}
           </div>
 
-          <Collapsible open={showInvites} onOpenChange={setShowInvites}>
-            <CollapsibleTrigger asChild>
-              <button
-                type="button"
-                className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full"
-                data-testid="toggle-invites"
-              >
-                <UserPlus className="w-3.5 h-3.5" />
-                <span>Invite Others</span>
-                {attendees.length > 0 && (
-                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5 ml-1">{attendees.length}</Badge>
-                )}
-                <ChevronDown className={`w-3 h-3 ml-auto transition-transform ${showInvites ? "rotate-180" : ""}`} />
-              </button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="mt-2 space-y-2">
-              {mentorProfiles && mentorProfiles.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {mentorProfiles.filter(p => !attendees.some(a => a.mentorProfileId === p.id)).map(p => (
-                    <Button
-                      key={p.id}
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="text-[10px] h-6 px-2"
-                      onClick={() => p.email && addAttendee({ email: p.email, name: p.name, mentorProfileId: p.id })}
-                      disabled={!p.email}
-                      data-testid={`invite-mentor-${p.id}`}
-                    >
-                      <Plus className="w-3 h-3 mr-1" /> {p.name}
-                    </Button>
-                  ))}
-                </div>
-              )}
-              <div className="flex gap-1.5">
-                <Input
-                  placeholder="Email address..."
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddEmail(); } }}
-                  className="h-8 text-xs"
-                  data-testid="input-invite-email"
-                />
-                <Button type="button" size="sm" variant="outline" className="h-8 px-2" onClick={handleAddEmail} data-testid="button-add-invite">
-                  <Mail className="w-3.5 h-3.5" />
-                </Button>
-              </div>
+          <div className="space-y-2 rounded-lg border p-3">
+            <div className="flex items-center gap-2">
+              <UserPlus className="w-4 h-4 text-muted-foreground" />
+              <Label className="text-sm font-medium">Invite Others</Label>
               {attendees.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {attendees.map(a => (
-                    <Badge key={a.email} variant="secondary" className="text-[10px] h-6 px-2 gap-1">
-                      {a.name || a.email}
-                      <button type="button" onClick={() => removeAttendee(a.email)} className="hover:text-destructive" data-testid={`remove-attendee-${a.email}`}>
-                        <X className="w-3 h-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
+                <Badge variant="secondary" className="text-[10px] h-4 px-1.5">{attendees.length}</Badge>
               )}
-            </CollapsibleContent>
-          </Collapsible>
+            </div>
+            {mentorProfiles && mentorProfiles.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {mentorProfiles.filter(p => !attendees.some(a => a.mentorProfileId === p.id)).map(p => (
+                  <Button
+                    key={p.id}
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="text-[10px] h-6 px-2"
+                    onClick={() => p.email && addAttendee({ email: p.email, name: p.name, mentorProfileId: p.id })}
+                    disabled={!p.email}
+                    data-testid={`invite-mentor-${p.id}`}
+                  >
+                    <Plus className="w-3 h-3 mr-1" /> {p.name}
+                  </Button>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-1.5">
+              <Input
+                placeholder="Email address..."
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddEmail(); } }}
+                className="h-8 text-xs"
+                data-testid="input-invite-email"
+              />
+              <Button type="button" size="sm" variant="outline" className="h-8 px-2" onClick={handleAddEmail} data-testid="button-add-invite">
+                <Mail className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+            {attendees.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {attendees.map(a => (
+                  <Badge key={a.email} variant="secondary" className="text-[10px] h-6 px-2 gap-1">
+                    {a.name || a.email}
+                    <button type="button" onClick={() => removeAttendee(a.email)} className="hover:text-destructive" data-testid={`remove-attendee-${a.email}`}>
+                      <X className="w-3 h-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div className="space-y-2">
             <Label>Notes (optional)</Label>
@@ -637,7 +655,7 @@ export function ScheduleSessionDialog({
           </label>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button onClick={handleSubmit} disabled={!contactId || !date || createMeeting.isPending} data-testid="button-submit-session">
+            <Button onClick={handleSubmit} disabled={!contactId || !date || (isOnSite && !venueId) || createMeeting.isPending} data-testid="button-submit-session">
               {createMeeting.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               Schedule
             </Button>
