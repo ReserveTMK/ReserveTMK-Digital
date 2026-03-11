@@ -41,12 +41,12 @@ export default function MentoringPage() {
       <Dialog open={showSettings} onOpenChange={setShowSettings}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Mentoring Settings</DialogTitle>
-            <DialogDescription>Configure meeting types and onboarding for mentoring</DialogDescription>
+            <DialogTitle>Session Settings</DialogTitle>
+            <DialogDescription>Configure session types and onboarding</DialogDescription>
           </DialogHeader>
           <Tabs defaultValue="meeting-types">
             <TabsList>
-              <TabsTrigger value="meeting-types" data-testid="tab-settings-meeting-types">Meeting Types</TabsTrigger>
+              <TabsTrigger value="meeting-types" data-testid="tab-settings-meeting-types">Session Types</TabsTrigger>
               <TabsTrigger value="onboarding" data-testid="tab-settings-onboarding">Onboarding</TabsTrigger>
             </TabsList>
             <TabsContent value="meeting-types" className="mt-4">

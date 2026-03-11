@@ -76,7 +76,7 @@ export function MeetingTypeDialog({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/meeting-types"] });
-      toast({ title: "Meeting type created" });
+      toast({ title: "Session type created" });
       onOpenChange(false);
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -89,7 +89,7 @@ export function MeetingTypeDialog({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/meeting-types"] });
-      toast({ title: "Meeting type updated" });
+      toast({ title: "Session type updated" });
       onOpenChange(false);
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -120,9 +120,9 @@ export function MeetingTypeDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[440px]">
         <DialogHeader>
-          <DialogTitle>{isEditing ? "Edit Meeting Type" : "Add Meeting Type"}</DialogTitle>
+          <DialogTitle>{isEditing ? "Edit Session Type" : "Add Session Type"}</DialogTitle>
           <DialogDescription>
-            {isEditing ? "Update this meeting type" : "Create a new meeting type for booking"}
+            {isEditing ? "Update this session type" : "Create a new session type for booking"}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
@@ -138,7 +138,7 @@ export function MeetingTypeDialog({
           <div className="space-y-2">
             <Label>Description</Label>
             <Textarea
-              placeholder="Brief description of this meeting type..."
+              placeholder="Brief description of this session type..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
@@ -213,7 +213,7 @@ export function MeetingTypesSection({ category }: { category?: string }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/meeting-types"] });
-      toast({ title: "Meeting type deleted" });
+      toast({ title: "Session type deleted" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -242,7 +242,7 @@ export function MeetingTypesSection({ category }: { category?: string }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="font-semibold text-sm">Meeting Types</h3>
+          <h3 className="font-semibold text-sm">Session Types</h3>
           <p className="text-xs text-muted-foreground">Define different types of sessions people can book</p>
         </div>
         <Button size="sm" onClick={() => { setEditingType(null); setShowDialog(true); }} data-testid="button-add-meeting-type">
@@ -255,10 +255,10 @@ export function MeetingTypesSection({ category }: { category?: string }) {
       ) : !meetingTypes || meetingTypes.length === 0 ? (
         <Card className="p-8 text-center">
           <Settings className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">No meeting types defined yet</p>
-          <p className="text-xs text-muted-foreground mt-1">Add meeting types to offer different session options</p>
+          <p className="text-sm text-muted-foreground">No session types defined yet</p>
+          <p className="text-xs text-muted-foreground mt-1">Add session types to offer different session options</p>
           <Button size="sm" className="mt-3" onClick={() => { setEditingType(null); setShowDialog(true); }}>
-            <Plus className="w-4 h-4 mr-1" /> Add Meeting Type
+            <Plus className="w-4 h-4 mr-1" /> Add Session Type
           </Button>
         </Card>
       ) : (
@@ -307,7 +307,7 @@ export function MeetingTypesSection({ category }: { category?: string }) {
                       size="icon"
                       variant="ghost"
                       onClick={() => {
-                        if (confirm(`Delete meeting type "${mt.name}"?`)) {
+                        if (confirm(`Delete session type "${mt.name}"?`)) {
                           deleteMutation.mutate(mt.id);
                         }
                       }}

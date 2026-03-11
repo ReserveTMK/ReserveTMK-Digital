@@ -200,7 +200,7 @@ export function ScheduleSessionDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[520px] max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Schedule Mentoring Session</DialogTitle>
+          <DialogTitle>Schedule Session</DialogTitle>
           <DialogDescription>Book a 1:1 session with a mentee</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
