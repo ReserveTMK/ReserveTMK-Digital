@@ -608,10 +608,10 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                                             </div>
                                             <div className="min-w-0 flex-1">
                                               <p className="text-sm font-medium truncate" data-testid={`kanban-name-${booking.id}`}>
-                                                {getBookingGroupName(booking.bookerGroupId) || getVenueName(booking.venueId)}
+                                                {getBookerName(booking.bookerId) || getBookingGroupName(booking.bookerGroupId) || getVenueName(booking.venueId)}
                                               </p>
                                               <p className="text-[10px] text-muted-foreground truncate mt-0.5">
-                                                {getBookingGroupName(booking.bookerGroupId) ? getVenueName(booking.venueId) : ""}
+                                                {(getBookerName(booking.bookerId) || getBookingGroupName(booking.bookerGroupId)) ? getVenueName(booking.venueId) : ""}
                                               </p>
                                               <div className="flex items-center gap-1 mt-1 flex-wrap">
                                                 <Badge className={`${CLASSIFICATION_COLORS[booking.classification] || ""} text-[10px]`}>
@@ -675,7 +675,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                                           </div>
                                         )}
 
-                                        {(parseFloat(booking.amount || "0") > 0 || getBookerName(booking.bookerId)) && (
+                                        {(parseFloat(booking.amount || "0") > 0 || (getBookerName(booking.bookerId) && getBookingGroupName(booking.bookerGroupId))) && (
                                           <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/30">
                                             {parseFloat(booking.amount || "0") > 0 && (
                                               <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
@@ -686,7 +686,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                                                 )}
                                               </span>
                                             )}
-                                            {getBookerName(booking.bookerId) && (
+                                            {getBookerName(booking.bookerId) && getBookingGroupName(booking.bookerGroupId) && (
                                               <span className="text-[11px] text-muted-foreground flex items-center gap-0.5 ml-auto">
                                                 <Users className="w-3 h-3" />
                                                 {getBookerName(booking.bookerId)}
@@ -733,7 +733,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap mb-1">
                               <h3 className={`font-semibold text-base truncate ${isCancelled ? "line-through opacity-70" : ""}`} data-testid={`text-booking-title-${booking.id}`}>
-                                {bookingGroupName || getVenueName(booking.venueId)}
+                                {bookerName || bookingGroupName || getVenueName(booking.venueId)}
                               </h3>
                               <Badge className={CLASSIFICATION_COLORS[booking.classification] || ""} data-testid={`badge-classification-${booking.id}`}>
                                 {booking.classification}
@@ -751,7 +751,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                                 </Badge>
                               )}
                             </div>
-                            {bookingGroupName && (
+                            {(bookerName || bookingGroupName) && (
                               <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
                                 <MapPin className="w-3 h-3" />
                                 {getVenueName(booking.venueId)}
