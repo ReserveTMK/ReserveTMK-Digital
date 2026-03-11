@@ -96,16 +96,12 @@ export function ScheduleSessionDialog({
   const [inviteEmail, setInviteEmail] = useState("");
   const [showInvites, setShowInvites] = useState(false);
   const [sendInvites, setSendInvites] = useState(false);
-  const [ventureDescription, setVentureDescription] = useState("");
-  const [currentStage, setCurrentStage] = useState("");
-  const [whatNeedHelpWith, setWhatNeedHelpWith] = useState("");
 
   const mentoringTypes = useMemo(() => {
     return (meetingTypes || []).filter(t => t.isActive && t.category === "mentoring");
   }, [meetingTypes]);
 
   const selectedType = useMemo(() => {
-    if (selectedTypeId === "discovery") return { id: "discovery", name: "Discovery Session", duration: 45, color: "#8b5cf6", focus: null } as any;
     if (selectedTypeId === "custom") return null;
     if (!selectedTypeId) return null;
     return mentoringTypes.find(t => String(t.id) === selectedTypeId) || null;
@@ -146,8 +142,6 @@ export function ScheduleSessionDialog({
     const startTime = new Date(`${date}T${time}:00`);
     const endTime = new Date(startTime.getTime() + effectiveDuration * 60 * 1000);
     const contact = selectedContact;
-    const isDiscovery = selectedTypeId === "discovery";
-
     const body: any = {
       contactId: parseInt(contactId),
       title: `Mentoring: ${contact?.name || 'Session'}`,
@@ -165,20 +159,13 @@ export function ScheduleSessionDialog({
       ...(venueId ? { venueId: parseInt(venueId) } : {}),
     };
 
-    if (selectedType && selectedTypeId !== "discovery" && selectedTypeId !== "custom") {
+    if (selectedType && selectedTypeId !== "custom") {
       body.meetingTypeId = selectedType.id;
     }
     if (attendees.length > 0) {
       body.attendees = attendees;
     }
     body.sendInvites = sendInvites;
-    if (isDiscovery) {
-      body.discoveryGoals = {
-        ventureDescription: ventureDescription || null,
-        currentStage: currentStage || null,
-        whatNeedHelpWith: whatNeedHelpWith || null,
-      };
-    }
 
     createMeeting.mutate(body, {
       onSuccess: () => {
@@ -274,22 +261,6 @@ export function ScheduleSessionDialog({
           <div className="space-y-2">
             <Label>Session Type</Label>
             <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                className={`flex items-center gap-2 p-2.5 rounded-lg border-2 text-left transition-all ${
-                  selectedTypeId === "discovery"
-                    ? "border-purple-500 bg-purple-500/10"
-                    : "border-border hover:bg-muted"
-                }`}
-                onClick={() => setSelectedTypeId("discovery")}
-                data-testid="type-discovery"
-              >
-                <div className="w-2.5 h-2.5 rounded-full bg-purple-500 shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-xs font-medium truncate">Discovery Session</p>
-                  <p className="text-[10px] text-muted-foreground">45 min</p>
-                </div>
-              </button>
               {mentoringTypes.map(t => (
                 <button
                   key={t.id}
@@ -357,45 +328,6 @@ export function ScheduleSessionDialog({
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-            </div>
-          )}
-
-          {selectedTypeId === "discovery" && (
-            <div className="space-y-3 p-3 rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-500/5">
-              <p className="text-xs font-medium text-purple-700 dark:text-purple-400">Discovery Details</p>
-              <div className="space-y-2">
-                <Label className="text-xs">What is their venture or idea?</Label>
-                <Input
-                  placeholder="Brief description..."
-                  value={ventureDescription}
-                  onChange={(e) => setVentureDescription(e.target.value)}
-                  data-testid="input-venture"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs">Current Stage</Label>
-                <Select value={currentStage} onValueChange={setCurrentStage}>
-                  <SelectTrigger data-testid="select-stage">
-                    <SelectValue placeholder="Where are they at?" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="just_an_idea">Just an idea</SelectItem>
-                    <SelectItem value="early_stage">Early stage / testing</SelectItem>
-                    <SelectItem value="established">Established but stuck</SelectItem>
-                    <SelectItem value="growing">Growing / scaling</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs">What do they need help with?</Label>
-                <Textarea
-                  placeholder="Key challenges or goals..."
-                  value={whatNeedHelpWith}
-                  onChange={(e) => setWhatNeedHelpWith(e.target.value)}
-                  rows={2}
-                  data-testid="input-help-with"
-                />
               </div>
             </div>
           )}
