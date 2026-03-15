@@ -112,6 +112,10 @@ export async function setupAuth(app: Express) {
     if (process.env.REPLIT_DEV_DOMAIN) {
       return process.env.REPLIT_DEV_DOMAIN;
     }
+    if (process.env.REPLIT_DEPLOYMENT === "1" && process.env.REPLIT_DOMAINS) {
+      const primaryDomain = process.env.REPLIT_DOMAINS.split(",")[0].trim();
+      if (primaryDomain) return primaryDomain;
+    }
     return req.hostname;
   }
 
