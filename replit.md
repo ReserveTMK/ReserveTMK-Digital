@@ -29,6 +29,7 @@ PostgreSQL is used as the database, integrated with Drizzle ORM. The schema incl
 6.  **Community Lens Filtering**: Implements ethnicity-based audience filtering for reporting.
 7.  **NZ Timezone Standardization**: All date and time calculations are standardized to Pacific/Auckland.
 8.  **UI Terminology**: Uses "People" for contacts, 12-hour time format, and "Venue Hire" in UI labels.
+9.  **Nav Structure**: Top nav groups: Dashboard, Community, Delivery, Tracking, Reporting, Ops, Settings. "Ops" contains Projects, Agreements, Funders. Gmail Import accessed from People page header (not in nav).
 
 ### Core Features
 -   **Reporting Engine**: Funder-focused reporting across 9 sections, including Reach, Delivery, Impact, and alignment with Tamaki Ora. Supports 9 growth metrics grouped by Personal/Venture/Community, journey stage progression tracking (kakano/tipu/ora), and mentoring focus theme summaries.

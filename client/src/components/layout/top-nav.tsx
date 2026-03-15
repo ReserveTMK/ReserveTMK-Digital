@@ -16,16 +16,9 @@ import {
   Tags,
   X,
   DollarSign,
-  Activity,
-  Settings,
-  Mail,
   Rocket,
   CalendarClock,
-  Calendar,
-  BarChart3,
   PhoneCall,
-  UserCheck,
-  Monitor,
   Wrench,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
@@ -57,7 +50,6 @@ const navGroups: NavGroup[] = [
       { name: "People", href: "/community/people", icon: Users, description: "Manage contacts & mentees" },
       { name: "Groups", href: "/community/groups", icon: Network, description: "Organisations & collectives" },
       { name: "Ecosystems", href: "/community/ecosystems", icon: Handshake, description: "Organisation network overview" },
-      { name: "Gmail Import", href: "/gmail-import", icon: Mail, description: "Import contacts from email" },
     ],
   },
   {
@@ -67,10 +59,7 @@ const navGroups: NavGroup[] = [
       { name: "Mentoring", href: "/mentoring", icon: Users, description: "1:1 sessions & scheduling" },
       { name: "Spaces", href: "/spaces", icon: Building2, description: "Spaces, venue hire & hot desking" },
       { name: "Gear", href: "/gear", icon: Wrench, description: "Equipment lending & tracking" },
-      { name: "Regular Bookers", href: "/regular-bookers", icon: UserCheck, description: "Manage recurring bookers" },
       { name: "Programmes", href: "/programmes", icon: Layers, description: "Workshops & activations" },
-      { name: "Projects", href: "/projects", icon: Rocket, description: "Initiatives & work streams" },
-      { name: "Agreements", href: "/agreements", icon: Handshake, description: "Memberships & MOUs" },
     ],
   },
   {
@@ -81,7 +70,6 @@ const navGroups: NavGroup[] = [
       { name: "Debriefs", href: "/debriefs", icon: Mic, description: "Interactions, calendar & weekly debriefs" },
       { name: "Catch Up", href: "/catch-up", icon: PhoneCall, description: "Plan who to connect with next" },
       { name: "Community Spend", href: "/community-spend", icon: DollarSign, description: "Track community investment" },
-      { name: "Funders", href: "/funders", icon: Handshake, description: "Manage funding relationships" },
     ],
   },
   {
@@ -91,6 +79,15 @@ const navGroups: NavGroup[] = [
       { name: "Reports", href: "/reports", icon: FileText, description: "Monthly & quarterly reports" },
       { name: "Legacy Reports", href: "/legacy-reports", icon: BookOpen, description: "Historical PDF uploads" },
       { name: "Taxonomy", href: "/taxonomy", icon: Tags, description: "Impact categories & tags" },
+    ],
+  },
+  {
+    name: "Ops",
+    href: "/projects",
+    children: [
+      { name: "Projects", href: "/projects", icon: Rocket, description: "Initiatives & work streams" },
+      { name: "Agreements", href: "/agreements", icon: Handshake, description: "Memberships & MOUs" },
+      { name: "Funders", href: "/funders", icon: Handshake, description: "Manage funding relationships" },
     ],
   },
   {

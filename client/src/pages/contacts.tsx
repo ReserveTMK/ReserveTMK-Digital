@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { useContacts, useDeleteContact } from "@/hooks/use-contacts";
-import { Plus, Search, Filter, Loader2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, Lightbulb, ChevronRight, Upload, Star, BookUser, Sprout, Leaf, Sun, Ban } from "lucide-react";
+import { Plus, Search, Filter, Loader2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, Lightbulb, ChevronRight, Upload, Star, BookUser, Sprout, Leaf, Sun, Ban, Mail } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useState, useMemo, useEffect } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -612,6 +612,12 @@ export default function Contacts() {
                           <Upload className="w-4 h-4 mr-2" />
                           Bulk Upload
                         </DropdownMenuItem>
+                        <DropdownMenuItem asChild data-testid="menu-gmail-import">
+                          <Link href="/gmail-import" className="flex items-center">
+                            <Mail className="w-4 h-4 mr-2" />
+                            Gmail Import
+                          </Link>
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   ) : (
@@ -634,6 +640,12 @@ export default function Contacts() {
                         <Upload className="w-4 h-4 mr-2" />
                         Bulk Upload
                       </Button>
+                      <Link href="/gmail-import">
+                        <Button variant="outline" data-testid="button-gmail-import">
+                          <Mail className="w-4 h-4 mr-2" />
+                          Gmail Import
+                        </Button>
+                      </Link>
                     </>
                   )}
                   <Dialog open={open} onOpenChange={setOpen}>

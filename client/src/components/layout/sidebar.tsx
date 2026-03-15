@@ -20,7 +20,6 @@ import {
   Settings,
   DollarSign,
   Activity,
-  Mail,
   CalendarClock,
   Rocket,
   PhoneCall,
@@ -50,7 +49,6 @@ const navigation: NavItem[] = [
       { name: "People", href: "/community/people", icon: Users },
       { name: "Groups", href: "/community/groups", icon: Network },
       { name: "Ecosystems", href: "/community/ecosystems", icon: Handshake },
-      { name: "Gmail Import", href: "/gmail-import", icon: Mail },
     ],
   },
   {
@@ -60,8 +58,6 @@ const navigation: NavItem[] = [
       { name: "Spaces", href: "/spaces", icon: Building2 },
       { name: "Gear", href: "/gear", icon: Wrench },
       { name: "Programmes", href: "/programmes", icon: Layers },
-      { name: "Projects", href: "/projects", icon: Rocket },
-      { name: "Agreements", href: "/agreements", icon: Handshake },
     ],
   },
   {
@@ -71,7 +67,6 @@ const navigation: NavItem[] = [
       { name: "Debriefs", href: "/debriefs", icon: Mic },
       { name: "Catch Up", href: "/catch-up", icon: PhoneCall },
       { name: "Community Spend", href: "/community-spend", icon: DollarSign },
-      { name: "Funders", href: "/funders", icon: Handshake },
     ],
   },
   {
@@ -80,6 +75,14 @@ const navigation: NavItem[] = [
       { name: "Reports", href: "/reports", icon: FileText },
       { name: "Legacy Reports", href: "/legacy-reports", icon: BookOpen },
       { name: "Taxonomy", href: "/taxonomy", icon: Tags },
+    ],
+  },
+  {
+    name: "Ops", href: "/projects", icon: Rocket,
+    children: [
+      { name: "Projects", href: "/projects", icon: Rocket },
+      { name: "Agreements", href: "/agreements", icon: Handshake },
+      { name: "Funders", href: "/funders", icon: Handshake },
     ],
   },
   {
