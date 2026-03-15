@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -24,8 +25,9 @@ import {
   CheckCircle2,
   Clock,
   AlertTriangle,
-  Settings,
   Loader2,
+  Package,
+  Users,
 } from "lucide-react";
 import {
   useBookableResources,
@@ -37,6 +39,7 @@ import {
   useMarkGearReturned,
 } from "@/hooks/use-bookings";
 import { useToast } from "@/hooks/use-toast";
+import RegularBookersPage from "./regular-bookers";
 
 function formatDate(date: Date): string {
   const y = date.getFullYear();
@@ -51,27 +54,17 @@ function addDays(date: Date, days: number): Date {
   return result;
 }
 
-export default function GearPage() {
+function GearAvailabilityTab() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const dateStr = formatDate(currentDate);
-  const [showSettings, setShowSettings] = useState(false);
-  const [editingGear, setEditingGear] = useState<any>(null);
-  const [gearFormOpen, setGearFormOpen] = useState(false);
-  const [gearName, setGearName] = useState("");
-  const [gearDescription, setGearDescription] = useState("");
-  const [gearRequiresApproval, setGearRequiresApproval] = useState(false);
 
   const { data: gearResources, isLoading: gearLoading } = useBookableResources("gear");
   const { data: gearAvailability, isLoading: gearAvailLoading } = useGearAvailability(dateStr);
   const { data: gearBookings } = useGearBookings();
-  const createMutation = useCreateBookableResource();
-  const updateMutation = useUpdateBookableResource();
-  const deleteMutation = useDeleteBookableResource();
   const markReturnedMutation = useMarkGearReturned();
   const { toast } = useToast();
 
   const activeGear = (gearResources || []).filter((r) => r.active !== false);
-  const todayStr = formatDate(new Date());
 
   const activeCheckouts = useMemo(() => {
     return (gearBookings || []).filter((b: any) =>
@@ -81,55 +74,6 @@ export default function GearPage() {
 
   const navigateDay = (direction: number) => {
     setCurrentDate(addDays(currentDate, direction));
-  };
-
-  const openGearForm = (gear?: any) => {
-    if (gear) {
-      setEditingGear(gear);
-      setGearName(gear.name);
-      setGearDescription(gear.description || "");
-      setGearRequiresApproval(gear.requiresApproval || false);
-    } else {
-      setEditingGear(null);
-      setGearName("");
-      setGearDescription("");
-      setGearRequiresApproval(false);
-    }
-    setGearFormOpen(true);
-  };
-
-  const handleSaveGear = async () => {
-    if (!gearName.trim()) return;
-    try {
-      if (editingGear) {
-        await updateMutation.mutateAsync({
-          id: editingGear.id,
-          data: { name: gearName, description: gearDescription || null, requiresApproval: gearRequiresApproval },
-        });
-        toast({ title: "Updated", description: "Gear item updated" });
-      } else {
-        await createMutation.mutateAsync({
-          name: gearName,
-          category: "gear",
-          description: gearDescription || null,
-          requiresApproval: gearRequiresApproval,
-          active: true,
-        });
-        toast({ title: "Created", description: "Gear item added" });
-      }
-      setGearFormOpen(false);
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to save", variant: "destructive" });
-    }
-  };
-
-  const handleDeleteGear = async (id: number) => {
-    try {
-      await deleteMutation.mutateAsync(id);
-      toast({ title: "Deleted", description: "Gear item removed" });
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to delete", variant: "destructive" });
-    }
   };
 
   const handleMarkReturned = async (bookingId: number) => {
@@ -142,24 +86,7 @@ export default function GearPage() {
   };
 
   return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold" data-testid="text-page-title">Gear</h1>
-          <p className="text-sm text-muted-foreground">Equipment lending and tracking</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => setShowSettings(!showSettings)}
-            data-testid="button-gear-settings"
-          >
-            <Settings className="w-5 h-5" />
-          </Button>
-        </div>
-      </div>
-
+    <div className="space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h3 className="text-base font-semibold">Availability</h3>
         <div className="flex items-center gap-2">
@@ -185,11 +112,7 @@ export default function GearPage() {
             <Wrench className="w-8 h-8 text-muted-foreground" />
           </div>
           <h3 className="text-lg font-semibold mb-2" data-testid="text-no-gear">No gear items</h3>
-          <p className="text-muted-foreground mb-4">Add equipment to start tracking.</p>
-          <Button onClick={() => openGearForm()} data-testid="button-add-gear-empty">
-            <Plus className="w-4 h-4 mr-2" />
-            Add Gear
-          </Button>
+          <p className="text-muted-foreground mb-4">Add equipment in the Inventory tab to start tracking.</p>
         </Card>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -271,53 +194,131 @@ export default function GearPage() {
           </Card>
         </div>
       )}
+    </div>
+  );
+}
 
-      {showSettings && (
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-base font-semibold">Gear Inventory</h3>
-            <Button size="sm" onClick={() => openGearForm()} data-testid="button-add-gear">
-              <Plus className="w-4 h-4 mr-1.5" />
-              Add Item
-            </Button>
+function GearInventoryTab() {
+  const [editingGear, setEditingGear] = useState<any>(null);
+  const [gearFormOpen, setGearFormOpen] = useState(false);
+  const [gearName, setGearName] = useState("");
+  const [gearDescription, setGearDescription] = useState("");
+  const [gearRequiresApproval, setGearRequiresApproval] = useState(false);
+
+  const { data: gearResources, isLoading: gearLoading } = useBookableResources("gear");
+  const createMutation = useCreateBookableResource();
+  const updateMutation = useUpdateBookableResource();
+  const deleteMutation = useDeleteBookableResource();
+  const { toast } = useToast();
+
+  const openGearForm = (gear?: any) => {
+    if (gear) {
+      setEditingGear(gear);
+      setGearName(gear.name);
+      setGearDescription(gear.description || "");
+      setGearRequiresApproval(gear.requiresApproval || false);
+    } else {
+      setEditingGear(null);
+      setGearName("");
+      setGearDescription("");
+      setGearRequiresApproval(false);
+    }
+    setGearFormOpen(true);
+  };
+
+  const handleSaveGear = async () => {
+    if (!gearName.trim()) return;
+    try {
+      if (editingGear) {
+        await updateMutation.mutateAsync({
+          id: editingGear.id,
+          data: { name: gearName, description: gearDescription || null, requiresApproval: gearRequiresApproval },
+        });
+        toast({ title: "Updated", description: "Gear item updated" });
+      } else {
+        await createMutation.mutateAsync({
+          name: gearName,
+          category: "gear",
+          description: gearDescription || null,
+          requiresApproval: gearRequiresApproval,
+          active: true,
+        });
+        toast({ title: "Created", description: "Gear item added" });
+      }
+      setGearFormOpen(false);
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to save", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteGear = async (id: number) => {
+    try {
+      await deleteMutation.mutateAsync(id);
+      toast({ title: "Deleted", description: "Gear item removed" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to delete", variant: "destructive" });
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-base font-semibold">Gear Inventory</h3>
+        <Button size="sm" onClick={() => openGearForm()} data-testid="button-add-gear">
+          <Plus className="w-4 h-4 mr-1.5" />
+          Add Item
+        </Button>
+      </div>
+
+      {gearLoading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
+        </div>
+      ) : (gearResources || []).length === 0 ? (
+        <Card className="p-12 text-center">
+          <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+            <Package className="w-8 h-8 text-muted-foreground" />
           </div>
-          <Card>
-            <CardContent className="p-3">
-              {(gearResources || []).length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">No gear items configured</p>
-              ) : (
-                <div className="space-y-2">
-                  {(gearResources || []).map((item) => (
-                    <div key={item.id} className="flex items-center justify-between gap-3 py-2 px-2 rounded-md hover:bg-muted/50" data-testid={`row-gear-setting-${item.id}`}>
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Wrench className="w-4 h-4 text-muted-foreground shrink-0" />
-                        <div className="min-w-0">
-                          <span className="text-sm font-medium">{item.name}</span>
-                          <div className="flex items-center gap-2">
-                            {item.requiresApproval && (
-                              <Badge variant="outline" className="text-[10px]">Approval req.</Badge>
-                            )}
-                            {item.active === false && (
-                              <Badge variant="secondary" className="text-[10px]">Inactive</Badge>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Button size="icon" variant="ghost" onClick={() => openGearForm(item)} data-testid={`button-edit-gear-${item.id}`}>
-                          <Pencil className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button size="icon" variant="ghost" onClick={() => handleDeleteGear(item.id)} data-testid={`button-delete-gear-${item.id}`}>
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
+          <h3 className="text-lg font-semibold mb-2">No gear items configured</h3>
+          <p className="text-muted-foreground mb-4">Add equipment to your inventory to start tracking.</p>
+          <Button onClick={() => openGearForm()} data-testid="button-add-gear-empty">
+            <Plus className="w-4 h-4 mr-2" />
+            Add Gear
+          </Button>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="p-3">
+            <div className="space-y-2">
+              {(gearResources || []).map((item) => (
+                <div key={item.id} className="flex items-center justify-between gap-3 py-2 px-2 rounded-md hover:bg-muted/50" data-testid={`row-gear-setting-${item.id}`}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Wrench className="w-4 h-4 text-muted-foreground shrink-0" />
+                    <div className="min-w-0">
+                      <span className="text-sm font-medium">{item.name}</span>
+                      <div className="flex items-center gap-2">
+                        {item.requiresApproval && (
+                          <Badge variant="outline" className="text-[10px]">Approval req.</Badge>
+                        )}
+                        {item.active === false && (
+                          <Badge variant="secondary" className="text-[10px]">Inactive</Badge>
+                        )}
                       </div>
                     </div>
-                  ))}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button size="icon" variant="ghost" onClick={() => openGearForm(item)} data-testid={`button-edit-gear-${item.id}`}>
+                      <Pencil className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button size="icon" variant="ghost" onClick={() => handleDeleteGear(item.id)} data-testid={`button-delete-gear-${item.id}`}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       <Dialog open={gearFormOpen} onOpenChange={setGearFormOpen}>
@@ -367,6 +368,46 @@ export default function GearPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+export default function GearPage() {
+  return (
+    <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold" data-testid="text-page-title">Gear</h1>
+        <p className="text-sm text-muted-foreground">Equipment lending and tracking</p>
+      </div>
+
+      <Tabs defaultValue="availability">
+        <TabsList data-testid="tabs-gear">
+          <TabsTrigger value="availability" data-testid="tab-gear-availability">
+            <Wrench className="w-4 h-4 mr-1.5" />
+            Availability
+          </TabsTrigger>
+          <TabsTrigger value="inventory" data-testid="tab-gear-inventory">
+            <Package className="w-4 h-4 mr-1.5" />
+            Inventory
+          </TabsTrigger>
+          <TabsTrigger value="bookers" data-testid="tab-gear-bookers">
+            <Users className="w-4 h-4 mr-1.5" />
+            Bookers
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="availability">
+          <GearAvailabilityTab />
+        </TabsContent>
+
+        <TabsContent value="inventory">
+          <GearInventoryTab />
+        </TabsContent>
+
+        <TabsContent value="bookers">
+          <RegularBookersPage embedded categoryScope={["gear"]} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

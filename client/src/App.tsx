@@ -38,7 +38,6 @@ import BookingDetailPage from "@/pages/booking-detail";
 import PublicSurveyPage from "@/pages/public-survey";
 import BookerPortalPage from "@/pages/booker-portal";
 import CatchUpPage from "@/pages/catch-up";
-import RegularBookersPage from "@/pages/regular-bookers";
 import PublicRegistrationPage from "@/pages/public-registration";
 import ResourceCalendarPage from "@/pages/resource-calendar";
 import SpacesPage from "@/pages/spaces";
@@ -162,7 +161,7 @@ function Router() {
         </Route>
 
         <Route path="/regular-bookers">
-          <ProtectedRoute component={RegularBookersPage} />
+          <Redirect to="/spaces?tab=bookers" />
         </Route>
 
         <Route path="/spaces">

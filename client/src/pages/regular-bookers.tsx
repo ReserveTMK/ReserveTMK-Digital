@@ -98,7 +98,7 @@ const PAYMENT_TERM_LABELS: Record<string, string> = {
   net_30: "Net 30 days",
 };
 
-export default function RegularBookersPage() {
+export default function RegularBookersPage({ embedded, categoryScope }: { embedded?: boolean; categoryScope?: string[] } = {}) {
   const { data: regularBookers, isLoading } = useRegularBookers();
   const { data: allBookerLinks, isLoading: linksLoading } = useAllBookerLinks();
   const { data: contacts } = useContacts();
@@ -316,9 +316,13 @@ export default function RegularBookersPage() {
         const cats = getBookerCategories(booker);
         if (!cats.includes(categoryFilter)) return false;
       }
+      if (categoryScope && categoryScope.length > 0) {
+        const cats = getBookerCategories(booker);
+        if (!cats.some(c => categoryScope.includes(c))) return false;
+      }
       return true;
     });
-  }, [regularBookers, search, agreementFilter, tierFilter, linkFilter, packageFilter, categoryFilter, allBookerLinks, allMemberships, allMous, allBookings]);
+  }, [regularBookers, search, agreementFilter, tierFilter, linkFilter, packageFilter, categoryFilter, categoryScope, allBookerLinks, allMemberships, allMous, allBookings]);
 
   const handleDelete = async (id: number) => {
     try {
@@ -343,11 +347,16 @@ export default function RegularBookersPage() {
     setFormOpen(true);
   };
 
+  const scopeLabel = categoryScope?.length === 1
+    ? categoryScope[0] === "gear" ? "Gear Bookers" : categoryScope[0] === "hot_desking" ? "Desk Bookers" : "Bookers"
+    : "Bookers";
+
   return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
+    <div className={embedded ? "space-y-6" : "p-4 md:p-6 max-w-7xl mx-auto space-y-6"}>
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="heading-regular-bookers">Regular Bookers</h1>
+          {!embedded && <h1 className="text-2xl font-bold" data-testid="heading-regular-bookers">Regular Bookers</h1>}
+          {embedded && <h2 className="text-lg font-semibold" data-testid="heading-regular-bookers">{scopeLabel}</h2>}
           <p className="text-sm text-muted-foreground mt-1">Manage regular bookers, their agreements, packages, and portal links.</p>
         </div>
         <Button onClick={() => { setEditingBooker(null); setPrefillData(null); setFormOpen(true); }} data-testid="button-add-regular-booker">
@@ -400,17 +409,19 @@ export default function RegularBookersPage() {
             <SelectItem value="expired">Expired</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-[150px]" data-testid="select-category-filter">
-            <SelectValue placeholder="Category" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Categories</SelectItem>
-            <SelectItem value="venue_hire">Venue Hire</SelectItem>
-            <SelectItem value="hot_desking">Hot Desking</SelectItem>
-            <SelectItem value="gear">Gear Borrowers</SelectItem>
-          </SelectContent>
-        </Select>
+        {!categoryScope && (
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="w-[150px]" data-testid="select-category-filter">
+              <SelectValue placeholder="Category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              <SelectItem value="venue_hire">Venue Hire</SelectItem>
+              <SelectItem value="hot_desking">Hot Desking</SelectItem>
+              <SelectItem value="gear">Gear Borrowers</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
         <Select value={packageFilter} onValueChange={setPackageFilter}>
           <SelectTrigger className="w-[140px]" data-testid="select-package-filter">
             <SelectValue placeholder="Package" />

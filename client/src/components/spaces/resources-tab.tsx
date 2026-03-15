@@ -12,7 +12,6 @@ import {
   Pencil,
   Trash2,
   DollarSign,
-  CheckCircle2,
 } from "lucide-react";
 import {
   useVenues,
@@ -23,8 +22,6 @@ import {
   useCreateBookableResource,
   useUpdateBookableResource,
   useDeleteBookableResource,
-  useGearBookings,
-  useMarkGearReturned,
   useDeskBookings,
   useBookingPricingDefaults,
   useUpdateBookingPricingDefaults,
@@ -42,13 +39,12 @@ export default function ResourcesTab() {
     <div className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold" data-testid="text-resources-heading">Resources</h2>
-        <p className="text-sm text-muted-foreground">Manage your venues, desks, and gear inventory</p>
+        <p className="text-sm text-muted-foreground">Manage your venues and desks</p>
       </div>
       <Tabs defaultValue="venues">
         <TabsList className="flex-wrap">
           <TabsTrigger value="venues" data-testid="tab-resources-venues">Venues</TabsTrigger>
           <TabsTrigger value="desks" data-testid="tab-resources-desks">Desks</TabsTrigger>
-          <TabsTrigger value="gear" data-testid="tab-resources-gear">Gear</TabsTrigger>
         </TabsList>
         <TabsContent value="venues" className="mt-3">
           <VenuesSubSection
@@ -66,9 +62,6 @@ export default function ResourcesTab() {
         </TabsContent>
         <TabsContent value="desks" className="mt-3">
           <ResourceSubSection category="hot_desking" label="Desk" />
-        </TabsContent>
-        <TabsContent value="gear" className="mt-3">
-          <GearSubSection />
         </TabsContent>
       </Tabs>
     </div>
@@ -494,243 +487,3 @@ function ResourceSubSection({ category, label }: { category: string; label: stri
   );
 }
 
-function GearSubSection() {
-  const { data: resources, isLoading } = useBookableResources("gear");
-  const createResource = useCreateBookableResource();
-  const updateResource = useUpdateBookableResource();
-  const deleteResource = useDeleteBookableResource();
-  const markReturned = useMarkGearReturned();
-  const { toast } = useToast();
-
-  const todayStr = format(new Date(), "yyyy-MM-dd");
-  const { data: gearBookingsToday } = useGearBookings({ start: todayStr, end: todayStr });
-
-  const [newName, setNewName] = useState("");
-  const [newDescription, setNewDescription] = useState("");
-  const [newRequiresApproval, setNewRequiresApproval] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editDescription, setEditDescription] = useState("");
-  const [editRequiresApproval, setEditRequiresApproval] = useState(false);
-
-  const todayBookingsByResource = useMemo(() => {
-    if (!gearBookingsToday || !resources) return {};
-    const map: Record<number, typeof gearBookingsToday> = {};
-    resources.forEach(r => { map[r.id] = []; });
-    gearBookingsToday.forEach(b => {
-      if (!map[b.resourceId]) map[b.resourceId] = [];
-      map[b.resourceId].push(b);
-    });
-    return map;
-  }, [gearBookingsToday, resources]);
-
-  const handleCreate = async () => {
-    if (!newName.trim()) return;
-    try {
-      await createResource.mutateAsync({
-        name: newName.trim(),
-        category: "gear",
-        description: newDescription.trim() || undefined,
-        requiresApproval: newRequiresApproval,
-      });
-      setNewName("");
-      setNewDescription("");
-      setNewRequiresApproval(false);
-      toast({ title: "Created", description: "Gear item created successfully" });
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to create gear item", variant: "destructive" });
-    }
-  };
-
-  const handleUpdate = async (id: number) => {
-    try {
-      await updateResource.mutateAsync({
-        id,
-        data: {
-          name: editName.trim(),
-          description: editDescription.trim() || undefined,
-          requiresApproval: editRequiresApproval,
-        },
-      });
-      setEditingId(null);
-      toast({ title: "Updated", description: "Gear item updated successfully" });
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to update gear item", variant: "destructive" });
-    }
-  };
-
-  const handleDelete = async (id: number) => {
-    try {
-      await deleteResource.mutateAsync(id);
-      toast({ title: "Deleted", description: "Gear item deleted successfully" });
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to delete gear item", variant: "destructive" });
-    }
-  };
-
-  const handleToggleActive = async (resource: BookableResource) => {
-    try {
-      await updateResource.mutateAsync({ id: resource.id, data: { active: !resource.active } });
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to toggle resource", variant: "destructive" });
-    }
-  };
-
-  const handleMarkReturned = async (bookingId: number) => {
-    try {
-      await markReturned.mutateAsync(bookingId);
-      toast({ title: "Returned", description: "Gear marked as returned" });
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to mark as returned", variant: "destructive" });
-    }
-  };
-
-  const startEditing = (resource: BookableResource) => {
-    setEditingId(resource.id);
-    setEditName(resource.name);
-    setEditDescription(resource.description || "");
-    setEditRequiresApproval(resource.requiresApproval ?? false);
-  };
-
-  if (isLoading) {
-    return <div className="flex justify-center p-6"><Loader2 className="w-5 h-5 animate-spin" /></div>;
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        {resources?.map((resource) => (
-          <Card key={resource.id} className="p-3" data-testid={`card-gear-${resource.id}`}>
-            {editingId === resource.id ? (
-              <div className="space-y-2">
-                <Input
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  placeholder="Gear item name"
-                  data-testid={`input-edit-gear-name-${resource.id}`}
-                />
-                <Input
-                  value={editDescription}
-                  onChange={(e) => setEditDescription(e.target.value)}
-                  placeholder="Description"
-                  data-testid={`input-edit-gear-desc-${resource.id}`}
-                />
-                <div className="flex items-center gap-2">
-                  <Switch
-                    checked={editRequiresApproval}
-                    onCheckedChange={setEditRequiresApproval}
-                    data-testid={`switch-edit-gear-approval-${resource.id}`}
-                  />
-                  <Label className="text-xs">Requires Approval (training needed)</Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button size="sm" onClick={() => handleUpdate(resource.id)} disabled={updateResource.isPending} data-testid={`button-save-gear-${resource.id}`}>
-                    {updateResource.isPending && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
-                    Save
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => setEditingId(null)} data-testid={`button-cancel-edit-gear-${resource.id}`}>
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-sm" data-testid={`text-gear-name-${resource.id}`}>{resource.name}</span>
-                      {resource.requiresApproval && (
-                        <Badge variant="secondary" className="text-xs">Approval Required</Badge>
-                      )}
-                      {!resource.active && (
-                        <Badge variant="outline" className="text-xs opacity-60">Inactive</Badge>
-                      )}
-                    </div>
-                    {resource.description && (
-                      <p className="text-xs text-muted-foreground mt-0.5 truncate">{resource.description}</p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Switch
-                      checked={resource.active ?? true}
-                      onCheckedChange={() => handleToggleActive(resource)}
-                      data-testid={`switch-gear-active-${resource.id}`}
-                    />
-                    <Button variant="ghost" size="icon" onClick={() => startEditing(resource)} data-testid={`button-edit-gear-${resource.id}`}>
-                      <Pencil className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => handleDelete(resource.id)} data-testid={`button-delete-gear-${resource.id}`}>
-                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                    </Button>
-                  </div>
-                </div>
-                {todayBookingsByResource[resource.id]?.length > 0 && (
-                  <div className="border-t pt-2 space-y-1">
-                    <p className="text-xs font-medium text-muted-foreground">Today's bookings:</p>
-                    {todayBookingsByResource[resource.id].map((booking) => (
-                      <div key={booking.id} className="flex items-center justify-between gap-2 text-xs" data-testid={`gear-booking-${booking.id}`}>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <Badge
-                            variant={booking.status === "returned" ? "secondary" : booking.status === "late" ? "destructive" : "outline"}
-                            className="text-[10px]"
-                            data-testid={`badge-gear-status-${booking.id}`}
-                          >
-                            {booking.status === "returned" ? "Returned" : booking.status === "late" ? "Late" : "Booked"}
-                          </Badge>
-                        </div>
-                        {booking.status === "booked" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleMarkReturned(booking.id)}
-                            disabled={markReturned.isPending}
-                            data-testid={`button-mark-returned-${booking.id}`}
-                          >
-                            {markReturned.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3 mr-1" />}
-                            Mark Returned
-                          </Button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </Card>
-        ))}
-        {(!resources || resources.length === 0) && (
-          <p className="text-sm text-muted-foreground text-center py-4">No gear items yet. Add one below.</p>
-        )}
-      </div>
-
-      <div className="border-t pt-4 space-y-2">
-        <Label className="text-sm font-semibold">Add New Gear Item</Label>
-        <Input
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          placeholder="Gear item name"
-          data-testid="input-new-gear-name"
-        />
-        <Input
-          value={newDescription}
-          onChange={(e) => setNewDescription(e.target.value)}
-          placeholder="Description (optional)"
-          data-testid="input-new-gear-desc"
-        />
-        <div className="flex items-center gap-2">
-          <Switch
-            checked={newRequiresApproval}
-            onCheckedChange={setNewRequiresApproval}
-            data-testid="switch-new-gear-approval"
-          />
-          <Label className="text-xs">Requires Approval (training needed)</Label>
-        </div>
-        <Button onClick={handleCreate} disabled={!newName.trim() || createResource.isPending} data-testid="button-add-gear">
-          {createResource.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-          <Plus className="w-4 h-4 mr-2" />
-          Add Gear Item
-        </Button>
-      </div>
-    </div>
-  );
-}
