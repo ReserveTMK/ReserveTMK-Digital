@@ -22,6 +22,17 @@ UPDATE groups SET type = 'Business' WHERE type = 'business';
 UPDATE groups SET type = 'Funder' WHERE type = 'funder';
 UPDATE groups SET type = 'NGO' WHERE type = 'ngo';
 
+-- Step 2b: Remap Education records stored via organizationTypeOther
+UPDATE groups SET type = 'Education / Training'
+  WHERE type IN ('Other', 'other', 'Uncategorised')
+  AND organization_type_other IS NOT NULL
+  AND LOWER(organization_type_other) LIKE '%education%';
+
+UPDATE groups SET type = 'Health / Social Services'
+  WHERE type IN ('Other', 'other', 'Uncategorised')
+  AND organization_type_other IS NOT NULL
+  AND LOWER(organization_type_other) LIKE '%health%';
+
 -- Step 3: Catch any remaining non-standard types and set to Uncategorised
 UPDATE groups SET type = 'Uncategorised'
   WHERE type NOT IN (

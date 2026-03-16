@@ -9675,8 +9675,8 @@ Return a JSON array:
           name: group.name,
           currentType: group.type,
           suggestedType: typeValid ? item.type : group.type,
-          currentEngagement: (group as any).engagementLevel || "Active",
-          suggestedEngagement: engValid ? item.engagementLevel : "Active",
+          currentEngagement: group.engagementLevel || "Active",
+          suggestedEngagement: engValid ? item.engagementLevel : (group.engagementLevel || "Active"),
         });
       }
 

@@ -1277,9 +1277,9 @@ function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, t
                       <Badge className={`text-[10px] h-5 px-2 ${GROUP_TYPE_COLORS[group.type] || ""}`} data-testid={`table-type-group-${group.id}`}>
                         {displayGroupType(group)}
                       </Badge>
-                      {(group as any).engagementLevel && (group as any).engagementLevel !== "Active" && (
-                        <Badge className={`text-[9px] h-4 px-1.5 ${ENGAGEMENT_COLORS[(group as any).engagementLevel] || ""}`} data-testid={`table-engagement-${group.id}`}>
-                          {(group as any).engagementLevel}
+                      {group.engagementLevel && group.engagementLevel !== "Active" && (
+                        <Badge className={`text-[9px] h-4 px-1.5 ${ENGAGEMENT_COLORS[group.engagementLevel] || ""}`} data-testid={`table-engagement-${group.id}`}>
+                          {group.engagementLevel}
                         </Badge>
                       )}
                     </div>
@@ -1422,9 +1422,9 @@ function GroupCard({ group, onSelect, onEdit, onDelete, editMode, isSelected, on
         <Badge className={`text-[10px] ${GROUP_TYPE_COLORS[group.type] || ""}`}>
           {displayGroupType(group)}
         </Badge>
-        {(group as any).engagementLevel && (group as any).engagementLevel !== "Active" && (
-          <Badge className={`text-[9px] ${ENGAGEMENT_COLORS[(group as any).engagementLevel] || ""}`} data-testid={`badge-engagement-card-${group.id}`}>
-            {(group as any).engagementLevel}
+        {group.engagementLevel && group.engagementLevel !== "Active" && (
+          <Badge className={`text-[9px] ${ENGAGEMENT_COLORS[group.engagementLevel] || ""}`} data-testid={`badge-engagement-card-${group.id}`}>
+            {group.engagementLevel}
           </Badge>
         )}
         <span className="flex items-center gap-1 text-xs text-muted-foreground" data-testid={`text-members-${group.id}`}>
@@ -1786,9 +1786,9 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit, allGro
             <DialogDescription className="sr-only">Group details and management</DialogDescription>
             <div className="flex items-center gap-2">
               <Badge className={GROUP_TYPE_COLORS[group.type] || ""}>{displayGroupType(group)}</Badge>
-              {(group as any).engagementLevel && (
-                <Badge className={ENGAGEMENT_COLORS[(group as any).engagementLevel] || ""} data-testid="badge-engagement-level">
-                  {(group as any).engagementLevel}
+              {group.engagementLevel && (
+                <Badge className={ENGAGEMENT_COLORS[group.engagementLevel] || ""} data-testid="badge-engagement-level">
+                  {group.engagementLevel}
                 </Badge>
               )}
               <Button
