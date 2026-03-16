@@ -1945,8 +1945,157 @@ export async function getTrendMetrics(
   return results;
 }
 
+export async function getProgrammeAttributedOutcomes(userId: string, programmeId?: number, startDate?: string, endDate?: string) {
+  const progWhere = programmeId
+    ? and(eq(programmes.userId, userId), eq(programmes.id, programmeId))
+    : eq(programmes.userId, userId);
+
+  let progRows = await db.select().from(programmes).where(progWhere);
+  progRows = progRows.filter(p => p.status !== "cancelled");
+
+  const start = startDate ? parseDate(startDate) : null;
+  const end = endDate ? parseDate(endDate) : null;
+
+  const CONNECTION_ORDER = ["known", "connected", "engaged", "embedded", "partnering"];
+  const results = [];
+
+  for (const prog of progRows) {
+    const attendeeIds: number[] = prog.attendees && prog.attendees.length > 0 ? prog.attendees : [];
+
+    let progMilestones: { id: number; title: string; milestoneType: string; valueAmount: string | null; linkedContactId: number | null }[] = [];
+    if (attendeeIds.length > 0) {
+      let milestoneConditions = and(
+        eq(milestones.userId, userId),
+        inArray(milestones.linkedContactId, attendeeIds),
+      );
+      if (start) milestoneConditions = and(milestoneConditions, gte(milestones.createdAt, start));
+      if (end) milestoneConditions = and(milestoneConditions, lte(milestones.createdAt, end));
+
+      progMilestones = await db.select({
+        id: milestones.id,
+        title: milestones.title,
+        milestoneType: milestones.milestoneType,
+        valueAmount: milestones.valueAmount,
+        linkedContactId: milestones.linkedContactId,
+      }).from(milestones).where(milestoneConditions!);
+    }
+
+    const directLinkedMilestones = await db.select({
+      id: milestones.id,
+      title: milestones.title,
+      milestoneType: milestones.milestoneType,
+      valueAmount: milestones.valueAmount,
+      linkedContactId: milestones.linkedContactId,
+    }).from(milestones).where(
+      and(
+        eq(milestones.userId, userId),
+        eq(milestones.linkedProgrammeId, prog.id),
+        start ? gte(milestones.createdAt, start) : undefined,
+        end ? lte(milestones.createdAt, end) : undefined,
+      )!
+    );
+
+    const allMilestoneIds = new Set<number>();
+    const combinedMilestones = [];
+    for (const m of [...progMilestones, ...directLinkedMilestones]) {
+      if (!allMilestoneIds.has(m.id)) {
+        allMilestoneIds.add(m.id);
+        combinedMilestones.push(m);
+      }
+    }
+
+    const totalMilestoneValue = combinedMilestones.reduce((s, m) => s + safeNum(m.valueAmount), 0);
+
+    const growthScoreChanges: Record<string, { average: number; count: number }> = {};
+    let averageGrowthImprovement = 0;
+    const progressions = new Set<number>();
+    const progressionDetails: { contactId: number; from: string; to: string }[] = [];
+
+    if (attendeeIds.length > 0) {
+      const contactMetrics = await db.select({
+        id: contacts.id,
+        metrics: contacts.metrics,
+      }).from(contacts).where(
+        and(eq(contacts.userId, userId), inArray(contacts.id, attendeeIds))
+      );
+
+      const metricArrays: Record<string, number[]> = {};
+      for (const key of ALL_METRIC_KEYS) metricArrays[key] = [];
+      for (const c of contactMetrics) {
+        const m = c.metrics as any;
+        if (!m || typeof m !== "object") continue;
+        for (const key of ALL_METRIC_KEYS) {
+          if (m[key] != null) metricArrays[key].push(m[key]);
+        }
+      }
+
+      let totalGrowthSum = 0;
+      let totalGrowthCount = 0;
+      for (const key of ALL_METRIC_KEYS) {
+        if (metricArrays[key].length > 0) {
+          const avg = Math.round((metricArrays[key].reduce((a, b) => a + b, 0) / metricArrays[key].length) * 10) / 10;
+          growthScoreChanges[key] = { average: avg, count: metricArrays[key].length };
+          totalGrowthSum += avg;
+          totalGrowthCount++;
+        }
+      }
+      averageGrowthImprovement = totalGrowthCount > 0
+        ? Math.round((totalGrowthSum / totalGrowthCount) * 10) / 10
+        : 0;
+
+      let stageHistConditions = and(
+        eq(relationshipStageHistory.entityType, "contact"),
+        inArray(relationshipStageHistory.entityId, attendeeIds),
+      );
+      if (start) stageHistConditions = and(stageHistConditions, gte(relationshipStageHistory.changedAt, start));
+      if (end) stageHistConditions = and(stageHistConditions, lte(relationshipStageHistory.changedAt, end));
+
+      const stageHist = await db.select({
+        entityId: relationshipStageHistory.entityId,
+        previousStage: relationshipStageHistory.previousStage,
+        newStage: relationshipStageHistory.newStage,
+      }).from(relationshipStageHistory).where(stageHistConditions!);
+
+      for (const sh of stageHist) {
+        const prevIdx = sh.previousStage ? CONNECTION_ORDER.indexOf(sh.previousStage) : -1;
+        const newIdx = CONNECTION_ORDER.indexOf(sh.newStage);
+        if (newIdx > prevIdx && newIdx >= 0) {
+          progressions.add(sh.entityId);
+          progressionDetails.push({
+            contactId: sh.entityId,
+            from: sh.previousStage || "none",
+            to: sh.newStage,
+          });
+        }
+      }
+    }
+
+    const milestoneValueStr = totalMilestoneValue > 0
+      ? `$${Math.round(totalMilestoneValue).toLocaleString()}`
+      : "$0";
+
+    results.push({
+      programmeId: prog.id,
+      programmeName: prog.name,
+      classification: prog.classification,
+      status: prog.status,
+      participantCount: attendeeIds.length,
+      milestones: combinedMilestones,
+      milestoneCount: combinedMilestones.length,
+      totalMilestoneValue: Math.round(totalMilestoneValue * 100) / 100,
+      growthScoreChanges,
+      averageGrowthImprovement,
+      stageProgressions: progressions.size,
+      stageProgressionDetails: progressionDetails,
+      summaryLine: `${prog.name}: ${attendeeIds.length} participants, ${combinedMilestones.length} milestones (${milestoneValueStr} value), avg growth +${averageGrowthImprovement} points`,
+    });
+  }
+
+  return results;
+}
+
 export async function getFullMonthlyReport(filters: ReportFilters) {
-  const [reach, delivery, impact, value, mentoring, organisationsEngaged, peopleFeatured, journeyProgression, communityDiscounts, connectionStrength, surveyData] = await Promise.all([
+  const [reach, delivery, impact, value, mentoring, organisationsEngaged, peopleFeatured, journeyProgression, communityDiscounts, connectionStrength, surveyData, programmeOutcomes] = await Promise.all([
     getReachMetrics(filters),
     getDeliveryMetrics(filters),
     getImpactMetrics(filters),
@@ -1958,7 +2107,23 @@ export async function getFullMonthlyReport(filters: ReportFilters) {
     getCommunityDiscounts(filters),
     getConnectionStrengthDistribution(filters),
     getSurveyAggregation(filters),
+    getProgrammeAttributedOutcomes(
+      filters.userId,
+      filters.programmeIds?.length === 1 ? filters.programmeIds[0] : undefined,
+      filters.startDate,
+      filters.endDate,
+    ),
   ]);
+
+  let relevantOutcomes = programmeOutcomes;
+  if (filters.programmeIds && filters.programmeIds.length > 1) {
+    const idSet = new Set(filters.programmeIds);
+    relevantOutcomes = programmeOutcomes.filter((o: any) => idSet.has(o.programmeId));
+  }
+
+  const filteredOutcomes = relevantOutcomes.filter(
+    (o: any) => o.milestoneCount > 0 || o.stageProgressions > 0 || o.averageGrowthImprovement > 0
+  );
 
   const averageChange: Record<string, number> = {};
   const positiveMovement: Record<string, number> = {};
@@ -1986,6 +2151,7 @@ export async function getFullMonthlyReport(filters: ReportFilters) {
     communityDiscounts,
     connectionStrength,
     surveyData,
+    programmeOutcomes: filteredOutcomes,
     engagement: reach,
     outcomes: {
       totalContacts: impact.contactsWithMetrics,

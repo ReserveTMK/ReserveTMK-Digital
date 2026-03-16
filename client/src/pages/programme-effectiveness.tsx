@@ -11,6 +11,9 @@ import {
   Users,
   Trophy,
   BarChart3,
+  DollarSign,
+  TrendingUp,
+  ArrowUpRight,
 } from "lucide-react";
 
 type ProgrammeEffectiveness = {
@@ -27,6 +30,20 @@ type ProgrammeEffectiveness = {
   milestoneCount: number;
   totalBudget: number | null;
   costPerParticipant: number | null;
+};
+
+type ProgrammeOutcome = {
+  programmeId: number;
+  programmeName: string;
+  classification: string;
+  status: string;
+  participantCount: number;
+  milestoneCount: number;
+  totalMilestoneValue: number;
+  averageGrowthImprovement: number;
+  stageProgressions: number;
+  summaryLine: string;
+  growthScoreChanges: Record<string, { average: number; count: number }>;
 };
 
 const CLASSIFICATION_COLORS: Record<string, string> = {
@@ -59,6 +76,8 @@ const SORT_OPTIONS = [
   { key: "milestoneCount", label: "Milestones" },
   { key: "sentimentAverage", label: "Sentiment" },
   { key: "costPerParticipant", label: "Cost Efficiency" },
+  { key: "totalMilestoneValue", label: "Milestone Value" },
+  { key: "stageProgressions", label: "Stage Progressions" },
 ];
 
 function getSentimentLabel(avg: number | null): { text: string; className: string } {
@@ -72,6 +91,18 @@ export default function ProgrammeEffectivenessPage() {
   const { data: programmes, isLoading } = useQuery<ProgrammeEffectiveness[]>({
     queryKey: ["/api/programme-effectiveness"],
   });
+
+  const { data: outcomes } = useQuery<ProgrammeOutcome[]>({
+    queryKey: ["/api/programme-attributed-outcomes"],
+  });
+
+  const outcomeMap = useMemo(() => {
+    const map = new Map<number, ProgrammeOutcome>();
+    if (outcomes) {
+      for (const o of outcomes) map.set(o.programmeId, o);
+    }
+    return map;
+  }, [outcomes]);
 
   const [sortBy, setSortBy] = useState<string>("totalAttendance");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -88,15 +119,24 @@ export default function ProgrammeEffectivenessPage() {
   const sorted = useMemo(() => {
     if (!programmes) return [];
     return [...programmes].sort((a, b) => {
+      if (sortBy === "totalMilestoneValue" || sortBy === "stageProgressions" || sortBy === "averageGrowthImprovement") {
+        const aOut = outcomeMap.get(a.id);
+        const bOut = outcomeMap.get(b.id);
+        const aVal = aOut ? (aOut as any)[sortBy] ?? -Infinity : -Infinity;
+        const bVal = bOut ? (bOut as any)[sortBy] ?? -Infinity : -Infinity;
+        return sortDir === "desc" ? bVal - aVal : aVal - bVal;
+      }
       const aVal = (a as any)[sortBy] ?? -Infinity;
       const bVal = (b as any)[sortBy] ?? -Infinity;
       return sortDir === "desc" ? bVal - aVal : aVal - bVal;
     });
-  }, [programmes, sortBy, sortDir]);
+  }, [programmes, sortBy, sortDir, outcomeMap]);
 
   const totalProgrammes = programmes?.length ?? 0;
   const totalAttendance = programmes?.reduce((sum, p) => sum + p.totalAttendance, 0) ?? 0;
   const totalMilestones = programmes?.reduce((sum, p) => sum + p.milestoneCount, 0) ?? 0;
+  const totalMilestoneValue = outcomes?.reduce((sum, o) => sum + o.totalMilestoneValue, 0) ?? 0;
+  const totalStageProgressions = outcomes?.reduce((sum, o) => sum + o.stageProgressions, 0) ?? 0;
 
   return (
     <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
@@ -114,7 +154,7 @@ export default function ProgrammeEffectivenessPage() {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-4">
               <Card className="p-4" data-testid="stat-total-programmes">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -145,6 +185,28 @@ export default function ProgrammeEffectivenessPage() {
                   <div>
                     <p className="text-sm text-muted-foreground">Total Milestones</p>
                     <p className="text-2xl font-bold" data-testid="value-total-milestones">{totalMilestones}</p>
+                  </div>
+                </div>
+              </Card>
+              <Card className="p-4" data-testid="stat-total-milestone-value">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                    <DollarSign className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Milestone Value</p>
+                    <p className="text-2xl font-bold" data-testid="value-total-milestone-value">{formatNZD(totalMilestoneValue)}</p>
+                  </div>
+                </div>
+              </Card>
+              <Card className="p-4" data-testid="stat-total-stage-progressions">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
+                    <TrendingUp className="w-5 h-5 text-green-600 dark:text-green-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Stage Progressions</p>
+                    <p className="text-2xl font-bold" data-testid="value-total-stage-progressions">{totalStageProgressions}</p>
                   </div>
                 </div>
               </Card>
@@ -189,6 +251,7 @@ export default function ProgrammeEffectivenessPage() {
               <div className="space-y-3">
                 {sorted.map((p) => {
                   const sentiment = getSentimentLabel(p.sentimentAverage);
+                  const outcome = outcomeMap.get(p.id);
                   return (
                     <Card key={p.id} className="p-4 hover-elevate transition-all" data-testid={`card-programme-${p.id}`}>
                       <div className="flex flex-col gap-3">
@@ -254,6 +317,44 @@ export default function ProgrammeEffectivenessPage() {
                             </p>
                           </div>
                         </div>
+
+                        {outcome && (outcome.milestoneCount > 0 || outcome.stageProgressions > 0 || outcome.averageGrowthImprovement > 0) && (
+                          <div className="border-t pt-3 mt-1" data-testid={`outcomes-panel-${p.id}`}>
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Attributed Outcomes</p>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
+                              <div data-testid={`outcome-milestone-value-${p.id}`}>
+                                <p className="text-xs text-muted-foreground">Milestone Value</p>
+                                <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                                  {outcome.totalMilestoneValue > 0 ? formatNZD(outcome.totalMilestoneValue) : "$0"}
+                                </p>
+                              </div>
+                              <div data-testid={`outcome-growth-${p.id}`}>
+                                <p className="text-xs text-muted-foreground">Avg Growth</p>
+                                <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+                                  {outcome.averageGrowthImprovement > 0 ? (
+                                    <span className="flex items-center gap-1">
+                                      <ArrowUpRight className="w-3.5 h-3.5" />
+                                      +{outcome.averageGrowthImprovement}
+                                    </span>
+                                  ) : <span className="text-muted-foreground font-normal">N/A</span>}
+                                </p>
+                              </div>
+                              <div data-testid={`outcome-progressions-${p.id}`}>
+                                <p className="text-xs text-muted-foreground">Stage Progressions</p>
+                                <p className="text-sm font-semibold text-green-600 dark:text-green-400">
+                                  {outcome.stageProgressions > 0 ? outcome.stageProgressions : <span className="text-muted-foreground font-normal">0</span>}
+                                </p>
+                              </div>
+                              <div data-testid={`outcome-participants-${p.id}`}>
+                                <p className="text-xs text-muted-foreground">Participants</p>
+                                <p className="text-sm font-semibold">{outcome.participantCount}</p>
+                              </div>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-2 italic" data-testid={`outcome-summary-${p.id}`}>
+                              {outcome.summaryLine}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </Card>
                   );

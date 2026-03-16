@@ -824,6 +824,18 @@ export default function Reports() {
         rows.push([cat.name, String(cat.debriefCount), String(cat.peopleAffected), String(cat.impactScore)]);
       }
     }
+    if (d.programmeOutcomes?.length > 0) {
+      rows.push([]);
+      rows.push(["=== PROGRAMME-ATTRIBUTED OUTCOMES ==="]);
+      rows.push(["Programme", "Classification", "Participants", "Milestones", "Milestone Value", "Avg Growth", "Stage Progressions"]);
+      for (const po of d.programmeOutcomes) {
+        rows.push([
+          po.programmeName, po.classification, String(po.participantCount),
+          String(po.milestoneCount), `$${po.totalMilestoneValue || 0}`,
+          `${(po.averageGrowthImprovement || 0) >= 0 ? "+" : ""}${po.averageGrowthImprovement || 0}`, String(po.stageProgressions || 0),
+        ]);
+      }
+    }
     if (d.peopleFeatured?.length > 0) {
       rows.push([]);
       rows.push(["=== PEOPLE FEATURED ==="]);
@@ -1826,6 +1838,51 @@ export default function Reports() {
                                 ))}
                               </div>
                             )}
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+
+                  {reportData?.programmeOutcomes && reportData.programmeOutcomes.length > 0 && (
+                    <details className="pt-3 border-t" data-testid="programme-outcomes-section">
+                      <summary className="text-sm font-semibold cursor-pointer hover:text-primary transition-colors flex items-center gap-2">
+                        <BarChart3 className="w-4 h-4" /> Outcomes by Programme ({reportData.programmeOutcomes.length})
+                      </summary>
+                      <div className="mt-4 space-y-3">
+                        {reportData.programmeOutcomes.map((po: any) => (
+                          <div key={po.programmeId} className="border rounded-lg p-4" data-testid={`programme-outcome-${po.programmeId}`}>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-semibold">{po.programmeName}</span>
+                              <Badge variant="secondary" className="text-xs">{po.classification}</Badge>
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
+                              <div>
+                                <p className="text-xs text-muted-foreground">Participants</p>
+                                <p className="text-sm font-semibold">{po.participantCount}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-muted-foreground">Milestones</p>
+                                <p className="text-sm font-semibold">{po.milestoneCount}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-muted-foreground">Milestone Value</p>
+                                <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                                  ${po.totalMilestoneValue?.toLocaleString() || "0"}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-muted-foreground">Stage Progressions</p>
+                                <p className="text-sm font-semibold text-green-600 dark:text-green-400">{po.stageProgressions}</p>
+                              </div>
+                            </div>
+                            {po.averageGrowthImprovement > 0 && (
+                              <div className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400">
+                                <ArrowUpRight className="w-3 h-3" />
+                                Avg growth: +{po.averageGrowthImprovement} points
+                              </div>
+                            )}
+                            <p className="text-xs text-muted-foreground mt-1 italic">{po.summaryLine}</p>
                           </div>
                         ))}
                       </div>
