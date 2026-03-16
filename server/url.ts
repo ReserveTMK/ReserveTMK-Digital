@@ -4,12 +4,12 @@ export function getBaseUrl(): string {
       const primaryDomain = process.env.REPLIT_DOMAINS.split(",")[0].trim();
       if (primaryDomain) return `https://${primaryDomain}`;
     }
-    return "https://mentor-metrics-log.replit.app";
+    return "https://reservetmkdigital.com";
   }
 
   if (process.env.REPLIT_DEV_DOMAIN) {
     return `https://${process.env.REPLIT_DEV_DOMAIN}`;
   }
 
-  return "https://mentor-metrics-log.replit.app";
+  return "https://reservetmkdigital.com";
 }
