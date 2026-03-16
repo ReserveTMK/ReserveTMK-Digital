@@ -1766,6 +1766,7 @@ export const funders = pgTable("funders", {
   contractEnd: timestamp("contract_end"),
   nextDeadline: timestamp("next_deadline"),
   reviewDate: timestamp("review_date"),
+  partnershipStrategy: text("partnership_strategy"),
   notes: text("notes"),
   isDefault: boolean("is_default").default(false),
   createdAt: timestamp("created_at").defaultNow(),

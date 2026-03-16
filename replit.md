@@ -44,6 +44,7 @@ PostgreSQL is used as the database, integrated with Drizzle ORM. The schema incl
 -   **Booking Categories**: Unified framework for Venue Hire, Hot Desking, and Gear Booking, managed via bookable resources and linked agreements. Agreements (Memberships/MOUs) have category checkboxes for Venue Hire, Hot Desking, and Gear.
 -   **Regular Booker Portal**: Self-service portal with magic link authentication, showing category-specific usage, subscription status, and booking flows. Regular Bookers page (`regular-bookers.tsx`) supports `embedded` and `categoryScope` props for embedding in Spaces and Gear hubs. Standalone `/regular-bookers` route redirects to `/spaces?tab=bookers`. Sidebar link removed.
 -   **Public Programme Registration**: Allows public registration for programmes with auto-generated links and QR codes, with integrated registration management and attendance tracking.
+-   **Funder Profile AI Generation**: AI Generate button on funder edit form uses Anthropic Claude to build out the full profile from existing info + uploaded documents. Generates outcome focus areas with indicators, reporting guidance with rhythms, narrative style, priority sections, and a partnership strategy section describing how to deliver and report to the funder. Schema field: `partnershipStrategy` on funders table.
 
 ## External Dependencies
 

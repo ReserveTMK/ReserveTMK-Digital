@@ -39,6 +39,8 @@ import {
   ChevronLeft,
   ExternalLink,
   AlertCircle,
+  Sparkles,
+  Handshake,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -430,8 +432,38 @@ function FunderFormDialog({
     contractEnd: defaultValues?.contractEnd ? format(new Date(defaultValues.contractEnd), "yyyy-MM-dd") : "",
     nextDeadline: defaultValues?.nextDeadline ? format(new Date(defaultValues.nextDeadline), "yyyy-MM-dd") : "",
     reviewDate: defaultValues?.reviewDate ? format(new Date(defaultValues.reviewDate), "yyyy-MM-dd") : "",
+    partnershipStrategy: defaultValues?.partnershipStrategy || "",
     notes: defaultValues?.notes || "",
   });
+
+  const [isGenerating, setIsGenerating] = useState(false);
+  const { toast } = useToast();
+
+  const handleAiGenerate = async () => {
+    if (!defaultValues?.id) {
+      toast({ title: "Save the funder first", description: "Please save basic details before generating the profile with AI.", variant: "destructive" });
+      return;
+    }
+    setIsGenerating(true);
+    try {
+      const response = await apiRequest("POST", `/api/funders/${defaultValues.id}/ai-generate`);
+      const result = await response.json();
+      setForm(prev => ({
+        ...prev,
+        outcomesFramework: result.outcomesFramework || prev.outcomesFramework,
+        outcomeFocus: result.outcomeFocus || prev.outcomeFocus,
+        reportingGuidance: result.reportingGuidance || prev.reportingGuidance,
+        narrativeStyle: result.narrativeStyle || prev.narrativeStyle,
+        prioritySections: Array.isArray(result.prioritySections) ? result.prioritySections : prev.prioritySections,
+        partnershipStrategy: result.partnershipStrategy || prev.partnershipStrategy,
+      }));
+      toast({ title: "Profile generated", description: "AI has filled in the profile fields. Review and save when ready." });
+    } catch (err: any) {
+      toast({ title: "Generation failed", description: err.message || "Could not generate profile", variant: "destructive" });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -455,6 +487,7 @@ function FunderFormDialog({
       contractEnd: form.contractEnd || null,
       nextDeadline: form.nextDeadline || null,
       reviewDate: form.reviewDate || null,
+      partnershipStrategy: form.partnershipStrategy.trim() || null,
       notes: form.notes.trim() || null,
     };
     onSubmit(data);
@@ -610,9 +643,25 @@ function FunderFormDialog({
           </div>
 
           <div className="space-y-3 p-4 border rounded-lg bg-muted/30">
-            <div>
-              <Label className="text-base font-semibold">Report Context</Label>
-              <p className="text-xs text-muted-foreground mt-0.5">Help the AI understand what this funder cares about when generating reports</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="text-base font-semibold">Report Context</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">Help the AI understand what this funder cares about when generating reports</p>
+              </div>
+              {defaultValues?.id && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAiGenerate}
+                  disabled={isGenerating}
+                  data-testid="button-ai-generate"
+                  className="gap-1.5"
+                >
+                  {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                  {isGenerating ? "Generating…" : "AI Generate"}
+                </Button>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -674,6 +723,21 @@ function FunderFormDialog({
               <Label>Review/Renewal Date</Label>
               <Input type="date" value={form.reviewDate} onChange={(e) => setForm(p => ({ ...p, reviewDate: e.target.value }))} data-testid="input-review-date" />
             </div>
+          </div>
+
+          <div className="space-y-3 p-4 border rounded-lg bg-muted/30">
+            <div className="flex items-center gap-2">
+              <Handshake className="w-4 h-4 text-muted-foreground" />
+              <Label className="text-base font-semibold">Partnership Strategy</Label>
+            </div>
+            <p className="text-xs text-muted-foreground -mt-1">How we deliver on this funder's outcomes — activities, touchpoints, and reporting approach</p>
+            <Textarea
+              value={form.partnershipStrategy}
+              onChange={(e) => setForm(p => ({ ...p, partnershipStrategy: e.target.value }))}
+              placeholder="Describe how your organisation partners with this funder to deliver outcomes. Include:&#10;&#10;• Key activities and programmes that align with their goals&#10;• How impact is demonstrated&#10;• Relationship touchpoints and management approach&#10;• How reporting feeds into the partnership"
+              rows={8}
+              data-testid="input-partnership-strategy"
+            />
           </div>
 
           <div className="space-y-2">
@@ -876,6 +940,16 @@ function FunderDetailDialog({
               <span className="text-muted-foreground">Reporting Guidance: </span>
               <p className="mt-1 whitespace-pre-wrap">{funder.reportingGuidance}</p>
             </div>
+          )}
+
+          {funder.partnershipStrategy && (
+            <Card className="p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Handshake className="w-4 h-4 text-muted-foreground" />
+                <h3 className="font-medium text-sm text-muted-foreground">Partnership Strategy</h3>
+              </div>
+              <p className="text-sm whitespace-pre-wrap">{funder.partnershipStrategy}</p>
+            </Card>
           )}
 
           {funder.funderTag && (

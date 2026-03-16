@@ -10138,6 +10138,114 @@ What to avoid: Deficit framing, top-down service delivery language, purely stati
     }
   });
 
+  app.post("/api/funders/:id/ai-generate", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseId(req.params.id);
+      const userId = (req.user as any).claims.sub;
+      const funder = await storage.getFunder(id);
+      if (!funder) return res.status(404).json({ message: "Funder not found" });
+      if (funder.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      const orgProfile = await storage.getOrganisationProfile(userId);
+      const docs = await storage.getFunderDocuments(id);
+
+      const documentContents: { name: string; type: string; content: string }[] = [];
+      for (const doc of docs) {
+        if (doc.fileData) {
+          let extractedText = "";
+          const buffer = Buffer.from(doc.fileData, "base64");
+          const isPdf = doc.fileName.toLowerCase().endsWith(".pdf") || buffer.subarray(0, 5).toString() === "%PDF-";
+          if (isPdf) {
+            try {
+              const pdfParse = (await import("pdf-parse")).default;
+              const parsed = await pdfParse(buffer);
+              extractedText = parsed.text || "";
+            } catch (e) {
+              extractedText = buffer.toString("utf-8");
+            }
+          } else {
+            extractedText = buffer.toString("utf-8");
+          }
+          const cleanText = extractedText.replace(/[^\x20-\x7E\n\r\t\u00C0-\u024F\u0100-\u017F\u0300-\u036F\u2000-\u206F\u2018-\u201F\u2026\u2013\u2014\u00A0\u0101\u014D\u016B\u0113\u012B\u0100\u014C\u016A\u0112\u012A]/g, " ").replace(/\s{3,}/g, " ").trim();
+          if (cleanText.length > 100) {
+            documentContents.push({
+              name: doc.fileName,
+              type: doc.documentType,
+              content: cleanText.substring(0, 15000),
+            });
+          }
+        }
+      }
+
+      const orgContext = orgProfile ? `
+Organisation: ${orgProfile.name || ""}
+Mission: ${orgProfile.mission || ""}
+Description: ${orgProfile.description || ""}
+Focus Areas: ${Array.isArray(orgProfile.focusAreas) ? orgProfile.focusAreas.join(", ") : orgProfile.focusAreas || ""}
+Target Community: ${orgProfile.targetCommunity || ""}
+Location: ${orgProfile.location || ""}` : "";
+
+      const existingInfo = `
+Funder Name: ${funder.name}
+Organisation: ${funder.organisation || ""}
+Status: ${funder.status}
+Community Lens: ${funder.communityLens}
+Outcomes Framework: ${funder.outcomesFramework || ""}
+Outcome Focus: ${funder.outcomeFocus || ""}
+Reporting Guidance: ${funder.reportingGuidance || ""}
+Reporting Cadence: ${funder.reportingCadence || ""}
+Narrative Style: ${funder.narrativeStyle || ""}
+Contract Start: ${funder.contractStart || ""}
+Contract End: ${funder.contractEnd || ""}
+Notes: ${funder.notes || ""}`;
+
+      const docsContext = documentContents.length > 0
+        ? "\n\nUPLOADED DOCUMENTS:\n" + documentContents.map(d => `--- ${d.name} (${d.type}) ---\n${d.content}`).join("\n\n")
+        : "";
+
+      const systemPrompt = `You are an expert in Aotearoa New Zealand community development, Māori and Pasifika outcomes frameworks, and funder relationship management. You help organisations like Reserve Tāmaki build rich funder profiles.
+
+Given the organisation context, existing funder information, and any uploaded documents, generate a comprehensive funder profile. Use te reo Māori terms where appropriate and be specific to the funder's actual framework and focus areas.
+
+${orgContext}
+
+Respond with a JSON object containing these fields:
+{
+  "outcomesFramework": "Name and description of the funder's outcomes framework",
+  "outcomeFocus": "Detailed outcome focus areas with indicators. Use the funder's actual pou/pillars if known. Each area should have a name, description, and specific measurable indicators.",
+  "reportingGuidance": "Structured reporting rhythm and guidance including: what they want to see, how often, what format, and any specific metrics or stories they value.",
+  "narrativeStyle": "One of: compliance, story, partnership",
+  "prioritySections": ["Array of priority sections from: engagement, delivery, impact, outcomes, milestones, reach, value, tamaki_ora, cohort"],
+  "partnershipStrategy": "A strategy section describing how the organisation delivers on this funder's outcomes. Include: how the partnership works, what activities/programmes align with their goals, how impact is demonstrated, key touchpoints and relationship management approach, and how reporting feeds into the relationship."
+}
+
+Be specific, practical, and grounded in the actual documents and context provided. Don't be generic — reference the specific funder, their framework, and their priorities. The partnership strategy should read like an internal playbook for how to deliver and report to this funder.`;
+
+      const result = await claudeJSON({
+        model: "claude-sonnet-4-6",
+        system: systemPrompt,
+        prompt: `Generate a comprehensive funder profile for this funder:\n\n${existingInfo}${docsContext}`,
+        temperature: 0.4,
+        maxTokens: 4096,
+      });
+
+      const validStyles = ["compliance", "story", "partnership"];
+      const validSections = ["engagement", "delivery", "impact", "outcomes", "milestones", "reach", "value", "tamaki_ora", "cohort"];
+      const sanitized = {
+        outcomesFramework: typeof result.outcomesFramework === "string" ? result.outcomesFramework.substring(0, 5000) : null,
+        outcomeFocus: typeof result.outcomeFocus === "string" ? result.outcomeFocus.substring(0, 5000) : null,
+        reportingGuidance: typeof result.reportingGuidance === "string" ? result.reportingGuidance.substring(0, 5000) : null,
+        narrativeStyle: validStyles.includes(result.narrativeStyle) ? result.narrativeStyle : "compliance",
+        prioritySections: Array.isArray(result.prioritySections) ? result.prioritySections.filter((s: string) => validSections.includes(s)) : [],
+        partnershipStrategy: typeof result.partnershipStrategy === "string" ? result.partnershipStrategy.substring(0, 5000) : null,
+      };
+      res.json(sanitized);
+    } catch (err: any) {
+      console.error("AI generate funder profile error:", err);
+      res.status(500).json({ message: "Failed to generate profile" });
+    }
+  });
+
   app.get("/api/funders/:id/documents", isAuthenticated, async (req, res) => {
     try {
       const funderId = parseId(req.params.id);
