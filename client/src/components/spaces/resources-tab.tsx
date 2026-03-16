@@ -90,6 +90,8 @@ function VenuesSubSection({
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editCapacity, setEditCapacity] = useState("");
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [showPricing, setShowPricing] = useState(false);
   const [localFullDay, setLocalFullDay] = useState(pricingDefaults?.fullDayRate || "0");
   const [localHalfDay, setLocalHalfDay] = useState(pricingDefaults?.halfDayRate || "0");
 
@@ -104,6 +106,7 @@ function VenuesSubSection({
       setNewName("");
       setNewDescription("");
       setNewCapacity("");
+      setShowAddForm(false);
       toast({ title: "Created", description: "Venue created successfully" });
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Failed to create venue", variant: "destructive" });
@@ -223,85 +226,115 @@ function VenuesSubSection({
           </Card>
         ))}
         {(!venues || venues.length === 0) && (
-          <p className="text-sm text-muted-foreground text-center py-4">No venues yet. Add one below.</p>
+          <p className="text-sm text-muted-foreground text-center py-4">No venues yet. Click "Add New Venue" to create one.</p>
         )}
       </div>
 
       <div className="border-t pt-4 space-y-2">
-        <Label className="text-sm font-semibold">Add New Venue</Label>
-        <Input
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          placeholder="Venue name"
-          data-testid="input-new-venue-name"
-        />
-        <Input
-          value={newDescription}
-          onChange={(e) => setNewDescription(e.target.value)}
-          placeholder="Description (optional)"
-          data-testid="input-new-venue-description"
-        />
-        <Input
-          type="number"
-          value={newCapacity}
-          onChange={(e) => setNewCapacity(e.target.value)}
-          placeholder="Capacity (optional)"
-          data-testid="input-new-venue-capacity"
-        />
-        <Button onClick={handleCreateVenue} disabled={!newName.trim() || createVenue.isPending} data-testid="button-add-venue">
-          {createVenue.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-          <Plus className="w-4 h-4 mr-2" />
-          Add Venue
-        </Button>
+        {!showAddForm ? (
+          <Button variant="outline" onClick={() => setShowAddForm(true)} data-testid="button-show-add-venue-form">
+            <Plus className="w-4 h-4 mr-2" />
+            Add New Venue
+          </Button>
+        ) : (
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Add New Venue</Label>
+            <Input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="Venue name"
+              data-testid="input-new-venue-name"
+            />
+            <Input
+              value={newDescription}
+              onChange={(e) => setNewDescription(e.target.value)}
+              placeholder="Description (optional)"
+              data-testid="input-new-venue-description"
+            />
+            <Input
+              type="number"
+              value={newCapacity}
+              onChange={(e) => setNewCapacity(e.target.value)}
+              placeholder="Capacity (optional)"
+              data-testid="input-new-venue-capacity"
+            />
+            <div className="flex items-center gap-2">
+              <Button onClick={handleCreateVenue} disabled={!newName.trim() || createVenue.isPending} data-testid="button-add-venue">
+                {createVenue.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                <Plus className="w-4 h-4 mr-2" />
+                Add Venue
+              </Button>
+              <Button variant="outline" onClick={() => { setShowAddForm(false); setNewName(""); setNewDescription(""); setNewCapacity(""); }} data-testid="button-cancel-add-venue">
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="border-t pt-4 space-y-3">
-        <Label className="text-sm font-semibold flex items-center gap-2">
-          <DollarSign className="w-4 h-4" />
-          Default Pricing (Full Price, GST Excl.)
-        </Label>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Full Day Rate</Label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={localFullDay}
-                onChange={(e) => setLocalFullDay(e.target.value)}
-                className="pl-7"
-                data-testid="input-default-full-day-rate"
-              />
+        {!showPricing ? (
+          <Button variant="outline" onClick={() => setShowPricing(true)} data-testid="button-show-edit-pricing">
+            <DollarSign className="w-4 h-4 mr-2" />
+            Edit Pricing
+          </Button>
+        ) : (
+          <div className="space-y-3">
+            <Label className="text-sm font-semibold flex items-center gap-2">
+              <DollarSign className="w-4 h-4" />
+              Default Pricing (Full Price, GST Excl.)
+            </Label>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Full Day Rate</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={localFullDay}
+                    onChange={(e) => setLocalFullDay(e.target.value)}
+                    className="pl-7"
+                    data-testid="input-default-full-day-rate"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Half Day Rate</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={localHalfDay}
+                    onChange={(e) => setLocalHalfDay(e.target.value)}
+                    className="pl-7"
+                    data-testid="input-default-half-day-rate"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                onClick={() => {
+                  onUpdatePricing({ fullDayRate: localFullDay, halfDayRate: localHalfDay });
+                  setShowPricing(false);
+                }}
+                disabled={pricingPending}
+                data-testid="button-save-pricing-defaults"
+              >
+                {pricingPending && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+                Save Pricing Defaults
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => { setShowPricing(false); setLocalFullDay(pricingDefaults?.fullDayRate || "0"); setLocalHalfDay(pricingDefaults?.halfDayRate || "0"); }} data-testid="button-cancel-edit-pricing">
+                Cancel
+              </Button>
             </div>
           </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Half Day Rate</Label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={localHalfDay}
-                onChange={(e) => setLocalHalfDay(e.target.value)}
-                className="pl-7"
-                data-testid="input-default-half-day-rate"
-              />
-            </div>
-          </div>
-        </div>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => onUpdatePricing({ fullDayRate: localFullDay, halfDayRate: localHalfDay })}
-          disabled={pricingPending}
-          data-testid="button-save-pricing-defaults"
-        >
-          {pricingPending && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
-          Save Pricing Defaults
-        </Button>
+        )}
       </div>
     </div>
   );
@@ -322,6 +355,7 @@ function ResourceSubSection({ category, label }: { category: string; label: stri
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
+  const [showAddForm, setShowAddForm] = useState(false);
 
   const todayOccupancy = useMemo(() => {
     if (!deskBookings || !resources) return {};
@@ -345,6 +379,7 @@ function ResourceSubSection({ category, label }: { category: string; label: stri
       });
       setNewName("");
       setNewDescription("");
+      setShowAddForm(false);
       toast({ title: "Created", description: `${label} created successfully` });
     } catch (err: any) {
       toast({ title: "Error", description: err.message || `Failed to create ${label.toLowerCase()}`, variant: "destructive" });
@@ -459,29 +494,43 @@ function ResourceSubSection({ category, label }: { category: string; label: stri
           </Card>
         ))}
         {(!resources || resources.length === 0) && (
-          <p className="text-sm text-muted-foreground text-center py-4">No {label.toLowerCase()}s yet. Add one below.</p>
+          <p className="text-sm text-muted-foreground text-center py-4">No {label.toLowerCase()}s yet. Click "Add New {label}" to create one.</p>
         )}
       </div>
 
       <div className="border-t pt-4 space-y-2">
-        <Label className="text-sm font-semibold">Add New {label}</Label>
-        <Input
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          placeholder={`${label} name`}
-          data-testid={`input-new-resource-name-${category}`}
-        />
-        <Input
-          value={newDescription}
-          onChange={(e) => setNewDescription(e.target.value)}
-          placeholder="Description (optional)"
-          data-testid={`input-new-resource-desc-${category}`}
-        />
-        <Button onClick={handleCreate} disabled={!newName.trim() || createResource.isPending} data-testid={`button-add-resource-${category}`}>
-          {createResource.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-          <Plus className="w-4 h-4 mr-2" />
-          Add {label}
-        </Button>
+        {!showAddForm ? (
+          <Button variant="outline" onClick={() => setShowAddForm(true)} data-testid={`button-show-add-resource-form-${category}`}>
+            <Plus className="w-4 h-4 mr-2" />
+            Add New {label}
+          </Button>
+        ) : (
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Add New {label}</Label>
+            <Input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder={`${label} name`}
+              data-testid={`input-new-resource-name-${category}`}
+            />
+            <Input
+              value={newDescription}
+              onChange={(e) => setNewDescription(e.target.value)}
+              placeholder="Description (optional)"
+              data-testid={`input-new-resource-desc-${category}`}
+            />
+            <div className="flex items-center gap-2">
+              <Button onClick={handleCreate} disabled={!newName.trim() || createResource.isPending} data-testid={`button-add-resource-${category}`}>
+                {createResource.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                <Plus className="w-4 h-4 mr-2" />
+                Add {label}
+              </Button>
+              <Button variant="outline" onClick={() => { setShowAddForm(false); setNewName(""); setNewDescription(""); }} data-testid={`button-cancel-add-resource-${category}`}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
