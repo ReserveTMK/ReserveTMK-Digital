@@ -8,7 +8,7 @@ import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON } from "./replit_integrations/anthropic/client";
 import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getReachMetrics, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, type ReportFilters, type CohortDefinition, type OrgProfileContext, type FunderContext } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings, orgProfiles, insertOrgProfileSchema } from "@shared/schema";
+import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings, } from "@shared/schema";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { ObjectStorageService } from "./replit_integrations/object_storage";
 import crypto from "crypto";
@@ -5617,10 +5617,10 @@ Important:
       let funderProfileCtx: any = null;
 
       try {
-        const orgProfile = await storage.getOrgProfile(userId);
+        const orgProfile = await storage.getOrganisationProfile(userId);
         if (orgProfile) {
           orgProfileCtx = {
-            name: orgProfile.name,
+            name: "Organisation",
             mission: orgProfile.mission,
             description: orgProfile.description,
             targetCommunity: orgProfile.targetCommunity,
@@ -5861,10 +5861,10 @@ Important:
       let funderCtx: FunderContext | null = null;
 
       try {
-        const orgProfile = await storage.getOrgProfile(userId);
+        const orgProfile = await storage.getOrganisationProfile(userId);
         if (orgProfile) {
           orgProfileCtx = {
-            name: orgProfile.name,
+            name: "Organisation",
             mission: orgProfile.mission,
             description: orgProfile.description,
             targetCommunity: orgProfile.targetCommunity,
@@ -9948,30 +9948,6 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
   // === Funders API ===
 
-  app.get("/api/org-profile", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      const profile = await storage.getOrgProfile(userId);
-      res.json(profile || null);
-    } catch (err: any) {
-      res.status(500).json({ message: "Failed to get org profile" });
-    }
-  });
-
-  app.put("/api/org-profile", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      const parsed = insertOrgProfileSchema.omit({ userId: true }).parse(req.body);
-      const profile = await storage.upsertOrgProfile({
-        userId,
-        ...parsed,
-      });
-      res.json(profile);
-    } catch (err: any) {
-      res.status(500).json({ message: "Failed to save org profile" });
-    }
-  });
-
   app.get("/api/funders", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
@@ -10330,34 +10306,6 @@ Be specific, practical, and grounded in the actual documents and context provide
       res.json(all.filter(r => userContactIds.has(r.contactId)));
     } catch (err: any) {
       res.status(500).json({ message: "Failed to fetch mentoring relationships" });
-    }
-  });
-
-  app.post("/api/mentoring-relationships/backfill-from-support-type", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      const allContacts = await storage.getContacts(userId);
-      const mentoringContacts = allContacts.filter(c =>
-        c.isInnovator && Array.isArray(c.supportType) && c.supportType.includes("mentoring")
-      );
-      let created = 0;
-      for (const contact of mentoringContacts) {
-        const existing = await storage.getMentoringRelationshipsByContact(contact.id);
-        const hasActive = existing.some(r => r.status === "active" || r.status === "application");
-        if (!hasActive) {
-          await storage.createMentoringRelationship({
-            contactId: contact.id,
-            status: "active",
-            startDate: new Date(),
-            sessionFrequency: "monthly",
-          });
-          created++;
-        }
-      }
-      res.json({ checked: mentoringContacts.length, created });
-    } catch (err: any) {
-      console.error("Backfill mentoring relationships error:", err);
-      res.status(500).json({ message: "Failed to backfill mentoring relationships" });
     }
   });
 

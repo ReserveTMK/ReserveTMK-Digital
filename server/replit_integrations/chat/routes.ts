@@ -4,7 +4,7 @@ import { chatStorage } from "./storage";
 
 export function registerChatRoutes(app: Express): void {
   // Get all conversations
-  app.get("/api/conversations", async (req: Request, res: Response) => {
+  app.get("/api/chat-conversations", async (req: Request, res: Response) => {
     try {
       const conversations = await chatStorage.getAllConversations();
       res.json(conversations);
@@ -15,7 +15,7 @@ export function registerChatRoutes(app: Express): void {
   });
 
   // Get single conversation with messages
-  app.get("/api/conversations/:id", async (req: Request, res: Response) => {
+  app.get("/api/chat-conversations/:id", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id as string);
       const conversation = await chatStorage.getConversation(id);
@@ -31,7 +31,7 @@ export function registerChatRoutes(app: Express): void {
   });
 
   // Create new conversation
-  app.post("/api/conversations", async (req: Request, res: Response) => {
+  app.post("/api/chat-conversations", async (req: Request, res: Response) => {
     try {
       const { title } = req.body;
       const conversation = await chatStorage.createConversation(title || "New Chat");
@@ -43,7 +43,7 @@ export function registerChatRoutes(app: Express): void {
   });
 
   // Delete conversation
-  app.delete("/api/conversations/:id", async (req: Request, res: Response) => {
+  app.delete("/api/chat-conversations/:id", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id as string);
       await chatStorage.deleteConversation(id);
@@ -55,7 +55,7 @@ export function registerChatRoutes(app: Express): void {
   });
 
   // Send message and get AI response (streaming)
-  app.post("/api/conversations/:id/messages", async (req: Request, res: Response) => {
+  app.post("/api/chat-conversations/:id/messages", async (req: Request, res: Response) => {
     try {
       const conversationId = parseInt(req.params.id as string);
       const { content } = req.body;

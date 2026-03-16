@@ -145,9 +145,6 @@ import {
   organisationProfile,
   type OrganisationProfile,
   type InsertOrganisationProfile,
-  orgProfiles,
-  type OrgProfile,
-  type InsertOrgProfile,
   funders,
   funderDocuments,
   type Funder,
@@ -491,10 +488,6 @@ export interface IStorage {
   // Organisation Profile
   getOrganisationProfile(userId: string): Promise<OrganisationProfile | undefined>;
   upsertOrganisationProfile(userId: string, data: Partial<InsertOrganisationProfile>): Promise<OrganisationProfile>;
-
-  // Org Profile (report narrative)
-  getOrgProfile(userId: string): Promise<OrgProfile | undefined>;
-  upsertOrgProfile(data: InsertOrgProfile): Promise<OrgProfile>;
 
   // Funders
   getFunders(userId: string): Promise<Funder[]>;
@@ -2038,21 +2031,6 @@ export class DatabaseStorage implements IStorage {
       return item;
     }
     const [item] = await db.insert(organisationProfile).values({ ...data, userId }).returning();
-    return item;
-  }
-
-  async getOrgProfile(userId: string): Promise<OrgProfile | undefined> {
-    const [item] = await db.select().from(orgProfiles).where(eq(orgProfiles.userId, userId));
-    return item;
-  }
-
-  async upsertOrgProfile(data: InsertOrgProfile): Promise<OrgProfile> {
-    const existing = await this.getOrgProfile(data.userId);
-    if (existing) {
-      const [item] = await db.update(orgProfiles).set({ ...data, updatedAt: new Date() }).where(eq(orgProfiles.id, existing.id)).returning();
-      return item;
-    }
-    const [item] = await db.insert(orgProfiles).values(data).returning();
     return item;
   }
 
