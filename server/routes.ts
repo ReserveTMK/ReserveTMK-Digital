@@ -6,7 +6,7 @@ import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON } from "./replit_integrations/anthropic/client";
-import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getReachMetrics, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, type ReportFilters } from "./reporting";
+import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getReachMetrics, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, type ReportFilters, type CohortDefinition } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
 import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings } from "@shared/schema";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -6958,6 +6958,72 @@ Return a JSON object with this exact structure:
       }));
 
       res.json(effectiveness);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ── Cohort Analysis ──
+  app.get("/api/cohort-analysis", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const startDate = req.query.startDate as string;
+      const endDate = req.query.endDate as string;
+
+      if (!startDate || !endDate) {
+        return res.status(400).json({ message: "startDate and endDate are required" });
+      }
+      if (isNaN(Date.parse(startDate)) || isNaN(Date.parse(endDate))) {
+        return res.status(400).json({ message: "Invalid date format" });
+      }
+      if (new Date(startDate) > new Date(endDate)) {
+        return res.status(400).json({ message: "startDate must be before endDate" });
+      }
+
+      const programmeId = req.query.programmeId ? parseInt(req.query.programmeId as string) : undefined;
+      if (req.query.programmeId && (programmeId === undefined || isNaN(programmeId))) {
+        return res.status(400).json({ message: "Invalid programmeId" });
+      }
+
+      const contactIdsParam = req.query.contactIds as string | undefined;
+      const contactIds = contactIdsParam ? contactIdsParam.split(",").map(Number).filter(n => !isNaN(n)) : undefined;
+
+      const def: CohortDefinition = { userId, programmeId, startDate, endDate, contactIds };
+      const metrics = await getCohortMetrics(def);
+      res.json(metrics);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/cohort-comparison", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+
+      const cohortAStart = req.query.cohortAStartDate as string;
+      const cohortAEnd = req.query.cohortAEndDate as string;
+      const cohortBStart = req.query.cohortBStartDate as string;
+      const cohortBEnd = req.query.cohortBEndDate as string;
+
+      if (!cohortAStart || !cohortAEnd || !cohortBStart || !cohortBEnd) {
+        return res.status(400).json({ message: "Start and end dates required for both cohorts" });
+      }
+      for (const d of [cohortAStart, cohortAEnd, cohortBStart, cohortBEnd]) {
+        if (isNaN(Date.parse(d))) return res.status(400).json({ message: "Invalid date format" });
+      }
+      if (new Date(cohortAStart) > new Date(cohortAEnd) || new Date(cohortBStart) > new Date(cohortBEnd)) {
+        return res.status(400).json({ message: "Start date must be before end date for each cohort" });
+      }
+
+      const cohortAProgId = req.query.cohortAProgrammeId ? parseInt(req.query.cohortAProgrammeId as string) : undefined;
+      const cohortBProgId = req.query.cohortBProgrammeId ? parseInt(req.query.cohortBProgrammeId as string) : undefined;
+
+      const [cohortA, cohortB] = await Promise.all([
+        getCohortMetrics({ userId, programmeId: cohortAProgId, startDate: cohortAStart, endDate: cohortAEnd }),
+        getCohortMetrics({ userId, programmeId: cohortBProgId, startDate: cohortBStart, endDate: cohortBEnd }),
+      ]);
+
+      res.json({ cohortA, cohortB });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

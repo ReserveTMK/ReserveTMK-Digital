@@ -26,6 +26,7 @@ import EcosystemPage from "@/pages/ecosystem";
 import LegacyReportsPage from "@/pages/legacy-reports";
 import MilestonesPage from "@/pages/milestones";
 import ProgrammeEffectivenessPage from "@/pages/programme-effectiveness";
+import CohortAnalysisPage from "@/pages/cohort-analysis";
 import CommunitySpend from "@/pages/community-spend";
 import GmailImportPage from "@/pages/gmail-import";
 import FundersPage from "@/pages/funders";
@@ -206,6 +207,10 @@ function Router() {
 
         <Route path="/programme-effectiveness">
           <ProtectedRoute component={ProgrammeEffectivenessPage} />
+        </Route>
+
+        <Route path="/cohort-analysis">
+          <ProtectedRoute component={CohortAnalysisPage} />
         </Route>
 
         <Route path="/gmail-import">

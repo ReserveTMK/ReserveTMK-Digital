@@ -73,6 +73,7 @@ const navigation: NavItem[] = [
     name: "Reporting", href: "/reports", icon: FileText,
     children: [
       { name: "Reports", href: "/reports", icon: FileText },
+      { name: "Cohorts", href: "/cohort-analysis", icon: Users },
       { name: "Legacy Reports", href: "/legacy-reports", icon: BookOpen },
       { name: "Taxonomy", href: "/taxonomy", icon: Tags },
     ],

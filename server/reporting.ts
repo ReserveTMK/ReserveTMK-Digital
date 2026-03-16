@@ -6,7 +6,7 @@ import {
   programmes, bookings, memberships, mous,
   milestones, relationshipStageHistory, communitySpend, meetings, interactions,
   meetingTypes, monthlySnapshots, footTrafficTouchpoints, dailyFootTraffic,
-  metricSnapshots,
+  metricSnapshots, programmeRegistrations,
   surveys,
 } from "@shared/schema";
 
@@ -1995,5 +1995,309 @@ export async function getFullMonthlyReport(filters: ReportFilters) {
       milestoneCount: impact.milestoneCount,
     },
     economicRollup: impact.economicRollup,
+  };
+}
+
+export interface CohortDefinition {
+  userId: string;
+  programmeId?: number;
+  startDate: string;
+  endDate: string;
+  contactIds?: number[];
+}
+
+export interface CohortMonthData {
+  month: string;
+  activeCount: number;
+  retentionRate: number;
+  cumulativeMilestones: number;
+  stageBreakdown: Record<string, number>;
+}
+
+export interface CohortMetrics {
+  label: string;
+  cohortSize: number;
+  contactIds: number[];
+  retentionRate: number;
+  milestoneAchievementRate: number;
+  avgTimeToFirstMilestone: number | null;
+  avgGrowthScoreImprovement: number;
+  timeline: CohortMonthData[];
+  keyStats: {
+    totalMilestones: number;
+    stageProgressions: number;
+    avgBaselineGrowthScore: number;
+    avgCurrentGrowthScore: number;
+  };
+}
+
+function computeGrowthScore(metrics: any): number | null {
+  if (!metrics || typeof metrics !== "object") return null;
+  const keys = ["mindset", "skill", "confidence", "bizConfidence", "systemsInPlace", "fundingReadiness", "networkStrength", "communityImpact", "digitalPresence"];
+  const vals = keys.map(k => metrics[k]).filter(v => v != null && typeof v === "number") as number[];
+  if (vals.length === 0) return null;
+  return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
+}
+
+export async function getCohortMetrics(def: CohortDefinition): Promise<CohortMetrics> {
+  const startDate = parseDate(def.startDate);
+  const endDate = parseDate(def.endDate);
+
+  let cohortContactIds: number[] = [];
+  let label = "Custom Cohort";
+
+  if (def.contactIds && def.contactIds.length > 0) {
+    const verified = await db.select({ id: contacts.id })
+      .from(contacts)
+      .where(and(eq(contacts.userId, def.userId), inArray(contacts.id, def.contactIds)));
+    cohortContactIds = verified.map(r => r.id);
+    label = `Custom cohort (${cohortContactIds.length} people)`;
+  } else if (def.programmeId) {
+    const prog = await db.select({ id: programmes.id, name: programmes.name, attendees: programmes.attendees })
+      .from(programmes)
+      .where(and(eq(programmes.id, def.programmeId), eq(programmes.userId, def.userId)));
+    if (prog.length > 0) {
+      label = prog[0].name;
+      const progAttendees = prog[0].attendees || [];
+
+      const regs = await db.select({ contactId: programmeRegistrations.contactId })
+        .from(programmeRegistrations)
+        .where(and(
+          eq(programmeRegistrations.programmeId, def.programmeId),
+          eq(programmeRegistrations.userId, def.userId),
+          gte(programmeRegistrations.registeredAt, startDate),
+          lte(programmeRegistrations.registeredAt, endDate),
+        ));
+      const regContactIds = regs.map(r => r.contactId).filter(Boolean) as number[];
+      const regSet = new Set(regContactIds);
+
+      if (regSet.size > 0) {
+        cohortContactIds = Array.from(regSet);
+      } else {
+        const attendeesInRange = await db.select({ id: contacts.id })
+          .from(contacts)
+          .where(and(
+            eq(contacts.userId, def.userId),
+            inArray(contacts.id, progAttendees.length > 0 ? progAttendees : [-1]),
+            gte(contacts.createdAt, startDate),
+            lte(contacts.createdAt, endDate),
+          ));
+
+        if (attendeesInRange.length > 0) {
+          cohortContactIds = attendeesInRange.map(r => r.id);
+        } else {
+          cohortContactIds = progAttendees;
+          label = `${prog[0].name} (all attendees)`;
+        }
+      }
+    }
+  } else {
+    const cRows = await db.select({ id: contacts.id })
+      .from(contacts)
+      .where(and(
+        eq(contacts.userId, def.userId),
+        gte(contacts.createdAt, startDate),
+        lte(contacts.createdAt, endDate),
+      ));
+    cohortContactIds = cRows.map(r => r.id);
+    label = `Entered ${def.startDate} to ${def.endDate}`;
+  }
+
+  if (cohortContactIds.length === 0) {
+    return {
+      label,
+      cohortSize: 0,
+      contactIds: [],
+      retentionRate: 0,
+      milestoneAchievementRate: 0,
+      avgTimeToFirstMilestone: null,
+      avgGrowthScoreImprovement: 0,
+      timeline: [],
+      keyStats: { totalMilestones: 0, stageProgressions: 0, avgBaselineGrowthScore: 0, avgCurrentGrowthScore: 0 },
+    };
+  }
+
+  const contactDetails = await db.select({
+    id: contacts.id,
+    metrics: contacts.metrics,
+    stage: contacts.stage,
+    stageProgression: contacts.stageProgression,
+    lastActiveDate: contacts.lastActiveDate,
+    createdAt: contacts.createdAt,
+    active: contacts.active,
+  }).from(contacts).where(and(eq(contacts.userId, def.userId), inArray(contacts.id, cohortContactIds)));
+
+  cohortContactIds = contactDetails.map(c => c.id);
+  const contactMap = new Map(contactDetails.map(c => [c.id, c]));
+
+  const cohortMilestones = await db.select({
+    id: milestones.id,
+    linkedContactId: milestones.linkedContactId,
+    createdAt: milestones.createdAt,
+  }).from(milestones).where(and(
+    eq(milestones.userId, def.userId),
+    inArray(milestones.linkedContactId, cohortContactIds),
+  ));
+
+  const contactsWithMilestones = new Set(cohortMilestones.map(m => m.linkedContactId).filter(Boolean));
+  const milestoneAchievementRate = cohortContactIds.length > 0
+    ? Math.round((contactsWithMilestones.size / cohortContactIds.length) * 100)
+    : 0;
+
+  const firstMilestoneTimes: number[] = [];
+  const milestonesByContact = new Map<number, Date[]>();
+  for (const m of cohortMilestones) {
+    if (!m.linkedContactId || !m.createdAt) continue;
+    if (!milestonesByContact.has(m.linkedContactId)) milestonesByContact.set(m.linkedContactId, []);
+    milestonesByContact.get(m.linkedContactId)!.push(m.createdAt);
+  }
+  for (const [cid, dates] of milestonesByContact) {
+    const contact = contactMap.get(cid);
+    if (!contact?.createdAt) continue;
+    const sorted = dates.sort((a, b) => a.getTime() - b.getTime());
+    const daysToFirst = Math.round((sorted[0].getTime() - contact.createdAt.getTime()) / (1000 * 60 * 60 * 24));
+    firstMilestoneTimes.push(Math.max(0, daysToFirst));
+  }
+  const avgTimeToFirstMilestone = firstMilestoneTimes.length > 0
+    ? Math.round(firstMilestoneTimes.reduce((a, b) => a + b, 0) / firstMilestoneTimes.length)
+    : null;
+
+  const stageHistRows = await db.select({
+    entityId: relationshipStageHistory.entityId,
+    newStage: relationshipStageHistory.newStage,
+    changedAt: relationshipStageHistory.changedAt,
+  }).from(relationshipStageHistory).where(and(
+    eq(relationshipStageHistory.entityType, "contact"),
+    inArray(relationshipStageHistory.entityId, cohortContactIds),
+    gte(relationshipStageHistory.changedAt, startDate),
+    lte(relationshipStageHistory.changedAt, endDate),
+  ));
+  const stageProgressions = stageHistRows.length;
+
+  const baselineSnapshots = await db.select({
+    contactId: metricSnapshots.contactId,
+    metrics: metricSnapshots.metrics,
+    createdAt: metricSnapshots.createdAt,
+  }).from(metricSnapshots).where(and(
+    eq(metricSnapshots.userId, def.userId),
+    inArray(metricSnapshots.contactId, cohortContactIds),
+    lte(metricSnapshots.createdAt, endDate),
+  ));
+
+  const earliestSnapshotByContact = new Map<number, any>();
+  const latestSnapshotByContact = new Map<number, any>();
+  for (const snap of baselineSnapshots) {
+    const existing = earliestSnapshotByContact.get(snap.contactId);
+    if (!existing || (snap.createdAt && existing.createdAt && snap.createdAt < existing.createdAt)) {
+      earliestSnapshotByContact.set(snap.contactId, snap);
+    }
+    const existingLatest = latestSnapshotByContact.get(snap.contactId);
+    if (!existingLatest || (snap.createdAt && existingLatest.createdAt && snap.createdAt > existingLatest.createdAt)) {
+      latestSnapshotByContact.set(snap.contactId, snap);
+    }
+  }
+
+  const baselineScores: number[] = [];
+  const currentScores: number[] = [];
+  for (const c of contactDetails) {
+    const baselineSnap = earliestSnapshotByContact.get(c.id);
+    const latestSnap = latestSnapshotByContact.get(c.id);
+
+    const baselineScore = baselineSnap ? computeGrowthScore(baselineSnap.metrics) : computeGrowthScore(c.metrics);
+    const currentScore = latestSnap ? computeGrowthScore(latestSnap.metrics) : computeGrowthScore(c.metrics);
+
+    if (baselineScore !== null) baselineScores.push(baselineScore);
+    if (currentScore !== null) currentScores.push(currentScore);
+  }
+
+  const avgBaselineGrowthScore = baselineScores.length > 0
+    ? Math.round((baselineScores.reduce((a, b) => a + b, 0) / baselineScores.length) * 10) / 10
+    : 0;
+  const avgCurrentGrowthScore = currentScores.length > 0
+    ? Math.round((currentScores.reduce((a, b) => a + b, 0) / currentScores.length) * 10) / 10
+    : 0;
+  const avgGrowthScoreImprovement = Math.round((avgCurrentGrowthScore - avgBaselineGrowthScore) * 10) / 10;
+
+  const stageHistByContactMonth = new Map<string, string>();
+  for (const sh of stageHistRows) {
+    if (!sh.changedAt) continue;
+    const key = `${sh.entityId}-${sh.changedAt.getFullYear()}-${sh.changedAt.getMonth() + 1}`;
+    const existing = stageHistByContactMonth.get(key);
+    if (!existing) stageHistByContactMonth.set(key, sh.newStage);
+  }
+
+  const timelineCap = new Date(Math.min(new Date().getTime(), endDate.getTime()));
+  const monthStart = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  const timeline: CohortMonthData[] = [];
+  let currentMonth = new Date(monthStart);
+  let cumulativeMilestones = 0;
+
+  const contactStageAtMonth = new Map<number, string>();
+  for (const c of contactDetails) {
+    contactStageAtMonth.set(c.id, c.stageProgression && c.stageProgression.length > 0
+      ? c.stageProgression[0].stage
+      : (c.stage || "unknown"));
+  }
+
+  while (currentMonth <= timelineCap) {
+    const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0, 23, 59, 59);
+    const monthLabel = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, "0")}`;
+    const monthNum = currentMonth.getMonth() + 1;
+    const yearNum = currentMonth.getFullYear();
+
+    for (const sh of stageHistRows) {
+      if (!sh.changedAt) continue;
+      if (sh.changedAt.getFullYear() === yearNum && sh.changedAt.getMonth() + 1 === monthNum) {
+        contactStageAtMonth.set(sh.entityId, sh.newStage);
+      }
+    }
+
+    let activeInMonth = 0;
+    const stageBreakdown: Record<string, number> = {};
+
+    for (const c of contactDetails) {
+      if (c.createdAt && c.createdAt <= monthEnd) {
+        const isActive = c.active !== false && (!c.lastActiveDate || c.lastActiveDate >= currentMonth || c.lastActiveDate >= new Date(yearNum, monthNum - 4, 1));
+        if (isActive || !c.lastActiveDate) {
+          activeInMonth++;
+          const stage = contactStageAtMonth.get(c.id) || "unknown";
+          stageBreakdown[stage] = (stageBreakdown[stage] || 0) + 1;
+        }
+      }
+    }
+
+    const milestonesInMonth = cohortMilestones.filter(m =>
+      m.createdAt && m.createdAt >= currentMonth && m.createdAt <= monthEnd
+    ).length;
+    cumulativeMilestones += milestonesInMonth;
+
+    timeline.push({
+      month: monthLabel,
+      activeCount: activeInMonth,
+      retentionRate: cohortContactIds.length > 0 ? Math.round((activeInMonth / cohortContactIds.length) * 100) : 0,
+      cumulativeMilestones,
+      stageBreakdown,
+    });
+
+    currentMonth = new Date(yearNum, monthNum, 1);
+  }
+
+  const latestRetention = timeline.length > 0 ? timeline[timeline.length - 1].retentionRate : 0;
+
+  return {
+    label,
+    cohortSize: cohortContactIds.length,
+    contactIds: cohortContactIds,
+    retentionRate: latestRetention,
+    milestoneAchievementRate,
+    avgTimeToFirstMilestone,
+    avgGrowthScoreImprovement,
+    timeline,
+    keyStats: {
+      totalMilestones: cohortMilestones.length,
+      stageProgressions,
+      avgBaselineGrowthScore,
+      avgCurrentGrowthScore,
+    },
   };
 }

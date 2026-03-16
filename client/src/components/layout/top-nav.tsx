@@ -77,6 +77,7 @@ const navGroups: NavGroup[] = [
     href: "/reports",
     children: [
       { name: "Reports", href: "/reports", icon: FileText, description: "Monthly & quarterly reports" },
+      { name: "Cohorts", href: "/cohort-analysis", icon: Users, description: "Track cohort retention & growth" },
       { name: "Legacy Reports", href: "/legacy-reports", icon: BookOpen, description: "Historical PDF uploads" },
       { name: "Taxonomy", href: "/taxonomy", icon: Tags, description: "Impact categories & tags" },
     ],
