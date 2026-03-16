@@ -6,23 +6,56 @@ import session from "express-session";
 import type { Express, RequestHandler } from "express";
 import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
+import crypto from "crypto";
 import { authStorage } from "./storage";
 
 function getOidcClientId(): string {
   return process.env.OIDC_CLIENT_ID || process.env.REPL_ID!;
 }
 
-function getCustomDomain(): string | undefined {
+function getReplitDomain(): string | undefined {
   if (process.env.REPLIT_DOMAINS) {
-    const primaryDomain = process.env.REPLIT_DOMAINS.split(",")[0].trim();
-    if (primaryDomain) return primaryDomain;
+    const domains = process.env.REPLIT_DOMAINS.split(",");
+    const replitDomain = domains.find(d => d.trim().endsWith(".replit.app"));
+    if (replitDomain) return replitDomain.trim();
   }
   return undefined;
 }
 
-function getReplitDomain(): string | undefined {
-  return getCustomDomain() || (process.env.REPLIT_DEV_DOMAIN || undefined);
+function getCustomDomain(): string | undefined {
+  if (process.env.REPLIT_DOMAINS) {
+    const domains = process.env.REPLIT_DOMAINS.split(",");
+    const custom = domains.find(d => {
+      const trimmed = d.trim();
+      return trimmed && !trimmed.endsWith(".replit.app") && !trimmed.endsWith(".replit.dev");
+    });
+    if (custom) return custom.trim();
+  }
+  return undefined;
 }
+
+const authTokens = new Map<string, { user: any; expiresAt: number }>();
+
+function generateAuthToken(user: any): string {
+  const token = crypto.randomUUID();
+  authTokens.set(token, { user, expiresAt: Date.now() + 30_000 });
+  return token;
+}
+
+function consumeAuthToken(token: string): any | null {
+  const entry = authTokens.get(token);
+  if (!entry) return null;
+  authTokens.delete(token);
+  if (Date.now() > entry.expiresAt) return null;
+  return entry.user;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, entry] of authTokens) {
+    if (now > entry.expiresAt) authTokens.delete(token);
+  }
+}, 60_000);
 
 async function discoverWithRetry(maxRetries = 5, delayMs = 3000): Promise<client.Configuration> {
   const oidcClientId = getOidcClientId();
@@ -109,7 +142,11 @@ function getOrInitOidcConfig(): Promise<client.Configuration> {
 
 function getCallbackUrl(req: any): string {
   const isDeployment = !!process.env.REPLIT_DEPLOYMENT;
-  const domain = isDeployment ? req.hostname : (process.env.REPLIT_DEV_DOMAIN || req.hostname);
+  if (isDeployment) {
+    const replitDomain = getReplitDomain();
+    if (replitDomain) return `https://${replitDomain}/api/callback`;
+  }
+  const domain = process.env.REPLIT_DEV_DOMAIN || req.hostname;
   return `https://${domain}/api/callback`;
 }
 
@@ -193,7 +230,9 @@ export async function setupAuth(app: Express) {
           console.log(`[auth] Login successful, user=${user.claims?.sub}`);
           const customDomain = getCustomDomain();
           if (customDomain && req.hostname !== customDomain) {
-            res.redirect(`https://${customDomain}`);
+            const token = generateAuthToken(user);
+            console.log(`[auth] Redirecting to custom domain with exchange token`);
+            res.redirect(`https://${customDomain}/api/auth/exchange?token=${token}`);
           } else {
             res.redirect("/");
           }
@@ -205,16 +244,38 @@ export async function setupAuth(app: Express) {
     }
   });
 
+  app.get("/api/auth/exchange", async (req, res) => {
+    try {
+      const token = req.query.token as string;
+      if (!token) {
+        console.error("[auth] Exchange: no token provided");
+        return res.redirect("/api/login");
+      }
+      const user = consumeAuthToken(token);
+      if (!user) {
+        console.error("[auth] Exchange: invalid or expired token");
+        return res.redirect("/api/login");
+      }
+      req.logIn(user, (loginErr) => {
+        if (loginErr) {
+          console.error("[auth] Exchange logIn error:", loginErr);
+          return res.redirect("/api/login");
+        }
+        console.log(`[auth] Exchange successful, user=${user.claims?.sub}, domain=${req.hostname}`);
+        res.redirect("/");
+      });
+    } catch (err) {
+      console.error("[auth] Exchange exception:", err);
+      res.redirect("/api/login");
+    }
+  });
+
   app.get("/api/logout", async (req, res) => {
     try {
       const config = await getOrInitOidcConfig();
-      const isDeployment = !!process.env.REPLIT_DEPLOYMENT;
-      let domain: string;
-      if (isDeployment) {
-        domain = getReplitDomain() || req.hostname;
-      } else {
-        domain = process.env.REPLIT_DEV_DOMAIN || req.hostname;
-      }
+      const replitDomain = getReplitDomain();
+      const devDomain = process.env.REPLIT_DEV_DOMAIN;
+      const domain = replitDomain || devDomain || req.hostname;
       req.logout(() => {
         res.redirect(
           client.buildEndSessionUrl(config, {
