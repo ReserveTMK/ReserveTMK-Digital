@@ -1715,6 +1715,31 @@ export type NarrativeStyle = typeof NARRATIVE_STYLES[number];
 export const FUNDER_DOCUMENT_TYPES = ["contract", "eoi", "framework", "report", "other"] as const;
 export type FunderDocumentType = typeof FUNDER_DOCUMENT_TYPES[number];
 
+export const OUTCOME_FOCUS_OPTIONS = ["economic", "wellbeing", "cultural", "community"] as const;
+export type OutcomeFocus = typeof OUTCOME_FOCUS_OPTIONS[number];
+
+export const orgProfiles = pgTable("org_profiles", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  mission: text("mission"),
+  description: text("description"),
+  targetCommunity: text("target_community"),
+  focusAreas: text("focus_areas").array(),
+  location: text("location"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertOrgProfileSchema = createInsertSchema(orgProfiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type OrgProfile = typeof orgProfiles.$inferSelect;
+export type InsertOrgProfile = z.infer<typeof insertOrgProfileSchema>;
+
 export const funders = pgTable("funders", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
@@ -1726,6 +1751,8 @@ export const funders = pgTable("funders", {
   status: text("status").notNull().default("in_conversation"),
   communityLens: text("community_lens").notNull().default("all"),
   outcomesFramework: text("outcomes_framework"),
+  outcomeFocus: text("outcome_focus"),
+  reportingGuidance: text("reporting_guidance"),
   reportingCadence: text("reporting_cadence").default("quarterly"),
   narrativeStyle: text("narrative_style").default("compliance"),
   prioritySections: text("priority_sections").array(),
@@ -1736,8 +1763,6 @@ export const funders = pgTable("funders", {
   reviewDate: timestamp("review_date"),
   notes: text("notes"),
   isDefault: boolean("is_default").default(false),
-  outcomeFocus: text("outcome_focus").array(),
-  reportingGuidance: text("reporting_guidance"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -2186,9 +2211,6 @@ export const insertOrganisationProfileSchema = createInsertSchema(organisationPr
 });
 export type OrganisationProfile = typeof organisationProfile.$inferSelect;
 export type InsertOrganisationProfile = z.infer<typeof insertOrganisationProfileSchema>;
-
-export const OUTCOME_FOCUS_OPTIONS = ["economic", "wellbeing", "cultural", "community"] as const;
-export type OutcomeFocus = typeof OUTCOME_FOCUS_OPTIONS[number];
 
 export const metricSnapshots = pgTable("metric_snapshots", {
   id: serial("id").primaryKey(),

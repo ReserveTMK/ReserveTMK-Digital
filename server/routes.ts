@@ -6,9 +6,9 @@ import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON } from "./replit_integrations/anthropic/client";
-import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getReachMetrics, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, type ReportFilters, type CohortDefinition } from "./reporting";
+import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getReachMetrics, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, type ReportFilters, type CohortDefinition, type OrgProfileContext, type FunderContext } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings } from "@shared/schema";
+import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings, orgProfiles, insertOrgProfileSchema } from "@shared/schema";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { ObjectStorageService } from "./replit_integrations/object_storage";
 import crypto from "crypto";
@@ -5513,6 +5513,35 @@ Important:
         return res.status(400).json({ message: "startDate and endDate are required" });
       }
 
+      let resolvedLens = communityLens;
+      let orgProfileCtx: OrgProfileContext | undefined;
+      let funderProfileCtx: any = null;
+
+      try {
+        const orgProfile = await storage.getOrgProfile(userId);
+        if (orgProfile) {
+          orgProfileCtx = {
+            name: orgProfile.name,
+            mission: orgProfile.mission,
+            description: orgProfile.description,
+            targetCommunity: orgProfile.targetCommunity,
+            focusAreas: orgProfile.focusAreas,
+          };
+        }
+      } catch {}
+
+      if (funder) {
+        try {
+          const funderProfile = await storage.getFunderByTag(userId, funder);
+          if (funderProfile) {
+            funderProfileCtx = funderProfile;
+            if (funderProfile.communityLens) {
+              resolvedLens = funderProfile.communityLens;
+            }
+          }
+        } catch {}
+      }
+
       const filters: ReportFilters = {
         userId,
         startDate,
@@ -5521,10 +5550,10 @@ Important:
         taxonomyIds,
         demographicSegments,
         funder,
-        communityLens,
+        communityLens: resolvedLens,
       };
 
-      const cacheKey = getReportCacheKey("generate", { userId, startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder, communityLens });
+      const cacheKey = getReportCacheKey("generate", { userId, startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder, communityLens: resolvedLens });
 
       const result = await deduplicatedReportCall(cacheKey, async () => {
         const report = await getFullMonthlyReport(filters);
@@ -5600,6 +5629,21 @@ Important:
           console.error("Legacy blend error (non-fatal):", blendErr);
         }
 
+        const orgProfileData = orgProfileCtx ? {
+          name: orgProfileCtx.name,
+          mission: orgProfileCtx.mission,
+          description: orgProfileCtx.description,
+          targetCommunity: orgProfileCtx.targetCommunity,
+          focusAreas: orgProfileCtx.focusAreas,
+        } : null;
+
+        const funderProfileData = funderProfileCtx ? {
+          name: funderProfileCtx.name,
+          outcomesFramework: funderProfileCtx.outcomesFramework,
+          outcomeFocus: funderProfileCtx.outcomeFocus,
+          reportingGuidance: funderProfileCtx.reportingGuidance,
+        } : null;
+
         return {
           ...report,
           isBlended,
@@ -5608,6 +5652,8 @@ Important:
           legacyPeriods,
           legacyMetrics,
           legacyHighlights: legacyHighlights.slice(0, 20),
+          orgProfile: orgProfileData,
+          funderProfile: funderProfileData,
         };
       });
 
@@ -5657,16 +5703,7 @@ Important:
         return res.status(400).json({ message: "startDate and endDate are required" });
       }
 
-      const filters: ReportFilters = {
-        userId,
-        startDate,
-        endDate,
-        programmeIds,
-        taxonomyIds,
-        demographicSegments,
-        funder,
-        communityLens,
-      };
+      let resolvedNarrativeLens = communityLens;
 
       const style: "compliance" | "story" = narrativeStyle === "story" ? "story" : "compliance";
 
@@ -5721,7 +5758,53 @@ Important:
         }
       } catch {}
 
-      const result = await generateNarrative(filters, legacyContext, style);
+      let orgProfileCtx: OrgProfileContext | null = null;
+      let funderCtx: FunderContext | null = null;
+
+      try {
+        const orgProfile = await storage.getOrgProfile(userId);
+        if (orgProfile) {
+          orgProfileCtx = {
+            name: orgProfile.name,
+            mission: orgProfile.mission,
+            description: orgProfile.description,
+            targetCommunity: orgProfile.targetCommunity,
+            focusAreas: orgProfile.focusAreas,
+          };
+        }
+      } catch {}
+
+      if (funder) {
+        try {
+          const funderProfile = await storage.getFunderByTag(userId, funder);
+          if (funderProfile) {
+            funderCtx = {
+              name: funderProfile.name,
+              outcomesFramework: funderProfile.outcomesFramework,
+              outcomeFocus: funderProfile.outcomeFocus,
+              reportingGuidance: funderProfile.reportingGuidance,
+              narrativeStyle: funderProfile.narrativeStyle,
+              communityLens: funderProfile.communityLens,
+            };
+            if (funderProfile.communityLens) {
+              resolvedNarrativeLens = funderProfile.communityLens;
+            }
+          }
+        } catch {}
+      }
+
+      const filters: ReportFilters = {
+        userId,
+        startDate,
+        endDate,
+        programmeIds,
+        taxonomyIds,
+        demographicSegments,
+        funder,
+        communityLens: resolvedNarrativeLens,
+      };
+
+      const result = await generateNarrative(filters, legacyContext, style, orgProfileCtx, funderCtx);
       res.json(result);
     } catch (err: any) {
       console.error("Narrative generation error:", err);
@@ -9748,6 +9831,30 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   });
 
   // === Funders API ===
+
+  app.get("/api/org-profile", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const profile = await storage.getOrgProfile(userId);
+      res.json(profile || null);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to get org profile" });
+    }
+  });
+
+  app.put("/api/org-profile", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const parsed = insertOrgProfileSchema.omit({ userId: true }).parse(req.body);
+      const profile = await storage.upsertOrgProfile({
+        userId,
+        ...parsed,
+      });
+      res.json(profile);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to save org profile" });
+    }
+  });
 
   app.get("/api/funders", isAuthenticated, async (req, res) => {
     try {

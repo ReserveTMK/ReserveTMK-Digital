@@ -829,10 +829,29 @@ export async function getValueContribution(filters: ReportFilters) {
   };
 }
 
+export interface OrgProfileContext {
+  name: string;
+  mission?: string | null;
+  description?: string | null;
+  targetCommunity?: string | null;
+  focusAreas?: string[] | null;
+}
+
+export interface FunderContext {
+  name: string;
+  outcomesFramework?: string | null;
+  outcomeFocus?: string | null;
+  reportingGuidance?: string | null;
+  narrativeStyle?: string | null;
+  communityLens?: string | null;
+}
+
 export async function generateNarrative(
   filters: ReportFilters,
   legacyContext?: { metrics: any; highlights: string[]; reportCount: number } | null,
   narrativeStyle: "compliance" | "story" = "compliance",
+  orgProfile?: OrgProfileContext | null,
+  funderContext?: FunderContext | null,
 ) {
   const [reach, delivery, impact, value, mentoring, connectionStrength, surveyData] = await Promise.all([
     getReachMetrics(filters),
@@ -853,31 +872,62 @@ export async function generateNarrative(
   const lens = filters.communityLens;
   const lensLabel = lens === "maori" ? "Maori (matawaka)" : lens === "pasifika" ? "Pasifika" : lens === "maori_pasifika" ? "Maori and Pasifika" : null;
 
+  const orgName = orgProfile?.name || "our organisation";
+  const weLabel = orgProfile?.name || "We";
+  const outcomeFocus = funderContext?.outcomeFocus as string | undefined;
+
   const sections: string[] = [];
+
+  if (orgProfile) {
+    let profileText = `## About ${orgName}\n\n`;
+    if (orgProfile.mission) profileText += `**Mission:** ${orgProfile.mission}\n\n`;
+    if (orgProfile.description) profileText += `${orgProfile.description}\n\n`;
+    if (orgProfile.targetCommunity) profileText += `**Serving:** ${orgProfile.targetCommunity}\n\n`;
+    if (orgProfile.focusAreas && orgProfile.focusAreas.length > 0) profileText += `**Focus areas:** ${orgProfile.focusAreas.join(", ")}\n\n`;
+    sections.push(profileText.trimEnd());
+  }
+
+  if (funderContext) {
+    let funderText = `*This report is prepared for **${funderContext.name}**`;
+    if (funderContext.outcomesFramework) funderText += ` aligned to the **${funderContext.outcomesFramework}** framework`;
+    funderText += `.*`;
+    if (funderContext.reportingGuidance) funderText += `\n\n*Reporting guidance: ${funderContext.reportingGuidance}*`;
+    sections.push(funderText);
+  }
+
+  const orderSections = (reachText: string, delText: string, impText: string) => {
+    if (!outcomeFocus) return [reachText, delText, impText];
+    if (outcomeFocus === "economic") return [impText, delText, reachText];
+    if (outcomeFocus === "wellbeing") return [impText, reachText, delText];
+    if (outcomeFocus === "community") return [reachText, impText, delText];
+    return [impText, reachText, delText];
+  };
 
   if (narrativeStyle === "story") {
     let reachText = `## Our Reach\n\n`;
     if (lensLabel) reachText += `Focusing on our ${lensLabel} community, `;
     else reachText += `During ${periodLabel}, `;
-    reachText += `we reached ${reach.peopleReached.toLocaleString()} people`;
+    reachText += `${weLabel} reached ${reach.peopleReached.toLocaleString()} people`;
     if (reach.footTraffic > 0) reachText += ` (including ${reach.footTraffic.toLocaleString()} through foot traffic)`;
     reachText += `.`;
     if (hasLegacy) reachText += ` This builds on ${legacyContext.reportCount} legacy report${legacyContext.reportCount > 1 ? "s" : ""}.`;
     reachText += ` ${reach.ecosystemGrowth.newContacts} new people joined our network. ${reach.repeatEngagementRate}% came back more than once, showing the depth of connection being built.`;
     if (reach.ecosystemGrowth.promotedToCommunity > 0) reachText += ` ${reach.ecosystemGrowth.promotedToCommunity} people deepened into our community.`;
     if (reach.ecosystemGrowth.promotedToInnovator > 0) reachText += ` ${reach.ecosystemGrowth.promotedToInnovator} became innovators.`;
-    sections.push(reachText);
 
     let delText = `## What We Delivered\n\n`;
     delText += `Across the period, ${delivery.totalActivations} activations were delivered - ${delivery.events.total} events, ${delivery.bookings.total} bookings, ${delivery.mentoringSessions} mentoring sessions, and ${delivery.programmes.total} programmes.`;
     if (delivery.totalAttendees > 0) delText += ` ${delivery.totalAttendees} attendees participated across events and programmes.`;
     if (mentoring.totalHours > 0) delText += ` ${mentoring.totalHours} hours of mentoring support were provided to ${mentoring.uniqueMentees} mentee${mentoring.uniqueMentees !== 1 ? "s" : ""}.`;
     if (delivery.communityHours > 0) delText += ` ${delivery.communityHours} hours of community activity through venue bookings.`;
-    sections.push(delText);
 
+    let impText = "";
     if (topCategories.length > 0 || impact.milestoneCount > 0 || impact.contactsWithMetrics > 0) {
-      let impText = `## What Changed\n\n`;
+      impText = `## What Changed\n\n`;
       const econ = impact.economicRollup;
+      if (outcomeFocus === "economic" && econ) {
+        impText += `**Economic Impact** (primary outcome focus)\n\n`;
+      }
       if (econ && (econ.totalEconomicValue > 0 || econ.businessesLaunched > 0 || econ.jobsCreated > 0)) {
         let econParts: string[] = [];
         if (econ.fundingSecured > 0) econParts.push(`$${econ.fundingSecured.toLocaleString()} in funding secured`);
@@ -894,6 +944,9 @@ export async function generateNarrative(
       }
       if (impact.communitySpend > 0) impText += `$${impact.communitySpend.toLocaleString()} was invested directly into community. `;
       if (impact.milestoneCount > 0) impText += `${impact.milestoneCount} milestones were achieved. `;
+      if (outcomeFocus === "wellbeing") {
+        impText += `\n\n**Growth & Wellbeing** (primary outcome focus)\n\n`;
+      }
       if (impact.contactsWithMetrics > 0 && impact.growthMetrics) {
         const gm = impact.growthMetrics;
         impText += `${impact.contactsWithMetrics} people have tracked growth - mindset shifted positively for ${gm.mindset?.positiveMovementPercent ?? 0}%, skill for ${gm.skill?.positiveMovementPercent ?? 0}%, and confidence for ${gm.confidence?.positiveMovementPercent ?? 0}%.`;
@@ -924,7 +977,10 @@ export async function generateNarrative(
           impText += ` Post-booking satisfaction averaged ${surveyData.postBooking.overallSatisfaction}/10.`;
         }
       }
-      sections.push(impText);
+    }
+
+    for (const s of orderSections(reachText, delText, impText)) {
+      if (s) sections.push(s);
     }
 
     sections.push(`## [Participant Story]\n\n*[Insert a participant story here - a real example of change, growth, or connection that brings the data to life.]*`);
@@ -941,7 +997,6 @@ export async function generateNarrative(
     if (reach.ecosystemGrowth.promotedToCommunity > 0) reachText += ` ${reach.ecosystemGrowth.promotedToCommunity} promoted to community.`;
     if (reach.ecosystemGrowth.promotedToInnovator > 0) reachText += ` ${reach.ecosystemGrowth.promotedToInnovator} promoted to innovators.`;
     if (reach.ecosystemGrowth.newGroups > 0) reachText += ` ${reach.ecosystemGrowth.newGroups} new groups formed.`;
-    sections.push(reachText);
 
     let delText = `## Delivery\n\n${delivery.totalActivations} total activations: ${delivery.events.total} events, ${delivery.bookings.total} bookings, ${delivery.mentoringSessions} mentoring sessions, ${delivery.programmes.total} programmes.`;
     if (delivery.totalAttendees > 0) delText += ` ${delivery.totalAttendees} total attendees.`;
@@ -949,10 +1004,12 @@ export async function generateNarrative(
     if (hasLegacy && lm.activationsTotal > 0) delText += ` Legacy: ${lm.activationsTotal} activations.`;
     if (mentoring.totalHours > 0) delText += ` Mentoring: ${mentoring.totalHours} hours to ${mentoring.uniqueMentees} mentees.`;
     if (mentoring.newMentees > 0) delText += ` ${mentoring.newMentees} new mentees started.`;
-    sections.push(delText);
 
     let impText = `## Impact\n\n`;
     const econC = impact.economicRollup;
+    if (outcomeFocus === "economic" && econC) {
+      impText += `**Economic Impact** (primary outcome focus)\n\n`;
+    }
     if (econC && (econC.totalEconomicValue > 0 || econC.businessesLaunched > 0 || econC.jobsCreated > 0)) {
       let econParts: string[] = [];
       if (econC.fundingSecured > 0) econParts.push(`funding secured: $${econC.fundingSecured.toLocaleString()}`);
@@ -968,6 +1025,9 @@ export async function generateNarrative(
       }
     }
     if (impact.communitySpend > 0) impText += `Community investment: $${impact.communitySpend.toLocaleString()}. `;
+    if (outcomeFocus === "wellbeing") {
+      impText += `\n\n**Growth & Wellbeing** (primary outcome focus)\n\n`;
+    }
     impText += `${impact.milestoneCount} milestones achieved. ${impact.contactsWithMetrics} people with tracked growth.`;
     if (impact.contactsWithMetrics > 0 && impact.growthMetrics) {
       const gm = impact.growthMetrics;
@@ -1006,7 +1066,10 @@ export async function generateNarrative(
         impText += ` Post-booking satisfaction: ${surveyData.postBooking.overallSatisfaction}/10.`;
       }
     }
-    sections.push(impText);
+
+    for (const s of orderSections(reachText, delText, impText)) {
+      if (s) sections.push(s);
+    }
 
     sections.push(`## Value & Contribution\n\nBooking revenue: $${value.revenue.total.toLocaleString()}. ${value.memberships.active} memberships ($${value.memberships.totalRevenue.toLocaleString()}). ${value.mouExchange.active} MOUs ($${value.mouExchange.totalInKindValue.toLocaleString()} in-kind). Programme costs: $${value.programmeCosts.reduce((s, p) => s + p.totalCost, 0).toLocaleString()}.`);
 

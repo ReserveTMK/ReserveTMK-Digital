@@ -546,17 +546,7 @@ export default function Reports() {
         setBenchmarkData(null);
       }
 
-      if (communityLens === "all") {
-        try {
-          const compRes = await apiRequest("POST", "/api/reports/community-comparison", { startDate, endDate });
-          const compData = await compRes.json();
-          setCommunityComparisonData(compData);
-        } catch {
-          setCommunityComparisonData(null);
-        }
-      } else {
-        setCommunityComparisonData(null);
-      }
+      setCommunityComparisonData(null);
 
       const showTamakiOra = activeFunder && (
         activeFunder.name.toLowerCase().includes("nga matarae") ||
@@ -708,7 +698,7 @@ export default function Reports() {
     const d = reportData;
 
     rows.push(["Report Period", getPeriodLabel()]);
-    if (communityLens !== "all") rows.push(["Community Lens", COMMUNITY_LENS_LABELS[communityLens] || communityLens]);
+    if (communityLens !== "all" && activeFunder) rows.push(["Community Lens", `${COMMUNITY_LENS_LABELS[communityLens] || communityLens} (via ${activeFunder.name})`]);
     if (activeFunder) rows.push(["Funder Profile", activeFunder.name]);
     rows.push([]);
 
@@ -918,69 +908,47 @@ export default function Reports() {
 
           <Card className="p-3" data-testid="report-toolbar">
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-              <div className="flex flex-wrap gap-1 p-1 bg-muted/50 rounded-lg" data-testid="community-lens-selector">
-                {([
-                  { value: "all", label: "All", testId: "lens-all" },
-                  { value: "maori", label: "Maori (matawaka)", testId: "lens-maori" },
-                  { value: "pasifika", label: "Pasifika", testId: "lens-pasifika" },
-                  { value: "maori_pasifika", label: "Maori + Pasifika", testId: "lens-maori-pasifika" },
-                ] as const).map((opt) => (
-                  <Button
-                    key={opt.value}
-                    variant={communityLens === opt.value ? "default" : "ghost"}
-                    size="sm"
-                    onClick={() => { setCommunityLens(opt.value); setGenerated(false); }}
-                    data-testid={opt.testId}
-                  >
-                    {opt.label}
-                  </Button>
-                ))}
-              </div>
+              {fundersList && fundersList.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5" data-testid="funder-profile-selector">
+                  {fundersList.map((funder) => {
+                    const isActive = activeFunder?.id === funder.id;
+                    return (
+                      <Button
+                        key={funder.id}
+                        variant={isActive ? "default" : "ghost"}
+                        size="sm"
+                        onClick={() => handleSelectFunder(funder)}
+                        data-testid={`button-funder-${funder.id}`}
+                      >
+                        <Landmark className="w-3.5 h-3.5 mr-1" />
+                        {funder.name}
+                      </Button>
+                    );
+                  })}
+                  <Link href="/funders">
+                    <Button variant="ghost" size="icon" data-testid="link-manage-funders">
+                      <Settings className="w-3.5 h-3.5" />
+                    </Button>
+                  </Link>
+                </div>
+              )}
 
-              {communityLens !== "all" && (
+              {communityLens !== "all" && activeFunder && (
                 <Badge
                   variant="secondary"
                   className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800"
                   data-testid="banner-community-lens"
                 >
                   <Users className="w-3 h-3 shrink-0" />
-                  <span className="text-xs">{COMMUNITY_LENS_LABELS[communityLens]} only</span>
+                  <span className="text-xs">{COMMUNITY_LENS_LABELS[communityLens]} lens via {activeFunder.name}</span>
                   <button
-                    onClick={() => { setCommunityLens("all"); setActiveFunder(null); setNarrativeStyle("compliance"); setGenerated(false); }}
+                    onClick={() => { setCommunityLens("all"); setActiveFunder(null); setNarrativeStyle("compliance"); setFunderFilter("all"); setGenerated(false); }}
                     className="ml-1 hover:bg-amber-200/50 rounded-full p-0.5"
                     data-testid="button-reset-lens"
                   >
                     <X className="w-3 h-3" />
                   </button>
                 </Badge>
-              )}
-
-              {fundersList && fundersList.length > 0 && (
-                <>
-                  <div className="hidden sm:block w-px h-6 bg-border" />
-                  <div className="flex flex-wrap items-center gap-1.5" data-testid="funder-profile-selector">
-                    {fundersList.map((funder) => {
-                      const isActive = activeFunder?.id === funder.id;
-                      return (
-                        <Button
-                          key={funder.id}
-                          variant={isActive ? "default" : "ghost"}
-                          size="sm"
-                          onClick={() => handleSelectFunder(funder)}
-                          data-testid={`button-funder-${funder.id}`}
-                        >
-                          <Landmark className="w-3.5 h-3.5 mr-1" />
-                          {funder.name}
-                        </Button>
-                      );
-                    })}
-                    <Link href="/funders">
-                      <Button variant="ghost" size="icon" data-testid="link-manage-funders">
-                        <Settings className="w-3.5 h-3.5" />
-                      </Button>
-                    </Link>
-                  </div>
-                </>
               )}
             </div>
           </Card>
@@ -1266,10 +1234,10 @@ export default function Reports() {
               {/* Section 2: Delivery */}
               <CollapsibleSection title="Delivery" icon={CalendarDays} testId="section-delivery" defaultOpen={isSectionDefaultOpen("delivery")} key={`delivery-${activeFunder?.id || 'none'}`}>
                 <div className="pt-4 space-y-4">
-                  {communityLens !== "all" && (
+                  {communityLens !== "all" && activeFunder && (
                     <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded-md px-3 py-2" data-testid="notice-delivery-unfiltered">
                       <Info className="w-3.5 h-3.5 shrink-0" />
-                      <span>Events, venue hires, and programmes show organisation-level data (not filtered by community lens). Mentoring metrics are filtered.</span>
+                      <span>Events, venue hires, and programmes show organisation-level data (not filtered by {COMMUNITY_LENS_LABELS[communityLens]} lens). Mentoring metrics are filtered.</span>
                     </div>
                   )}
 
@@ -2061,10 +2029,10 @@ export default function Reports() {
               {/* Section 5: Value & Contribution */}
               <CollapsibleSection title="Value & Contribution" icon={DollarSign} testId="section-value" defaultOpen={isSectionDefaultOpen("value")} key={`value-${activeFunder?.id || 'none'}`}>
                 <div className="pt-4 space-y-4">
-                  {communityLens !== "all" && (
+                  {communityLens !== "all" && activeFunder && (
                     <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded-md px-3 py-2" data-testid="notice-value-unfiltered">
                       <Info className="w-3.5 h-3.5 shrink-0" />
-                      <span>Financial metrics show organisation-level data (not filtered by community lens)</span>
+                      <span>Financial metrics show organisation-level data (not filtered by {COMMUNITY_LENS_LABELS[communityLens]} lens)</span>
                     </div>
                   )}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -2186,99 +2154,6 @@ export default function Reports() {
               )}
 
               {/* Section 7: Community Comparison */}
-              {communityLens === "all" && communityComparisonData && (
-                <CollapsibleSection title="Community Comparison" icon={Users} testId="section-community-comparison" defaultOpen={true}>
-                  <div className="pt-4 space-y-4">
-                    <div className="mb-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">Community Split</span>
-                        <span className="text-sm text-muted-foreground" data-testid="text-community-total">
-                          {communityComparisonData.communitySplit?.totalParticipants || 0} total participants
-                        </span>
-                      </div>
-                      <div className="w-full h-6 rounded-md overflow-hidden flex" data-testid="bar-community-split">
-                        <div
-                          className="h-full flex items-center justify-center text-xs font-medium text-white"
-                          style={{
-                            width: `${communityComparisonData.communitySplit?.maoriPercent || 0}%`,
-                            backgroundColor: "hsl(14, 88%, 68%)",
-                            minWidth: communityComparisonData.communitySplit?.maoriPercent > 0 ? "2rem" : "0",
-                          }}
-                          data-testid="bar-maori-split"
-                        >
-                          {communityComparisonData.communitySplit?.maoriPercent || 0}%
-                        </div>
-                        <div
-                          className="h-full flex items-center justify-center text-xs font-medium text-white"
-                          style={{
-                            width: `${communityComparisonData.communitySplit?.pasifikaPercent || 0}%`,
-                            backgroundColor: "hsl(161, 100%, 12%)",
-                            minWidth: communityComparisonData.communitySplit?.pasifikaPercent > 0 ? "2rem" : "0",
-                          }}
-                          data-testid="bar-pasifika-split"
-                        >
-                          {communityComparisonData.communitySplit?.pasifikaPercent || 0}%
-                        </div>
-                      </div>
-                      <div className="flex justify-between mt-1">
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: "hsl(14, 88%, 68%)" }} />
-                          <span className="text-xs text-muted-foreground">Maori</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: "hsl(161, 100%, 12%)" }} />
-                          <span className="text-xs text-muted-foreground">Pasifika</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="border rounded-lg overflow-hidden">
-                      <table className="w-full text-sm" data-testid="table-community-comparison">
-                        <thead className="bg-muted/50">
-                          <tr>
-                            <th className="text-left p-3">Metric</th>
-                            <th className="text-right p-3" style={{ color: "hsl(14, 88%, 68%)" }}>Maori</th>
-                            <th className="text-right p-3" style={{ color: "hsl(161, 100%, 12%)" }}>Pasifika</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr className="border-t">
-                            <td className="p-3">Unique Participants</td>
-                            <td className="text-right p-3 font-medium" data-testid="stat-maori-participants">{communityComparisonData.maori?.uniqueParticipants || 0}</td>
-                            <td className="text-right p-3 font-medium" data-testid="stat-pasifika-participants">{communityComparisonData.pasifika?.uniqueParticipants || 0}</td>
-                          </tr>
-                          <tr className="border-t">
-                            <td className="p-3">Rangatahi (under 25)</td>
-                            <td className="text-right p-3 font-medium" data-testid="stat-maori-rangatahi">{communityComparisonData.maori?.rangatahiUnder25 || 0}</td>
-                            <td className="text-right p-3 font-medium" data-testid="stat-pasifika-rangatahi">{communityComparisonData.pasifika?.rangatahiUnder25 || 0}</td>
-                          </tr>
-                          <tr className="border-t">
-                            <td className="p-3">Active in Business Programmes</td>
-                            <td className="text-right p-3 font-medium" data-testid="stat-maori-business">{communityComparisonData.maori?.activeInBusinessProgrammes || 0}</td>
-                            <td className="text-right p-3 font-medium" data-testid="stat-pasifika-business">{communityComparisonData.pasifika?.activeInBusinessProgrammes || 0}</td>
-                          </tr>
-                          <tr className="border-t">
-                            <td className="p-3">Confidence Growth</td>
-                            <td className="text-right p-3 font-medium" data-testid="stat-maori-confidence">{communityComparisonData.maori?.confidenceGrowthPercent || 0}%</td>
-                            <td className="text-right p-3 font-medium" data-testid="stat-pasifika-confidence">{communityComparisonData.pasifika?.confidenceGrowthPercent || 0}%</td>
-                          </tr>
-                          <tr className="border-t">
-                            <td className="p-3">Milestones Achieved</td>
-                            <td className="text-right p-3 font-medium" data-testid="stat-maori-milestones">{communityComparisonData.maori?.milestonesAchieved || 0}</td>
-                            <td className="text-right p-3 font-medium" data-testid="stat-pasifika-milestones">{communityComparisonData.pasifika?.milestonesAchieved || 0}</td>
-                          </tr>
-                          <tr className="border-t">
-                            <td className="p-3">New Contacts This Period</td>
-                            <td className="text-right p-3 font-medium" data-testid="stat-maori-new-contacts">{communityComparisonData.maori?.newContactsThisPeriod || 0}</td>
-                            <td className="text-right p-3 font-medium" data-testid="stat-pasifika-new-contacts">{communityComparisonData.pasifika?.newContactsThisPeriod || 0}</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </CollapsibleSection>
-              )}
-
               {/* Section 8: Tamaki Ora Alignment */}
               {tamakiOraData && (
                 <CollapsibleSection title="Tamaki Ora Alignment" icon={Landmark} testId="section-tamaki-ora" defaultOpen={isSectionDefaultOpen("tamaki-ora")}>

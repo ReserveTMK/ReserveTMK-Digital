@@ -145,6 +145,9 @@ import {
   organisationProfile,
   type OrganisationProfile,
   type InsertOrganisationProfile,
+  orgProfiles,
+  type OrgProfile,
+  type InsertOrgProfile,
   funders,
   funderDocuments,
   type Funder,
@@ -489,9 +492,14 @@ export interface IStorage {
   getOrganisationProfile(userId: string): Promise<OrganisationProfile | undefined>;
   upsertOrganisationProfile(userId: string, data: Partial<InsertOrganisationProfile>): Promise<OrganisationProfile>;
 
+  // Org Profile (report narrative)
+  getOrgProfile(userId: string): Promise<OrgProfile | undefined>;
+  upsertOrgProfile(data: InsertOrgProfile): Promise<OrgProfile>;
+
   // Funders
   getFunders(userId: string): Promise<Funder[]>;
   getFunder(id: number): Promise<Funder | undefined>;
+  getFunderByTag(userId: string, funderTag: string): Promise<Funder | undefined>;
   createFunder(data: InsertFunder): Promise<Funder>;
   updateFunder(id: number, updates: Partial<InsertFunder>): Promise<Funder>;
   deleteFunder(id: number): Promise<void>;
@@ -2033,12 +2041,32 @@ export class DatabaseStorage implements IStorage {
     return item;
   }
 
+  async getOrgProfile(userId: string): Promise<OrgProfile | undefined> {
+    const [item] = await db.select().from(orgProfiles).where(eq(orgProfiles.userId, userId));
+    return item;
+  }
+
+  async upsertOrgProfile(data: InsertOrgProfile): Promise<OrgProfile> {
+    const existing = await this.getOrgProfile(data.userId);
+    if (existing) {
+      const [item] = await db.update(orgProfiles).set({ ...data, updatedAt: new Date() }).where(eq(orgProfiles.id, existing.id)).returning();
+      return item;
+    }
+    const [item] = await db.insert(orgProfiles).values(data).returning();
+    return item;
+  }
+
   async getFunders(userId: string): Promise<Funder[]> {
     return db.select().from(funders).where(eq(funders.userId, userId)).orderBy(desc(funders.createdAt));
   }
 
   async getFunder(id: number): Promise<Funder | undefined> {
     const [item] = await db.select().from(funders).where(eq(funders.id, id));
+    return item;
+  }
+
+  async getFunderByTag(userId: string, funderTag: string): Promise<Funder | undefined> {
+    const [item] = await db.select().from(funders).where(and(eq(funders.userId, userId), eq(funders.funderTag, funderTag)));
     return item;
   }
 
