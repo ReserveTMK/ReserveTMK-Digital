@@ -195,8 +195,25 @@ export async function setupAuth(app: Express) {
 
   app.get("/api/login", async (req, res, next) => {
     try {
+      const customDomain = getCustomDomain();
+      const replitDomain = getReplitDomain();
+      const isDeployment = !!process.env.REPLIT_DEPLOYMENT;
+
+      if (isDeployment && customDomain && replitDomain && req.hostname === customDomain) {
+        res.redirect(`https://${replitDomain}/api/login?returnTo=${encodeURIComponent(customDomain)}`);
+        return;
+      }
+
+      const returnTo = req.query.returnTo as string | undefined;
+      if (returnTo) {
+        const allowedDomains = (process.env.REPLIT_DOMAINS || "").split(",").map(d => d.trim());
+        if (allowedDomains.includes(returnTo)) {
+          (req.session as any).loginReturnTo = returnTo;
+        }
+      }
+
       const callbackURL = getCallbackUrl(req);
-      console.log(`[auth] Login: hostname=${req.hostname}, callbackURL=${callbackURL}`);
+      console.log(`[auth] Login: hostname=${req.hostname}, callbackURL=${callbackURL}, returnTo=${returnTo || 'none'}`);
       await ensureStrategy(callbackURL);
       passport.authenticate("replitauth", {
         prompt: "login",
@@ -228,11 +245,12 @@ export async function setupAuth(app: Express) {
             return res.redirect("/api/login");
           }
           console.log(`[auth] Login successful, user=${user.claims?.sub}`);
-          const customDomain = getCustomDomain();
-          if (customDomain && req.hostname !== customDomain) {
+          const returnTo = (req.session as any).loginReturnTo;
+          delete (req.session as any).loginReturnTo;
+          if (returnTo && returnTo !== req.hostname) {
             const token = generateAuthToken(user);
-            console.log(`[auth] Redirecting to custom domain with exchange token`);
-            res.redirect(`https://${customDomain}/api/auth/exchange?token=${token}`);
+            console.log(`[auth] Redirecting to ${returnTo} with exchange token`);
+            res.redirect(`https://${returnTo}/api/auth/exchange?token=${token}`);
           } else {
             res.redirect("/");
           }
