@@ -9056,7 +9056,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
           groupType: g.type,
           vipReason: g.vipReason,
           movedToVipAt: g.movedToVipAt,
-          ecosystemRoles: g.ecosystemRoles,
+          engagementLevel: g.engagementLevel || "Active",
           memberCount: 0,
         }));
 

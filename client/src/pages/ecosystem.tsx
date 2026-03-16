@@ -112,7 +112,7 @@ type VipItem = {
   stage?: string | null;
   supportType?: string[] | null;
   role?: string | null;
-  ecosystemRoles?: string[] | null;
+  engagementLevel?: string | null;
   memberCount?: number;
 };
 

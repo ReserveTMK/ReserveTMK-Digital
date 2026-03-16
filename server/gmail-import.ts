@@ -459,6 +459,7 @@ async function finalizeImport(
         userId,
         name: orgName,
         type: 'Uncategorised',
+        engagementLevel: 'Active',
         contactEmail: org.memberEmails[0],
         website: org.domain,
         relationshipTier: tier,

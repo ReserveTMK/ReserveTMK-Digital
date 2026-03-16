@@ -1037,24 +1037,49 @@ export default function Groups() {
                         className="mt-1 shrink-0"
                         data-testid={`ai-suggestion-checkbox-${s.id}`}
                       />
-                      <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex-1 min-w-0 space-y-2">
                         <p className="font-medium text-sm truncate">{s.name}</p>
                         <div className="flex items-center gap-2 flex-wrap">
-                          {typeChanged && (
-                            <>
-                              <Badge variant="outline" className="text-[10px]">{s.currentType}</Badge>
-                              <ChevronRight className="w-3 h-3 text-muted-foreground" />
-                              <Badge className={`text-[10px] ${GROUP_TYPE_COLORS[s.suggestedType] || ""}`}>{s.suggestedType}</Badge>
-                            </>
-                          )}
-                          {engChanged && (
-                            <>
-                              {typeChanged && <span className="text-muted-foreground text-[10px]">·</span>}
-                              <Badge variant="outline" className="text-[10px]">{s.currentEngagement}</Badge>
-                              <ChevronRight className="w-3 h-3 text-muted-foreground" />
-                              <Badge className={`text-[10px] ${ENGAGEMENT_COLORS[s.suggestedEngagement] || ""}`}>{s.suggestedEngagement}</Badge>
-                            </>
-                          )}
+                          <Badge variant="outline" className="text-[10px]">{s.currentType}</Badge>
+                          <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                          <Select
+                            value={s.suggestedType}
+                            onValueChange={(val) => {
+                              const updated = [...aiSuggestions];
+                              updated[idx] = { ...updated[idx], suggestedType: val };
+                              setAiSuggestions(updated);
+                            }}
+                          >
+                            <SelectTrigger className="h-6 w-auto min-w-[120px] text-[11px] px-2" data-testid={`ai-suggestion-type-${s.id}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {GROUP_TYPES.map(t => (
+                                <SelectItem key={t} value={t} className="text-xs">{t}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge variant="outline" className="text-[10px]">{s.currentEngagement}</Badge>
+                          <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                          <Select
+                            value={s.suggestedEngagement}
+                            onValueChange={(val) => {
+                              const updated = [...aiSuggestions];
+                              updated[idx] = { ...updated[idx], suggestedEngagement: val };
+                              setAiSuggestions(updated);
+                            }}
+                          >
+                            <SelectTrigger className="h-6 w-auto min-w-[100px] text-[11px] px-2" data-testid={`ai-suggestion-engagement-${s.id}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ENGAGEMENT_LEVELS.map(e => (
+                                <SelectItem key={e} value={e} className="text-xs">{e}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
                     </div>
