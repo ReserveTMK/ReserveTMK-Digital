@@ -1519,6 +1519,8 @@ function XeroSettingsTab() {
   const { toast } = useToast();
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
+  const [accountCode, setAccountCode] = useState("200");
+  const [taxType, setTaxType] = useState("OUTPUT2");
 
   const { data: xeroStatus, isLoading } = useQuery<{
     connected: boolean;
@@ -1526,9 +1528,18 @@ function XeroSettingsTab() {
     organisationName: string | null;
     connectedAt: string | null;
     tokenExpiresAt: string | null;
+    accountCode: string;
+    taxType: string;
   }>({
     queryKey: ['/api/xero/status'],
   });
+
+  useEffect(() => {
+    if (xeroStatus) {
+      setAccountCode(xeroStatus.accountCode || "200");
+      setTaxType(xeroStatus.taxType || "OUTPUT2");
+    }
+  }, [xeroStatus]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -1544,6 +1555,23 @@ function XeroSettingsTab() {
     },
     onError: (err: any) => {
       toast({ title: "Failed to save", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const saveAccountSettingsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/xero/update-account-settings", {
+        accountCode,
+        taxType,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/xero/status'] });
+      toast({ title: "Account settings saved" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to save account settings", description: err.message, variant: "destructive" });
     },
   });
 
@@ -1606,6 +1634,38 @@ function XeroSettingsTab() {
         <p className="text-sm text-muted-foreground">
           Invoices will be automatically generated in Xero when venue hires are accepted. Venue hires with koha, package credits, or zero amounts are skipped.
         </p>
+        <div className="p-3 rounded-lg border bg-muted/50 space-y-3">
+          <p className="text-sm font-medium">Invoice defaults</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm text-muted-foreground">Account Code</label>
+              <Input
+                value={accountCode}
+                onChange={(e) => setAccountCode(e.target.value)}
+                placeholder="200"
+                data-testid="input-xero-account-code"
+              />
+            </div>
+            <div>
+              <label className="text-sm text-muted-foreground">Tax Type</label>
+              <Input
+                value={taxType}
+                onChange={(e) => setTaxType(e.target.value)}
+                placeholder="OUTPUT2"
+                data-testid="input-xero-tax-type"
+              />
+            </div>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => saveAccountSettingsMutation.mutate()}
+            disabled={saveAccountSettingsMutation.isPending || (accountCode === (xeroStatus?.accountCode || "200") && taxType === (xeroStatus?.taxType || "OUTPUT2"))}
+            data-testid="button-xero-save-account-settings"
+          >
+            {saveAccountSettingsMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            Save Invoice Defaults
+          </Button>
+        </div>
         <Button
           variant="outline"
           onClick={() => disconnectMutation.mutate()}

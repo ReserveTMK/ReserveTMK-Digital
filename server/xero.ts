@@ -3,6 +3,15 @@ import type { Booking, XeroSettings } from "@shared/schema";
 import crypto from "crypto";
 import { getBaseUrl } from "./url";
 
+class XeroApiError extends Error {
+  statusCode: number;
+  constructor(statusCode: number, message: string) {
+    super(message);
+    this.statusCode = statusCode;
+    this.name = "XeroApiError";
+  }
+}
+
 const XERO_TOKEN_URL = "https://identity.xero.com/connect/token";
 const XERO_API_BASE = "https://api.xero.com/api.xro/2.0";
 const XERO_CONNECTIONS_URL = "https://api.xero.com/connections";
@@ -10,6 +19,8 @@ const XERO_AUTH_URL = "https://login.xero.com/identity/connect/authorize";
 const XERO_SCOPES = "openid profile email accounting.contacts accounting.transactions offline_access";
 
 const pendingOAuthStates = new Map<string, { userId: string; expiresAt: number }>();
+
+const refreshLocks = new Map<string, Promise<XeroSettings>>();
 
 export function createOAuthState(userId: string): string {
   const state = crypto.randomBytes(32).toString("hex");
@@ -51,18 +62,23 @@ export async function exchangeCodeForTokens(
 
   const basicAuth = Buffer.from(`${settings.xeroClientId}:${settings.xeroClientSecret}`).toString("base64");
 
-  const response = await fetch(XERO_TOKEN_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: `Basic ${basicAuth}`,
-    },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: getRedirectUri(),
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(XERO_TOKEN_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: `Basic ${basicAuth}`,
+      },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: getRedirectUri(),
+      }),
+    });
+  } catch (err: any) {
+    throw new Error(`Cannot reach Xero authentication server. Check your internet connection and try again. (${err.message})`);
+  }
 
   if (!response.ok) {
     const text = await response.text();
@@ -71,18 +87,21 @@ export async function exchangeCodeForTokens(
 
   const tokens = await response.json();
 
-  const connectionsRes = await fetch(XERO_CONNECTIONS_URL, {
-    headers: { Authorization: `Bearer ${tokens.access_token}` },
-  });
-
   let tenantId = "";
   let orgName = "";
-  if (connectionsRes.ok) {
-    const connections = await connectionsRes.json();
-    if (connections.length > 0) {
-      tenantId = connections[0].tenantId;
-      orgName = connections[0].tenantName || "";
+  try {
+    const connectionsRes = await fetch(XERO_CONNECTIONS_URL, {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+    if (connectionsRes.ok) {
+      const connections = await connectionsRes.json();
+      if (connections.length > 0) {
+        tenantId = connections[0].tenantId;
+        orgName = connections[0].tenantName || "";
+      }
     }
+  } catch (err: any) {
+    throw new Error(`Connected to Xero but failed to fetch organisation details. Check your internet connection and try again. (${err.message})`);
   }
 
   return await storage.upsertXeroSettings(userId, {
@@ -96,7 +115,7 @@ export async function exchangeCodeForTokens(
   });
 }
 
-async function refreshTokens(userId: string): Promise<XeroSettings> {
+async function doRefreshTokens(userId: string): Promise<XeroSettings> {
   const settings = await storage.getXeroSettings(userId);
   if (!settings?.refreshToken || !settings?.xeroClientId || !settings?.xeroClientSecret) {
     throw new Error("No refresh token available");
@@ -104,17 +123,22 @@ async function refreshTokens(userId: string): Promise<XeroSettings> {
 
   const basicAuth = Buffer.from(`${settings.xeroClientId}:${settings.xeroClientSecret}`).toString("base64");
 
-  const response = await fetch(XERO_TOKEN_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: `Basic ${basicAuth}`,
-    },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: settings.refreshToken,
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(XERO_TOKEN_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: `Basic ${basicAuth}`,
+      },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: settings.refreshToken,
+      }),
+    });
+  } catch (err: any) {
+    throw new Error(`Cannot reach Xero authentication server. Check your internet connection and try again. (${err.message})`);
+  }
 
   if (!response.ok) {
     await storage.upsertXeroSettings(userId, {
@@ -122,7 +146,7 @@ async function refreshTokens(userId: string): Promise<XeroSettings> {
       accessToken: null,
       refreshToken: null,
     } as any);
-    throw new Error("Token refresh failed - Xero disconnected");
+    throw new Error("Token refresh failed - Xero disconnected. Please reconnect to Xero in Settings.");
   }
 
   const tokens = await response.json();
@@ -132,6 +156,20 @@ async function refreshTokens(userId: string): Promise<XeroSettings> {
     refreshToken: tokens.refresh_token,
     tokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000),
   });
+}
+
+async function refreshTokens(userId: string): Promise<XeroSettings> {
+  const existing = refreshLocks.get(userId);
+  if (existing) {
+    return existing;
+  }
+
+  const refreshPromise = doRefreshTokens(userId).finally(() => {
+    refreshLocks.delete(userId);
+  });
+
+  refreshLocks.set(userId, refreshPromise);
+  return refreshPromise;
 }
 
 async function xeroApiCall(
@@ -163,24 +201,29 @@ async function xeroApiCall(
     headers["Content-Type"] = "application/json";
   }
 
-  const response = await fetch(`${XERO_API_BASE}${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${XERO_API_BASE}${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (err: any) {
+    throw new Error(`Cannot reach Xero API. Check your internet connection and try again. (${err.message})`);
+  }
 
   if (response.status === 401 && retry) {
     try {
       await refreshTokens(userId);
       return xeroApiCall(userId, method, path, body, false);
     } catch {
-      throw new Error("Xero authentication failed");
+      throw new Error("Xero authentication failed - please reconnect to Xero in Settings");
     }
   }
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Xero API error ${response.status}: ${text}`);
+    throw new XeroApiError(response.status, `Xero API error ${response.status}: ${text}`);
   }
 
   return response.json();
@@ -199,8 +242,12 @@ export async function syncContactToXero(
     try {
       await xeroApiCall(userId, "GET", `/Contacts/${regularBooker.xeroContactId}`);
       return regularBooker.xeroContactId;
-    } catch {
-      // contact not found in xero, will create new
+    } catch (err: any) {
+      if (err instanceof XeroApiError && err.statusCode === 404) {
+        console.log(`Xero contact ${regularBooker.xeroContactId} not found in Xero, will create new`);
+      } else {
+        throw new Error(`Failed to verify existing Xero contact: ${err.message}`);
+      }
     }
   }
 
@@ -208,18 +255,14 @@ export async function syncContactToXero(
   const name = regularBooker?.organizationName || contact.name || contact.email || "Unknown";
 
   if (email) {
-    try {
-      const escapedEmail = email.replace(/"/g, '\\"');
-      const searchResult = await xeroApiCall(userId, "GET", `/Contacts?where=EmailAddress=="${escapedEmail}"`);
-      if (searchResult.Contacts?.length > 0) {
-        const xeroContactId = searchResult.Contacts[0].ContactID;
-        if (regularBooker) {
-          await storage.updateRegularBooker(regularBooker.id, { xeroContactId } as any);
-        }
-        return xeroContactId;
+    const escapedEmail = email.replace(/"/g, '\\"');
+    const searchResult = await xeroApiCall(userId, "GET", `/Contacts?where=EmailAddress=="${escapedEmail}"`);
+    if (searchResult.Contacts?.length > 0) {
+      const xeroContactId = searchResult.Contacts[0].ContactID;
+      if (regularBooker) {
+        await storage.updateRegularBooker(regularBooker.id, { xeroContactId } as any);
       }
-    } catch {
-      // search failed, will create
+      return xeroContactId;
     }
   }
 
@@ -272,6 +315,9 @@ export async function generateXeroInvoice(
 
   const settings = await storage.getXeroSettings(userId);
   if (!settings?.connected) throw new Error("Xero not connected");
+
+  const accountCode = settings.accountCode || "200";
+  const taxType = settings.taxType || "OUTPUT2";
 
   if (!booking.bookerId) throw new Error("Booking has no booker contact");
   const xeroContactId = await syncContactToXero(userId, booking.bookerId);
@@ -329,8 +375,8 @@ export async function generateXeroInvoice(
         Description: description,
         Quantity: 1,
         UnitAmount: unitAmount.toFixed(2),
-        AccountCode: "200",
-        TaxType: "OUTPUT2",
+        AccountCode: accountCode,
+        TaxType: taxType,
         ...(discountPct > 0 ? { DiscountRate: discountPct.toFixed(2) } : {}),
       },
     ],

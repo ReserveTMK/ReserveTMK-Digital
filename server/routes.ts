@@ -11664,11 +11664,20 @@ Rules:
   app.post("/api/xero/save-credentials", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { xeroClientId, xeroClientSecret } = req.body;
+      const { xeroClientId, xeroClientSecret, accountCode, taxType } = req.body;
       if (!xeroClientId || !xeroClientSecret) {
         return res.status(400).json({ message: "Client ID and Client Secret are required" });
       }
-      await storage.upsertXeroSettings(userId, { xeroClientId, xeroClientSecret });
+      const updateData: any = { xeroClientId, xeroClientSecret };
+      if (accountCode !== undefined) {
+        const trimmed = String(accountCode).trim();
+        updateData.accountCode = trimmed || "200";
+      }
+      if (taxType !== undefined) {
+        const trimmed = String(taxType).trim();
+        updateData.taxType = trimmed || "OUTPUT2";
+      }
+      await storage.upsertXeroSettings(userId, updateData);
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -11715,7 +11724,7 @@ Rules:
       const userId = (req.user as any).claims.sub;
       const settings = await storage.getXeroSettings(userId);
       if (!settings) {
-        return res.json({ connected: false, hasCredentials: false });
+        return res.json({ connected: false, hasCredentials: false, accountCode: "200", taxType: "OUTPUT2" });
       }
       res.json({
         connected: settings.connected || false,
@@ -11723,7 +11732,29 @@ Rules:
         organisationName: settings.organisationName || null,
         connectedAt: settings.connectedAt || null,
         tokenExpiresAt: settings.tokenExpiresAt || null,
+        accountCode: settings.accountCode || "200",
+        taxType: settings.taxType || "OUTPUT2",
       });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/xero/update-account-settings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { accountCode, taxType } = req.body;
+      const updateData: any = {};
+      if (accountCode !== undefined) {
+        const trimmed = String(accountCode).trim();
+        updateData.accountCode = trimmed || "200";
+      }
+      if (taxType !== undefined) {
+        const trimmed = String(taxType).trim();
+        updateData.taxType = trimmed || "OUTPUT2";
+      }
+      await storage.upsertXeroSettings(userId, updateData);
+      res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

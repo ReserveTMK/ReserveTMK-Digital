@@ -1492,6 +1492,8 @@ export const xeroSettings = pgTable("xero_settings", {
   connected: boolean("connected").default(false),
   connectedAt: timestamp("connected_at"),
   organisationName: text("organisation_name"),
+  accountCode: text("account_code").default("200"),
+  taxType: text("tax_type").default("OUTPUT2"),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
