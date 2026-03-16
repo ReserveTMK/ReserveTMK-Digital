@@ -146,10 +146,7 @@ export default function FundersPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingFunder, setEditingFunder] = useState<Funder | null>(null);
   const [viewingFunder, setViewingFunder] = useState<Funder | null>(null);
-  const [docFilter, setDocFilter] = useState<string>("all");
-  const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: fundersList = [], isLoading } = useQuery<Funder[]>({
     queryKey: ["/api/funders"],
@@ -274,6 +271,10 @@ export default function FundersPage() {
           funder={viewingFunder}
           onClose={() => setViewingFunder(null)}
           onEdit={() => { setEditingFunder(viewingFunder); setViewingFunder(null); }}
+          onEditWithData={(enrichedData) => {
+            setEditingFunder({ ...viewingFunder, ...enrichedData } as Funder);
+            setViewingFunder(null);
+          }}
           onDelete={() => { setDeleteConfirm(viewingFunder.id); }}
           onGenerateReport={() => setLocation(`/reports?funder=${viewingFunder.id}`)}
         />
@@ -436,34 +437,7 @@ function FunderFormDialog({
     notes: defaultValues?.notes || "",
   });
 
-  const [isGenerating, setIsGenerating] = useState(false);
   const { toast } = useToast();
-
-  const handleAiGenerate = async () => {
-    if (!defaultValues?.id) {
-      toast({ title: "Save the funder first", description: "Please save basic details before generating the profile with AI.", variant: "destructive" });
-      return;
-    }
-    setIsGenerating(true);
-    try {
-      const response = await apiRequest("POST", `/api/funders/${defaultValues.id}/ai-generate`);
-      const result = await response.json();
-      setForm(prev => ({
-        ...prev,
-        outcomesFramework: result.outcomesFramework || prev.outcomesFramework,
-        outcomeFocus: result.outcomeFocus || prev.outcomeFocus,
-        reportingGuidance: result.reportingGuidance || prev.reportingGuidance,
-        narrativeStyle: result.narrativeStyle || prev.narrativeStyle,
-        prioritySections: Array.isArray(result.prioritySections) ? result.prioritySections : prev.prioritySections,
-        partnershipStrategy: result.partnershipStrategy || prev.partnershipStrategy,
-      }));
-      toast({ title: "Profile generated", description: "AI has filled in the profile fields. Review and save when ready." });
-    } catch (err: any) {
-      toast({ title: "Generation failed", description: err.message || "Could not generate profile", variant: "destructive" });
-    } finally {
-      setIsGenerating(false);
-    }
-  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -643,25 +617,9 @@ function FunderFormDialog({
           </div>
 
           <div className="space-y-3 p-4 border rounded-lg bg-muted/30">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="text-base font-semibold">Report Context</Label>
-                <p className="text-xs text-muted-foreground mt-0.5">Help the AI understand what this funder cares about when generating reports</p>
-              </div>
-              {defaultValues?.id && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleAiGenerate}
-                  disabled={isGenerating}
-                  data-testid="button-ai-generate"
-                  className="gap-1.5"
-                >
-                  {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                  {isGenerating ? "Generating…" : "AI Generate"}
-                </Button>
-              )}
+            <div>
+              <Label className="text-base font-semibold">Report Context</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">Help the AI understand what this funder cares about when generating reports</p>
             </div>
 
             <div className="space-y-2">
@@ -768,19 +726,21 @@ function FunderDetailDialog({
   funder,
   onClose,
   onEdit,
+  onEditWithData,
   onDelete,
   onGenerateReport,
 }: {
   funder: Funder;
   onClose: () => void;
   onEdit: () => void;
+  onEditWithData: (enrichedData: Partial<Funder>) => void;
   onDelete: () => void;
   onGenerateReport: () => void;
 }) {
   const { toast } = useToast();
   const [docFilter, setDocFilter] = useState("all");
   const [showUploadDialog, setShowUploadDialog] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isEnriching, setIsEnriching] = useState(false);
 
   const { data: documents = [], isLoading: docsLoading } = useQuery<any[]>({
     queryKey: ["/api/funders", funder.id, "documents"],
@@ -848,6 +808,27 @@ function FunderDetailDialog({
     }
   };
 
+  const handleEnrichment = async () => {
+    setIsEnriching(true);
+    try {
+      const response = await apiRequest("POST", `/api/funders/${funder.id}/ai-generate`);
+      const result = await response.json();
+      toast({ title: "Enrichment complete", description: "Review the generated profile fields and save when ready." });
+      setIsEnriching(false);
+      onEditWithData({
+        outcomesFramework: result.outcomesFramework || funder.outcomesFramework,
+        outcomeFocus: result.outcomeFocus || funder.outcomeFocus,
+        reportingGuidance: result.reportingGuidance || funder.reportingGuidance,
+        narrativeStyle: result.narrativeStyle || funder.narrativeStyle,
+        prioritySections: Array.isArray(result.prioritySections) ? result.prioritySections : funder.prioritySections,
+        partnershipStrategy: result.partnershipStrategy || funder.partnershipStrategy,
+      } as Partial<Funder>);
+    } catch (err: any) {
+      toast({ title: "Enrichment failed", description: err.message || "Could not generate profile", variant: "destructive" });
+      setIsEnriching(false);
+    }
+  };
+
   const dates = [
     { label: "Contract Start", value: funder.contractStart },
     { label: "Contract End", value: funder.contractEnd },
@@ -884,6 +865,123 @@ function FunderDetailDialog({
             {funder.narrativeStyle && <Badge variant="outline">{STYLE_LABELS[funder.narrativeStyle] || funder.narrativeStyle}</Badge>}
             {funder.reportingCadence && <Badge variant="outline">{CADENCE_LABELS[funder.reportingCadence]}</Badge>}
           </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="font-medium" data-testid="text-documents-heading">Documents</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">Upload funder documents (framework, contract, profile) to enable AI enrichment</p>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => setShowUploadDialog(true)} data-testid="button-upload-doc">
+                <Upload className="w-4 h-4 mr-1" /> Upload
+              </Button>
+            </div>
+            {documents.length > 0 && (
+              <div className="flex gap-1 mb-3 flex-wrap">
+                <Button
+                  size="sm"
+                  variant={docFilter === "all" ? "default" : "ghost"}
+                  onClick={() => setDocFilter("all")}
+                  className="h-7 text-xs"
+                >
+                  All ({documents.length})
+                </Button>
+                {FUNDER_DOCUMENT_TYPES.map(t => {
+                  const cnt = documents.filter((d: any) => d.documentType === t).length;
+                  if (cnt === 0) return null;
+                  return (
+                    <Button
+                      key={t}
+                      size="sm"
+                      variant={docFilter === t ? "default" : "ghost"}
+                      onClick={() => setDocFilter(t)}
+                      className="h-7 text-xs"
+                    >
+                      {DOC_TYPE_LABELS[t]} ({cnt})
+                    </Button>
+                  );
+                })}
+              </div>
+            )}
+            {docsLoading ? (
+              <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin" /></div>
+            ) : filteredDocs.length === 0 ? (
+              <Card className="p-6 text-center border-dashed">
+                <Upload className="w-8 h-8 mx-auto text-muted-foreground/40 mb-2" />
+                <p className="text-sm text-muted-foreground">No documents uploaded yet</p>
+                <p className="text-xs text-muted-foreground mt-1">Upload funder documents to get started with AI enrichment</p>
+                <Button size="sm" variant="outline" className="mt-3" onClick={() => setShowUploadDialog(true)} data-testid="button-upload-doc-empty">
+                  <Upload className="w-4 h-4 mr-1" /> Upload Document
+                </Button>
+              </Card>
+            ) : (
+              <div className="space-y-2">
+                {filteredDocs.map((doc: any) => (
+                  <Card key={doc.id} className="p-3 flex items-center justify-between" data-testid={`doc-${doc.id}`}>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{doc.fileName}</p>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Badge className={`${DOC_TYPE_COLORS[doc.documentType] || DOC_TYPE_COLORS.other} text-xs`}>
+                            {DOC_TYPE_LABELS[doc.documentType] || doc.documentType}
+                          </Badge>
+                          {doc.fileSize && <span>{formatFileSize(doc.fileSize)}</span>}
+                          <span>{format(new Date(doc.createdAt), "d MMM yyyy")}</span>
+                        </div>
+                        {doc.notes && <p className="text-xs text-muted-foreground mt-1 truncate">{doc.notes}</p>}
+                      </div>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0"
+                        onClick={() => handleDownload(doc.id, doc.fileName)}
+                        data-testid={`button-download-${doc.id}`}
+                      >
+                        <Download className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0 text-red-600"
+                        onClick={() => deleteDocMutation.mutate(doc.id)}
+                        data-testid={`button-delete-doc-${doc.id}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <Card className={`p-4 ${documents.length === 0 ? "opacity-60" : ""}`} data-testid="card-enrichment">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Sparkles className="w-4 h-4 text-primary" />
+                  <h3 className="font-medium">Funder Enrichment</h3>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {documents.length === 0
+                    ? "Upload documents above first, then use AI to auto-generate profile fields"
+                    : `Reads ${documents.length} uploaded document${documents.length === 1 ? "" : "s"} and auto-generates outcomes framework, reporting guidance, and partnership strategy`}
+                </p>
+              </div>
+              <Button
+                onClick={handleEnrichment}
+                disabled={isEnriching || documents.length === 0}
+                className="gap-1.5 shrink-0"
+                data-testid="button-funder-enrichment"
+              >
+                {isEnriching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                {isEnriching ? "Enriching…" : "Funder Enrichment"}
+              </Button>
+            </div>
+          </Card>
 
           {(funder.contactPerson || funder.contactEmail || funder.contactPhone) && (
             <Card className="p-4">
@@ -1006,89 +1104,6 @@ function FunderDetailDialog({
               <p className="mt-1 whitespace-pre-wrap">{funder.notes}</p>
             </div>
           )}
-
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-medium">Documents</h3>
-              <Button size="sm" variant="outline" onClick={() => setShowUploadDialog(true)} data-testid="button-upload-doc">
-                <Upload className="w-4 h-4 mr-1" /> Upload
-              </Button>
-            </div>
-            <div className="flex gap-1 mb-3 flex-wrap">
-              <Button
-                size="sm"
-                variant={docFilter === "all" ? "default" : "ghost"}
-                onClick={() => setDocFilter("all")}
-                className="h-7 text-xs"
-              >
-                All ({documents.length})
-              </Button>
-              {FUNDER_DOCUMENT_TYPES.map(t => {
-                const cnt = documents.filter((d: any) => d.documentType === t).length;
-                if (cnt === 0) return null;
-                return (
-                  <Button
-                    key={t}
-                    size="sm"
-                    variant={docFilter === t ? "default" : "ghost"}
-                    onClick={() => setDocFilter(t)}
-                    className="h-7 text-xs"
-                  >
-                    {DOC_TYPE_LABELS[t]} ({cnt})
-                  </Button>
-                );
-              })}
-            </div>
-            {docsLoading ? (
-              <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin" /></div>
-            ) : filteredDocs.length === 0 ? (
-              <Card className="p-6 text-center">
-                <FileText className="w-8 h-8 mx-auto text-muted-foreground/40 mb-2" />
-                <p className="text-sm text-muted-foreground">No documents uploaded</p>
-              </Card>
-            ) : (
-              <div className="space-y-2">
-                {filteredDocs.map((doc: any) => (
-                  <Card key={doc.id} className="p-3 flex items-center justify-between" data-testid={`doc-${doc.id}`}>
-                    <div className="flex items-center gap-3 min-w-0">
-                      <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">{doc.fileName}</p>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <Badge className={`${DOC_TYPE_COLORS[doc.documentType] || DOC_TYPE_COLORS.other} text-xs`}>
-                            {DOC_TYPE_LABELS[doc.documentType] || doc.documentType}
-                          </Badge>
-                          {doc.fileSize && <span>{formatFileSize(doc.fileSize)}</span>}
-                          <span>{format(new Date(doc.createdAt), "d MMM yyyy")}</span>
-                        </div>
-                        {doc.notes && <p className="text-xs text-muted-foreground mt-1 truncate">{doc.notes}</p>}
-                      </div>
-                    </div>
-                    <div className="flex gap-1 shrink-0">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 w-8 p-0"
-                        onClick={() => handleDownload(doc.id, doc.fileName)}
-                        data-testid={`button-download-${doc.id}`}
-                      >
-                        <Download className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 w-8 p-0 text-red-600"
-                        onClick={() => deleteDocMutation.mutate(doc.id)}
-                        data-testid={`button-delete-doc-${doc.id}`}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
 
         {showUploadDialog && (
