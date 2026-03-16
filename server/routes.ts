@@ -9983,24 +9983,63 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
           },
           {
             userId,
-            name: "EDO / Auckland Council",
-            organisation: "Auckland Council",
+            name: "EDO / Auckland Council — Economic Development Office",
+            organisation: "Auckland Council Economic Development Office",
             status: "active_funder" as const,
             communityLens: "all" as const,
-            outcomesFramework: "Auckland Plan",
+            outcomesFramework: "Inclusive & Sustainable Economic Growth",
+            outcomeFocus: `Inclusive Economic Growth: Māori and Pacific communities positioned as economic drivers and innovators. Indicators: enterprises started/formalised/grown through hub support, Māori and Pacific entrepreneurs engaged, repeat usage rate, revenue generated from hub-facilitated activity, jobs created or sustained.
+
+Social & Sector Innovation: Ecosystem activations that connect communities, sectors and opportunities. Indicators: activations/events/wānanga hosted, GridAKL and innovation network connections formed, rangatahi engaged in enterprise or innovation programmes, partnerships brokered across sectors.
+
+Ecosystem Building: A connected and collaborative enterprise support ecosystem across Tāmaki Makaurau. Indicators: organisations partnered with, cross-hub referrals, co-investment attracted from other funders, hub utilisation and venue hire metrics.
+
+Tāmaki Rohe Economic Contribution: Local enterprises retained and grown, contributing to Auckland's inclusive economy. Indicators: local enterprises retained through hub support, new enterprises established, geographic spread of users, co-investment leverage ratio.`,
+            reportingGuidance: `Reporting Rhythm:
+• Monthly: Usage numbers, activations, events, venue hire → Internal / Tātaki Auckland Unlimited
+• Quarterly: Inclusive growth indicators, ecosystem connections, co-investment tracking, partnership updates → EDO quarterly reporting
+• Annually: Full impact report — economic indicators, qualitative stories, co-investment leverage summary, forward plan → Auckland Council / EDO annual cycle
+
+Co-investment Partners: Ngā Mātārae MOF, Tātaki Auckland Unlimited, Local Board, Foundation North, MBIE.
+
+What they want to see: Evidence of inclusive economic impact, geographic purpose (Tāmaki Makaurau reach), co-investment leverage from other funders, Māori and Pacific participation data, enterprise growth metrics, innovation ecosystem development.
+
+Framing: The hub as economic infrastructure for inclusive growth — enabling Māori and Pacific enterprise, connecting innovation ecosystems, and contributing measurably to Auckland's economic development goals.`,
             reportingCadence: "quarterly" as const,
             narrativeStyle: "compliance" as const,
             prioritySections: ["engagement", "delivery", "value"],
             funderTag: "edo-auckland-council",
+            contractStart: new Date("2025-07-01T00:00:00.000Z"),
             isDefault: true,
           },
           {
             userId,
-            name: "Foundation North",
+            name: "Foundation North — Pūtea Hāpai Oranga",
             organisation: "Foundation North",
             status: "active_funder" as const,
-            communityLens: "pasifika" as const,
-            outcomesFramework: "Community Wellbeing",
+            communityLens: "maori" as const,
+            outcomesFramework: "Increased Equity / Community Support",
+            outcomeFocus: `Increased Equity (Hāpai te ōritetanga): Improved equity and wellbeing outcomes for Māori — communities leading their own solutions, not having solutions delivered to them. Indicators: Māori entrepreneurs/enterprises supported, whānau reporting improved confidence or capability, community-led initiatives launched, equitable access to enterprise support, cultural safety ratings.
+
+Community Support (Hāpori awhina): Connected, resilient communities with access to spaces, networks, and opportunities. Indicators: community events/hui hosted, total attendees (proportion Māori), community connections and networks formed, organisations partnered with, user satisfaction and sense of belonging, pride and resilience indicators.
+
+Te Tiriti o Waitangi (cross-cutting): Te reo Māori visible and normalised, kaupapa Māori embedded in operations, Māori-led decision making. Indicators: te reo visible in signage/communications/programmes, kaupapa Māori programming delivered, Māori governance and advisory involvement, tikanga integration in operations, Māori staff and facilitator representation.`,
+            reportingGuidance: `Grant Types:
+• Quick Response Grant: Up to $25,000, approximately 2-month decision turnaround
+• Community Grant: Over $25,000, approximately 5-month decision turnaround
+
+Reporting: 12-month impact report required at end of funding period.
+
+Application Strategy:
+• Lead with community voice — stories of whānau and communities leading change
+• Show tangata whenua priority alignment — how the mahi centres Māori needs and aspirations
+• Demonstrate community-led solutions, not service delivery
+• Evidence of Te Tiriti commitment in governance and operations
+• Include both quantitative indicators and qualitative impact stories
+
+What to show: Community ownership and self-determination, grassroots impact stories, te reo and tikanga integration, equitable access, partnership and collaboration evidence.
+
+What to avoid: Deficit framing, top-down service delivery language, purely statistical reporting without community voice, treating Māori as beneficiaries rather than leaders.`,
             reportingCadence: "annual" as const,
             narrativeStyle: "story" as const,
             prioritySections: ["engagement", "outcomes", "impact"],
