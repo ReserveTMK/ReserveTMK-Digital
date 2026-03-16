@@ -8,12 +8,17 @@ import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { authStorage } from "./storage";
 
+function getOidcClientId(): string {
+  return process.env.OIDC_CLIENT_ID || process.env.REPL_ID!;
+}
+
 async function discoverWithRetry(maxRetries = 5, delayMs = 3000): Promise<client.Configuration> {
+  const oidcClientId = getOidcClientId();
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       return await client.discovery(
         new URL(process.env.ISSUER_URL ?? "https://replit.com/oidc"),
-        process.env.REPL_ID!
+        oidcClientId
       );
     } catch (err: any) {
       const is503 = err?.cause?.status === 503 || err?.message?.includes("503") || err?.code === "OAUTH_RESPONSE_IS_NOT_CONFORM";
@@ -91,7 +96,8 @@ function getOrInitOidcConfig(): Promise<client.Configuration> {
 }
 
 function getCallbackUrl(req: any): string {
-  const domain = process.env.REPLIT_DEV_DOMAIN || req.hostname;
+  const isDeployment = !!process.env.REPLIT_DEPLOYMENT;
+  const domain = isDeployment ? req.hostname : (process.env.REPLIT_DEV_DOMAIN || req.hostname);
   return `https://${domain}/api/callback`;
 }
 
@@ -101,7 +107,7 @@ export async function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
-  console.log(`[auth] Setup: REPL_ID=${process.env.REPL_ID}, REPLIT_DEPLOYMENT=${process.env.REPLIT_DEPLOYMENT}, REPLIT_DEV_DOMAIN=${process.env.REPLIT_DEV_DOMAIN}, REPLIT_DOMAINS=${process.env.REPLIT_DOMAINS}`);
+  console.log(`[auth] Setup: REPL_ID=${process.env.REPL_ID}, OIDC_CLIENT_ID=${getOidcClientId()}, REPLIT_DEPLOYMENT=${process.env.REPLIT_DEPLOYMENT}, REPLIT_DEV_DOMAIN=${process.env.REPLIT_DEV_DOMAIN}, REPLIT_DOMAINS=${process.env.REPLIT_DOMAINS}`);
 
   const verify: VerifyFunction = async (
     tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
@@ -185,11 +191,12 @@ export async function setupAuth(app: Express) {
   app.get("/api/logout", async (req, res) => {
     try {
       const config = await getOrInitOidcConfig();
-      const domain = process.env.REPLIT_DEV_DOMAIN || req.hostname;
+      const isDeployment = !!process.env.REPLIT_DEPLOYMENT;
+      const domain = isDeployment ? req.hostname : (process.env.REPLIT_DEV_DOMAIN || req.hostname);
       req.logout(() => {
         res.redirect(
           client.buildEndSessionUrl(config, {
-            client_id: process.env.REPL_ID!,
+            client_id: getOidcClientId(),
             post_logout_redirect_uri: `https://${domain}`,
           }).href
         );
