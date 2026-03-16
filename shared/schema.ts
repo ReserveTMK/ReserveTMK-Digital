@@ -354,19 +354,28 @@ export const calendarSettings = pgTable("calendar_settings", {
 export const GROUP_TYPES = [
   "Business",
   "Social Enterprise",
-  "Creative Movement",
-  "Community Initiative",
-  "Partner Organization",
+  "Creative / Arts",
+  "Community Organisation",
+  "Iwi / Hapū",
+  "Government / Council",
+  "Education / Training",
+  "Health / Social Services",
   "Funder",
-  "Other",
+  "Corporate / Sponsor",
+  "Resident Company",
+  "NGO",
+  "Uncategorised",
 ] as const;
 export type GroupType = typeof GROUP_TYPES[number];
+
+export const ENGAGEMENT_LEVELS = ["Active", "Occasional", "Dormant"] as const;
+export type EngagementLevel = typeof ENGAGEMENT_LEVELS[number];
 
 export const groups = pgTable("groups", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
   name: text("name").notNull(),
-  type: text("type").notNull().default("Business"),
+  type: text("type").notNull().default("Uncategorised"),
   organizationTypeOther: text("organization_type_other"),
   description: text("description"),
   contactEmail: text("contact_email"),
@@ -379,6 +388,7 @@ export const groups = pgTable("groups", {
   relationshipStrength: integer("relationship_strength"),
   strategicImportance: text("strategic_importance"),
   ecosystemRoles: text("ecosystem_roles").array(),
+  engagementLevel: text("engagement_level").default("Active"),
   importSource: text("import_source"),
   isCommunity: boolean("is_community").default(false),
   isInnovator: boolean("is_innovator").default(false),
@@ -1189,7 +1199,8 @@ export const insertGroupSchema = createInsertSchema(groups).omit({
   createdAt: true,
   updatedAt: true,
 }).extend({
-  type: z.enum(GROUP_TYPES).default("Business"),
+  type: z.enum(GROUP_TYPES).default("Uncategorised"),
+  engagementLevel: z.enum(ENGAGEMENT_LEVELS).default("Active"),
 });
 
 export const insertGroupMemberSchema = createInsertSchema(groupMembers).omit({

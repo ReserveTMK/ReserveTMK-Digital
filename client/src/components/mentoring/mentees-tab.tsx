@@ -61,8 +61,8 @@ const ETHNICITY_OPTIONS_FLAT = [
 const VENTURE_TYPE_LABELS_MAP: Record<string, string> = {
   commercial_business: "Commercial Business",
   social_enterprise: "Social Enterprise",
-  creative_movement: "Creative Movement",
-  community_initiative: "Community Initiative",
+  creative_movement: "Creative / Arts",
+  community_initiative: "Community Organisation",
   exploring: "Exploring",
 };
 

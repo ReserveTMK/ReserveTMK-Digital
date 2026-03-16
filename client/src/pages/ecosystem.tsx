@@ -68,11 +68,17 @@ const ROLE_BADGE_COLORS: Record<string, string> = {
 const TYPE_COLORS: Record<string, string> = {
   "Business": "bg-amber-500/10 text-amber-700 dark:text-amber-300",
   "Social Enterprise": "bg-teal-500/10 text-teal-700 dark:text-teal-300",
-  "Creative Movement": "bg-pink-500/10 text-pink-700 dark:text-pink-300",
-  "Community Initiative": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
-  "Partner Organization": "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
+  "Creative / Arts": "bg-pink-500/10 text-pink-700 dark:text-pink-300",
+  "Community Organisation": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
+  "Iwi / Hapū": "bg-orange-500/10 text-orange-700 dark:text-orange-300",
+  "Government / Council": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
+  "Education / Training": "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
+  "Health / Social Services": "bg-rose-500/10 text-rose-700 dark:text-rose-300",
   "Funder": "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-  "Other": "bg-slate-500/10 text-slate-700 dark:text-slate-300",
+  "Corporate / Sponsor": "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
+  "Resident Company": "bg-purple-500/10 text-purple-700 dark:text-purple-300",
+  "NGO": "bg-lime-500/10 text-lime-700 dark:text-lime-300",
+  "Uncategorised": "bg-slate-500/10 text-slate-700 dark:text-slate-300",
 };
 
 type EngagementMetrics = {

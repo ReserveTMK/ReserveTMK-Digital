@@ -501,8 +501,8 @@ export default function ContactDetail() {
                         {({
                           commercial_business: "Commercial Business",
                           social_enterprise: "Social Enterprise",
-                          creative_movement: "Creative Movement",
-                          community_initiative: "Community Initiative",
+                          creative_movement: "Creative / Arts",
+                          community_initiative: "Community Organisation",
                           exploring: "Exploring",
                           ecosystem_partner: "Ecosystem Partner",
                         } as Record<string, string>)[contact.ventureType] || contact.ventureType.replace(/_/g, ' ')}
@@ -2198,8 +2198,8 @@ function EditContactDialog({ open, onOpenChange, contact }: { open: boolean; onO
                 <SelectContent>
                   <SelectItem value="commercial_business">Commercial Business</SelectItem>
                   <SelectItem value="social_enterprise">Social Enterprise</SelectItem>
-                  <SelectItem value="creative_movement">Creative Movement</SelectItem>
-                  <SelectItem value="community_initiative">Community Initiative</SelectItem>
+                  <SelectItem value="creative_movement">Creative / Arts</SelectItem>
+                  <SelectItem value="community_initiative">Community Organisation</SelectItem>
                   <SelectItem value="exploring">Exploring</SelectItem>
                   <SelectItem value="ecosystem_partner">Ecosystem Partner</SelectItem>
                 </SelectContent>

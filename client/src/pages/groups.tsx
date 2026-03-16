@@ -31,7 +31,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { GROUP_TYPES, type Group, type GroupMember } from "@shared/schema";
+import { GROUP_TYPES, ENGAGEMENT_LEVELS, type Group, type GroupMember } from "@shared/schema";
 import {
   Command,
   CommandEmpty,
@@ -49,11 +49,23 @@ import {
 const GROUP_TYPE_COLORS: Record<string, string> = {
   "Business": "bg-amber-500/10 text-amber-700 dark:text-amber-300",
   "Social Enterprise": "bg-teal-500/10 text-teal-700 dark:text-teal-300",
-  "Creative Movement": "bg-pink-500/10 text-pink-700 dark:text-pink-300",
-  "Community Initiative": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
-  "Partner Organization": "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
+  "Creative / Arts": "bg-pink-500/10 text-pink-700 dark:text-pink-300",
+  "Community Organisation": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
+  "Iwi / Hapū": "bg-orange-500/10 text-orange-700 dark:text-orange-300",
+  "Government / Council": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
+  "Education / Training": "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
+  "Health / Social Services": "bg-rose-500/10 text-rose-700 dark:text-rose-300",
   "Funder": "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-  "Other": "bg-slate-500/10 text-slate-700 dark:text-slate-300",
+  "Corporate / Sponsor": "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
+  "Resident Company": "bg-purple-500/10 text-purple-700 dark:text-purple-300",
+  "NGO": "bg-lime-500/10 text-lime-700 dark:text-lime-300",
+  "Uncategorised": "bg-slate-500/10 text-slate-700 dark:text-slate-300",
+};
+
+const ENGAGEMENT_COLORS: Record<string, string> = {
+  "Active": "bg-green-500/10 text-green-700 dark:text-green-300",
+  "Occasional": "bg-yellow-500/10 text-yellow-700 dark:text-yellow-300",
+  "Dormant": "bg-gray-500/10 text-gray-700 dark:text-gray-300",
 };
 
 function displayGroupType(group: { type: string; organizationTypeOther?: string | null }): string {
@@ -70,6 +82,7 @@ export default function Groups() {
   const { data: contacts } = useContacts();
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [engagementFilter, setEngagementFilter] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
@@ -143,6 +156,22 @@ export default function Groups() {
       setBulkTypeOpen(false);
       setBulkTypeValue("");
       setBulkTypeOther("");
+    },
+    onError: (error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const aiRecategoriseMutation = useMutation({
+    mutationFn: async (groupIds: number[]) => {
+      const res = await apiRequest('POST', '/api/groups/ai-recategorise', { groupIds });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+      toast({ title: "AI Recategorised", description: `${data.updated || 0} group(s) updated` });
+      setSelectedGroups(new Set());
+      setEditMode(false);
     },
     onError: (error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -348,9 +377,10 @@ export default function Groups() {
         g.description?.toLowerCase().includes(search.toLowerCase()) ||
         g.contactEmail?.toLowerCase().includes(search.toLowerCase());
       const matchesType = typeFilter === "all" || g.type === typeFilter;
-      return matchesSearch && matchesType;
+      const matchesEngagement = engagementFilter === "all" || ((g as any).engagementLevel || "Active") === engagementFilter;
+      return matchesSearch && matchesType && matchesEngagement;
     });
-  }, [groups, search, typeFilter]);
+  }, [groups, search, typeFilter, engagementFilter]);
 
   const displayGroups = useMemo(() => {
     let result = filteredGroups;
@@ -481,6 +511,16 @@ export default function Groups() {
                   <Building2 className="w-4 h-4 mr-2" />
                   Set Type ({selectedGroups.size})
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => aiRecategoriseMutation.mutate(Array.from(selectedGroups))}
+                  disabled={aiRecategoriseMutation.isPending}
+                  data-testid="button-ai-recategorise"
+                >
+                  {aiRecategoriseMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                  {aiRecategoriseMutation.isPending ? "Analysing..." : `AI Categorise (${selectedGroups.size})`}
+                </Button>
               </>
             )}
             <Button variant="outline" onClick={toggleEditMode} data-testid="button-toggle-edit-mode">
@@ -600,15 +640,30 @@ export default function Groups() {
                 />
               </div>
               <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="w-full sm:w-[220px]" data-testid="select-type-filter">
+                <SelectTrigger className="w-full sm:w-[180px]" data-testid="select-type-filter">
                   <SelectValue placeholder="All types" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All types ({groups?.length || 0})</SelectItem>
                   {GROUP_TYPES.map((t) => {
                     const count = groups?.filter((g: Group) => g.type === t).length || 0;
+                    if (count === 0) return null;
                     return (
                       <SelectItem key={t} value={t}>{t} ({count})</SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              <Select value={engagementFilter} onValueChange={setEngagementFilter}>
+                <SelectTrigger className="w-full sm:w-[160px]" data-testid="select-engagement-filter">
+                  <SelectValue placeholder="All engagement" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All engagement</SelectItem>
+                  {ENGAGEMENT_LEVELS.map((level) => {
+                    const count = groups?.filter((g: any) => (g.engagementLevel || "Active") === level).length || 0;
+                    return (
+                      <SelectItem key={level} value={level}>{level} ({count})</SelectItem>
                     );
                   })}
                 </SelectContent>
@@ -1272,8 +1327,9 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
   onUpdate: ReturnType<typeof useUpdateGroup>;
 }) {
   const [name, setName] = useState("");
-  const [type, setType] = useState<string>("Business");
+  const [type, setType] = useState<string>("Uncategorised");
   const [organizationTypeOther, setOrganizationTypeOther] = useState("");
+  const [engagementLevel, setEngagementLevel] = useState<string>("Active");
   const [description, setDescription] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
@@ -1283,8 +1339,9 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
 
   const resetForm = () => {
     setName(group?.name || "");
-    setType(group?.type || "Business");
+    setType(group?.type || "Uncategorised");
     setOrganizationTypeOther(group?.organizationTypeOther || "");
+    setEngagementLevel((group as any)?.engagementLevel || "Active");
     setDescription(group?.description || "");
     setContactEmail(group?.contactEmail || "");
     setContactPhone(group?.contactPhone || "");
@@ -1304,6 +1361,7 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
       name: name.trim(),
       type,
       organizationTypeOther: type === "Other" ? (organizationTypeOther.trim() || null) : null,
+      engagementLevel,
       description: description.trim() || undefined,
       contactEmail: contactEmail.trim() || undefined,
       contactPhone: contactPhone.trim() || undefined,
@@ -1337,26 +1395,33 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
             <Label>Name *</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Creative Collective NZ" data-testid="input-group-name" />
           </div>
-          <div className="space-y-2">
-            <Label>Type</Label>
-            <Select value={type} onValueChange={(v) => { setType(v); if (v !== "Other") setOrganizationTypeOther(""); }}>
-              <SelectTrigger data-testid="select-group-type">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {GROUP_TYPES.map((t) => (
-                  <SelectItem key={t} value={t}>{t}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {type === "Other" && (
-              <Input
-                value={organizationTypeOther}
-                onChange={(e) => setOrganizationTypeOther(e.target.value)}
-                placeholder="Specify organization type..."
-                data-testid="input-group-type-other"
-              />
-            )}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Type</Label>
+              <Select value={type} onValueChange={(v) => { setType(v); if (v !== "Other") setOrganizationTypeOther(""); }}>
+                <SelectTrigger data-testid="select-group-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {GROUP_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Engagement</Label>
+              <Select value={engagementLevel} onValueChange={setEngagementLevel}>
+                <SelectTrigger data-testid="select-group-engagement">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ENGAGEMENT_LEVELS.map((level) => (
+                    <SelectItem key={level} value={level}>{level}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <div className="space-y-2">
             <Label>Description</Label>
@@ -1567,6 +1632,11 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit, allGro
             <DialogDescription className="sr-only">Group details and management</DialogDescription>
             <div className="flex items-center gap-2">
               <Badge className={GROUP_TYPE_COLORS[group.type] || ""}>{displayGroupType(group)}</Badge>
+              {(group as any).engagementLevel && (
+                <Badge className={ENGAGEMENT_COLORS[(group as any).engagementLevel] || ""} data-testid="badge-engagement-level">
+                  {(group as any).engagementLevel}
+                </Badge>
+              )}
               <Button
                 size="sm"
                 variant="outline"

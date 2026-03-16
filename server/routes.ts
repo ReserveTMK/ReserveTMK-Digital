@@ -6601,15 +6601,16 @@ Important:
                 await storage.createGroup({
                   userId,
                   name: org.name,
-                  type: org.type === "community_group" ? "Community Initiative" :
-                        org.type === "community_collective" ? "Community Initiative" :
+                  type: org.type === "community_group" ? "Community Organisation" :
+                        org.type === "community_collective" ? "Community Organisation" :
                         org.type === "business" ? "Business" :
-                        org.type === "partner" ? "Partner Organization" :
-                        org.type === "government" ? "Partner Organization" :
-                        org.type === "ngo" ? "Social Enterprise" :
-                        org.type === "education" ? "Other" :
-                        org.type === "funder" ? "Funder" : "Business",
-                  organizationTypeOther: org.type === "education" ? "Education" : (org.type === "resident_company" ? "Resident Company" : (org.type === "iwi" ? "Iwi" : null)),
+                        org.type === "partner" ? "Uncategorised" :
+                        org.type === "government" ? "Government / Council" :
+                        org.type === "ngo" ? "NGO" :
+                        org.type === "education" ? "Education / Training" :
+                        org.type === "funder" ? "Funder" :
+                        org.type === "resident_company" ? "Resident Company" :
+                        org.type === "iwi" ? "Iwi / Hapū" : "Business",
                   description: org.description || null,
                   notes: org.relationship ? `Relationship: ${org.relationship}. Imported from legacy report ${existing.quarterLabel}.` : `Imported from legacy report ${existing.quarterLabel}.`,
                   importSource: `Imported from legacy report ${existing.quarterLabel}`,
@@ -6694,15 +6695,16 @@ Important:
               await storage.createGroup({
                 userId,
                 name: org.name,
-                type: org.type === "community_group" ? "Community Initiative" :
-                      org.type === "community_collective" ? "Community Initiative" :
+                type: org.type === "community_group" ? "Community Organisation" :
+                      org.type === "community_collective" ? "Community Organisation" :
                       org.type === "business" ? "Business" :
-                      org.type === "partner" ? "Partner Organization" :
-                      org.type === "government" ? "Partner Organization" :
-                      org.type === "ngo" ? "Social Enterprise" :
-                      org.type === "education" ? "Other" :
-                      org.type === "funder" ? "Funder" : "Business",
-                organizationTypeOther: org.type === "education" ? "Education" : (org.type === "resident_company" ? "Resident Company" : (org.type === "iwi" ? "Iwi" : null)),
+                      org.type === "partner" ? "Uncategorised" :
+                      org.type === "government" ? "Government / Council" :
+                      org.type === "ngo" ? "NGO" :
+                      org.type === "education" ? "Education / Training" :
+                      org.type === "funder" ? "Funder" :
+                      org.type === "resident_company" ? "Resident Company" :
+                      org.type === "iwi" ? "Iwi / Hapū" : "Business",
                 description: org.description || null,
                 notes: org.relationship ? `Relationship: ${org.relationship}. Imported from legacy report ${report.quarterLabel}.` : `Imported from legacy report ${report.quarterLabel}.`,
                 importSource: `Imported from legacy report ${report.quarterLabel}`,
@@ -9562,6 +9564,99 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       res.json({ updated });
     } catch (err: any) {
       res.status(500).json({ message: "Failed to update group types" });
+    }
+  });
+
+  app.post("/api/groups/ai-recategorise", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { groupIds } = req.body;
+      if (!Array.isArray(groupIds) || groupIds.length === 0) {
+        return res.status(400).json({ message: "No group IDs provided" });
+      }
+      if (groupIds.length > 50) {
+        return res.status(400).json({ message: "Maximum 50 groups at a time" });
+      }
+
+      const allGroups = await storage.getGroups(userId);
+      const targetGroups = allGroups.filter(g => groupIds.includes(g.id));
+      if (targetGroups.length === 0) {
+        return res.status(404).json({ message: "No matching groups found" });
+      }
+
+      const { GROUP_TYPES } = await import("@shared/schema");
+      const validTypes = GROUP_TYPES.filter((t: string) => t !== "Uncategorised");
+
+      const groupList = targetGroups.map(g =>
+        `ID: ${g.id} | Name: "${g.name}" | Current: "${g.type}" | Email: "${g.contactEmail || ""}" | Website: "${g.website || ""}" | Description: "${g.description || ""}" | Notes: "${(g.notes || "").slice(0, 200)}"`
+      ).join("\n");
+
+      const prompt = `You are categorising organisations for a community hub in Tāmaki (East Auckland), Aotearoa New Zealand called The Reserve. Based on each organisation's name and available information, assign the most appropriate category.
+
+Available categories:
+${validTypes.map((t: string) => `- "${t}"`).join("\n")}
+
+Guidelines:
+- "Business" = commercial businesses, startups, sole traders
+- "Social Enterprise" = businesses with a social mission
+- "Creative / Arts" = artists, musicians, creatives, cultural practitioners, galleries
+- "Community Organisation" = community groups, collectives, neighbourhood orgs
+- "Iwi / Hapū" = Māori tribal organisations, hapū, marae committees
+- "Government / Council" = government agencies, councils, MSD, WINZ, police
+- "Education / Training" = schools, universities, training providers, PTEs
+- "Health / Social Services" = health providers, counselling, social workers, mental health
+- "Funder" = philanthropic foundations, grant-makers, funding bodies
+- "Corporate / Sponsor" = large corporates, sponsors, corporate partners
+- "Resident Company" = organisations that are resident/based at The Reserve
+- "NGO" = non-governmental organisations, charities, not-for-profits
+
+Also assign an engagement level:
+- "Active" = regular interaction in the past 6 months
+- "Occasional" = some interaction but infrequent
+- "Dormant" = no recent interaction, imported but inactive
+
+If you cannot determine the type, keep the current type. Default engagement to "Active" unless the description/notes suggest otherwise.
+
+Organisations to categorise:
+${groupList}
+
+Return a JSON array:
+[{ "id": <number>, "type": "<category>", "engagementLevel": "<Active|Occasional|Dormant>" }]`;
+
+      const raw = await claudeJSON({
+        model: "claude-haiku-4-5",
+        prompt,
+        temperature: 0.2,
+      });
+
+      const results: Array<{ id: number; type: string; engagementLevel: string }> = [];
+      const parsed = Array.isArray(raw) ? raw : (raw.results || raw.groups || []);
+      
+      let updated = 0;
+      for (const item of parsed) {
+        if (!item.id || !item.type) continue;
+        const group = targetGroups.find(g => g.id === item.id);
+        if (!group) continue;
+
+        const typeValid = (GROUP_TYPES as readonly string[]).includes(item.type);
+        const engValid = ["Active", "Occasional", "Dormant"].includes(item.engagementLevel);
+
+        const updates: Record<string, any> = {};
+        if (typeValid) updates.type = item.type;
+        if (engValid) updates.engagementLevel = item.engagementLevel;
+
+        if (Object.keys(updates).length > 0) {
+          await storage.updateGroup(group.id, updates);
+          updated++;
+          results.push({ id: group.id, type: updates.type || group.type, engagementLevel: updates.engagementLevel || group.engagementLevel || "Active" });
+        }
+      }
+
+      res.json({ updated, results });
+    } catch (err: any) {
+      if (err instanceof AIKeyMissingError) return res.status(503).json({ message: err.message });
+      console.error("AI recategorise error:", err);
+      res.status(500).json({ message: "Failed to recategorise groups" });
     }
   });
 
