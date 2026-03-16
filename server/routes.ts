@@ -8991,7 +8991,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
 
       const healthResult = await db.execute(sql`
         WITH last_engagement AS (
-          SELECT g.id as group_id, g.strategic_importance,
+          SELECT g.id as group_id, g.engagement_level,
             GREATEST(
               (SELECT MAX(e.start_time) FROM events e
                JOIN event_attendance ea ON ea.event_id = e.id
@@ -9008,7 +9008,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
           COUNT(*) as total,
           COUNT(CASE WHEN last_date >= NOW() - INTERVAL '90 days' THEN 1 END) as active,
           COUNT(CASE WHEN last_date < NOW() - INTERVAL '180 days' OR last_date IS NULL THEN 1 END) as dormant,
-          COUNT(CASE WHEN strategic_importance = 'high' AND (last_date < NOW() - INTERVAL '90 days' OR last_date IS NULL) THEN 1 END) as at_risk
+          COUNT(CASE WHEN engagement_level = 'Active' AND (last_date < NOW() - INTERVAL '90 days' OR last_date IS NULL) THEN 1 END) as at_risk
         FROM last_engagement
       `);
 
