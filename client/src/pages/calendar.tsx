@@ -38,11 +38,15 @@ import {
   Plus,
   Footprints,
   Save,
+  BarChart3,
+  CircleAlert,
 } from "lucide-react";
 import {
   format,
   startOfMonth,
   endOfMonth,
+  startOfWeek,
+  endOfWeek,
   eachDayOfInterval,
   isSameMonth,
   isSameDay,
@@ -1205,6 +1209,7 @@ export default function CalendarPage() {
   const [activityGroupSearch, setActivityGroupSearch] = useState("");
   const [activitySelectedGroups, setActivitySelectedGroups] = useState<{ id: number; name: string }[]>([]);
   const [dailyFootTrafficValue, setDailyFootTrafficValue] = useState("");
+  const [showNeedsAttention, setShowNeedsAttention] = useState(false);
   const [dailyFTSaving, setDailyFTSaving] = useState(false);
   const isMobile = useIsMobile();
   const dayPanelRef = useRef<HTMLDivElement>(null);
@@ -1295,6 +1300,16 @@ export default function CalendarPage() {
       return debriefByGcalId.get(entry.gcal.id) || null;
     }
     return null;
+  }
+
+  function eventNeedsAttention(e: CombinedEvent): boolean {
+    if (!e.isPast) return false;
+    if (e.type === "booking") return false;
+    if (e.type === "app" && e.app?.source === "internal") return false;
+    const info = getDebriefInfo(e);
+    const missingDebrief = !info || info.status !== "confirmed";
+    const missingAttendance = e.type === "app" && e.app && e.app.attendeeCount === null;
+    return missingDebrief || !!missingAttendance;
   }
 
   const PROGRAMME_MONTHLY_TARGET = 2;
@@ -1637,8 +1652,11 @@ export default function CalendarPage() {
     if (activeTypeFilters.size > 0) {
       events = events.filter(e => activeTypeFilters.has(getEventType(e)));
     }
+    if (showNeedsAttention) {
+      events = events.filter(e => eventNeedsAttention(e));
+    }
     return events;
-  }, [allEvents, activeTypeFilters, showDismissed]);
+  }, [allEvents, activeTypeFilters, showDismissed, showNeedsAttention, debriefByEventId, debriefByGcalId]);
 
   const currentMonthKey = format(startOfMonth(currentMonth), "yyyy-MM-dd");
   const currentSnapshot = useMemo(() => {
@@ -1750,6 +1768,109 @@ export default function CalendarPage() {
   const pastEventsNeedingDebrief = useMemo(() => {
     return filteredEvents.filter(e => e.isPast && e.type !== "booking" && !(e.type === "app" && e.app?.source === "internal")).length;
   }, [filteredEvents]);
+
+  const needsAttentionEvents = useMemo(() => {
+    let events = allEvents;
+    if (!showDismissed) {
+      events = events.filter(e => !e.isDismissed);
+    }
+    if (activeTypeFilters.size > 0) {
+      events = events.filter(e => activeTypeFilters.has(getEventType(e)));
+    }
+    return events.filter(e => eventNeedsAttention(e));
+  }, [allEvents, activeTypeFilters, showDismissed, debriefByEventId, debriefByGcalId]);
+
+  const needsAttentionByDate = useMemo(() => {
+    const map = new Map<string, number>();
+    needsAttentionEvents.forEach(e => {
+      const key = format(e.date, "yyyy-MM-dd");
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    return map;
+  }, [needsAttentionEvents]);
+
+  const selectedWeekStart = useMemo(() => startOfWeek(selectedDate, { weekStartsOn: 1 }), [selectedDate]);
+  const selectedWeekEnd = useMemo(() => endOfWeek(selectedDate, { weekStartsOn: 1 }), [selectedDate]);
+
+  const baseFilteredEvents = useMemo(() => {
+    let events = allEvents;
+    if (!showDismissed) {
+      events = events.filter(e => !e.isDismissed);
+    }
+    if (activeTypeFilters.size > 0) {
+      events = events.filter(e => activeTypeFilters.has(getEventType(e)));
+    }
+    return events;
+  }, [allEvents, activeTypeFilters, showDismissed]);
+
+  const weekCrossesMonthBoundary = useMemo(() => {
+    return !isSameMonth(selectedWeekStart, selectedWeekEnd);
+  }, [selectedWeekStart, selectedWeekEnd]);
+
+  const adjacentMonthKey = useMemo(() => {
+    if (!weekCrossesMonthBoundary) return null;
+    const adjacentMonth = isSameMonth(selectedWeekStart, currentMonth) ? addMonths(currentMonth, 1) : subMonths(currentMonth, 1);
+    return format(startOfMonth(adjacentMonth), "yyyy-MM-dd");
+  }, [weekCrossesMonthBoundary, selectedWeekStart, currentMonth]);
+
+  const { data: adjacentMonthFootTraffic } = useQuery<any[]>({
+    queryKey: ["/api/daily-foot-traffic", adjacentMonthKey],
+    queryFn: async () => {
+      const r = await fetch(`/api/daily-foot-traffic?month=${adjacentMonthKey}`, { credentials: "include" });
+      if (!r.ok) throw new Error("Failed to fetch foot traffic");
+      return r.json();
+    },
+    enabled: !!adjacentMonthKey,
+  });
+
+  const weeklyStats = useMemo(() => {
+    const now = new Date();
+    const effectiveWeekEnd = selectedWeekEnd > now ? now : selectedWeekEnd;
+    const isCurrentWeek = selectedWeekEnd > now;
+    const weekEvents = baseFilteredEvents.filter(e => {
+      return e.date >= selectedWeekStart && e.date <= effectiveWeekEnd;
+    });
+
+    const totalEvents = weekEvents.length;
+    const typeBreakdown: Record<string, number> = {};
+    let debriefed = 0;
+    let pending = 0;
+    let totalAttendees = 0;
+
+    weekEvents.forEach(e => {
+      const eventType = getEventType(e);
+      typeBreakdown[eventType] = (typeBreakdown[eventType] || 0) + 1;
+
+      if (e.isPast && e.type !== "booking" && !(e.type === "app" && e.app?.source === "internal")) {
+        const info = getDebriefInfo(e);
+        if (info && info.status === "confirmed") {
+          debriefed++;
+        } else {
+          pending++;
+        }
+      }
+
+      if (e.type === "app" && e.app?.attendeeCount) {
+        totalAttendees += e.app.attendeeCount;
+      }
+      if (e.type === "booking" && e.booking?.attendeeCount) {
+        totalAttendees += e.booking.attendeeCount;
+      }
+    });
+
+    const allFootTrafficData = [
+      ...(Array.isArray(dailyFootTrafficData) ? dailyFootTrafficData : []),
+      ...(Array.isArray(adjacentMonthFootTraffic) ? adjacentMonthFootTraffic : []),
+    ];
+    const weekFootTraffic = allFootTrafficData
+      .filter((entry: any) => {
+        const entryDate = new Date(entry.date);
+        return entryDate >= selectedWeekStart && entryDate <= effectiveWeekEnd;
+      })
+      .reduce((sum: number, entry: any) => sum + (entry.count || 0), 0);
+
+    return { totalEvents, typeBreakdown, debriefed, pending, totalAttendees, weekFootTraffic, isCurrentWeek };
+  }, [baseFilteredEvents, selectedWeekStart, selectedWeekEnd, debriefByEventId, debriefByGcalId, dailyFootTrafficData, adjacentMonthFootTraffic]);
 
   type SpaceOccupancyItem = {
     kind: "booking" | "programme";
@@ -1888,7 +2009,19 @@ export default function CalendarPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            {showSchedule && pastEventsNeedingDebrief > 0 && (
+            {showSchedule && needsAttentionEvents.length > 0 && (
+              <Button
+                size="sm"
+                variant={showNeedsAttention ? "default" : "outline"}
+                className={`toggle-elevate ${showNeedsAttention ? "toggle-elevated bg-amber-500 hover:bg-amber-600 text-white border-amber-500" : "border-amber-400/50 text-amber-700 dark:text-amber-300"}`}
+                onClick={() => setShowNeedsAttention(!showNeedsAttention)}
+                data-testid="button-toggle-needs-attention"
+              >
+                <CircleAlert className="w-4 h-4 mr-1" />
+                {needsAttentionEvents.length} need attention
+              </Button>
+            )}
+            {showSchedule && pastEventsNeedingDebrief > 0 && !showNeedsAttention && (
               <Badge variant="secondary" data-testid="badge-events-count">
                 {pastEventsNeedingDebrief} past events
               </Badge>
@@ -2030,6 +2163,108 @@ export default function CalendarPage() {
           </div>
         </Card>
 
+        <Card className="p-4 mb-6" data-testid="panel-weekly-summary">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-primary" />
+              <span className="text-sm font-semibold" data-testid="text-weekly-summary-title">
+                Week of {format(selectedWeekStart, "MMM d")} – {format(selectedWeekEnd, "MMM d, yyyy")}{weeklyStats.isCurrentWeek ? " (so far)" : ""}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="rounded-lg bg-muted/50 p-3 text-center">
+                <div className="text-2xl font-bold" data-testid="text-week-event-count">{weeklyStats.totalEvents}</div>
+                <div className="text-xs text-muted-foreground">Events</div>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-3 text-center">
+                <div className="text-2xl font-bold" data-testid="text-week-attendees">{weeklyStats.totalAttendees.toLocaleString()}</div>
+                <div className="text-xs text-muted-foreground">Attendees</div>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-3 text-center">
+                <div className="text-2xl font-bold" data-testid="text-week-foot-traffic">{weeklyStats.weekFootTraffic.toLocaleString()}</div>
+                <div className="text-xs text-muted-foreground">Foot Traffic</div>
+              </div>
+              <div className="rounded-lg bg-muted/50 p-3 text-center">
+                <div className="flex items-center justify-center gap-1">
+                  <span className="text-2xl font-bold text-emerald-600 dark:text-emerald-400" data-testid="text-week-debriefed">{weeklyStats.debriefed}</span>
+                  {weeklyStats.pending > 0 && (
+                    <span className="text-sm text-amber-600 dark:text-amber-400" data-testid="text-week-pending">/ {weeklyStats.pending} pending</span>
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground">Debriefed</div>
+              </div>
+            </div>
+            {Object.keys(weeklyStats.typeBreakdown).length > 0 && (
+              <div className="flex flex-wrap gap-1.5" data-testid="week-type-breakdown">
+                {Object.entries(weeklyStats.typeBreakdown)
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([type, count]) => (
+                    <Badge key={type} variant="secondary" className={`text-xs ${EVENT_TYPE_BADGE_COLORS[type] || ""}`} data-testid={`badge-week-type-${type}`}>
+                      {type}: {count}
+                    </Badge>
+                  ))}
+              </div>
+            )}
+          </div>
+        </Card>
+
+        {showNeedsAttention && needsAttentionEvents.length > 0 && (
+          <Card className="p-4 mb-6 border-amber-500/30 bg-amber-500/5" data-testid="panel-needs-attention">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CircleAlert className="w-4 h-4 text-amber-500" />
+                  <span className="text-sm font-semibold">Events Needing Attention</span>
+                  <Badge variant="secondary" className="text-xs">{needsAttentionEvents.length}</Badge>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setShowNeedsAttention(false)}
+                  data-testid="button-close-needs-attention"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                {[...needsAttentionEvents]
+                  .sort((a, b) => b.date.getTime() - a.date.getTime())
+                  .map((e) => {
+                    const eventName = e.type === "gcal" ? e.gcal?.summary : e.app?.name;
+                    const eventType = getEventType(e);
+                    const info = getDebriefInfo(e);
+                    const missingDebrief = !info || info.status !== "confirmed";
+                    const missingAttendance = e.type === "app" && e.app && e.app.attendeeCount === null;
+                    const status = info?.status === "draft" ? "In Progress" : missingDebrief && missingAttendance ? "Missing Debrief & Attendance" : missingDebrief ? "Missing Debrief" : "Missing Attendance";
+                    const stableKey = e.type === "gcal" ? `gcal-${e.gcal!.id}` : `app-${e.app!.id}`;
+                    return (
+                      <button
+                        key={stableKey}
+                        className="w-full text-left flex items-center justify-between gap-3 p-2 rounded-md hover:bg-muted/50 transition-colors"
+                        onClick={() => handleSelectDate(e.date)}
+                        data-testid={`button-attention-event-${stableKey}`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className={`w-2 h-2 rounded-full shrink-0 ${getEventDotColor(e)}`} />
+                          <span className="text-sm font-medium truncate">{eventName || "Untitled"}</span>
+                          <Badge variant="secondary" className={`text-[10px] shrink-0 ${EVENT_TYPE_BADGE_COLORS[eventType] || ""}`}>
+                            {eventType}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${info?.status === "draft" ? "bg-blue-500/10 text-blue-700 dark:text-blue-300" : "bg-amber-500/10 text-amber-700 dark:text-amber-300"}`}>
+                            {status}
+                          </span>
+                          <span className="text-xs text-muted-foreground">{format(e.date, "MMM d")}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+          </Card>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
             <Card className="p-4 md:p-6">
@@ -2058,6 +2293,7 @@ export default function CalendarPage() {
                   const isCurrentMonth = isSameMonth(day, currentMonth);
                   const isSelected = isSameDay(day, selectedDate);
                   const today = isToday(day);
+                  const dayNeedsAttention = needsAttentionByDate.get(key) || 0;
                   const hasConflict = showSpace && daySpaceItems.length > 1 && daySpaceItems.some((a, i) =>
                     daySpaceItems.some((b, j) => {
                       if (i >= j) return false;
@@ -2089,6 +2325,7 @@ export default function CalendarPage() {
                         ${isSelected ? "bg-primary/10 border-primary/50" : "hover:bg-muted/50"}
                         ${today && !isSelected ? "bg-accent/30" : ""}
                         ${hasConflict ? "ring-1 ring-red-400/50 bg-red-50/20 dark:bg-red-900/10" : ""}
+                        ${dayNeedsAttention > 0 && !hasConflict ? "ring-1 ring-amber-400/50 bg-amber-50/30 dark:bg-amber-900/10" : ""}
                       `}
                     >
                       <span className={`
@@ -2113,6 +2350,11 @@ export default function CalendarPage() {
                       {hasConflict && (
                         <div className="absolute top-0.5 right-0.5">
                           <AlertTriangle className="w-3 h-3 text-red-500" />
+                        </div>
+                      )}
+                      {dayNeedsAttention > 0 && !hasConflict && (
+                        <div className="absolute top-0.5 right-0.5" data-testid={`indicator-needs-attention-${key}`}>
+                          <CircleAlert className="w-3 h-3 text-amber-500" />
                         </div>
                       )}
                     </button>
