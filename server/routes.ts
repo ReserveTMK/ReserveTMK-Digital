@@ -8,7 +8,7 @@ import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON } from "./replit_integrations/anthropic/client";
 import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getReachMetrics, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, type ReportFilters, type CohortDefinition } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings } from "@shared/schema";
+import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings } from "@shared/schema";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { ObjectStorageService } from "./replit_integrations/object_storage";
 import crypto from "crypto";
@@ -9699,6 +9699,34 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     }
   });
 
+  // === Organisation Profile API ===
+
+  app.get("/api/organisation-profile", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const profile = await storage.getOrganisationProfile(userId);
+      res.json(profile || null);
+    } catch (err: any) {
+      console.error("Error fetching organisation profile:", err);
+      res.status(500).json({ message: "Failed to fetch organisation profile" });
+    }
+  });
+
+  app.put("/api/organisation-profile", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const allowed = insertOrganisationProfileSchema.partial().omit({ userId: true }).parse(req.body);
+      const profile = await storage.upsertOrganisationProfile(userId, allowed);
+      res.json(profile);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Error saving organisation profile:", err);
+      res.status(500).json({ message: "Failed to save organisation profile" });
+    }
+  });
+
   // === Funders API ===
 
   app.get("/api/funders", isAuthenticated, async (req, res) => {
@@ -9780,6 +9808,10 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     try {
       const userId = (req.user as any).claims.sub;
       const body = coerceDateFields(req.body);
+      if (body.outcomeFocus && Array.isArray(body.outcomeFocus)) {
+        const validOptions = ["economic", "wellbeing", "cultural", "community"];
+        body.outcomeFocus = body.outcomeFocus.filter((v: string) => validOptions.includes(v));
+      }
       const input = insertFunderSchema.parse({ ...body, userId });
       const funder = await storage.createFunder(input);
       res.status(201).json(funder);
@@ -9799,6 +9831,10 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
 
       const body = coerceDateFields(req.body);
+      if (body.outcomeFocus && Array.isArray(body.outcomeFocus)) {
+        const validOptions = ["economic", "wellbeing", "cultural", "community"];
+        body.outcomeFocus = body.outcomeFocus.filter((v: string) => validOptions.includes(v));
+      }
       const updated = await storage.updateFunder(id, body);
       res.json(updated);
     } catch (err: any) {

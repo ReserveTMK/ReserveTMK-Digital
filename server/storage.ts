@@ -142,6 +142,9 @@ import {
   gmailConnectedAccounts,
   type GmailConnectedAccount,
   type InsertGmailConnectedAccount,
+  organisationProfile,
+  type OrganisationProfile,
+  type InsertOrganisationProfile,
   funders,
   funderDocuments,
   type Funder,
@@ -481,6 +484,10 @@ export interface IStorage {
   updateCommunitySpend(id: number, updates: Partial<InsertCommunitySpend>): Promise<CommunitySpend>;
   deleteCommunitySpend(id: number): Promise<void>;
   getCommunitySpendByProgramme(programmeId: number): Promise<CommunitySpend[]>;
+
+  // Organisation Profile
+  getOrganisationProfile(userId: string): Promise<OrganisationProfile | undefined>;
+  upsertOrganisationProfile(userId: string, data: Partial<InsertOrganisationProfile>): Promise<OrganisationProfile>;
 
   // Funders
   getFunders(userId: string): Promise<Funder[]>;
@@ -2008,6 +2015,21 @@ export class DatabaseStorage implements IStorage {
 
   async getGmailConnectedAccountByEmail(userId: string, email: string): Promise<GmailConnectedAccount | undefined> {
     const [item] = await db.select().from(gmailConnectedAccounts).where(and(eq(gmailConnectedAccounts.userId, userId), eq(gmailConnectedAccounts.email, email)));
+    return item;
+  }
+
+  async getOrganisationProfile(userId: string): Promise<OrganisationProfile | undefined> {
+    const [item] = await db.select().from(organisationProfile).where(eq(organisationProfile.userId, userId)).limit(1);
+    return item;
+  }
+
+  async upsertOrganisationProfile(userId: string, data: Partial<InsertOrganisationProfile>): Promise<OrganisationProfile> {
+    const existing = await this.getOrganisationProfile(userId);
+    if (existing) {
+      const [item] = await db.update(organisationProfile).set({ ...data, updatedAt: new Date() }).where(eq(organisationProfile.id, existing.id)).returning();
+      return item;
+    }
+    const [item] = await db.insert(organisationProfile).values({ ...data, userId }).returning();
     return item;
   }
 

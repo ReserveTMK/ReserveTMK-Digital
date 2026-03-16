@@ -96,6 +96,7 @@ const navGroups: NavGroup[] = [
     href: "/scheduling",
     children: [
       { name: "Availability", href: "/scheduling", icon: CalendarClock, description: "Manage staff & mentor availability" },
+      { name: "About Us", href: "/settings/about-us", icon: Building2, description: "Organisation profile & identity" },
     ],
   },
 ];

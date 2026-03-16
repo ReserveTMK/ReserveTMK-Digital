@@ -43,6 +43,7 @@ import PublicRegistrationPage from "@/pages/public-registration";
 import ResourceCalendarPage from "@/pages/resource-calendar";
 import SpacesPage from "@/pages/spaces";
 import GearPage from "@/pages/gear";
+import AboutUsPage from "@/pages/about-us";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -231,6 +232,10 @@ function Router() {
 
         <Route path="/catch-up">
           <ProtectedRoute component={CatchUpPage} />
+        </Route>
+
+        <Route path="/settings/about-us">
+          <ProtectedRoute component={AboutUsPage} />
         </Route>
 
         <Route path="/resource-calendar">

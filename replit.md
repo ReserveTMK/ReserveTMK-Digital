@@ -18,7 +18,7 @@ The frontend is built with React and TypeScript using Vite, Wouter for routing, 
 The backend is an Express.js application with Node.js and TypeScript, exposing a RESTful JSON API. Authentication is managed via Replit Auth (OpenID Connect). Text-based AI functionalities are powered by Anthropic Claude through Replit AI Integrations. Audio features (speech-to-text, text-to-speech, voice chat) and image generation are handled by OpenAI. Server-side audio processing relies on ffmpeg.
 
 ### Database
-PostgreSQL is used as the database, integrated with Drizzle ORM. The schema includes tables for users, contacts, interactions, meetings, events, impact logs, taxonomy, programmes, bookings, bookable_resources, desk_bookings, gear_bookings, groups, funders, projects, and reporting data, utilizing JSONB columns for flexible metric storage.
+PostgreSQL is used as the database, integrated with Drizzle ORM. The schema includes tables for users, contacts, interactions, meetings, events, impact logs, taxonomy, programmes, bookings, bookable_resources, desk_bookings, gear_bookings, groups, funders (with outcomeFocus and reportingGuidance fields), organisation_profile, projects, and reporting data, utilizing JSONB columns for flexible metric storage.
 
 ### Key Design Decisions
 1.  **Shared API Contracts**: Zod schemas ensure type safety and consistency.
@@ -29,7 +29,7 @@ PostgreSQL is used as the database, integrated with Drizzle ORM. The schema incl
 6.  **Community Lens Filtering**: Implements ethnicity-based audience filtering for reporting.
 7.  **NZ Timezone Standardization**: All date and time calculations are standardized to Pacific/Auckland.
 8.  **UI Terminology**: Uses "People" for contacts, 12-hour time format, and "Venue Hire" in UI labels.
-9.  **Nav Structure**: Top nav groups: Dashboard, Community, Delivery, Tracking, Reporting, Ops, Settings. "Ops" contains Projects, Agreements, Funders. Gmail Import accessed from People page header (not in nav).
+9.  **Nav Structure**: Top nav groups: Dashboard, Community, Delivery, Tracking, Reporting, Ops, Settings. "Ops" contains Projects, Agreements, Funders. "Settings" contains Availability and About Us. Gmail Import accessed from People page header (not in nav).
 
 ### Core Features
 -   **Reporting Engine**: Funder-focused reporting across 9 sections, including Reach, Delivery, Impact, and alignment with Tamaki Ora. Supports 9 growth metrics grouped by Personal/Venture/Community, journey stage progression tracking (kakano/tipu/ora), and mentoring focus theme summaries. Includes Cohort Analysis (`/cohort-analysis`) for tracking programme cohorts over time — retention, milestones, stage progressions, growth score changes — with single-cohort and side-by-side comparison views.

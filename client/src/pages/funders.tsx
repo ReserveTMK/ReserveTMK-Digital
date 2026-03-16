@@ -53,6 +53,7 @@ import {
   REPORTING_CADENCES,
   NARRATIVE_STYLES,
   FUNDER_DOCUMENT_TYPES,
+  OUTCOME_FOCUS_OPTIONS,
   type Funder,
   type FunderDocument,
 } from "@shared/schema";
@@ -112,6 +113,13 @@ const DOC_TYPE_COLORS: Record<string, string> = {
   framework: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
   report: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
   other: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
+};
+
+const OUTCOME_FOCUS_LABELS: Record<string, { label: string; description: string }> = {
+  economic: { label: "Economic", description: "Jobs, revenue, businesses" },
+  wellbeing: { label: "Wellbeing", description: "Growth, confidence, mindset" },
+  cultural: { label: "Cultural", description: "Te reo, tikanga, whanaungatanga" },
+  community: { label: "Community", description: "Connections, network, engagement" },
 };
 
 const REPORT_SECTIONS = [
@@ -338,6 +346,11 @@ function FunderCard({
                 {CADENCE_LABELS[funder.reportingCadence] || funder.reportingCadence}
               </span>
             )}
+            {funder.outcomeFocus && funder.outcomeFocus.length > 0 && funder.outcomeFocus.map(f => (
+              <Badge key={f} variant="outline" className="text-xs" data-testid={`badge-outcome-${f}-${funder.id}`}>
+                {OUTCOME_FOCUS_LABELS[f]?.label || f}
+              </Badge>
+            ))}
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0 ml-4">
@@ -398,6 +411,8 @@ function FunderFormDialog({
     status: defaultValues?.status || "in_conversation",
     communityLens: defaultValues?.communityLens || "all",
     outcomesFramework: defaultValues?.outcomesFramework || "",
+    outcomeFocus: defaultValues?.outcomeFocus || [],
+    reportingGuidance: defaultValues?.reportingGuidance || "",
     reportingCadence: defaultValues?.reportingCadence || "quarterly",
     narrativeStyle: defaultValues?.narrativeStyle || "compliance",
     prioritySections: defaultValues?.prioritySections || [],
@@ -421,6 +436,8 @@ function FunderFormDialog({
       status: form.status,
       communityLens: form.communityLens,
       outcomesFramework: form.outcomesFramework.trim() || null,
+      outcomeFocus: form.outcomeFocus.length > 0 ? form.outcomeFocus : null,
+      reportingGuidance: form.reportingGuidance.trim() || null,
       reportingCadence: form.reportingCadence,
       narrativeStyle: form.narrativeStyle,
       prioritySections: form.prioritySections.length > 0 ? form.prioritySections : null,
@@ -432,6 +449,15 @@ function FunderFormDialog({
       notes: form.notes.trim() || null,
     };
     onSubmit(data);
+  };
+
+  const toggleOutcomeFocus = (focusId: string) => {
+    setForm(prev => ({
+      ...prev,
+      outcomeFocus: prev.outcomeFocus.includes(focusId)
+        ? prev.outcomeFocus.filter(f => f !== focusId)
+        : [...prev.outcomeFocus, focusId],
+    }));
   };
 
   const toggleSection = (sectionId: string) => {
@@ -560,23 +586,61 @@ function FunderFormDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Outcomes Framework</Label>
-              <Input
-                value={form.outcomesFramework}
-                onChange={(e) => setForm(p => ({ ...p, outcomesFramework: e.target.value }))}
-                placeholder="e.g. Tāmaki Ora 2025–2027"
-                data-testid="input-outcomes-framework"
-              />
+          <div className="space-y-2">
+            <Label>Outcomes Framework</Label>
+            <Textarea
+              value={form.outcomesFramework}
+              onChange={(e) => setForm(p => ({ ...p, outcomesFramework: e.target.value }))}
+              placeholder="Describe the funder's outcomes framework, e.g. Tāmaki Ora 2025–2027 — focused on community wellbeing, economic participation, and cultural identity outcomes."
+              rows={3}
+              data-testid="input-outcomes-framework"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Funder Tag</Label>
+            <Input
+              value={form.funderTag}
+              onChange={(e) => setForm(p => ({ ...p, funderTag: e.target.value }))}
+              placeholder="Tag used on events/programmes"
+              data-testid="input-funder-tag"
+            />
+          </div>
+
+          <div className="space-y-3 p-4 border rounded-lg bg-muted/30">
+            <div>
+              <Label className="text-base font-semibold">Report Context</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">Help the AI understand what this funder cares about when generating reports</p>
             </div>
+
             <div className="space-y-2">
-              <Label>Funder Tag</Label>
-              <Input
-                value={form.funderTag}
-                onChange={(e) => setForm(p => ({ ...p, funderTag: e.target.value }))}
-                placeholder="Tag used on events/programmes"
-                data-testid="input-funder-tag"
+              <Label className="text-sm">Outcome Focus</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {OUTCOME_FOCUS_OPTIONS.map(o => (
+                  <label key={o} className="flex items-start gap-2 text-sm cursor-pointer p-2 rounded-md border bg-background hover:bg-muted/50 transition-colors">
+                    <Checkbox
+                      checked={form.outcomeFocus.includes(o)}
+                      onCheckedChange={() => toggleOutcomeFocus(o)}
+                      data-testid={`checkbox-outcome-${o}`}
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <span className="font-medium">{OUTCOME_FOCUS_LABELS[o]?.label}</span>
+                      <p className="text-xs text-muted-foreground">{OUTCOME_FOCUS_LABELS[o]?.description}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm">Reporting Guidance</Label>
+              <Textarea
+                value={form.reportingGuidance}
+                onChange={(e) => setForm(p => ({ ...p, reportingGuidance: e.target.value }))}
+                placeholder="Any specific guidance for AI when generating reports for this funder, e.g. 'Always emphasise community-led outcomes and whānau wellbeing. Use te reo Māori terms where appropriate.'"
+                rows={3}
+                data-testid="input-reporting-guidance"
               />
             </div>
           </div>
@@ -793,7 +857,27 @@ function FunderDetailDialog({
           {funder.outcomesFramework && (
             <div className="text-sm">
               <span className="text-muted-foreground">Outcomes Framework: </span>
-              <span className="font-medium">{funder.outcomesFramework}</span>
+              <p className="mt-1 whitespace-pre-wrap">{funder.outcomesFramework}</p>
+            </div>
+          )}
+
+          {funder.outcomeFocus && funder.outcomeFocus.length > 0 && (
+            <div className="text-sm">
+              <span className="text-muted-foreground">Outcome Focus: </span>
+              <span className="flex gap-1 mt-1 flex-wrap">
+                {funder.outcomeFocus.map(f => (
+                  <Badge key={f} variant="outline" className="text-xs">
+                    {OUTCOME_FOCUS_LABELS[f]?.label || f}
+                  </Badge>
+                ))}
+              </span>
+            </div>
+          )}
+
+          {funder.reportingGuidance && (
+            <div className="text-sm">
+              <span className="text-muted-foreground">Reporting Guidance: </span>
+              <p className="mt-1 whitespace-pre-wrap">{funder.reportingGuidance}</p>
             </div>
           )}
 

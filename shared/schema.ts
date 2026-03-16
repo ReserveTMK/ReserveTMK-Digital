@@ -1736,6 +1736,8 @@ export const funders = pgTable("funders", {
   reviewDate: timestamp("review_date"),
   notes: text("notes"),
   isDefault: boolean("is_default").default(false),
+  outcomeFocus: text("outcome_focus").array(),
+  reportingGuidance: text("reporting_guidance"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -2161,6 +2163,32 @@ export const insertGearBookingSchema = createInsertSchema(gearBookings).omit({
 });
 export type GearBooking = typeof gearBookings.$inferSelect;
 export type InsertGearBooking = z.infer<typeof insertGearBookingSchema>;
+
+// === ORGANISATION PROFILE ===
+
+export const organisationProfile = pgTable("organisation_profile", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  mission: text("mission"),
+  description: text("description"),
+  focusAreas: text("focus_areas").array(),
+  values: text("values"),
+  location: text("location"),
+  targetCommunity: text("target_community"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertOrganisationProfileSchema = createInsertSchema(organisationProfile).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type OrganisationProfile = typeof organisationProfile.$inferSelect;
+export type InsertOrganisationProfile = z.infer<typeof insertOrganisationProfileSchema>;
+
+export const OUTCOME_FOCUS_OPTIONS = ["economic", "wellbeing", "cultural", "community"] as const;
+export type OutcomeFocus = typeof OUTCOME_FOCUS_OPTIONS[number];
 
 export const metricSnapshots = pgTable("metric_snapshots", {
   id: serial("id").primaryKey(),

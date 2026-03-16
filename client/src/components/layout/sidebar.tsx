@@ -90,6 +90,7 @@ const navigation: NavItem[] = [
     name: "Settings", href: "/scheduling", icon: Settings,
     children: [
       { name: "Availability", href: "/scheduling", icon: CalendarClock },
+      { name: "About Us", href: "/settings/about-us", icon: Building2 },
     ],
   },
 ];
