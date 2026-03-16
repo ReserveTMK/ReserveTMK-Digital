@@ -209,6 +209,9 @@ export async function setupAuth(app: Express) {
         const allowedDomains = (process.env.REPLIT_DOMAINS || "").split(",").map(d => d.trim());
         if (allowedDomains.includes(returnTo)) {
           (req.session as any).loginReturnTo = returnTo;
+          await new Promise<void>((resolve, reject) => {
+            req.session.save((err) => err ? reject(err) : resolve());
+          });
         }
       }
 
@@ -244,9 +247,9 @@ export async function setupAuth(app: Express) {
             console.error("[auth] Callback logIn error:", loginErr);
             return res.redirect("/api/login");
           }
-          console.log(`[auth] Login successful, user=${user.claims?.sub}`);
           const returnTo = (req.session as any).loginReturnTo;
           delete (req.session as any).loginReturnTo;
+          console.log(`[auth] Login successful, user=${user.claims?.sub}, returnTo=${returnTo || 'none'}, hostname=${req.hostname}`);
           if (returnTo && returnTo !== req.hostname) {
             const token = generateAuthToken(user);
             console.log(`[auth] Redirecting to ${returnTo} with exchange token`);
