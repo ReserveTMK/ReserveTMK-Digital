@@ -523,6 +523,7 @@ export async function getImpactMetrics(filters: ReportFilters) {
       linkedContactId: milestones.linkedContactId,
       title: milestones.title,
       milestoneType: milestones.milestoneType,
+      valueAmount: milestones.valueAmount,
       impactLogId: milestones.linkedImpactLogId,
     })
     .from(milestones)
@@ -539,6 +540,19 @@ export async function getImpactMetrics(filters: ReportFilters) {
       inlineMilestoneCount += log.milestones.length;
     }
   }
+
+  const economicRollup: Record<string, { count: number; totalValue: number }> = {};
+  for (const m of milestonesFromTable) {
+    const mType = m.milestoneType || "other";
+    if (!economicRollup[mType]) economicRollup[mType] = { count: 0, totalValue: 0 };
+    economicRollup[mType].count++;
+    economicRollup[mType].totalValue += safeNum(m.valueAmount);
+  }
+  const totalEconomicValue = Object.values(economicRollup).reduce((s, r) => s + r.totalValue, 0);
+  const fundingSecured = (economicRollup["funding_secured"]?.totalValue || 0) + (economicRollup["grant_received"]?.totalValue || 0) + (economicRollup["sponsorship_secured"]?.totalValue || 0);
+  const businessesLaunched = (economicRollup["business_launched"]?.count || 0) + (economicRollup["brand_launched"]?.count || 0);
+  const jobsCreated = economicRollup["job_created"]?.count || 0;
+  const revenueMilestones = economicRollup["revenue_milestone"]?.totalValue || 0;
 
   const CONNECTION_ORDER = ["known", "connected", "engaged", "embedded", "partnering"];
   const stageHist = await db.select({
@@ -568,6 +582,14 @@ export async function getImpactMetrics(filters: ReportFilters) {
     contactsWithMetrics,
     connectionMovement: deepened.size,
     taxonomyBreakdown,
+    economicRollup: {
+      totalEconomicValue: Math.round(totalEconomicValue * 100) / 100,
+      fundingSecured: Math.round(fundingSecured * 100) / 100,
+      businessesLaunched,
+      jobsCreated,
+      revenueMilestones: Math.round(revenueMilestones * 100) / 100,
+      byType: economicRollup,
+    },
   };
 }
 
@@ -768,6 +790,21 @@ export async function generateNarrative(
 
     if (topCategories.length > 0 || impact.milestoneCount > 0 || impact.contactsWithMetrics > 0) {
       let impText = `## What Changed\n\n`;
+      const econ = impact.economicRollup;
+      if (econ && (econ.totalEconomicValue > 0 || econ.businessesLaunched > 0 || econ.jobsCreated > 0)) {
+        let econParts: string[] = [];
+        if (econ.fundingSecured > 0) econParts.push(`$${econ.fundingSecured.toLocaleString()} in funding secured`);
+        if (econ.revenueMilestones > 0) econParts.push(`$${econ.revenueMilestones.toLocaleString()} in revenue milestones`);
+        if (econ.businessesLaunched > 0) econParts.push(`${econ.businessesLaunched} business${econ.businessesLaunched !== 1 ? "es" : ""} launched`);
+        if (econ.jobsCreated > 0) econParts.push(`${econ.jobsCreated} job${econ.jobsCreated !== 1 ? "s" : ""} created`);
+        if (econ.totalEconomicValue > 0) {
+          impText += `Our community generated $${econ.totalEconomicValue.toLocaleString()} in total economic value`;
+          if (econParts.length > 0) impText += ` — including ${econParts.join(", ")}`;
+          impText += `. `;
+        } else if (econParts.length > 0) {
+          impText += `Key economic outcomes: ${econParts.join(", ")}. `;
+        }
+      }
       if (impact.communitySpend > 0) impText += `$${impact.communitySpend.toLocaleString()} was invested directly into community. `;
       if (impact.milestoneCount > 0) impText += `${impact.milestoneCount} milestones were achieved. `;
       if (impact.contactsWithMetrics > 0 && impact.growthMetrics) {
@@ -811,6 +848,21 @@ export async function generateNarrative(
     sections.push(delText);
 
     let impText = `## Impact\n\n`;
+    const econC = impact.economicRollup;
+    if (econC && (econC.totalEconomicValue > 0 || econC.businessesLaunched > 0 || econC.jobsCreated > 0)) {
+      let econParts: string[] = [];
+      if (econC.fundingSecured > 0) econParts.push(`funding secured: $${econC.fundingSecured.toLocaleString()}`);
+      if (econC.revenueMilestones > 0) econParts.push(`revenue milestones: $${econC.revenueMilestones.toLocaleString()}`);
+      if (econC.businessesLaunched > 0) econParts.push(`businesses launched: ${econC.businessesLaunched}`);
+      if (econC.jobsCreated > 0) econParts.push(`jobs created: ${econC.jobsCreated}`);
+      if (econC.totalEconomicValue > 0) {
+        impText += `Total economic value generated: $${econC.totalEconomicValue.toLocaleString()}`;
+        if (econParts.length > 0) impText += ` (${econParts.join(", ")})`;
+        impText += `. `;
+      } else if (econParts.length > 0) {
+        impText += `Economic outcomes: ${econParts.join(", ")}. `;
+      }
+    }
     if (impact.communitySpend > 0) impText += `Community investment: $${impact.communitySpend.toLocaleString()}. `;
     impText += `${impact.milestoneCount} milestones achieved. ${impact.contactsWithMetrics} people with tracked growth.`;
     if (impact.contactsWithMetrics > 0 && impact.growthMetrics) {
@@ -1535,5 +1587,6 @@ export async function getFullMonthlyReport(filters: ReportFilters) {
       positiveMovementPercent: positiveMovement,
       milestoneCount: impact.milestoneCount,
     },
+    economicRollup: impact.economicRollup,
   };
 }

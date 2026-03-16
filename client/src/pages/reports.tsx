@@ -20,7 +20,7 @@ import {
   Download, Activity, Tag, TrendingUp, Building2, DollarSign,
   Save, BookOpen, ChevronDown, ChevronUp, Handshake, Clock,
   Info, History, Zap, X, Pen, Landmark, Settings, Camera, Star,
-  Plus, Trash2, ArrowUpRight,
+  Plus, Trash2, ArrowUpRight, Briefcase, Rocket, BadgeDollarSign,
 } from "lucide-react";
 import {
   format, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, subMonths, startOfYear,
@@ -110,6 +110,8 @@ function HeadlineStatCard({ icon: Icon, label, value, color = "primary", testId,
     amber: "bg-amber-500/10 text-amber-500 border-amber-500/20",
     violet: "bg-violet-500/10 text-violet-500 border-violet-500/20",
     indigo: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
+    emerald: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+    teal: "bg-teal-500/10 text-teal-500 border-teal-500/20",
   };
   return (
     <Card className={`p-5 border-2 ${colorMap[color] || colorMap.primary}`}>
@@ -576,6 +578,31 @@ export default function Reports() {
       }
     }
     rows.push(["Connections Deepened", String(imp?.connectionMovement || 0)]);
+    if (d.economicRollup) {
+      rows.push([]);
+      rows.push(["=== ECONOMIC VALUE ==="]);
+      rows.push(["Total Economic Value", `$${d.economicRollup.totalEconomicValue || 0}`]);
+      rows.push(["Funding Secured", `$${d.economicRollup.fundingSecured || 0}`]);
+      rows.push(["Businesses Launched", String(d.economicRollup.businessesLaunched || 0)]);
+      rows.push(["Jobs Created", String(d.economicRollup.jobsCreated || 0)]);
+      rows.push(["Revenue Milestones", `$${d.economicRollup.revenueMilestones || 0}`]);
+      if (d.economicRollup.byType) {
+        const typeLabels: Record<string, string> = {
+          funding_secured: "Funding Secured", business_launched: "Business Launched",
+          collaboration_formed: "Collaboration Formed", job_created: "Job Created",
+          prototype_completed: "Prototype Completed", revenue_milestone: "Revenue Milestone",
+          brand_launched: "Brand Launched", content_published: "Content Published",
+          community_formed: "Community Formed", sponsorship_secured: "Sponsorship Secured",
+          event_hosted: "Event Hosted", movement_milestone: "Movement Milestone",
+          grant_received: "Grant Received", social_impact: "Social Impact", other: "Other",
+        };
+        rows.push([]);
+        rows.push(["Milestone Type", "Count", "Total Value"]);
+        for (const [type, data] of Object.entries(d.economicRollup.byType as Record<string, { count: number; totalValue: number }>)) {
+          rows.push([typeLabels[type] || type, String(data.count), `$${data.totalValue}`]);
+        }
+      }
+    }
     if (d.journeyProgression) {
       rows.push(["Journey Progressions", String(d.journeyProgression.totalProgressions || 0)]);
       rows.push(["Current Kakano", String(d.journeyProgression.currentDistribution?.kakano || 0)]);
@@ -1166,6 +1193,56 @@ export default function Reports() {
               {/* Section 3: Impact */}
               <CollapsibleSection title="Impact" icon={TrendingUp} testId="section-impact" defaultOpen={isSectionDefaultOpen("impact")} key={`impact-${activeFunder?.id || 'none'}`}>
                 <div className="pt-4 space-y-4">
+                  {reportData?.economicRollup && ((reportData.economicRollup.totalEconomicValue || 0) > 0 || (reportData.economicRollup.businessesLaunched || 0) > 0 || (reportData.economicRollup.jobsCreated || 0) > 0) && (
+                    <>
+                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider" data-testid="economic-rollup-heading">Economic Value Generated</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+                        <HeadlineStatCard
+                          icon={BadgeDollarSign}
+                          label="Total Economic Value"
+                          value={`$${reportData.economicRollup.totalEconomicValue.toLocaleString()}`}
+                          color="emerald"
+                          testId="stat-total-economic-value"
+                        />
+                        {(reportData.economicRollup.fundingSecured || 0) > 0 && (
+                          <HeadlineStatCard
+                            icon={Landmark}
+                            label="Funding Secured"
+                            value={`$${reportData.economicRollup.fundingSecured.toLocaleString()}`}
+                            color="green"
+                            testId="stat-funding-secured"
+                          />
+                        )}
+                        {(reportData.economicRollup.businessesLaunched || 0) > 0 && (
+                          <HeadlineStatCard
+                            icon={Rocket}
+                            label="Businesses Launched"
+                            value={reportData.economicRollup.businessesLaunched}
+                            color="blue"
+                            testId="stat-businesses-launched"
+                          />
+                        )}
+                        {(reportData.economicRollup.jobsCreated || 0) > 0 && (
+                          <HeadlineStatCard
+                            icon={Briefcase}
+                            label="Jobs Created"
+                            value={reportData.economicRollup.jobsCreated}
+                            color="indigo"
+                            testId="stat-jobs-created"
+                          />
+                        )}
+                        {(reportData.economicRollup.revenueMilestones || 0) > 0 && (
+                          <HeadlineStatCard
+                            icon={DollarSign}
+                            label="Revenue Milestones"
+                            value={`$${reportData.economicRollup.revenueMilestones.toLocaleString()}`}
+                            color="teal"
+                            testId="stat-revenue-milestones"
+                          />
+                        )}
+                      </div>
+                    </>
+                  )}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {(imp?.communitySpend || 0) > 0 && (
                       <HeadlineStatCard
