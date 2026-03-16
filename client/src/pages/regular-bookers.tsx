@@ -98,7 +98,7 @@ const PAYMENT_TERM_LABELS: Record<string, string> = {
   net_30: "Net 30 days",
 };
 
-export default function RegularBookersPage({ embedded, categoryScope }: { embedded?: boolean; categoryScope?: string[] } = {}) {
+export default function RegularBookersPage({ embedded, categoryScope, hideSuggestions }: { embedded?: boolean; categoryScope?: string[]; hideSuggestions?: boolean } = {}) {
   const { data: regularBookers, isLoading } = useRegularBookers();
   const { data: allBookerLinks, isLoading: linksLoading } = useAllBookerLinks();
   const { data: contacts } = useContacts();
@@ -691,7 +691,7 @@ export default function RegularBookersPage({ embedded, categoryScope }: { embedd
         {hasFilters && <span>Filters active</span>}
       </div>
 
-      {totalSuggestions > 0 && (
+      {!hideSuggestions && totalSuggestions > 0 && (
         <Collapsible open={suggestionsOpen} onOpenChange={setSuggestionsOpen}>
           <Card className="border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20" data-testid="card-suggested-bookers">
             <CollapsibleTrigger asChild>

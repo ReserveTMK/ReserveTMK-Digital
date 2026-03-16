@@ -455,7 +455,7 @@ export default function GearPage() {
         </TabsContent>
 
         <TabsContent value="bookers">
-          <RegularBookersPage embedded categoryScope={["gear"]} />
+          <RegularBookersPage embedded categoryScope={["gear"]} hideSuggestions />
         </TabsContent>
       </Tabs>
     </div>
