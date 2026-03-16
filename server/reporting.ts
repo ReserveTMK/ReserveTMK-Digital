@@ -32,6 +32,11 @@ function parseDate(d: string) { return new Date(d); }
 
 function safeNum(val: any): number { return Number(val) || 0; }
 
+function funderTagCondition(column: any, funder: string | undefined) {
+  if (!funder) return undefined;
+  return sql`${column} @> ARRAY[${funder}]::text[]`;
+}
+
 function confirmedDebriefWhere(filters: ReportFilters) {
   const conds = [
     eq(impactLogs.userId, filters.userId),
@@ -42,6 +47,8 @@ function confirmedDebriefWhere(filters: ReportFilters) {
   if (filters.programmeIds?.length) {
     conds.push(inArray(impactLogs.programmeId, filters.programmeIds));
   }
+  const ft = funderTagCondition(impactLogs.funderTags, filters.funder);
+  if (ft) conds.push(ft);
   return and(...conds)!;
 }
 
@@ -146,30 +153,36 @@ export async function getReachMetrics(filters: ReportFilters) {
     ));
   for (const r of emailRows) { addTouch(r.contactId); src.emails++; }
 
+  const bkgConds = [
+    eq(bookings.userId, filters.userId),
+    inArray(bookings.status, ["confirmed", "completed"]),
+    gte(bookings.startDate, start),
+    lte(bookings.startDate, end),
+  ];
+  const bkgFt = funderTagCondition(bookings.funderTags, filters.funder);
+  if (bkgFt) bkgConds.push(bkgFt);
   const bkgRows = await db
     .select({ bookerId: bookings.bookerId, attendees: bookings.attendees })
     .from(bookings)
-    .where(and(
-      eq(bookings.userId, filters.userId),
-      inArray(bookings.status, ["confirmed", "completed"]),
-      gte(bookings.startDate, start),
-      lte(bookings.startDate, end),
-    ));
+    .where(and(...bkgConds));
   for (const b of bkgRows) {
     addTouch(b.bookerId);
     if (b.attendees) for (const aid of b.attendees) addTouch(aid);
     src.bookings++;
   }
 
+  const progConds = [
+    eq(programmes.userId, filters.userId),
+    inArray(programmes.status, ["active", "completed"]),
+    gte(programmes.startDate, start),
+    lte(programmes.startDate, end),
+  ];
+  const progFt = funderTagCondition(programmes.funderTags, filters.funder);
+  if (progFt) progConds.push(progFt);
   const progRows = await db
     .select({ attendees: programmes.attendees })
     .from(programmes)
-    .where(and(
-      eq(programmes.userId, filters.userId),
-      inArray(programmes.status, ["active", "completed"]),
-      gte(programmes.startDate, start),
-      lte(programmes.startDate, end),
-    ));
+    .where(and(...progConds));
   for (const p of progRows) {
     if (p.attendees) for (const aid of p.attendees) addTouch(aid);
     src.programmes++;
@@ -310,6 +323,14 @@ export async function getDeliveryMetrics(filters: ReportFilters) {
     if (e.attendeeCount && e.attendeeCount > 0) totalAttendees += e.attendeeCount;
   }
 
+  const delBkgConds: any[] = [
+    eq(bookings.userId, filters.userId),
+    inArray(bookings.status, ["confirmed", "completed"]),
+    gte(bookings.startDate, start),
+    lte(bookings.startDate, end),
+  ];
+  const delBkgFt = funderTagCondition(bookings.funderTags, filters.funder);
+  if (delBkgFt) delBkgConds.push(delBkgFt);
   const bkgRows = await db.select({
     id: bookings.id,
     classification: bookings.classification,
@@ -318,12 +339,7 @@ export async function getDeliveryMetrics(filters: ReportFilters) {
     isMultiDay: bookings.isMultiDay,
     startDate: bookings.startDate,
     endDate: bookings.endDate,
-  }).from(bookings).where(and(
-    eq(bookings.userId, filters.userId),
-    inArray(bookings.status, ["confirmed", "completed"]),
-    gte(bookings.startDate, start),
-    lte(bookings.startDate, end),
-  ));
+  }).from(bookings).where(and(...delBkgConds));
 
   const bookingsByClass: Record<string, number> = {};
   let communityHours = 0;
@@ -357,17 +373,20 @@ export async function getDeliveryMetrics(filters: ReportFilters) {
   const partnerMeetings = allMtgRows.filter(m => m.type && !MENTORING_TYPES.includes(m.type.toLowerCase()));
   const workshopCount = evtRows.filter(e => e.type && e.type.toLowerCase().includes("workshop")).length;
 
+  const delProgConds: any[] = [
+    eq(programmes.userId, filters.userId),
+    ne(programmes.status, "cancelled"),
+    gte(programmes.startDate, start),
+    lte(programmes.startDate, end),
+  ];
+  const delProgFt = funderTagCondition(programmes.funderTags, filters.funder);
+  if (delProgFt) delProgConds.push(delProgFt);
   const progRows = await db.select({
     id: programmes.id,
     classification: programmes.classification,
     status: programmes.status,
     attendees: programmes.attendees,
-  }).from(programmes).where(and(
-    eq(programmes.userId, filters.userId),
-    ne(programmes.status, "cancelled"),
-    gte(programmes.startDate, start),
-    lte(programmes.startDate, end),
-  ));
+  }).from(programmes).where(and(...delProgConds));
 
   const progByClass: Record<string, number> = {};
   let progCompleted = 0;
@@ -1816,6 +1835,114 @@ export async function getSurveyAggregation(filters: ReportFilters) {
     totalCompletedSurveys: completedGrowth.length + completedPostBooking.length,
     totalSent: allSurveys.length,
   };
+}
+
+export interface TrendPeriodMetrics {
+  periodLabel: string;
+  startDate: string;
+  endDate: string;
+  peopleReached: number;
+  uniqueContacts: number;
+  totalActivations: number;
+  milestonesAchieved: number;
+  communitySpend: number;
+  repeatEngagementRate: number;
+  communityHours: number;
+}
+
+function formatLocalDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function generatePeriods(startDate: string, endDate: string, granularity: "monthly" | "quarterly"): { label: string; start: string; end: string }[] {
+  const periods: { label: string; start: string; end: string }[] = [];
+  const endDt = new Date(endDate);
+  let cursor = new Date(startDate);
+
+  if (granularity === "monthly") {
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+    while (cursor <= endDt) {
+      const periodEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
+      const label = `${SHORT_MONTHS[cursor.getMonth()]} ${cursor.getFullYear()}`;
+      periods.push({
+        label,
+        start: formatLocalDate(cursor),
+        end: formatLocalDate(periodEnd > endDt ? endDt : periodEnd),
+      });
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+    }
+  } else {
+    const getQuarterStart = (d: Date) => new Date(d.getFullYear(), Math.floor(d.getMonth() / 3) * 3, 1);
+    cursor = getQuarterStart(cursor);
+    while (cursor <= endDt) {
+      const q = Math.floor(cursor.getMonth() / 3) + 1;
+      const periodEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 3, 0);
+      const label = `Q${q} ${cursor.getFullYear()}`;
+      periods.push({
+        label,
+        start: formatLocalDate(cursor),
+        end: formatLocalDate(periodEnd > endDt ? endDt : periodEnd),
+      });
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 3, 1);
+    }
+  }
+
+  return periods;
+}
+
+export async function getTrendMetrics(
+  baseFilters: ReportFilters,
+  granularity: "monthly" | "quarterly" = "monthly",
+  periods?: number,
+): Promise<TrendPeriodMetrics[]> {
+  const maxPeriods = periods || (granularity === "monthly" ? 12 : 8);
+  const endDt = new Date(baseFilters.endDate);
+  let startDt: Date;
+
+  if (granularity === "monthly") {
+    startDt = new Date(endDt.getFullYear(), endDt.getMonth() - maxPeriods + 1, 1);
+  } else {
+    const qStart = new Date(endDt.getFullYear(), Math.floor(endDt.getMonth() / 3) * 3, 1);
+    startDt = new Date(qStart.getFullYear(), qStart.getMonth() - (maxPeriods - 1) * 3, 1);
+  }
+
+  const allPeriods = generatePeriods(formatLocalDate(startDt), formatLocalDate(endDt), granularity);
+
+  const results: TrendPeriodMetrics[] = [];
+
+  for (const period of allPeriods) {
+    const periodFilters: ReportFilters = {
+      ...baseFilters,
+      startDate: period.start,
+      endDate: period.end,
+    };
+
+    const [reach, delivery, impact] = await Promise.all([
+      getReachMetrics(periodFilters),
+      getDeliveryMetrics(periodFilters),
+      getImpactMetrics(periodFilters),
+    ]);
+
+    results.push({
+      periodLabel: period.label,
+      startDate: period.start,
+      endDate: period.end,
+      peopleReached: reach.peopleReached,
+      uniqueContacts: reach.uniqueContacts,
+      totalActivations: delivery.totalActivations,
+      milestonesAchieved: impact.milestoneCount,
+      communitySpend: impact.communitySpend,
+      repeatEngagementRate: reach.repeatEngagementRate,
+      communityHours: delivery.communityHours,
+    });
+  }
+
+  return results;
 }
 
 export async function getFullMonthlyReport(filters: ReportFilters) {

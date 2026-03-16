@@ -188,6 +188,205 @@ function MetricBenchmarkCard({ title, benchmarks, color }: {
   );
 }
 
+interface TrendPeriodData {
+  periodLabel: string;
+  startDate: string;
+  endDate: string;
+  peopleReached: number;
+  uniqueContacts: number;
+  totalActivations: number;
+  milestonesAchieved: number;
+  communitySpend: number;
+  repeatEngagementRate: number;
+  communityHours: number;
+}
+
+const TREND_METRICS = [
+  { key: "peopleReached", label: "People Reached", color: "hsl(14, 88%, 68%)" },
+  { key: "uniqueContacts", label: "Unique Contacts", color: "hsl(161, 100%, 12%)" },
+  { key: "totalActivations", label: "Total Activations", color: "hsl(199, 85%, 83%)" },
+  { key: "milestonesAchieved", label: "Milestones Achieved", color: "hsl(335, 82%, 76%)" },
+  { key: "communitySpend", label: "Community Spend ($)", color: "hsl(161, 40%, 35%)" },
+  { key: "repeatEngagementRate", label: "Repeat Engagement Rate (%)", color: "hsl(153, 30%, 18%)" },
+  { key: "communityHours", label: "Community Hours", color: "hsl(0, 84%, 60%)" },
+] as const;
+
+function getPoPChange(current: number, previous: number): { value: number; direction: "up" | "down" | "flat" } {
+  if (previous === 0 && current === 0) return { value: 0, direction: "flat" };
+  if (previous === 0) return { value: 100, direction: "up" };
+  const change = Math.round(((current - previous) / previous) * 100);
+  return { value: Math.abs(change), direction: change > 0 ? "up" : change < 0 ? "down" : "flat" };
+}
+
+function TrendsSection({ communityLens, funderFilter, programmeFilter, taxonomyFilter, activeFunder, reportEndDate }: {
+  communityLens: string;
+  funderFilter: string;
+  programmeFilter: string;
+  taxonomyFilter: string;
+  activeFunder: Funder | null;
+  reportEndDate: string;
+}) {
+  const [granularity, setGranularity] = useState<"monthly" | "quarterly">("monthly");
+  const [trendData, setTrendData] = useState<TrendPeriodData[] | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
+
+  const handleLoadTrends = async () => {
+    setIsLoading(true);
+    try {
+      const filters: {
+        endDate: string;
+        granularity: "monthly" | "quarterly";
+        programmeIds?: number[];
+        taxonomyIds?: number[];
+        funder?: string;
+        communityLens?: string;
+      } = {
+        endDate: reportEndDate || format(new Date(), "yyyy-MM-dd"),
+        granularity,
+      };
+      if (programmeFilter !== "all") filters.programmeIds = [parseInt(programmeFilter)];
+      if (taxonomyFilter !== "all") filters.taxonomyIds = [parseInt(taxonomyFilter)];
+      const effectiveFunder = funderFilter !== "all" ? funderFilter : (activeFunder?.funderTag || null);
+      if (effectiveFunder) filters.funder = effectiveFunder;
+      if (communityLens !== "all") filters.communityLens = communityLens;
+
+      const res = await apiRequest("POST", "/api/reports/trends", filters);
+      const data = await res.json();
+      setTrendData(data);
+    } catch {
+      toast({ title: "Error", description: "Failed to load trend data", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const latestPeriod = trendData && trendData.length > 0 ? trendData[trendData.length - 1] : null;
+  const previousPeriod = trendData && trendData.length > 1 ? trendData[trendData.length - 2] : null;
+
+  return (
+    <CollapsibleSection title="Trends" icon={TrendingUp} testId="section-trends" defaultOpen={true} key={`trends-${activeFunder?.id || 'none'}`}>
+      <div className="pt-4 space-y-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-sm text-muted-foreground">Track how your key metrics change over time.</p>
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1 p-1 bg-muted/50 rounded-lg">
+              <Button
+                variant={granularity === "monthly" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => { setGranularity("monthly"); setTrendData(null); }}
+                data-testid="trends-granularity-monthly"
+              >
+                Monthly
+              </Button>
+              <Button
+                variant={granularity === "quarterly" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => { setGranularity("quarterly"); setTrendData(null); }}
+                data-testid="trends-granularity-quarterly"
+              >
+                Quarterly
+              </Button>
+            </div>
+            <Button onClick={handleLoadTrends} disabled={isLoading} size="sm" data-testid="button-load-trends">
+              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <TrendingUp className="w-4 h-4 mr-1" />}
+              {isLoading ? "Loading..." : "Load Trends"}
+            </Button>
+          </div>
+        </div>
+
+        {isLoading && (
+          <div className="flex justify-center py-8">
+            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          </div>
+        )}
+
+        {trendData && trendData.length > 0 && !isLoading && (
+          <div className="space-y-6">
+            {latestPeriod && previousPeriod && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3" data-testid="trend-pop-badges">
+                {TREND_METRICS.map((metric) => {
+                  const current = latestPeriod[metric.key as keyof TrendPeriodData] as number;
+                  const prev = previousPeriod[metric.key as keyof TrendPeriodData] as number;
+                  const pop = getPoPChange(current, prev);
+                  return (
+                    <div key={metric.key} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border bg-card" data-testid={`trend-pop-${metric.key}`}>
+                      <div className="min-w-0">
+                        <p className="text-xs text-muted-foreground truncate">{metric.label}</p>
+                        <p className="text-sm font-semibold">{metric.key === "communitySpend" ? `$${current.toLocaleString()}` : current.toLocaleString()}</p>
+                      </div>
+                      <Badge
+                        variant="secondary"
+                        className={`shrink-0 text-xs ${
+                          pop.direction === "up"
+                            ? "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400"
+                            : pop.direction === "down"
+                            ? "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400"
+                            : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {pop.direction === "up" ? "+" : pop.direction === "down" ? "-" : ""}
+                        {pop.value}%
+                      </Badge>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {TREND_METRICS.map((metric) => (
+                <Card key={metric.key} className="p-4" data-testid={`trend-chart-${metric.key}`}>
+                  <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: metric.color }} />
+                    {metric.label}
+                  </h4>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <LineChart data={trendData}>
+                      <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                      <XAxis dataKey="periodLabel" tick={{ fontSize: 11 }} />
+                      <YAxis allowDecimals={metric.key === "communitySpend" || metric.key === "communityHours"} tick={{ fontSize: 11 }} />
+                      <Tooltip
+                        formatter={(value: number) =>
+                          metric.key === "communitySpend"
+                            ? [`$${value.toLocaleString()}`, metric.label]
+                            : metric.key === "repeatEngagementRate"
+                            ? [`${value}%`, metric.label]
+                            : [value.toLocaleString(), metric.label]
+                        }
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey={metric.key}
+                        stroke={metric.color}
+                        strokeWidth={2}
+                        dot={{ fill: metric.color, r: 3 }}
+                        activeDot={{ r: 5 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {trendData && trendData.length === 0 && !isLoading && (
+          <div className="text-center py-8 text-muted-foreground text-sm" data-testid="trends-empty">
+            No trend data available for the selected filters.
+          </div>
+        )}
+
+        {!trendData && !isLoading && (
+          <div className="text-center py-8 text-muted-foreground text-sm" data-testid="trends-placeholder">
+            Click "Load Trends" to see how your metrics have changed over the last {granularity === "monthly" ? "12 months" : "8 quarters"}.
+          </div>
+        )}
+      </div>
+    </CollapsibleSection>
+  );
+}
+
 const HIGHLIGHT_CATEGORY_OPTIONS = [
   { value: "event", label: "Event" },
   { value: "programme", label: "Programme" },
@@ -963,6 +1162,16 @@ export default function Reports() {
                   </span>
                 </div>
               )}
+
+              {/* Section 0: Trends */}
+              <TrendsSection
+                communityLens={communityLens}
+                funderFilter={funderFilter}
+                programmeFilter={programmeFilter}
+                taxonomyFilter={taxonomyFilter}
+                activeFunder={activeFunder}
+                reportEndDate={filterEnd}
+              />
 
               {/* Section 1: Reach */}
               <CollapsibleSection title="Reach" icon={Users} testId="section-reach" defaultOpen={isSectionDefaultOpen("reach")} key={`reach-${activeFunder?.id || 'none'}`}>

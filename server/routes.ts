@@ -6,7 +6,7 @@ import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON } from "./replit_integrations/anthropic/client";
-import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getReachMetrics, getDeliveryMetrics, getImpactMetrics, type ReportFilters } from "./reporting";
+import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getReachMetrics, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, type ReportFilters } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
 import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings } from "@shared/schema";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -5595,6 +5595,36 @@ Important:
     } catch (err: any) {
       console.error("Report generation error:", err);
       res.status(500).json({ message: "Failed to generate report" });
+    }
+  });
+
+  app.post("/api/reports/trends", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { endDate, granularity, periods, programmeIds, taxonomyIds, funder, communityLens } = req.body;
+
+      if (!endDate) {
+        return res.status(400).json({ message: "endDate is required" });
+      }
+
+      const gran = granularity === "quarterly" ? "quarterly" : "monthly";
+      const numPeriods = Math.min(Math.max(parseInt(periods) || (gran === "monthly" ? 12 : 8), 2), 24);
+
+      const filters: ReportFilters = {
+        userId,
+        startDate: endDate,
+        endDate,
+        programmeIds,
+        taxonomyIds,
+        funder,
+        communityLens,
+      };
+
+      const trendData = await getTrendMetrics(filters, gran, numPeriods);
+      res.json(trendData);
+    } catch (err: any) {
+      console.error("Trend metrics error:", err);
+      res.status(500).json({ message: "Failed to generate trend data" });
     }
   });
 
