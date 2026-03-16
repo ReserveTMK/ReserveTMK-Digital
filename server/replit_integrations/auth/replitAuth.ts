@@ -90,11 +90,18 @@ function getOrInitOidcConfig(): Promise<client.Configuration> {
   return oidcConfigPromise;
 }
 
+function getCallbackUrl(req: any): string {
+  const domain = process.env.REPLIT_DEV_DOMAIN || req.hostname;
+  return `https://${domain}/api/callback`;
+}
+
 export async function setupAuth(app: Express) {
   app.set("trust proxy", 1);
   app.use(getSession());
   app.use(passport.initialize());
   app.use(passport.session());
+
+  console.log(`[auth] Setup: REPL_ID=${process.env.REPL_ID}, REPLIT_DEPLOYMENT=${process.env.REPLIT_DEPLOYMENT}, REPLIT_DEV_DOMAIN=${process.env.REPLIT_DEV_DOMAIN}, REPLIT_DOMAINS=${process.env.REPLIT_DOMAINS}`);
 
   const verify: VerifyFunction = async (
     tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
@@ -106,34 +113,25 @@ export async function setupAuth(app: Express) {
     verified(null, user);
   };
 
-  const registeredStrategies = new Set<string>();
+  let strategyRegistered = false;
+  let currentCallbackURL = "";
 
-  function getAuthDomain(req: any): string {
-    if (process.env.REPLIT_DEV_DOMAIN) {
-      return process.env.REPLIT_DEV_DOMAIN;
-    }
-    if (process.env.REPLIT_DEPLOYMENT === "1" && process.env.REPLIT_DOMAINS) {
-      const primaryDomain = process.env.REPLIT_DOMAINS.split(",")[0].trim();
-      if (primaryDomain) return primaryDomain;
-    }
-    return req.hostname;
-  }
-
-  const ensureStrategy = async (domain: string) => {
-    const strategyName = `replitauth:${domain}`;
-    if (!registeredStrategies.has(strategyName)) {
+  const ensureStrategy = async (callbackURL: string) => {
+    if (!strategyRegistered || currentCallbackURL !== callbackURL) {
       const config = await getOrInitOidcConfig();
       const strategy = new Strategy(
         {
-          name: strategyName,
+          name: "replitauth",
           config,
           scope: "openid email profile offline_access",
-          callbackURL: `https://${domain}/api/callback`,
+          callbackURL,
         },
         verify
       );
       passport.use(strategy);
-      registeredStrategies.add(strategyName);
+      strategyRegistered = true;
+      currentCallbackURL = callbackURL;
+      console.log(`[auth] Strategy registered with callbackURL=${callbackURL}`);
     }
   };
 
@@ -142,24 +140,25 @@ export async function setupAuth(app: Express) {
 
   app.get("/api/login", async (req, res, next) => {
     try {
-      const domain = getAuthDomain(req);
-      await ensureStrategy(domain);
-      passport.authenticate(`replitauth:${domain}`, {
+      const callbackURL = getCallbackUrl(req);
+      console.log(`[auth] Login: hostname=${req.hostname}, callbackURL=${callbackURL}`);
+      await ensureStrategy(callbackURL);
+      passport.authenticate("replitauth", {
         prompt: "login",
         scope: ["openid", "email", "profile", "offline_access"],
       })(req, res, next);
     } catch (err) {
-      console.error("Auth setup failed:", err);
+      console.error("[auth] Login error:", err);
       res.status(503).json({ message: "Authentication service temporarily unavailable" });
     }
   });
 
   app.get("/api/callback", async (req, res, next) => {
     try {
-      const domain = getAuthDomain(req);
-      console.log(`[auth] Callback hit, domain=${domain}, hasSession=${!!req.session}, sessionID=${req.sessionID}`);
-      await ensureStrategy(domain);
-      passport.authenticate(`replitauth:${domain}`, (err: any, user: any, info: any) => {
+      const callbackURL = getCallbackUrl(req);
+      console.log(`[auth] Callback: hostname=${req.hostname}, callbackURL=${callbackURL}, hasSession=${!!req.session}`);
+      await ensureStrategy(callbackURL);
+      passport.authenticate("replitauth", (err: any, user: any, info: any) => {
         if (err) {
           console.error("[auth] Callback passport error:", err);
           return res.redirect("/api/login");
@@ -170,7 +169,7 @@ export async function setupAuth(app: Express) {
         }
         req.logIn(user, (loginErr) => {
           if (loginErr) {
-            console.error("[auth] Callback login error:", loginErr);
+            console.error("[auth] Callback logIn error:", loginErr);
             return res.redirect("/api/login");
           }
           console.log(`[auth] Login successful, user=${user.claims?.sub}`);
@@ -186,11 +185,12 @@ export async function setupAuth(app: Express) {
   app.get("/api/logout", async (req, res) => {
     try {
       const config = await getOrInitOidcConfig();
+      const domain = process.env.REPLIT_DEV_DOMAIN || req.hostname;
       req.logout(() => {
         res.redirect(
           client.buildEndSessionUrl(config, {
             client_id: process.env.REPL_ID!,
-            post_logout_redirect_uri: `https://${getAuthDomain(req)}`,
+            post_logout_redirect_uri: `https://${domain}`,
           }).href
         );
       });
@@ -200,7 +200,7 @@ export async function setupAuth(app: Express) {
   });
 
   getOrInitOidcConfig().catch(err => {
-    console.warn("OIDC discovery deferred - auth will initialize on first login request:", err.message);
+    console.warn("OIDC discovery deferred:", err.message);
   });
 }
 
