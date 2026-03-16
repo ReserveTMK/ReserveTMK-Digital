@@ -92,28 +92,29 @@ export function useDeleteRegularBooker() {
   });
 }
 
-export function useVenueInstructions() {
-  return useQuery<VenueInstruction[]>({ queryKey: ['/api/venue-instructions'] });
+export function useVenueInstructions(venueId?: number | null) {
+  const params = venueId !== undefined ? `?venueId=${venueId}` : '';
+  return useQuery<VenueInstruction[]>({ queryKey: ['/api/venue-instructions', venueId], queryFn: () => fetch(`/api/venue-instructions${params}`, { credentials: 'include' }).then(r => r.json()) });
 }
 
 export function useCreateVenueInstruction() {
   return useMutation({
     mutationFn: (data: any) => apiRequest('POST', '/api/venue-instructions', data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/venue-instructions'] }),
+    onSuccess: () => queryClient.invalidateQueries({ predicate: (query) => (query.queryKey[0] as string)?.startsWith?.('/api/venue-instructions') || query.queryKey[0] === '/api/venue-instructions' }),
   });
 }
 
 export function useUpdateVenueInstruction() {
   return useMutation({
     mutationFn: ({ id, data }: { id: number; data: any }) => apiRequest('PATCH', `/api/venue-instructions/${id}`, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/venue-instructions'] }),
+    onSuccess: () => queryClient.invalidateQueries({ predicate: (query) => (query.queryKey[0] as string)?.startsWith?.('/api/venue-instructions') || query.queryKey[0] === '/api/venue-instructions' }),
   });
 }
 
 export function useDeleteVenueInstruction() {
   return useMutation({
     mutationFn: (id: number) => apiRequest('DELETE', `/api/venue-instructions/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/venue-instructions'] }),
+    onSuccess: () => queryClient.invalidateQueries({ predicate: (query) => (query.queryKey[0] as string)?.startsWith?.('/api/venue-instructions') || query.queryKey[0] === '/api/venue-instructions' }),
   });
 }
 

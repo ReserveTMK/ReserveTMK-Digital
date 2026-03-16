@@ -8,7 +8,7 @@ import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON, isAnthropicKeyConfigured, AIKeyMissingError } from "./replit_integrations/anthropic/client";
 import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getReachMetrics, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, type ReportFilters, type CohortDefinition, type OrgProfileContext, type FunderContext } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings, normalizeStage, } from "@shared/schema";
+import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings, normalizeStage, DEFAULT_AVAILABILITY_SCHEDULE, type AvailabilitySchedule, } from "@shared/schema";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { ObjectStorageService } from "./replit_integrations/object_storage";
 import crypto from "crypto";
@@ -4068,6 +4068,9 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     try {
       const userId = (req.user as any).claims.sub;
       const body = { ...req.body, userId };
+      if (!body.availabilitySchedule) {
+        body.availabilitySchedule = DEFAULT_AVAILABILITY_SCHEDULE;
+      }
       const input = api.venues.create.input.parse(body);
       const venue = await storage.createVenue(input);
       res.status(201).json(venue);
@@ -4175,11 +4178,13 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const { venueId, startDate, endDate, startTime, endTime, excludeBookingId } = req.query;
       if (!venueId || !startDate) return res.json({ conflicts: [] });
 
+      const targetVenueId = parseInt(venueId as string);
+      if (isNaN(targetVenueId)) return res.status(400).json({ message: "Invalid venueId" });
+
       const allBookings = await storage.getBookings(userId);
       const programmes = await storage.getProgrammes(userId);
       const allMeetings = await storage.getMeetings(userId);
       const conflicts: { type: string; id: number; title: string; date: string; time: string }[] = [];
-      const targetVenueId = parseInt(venueId as string);
 
       for (const b of allBookings) {
         if (excludeBookingId && b.id === parseInt(excludeBookingId as string)) continue;
@@ -4260,8 +4265,20 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
       occupiedIntervals.sort((a, b) => a.start - b.start);
 
-      const dayStart = parseTimeToMinutes("08:00");
-      const dayEnd = parseTimeToMinutes("17:00");
+      const venue = await storage.getVenue(targetVenueId);
+      if (venue && venue.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+      const schedule = (venue?.availabilitySchedule as AvailabilitySchedule) || DEFAULT_AVAILABILITY_SCHEDULE;
+      const requestDate = new Date(startDate as string + "T12:00:00");
+      const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+      const dayName = dayNames[requestDate.getDay()];
+      const daySchedule = schedule[dayName];
+
+      if (daySchedule && !daySchedule.open) {
+        return res.json({ conflicts, availableSlots: [] });
+      }
+
+      const dayStart = daySchedule ? parseTimeToMinutes(daySchedule.startTime) : parseTimeToMinutes("08:00");
+      const dayEnd = daySchedule ? parseTimeToMinutes(daySchedule.endTime) : parseTimeToMinutes("17:00");
       const availableSlots: { startTime: string; endTime: string }[] = [];
       let cursor = dayStart;
       for (const interval of occupiedIntervals) {
@@ -4500,13 +4517,27 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.get("/api/venue-instructions", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
     const instructions = await storage.getVenueInstructions(userId);
+    const { venueId } = req.query;
+    if (venueId !== undefined) {
+      if (venueId === "null") {
+        return res.json(instructions.filter(i => i.venueId === null));
+      }
+      const vid = parseInt(venueId as string);
+      if (isNaN(vid)) return res.status(400).json({ message: "Invalid venueId" });
+      return res.json(instructions.filter(i => i.venueId === vid));
+    }
     res.json(instructions);
   });
 
   app.post("/api/venue-instructions", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const data = insertVenueInstructionSchema.parse({ ...req.body, userId });
+      const body = { ...req.body, userId };
+      if (body.venueId != null) {
+        const venue = await storage.getVenue(body.venueId);
+        if (!venue || venue.userId !== userId) return res.status(403).json({ message: "Forbidden: venue does not belong to you" });
+      }
+      const data = insertVenueInstructionSchema.parse(body);
       const instruction = await storage.createVenueInstruction(data);
       res.json(instruction);
     } catch (error: any) {
@@ -4520,7 +4551,12 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const id = parseId(req.params.id);
       const existing = await storage.getVenueInstructions(userId);
       if (!existing.find(i => i.id === id)) return res.status(403).json({ message: "Forbidden" });
-      const instruction = await storage.updateVenueInstruction(id, req.body);
+      const { userId: _discardUserId, ...safeUpdates } = req.body;
+      if (safeUpdates.venueId != null) {
+        const venue = await storage.getVenue(safeUpdates.venueId);
+        if (!venue || venue.userId !== userId) return res.status(403).json({ message: "Forbidden: venue does not belong to you" });
+      }
+      const instruction = await storage.updateVenueInstruction(id, safeUpdates);
       res.json(instruction);
     } catch (error: any) {
       res.status(400).json({ message: error.message });

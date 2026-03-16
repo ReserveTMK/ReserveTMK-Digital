@@ -462,6 +462,7 @@ export const venues = pgTable("venues", {
   description: text("description"),
   capacity: integer("capacity"),
   active: boolean("active").default(true),
+  availabilitySchedule: jsonb("availability_schedule"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -580,6 +581,7 @@ export type InstructionType = typeof INSTRUCTION_TYPES[number];
 export const venueInstructions = pgTable("venue_instructions", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
+  venueId: integer("venue_id").references(() => venues.id),
   instructionType: text("instruction_type").notNull(),
   title: text("title"),
   content: text("content"),
@@ -1439,6 +1441,24 @@ export const insertBookingSchema = createInsertSchema(bookings).omit({
 
 export type Venue = typeof venues.$inferSelect;
 export type InsertVenue = z.infer<typeof insertVenueSchema>;
+
+export type DayAvailability = {
+  open: boolean;
+  startTime: string;
+  endTime: string;
+};
+
+export type AvailabilitySchedule = Record<string, DayAvailability>;
+
+export const DEFAULT_AVAILABILITY_SCHEDULE: AvailabilitySchedule = {
+  monday: { open: true, startTime: "08:00", endTime: "17:00" },
+  tuesday: { open: true, startTime: "08:00", endTime: "17:00" },
+  wednesday: { open: true, startTime: "08:00", endTime: "17:00" },
+  thursday: { open: true, startTime: "08:00", endTime: "17:00" },
+  friday: { open: true, startTime: "08:00", endTime: "17:00" },
+  saturday: { open: false, startTime: "08:00", endTime: "17:00" },
+  sunday: { open: false, startTime: "08:00", endTime: "17:00" },
+};
 
 export type Booking = typeof bookings.$inferSelect;
 export type InsertBooking = z.infer<typeof insertBookingSchema>;
