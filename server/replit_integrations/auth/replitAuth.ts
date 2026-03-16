@@ -12,6 +12,18 @@ function getOidcClientId(): string {
   return process.env.OIDC_CLIENT_ID || process.env.REPL_ID!;
 }
 
+function getCustomDomain(): string | undefined {
+  if (process.env.REPLIT_DOMAINS) {
+    const primaryDomain = process.env.REPLIT_DOMAINS.split(",")[0].trim();
+    if (primaryDomain) return primaryDomain;
+  }
+  return undefined;
+}
+
+function getReplitDomain(): string | undefined {
+  return getCustomDomain() || (process.env.REPLIT_DEV_DOMAIN || undefined);
+}
+
 async function discoverWithRetry(maxRetries = 5, delayMs = 3000): Promise<client.Configuration> {
   const oidcClientId = getOidcClientId();
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -179,7 +191,12 @@ export async function setupAuth(app: Express) {
             return res.redirect("/api/login");
           }
           console.log(`[auth] Login successful, user=${user.claims?.sub}`);
-          res.redirect("/");
+          const customDomain = getCustomDomain();
+          if (customDomain && req.hostname !== customDomain) {
+            res.redirect(`https://${customDomain}`);
+          } else {
+            res.redirect("/");
+          }
         });
       })(req, res, next);
     } catch (err) {
@@ -192,7 +209,12 @@ export async function setupAuth(app: Express) {
     try {
       const config = await getOrInitOidcConfig();
       const isDeployment = !!process.env.REPLIT_DEPLOYMENT;
-      const domain = isDeployment ? req.hostname : (process.env.REPLIT_DEV_DOMAIN || req.hostname);
+      let domain: string;
+      if (isDeployment) {
+        domain = getReplitDomain() || req.hostname;
+      } else {
+        domain = process.env.REPLIT_DEV_DOMAIN || req.hostname;
+      }
       req.logout(() => {
         res.redirect(
           client.buildEndSessionUrl(config, {

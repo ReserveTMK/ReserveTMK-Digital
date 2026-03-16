@@ -69,10 +69,15 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   return <Component />;
 }
 
+const PUBLIC_ROUTE_PREFIXES = ['/book/', '/register/', '/survey/', '/booker/'];
+
 function AppLayout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const [location] = useLocation();
 
-  if (!user) {
+  const isPublicRoute = PUBLIC_ROUTE_PREFIXES.some((prefix) => location.startsWith(prefix));
+
+  if (!user || isPublicRoute) {
     return <>{children}</>;
   }
 
