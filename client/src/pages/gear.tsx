@@ -35,6 +35,10 @@ import {
   Loader2,
   Package,
   Users,
+  History,
+  ShieldCheck,
+  UserCheck,
+  XCircle,
 } from "lucide-react";
 import { GEAR_SUBCATEGORIES, type BookableResource } from "@shared/schema";
 import {
@@ -45,6 +49,10 @@ import {
   useGearBookings,
   useGearAvailability,
   useMarkGearReturned,
+  useCreateGearBooking,
+  useApproveGearBooking,
+  useRejectGearBooking,
+  useRegularBookers,
 } from "@/hooks/use-bookings";
 import { useToast } from "@/hooks/use-toast";
 import RegularBookersPage from "./regular-bookers";
@@ -62,21 +70,40 @@ function addDays(date: Date, days: number): Date {
   return result;
 }
 
+function formatDisplayDate(dateStr: string | Date | null): string {
+  if (!dateStr) return "—";
+  const d = new Date(dateStr);
+  return d.toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" });
+}
+
 function GearAvailabilityTab() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const dateStr = formatDate(currentDate);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [checkoutResourceId, setCheckoutResourceId] = useState<string>("");
+  const [checkoutBookerId, setCheckoutBookerId] = useState<string>("");
 
   const { data: gearResources, isLoading: gearLoading } = useBookableResources("gear");
   const { data: gearAvailability, isLoading: gearAvailLoading } = useGearAvailability(dateStr);
   const { data: gearBookings } = useGearBookings();
+  const { data: regularBookers } = useRegularBookers();
   const markReturnedMutation = useMarkGearReturned();
+  const createGearBookingMutation = useCreateGearBooking();
+  const approveMutation = useApproveGearBooking();
+  const rejectMutation = useRejectGearBooking();
   const { toast } = useToast();
 
   const activeGear = (gearResources || []).filter((r) => r.active !== false);
 
   const activeCheckouts = useMemo(() => {
     return (gearBookings || []).filter((b: any) =>
-      b.status === "booked" || b.status === "late"
+      (b.status === "booked" || b.status === "late") && b.approved !== false
+    );
+  }, [gearBookings]);
+
+  const pendingApprovals = useMemo(() => {
+    return (gearBookings || []).filter((b: any) =>
+      b.status === "booked" && b.approved === false
     );
   }, [gearBookings]);
 
@@ -93,11 +120,53 @@ function GearAvailabilityTab() {
     }
   };
 
+  const handleApprove = async (bookingId: number) => {
+    try {
+      await approveMutation.mutateAsync(bookingId);
+      toast({ title: "Approved", description: "Gear booking approved" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to approve", variant: "destructive" });
+    }
+  };
+
+  const handleReject = async (bookingId: number) => {
+    try {
+      await rejectMutation.mutateAsync(bookingId);
+      toast({ title: "Rejected", description: "Gear booking rejected and cancelled" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to reject", variant: "destructive" });
+    }
+  };
+
+  const handleCheckout = async () => {
+    if (!checkoutResourceId || !checkoutBookerId) return;
+    const isSelf = checkoutBookerId === "self";
+    try {
+      await createGearBookingMutation.mutateAsync({
+        resourceId: parseInt(checkoutResourceId),
+        ...(isSelf ? { selfCheckout: true, regularBookerId: 0 } : { regularBookerId: parseInt(checkoutBookerId) }),
+        date: new Date().toISOString(),
+        status: "booked",
+        approved: true,
+      });
+      toast({ title: "Checked Out", description: "Gear checked out successfully" });
+      setCheckoutOpen(false);
+      setCheckoutResourceId("");
+      setCheckoutBookerId("");
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to check out gear", variant: "destructive" });
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h3 className="text-base font-semibold">Availability</h3>
         <div className="flex items-center gap-2">
+          <Button size="sm" onClick={() => setCheckoutOpen(true)} data-testid="button-checkout-gear">
+            <UserCheck className="w-4 h-4 mr-1.5" />
+            Check Out
+          </Button>
           <Button size="icon" variant="outline" onClick={() => navigateDay(-1)} data-testid="button-gear-prev">
             <ChevronLeft className="w-4 h-4" />
           </Button>
@@ -160,6 +229,60 @@ function GearAvailabilityTab() {
         </div>
       )}
 
+      {pendingApprovals.length > 0 && (
+        <div>
+          <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
+            Pending Approvals
+            <Badge variant="secondary" data-testid="badge-pending-count">{pendingApprovals.length}</Badge>
+          </h3>
+          <Card>
+            <CardContent className="p-3">
+              <div className="space-y-2">
+                {pendingApprovals.map((booking: any) => {
+                  const gearItem = activeGear.find(g => g.id === booking.resourceId);
+                  return (
+                    <div key={booking.id} className="flex items-center justify-between gap-3 py-2 px-2 rounded-md hover:bg-muted/50" data-testid={`row-pending-approval-${booking.id}`}>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <ShieldCheck className="w-4 h-4 text-amber-500 shrink-0" />
+                        <div className="min-w-0">
+                          <span className="text-sm font-medium">{gearItem?.name || "Unknown"}</span>
+                          <span className="text-xs text-muted-foreground block">
+                            {booking.bookerOrganization || booking.bookerName || "Unknown borrower"} &middot; {formatDisplayDate(booking.date)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleApprove(booking.id)}
+                          disabled={approveMutation.isPending}
+                          data-testid={`button-approve-${booking.id}`}
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+                          Approve
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleReject(booking.id)}
+                          disabled={rejectMutation.isPending}
+                          className="text-destructive hover:text-destructive"
+                          data-testid={`button-reject-${booking.id}`}
+                        >
+                          <XCircle className="w-3.5 h-3.5 mr-1.5" />
+                          Reject
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {activeCheckouts.length > 0 && (
         <div>
           <h3 className="text-base font-semibold mb-3">Active Checkouts</h3>
@@ -180,7 +303,7 @@ function GearAvailabilityTab() {
                         <div className="min-w-0">
                           <span className="text-sm font-medium">{gearItem?.name || "Unknown"}</span>
                           <span className="text-xs text-muted-foreground block">
-                            Checked out: {booking.checkoutDate || booking.date}
+                            {booking.bookerOrganization || booking.bookerName || "Unknown borrower"} &middot; Checked out: {formatDisplayDate(booking.date)}
                           </span>
                         </div>
                       </div>
@@ -202,6 +325,132 @@ function GearAvailabilityTab() {
           </Card>
         </div>
       )}
+
+      <Dialog open={checkoutOpen} onOpenChange={setCheckoutOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Check Out Gear</DialogTitle>
+            <DialogDescription>Select a gear item and a borrower to check out.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Gear Item</Label>
+              <Select value={checkoutResourceId} onValueChange={setCheckoutResourceId} data-testid="select-checkout-resource">
+                <SelectTrigger data-testid="select-trigger-checkout-resource">
+                  <SelectValue placeholder="Select gear item" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeGear.map((item) => (
+                    <SelectItem key={item.id} value={String(item.id)} data-testid={`select-item-resource-${item.id}`}>
+                      {item.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Borrower</Label>
+              <Select value={checkoutBookerId} onValueChange={setCheckoutBookerId} data-testid="select-checkout-booker">
+                <SelectTrigger data-testid="select-trigger-checkout-booker">
+                  <SelectValue placeholder="Select borrower" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="self" data-testid="select-item-booker-self">
+                    Myself (Staff)
+                  </SelectItem>
+                  {(regularBookers || []).map((booker) => (
+                    <SelectItem key={booker.id} value={String(booker.id)} data-testid={`select-item-booker-${booker.id}`}>
+                      {booker.organizationName || booker.billingEmail}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCheckoutOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleCheckout}
+              disabled={!checkoutResourceId || !checkoutBookerId || createGearBookingMutation.isPending}
+              data-testid="button-confirm-checkout"
+            >
+              {createGearBookingMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Check Out
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function GearHistoryTab() {
+  const { data: gearBookings, isLoading } = useGearBookings();
+  const { data: gearResources } = useBookableResources("gear");
+
+  const historyBookings = useMemo(() => {
+    return (gearBookings || []).filter((b: any) =>
+      b.status === "returned" || b.status === "cancelled"
+    );
+  }, [gearBookings]);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
+      </div>
+    );
+  }
+
+  if (historyBookings.length === 0) {
+    return (
+      <Card className="p-12 text-center">
+        <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+          <History className="w-8 h-8 text-muted-foreground" />
+        </div>
+        <h3 className="text-lg font-semibold mb-2" data-testid="text-no-history">No history yet</h3>
+        <p className="text-muted-foreground">Returned and cancelled gear bookings will appear here.</p>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <h3 className="text-base font-semibold">Booking History</h3>
+      <Card>
+        <CardContent className="p-3">
+          <div className="space-y-2">
+            {historyBookings.map((booking: any) => {
+              const gearItem = (gearResources || []).find((g) => g.id === booking.resourceId);
+              const isReturned = booking.status === "returned";
+              return (
+                <div key={booking.id} className="flex items-center justify-between gap-3 py-2 px-2 rounded-md hover:bg-muted/50" data-testid={`row-gear-history-${booking.id}`}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    {isReturned ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                    ) : (
+                      <XCircle className="w-4 h-4 text-muted-foreground shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <span className="text-sm font-medium">{gearItem?.name || "Unknown"}</span>
+                      <span className="text-xs text-muted-foreground block">
+                        {booking.bookerOrganization || booking.bookerName || "Unknown borrower"}
+                      </span>
+                      <span className="text-xs text-muted-foreground block">
+                        Out: {formatDisplayDate(booking.date)}
+                        {isReturned && booking.returnedAt && ` · Returned: ${formatDisplayDate(booking.returnedAt)}`}
+                      </span>
+                    </div>
+                  </div>
+                  <Badge variant={isReturned ? "secondary" : "outline"} data-testid={`badge-history-status-${booking.id}`}>
+                    {isReturned ? "Returned" : "Cancelled"}
+                  </Badge>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -436,6 +685,10 @@ export default function GearPage() {
             <Wrench className="w-4 h-4 mr-1.5" />
             Availability
           </TabsTrigger>
+          <TabsTrigger value="history" data-testid="tab-gear-history">
+            <History className="w-4 h-4 mr-1.5" />
+            History
+          </TabsTrigger>
           <TabsTrigger value="inventory" data-testid="tab-gear-inventory">
             <Package className="w-4 h-4 mr-1.5" />
             Inventory
@@ -448,6 +701,10 @@ export default function GearPage() {
 
         <TabsContent value="availability">
           <GearAvailabilityTab />
+        </TabsContent>
+
+        <TabsContent value="history">
+          <GearHistoryTab />
         </TabsContent>
 
         <TabsContent value="inventory">

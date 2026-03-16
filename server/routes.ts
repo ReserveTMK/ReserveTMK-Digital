@@ -11780,19 +11780,40 @@ Rules:
     try {
       const userId = (req.user as any).claims.sub;
       const { date, resourceId } = req.query;
+      let bookings: any[];
       if (date) {
-        const bookingsResult = await storage.getGearBookingsByDate(userId, new Date(date as string));
+        bookings = await storage.getGearBookingsByDate(userId, new Date(date as string));
         if (resourceId) {
-          return res.json(bookingsResult.filter(b => b.resourceId === parseInt(resourceId as string)));
+          bookings = bookings.filter(b => b.resourceId === parseInt(resourceId as string));
         }
-        return res.json(bookingsResult);
+      } else if (resourceId) {
+        bookings = await storage.getGearBookingsByResource(parseInt(resourceId as string));
+        bookings = bookings.filter(b => b.userId === userId);
+      } else {
+        bookings = await storage.getGearBookings(userId);
       }
-      if (resourceId) {
-        const bookingsResult = await storage.getGearBookingsByResource(parseInt(resourceId as string));
-        return res.json(bookingsResult.filter(b => b.userId === userId));
+
+      const allUserBookers = await storage.getRegularBookers(userId);
+      const userBookerMap = new Map(allUserBookers.map(b => [b.id, b]));
+      const bookerMap: Record<number, { name: string; organization: string | null }> = {};
+      const bookerIds = [...new Set(bookings.map(b => b.regularBookerId).filter(Boolean))];
+      for (const bid of bookerIds) {
+        const booker = userBookerMap.get(bid);
+        if (booker) {
+          bookerMap[bid] = {
+            name: booker.billingEmail,
+            organization: booker.organizationName || null,
+          };
+        }
       }
-      const allBookings = await storage.getGearBookings(userId);
-      res.json(allBookings);
+
+      const enriched = bookings.map(b => ({
+        ...b,
+        bookerName: bookerMap[b.regularBookerId]?.name || null,
+        bookerOrganization: bookerMap[b.regularBookerId]?.organization || null,
+      }));
+
+      res.json(enriched);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -11804,13 +11825,41 @@ Rules:
       const body = { ...req.body, userId };
       if (body.date && typeof body.date === "string") body.date = new Date(body.date);
 
+      if (body.selfCheckout) {
+        delete body.selfCheckout;
+        const userRecord = await storage.auth.getUser(userId);
+        const email = userRecord?.email || `staff-${userId}@internal`;
+        const allBookers = await storage.getRegularBookers(userId);
+        let booker = allBookers.find(b => b.loginEmail === email || b.billingEmail === email);
+        if (!booker) {
+          booker = await storage.createRegularBooker({
+            userId,
+            billingEmail: email,
+            organizationName: userRecord ? `${userRecord.firstName || ''} ${userRecord.lastName || ''}`.trim() || 'Staff' : 'Staff',
+            pricingTier: 'full_price',
+            accountStatus: 'active',
+          });
+        }
+        body.regularBookerId = booker.id;
+        body.approved = true;
+      }
+
+      if (!body.selfCheckout && body.regularBookerId) {
+        const booker = await storage.getRegularBooker(body.regularBookerId);
+        if (!booker || booker.userId !== userId) {
+          return res.status(403).json({ message: "Invalid booker selection" });
+        }
+      }
+
       const resource = await storage.getBookableResource(body.resourceId);
       if (!resource) return res.status(404).json({ message: "Resource not found" });
 
-      if (resource.requiresApproval) {
-        body.approved = false;
-      } else {
-        body.approved = true;
+      if (body.approved === undefined) {
+        if (resource.requiresApproval) {
+          body.approved = false;
+        } else {
+          body.approved = true;
+        }
       }
 
       const data = insertGearBookingSchema.parse(body);
@@ -11890,7 +11939,7 @@ Rules:
       const dayBookings = await storage.getGearBookingsByDate(userId, date);
 
       const availability = gear.map(item => {
-        const itemBookings = dayBookings.filter(b => b.resourceId === item.id && b.status !== "returned");
+        const itemBookings = dayBookings.filter(b => b.resourceId === item.id && b.status !== "returned" && b.status !== "cancelled");
         return {
           resourceId: item.id,
           resourceName: item.name,
