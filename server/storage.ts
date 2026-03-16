@@ -199,6 +199,9 @@ import {
   programmeRegistrations,
   type ProgrammeRegistration,
   type InsertProgrammeRegistration,
+  metricSnapshots,
+  type MetricSnapshot,
+  type InsertMetricSnapshot,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, sql, max, count, inArray } from "drizzle-orm";
 
@@ -598,6 +601,11 @@ export interface IStorage {
   deleteGearBooking(id: number): Promise<void>;
   markGearReturned(id: number): Promise<GearBooking>;
   getLateGearReturns(userId: string): Promise<GearBooking[]>;
+
+  // Metric Snapshots
+  createMetricSnapshot(data: InsertMetricSnapshot): Promise<MetricSnapshot>;
+  getMetricSnapshots(contactId: number): Promise<MetricSnapshot[]>;
+  getMetricSnapshotsByContacts(contactIds: number[], startDate?: Date, endDate?: Date): Promise<MetricSnapshot[]>;
 
   // Auth (re-exported or separate)
   auth: IAuthStorage;
@@ -2576,6 +2584,27 @@ export class DatabaseStorage implements IStorage {
         eq(gearBookings.status, "late"),
       ))
       .orderBy(desc(gearBookings.date));
+  }
+
+  async createMetricSnapshot(data: InsertMetricSnapshot): Promise<MetricSnapshot> {
+    const [snapshot] = await db.insert(metricSnapshots).values(data).returning();
+    return snapshot;
+  }
+
+  async getMetricSnapshots(contactId: number): Promise<MetricSnapshot[]> {
+    return db.select().from(metricSnapshots)
+      .where(eq(metricSnapshots.contactId, contactId))
+      .orderBy(desc(metricSnapshots.createdAt));
+  }
+
+  async getMetricSnapshotsByContacts(contactIds: number[], startDate?: Date, endDate?: Date): Promise<MetricSnapshot[]> {
+    if (contactIds.length === 0) return [];
+    const conditions = [inArray(metricSnapshots.contactId, contactIds)];
+    if (startDate) conditions.push(gte(metricSnapshots.createdAt, startDate));
+    if (endDate) conditions.push(lte(metricSnapshots.createdAt, endDate));
+    return db.select().from(metricSnapshots)
+      .where(and(...conditions))
+      .orderBy(metricSnapshots.createdAt);
   }
 }
 

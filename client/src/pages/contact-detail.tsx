@@ -98,6 +98,16 @@ export default function ContactDetail() {
     enabled: !!id,
   });
 
+  const { data: metricSnapshotsData } = useQuery<Array<{ id: number; contactId: number; metrics: any; source: string; createdAt: string }>>({
+    queryKey: ['/api/contacts', id, 'metric-snapshots'],
+    queryFn: async () => {
+      const res = await fetch(`/api/contacts/${id}/metric-snapshots`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!id,
+  });
+
   const stageMutation = useMutation({
     mutationFn: (stage: string) =>
       apiRequest('PATCH', `/api/contacts/${id}/relationship-stage`, { stage }),
@@ -300,6 +310,49 @@ export default function ContactDetail() {
   const contactImpactLogs = (contactDebriefs as any[]) || [];
 
   const contactActionItems = (actionItems as any[])?.filter((item: any) => item.contactId === id) || [];
+
+  const snapshotChartData = useMemo(() => {
+    const points: Array<{ date: string; timestamp: number; source: string; mindset?: number; skill?: number; confidence?: number; bizConfidence?: number; systems?: number; funding?: number; network?: number; community?: number }> = [];
+
+    if (metricSnapshotsData && metricSnapshotsData.length > 0) {
+      const sorted = [...metricSnapshotsData].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      for (const snap of sorted) {
+        const m = snap.metrics || {};
+        points.push({
+          date: format(new Date(snap.createdAt), 'MM/dd/yy'),
+          timestamp: new Date(snap.createdAt).getTime(),
+          source: snap.source,
+          mindset: m.mindset,
+          skill: m.skill,
+          confidence: m.confidence,
+          bizConfidence: m.bizConfidence || m.confidenceScore,
+          systems: m.systemsInPlace,
+          funding: m.fundingReadiness,
+          network: m.networkStrength,
+          community: m.communityImpact,
+        });
+      }
+    }
+
+    if (contact?.metrics) {
+      const m = contact.metrics as any;
+      points.push({
+        date: "Current",
+        timestamp: Date.now(),
+        source: "current",
+        mindset: m.mindset,
+        skill: m.skill,
+        confidence: m.confidence,
+        bizConfidence: m.bizConfidence || m.confidenceScore,
+        systems: m.systemsInPlace,
+        funding: m.fundingReadiness,
+        network: m.networkStrength,
+        community: m.communityImpact,
+      });
+    }
+
+    return points;
+  }, [metricSnapshotsData, contact?.metrics]);
 
   const chartData = [...(interactions || [])]
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
@@ -1042,9 +1095,9 @@ export default function ContactDetail() {
                   Growth Trajectory
                 </h3>
                 <div className="h-[300px] w-full">
-                  {chartData.length > 0 ? (
+                  {(snapshotChartData.length > 1 ? snapshotChartData : chartData).length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={chartData}>
+                      <LineChart data={snapshotChartData.length > 1 ? snapshotChartData : chartData}>
                         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                         <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
                         <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} domain={[0, 10]} />
@@ -1052,13 +1105,16 @@ export default function ContactDetail() {
                           contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '12px', border: '1px solid hsl(var(--border))', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                         />
                         <Legend />
-                        <Line type="monotone" dataKey="mindset" stroke="hsl(var(--brand-coral))" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
-                        <Line type="monotone" dataKey="skill" stroke="hsl(var(--brand-green))" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
-                        <Line type="monotone" dataKey="confidence" stroke="hsl(var(--brand-pink))" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
-                        <Line type="monotone" dataKey="bizConfidence" name="Biz Confidence" stroke="hsl(var(--brand-blue))" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
-                        <Line type="monotone" dataKey="systems" name="Systems" stroke="hsl(var(--chart-5))" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
-                        <Line type="monotone" dataKey="funding" name="Funding" stroke="hsl(var(--brand-dark-green))" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
-                        <Line type="monotone" dataKey="network" name="Network" stroke="hsl(var(--chart-4))" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} />
+                        <Line type="monotone" dataKey="mindset" stroke="hsl(var(--brand-coral))" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} connectNulls />
+                        <Line type="monotone" dataKey="skill" stroke="hsl(var(--brand-green))" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} connectNulls />
+                        <Line type="monotone" dataKey="confidence" stroke="hsl(var(--brand-pink))" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} connectNulls />
+                        <Line type="monotone" dataKey="bizConfidence" name="Biz Confidence" stroke="hsl(var(--brand-blue))" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} connectNulls />
+                        <Line type="monotone" dataKey="systems" name="Systems" stroke="hsl(var(--chart-5))" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} connectNulls />
+                        <Line type="monotone" dataKey="funding" name="Funding" stroke="hsl(var(--brand-dark-green))" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} connectNulls />
+                        <Line type="monotone" dataKey="network" name="Network" stroke="hsl(var(--chart-4))" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} connectNulls />
+                        {snapshotChartData.length > 1 && (
+                          <Line type="monotone" dataKey="community" name="Community" stroke="hsl(var(--brand-pink))" strokeWidth={2} dot={{r: 3, strokeWidth: 2}} activeDot={{r: 5}} connectNulls strokeDasharray="5 5" />
+                        )}
                       </LineChart>
                     </ResponsiveContainer>
                   ) : (
@@ -1069,6 +1125,53 @@ export default function ContactDetail() {
                   )}
                 </div>
               </div>
+
+              {metricSnapshotsData && metricSnapshotsData.length > 0 && (
+                <div className="bg-card rounded-2xl p-6 border border-border shadow-sm" data-testid="growth-score-timeline">
+                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <History className="w-5 h-5 text-primary" />
+                    Growth Score Timeline
+                  </h3>
+                  <div className="space-y-3">
+                    {[...metricSnapshotsData]
+                      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                      .map((snap, idx) => {
+                        const m = snap.metrics || {};
+                        const metricEntries = Object.entries(m).filter(([_, v]) => v != null && v > 0);
+                        const sourceLabels: Record<string, string> = { manual: "Manual Update", survey: "Growth Survey", debrief: "AI Debrief", current: "Current" };
+                        return (
+                          <div key={snap.id} className="flex gap-4 items-start" data-testid={`snapshot-entry-${snap.id}`}>
+                            <div className="flex flex-col items-center">
+                              <div className={`w-3 h-3 rounded-full ${idx === 0 ? "bg-primary" : "bg-muted-foreground/40"}`} />
+                              {idx < metricSnapshotsData.length - 1 && <div className="w-0.5 h-full bg-border min-h-[40px]" />}
+                            </div>
+                            <div className="flex-1 pb-3">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-sm font-medium">{format(new Date(snap.createdAt), 'MMM d, yyyy')}</span>
+                                <Badge variant="outline" className="text-xs">{sourceLabels[snap.source] || snap.source}</Badge>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {metricEntries.map(([key, val]) => {
+                                  const labels: Record<string, string> = {
+                                    mindset: "Mindset", skill: "Skill", confidence: "Confidence",
+                                    bizConfidence: "Biz Confidence", systemsInPlace: "Systems",
+                                    fundingReadiness: "Funding", networkStrength: "Network",
+                                    communityImpact: "Community", digitalPresence: "Digital",
+                                  };
+                                  return (
+                                    <span key={key} className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">
+                                      {labels[key] || key}: <strong>{String(val)}</strong>
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
             </TabsContent>
 
             <TabsContent value="history" className="space-y-4">

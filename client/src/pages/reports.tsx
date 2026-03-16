@@ -20,7 +20,7 @@ import {
   Download, Activity, Tag, TrendingUp, Building2, DollarSign,
   Save, BookOpen, ChevronDown, ChevronUp, Handshake, Clock,
   Info, History, Zap, X, Pen, Landmark, Settings, Camera, Star,
-  Plus, Trash2, ArrowUpRight, Briefcase, Rocket, BadgeDollarSign, ArrowDownRight, MoveRight,
+  Plus, Trash2, ArrowUpRight, Briefcase, Rocket, BadgeDollarSign, ArrowDownRight, MoveRight, ArrowRight,
 } from "lucide-react";
 import {
   format, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, subMonths, startOfYear,
@@ -1287,12 +1287,57 @@ export default function Reports() {
                         { key: "digitalPresence", label: "Digital Presence", color: "text-cyan-600 dark:text-cyan-400", barColor: "bg-cyan-500" },
                       ]},
                     ];
+                    const ba = imp.beforeAfterMetrics as Record<string, { startAvg: number; endAvg: number; avgImprovement: number; improvedPercent: number }> | undefined;
+                    const hasBeforeAfter = ba && Object.values(ba).some(v => v.startAvg > 0 || v.endAvg > 0);
                     const hasData = (keys: string[]) => keys.some(k => {
                       const d = imp.growthMetrics[k];
                       return d && (d.averageScore > 0 || d.positiveMovementPercent > 0);
                     });
                     return (
                       <div className="space-y-4">
+                        {hasBeforeAfter && (
+                          <div data-testid="before-after-comparison">
+                            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Before / After Comparison</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                              {METRIC_GROUPS.flatMap(g => g.metrics).map(metric => {
+                                const baData = ba?.[metric.key];
+                                if (!baData || (baData.startAvg === 0 && baData.endAvg === 0)) return null;
+                                const improvement = baData.avgImprovement;
+                                return (
+                                  <Card key={metric.key} className="p-4" data-testid={`ba-card-${metric.key}`}>
+                                    <h4 className={`text-sm font-semibold mb-3 ${metric.color}`}>{metric.label}</h4>
+                                    <div className="flex items-center justify-between mb-2">
+                                      <div className="text-center">
+                                        <div className="text-xs text-muted-foreground mb-1">Start</div>
+                                        <span className="text-lg font-bold">{baData.startAvg}</span>
+                                      </div>
+                                      <ArrowRight className="w-4 h-4 text-muted-foreground" />
+                                      <div className="text-center">
+                                        <div className="text-xs text-muted-foreground mb-1">End</div>
+                                        <span className="text-lg font-bold">{baData.endAvg}</span>
+                                      </div>
+                                      <div className="text-center">
+                                        <div className="text-xs text-muted-foreground mb-1">Change</div>
+                                        <span className={`text-lg font-bold ${improvement > 0 ? "text-green-600 dark:text-green-400" : improvement < 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`}>
+                                          {improvement > 0 ? "+" : ""}{improvement}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-2">
+                                      <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                                        <div
+                                          className={`h-full ${metric.barColor} rounded-full transition-all`}
+                                          style={{ width: `${baData.improvedPercent}%` }}
+                                        />
+                                      </div>
+                                      <span className="text-xs font-medium text-green-600 dark:text-green-400">{baData.improvedPercent}% improved</span>
+                                    </div>
+                                  </Card>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                         {METRIC_GROUPS.map(group => {
                           if (!hasData(group.metrics.map(m => m.key))) return null;
                           return (
@@ -1302,21 +1347,30 @@ export default function Reports() {
                                 {group.metrics.map(metric => {
                                   const data = imp.growthMetrics[metric.key];
                                   if (!data || (data.averageScore === 0 && data.positiveMovementPercent === 0)) return null;
+                                  const baData = ba?.[metric.key];
+                                  const hasBAData = hasBeforeAfter && baData && (baData.startAvg > 0 || baData.endAvg > 0);
+                                  const pctValue = hasBAData ? baData.improvedPercent : data.positiveMovementPercent;
+                                  const pctLabel = hasBAData ? `${pctValue}% improved` : `${pctValue}% positive`;
                                   return (
                                     <Card key={metric.key} className="p-4" data-testid={`metric-card-${metric.key}`}>
                                       <h4 className={`text-sm font-semibold mb-2 ${metric.color}`}>{metric.label}</h4>
                                       <div className="flex items-baseline gap-2">
                                         <span className="text-2xl font-bold">{data.averageScore}</span>
                                         <span className="text-xs text-muted-foreground">/10 avg</span>
+                                        {hasBAData && baData.avgImprovement !== 0 && (
+                                          <span className={`text-xs font-medium ${baData.avgImprovement > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                                            {baData.avgImprovement > 0 ? "+" : ""}{baData.avgImprovement} avg
+                                          </span>
+                                        )}
                                       </div>
                                       <div className="flex items-center gap-2 mt-2">
                                         <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
                                           <div
                                             className={`h-full ${metric.barColor} rounded-full transition-all`}
-                                            style={{ width: `${data.positiveMovementPercent}%` }}
+                                            style={{ width: `${pctValue}%` }}
                                           />
                                         </div>
-                                        <span className="text-xs font-medium text-green-600 dark:text-green-400">{data.positiveMovementPercent}%</span>
+                                        <span className="text-xs font-medium text-green-600 dark:text-green-400">{pctLabel}</span>
                                       </div>
                                     </Card>
                                   );

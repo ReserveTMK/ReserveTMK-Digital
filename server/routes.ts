@@ -399,6 +399,18 @@ export async function registerRoutes(
       if (input.stage && input.stage !== existing.stage) {
         await storage.appendStageProgression(id, input.stage);
       }
+      if ((input as any).metrics && existing.metrics && typeof existing.metrics === "object" && Object.keys(existing.metrics).length > 0) {
+        try {
+          await storage.createMetricSnapshot({
+            contactId: id,
+            userId: existing.userId,
+            metrics: existing.metrics as any,
+            source: "manual",
+          });
+        } catch (err) {
+          console.error("Failed to create metric snapshot:", err);
+        }
+      }
       const updated = await storage.updateContact(id, input);
 
       // Auto-create mentoring relationship for innovators with mentoring support
@@ -4961,6 +4973,18 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
           if (Object.keys(metricsUpdate).length > 0) {
             const existingContact = await storage.getContact(survey.contactId);
             const existingMetrics = (existingContact?.metrics as Record<string, any>) || {};
+            if (Object.keys(existingMetrics).length > 0) {
+              try {
+                await storage.createMetricSnapshot({
+                  contactId: survey.contactId,
+                  userId: survey.userId,
+                  metrics: existingMetrics as any,
+                  source: "survey",
+                });
+              } catch (snapErr) {
+                console.error("Failed to create metric snapshot from survey:", snapErr);
+              }
+            }
             const mergedMetrics = { ...existingMetrics, ...metricsUpdate };
             await storage.updateContact(survey.contactId, { metrics: mergedMetrics } as any);
           }
@@ -9187,6 +9211,21 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ message: "Failed to update contact" });
+    }
+  });
+
+  app.get("/api/contacts/:id/metric-snapshots", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const contactId = parseId(req.params.id);
+      const contact = await storage.getContact(contactId);
+      if (!contact || contact.userId !== userId) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+      const snapshots = await storage.getMetricSnapshots(contactId);
+      res.json(snapshots);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch metric snapshots" });
     }
   });
 

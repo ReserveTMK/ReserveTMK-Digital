@@ -6,6 +6,7 @@ import {
   programmes, bookings, memberships, mous,
   milestones, relationshipStageHistory, communitySpend, meetings, interactions,
   meetingTypes, monthlySnapshots, footTrafficTouchpoints, dailyFootTraffic,
+  metricSnapshots,
 } from "@shared/schema";
 
 export interface ReportFilters {
@@ -512,6 +513,69 @@ export async function getImpactMetrics(filters: ReportFilters) {
   const avgFn = (arr: number[]) => arr.length ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10 : 0;
   const posPct = (arr: number[]) => arr.length ? Math.round((arr.filter(v => v > 0).length / arr.length) * 100) : 0;
 
+  const beforeAfterMetrics: Record<string, { startAvg: number; endAvg: number; avgImprovement: number; improvedPercent: number }> = {};
+  if (cIds.length > 0) {
+    const allSnapshots = await db.select().from(metricSnapshots)
+      .where(and(inArray(metricSnapshots.contactId, cIds), lte(metricSnapshots.createdAt, end)));
+
+    const snapshotsByContact = new Map<number, Array<{ metrics: any; createdAt: Date | null }>>();
+    for (const s of allSnapshots) {
+      if (!snapshotsByContact.has(s.contactId)) snapshotsByContact.set(s.contactId, []);
+      snapshotsByContact.get(s.contactId)!.push({ metrics: s.metrics, createdAt: s.createdAt });
+    }
+
+    const currentMetricsByContact = new Map<number, any>();
+    const cMetricsForBA = await db.select({ id: contacts.id, metrics: contacts.metrics })
+      .from(contacts).where(inArray(contacts.id, cIds));
+    for (const c of cMetricsForBA) {
+      if (c.metrics && typeof c.metrics === "object") currentMetricsByContact.set(c.id, c.metrics);
+    }
+
+    for (const key of ALL_METRIC_KEYS) {
+      const startScores: number[] = [];
+      const endScores: number[] = [];
+      let improved = 0;
+      let total = 0;
+
+      for (const cid of cIds) {
+        const snaps = (snapshotsByContact.get(cid) || [])
+          .filter(s => s.metrics?.[key] != null)
+          .sort((a, b) => (a.createdAt?.getTime() || 0) - (b.createdAt?.getTime() || 0));
+
+        const beforeStart = snaps.filter(s => (s.createdAt?.getTime() || 0) <= start.getTime());
+        const startVal = beforeStart.length > 0 ? beforeStart[beforeStart.length - 1].metrics[key] : null;
+
+        const beforeEnd = snaps.filter(s => (s.createdAt?.getTime() || 0) <= end.getTime());
+        let endVal: number | null = null;
+        if (beforeEnd.length > 0) {
+          endVal = beforeEnd[beforeEnd.length - 1].metrics[key];
+        }
+        const currentM = currentMetricsByContact.get(cid);
+        if (endVal == null && currentM?.[key] != null) {
+          endVal = currentM[key];
+        }
+
+        if (startVal == null || endVal == null) continue;
+
+        startScores.push(startVal);
+        endScores.push(endVal);
+        total++;
+        if (endVal > startVal) improved++;
+      }
+
+      beforeAfterMetrics[key] = {
+        startAvg: avgFn(startScores),
+        endAvg: avgFn(endScores),
+        avgImprovement: startScores.length > 0 ? Math.round((avgFn(endScores) - avgFn(startScores)) * 10) / 10 : 0,
+        improvedPercent: total > 0 ? Math.round((improved / total) * 100) : 0,
+      };
+    }
+  } else {
+    for (const key of ALL_METRIC_KEYS) {
+      beforeAfterMetrics[key] = { startAvg: 0, endAvg: 0, avgImprovement: 0, improvedPercent: 0 };
+    }
+  }
+
   const confirmedLogs = await db
     .select({ id: impactLogs.id, milestones: impactLogs.milestones })
     .from(impactLogs)
@@ -579,6 +643,7 @@ export async function getImpactMetrics(filters: ReportFilters) {
     growthMetrics: Object.fromEntries(
       ALL_METRIC_KEYS.map(key => [key, { averageScore: avgFn(metricArrays[key]), positiveMovementPercent: posPct(metricArrays[key]) }])
     ) as Record<string, { averageScore: number; positiveMovementPercent: number }>,
+    beforeAfterMetrics,
     contactsWithMetrics,
     connectionMovement: deepened.size,
     taxonomyBreakdown,

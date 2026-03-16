@@ -2161,3 +2161,30 @@ export const insertGearBookingSchema = createInsertSchema(gearBookings).omit({
 });
 export type GearBooking = typeof gearBookings.$inferSelect;
 export type InsertGearBooking = z.infer<typeof insertGearBookingSchema>;
+
+export const metricSnapshots = pgTable("metric_snapshots", {
+  id: serial("id").primaryKey(),
+  contactId: integer("contact_id").notNull(),
+  userId: text("user_id").notNull(),
+  metrics: jsonb("metrics").$type<{
+    mindset?: number;
+    skill?: number;
+    confidence?: number;
+    bizConfidence?: number;
+    confidenceScore?: number;
+    systemsInPlace?: number;
+    fundingReadiness?: number;
+    networkStrength?: number;
+    communityImpact?: number;
+    digitalPresence?: number;
+  }>().notNull(),
+  source: text("source").notNull().default("manual"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertMetricSnapshotSchema = createInsertSchema(metricSnapshots).omit({
+  id: true,
+  createdAt: true,
+});
+export type MetricSnapshot = typeof metricSnapshots.$inferSelect;
+export type InsertMetricSnapshot = z.infer<typeof insertMetricSnapshotSchema>;
