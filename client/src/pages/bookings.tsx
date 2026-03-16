@@ -246,13 +246,16 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
     let inKind = 0;
     let membershipBookings = 0;
     let mouBookings = 0;
-    nonCancelled.forEach((b) => {
+    const confirmedAndCompleted = bookings.filter((b) => b.status === "confirmed" || b.status === "completed");
+    confirmedAndCompleted.forEach((b) => {
       const amt = parseFloat(b.amount || "0");
       if (b.pricingTier === "free_koha") {
         inKind += amt;
       } else {
         revenue += amt;
       }
+    });
+    nonCancelled.forEach((b) => {
       if (b.membershipId) membershipBookings++;
       if (b.mouId) mouBookings++;
     });
@@ -305,6 +308,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
     try {
       await createMutation.mutateAsync({
         venueId: b.venueId,
+        title: b.title || undefined,
         description: b.description || undefined,
         classification: b.classification,
         status: "enquiry",
@@ -1393,9 +1397,17 @@ function AfterHoursSettingsTab() {
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
-  function handleSave() {
-    saveHoursMutation.mutate();
-    saveSettingsMutation.mutate();
+  async function handleSave() {
+    try {
+      await saveHoursMutation.mutateAsync();
+    } catch {
+      return;
+    }
+    try {
+      await saveSettingsMutation.mutateAsync();
+    } catch {
+      return;
+    }
   }
 
   function handleQuickSetup() {
@@ -3043,14 +3055,14 @@ function VenueInstructionFormDialog({
   const [content, setContent] = useState(instruction?.content || "");
   const [displayOrder, setDisplayOrder] = useState(instruction?.displayOrder?.toString() || "0");
 
-  useState(() => {
+  useEffect(() => {
     if (instruction) {
       setInstructionType(instruction.instructionType);
       setTitle(instruction.title || "");
       setContent(instruction.content || "");
       setDisplayOrder(instruction.displayOrder?.toString() || "0");
     }
-  });
+  }, [instruction]);
 
   const handleSubmit = () => {
     if (!title.trim()) return;
