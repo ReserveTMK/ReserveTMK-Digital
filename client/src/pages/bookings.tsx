@@ -896,9 +896,13 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
         venues={venues || []}
         onSubmit={async (data) => {
           try {
-            await createMutation.mutateAsync(data);
+            const response = await createMutation.mutateAsync(data);
+            const result = await response.json();
             setCreateOpen(false);
             toast({ title: "Created", description: "Venue hire created successfully" });
+            if (result.allowanceWarning) {
+              toast({ title: "Allowance Warning", description: result.allowanceWarning, variant: "destructive" });
+            }
           } catch (err: any) {
             toast({ title: "Error", description: err.message || "Failed to create", variant: "destructive" });
           }

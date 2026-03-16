@@ -597,6 +597,7 @@ export interface IStorage {
   getDeskBookingsByDateRange(userId: string, startDate: Date, endDate: Date): Promise<DeskBooking[]>;
   getDeskBooking(id: number): Promise<DeskBooking | undefined>;
   createDeskBooking(data: InsertDeskBooking): Promise<DeskBooking>;
+  createDeskBookingWithConflictCheck(data: InsertDeskBooking): Promise<DeskBooking>;
   updateDeskBooking(id: number, updates: Partial<InsertDeskBooking>): Promise<DeskBooking>;
   deleteDeskBooking(id: number): Promise<void>;
 
@@ -607,6 +608,7 @@ export interface IStorage {
   getGearBookingsByDate(userId: string, date: Date): Promise<GearBooking[]>;
   getGearBooking(id: number): Promise<GearBooking | undefined>;
   createGearBooking(data: InsertGearBooking): Promise<GearBooking>;
+  createGearBookingWithConflictCheck(data: InsertGearBooking): Promise<GearBooking>;
   updateGearBooking(id: number, updates: Partial<InsertGearBooking>): Promise<GearBooking>;
   deleteGearBooking(id: number): Promise<void>;
   markGearReturned(id: number): Promise<GearBooking>;
@@ -2575,6 +2577,45 @@ export class DatabaseStorage implements IStorage {
     return booking;
   }
 
+  async createDeskBookingWithConflictCheck(data: InsertDeskBooking): Promise<DeskBooking> {
+    return await db.transaction(async (tx) => {
+      const bookingDate = new Date(data.date);
+      const dayStart = new Date(bookingDate);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(bookingDate);
+      dayEnd.setHours(23, 59, 59, 999);
+
+      const dateKey = dayStart.toISOString().slice(0, 10).replace(/-/g, "");
+      const lockKey = data.resourceId * 100000000 + parseInt(dateKey);
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${lockKey})`);
+
+      const existing = await tx.select().from(deskBookings).where(
+        and(
+          eq(deskBookings.resourceId, data.resourceId),
+          gte(deskBookings.date, dayStart),
+          lte(deskBookings.date, dayEnd),
+        )
+      );
+
+      const hasConflict = existing.some(b => {
+        if (b.status === "cancelled") return false;
+        if (!data.startTime || !data.endTime || !b.startTime || !b.endTime) return true;
+        const a0 = parseInt(data.startTime.split(":")[0]) * 60 + parseInt(data.startTime.split(":")[1] || "0");
+        const a1 = parseInt(data.endTime.split(":")[0]) * 60 + parseInt(data.endTime.split(":")[1] || "0");
+        const b0 = parseInt(b.startTime.split(":")[0]) * 60 + parseInt(b.startTime.split(":")[1] || "0");
+        const b1 = parseInt(b.endTime.split(":")[0]) * 60 + parseInt(b.endTime.split(":")[1] || "0");
+        return a0 < b1 && b0 < a1;
+      });
+
+      if (hasConflict) {
+        throw new Error("CONFLICT");
+      }
+
+      const [booking] = await tx.insert(deskBookings).values(data).returning();
+      return booking;
+    });
+  }
+
   async updateDeskBooking(id: number, updates: Partial<InsertDeskBooking>): Promise<DeskBooking> {
     const [booking] = await db.update(deskBookings).set(updates).where(eq(deskBookings.id, id)).returning();
     return booking;
@@ -2624,6 +2665,36 @@ export class DatabaseStorage implements IStorage {
   async createGearBooking(data: InsertGearBooking): Promise<GearBooking> {
     const [booking] = await db.insert(gearBookings).values(data).returning();
     return booking;
+  }
+
+  async createGearBookingWithConflictCheck(data: InsertGearBooking): Promise<GearBooking> {
+    return await db.transaction(async (tx) => {
+      const bookingDate = new Date(data.date);
+      const dayStart = new Date(bookingDate);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(bookingDate);
+      dayEnd.setHours(23, 59, 59, 999);
+
+      const dateKey = dayStart.toISOString().slice(0, 10).replace(/-/g, "");
+      const lockKey = (data.resourceId + 500000) * 100000000 + parseInt(dateKey);
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${lockKey})`);
+
+      const existing = await tx.select().from(gearBookings).where(
+        and(
+          eq(gearBookings.resourceId, data.resourceId),
+          gte(gearBookings.date, dayStart),
+          lte(gearBookings.date, dayEnd),
+        )
+      );
+
+      const alreadyBooked = existing.some(b => b.status === "booked");
+      if (alreadyBooked) {
+        throw new Error("CONFLICT");
+      }
+
+      const [booking] = await tx.insert(gearBookings).values(data).returning();
+      return booking;
+    });
   }
 
   async updateGearBooking(id: number, updates: Partial<InsertGearBooking>): Promise<GearBooking> {

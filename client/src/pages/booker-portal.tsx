@@ -1074,6 +1074,7 @@ function CalendarView({
   const [bookerName, setBookerName] = useState("");
   const [usePackageCredit, setUsePackageCredit] = useState(false);
   const [bookingConfirmed, setBookingConfirmed] = useState(false);
+  const [allowanceWarning, setAllowanceWarning] = useState<string | null>(null);
 
   const { data: venues, isLoading: venuesLoading } = useQuery<any[]>({
     queryKey: ["/api/booker/venues", token],
@@ -1110,8 +1111,9 @@ function CalendarView({
       const res = await apiRequest("POST", `/api/booker/book/${token}`, data);
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       setBookingConfirmed(true);
+      setAllowanceWarning(data?.allowanceWarning ?? null);
     },
   });
 
@@ -1171,6 +1173,11 @@ function CalendarView({
           <p className="text-sm text-muted-foreground mb-4" data-testid="text-booking-confirmed">
             Your venue hire request has been submitted as an enquiry. The Reserve Tamaki team will review and confirm it shortly.
           </p>
+          {allowanceWarning && (
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3 mb-4 text-sm text-amber-800 dark:text-amber-200" data-testid="text-allowance-warning">
+              {allowanceWarning}
+            </div>
+          )}
           <div className="bg-muted/50 rounded-lg p-4 space-y-2 text-sm text-left mb-4">
             <div className="flex justify-between gap-2 flex-wrap">
               <span className="text-muted-foreground">Date</span>

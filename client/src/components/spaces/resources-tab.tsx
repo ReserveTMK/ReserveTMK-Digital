@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/beautiful-button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -94,6 +94,11 @@ function VenuesSubSection({
   const [showPricing, setShowPricing] = useState(false);
   const [localFullDay, setLocalFullDay] = useState(pricingDefaults?.fullDayRate || "0");
   const [localHalfDay, setLocalHalfDay] = useState(pricingDefaults?.halfDayRate || "0");
+
+  useEffect(() => {
+    if (pricingDefaults?.fullDayRate !== undefined) setLocalFullDay(pricingDefaults.fullDayRate || "0");
+    if (pricingDefaults?.halfDayRate !== undefined) setLocalHalfDay(pricingDefaults.halfDayRate || "0");
+  }, [pricingDefaults?.fullDayRate, pricingDefaults?.halfDayRate]);
 
   const handleCreateVenue = async () => {
     if (!newName.trim()) return;
@@ -413,7 +418,11 @@ function ResourceSubSection({ category, label }: { category: string; label: stri
 
   const handleToggleActive = async (resource: BookableResource) => {
     try {
-      await updateResource.mutateAsync({ id: resource.id, data: { active: !resource.active } });
+      const response = await updateResource.mutateAsync({ id: resource.id, data: { active: !resource.active } });
+      const result = await response.json();
+      if (result.futureBookingsWarning) {
+        toast({ title: "Resource Deactivated", description: result.futureBookingsWarning, variant: "destructive" });
+      }
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Failed to toggle resource", variant: "destructive" });
     }

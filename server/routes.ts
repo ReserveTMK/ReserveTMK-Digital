@@ -4162,12 +4162,14 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
       const allBookings = await storage.getBookings(userId);
       const programmes = await storage.getProgrammes(userId);
+      const allMeetings = await storage.getMeetings(userId);
       const conflicts: { type: string; id: number; title: string; date: string; time: string }[] = [];
+      const targetVenueId = parseInt(venueId as string);
 
       for (const b of allBookings) {
         if (excludeBookingId && b.id === parseInt(excludeBookingId as string)) continue;
         if (b.status === "cancelled") continue;
-        if (b.venueId !== parseInt(venueId as string)) continue;
+        if (b.venueId !== targetVenueId) continue;
         if (!datesOverlap(startDate as string, (endDate || startDate) as string, b.startDate, b.endDate || b.startDate)) continue;
         if (!timesOverlap(startTime as string, endTime as string, b.startTime, b.endTime)) continue;
         conflicts.push({
@@ -4192,11 +4194,30 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         });
       }
 
+      for (const m of allMeetings) {
+        if (m.status === "cancelled") continue;
+        if (m.venueId !== targetVenueId) continue;
+        const mStartDate = m.startTime ? new Date(m.startTime).toISOString().slice(0, 10) : null;
+        const mEndDate = m.endTime ? new Date(m.endTime).toISOString().slice(0, 10) : mStartDate;
+        const mStartTimeStr = m.startTime ? new Date(m.startTime).toTimeString().slice(0, 5) : null;
+        const mEndTimeStr = m.endTime ? new Date(m.endTime).toTimeString().slice(0, 5) : null;
+        if (!mStartDate) continue;
+        if (!datesOverlap(startDate as string, (endDate || startDate) as string, mStartDate, mEndDate)) continue;
+        if (!timesOverlap(startTime as string, endTime as string, mStartTimeStr, mEndTimeStr)) continue;
+        conflicts.push({
+          type: "meeting",
+          id: m.id,
+          title: m.title,
+          date: mStartDate,
+          time: mStartTimeStr && mEndTimeStr ? `${mStartTimeStr} - ${mEndTimeStr}` : "All day",
+        });
+      }
+
       const occupiedIntervals: { start: number; end: number }[] = [];
       for (const b of allBookings) {
         if (excludeBookingId && b.id === parseInt(excludeBookingId as string)) continue;
         if (b.status === "cancelled") continue;
-        if (b.venueId !== parseInt(venueId as string)) continue;
+        if (b.venueId !== targetVenueId) continue;
         if (!datesOverlap(startDate as string, startDate as string, b.startDate, b.endDate || b.startDate)) continue;
         if (b.startTime && b.endTime) {
           occupiedIntervals.push({ start: parseTimeToMinutes(b.startTime), end: parseTimeToMinutes(b.endTime) });
@@ -4207,6 +4228,18 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         if (!datesOverlap(startDate as string, startDate as string, p.startDate, p.endDate || p.startDate)) continue;
         if (p.startTime && p.endTime) {
           occupiedIntervals.push({ start: parseTimeToMinutes(p.startTime), end: parseTimeToMinutes(p.endTime) });
+        }
+      }
+      for (const m of allMeetings) {
+        if (m.status === "cancelled") continue;
+        if (m.venueId !== targetVenueId) continue;
+        const mStartDate = m.startTime ? new Date(m.startTime).toISOString().slice(0, 10) : null;
+        if (!mStartDate) continue;
+        if (!datesOverlap(startDate as string, startDate as string, mStartDate, mStartDate)) continue;
+        const mStartTimeStr = m.startTime ? new Date(m.startTime).toTimeString().slice(0, 5) : null;
+        const mEndTimeStr = m.endTime ? new Date(m.endTime).toTimeString().slice(0, 5) : null;
+        if (mStartTimeStr && mEndTimeStr) {
+          occupiedIntervals.push({ start: parseTimeToMinutes(mStartTimeStr), end: parseTimeToMinutes(mEndTimeStr) });
         }
       }
 
@@ -4256,9 +4289,19 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       delete body.conflictOverride;
       const input = api.bookings.create.input.parse(body);
 
+      if (input.venueId) {
+        const venue = await storage.getVenue(input.venueId);
+        if (venue && venue.capacity && input.attendeeCount && input.attendeeCount > venue.capacity) {
+          return res.status(400).json({
+            message: `Attendee count (${input.attendeeCount}) exceeds venue capacity (${venue.capacity})`,
+          });
+        }
+      }
+
       if (input.startDate && input.venueId && !conflictOverride) {
         const allBookings = await storage.getBookings(userId);
         const programmes = await storage.getProgrammes(userId);
+        const allMeetings = await storage.getMeetings(userId);
         for (const b of allBookings) {
           if (b.status === "cancelled") continue;
           if (b.venueId !== input.venueId) continue;
@@ -4276,10 +4319,70 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
             message: `Conflict: Programme "${p.name}" is scheduled for ${p.startTime || "all day"} on ${p.startDate ? new Date(p.startDate).toLocaleDateString() : "that date"}`,
           });
         }
+        for (const m of allMeetings) {
+          if (m.status === "cancelled") continue;
+          if (m.venueId !== input.venueId) continue;
+          const mStartDate = m.startTime ? new Date(m.startTime).toISOString().slice(0, 10) : null;
+          const mEndDate = m.endTime ? new Date(m.endTime).toISOString().slice(0, 10) : mStartDate;
+          const mStartTimeStr = m.startTime ? new Date(m.startTime).toTimeString().slice(0, 5) : null;
+          const mEndTimeStr = m.endTime ? new Date(m.endTime).toTimeString().slice(0, 5) : null;
+          if (!mStartDate) continue;
+          if (!datesOverlap(input.startDate, input.endDate || input.startDate, mStartDate, mEndDate)) continue;
+          if (!timesOverlap(input.startTime, input.endTime, mStartTimeStr, mEndTimeStr)) continue;
+          return res.status(409).json({
+            message: `Conflict: Meeting "${m.title}" is scheduled for ${mStartTimeStr || "all day"} on ${mStartDate}`,
+          });
+        }
+      }
+
+      let allowanceWarning: string | null = null;
+      let agreementAllowance = 0;
+      let agreementPeriod = "quarterly";
+      if (input.membershipId) {
+        const membership = await storage.getMembership(input.membershipId);
+        if (membership) {
+          agreementAllowance = membership.bookingAllowance || 0;
+          agreementPeriod = membership.allowancePeriod || "quarterly";
+        }
+      } else if (input.mouId) {
+        const mou = await storage.getMou(input.mouId);
+        if (mou) {
+          agreementAllowance = mou.bookingAllowance || 0;
+          agreementPeriod = mou.allowancePeriod || "quarterly";
+        }
+      }
+      if (agreementAllowance > 0) {
+        const linkedId = (input.membershipId || input.mouId)!;
+        const linkedType = input.membershipId ? "membership" : "mou";
+        const allBookings = await storage.getBookings(userId);
+        const now = new Date();
+        let periodStart: Date;
+        let periodEnd: Date;
+        if (agreementPeriod === "monthly") {
+          periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+          periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        } else {
+          const q = Math.floor(now.getMonth() / 3) * 3;
+          periodStart = new Date(now.getFullYear(), q, 1);
+          periodEnd = new Date(now.getFullYear(), q + 3, 1);
+        }
+        const usedCount = allBookings.filter(b => {
+          const matchesAgreement = linkedType === "membership"
+            ? b.membershipId === linkedId
+            : b.mouId === linkedId;
+          if (!matchesAgreement) return false;
+          if (b.status === "cancelled") return false;
+          const bDate = b.startDate ? new Date(b.startDate) : b.createdAt ? new Date(b.createdAt) : null;
+          return bDate && bDate >= periodStart && bDate < periodEnd;
+        }).length;
+        if (usedCount >= agreementAllowance) {
+          const periodLabel = agreementPeriod === "monthly" ? "month" : "quarter";
+          allowanceWarning = `This booking exceeds the ${periodLabel}ly allowance (${usedCount}/${agreementAllowance} used this ${periodLabel})`;
+        }
       }
 
       const booking = await storage.createBooking(input);
-      res.status(201).json(booking);
+      res.status(201).json({ ...booking, allowanceWarning });
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
@@ -4297,10 +4400,21 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const input = api.bookings.update.input.parse(coerceDateFields(req.body));
 
       const merged = { ...existing, ...input };
+
+      if (merged.venueId) {
+        const venue = await storage.getVenue(merged.venueId);
+        if (venue && venue.capacity && merged.attendeeCount && merged.attendeeCount > venue.capacity) {
+          return res.status(400).json({
+            message: `Attendee count (${merged.attendeeCount}) exceeds venue capacity (${venue.capacity})`,
+          });
+        }
+      }
+
       if (merged.startDate && merged.venueId) {
         const userId = (req.user as any).claims.sub;
         const allBookings = await storage.getBookings(userId);
         const programmes = await storage.getProgrammes(userId);
+        const allMeetings = await storage.getMeetings(userId);
         for (const b of allBookings) {
           if (b.id === id) continue;
           if (b.status === "cancelled") continue;
@@ -4317,6 +4431,20 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
           if (!timesOverlap(merged.startTime, merged.endTime, p.startTime, p.endTime)) continue;
           return res.status(409).json({
             message: `Conflict: Programme "${p.name}" is scheduled for ${p.startTime || "all day"} on that date`,
+          });
+        }
+        for (const m of allMeetings) {
+          if (m.status === "cancelled") continue;
+          if (m.venueId !== merged.venueId) continue;
+          const mStartDate = m.startTime ? new Date(m.startTime).toISOString().slice(0, 10) : null;
+          const mEndDate = m.endTime ? new Date(m.endTime).toISOString().slice(0, 10) : mStartDate;
+          const mStartTimeStr = m.startTime ? new Date(m.startTime).toTimeString().slice(0, 5) : null;
+          const mEndTimeStr = m.endTime ? new Date(m.endTime).toTimeString().slice(0, 5) : null;
+          if (!mStartDate) continue;
+          if (!datesOverlap(merged.startDate, merged.endDate || merged.startDate, mStartDate, mEndDate)) continue;
+          if (!timesOverlap(merged.startTime, merged.endTime, mStartTimeStr, mEndTimeStr)) continue;
+          return res.status(409).json({
+            message: `Conflict: Meeting "${m.title}" is scheduled for ${mStartTimeStr || "all day"} on that date`,
           });
         }
       }
@@ -11112,6 +11240,13 @@ Rules:
       }
       const isGroupLink = linkResult.link.isGroupLink === true;
 
+      const venue = await storage.getVenue(venueId);
+      if (venue && venue.capacity && req.body.attendeeCount && req.body.attendeeCount > venue.capacity) {
+        return res.status(400).json({
+          message: `Attendee count (${req.body.attendeeCount}) exceeds venue capacity (${venue.capacity})`,
+        });
+      }
+
       const allBookings = await storage.getBookings(booker.userId);
       const conflicting = allBookings.filter(b => {
         if (b.venueId !== venueId || b.status === "cancelled") return false;
@@ -11133,6 +11268,22 @@ Rules:
             startTime: c.startTime,
             endTime: c.endTime,
           })),
+        });
+      }
+
+      const allMeetings = await storage.getMeetings(booker.userId);
+      for (const m of allMeetings) {
+        if (m.status === "cancelled") continue;
+        if (m.venueId !== venueId) continue;
+        const mStartDate = m.startTime ? new Date(m.startTime).toISOString().slice(0, 10) : null;
+        const mStartTimeStr = m.startTime ? new Date(m.startTime).toTimeString().slice(0, 5) : null;
+        const mEndTimeStr = m.endTime ? new Date(m.endTime).toTimeString().slice(0, 5) : null;
+        if (!mStartDate) continue;
+        const reqDate = new Date(startDate).toISOString().split("T")[0];
+        if (mStartDate !== reqDate) continue;
+        if (!timesOverlap(startTime, endTime, mStartTimeStr, mEndTimeStr)) continue;
+        return res.status(409).json({
+          message: `Time slot conflicts with meeting "${m.title}"`,
         });
       }
 
@@ -11189,6 +11340,51 @@ Rules:
       }
 
       const titleSuffix = isGroupLink && bookerName ? ` (by ${bookerName})` : "";
+      let allowanceWarning: string | null = null;
+      let agreementAllowance = 0;
+      let agreementPeriod = "quarterly";
+      if (membershipId) {
+        const membership = await storage.getMembership(membershipId);
+        if (membership) {
+          agreementAllowance = membership.bookingAllowance || 0;
+          agreementPeriod = membership.allowancePeriod || "quarterly";
+        }
+      } else if (mouId) {
+        const mouRecord = await storage.getMou(mouId);
+        if (mouRecord) {
+          agreementAllowance = mouRecord.bookingAllowance || 0;
+          agreementPeriod = mouRecord.allowancePeriod || "quarterly";
+        }
+      }
+      if (agreementAllowance > 0) {
+        const linkedId = (membershipId || mouId)!;
+        const linkedType = membershipId ? "membership" : "mou";
+        const now = new Date();
+        let periodStart: Date;
+        let periodEnd: Date;
+        if (agreementPeriod === "monthly") {
+          periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+          periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        } else {
+          const q = Math.floor(now.getMonth() / 3) * 3;
+          periodStart = new Date(now.getFullYear(), q, 1);
+          periodEnd = new Date(now.getFullYear(), q + 3, 1);
+        }
+        const usedCount = allBookings.filter(b => {
+          const matchesAgreement = linkedType === "membership"
+            ? b.membershipId === linkedId
+            : b.mouId === linkedId;
+          if (!matchesAgreement) return false;
+          if (b.status === "cancelled") return false;
+          const bDate = b.startDate ? new Date(b.startDate) : b.createdAt ? new Date(b.createdAt) : null;
+          return bDate && bDate >= periodStart && bDate < periodEnd;
+        }).length;
+        if (usedCount >= agreementAllowance) {
+          const periodLabel = agreementPeriod === "monthly" ? "month" : "quarter";
+          allowanceWarning = `This booking exceeds the ${periodLabel}ly allowance (${usedCount}/${agreementAllowance} used this ${periodLabel})`;
+        }
+      }
+
       const booking = await storage.createBooking({
         userId: booker.userId,
         venueId,
@@ -11212,7 +11408,7 @@ Rules:
         discountPercentage,
       } as any);
 
-      res.json(booking);
+      res.json({ ...booking, allowanceWarning });
     } catch (err: any) {
       console.error("Booker booking error:", err);
       res.status(500).json({ message: err.message || "Failed to create booking" });
@@ -11433,7 +11629,7 @@ Rules:
         return res.status(409).json({ message: "Time slot conflicts with existing desk booking" });
       }
 
-      const deskBooking = await storage.createDeskBooking({
+      const deskBooking = await storage.createDeskBookingWithConflictCheck({
         userId: booker.userId,
         resourceId,
         regularBookerId: booker.id,
@@ -11445,6 +11641,9 @@ Rules:
 
       res.json(deskBooking);
     } catch (err: any) {
+      if (err.message === "CONFLICT") {
+        return res.status(409).json({ message: "Time slot conflicts with existing desk booking" });
+      }
       console.error("Booker desk booking error:", err);
       res.status(500).json({ message: err.message || "Failed to create desk booking" });
     }
@@ -11495,7 +11694,7 @@ Rules:
         return res.status(409).json({ message: "This gear item is already booked for this date" });
       }
 
-      const gearBooking = await storage.createGearBooking({
+      const gearBooking = await storage.createGearBookingWithConflictCheck({
         userId: booker.userId,
         resourceId,
         regularBookerId: booker.id,
@@ -11510,6 +11709,9 @@ Rules:
         approvalPending: resource.requiresApproval && !gearBooking.approved,
       });
     } catch (err: any) {
+      if (err.message === "CONFLICT") {
+        return res.status(409).json({ message: "This gear item is already booked for this date" });
+      }
       console.error("Booker gear booking error:", err);
       res.status(500).json({ message: err.message || "Failed to create gear booking" });
     }
@@ -11944,7 +12146,26 @@ Rules:
       if (!existing) return res.status(404).json({ message: "Resource not found" });
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
       const resource = await storage.updateBookableResource(id, req.body);
-      res.json(resource);
+
+      let futureBookingsWarning: string | null = null;
+      if (req.body.active === false && existing.active) {
+        const now = new Date();
+        if (existing.category === "hot_desking") {
+          const deskBookingsList = await storage.getDeskBookingsByResource(id);
+          const futureBookings = deskBookingsList.filter(b => b.status !== "cancelled" && new Date(b.date) >= now);
+          if (futureBookings.length > 0) {
+            futureBookingsWarning = `Warning: This resource has ${futureBookings.length} future desk booking(s) that may be affected.`;
+          }
+        } else if (existing.category === "gear") {
+          const gearBookingsList = await storage.getGearBookingsByResource(id);
+          const futureBookings = gearBookingsList.filter(b => b.status !== "cancelled" && b.status !== "returned" && new Date(b.date) >= now);
+          if (futureBookings.length > 0) {
+            futureBookingsWarning = `Warning: This resource has ${futureBookings.length} future gear booking(s) that may be affected.`;
+          }
+        }
+      }
+
+      res.json({ ...resource, futureBookingsWarning });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -12010,7 +12231,7 @@ Rules:
               recurringPattern: pattern,
               recurringGroupId,
             });
-            const created = await storage.createDeskBooking(bookingData);
+            const created = await storage.createDeskBookingWithConflictCheck(bookingData);
             createdBookings.push(created);
           }
           const increment = pattern.frequency === "fortnightly" ? 14 : 7;
@@ -12020,11 +12241,14 @@ Rules:
       }
 
       const data = insertDeskBookingSchema.parse(body);
-      const booking = await storage.createDeskBooking(data);
+      const booking = await storage.createDeskBookingWithConflictCheck(data);
       res.status(201).json(booking);
     } catch (err: any) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
+      }
+      if (err.message === "CONFLICT") {
+        return res.status(409).json({ message: "Time slot conflicts with existing desk booking" });
       }
       res.status(500).json({ message: err.message });
     }
@@ -12145,11 +12369,14 @@ Rules:
       }
 
       const data = insertGearBookingSchema.parse(body);
-      const booking = await storage.createGearBooking(data);
+      const booking = await storage.createGearBookingWithConflictCheck(data);
       res.status(201).json(booking);
     } catch (err: any) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
+      }
+      if (err.message === "CONFLICT") {
+        return res.status(409).json({ message: "This gear item is already booked for this date" });
       }
       res.status(500).json({ message: err.message });
     }
