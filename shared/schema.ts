@@ -459,6 +459,7 @@ export const venues = pgTable("venues", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
   name: text("name").notNull(),
+  spaceName: text("space_name"),
   description: text("description"),
   capacity: integer("capacity"),
   active: boolean("active").default(true),

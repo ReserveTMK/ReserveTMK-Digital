@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useCreateMeeting } from "@/hooks/use-meetings";
 import { useContacts } from "@/hooks/use-contacts";
@@ -759,9 +759,29 @@ export function ScheduleSessionDialog({
                   <SelectValue placeholder="Select a room" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(venues || []).filter(v => v.active !== false).map((v) => (
-                    <SelectItem key={v.id} value={String(v.id)} data-testid={`venue-option-${v.id}`}>{v.name}</SelectItem>
-                  ))}
+                  {(() => {
+                    const active = (venues || []).filter(v => v.active !== false);
+                    const grouped: Record<string, typeof active> = {};
+                    for (const v of active) {
+                      const group = v.spaceName || "Other";
+                      if (!grouped[group]) grouped[group] = [];
+                      grouped[group].push(v);
+                    }
+                    const groups = Object.entries(grouped);
+                    if (groups.length <= 1) {
+                      return active.map(v => (
+                        <SelectItem key={v.id} value={String(v.id)} data-testid={`venue-option-${v.id}`}>{v.name}</SelectItem>
+                      ));
+                    }
+                    return groups.map(([space, vens]) => (
+                      <SelectGroup key={space}>
+                        <SelectLabel>{space}</SelectLabel>
+                        {vens.map(v => (
+                          <SelectItem key={v.id} value={String(v.id)} data-testid={`venue-option-${v.id}`}>{v.name}</SelectItem>
+                        ))}
+                      </SelectGroup>
+                    ));
+                  })()}
                 </SelectContent>
               </Select>
             ) : (

@@ -125,6 +125,7 @@ function VenuesSubSection({
   const { toast } = useToast();
 
   const [newName, setNewName] = useState("");
+  const [newSpaceName, setNewSpaceName] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newCapacity, setNewCapacity] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
@@ -143,10 +144,12 @@ function VenuesSubSection({
     try {
       await createVenue.mutateAsync({
         name: newName.trim(),
+        spaceName: newSpaceName.trim() || undefined,
         description: newDescription.trim() || undefined,
         capacity: newCapacity ? parseInt(newCapacity) : undefined,
       });
       setNewName("");
+      setNewSpaceName("");
       setNewDescription("");
       setNewCapacity("");
       setShowAddForm(false);
@@ -174,10 +177,32 @@ function VenuesSubSection({
     }
   };
 
+  const existingSpaceNames = useMemo(() => {
+    if (!venues) return [];
+    const names = new Set<string>();
+    for (const v of venues) {
+      if (v.spaceName) names.add(v.spaceName);
+    }
+    return Array.from(names).sort();
+  }, [venues]);
+
+  const groupedVenues = useMemo(() => {
+    if (!venues) return {};
+    const groups: Record<string, typeof venues> = {};
+    for (const v of venues) {
+      const group = v.spaceName || "Other";
+      if (!groups[group]) groups[group] = [];
+      groups[group].push(v);
+    }
+    return groups;
+  }, [venues]);
+
   return (
     <div className="space-y-4">
-      <div className="space-y-2">
-        {venues?.map((venue) => (
+      {Object.entries(groupedVenues).map(([spaceName, spaceVenues]) => (
+        <div key={spaceName} className="space-y-2">
+          <h3 className="text-sm font-semibold text-muted-foreground px-1" data-testid={`text-space-name-${spaceName}`}>{spaceName}</h3>
+          {spaceVenues.map((venue) => (
           <Card key={venue.id} className="overflow-hidden" data-testid={`card-venue-${venue.id}`}>
             <div
               className="p-3 cursor-pointer hover:bg-muted/50 transition-colors"
@@ -225,10 +250,11 @@ function VenuesSubSection({
             )}
           </Card>
         ))}
-        {(!venues || venues.length === 0) && (
-          <p className="text-sm text-muted-foreground text-center py-4">No venues yet. Click "Add New Venue" to create one.</p>
-        )}
-      </div>
+        </div>
+      ))}
+      {(!venues || venues.length === 0) && (
+        <p className="text-sm text-muted-foreground text-center py-4">No venues yet. Click "Add New Venue" to create one.</p>
+      )}
 
       <div className="border-t pt-4 space-y-2">
         {!showAddForm ? (
@@ -239,6 +265,18 @@ function VenuesSubSection({
         ) : (
           <div className="space-y-2">
             <Label className="text-sm font-semibold">Add New Venue</Label>
+            <Input
+              value={newSpaceName}
+              onChange={(e) => setNewSpaceName(e.target.value)}
+              placeholder="Space (e.g. ReserveTMK Office, ReserveTMK Studio)"
+              data-testid="input-new-venue-space"
+              list="space-name-options"
+            />
+            {existingSpaceNames.length > 0 && (
+              <datalist id="space-name-options">
+                {existingSpaceNames.map(s => <option key={s} value={s} />)}
+              </datalist>
+            )}
             <Input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
@@ -264,7 +302,7 @@ function VenuesSubSection({
                 <Plus className="w-4 h-4 mr-2" />
                 Add Venue
               </Button>
-              <Button variant="outline" onClick={() => { setShowAddForm(false); setNewName(""); setNewDescription(""); setNewCapacity(""); }} data-testid="button-cancel-add-venue">
+              <Button variant="outline" onClick={() => { setShowAddForm(false); setNewName(""); setNewSpaceName(""); setNewDescription(""); setNewCapacity(""); }} data-testid="button-cancel-add-venue">
                 Cancel
               </Button>
             </div>
