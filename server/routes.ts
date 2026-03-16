@@ -1231,13 +1231,7 @@ export async function registerRoutes(
       const all = await storage.getMentoringRelationships();
       const userContacts = await storage.getContacts(userId);
       const userContactIds = new Set(userContacts.map(c => c.id));
-      const filtered = all.filter(r => {
-        if (!userContactIds.has(r.contactId)) return false;
-        const contact = userContacts.find(c => c.id === r.contactId);
-        if (!contact) return false;
-        if (!contact.supportType || !contact.supportType.includes("mentoring")) return false;
-        return true;
-      });
+      const filtered = all.filter(r => userContactIds.has(r.contactId));
 
       const profiles = await storage.getMentorProfiles(userId);
       const mentorUserIds = new Set<string>();
@@ -1262,7 +1256,14 @@ export async function registerRoutes(
         const upcomingSessions = sessions.filter(s => new Date(s.startTime) >= new Date() && s.status !== "cancelled");
         const lastSession = completedSessions.sort((a: any, b: any) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())[0];
 
-        const application = allApplications.find(a => a.contactId === r.contactId);
+        const contactApps = allApplications
+          .filter(a => a.contactId === r.contactId)
+          .sort((a, b) => {
+            if (a.status === "accepted" && b.status !== "accepted") return -1;
+            if (b.status === "accepted" && a.status !== "accepted") return 1;
+            return new Date(b.applicationDate || 0).getTime() - new Date(a.applicationDate || 0).getTime();
+          });
+        const application = contactApps[0] || null;
 
         return {
           ...r,
@@ -1350,7 +1351,11 @@ export async function registerRoutes(
         stage: reqStage,
       };
       if (reqBaseline) {
-        contactUpdate.metrics = reqBaseline;
+        const existingContact = await storage.getContact(application.contactId);
+        const existingMetrics = existingContact?.metrics as Record<string, any> | null;
+        if (!existingMetrics || Object.keys(existingMetrics).length === 0) {
+          contactUpdate.metrics = reqBaseline;
+        }
       }
       try {
         await storage.updateContact(application.contactId, contactUpdate);
@@ -1377,8 +1382,10 @@ export async function registerRoutes(
     const userId = (req.user as any).claims.sub;
     let profiles = await storage.getMentorProfiles(userId);
     if (profiles.length === 0) {
-      await storage.createMentorProfile({ userId, mentorUserId: userId, name: 'Ra Beazley', email: 'kiaora@reservetmk.co.nz', isActive: true, googleCalendarId: null });
-      await storage.createMentorProfile({ userId, mentorUserId: null, name: 'Kim Beazley', email: 'kim@reservetmk.co.nz', isActive: true, googleCalendarId: null });
+      const user = await storage.getUser(userId);
+      const userName = user?.username || user?.email || 'Mentor';
+      const userEmail = user?.email || '';
+      await storage.createMentorProfile({ userId, mentorUserId: userId, name: userName, email: userEmail, isActive: true, googleCalendarId: null });
       profiles = await storage.getMentorProfiles(userId);
     }
     res.json(profiles);
@@ -4870,11 +4877,24 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
       const rel = await storage.getMentoringRelationship(relationshipId);
       if (!rel) return res.status(404).json({ message: "Relationship not found" });
-      if (rel.userId !== userId) return res.status(403).json({ message: "Not authorized" });
+      if (!await verifyContactOwnership(rel.contactId, userId)) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
 
       const contact = await storage.getContact(rel.contactId);
       if (!contact) return res.status(404).json({ message: "Contact not found" });
       if (!contact.email) return res.status(400).json({ message: "Mentee has no email address" });
+
+      const allSurveys = await storage.getSurveys(userId);
+      const recentPending = allSurveys.find(s =>
+        s.surveyType === "growth" &&
+        s.relatedId === relationshipId &&
+        (s.status === "pending" || s.status === "sent") &&
+        s.createdAt && (Date.now() - new Date(s.createdAt).getTime()) < 7 * 24 * 60 * 60 * 1000
+      );
+      if (recentPending) {
+        return res.status(400).json({ message: "A growth survey was already sent to this mentee in the last 7 days and hasn't been completed yet" });
+      }
 
       const { GROWTH_METRICS, GROWTH_SURVEY_WRITTEN_QUESTIONS } = await import("@shared/schema");
 
