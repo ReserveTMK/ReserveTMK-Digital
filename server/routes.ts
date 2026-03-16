@@ -9543,21 +9543,22 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   app.post("/api/groups/bulk-update-type", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { groupIds, type, organizationTypeOther } = req.body;
+      const { groupIds, type } = req.body;
       if (!Array.isArray(groupIds) || groupIds.length === 0) {
         return res.status(400).json({ message: "No group IDs provided" });
       }
       if (!type) {
         return res.status(400).json({ message: "Type is required" });
       }
+      const { GROUP_TYPES: validGroupTypes } = await import("@shared/schema");
+      if (!(validGroupTypes as readonly string[]).includes(type)) {
+        return res.status(400).json({ message: `Invalid group type: ${type}` });
+      }
       let updated = 0;
       for (const id of groupIds) {
         const group = await storage.getGroup(id);
         if (group && group.userId === userId) {
-          await storage.updateGroup(id, {
-            type,
-            organizationTypeOther: type === "Other" ? (organizationTypeOther || null) : null,
-          });
+          await storage.updateGroup(id, { type });
           updated++;
         }
       }
