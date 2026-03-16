@@ -7,7 +7,7 @@ import {
   milestones, relationshipStageHistory, communitySpend, meetings, interactions,
   meetingTypes, monthlySnapshots, footTrafficTouchpoints, dailyFootTraffic,
   metricSnapshots, programmeRegistrations,
-  surveys,
+  surveys, normalizeStage,
 } from "@shared/schema";
 
 export interface ReportFilters {
@@ -1241,11 +1241,15 @@ export async function getTamakiOraAlignment(filters: ReportFilters) {
   ));
 
   let stageProgressions = 0;
-  const stageOrder = ["new", "engaged", "active", "deepening", "partner", "alumni"];
+  const stageProgressionOrder = ["kakano", "tipu", "ora"];
   for (const sh of stageHist) {
     if (!maoriIds.has(sh.entityId)) continue;
-    const prevIdx = sh.previousStage ? stageOrder.indexOf(sh.previousStage) : -1;
-    if (stageOrder.indexOf(sh.newStage) > prevIdx) stageProgressions++;
+    const normalizedNew = normalizeStage(sh.newStage);
+    if (normalizedNew === "inactive") continue;
+    const normalizedPrev = sh.previousStage ? normalizeStage(sh.previousStage) : "kakano";
+    const prevIdx = stageProgressionOrder.indexOf(normalizedPrev);
+    const newIdx = stageProgressionOrder.indexOf(normalizedNew);
+    if (newIdx > prevIdx && newIdx >= 0) stageProgressions++;
   }
 
   const evtIds = (await db.select({ id: events.id }).from(events).where(and(
@@ -1551,10 +1555,12 @@ export async function getPeopleFeatured(filters: ReportFilters) {
   const contactJourney = new Map<number, { from: string; to: string }>();
   for (const sh of stageHist) {
     if (lensIds && !lensIds.has(sh.entityId)) continue;
-    const prevIdx = sh.previousStage ? JOURNEY_ORDER.indexOf(sh.previousStage) : -1;
-    const newIdx = JOURNEY_ORDER.indexOf(sh.newStage);
+    const normalizedPrev = normalizeStage(sh.previousStage);
+    const normalizedNew = normalizeStage(sh.newStage);
+    const prevIdx = JOURNEY_ORDER.indexOf(normalizedPrev);
+    const newIdx = JOURNEY_ORDER.indexOf(normalizedNew);
     if (newIdx > prevIdx && newIdx >= 0) {
-      contactJourney.set(sh.entityId, { from: sh.previousStage || "new", to: sh.newStage });
+      contactJourney.set(sh.entityId, { from: normalizedPrev, to: normalizedNew });
     }
   }
 

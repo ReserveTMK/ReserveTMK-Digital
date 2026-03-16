@@ -1,13 +1,12 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { JOURNEY_STAGE_CONFIG } from "@/components/mentoring/mentoring-hooks";
 
 const STAGES = [
-  { key: "new", label: "New" },
-  { key: "engaged", label: "Engaged" },
-  { key: "active", label: "Active" },
-  { key: "deepening", label: "Deepening" },
-  { key: "partner", label: "Partner" },
-  { key: "alumni", label: "Alumni" },
+  { key: "kakano", label: JOURNEY_STAGE_CONFIG.kakano.label },
+  { key: "tipu", label: JOURNEY_STAGE_CONFIG.tipu.label },
+  { key: "ora", label: JOURNEY_STAGE_CONFIG.ora.label },
+  { key: "inactive", label: JOURNEY_STAGE_CONFIG.inactive.label },
 ];
 
 interface RelationshipStageSelectorProps {
@@ -28,6 +27,7 @@ export function RelationshipStageSelector({
       {STAGES.map((stage, index) => {
         const isActive = stage.key === currentStage;
         const isPast = index < currentIndex;
+        const config = JOURNEY_STAGE_CONFIG[stage.key];
 
         return (
           <div key={stage.key} className="flex items-center">
@@ -50,7 +50,7 @@ export function RelationshipStageSelector({
                 variant={isActive ? "default" : "secondary"}
                 className={cn(
                   "cursor-pointer transition-colors text-xs whitespace-nowrap",
-                  isActive && "bg-primary/10 text-foreground border-primary/30 no-default-hover-elevate",
+                  isActive && `${config.bgColor} ${config.color} border no-default-hover-elevate`,
                   !isActive && isPast && "bg-muted text-muted-foreground",
                   !isActive && !isPast && "text-muted-foreground"
                 )}

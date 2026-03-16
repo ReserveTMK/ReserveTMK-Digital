@@ -8,11 +8,12 @@ import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON, isAnthropicKeyConfigured, AIKeyMissingError } from "./replit_integrations/anthropic/client";
 import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getReachMetrics, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, type ReportFilters, type CohortDefinition, type OrgProfileContext, type FunderContext } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings, } from "@shared/schema";
+import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings, normalizeStage, } from "@shared/schema";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { ObjectStorageService } from "./replit_integrations/object_storage";
 import crypto from "crypto";
 import { getBaseUrl } from "./url";
+import { fromZonedTime } from "date-fns-tz";
 import { db } from "./db";
 import { eq, and, or, sql, gte, lte } from "drizzle-orm";
 
@@ -363,6 +364,11 @@ export async function registerRoutes(
       if (input.role !== "Other") {
         input.roleOther = null;
       }
+      if (input.stage && !input.relationshipStage) {
+        input.relationshipStage = input.stage;
+      } else if (input.relationshipStage && !input.stage) {
+        input.stage = input.relationshipStage;
+      }
       
       const contact = await storage.createContact(input);
       res.status(201).json(contact);
@@ -392,6 +398,11 @@ export async function registerRoutes(
         }
       }
 
+      if (filteredBody.stage && !filteredBody.relationshipStage) {
+        filteredBody.relationshipStage = filteredBody.stage;
+      } else if (filteredBody.relationshipStage && !filteredBody.stage) {
+        filteredBody.stage = filteredBody.relationshipStage;
+      }
       const input = api.contacts.update.input.parse(filteredBody);
       if (input.role && input.role !== "Other") {
         input.roleOther = null;
@@ -1360,6 +1371,7 @@ export async function registerRoutes(
       const contactUpdate: any = {
         isCommunityMember: true,
         stage: reqStage,
+        relationshipStage: reqStage,
       };
       if (reqBaseline) {
         const existingContact = await storage.getContact(application.contactId);
@@ -1647,6 +1659,10 @@ export async function registerRoutes(
     };
   }
 
+  function toNzDate(dateStr: string, timeStr: string = '00:00:00'): Date {
+    return fromZonedTime(`${dateStr}T${timeStr}`, 'Pacific/Auckland');
+  }
+
   app.get('/api/public/mentoring/:userId/slots', async (req, res) => {
     try {
       const { userId } = req.params;
@@ -1662,9 +1678,11 @@ export async function registerRoutes(
         activeSlots = activeSlots.filter(s => s.category === category);
       }
 
-      const targetDate = new Date(date + 'T00:00:00+13:00');
-      const jsDay = targetDate.getDay();
-      const dayOfWeek = jsDay === 0 ? 6 : jsDay - 1;
+      const targetDate = toNzDate(date, '00:00:00');
+      const jsDay = targetDate.getUTCDay();
+      const nzDayOfWeek = new Date(targetDate.getTime()).toLocaleDateString('en-US', { timeZone: 'Pacific/Auckland', weekday: 'short' });
+      const dayMap: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+      const dayOfWeek = dayMap[nzDayOfWeek] ?? (jsDay === 0 ? 6 : jsDay - 1);
 
       const daySlots = activeSlots.filter(s => s.dayOfWeek === dayOfWeek);
       if (daySlots.length === 0) {
@@ -1672,8 +1690,8 @@ export async function registerRoutes(
       }
 
       const existingMeetings = await storage.getMeetings(resolved.availabilityUserId);
-      const dayStart = new Date(date + 'T00:00:00+13:00');
-      const dayEnd = new Date(date + 'T23:59:59+13:00');
+      const dayStart = toNzDate(date, '00:00:00');
+      const dayEnd = toNzDate(date, '23:59:59');
       const dayMeetings = existingMeetings.filter(m => {
         const mStart = new Date(m.startTime);
         return mStart >= dayStart && mStart <= dayEnd && m.status !== 'cancelled';
@@ -1717,7 +1735,7 @@ export async function registerRoutes(
 
       const now = new Date();
       let filteredSlots = freeSlots.filter(s => {
-        const slotDate = new Date(date + 'T' + s.time + ':00+13:00');
+        const slotDate = toNzDate(date, s.time + ':00');
         return slotDate > now;
       });
 
@@ -1725,11 +1743,8 @@ export async function registerRoutes(
         const { getUncachableGoogleCalendarClient } = await import("./replit_integrations/google-calendar/client");
         const calendar = await getUncachableGoogleCalendarClient();
 
-        const nzOffset = new Date(date + 'T12:00:00').toLocaleString('en-US', { timeZone: 'Pacific/Auckland', timeZoneName: 'shortOffset' });
-        const offsetMatch = nzOffset.match(/GMT([+-]\d+)/);
-        const tzSuffix = offsetMatch ? `${offsetMatch[1].padStart(3, '0').replace(/^(\+|-)(\d)$/, '$10$2')}:00` : '+13:00';
-        const queryStart = new Date(date + 'T00:00:00' + tzSuffix);
-        const queryEnd = new Date(date + 'T23:59:59' + tzSuffix);
+        const queryStart = toNzDate(date, '00:00:00');
+        const queryEnd = toNzDate(date, '23:59:59');
 
         const calId = resolved.googleCalendarId || "primary";
         const freeBusyRes = await calendar.freebusy.query({
@@ -1742,8 +1757,8 @@ export async function registerRoutes(
         const busyPeriods = freeBusyRes.data.calendars?.[calId]?.busy || [];
         if (busyPeriods.length > 0) {
           filteredSlots = filteredSlots.filter(s => {
-            const slotStartUTC = new Date(date + 'T' + s.time + ':00' + tzSuffix);
-            const slotEndUTC = new Date(date + 'T' + s.endTime + ':00' + tzSuffix);
+            const slotStartUTC = toNzDate(date, s.time + ':00');
+            const slotEndUTC = toNzDate(date, s.endTime + ':00');
             return !busyPeriods.some((bp: any) => {
               const bpStart = new Date(bp.start);
               const bpEnd = new Date(bp.end);
@@ -1794,7 +1809,7 @@ export async function registerRoutes(
       }
 
       const slotDuration = duration || 30;
-      const startTime = new Date(date + 'T' + time + ':00+13:00');
+      const startTime = toNzDate(date, time + ':00');
       const endTime = new Date(startTime.getTime() + slotDuration * 60 * 1000);
 
       let contact;
@@ -5136,7 +5151,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.post("/api/growth-surveys/send", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { relationshipId, customMetrics, customQuestions } = req.body;
+      const { relationshipId } = req.body;
       if (!relationshipId) return res.status(400).json({ message: "relationshipId is required" });
 
       const rel = await storage.getMentoringRelationship(relationshipId);
@@ -5162,8 +5177,8 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
       const { GROWTH_METRICS, GROWTH_SURVEY_WRITTEN_QUESTIONS } = await import("@shared/schema");
 
-      const metrics = Array.isArray(customMetrics) && customMetrics.length > 0 ? customMetrics : GROWTH_METRICS;
-      const writtenQs = Array.isArray(customQuestions) && customQuestions.length > 0 ? customQuestions : GROWTH_SURVEY_WRITTEN_QUESTIONS;
+      const metrics = GROWTH_METRICS;
+      const writtenQs = GROWTH_SURVEY_WRITTEN_QUESTIONS;
 
       const questions = [
         ...metrics.map((m: any, i: number) => ({
@@ -7078,7 +7093,7 @@ Return a JSON object with this exact structure:
           changedBy: (req.user as any).claims.sub,
         });
       }
-      const updated = await storage.updateContact(id, { relationshipStage: stage });
+      const updated = await storage.updateContact(id, { relationshipStage: stage, stage });
       res.json(updated);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -7226,16 +7241,16 @@ Return a JSON object with this exact structure:
       const userId = (req.user as any).claims.sub;
       const contactsList = await storage.getContacts(userId);
       const groupsList = await storage.getGroups(userId);
-      const stages = ["new", "engaged", "active", "deepening", "partner", "alumni"];
+      const stages = ["kakano", "tipu", "ora", "inactive"];
       const contactCounts: Record<string, number> = {};
       const groupCounts: Record<string, number> = {};
       stages.forEach(s => { contactCounts[s] = 0; groupCounts[s] = 0; });
       contactsList.forEach((c: any) => {
-        const s = c.relationshipStage || "new";
+        const s = normalizeStage(c.relationshipStage);
         contactCounts[s] = (contactCounts[s] || 0) + 1;
       });
       groupsList.forEach((g: any) => {
-        const s = g.relationshipStage || "new";
+        const s = normalizeStage(g.relationshipStage);
         groupCounts[s] = (groupCounts[s] || 0) + 1;
       });
       res.json({ contactCounts, groupCounts });
@@ -10526,6 +10541,24 @@ Be specific, practical, and grounded in the actual documents and context provide
       if (typeof body.lastSessionDate === "string") body.lastSessionDate = new Date(body.lastSessionDate);
       if (typeof body.nextSessionDate === "string") body.nextSessionDate = new Date(body.nextSessionDate);
       const updated = await storage.updateMentoringRelationship(id, body);
+
+      if (body.status === "ended" || body.status === "graduated") {
+        try {
+          const otherRels = await storage.getMentoringRelationshipsByContact(existing.contactId);
+          const hasOtherActive = otherRels.some(r => r.id !== id && (r.status === "active" || r.status === "on_hold"));
+          if (!hasOtherActive) {
+            const contactUpdate: Record<string, string | boolean> = {
+              stage: "inactive",
+              relationshipStage: "inactive",
+              isCommunityMember: false,
+            };
+            await storage.updateContact(existing.contactId, contactUpdate);
+          }
+        } catch (contactErr) {
+          console.warn("Failed to update contact on relationship end/graduate:", contactErr);
+        }
+      }
+
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ message: "Failed to update mentoring relationship" });

@@ -13,6 +13,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Loader2, Mic, StopCircle, ArrowLeft, Brain, TrendingUp, Sparkles, AlertCircle, DollarSign, Settings, Rocket, Network, Shield, FileText, CheckSquare, Calendar, Clock, ChevronDown, ChevronLeft, ChevronRight, History, MessageSquare, Pencil, Check, X, ArrowUp, ArrowDown, Star, Users, Coffee, Trash2, Plus, MoreVertical, ClipboardList } from "lucide-react";
 import type { MentoringApplication } from "@shared/schema";
+import { normalizeStage } from "@shared/schema";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -554,7 +555,7 @@ export default function ContactDetail() {
                   </div>
                   <div className="mt-4">
                     <RelationshipStageSelector
-                      currentStage={contact.relationshipStage || "new"}
+                      currentStage={normalizeStage(contact.relationshipStage)}
                       onStageChange={(stage) => stageMutation.mutate(stage)}
                       disabled={stageMutation.isPending}
                     />

@@ -8,14 +8,27 @@ export * from "./models/auth";
 export * from "./models/chat";
 
 export const RELATIONSHIP_STAGES = [
-  "new",
-  "engaged",
-  "active",
-  "deepening",
-  "partner",
-  "alumni",
+  "kakano",
+  "tipu",
+  "ora",
+  "inactive",
 ] as const;
 export type RelationshipStage = typeof RELATIONSHIP_STAGES[number];
+
+export const LEGACY_STAGE_MAP: Record<string, RelationshipStage> = {
+  new: "kakano",
+  engaged: "kakano",
+  active: "tipu",
+  deepening: "tipu",
+  partner: "ora",
+  alumni: "inactive",
+};
+
+export function normalizeStage(stage: string | null | undefined): RelationshipStage {
+  if (!stage) return "kakano";
+  if ((RELATIONSHIP_STAGES as readonly string[]).includes(stage)) return stage as RelationshipStage;
+  return LEGACY_STAGE_MAP[stage] || "kakano";
+}
 
 export const MILESTONE_TYPES = [
   "funding_secured",
@@ -93,7 +106,7 @@ export const contacts = pgTable("contacts", {
   stage: text("stage"), // kakano, tipu, ora, inactive
   whatTheyAreBuilding: text("what_they_are_building"),
   stageProgression: jsonb("stage_progression").$type<Array<{ stage: string; date: string; notes?: string }>>(),
-  relationshipStage: text("relationship_stage").default("new"),
+  relationshipStage: text("relationship_stage").default("kakano"),
   isCommunityMember: boolean("is_community_member").default(false),
   communityMemberOverride: boolean("community_member_override").default(false),
   isInnovator: boolean("is_innovator").default(false),
@@ -361,7 +374,7 @@ export const groups = pgTable("groups", {
   address: text("address"),
   website: text("website"),
   notes: text("notes"),
-  relationshipStage: text("relationship_stage").default("new"),
+  relationshipStage: text("relationship_stage").default("kakano"),
   relationshipTier: text("relationship_tier").default("mentioned"),
   relationshipStrength: integer("relationship_strength"),
   strategicImportance: text("strategic_importance"),

@@ -1,7 +1,6 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -27,7 +26,6 @@ import {
   ArrowRight,
   MessageSquare,
   Eye,
-  Pencil,
   User,
   MailX,
 } from "lucide-react";
@@ -36,19 +34,12 @@ import {
   type EnrichedRelationship,
 } from "@/components/mentoring/mentoring-hooks";
 
-type MetricConfig = { key: string; label: string; description: string };
-type WrittenQuestionConfig = { key: string; label: string; placeholder: string };
-
 function PreviewDialog({
   open,
   onOpenChange,
-  metrics,
-  writtenQuestions,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  metrics: MetricConfig[];
-  writtenQuestions: WrittenQuestionConfig[];
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -77,7 +68,7 @@ function PreviewDialog({
               <TrendingUp className="w-3 h-3" /> Growth Metrics (1-10 sliders)
             </p>
             <div className="space-y-3">
-              {metrics.map((m) => (
+              {GROWTH_METRICS.map((m) => (
                 <div key={m.key} className="space-y-1" data-testid={`preview-metric-${m.key}`}>
                   <p className="text-sm font-medium">{m.label}</p>
                   <p className="text-xs text-muted-foreground">{m.description}</p>
@@ -99,7 +90,7 @@ function PreviewDialog({
               <MessageSquare className="w-3 h-3" /> Reflection Questions
             </p>
             <div className="space-y-3">
-              {writtenQuestions.map((q) => (
+              {GROWTH_SURVEY_WRITTEN_QUESTIONS.map((q) => (
                 <div key={q.key} className="space-y-1" data-testid={`preview-question-${q.key}`}>
                   <p className="text-sm font-medium">{q.label}</p>
                   <div className="h-16 rounded-md border bg-muted/20 flex items-start p-2">
@@ -112,122 +103,6 @@ function PreviewDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function EditSurveyDialog({
-  open,
-  onOpenChange,
-  metrics,
-  writtenQuestions,
-  onSave,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  metrics: MetricConfig[];
-  writtenQuestions: WrittenQuestionConfig[];
-  onSave: (metrics: MetricConfig[], questions: WrittenQuestionConfig[]) => void;
-}) {
-  const [editMetrics, setEditMetrics] = useState<MetricConfig[]>(() => metrics.map(m => ({ ...m })));
-  const [editQuestions, setEditQuestions] = useState<WrittenQuestionConfig[]>(() => writtenQuestions.map(q => ({ ...q })));
-
-  const resetState = () => {
-    setEditMetrics(metrics.map(m => ({ ...m })));
-    setEditQuestions(writtenQuestions.map(q => ({ ...q })));
-  };
-
-  const updateMetric = (index: number, field: keyof MetricConfig, value: string) => {
-    const updated = [...editMetrics];
-    updated[index] = { ...updated[index], [field]: value };
-    setEditMetrics(updated);
-  };
-
-  const updateQuestion = (index: number, field: keyof WrittenQuestionConfig, value: string) => {
-    const updated = [...editQuestions];
-    updated[index] = { ...updated[index], [field]: value };
-    setEditQuestions(updated);
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[560px] max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Pencil className="w-4 h-4" /> Edit Survey Questions
-          </DialogTitle>
-          <DialogDescription>
-            Customise the labels and descriptions shown to mentees. Changes apply to future surveys only.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-5 py-2">
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-              Growth Metrics (1-10 sliders)
-            </p>
-            <div className="space-y-3">
-              {editMetrics.map((m, i) => (
-                <div key={m.key} className="rounded-lg border p-3 space-y-2" data-testid={`edit-metric-${m.key}`}>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-[10px] shrink-0">{m.key}</Badge>
-                    <Input
-                      value={m.label}
-                      onChange={(e) => updateMetric(i, "label", e.target.value)}
-                      className="h-8 text-sm"
-                      data-testid={`input-metric-label-${m.key}`}
-                    />
-                  </div>
-                  <Input
-                    value={m.description}
-                    onChange={(e) => updateMetric(i, "description", e.target.value)}
-                    placeholder="Description shown below the label..."
-                    className="h-8 text-xs"
-                    data-testid={`input-metric-desc-${m.key}`}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-              Reflection Questions
-            </p>
-            <div className="space-y-3">
-              {editQuestions.map((q, i) => (
-                <div key={q.key} className="rounded-lg border p-3 space-y-2" data-testid={`edit-question-${q.key}`}>
-                  <Badge variant="outline" className="text-[10px]">{q.key}</Badge>
-                  <Input
-                    value={q.label}
-                    onChange={(e) => updateQuestion(i, "label", e.target.value)}
-                    className="h-8 text-sm"
-                    data-testid={`input-question-label-${q.key}`}
-                  />
-                  <Input
-                    value={q.placeholder}
-                    onChange={(e) => updateQuestion(i, "placeholder", e.target.value)}
-                    placeholder="Placeholder text..."
-                    className="h-8 text-xs"
-                    data-testid={`input-question-placeholder-${q.key}`}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => { resetState(); onOpenChange(false); }}>Cancel</Button>
-          <Button
-            onClick={() => {
-              onSave(editMetrics, editQuestions);
-              onOpenChange(false);
-            }}
-            data-testid="button-save-survey-edits"
-          >
-            Save Changes
-          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -414,23 +289,13 @@ export function GrowthSurveysTab() {
   const { toast } = useToast();
 
   const [showPreview, setShowPreview] = useState(false);
-  const [showEdit, setShowEdit] = useState(false);
   const [sendingId, setSendingId] = useState<number | null>(null);
-
-  const [customMetrics, setCustomMetrics] = useState<MetricConfig[]>(
-    GROWTH_METRICS.map(m => ({ ...m }))
-  );
-  const [customQuestions, setCustomQuestions] = useState<WrittenQuestionConfig[]>(
-    GROWTH_SURVEY_WRITTEN_QUESTIONS.map(q => ({ ...q }))
-  );
 
   const sendSurvey = useMutation({
     mutationFn: async (relationshipId: number) => {
       setSendingId(relationshipId);
       const res = await apiRequest("POST", "/api/growth-surveys/send", {
         relationshipId,
-        customMetrics: customMetrics,
-        customQuestions: customQuestions,
       });
       return res.json();
     },
@@ -482,9 +347,6 @@ export function GrowthSurveysTab() {
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={() => setShowPreview(true)} data-testid="button-preview-survey">
             <Eye className="w-3.5 h-3.5 mr-1" /> Preview
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setShowEdit(true)} data-testid="button-edit-survey">
-            <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
           </Button>
         </div>
       </div>
@@ -547,20 +409,6 @@ export function GrowthSurveysTab() {
       <PreviewDialog
         open={showPreview}
         onOpenChange={setShowPreview}
-        metrics={customMetrics}
-        writtenQuestions={customQuestions}
-      />
-
-      <EditSurveyDialog
-        open={showEdit}
-        onOpenChange={setShowEdit}
-        metrics={customMetrics}
-        writtenQuestions={customQuestions}
-        onSave={(m, q) => {
-          setCustomMetrics(m);
-          setCustomQuestions(q);
-          toast({ title: "Survey updated", description: "Changes will apply to future surveys" });
-        }}
       />
     </div>
   );

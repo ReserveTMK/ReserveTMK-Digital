@@ -71,6 +71,22 @@ app.use((req, res, next) => {
 
   await registerRoutes(httpServer, app);
 
+  try {
+    const { LEGACY_STAGE_MAP } = await import("@shared/schema");
+    const { db } = await import("./db");
+    const { sql } = await import("drizzle-orm");
+    for (const [oldStage, newStage] of Object.entries(LEGACY_STAGE_MAP)) {
+      await db.execute(sql`UPDATE contacts SET relationship_stage = ${newStage} WHERE relationship_stage = ${oldStage}`);
+      await db.execute(sql`UPDATE contacts SET stage = ${newStage} WHERE stage = ${oldStage}`);
+      await db.execute(sql`UPDATE groups SET relationship_stage = ${newStage} WHERE relationship_stage = ${oldStage}`);
+      await db.execute(sql`UPDATE relationship_stage_history SET previous_stage = ${newStage} WHERE previous_stage = ${oldStage}`);
+      await db.execute(sql`UPDATE relationship_stage_history SET new_stage = ${newStage} WHERE new_stage = ${oldStage}`);
+    }
+    console.log("[migration] Legacy stage values migrated to kakano/tipu/ora/inactive");
+  } catch (migrationErr: any) {
+    console.warn("[migration] Stage migration skipped:", migrationErr.message);
+  }
+
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     if (res.headersSent) {
       return next(err);
