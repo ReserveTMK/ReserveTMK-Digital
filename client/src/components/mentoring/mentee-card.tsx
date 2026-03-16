@@ -30,6 +30,7 @@ import {
   Save,
   Check,
   X,
+  Send,
 } from "lucide-react";
 import { JourneyStepper } from "@/components/mentoring/journey-stepper";
 import {
@@ -160,8 +161,8 @@ function InlineEditText({ value, onSave, placeholder, multiline, testId }: {
   );
 }
 
-export function MenteeCard({ relationship }: { relationship: EnrichedRelationship }) {
-  const [expanded, setExpanded] = useState(false);
+export function MenteeCard({ relationship, defaultExpanded }: { relationship: EnrichedRelationship; defaultExpanded?: boolean }) {
+  const [expanded, setExpanded] = useState(defaultExpanded || false);
   const [confirmStatus, setConfirmStatus] = useState<"graduated" | "ended" | null>(null);
   const [editingBaseline, setEditingBaseline] = useState(false);
   const [editingFocus, setEditingFocus] = useState(false);
@@ -219,6 +220,18 @@ export function MenteeCard({ relationship }: { relationship: EnrichedRelationshi
       queryClient.invalidateQueries({ queryKey: ["/api/mentoring-relationships/enriched"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/meetings/debrief-summaries"] });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const sendGrowthSurvey = useMutation({
+    mutationFn: async (relationshipId: number) => {
+      const res = await apiRequest("POST", "/api/growth-surveys/send", { relationshipId });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/growth-surveys"] });
+      toast({ title: "Survey sent", description: "Growth survey emailed to mentee" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -578,12 +591,28 @@ export function MenteeCard({ relationship }: { relationship: EnrichedRelationshi
               </div>
             )}
 
-            <div className="flex items-center gap-2 pt-1">
+            <div className="flex items-center gap-2 pt-1 flex-wrap">
               <Link href={`/contacts/${relationship.contactId}`}>
                 <Button size="sm" variant="outline" className="text-xs h-7" data-testid={`button-view-contact-${relationship.id}`}>
                   View Profile
                 </Button>
               </Link>
+              {(relationship.status === "active" || relationship.status === "on_hold") && relationship.contactEmail && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs h-7"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    sendGrowthSurvey.mutate(relationship.id);
+                  }}
+                  disabled={sendGrowthSurvey.isPending}
+                  data-testid={`button-send-survey-${relationship.id}`}
+                >
+                  {sendGrowthSurvey.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Send className="w-3 h-3 mr-1" />}
+                  Growth Survey
+                </Button>
+              )}
             </div>
           </div>
         </div>

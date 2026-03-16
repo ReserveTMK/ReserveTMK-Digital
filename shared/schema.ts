@@ -573,7 +573,7 @@ export const venueInstructions = pgTable("venue_instructions", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const SURVEY_TYPES = ["post_booking"] as const;
+export const SURVEY_TYPES = ["post_booking", "growth"] as const;
 export type SurveyType = typeof SURVEY_TYPES[number];
 
 export const SURVEY_STATUSES = ["pending", "sent", "completed", "expired"] as const;
@@ -1783,6 +1783,22 @@ export type VentureType = typeof VENTURE_TYPES[number];
 
 export const MENTORING_RELATIONSHIP_STATUSES = ["application", "active", "on_hold", "graduated", "ended"] as const;
 export const SESSION_FREQUENCIES = ["weekly", "fortnightly", "monthly", "ad_hoc"] as const;
+
+export const GROWTH_METRICS = [
+  { key: "mindset", label: "Mindset", description: "Your belief in yourself and your ability to grow" },
+  { key: "skill", label: "Skill", description: "The practical skills you need for your venture" },
+  { key: "confidence", label: "Confidence", description: "How confident you feel taking action" },
+  { key: "bizConfidence", label: "Business Confidence", description: "Your confidence in running and growing a business" },
+  { key: "systemsInPlace", label: "Systems", description: "Having the right systems, processes, and tools in place" },
+  { key: "fundingReadiness", label: "Funding Readiness", description: "How ready you are to apply for or manage funding" },
+  { key: "networkStrength", label: "Network", description: "The strength and usefulness of your support network" },
+] as const;
+
+export const GROWTH_SURVEY_WRITTEN_QUESTIONS = [
+  { key: "goingWell", label: "What's going well right now?", placeholder: "Share what you're proud of or what's working..." },
+  { key: "stuckOn", label: "What are you stuck on or finding challenging?", placeholder: "Anything you'd like more support with..." },
+  { key: "nextSteps", label: "What are your next steps?", placeholder: "What are you focusing on next..." },
+] as const;
 
 export const MENTORING_FOCUS_AREAS = [
   "Business Planning",

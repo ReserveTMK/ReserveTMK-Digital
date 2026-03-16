@@ -4807,6 +4807,84 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     }
   });
 
+  // === Growth Surveys API ===
+  app.get("/api/growth-surveys", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const allSurveys = await storage.getSurveys(userId);
+      const growthSurveys = allSurveys.filter(s => s.surveyType === "growth");
+      res.json(growthSurveys);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/growth-surveys/send", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { relationshipId, customMetrics, customQuestions } = req.body;
+      if (!relationshipId) return res.status(400).json({ message: "relationshipId is required" });
+
+      const rel = await storage.getMentoringRelationship(relationshipId);
+      if (!rel) return res.status(404).json({ message: "Relationship not found" });
+      if (rel.userId !== userId) return res.status(403).json({ message: "Not authorized" });
+
+      const contact = await storage.getContact(rel.contactId);
+      if (!contact) return res.status(404).json({ message: "Contact not found" });
+      if (!contact.email) return res.status(400).json({ message: "Mentee has no email address" });
+
+      const { GROWTH_METRICS, GROWTH_SURVEY_WRITTEN_QUESTIONS } = await import("@shared/schema");
+
+      const metrics = Array.isArray(customMetrics) && customMetrics.length > 0 ? customMetrics : GROWTH_METRICS;
+      const writtenQs = Array.isArray(customQuestions) && customQuestions.length > 0 ? customQuestions : GROWTH_SURVEY_WRITTEN_QUESTIONS;
+
+      const questions = [
+        ...metrics.map((m: any, i: number) => ({
+          id: i + 1,
+          type: "slider",
+          question: m.label,
+          subtext: m.description,
+          key: m.key,
+          scale: 10,
+          required: true,
+        })),
+        ...writtenQs.map((q: any, i: number) => ({
+          id: metrics.length + i + 1,
+          type: "text",
+          question: q.label,
+          key: q.key,
+          required: false,
+          placeholder: q.placeholder,
+        })),
+      ];
+
+      const surveyToken = (await import("crypto")).randomUUID();
+      const survey = await storage.createSurvey({
+        userId,
+        surveyType: "growth",
+        relatedId: rel.id,
+        contactId: rel.contactId,
+        questions,
+        status: "pending",
+        surveyToken,
+      });
+
+      try {
+        const user = await storage.getUser(userId);
+        const { sendGrowthSurveyEmail } = await import("./email");
+        await sendGrowthSurveyEmail(contact.email, contact.name || contact.email, surveyToken, user?.username || undefined);
+        await storage.updateSurvey(survey.id, { status: "sent", sentAt: new Date() } as any);
+      } catch (emailErr: any) {
+        console.error("Failed to send growth survey email:", emailErr.message);
+      }
+
+      res.json({ success: true, survey });
+    } catch (error: any) {
+      console.error("Growth survey send error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // === Public Survey Routes (no auth) ===
   app.get("/api/public/survey/:token", async (req, res) => {
     try {
@@ -4838,6 +4916,27 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         status: "completed",
         completedAt: new Date(),
       } as any);
+
+      if (survey.surveyType === "growth" && survey.contactId) {
+        try {
+          const questions = (survey.questions as any[]) || [];
+          const metricsUpdate: Record<string, number> = {};
+          for (const resp of responses) {
+            const q = questions.find((q: any) => q.id === resp.questionId);
+            if (q && q.type === "slider" && q.key && typeof resp.answer === "number") {
+              metricsUpdate[q.key] = Math.min(10, Math.max(1, Math.round(resp.answer)));
+            }
+          }
+          if (Object.keys(metricsUpdate).length > 0) {
+            const existingContact = await storage.getContact(survey.contactId);
+            const existingMetrics = (existingContact?.metrics as Record<string, any>) || {};
+            const mergedMetrics = { ...existingMetrics, ...metricsUpdate };
+            await storage.updateContact(survey.contactId, { metrics: mergedMetrics } as any);
+          }
+        } catch (metricsErr) {
+          console.error("Failed to update contact metrics from growth survey:", metricsErr);
+        }
+      }
 
       res.json({ success: true, message: "Thank you for your feedback!" });
     } catch (error: any) {

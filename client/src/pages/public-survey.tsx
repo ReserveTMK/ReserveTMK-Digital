@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { useRoute } from "wouter";
-import { Loader2, Star, Check, AlertCircle, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Loader2, Star, Check, AlertCircle, ThumbsUp, ThumbsDown, TrendingUp } from "lucide-react";
 import type { Survey } from "@shared/schema";
 
 type SurveyWithFlag = Survey & { alreadyCompleted?: boolean; googleReviewUrl?: string | null };
@@ -19,6 +19,8 @@ interface SurveyQuestion {
   required: boolean;
   consent?: boolean;
   subtext?: string;
+  key?: string;
+  placeholder?: string;
 }
 
 function RatingInput({
@@ -100,6 +102,47 @@ function YesNoInput({
   );
 }
 
+function SliderInput({
+  value,
+  onChange,
+  scale = 10,
+  questionId,
+}: {
+  value: number | null;
+  onChange: (val: number) => void;
+  scale?: number;
+  questionId: number;
+}) {
+  const currentVal = value ?? 5;
+  const percentage = ((currentVal - 1) / (scale - 1)) * 100;
+  const color = percentage < 33 ? "text-amber-600" : percentage < 66 ? "text-blue-600" : "text-green-600";
+
+  return (
+    <div className="space-y-2" data-testid={`slider-input-${questionId}`}>
+      <div className="flex items-center gap-3">
+        <span className="text-xs text-muted-foreground w-4 text-right">1</span>
+        <input
+          type="range"
+          min={1}
+          max={scale}
+          value={currentVal}
+          onChange={(e) => onChange(parseInt(e.target.value))}
+          className="flex-1 h-2 accent-primary cursor-pointer"
+          data-testid={`slider-${questionId}`}
+        />
+        <span className="text-xs text-muted-foreground w-4">{scale}</span>
+        <span className={`text-lg font-bold w-8 text-center tabular-nums ${color}`} data-testid={`slider-value-${questionId}`}>
+          {currentVal}
+        </span>
+      </div>
+      <div className="flex justify-between text-[10px] text-muted-foreground px-4">
+        <span>Getting started</span>
+        <span>Thriving</span>
+      </div>
+    </div>
+  );
+}
+
 function QuestionRenderer({
   question,
   response,
@@ -112,6 +155,16 @@ function QuestionRenderer({
   googleReviewUrl?: string | null;
 }) {
   switch (question.type) {
+    case "slider":
+      return (
+        <SliderInput
+          value={typeof response === "number" ? response : null}
+          onChange={(val) => onResponseChange(val)}
+          scale={question.scale || 10}
+          questionId={question.id}
+        />
+      );
+
     case "rating":
       return (
         <RatingInput
@@ -136,7 +189,7 @@ function QuestionRenderer({
         <Textarea
           value={typeof response === "string" ? response : ""}
           onChange={(e) => onResponseChange(e.target.value)}
-          placeholder="Type your answer here..."
+          placeholder={question.placeholder || "Type your answer here..."}
           className="resize-none"
           rows={3}
           data-testid={`text-input-${question.id}`}
@@ -330,12 +383,18 @@ export default function PublicSurveyPage() {
           <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
             <Check className="w-7 h-7 text-primary" />
           </div>
-          <h2 className="text-xl font-bold mb-2" data-testid="heading-thank-you">Thank You!</h2>
+          <h2 className="text-xl font-bold mb-2" data-testid="heading-thank-you">
+            {survey.surveyType === "growth" ? "Ngā mihi — Thank You!" : "Thank You!"}
+          </h2>
           <p className="text-sm text-muted-foreground mb-1" data-testid="text-thank-you">
-            Your feedback has been submitted successfully.
+            {survey.surveyType === "growth"
+              ? "Your growth check-in has been submitted successfully."
+              : "Your feedback has been submitted successfully."}
           </p>
           <p className="text-sm text-muted-foreground" data-testid="text-thank-you-detail">
-            We appreciate you taking the time to share your experience with Reserve Tamaki.
+            {survey.surveyType === "growth"
+              ? "Your responses help us understand how to best support you on your journey. Keep going!"
+              : "We appreciate you taking the time to share your experience with Reserve Tamaki."}
           </p>
           {survey?.googleReviewUrl && survey.googleReviewUrl.startsWith("https://") && (
             <div className="mt-6 pt-4 border-t">
@@ -362,22 +421,42 @@ export default function PublicSurveyPage() {
     );
   }
 
+  const isGrowthSurvey = survey.surveyType === "growth";
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-muted/30">
+    <div className={`min-h-screen bg-gradient-to-b ${isGrowthSurvey ? "from-green-50/50 to-background dark:from-green-950/20 dark:to-background" : "from-background to-muted/30"}`}>
       <div className="max-w-2xl mx-auto px-4 py-8 sm:py-12">
         <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold text-foreground" data-testid="heading-survey-title">
-            Venue Hire Feedback
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1" data-testid="text-survey-subtitle">
-            Reserve Tamaki
-          </p>
+          {isGrowthSurvey ? (
+            <>
+              <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-green-500/10 flex items-center justify-center">
+                <TrendingUp className="w-6 h-6 text-green-600 dark:text-green-400" />
+              </div>
+              <h1 className="text-2xl font-bold text-foreground" data-testid="heading-survey-title">
+                Growth Check-in
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1" data-testid="text-survey-subtitle">
+                Reserve Tāmaki
+              </p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-2xl font-bold text-foreground" data-testid="heading-survey-title">
+                Venue Hire Feedback
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1" data-testid="text-survey-subtitle">
+                Reserve Tamaki
+              </p>
+            </>
+          )}
         </div>
 
         <Card className="p-6 sm:p-8">
           <div className="mb-6">
             <p className="text-sm text-muted-foreground" data-testid="text-survey-intro">
-              We'd love to hear about your experience. Your feedback helps us improve our venue and services for the community.
+              {isGrowthSurvey
+                ? "Take a moment to reflect on where you're at right now. Rate yourself across key growth areas and share what's on your mind — there are no right or wrong answers."
+                : "We'd love to hear about your experience. Your feedback helps us improve our venue and services for the community."}
             </p>
           </div>
 
@@ -425,7 +504,7 @@ export default function PublicSurveyPage() {
                     Submitting...
                   </>
                 ) : (
-                  "Submit Feedback"
+                  isGrowthSurvey ? "Submit Check-in" : "Submit Feedback"
                 )}
               </Button>
             </div>

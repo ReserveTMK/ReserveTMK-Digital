@@ -37,6 +37,8 @@ import {
   TreePine,
   Sun,
   Calendar as CalendarIcon,
+  LayoutList,
+  Columns3,
 } from "lucide-react";
 import { MenteeCard } from "@/components/mentoring/mentee-card";
 import { ApplicationCard } from "@/components/mentoring/application-card";
@@ -47,6 +49,7 @@ import {
   isOverdue,
   FREQUENCY_LABELS,
 } from "@/components/mentoring/mentoring-hooks";
+import { PipelineKanban } from "@/components/mentoring/pipeline-kanban";
 import { MENTORING_FOCUS_AREAS, VENTURE_TYPES } from "@shared/schema";
 
 const ETHNICITY_OPTIONS_FLAT = [
@@ -408,10 +411,12 @@ export function MenteesTab() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [showAddMentee, setShowAddMentee] = useState(false);
+  const [viewMode, setViewMode] = useState<"pipeline" | "list">("pipeline");
   const [statusFilter, setStatusFilter] = useState("active");
   const [search, setSearch] = useState("");
   const [appsOpen, setAppsOpen] = useState(true);
   const [schedulePrompt, setSchedulePrompt] = useState<{ contactId: number; contactName: string; showScheduler?: boolean } | null>(null);
+  const [expandedMenteeId, setExpandedMenteeId] = useState<number | null>(null);
 
   const pendingApps = applications?.filter(a => a.status === "pending") || [];
 
@@ -459,6 +464,20 @@ export function MenteesTab() {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const updateRelStatus = useMutation({
+    mutationFn: async ({ id, status, notes }: { id: number; status: string; notes?: string }) => {
+      const body: Record<string, any> = { status };
+      if (notes) body.graduationNotes = notes;
+      const res = await apiRequest("PATCH", `/api/mentoring-relationships/${id}`, body);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/mentoring-relationships/enriched"] });
+      toast({ title: "Status updated" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
   const filtered = useMemo(() => {
     if (!enrichedRelationships) return [];
     let list = enrichedRelationships;
@@ -480,76 +499,125 @@ export function MenteesTab() {
 
   return (
     <div className="space-y-4">
-      {pendingApps.length > 0 && (
-        <Collapsible open={appsOpen} onOpenChange={setAppsOpen}>
-          <CollapsibleTrigger asChild>
-            <button className="flex items-center gap-2 w-full text-left p-2 rounded-md hover:bg-muted transition-colors" data-testid="button-toggle-applications">
-              {appsOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-              <span className="font-semibold text-sm">Pending Applications</span>
-              <Badge variant="secondary" className="text-[10px] h-5 px-1.5">{pendingApps.length}</Badge>
-            </button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="space-y-2 mt-2">
-            {pendingApps.map(app => (
-              <ApplicationCard
-                key={app.id}
-                application={app}
-                contacts={(contacts || []) as any[]}
-                meetings={allMeetings || []}
-                isPending={acceptApp.isPending || declineApp.isPending}
-                onAccept={(id, notes, extra) => {
-                  const c = (contacts as any[])?.find((ct: any) => ct.id === app.contactId);
-                  acceptApp.mutate({ id, notes, extra, contactId: c?.id, contactName: c?.name });
-                }}
-                onDecline={(id, notes) => declineApp.mutate({ id, notes })}
-              />
-            ))}
-          </CollapsibleContent>
-        </Collapsible>
-      )}
-
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap flex-1">
-          <div className="relative min-w-[180px] flex-1 max-w-xs">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search mentees..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-9" data-testid="input-mentee-search" />
+          <div className="flex gap-0.5 p-0.5 bg-muted rounded-md">
+            <button
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-colors ${viewMode === "pipeline" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              onClick={() => setViewMode("pipeline")}
+              data-testid="toggle-pipeline-view"
+            >
+              <Columns3 className="w-3.5 h-3.5" /> Pipeline
+            </button>
+            <button
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-colors ${viewMode === "list" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              onClick={() => setViewMode("list")}
+              data-testid="toggle-list-view"
+            >
+              <LayoutList className="w-3.5 h-3.5" /> List
+            </button>
           </div>
-          <div className="flex gap-1">
-            {(["active", "on_hold", "graduated", "all"] as const).map(f => (
-              <Button
-                key={f}
-                size="sm"
-                variant={statusFilter === f ? "default" : "outline"}
-                className="text-xs h-8 capitalize"
-                onClick={() => setStatusFilter(f)}
-                data-testid={`filter-mentee-${f}`}
-              >
-                {f === "on_hold" ? "On Hold" : f === "all" ? "All" : f}
-              </Button>
-            ))}
-          </div>
+          {viewMode === "list" && (
+            <>
+              <div className="relative min-w-[180px] flex-1 max-w-xs">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input placeholder="Search mentees..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-9" data-testid="input-mentee-search" />
+              </div>
+              <div className="flex gap-1">
+                {(["active", "on_hold", "graduated", "all"] as const).map(f => (
+                  <Button
+                    key={f}
+                    size="sm"
+                    variant={statusFilter === f ? "default" : "outline"}
+                    className="text-xs h-8 capitalize"
+                    onClick={() => setStatusFilter(f)}
+                    data-testid={`filter-mentee-${f}`}
+                  >
+                    {f === "on_hold" ? "On Hold" : f === "all" ? "All" : f}
+                  </Button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
         <Button size="sm" onClick={() => setShowAddMentee(true)} data-testid="button-add-mentee">
           <Plus className="w-4 h-4 mr-1" /> Add Mentee
         </Button>
       </div>
 
-      {filtered.length === 0 ? (
-        <Card className="p-8 text-center">
-          <Users className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">
-            {statusFilter === "all" ? "No mentees yet" : `No ${statusFilter.replace("_", " ")} mentees`}
-          </p>
-          <Button size="sm" variant="outline" className="mt-3" onClick={() => setShowAddMentee(true)} data-testid="button-add-mentee-empty">
-            <Plus className="w-4 h-4 mr-1" /> Add your first mentee
-          </Button>
-        </Card>
+      {viewMode === "pipeline" ? (
+        <PipelineKanban
+          relationships={enrichedRelationships || []}
+          applications={applications || []}
+          contacts={(contacts || []) as any[]}
+          meetings={allMeetings || []}
+          onCardClick={(card) => {
+            if (card.type === "relationship" && card.relationshipId) {
+              setViewMode("list");
+              setStatusFilter("all");
+              setExpandedMenteeId(card.relationshipId);
+            }
+          }}
+          onAcceptApplication={(appId, contactId, contactName) => {
+            acceptApp.mutate({
+              id: appId,
+              extra: { stage: "kakano", sessionFrequency: "monthly" },
+              contactId,
+              contactName,
+            });
+          }}
+          onUpdateRelationshipStatus={(relId, newStatus, notes) => {
+            updateRelStatus.mutate({ id: relId, status: newStatus, notes });
+          }}
+        />
       ) : (
-        <div className="space-y-2">
-          {filtered.map(r => (
-            <MenteeCard key={r.id} relationship={r} />
-          ))}
-        </div>
+        <>
+          {pendingApps.length > 0 && (
+            <Collapsible open={appsOpen} onOpenChange={setAppsOpen}>
+              <CollapsibleTrigger asChild>
+                <button className="flex items-center gap-2 w-full text-left p-2 rounded-md hover:bg-muted transition-colors" data-testid="button-toggle-applications">
+                  {appsOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  <span className="font-semibold text-sm">Pending Applications</span>
+                  <Badge variant="secondary" className="text-[10px] h-5 px-1.5">{pendingApps.length}</Badge>
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-2 mt-2">
+                {pendingApps.map(app => (
+                  <ApplicationCard
+                    key={app.id}
+                    application={app}
+                    contacts={(contacts || []) as any[]}
+                    meetings={allMeetings || []}
+                    isPending={acceptApp.isPending || declineApp.isPending}
+                    onAccept={(id, notes, extra) => {
+                      const c = (contacts as any[])?.find((ct: any) => ct.id === app.contactId);
+                      acceptApp.mutate({ id, notes, extra, contactId: c?.id, contactName: c?.name });
+                    }}
+                    onDecline={(id, notes) => declineApp.mutate({ id, notes })}
+                  />
+                ))}
+              </CollapsibleContent>
+            </Collapsible>
+          )}
+
+          {filtered.length === 0 ? (
+            <Card className="p-8 text-center">
+              <Users className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                {statusFilter === "all" ? "No mentees yet" : `No ${statusFilter.replace("_", " ")} mentees`}
+              </p>
+              <Button size="sm" variant="outline" className="mt-3" onClick={() => setShowAddMentee(true)} data-testid="button-add-mentee-empty">
+                <Plus className="w-4 h-4 mr-1" /> Add your first mentee
+              </Button>
+            </Card>
+          ) : (
+            <div className="space-y-2">
+              {filtered.map(r => (
+                <MenteeCard key={r.id} relationship={r} defaultExpanded={r.id === expandedMenteeId} />
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       <AddMenteeDialog open={showAddMentee} onOpenChange={setShowAddMentee} />

@@ -14,6 +14,7 @@ import { MentoringOnboardingSetup } from "@/components/mentoring-onboarding-setu
 import { SessionsTab } from "@/components/mentoring/sessions-tab";
 import { MenteesTab } from "@/components/mentoring/mentees-tab";
 import { MentorsTab } from "@/components/mentoring/mentors-tab";
+import { GrowthSurveysTab } from "@/components/mentoring/growth-surveys-tab";
 import { useMentoringApplications } from "@/components/mentoring/mentoring-hooks";
 
 export default function MentoringPage() {
@@ -71,6 +72,7 @@ export default function MentoringPage() {
             )}
           </TabsTrigger>
           <TabsTrigger value="mentors" data-testid="tab-mentors">Mentors</TabsTrigger>
+          <TabsTrigger value="growth-surveys" data-testid="tab-growth-surveys">Growth Surveys</TabsTrigger>
         </TabsList>
         <TabsContent value="sessions" className="mt-4">
           <SessionsTab />
@@ -80,6 +82,9 @@ export default function MentoringPage() {
         </TabsContent>
         <TabsContent value="mentors" className="mt-4">
           <MentorsTab />
+        </TabsContent>
+        <TabsContent value="growth-surveys" className="mt-4">
+          <GrowthSurveysTab />
         </TabsContent>
       </Tabs>
     </div>
