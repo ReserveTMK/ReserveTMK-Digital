@@ -53,7 +53,6 @@ import {
   REPORTING_CADENCES,
   NARRATIVE_STYLES,
   FUNDER_DOCUMENT_TYPES,
-  OUTCOME_FOCUS_OPTIONS,
   type Funder,
   type FunderDocument,
 } from "@shared/schema";
@@ -97,6 +96,7 @@ const CADENCE_LABELS: Record<string, string> = {
 const STYLE_LABELS: Record<string, string> = {
   compliance: "Compliance (stats-first)",
   story: "Story (narrative-first)",
+  partnership: "Partnership (relationship-first)",
 };
 
 const DOC_TYPE_LABELS: Record<string, string> = {
@@ -416,7 +416,11 @@ function FunderFormDialog({
     status: defaultValues?.status || "in_conversation",
     communityLens: defaultValues?.communityLens || "all",
     outcomesFramework: defaultValues?.outcomesFramework || "",
-    outcomeFocus: defaultValues?.outcomeFocus || [],
+    outcomeFocus: typeof defaultValues?.outcomeFocus === "string"
+      ? defaultValues.outcomeFocus
+      : Array.isArray(defaultValues?.outcomeFocus)
+      ? defaultValues.outcomeFocus.map((f: string) => OUTCOME_FOCUS_LABELS[f]?.label || f).join(", ")
+      : "",
     reportingGuidance: defaultValues?.reportingGuidance || "",
     reportingCadence: defaultValues?.reportingCadence || "quarterly",
     narrativeStyle: defaultValues?.narrativeStyle || "compliance",
@@ -441,7 +445,7 @@ function FunderFormDialog({
       status: form.status,
       communityLens: form.communityLens,
       outcomesFramework: form.outcomesFramework.trim() || null,
-      outcomeFocus: form.outcomeFocus.length > 0 ? form.outcomeFocus : null,
+      outcomeFocus: form.outcomeFocus.trim() || null,
       reportingGuidance: form.reportingGuidance.trim() || null,
       reportingCadence: form.reportingCadence,
       narrativeStyle: form.narrativeStyle,
@@ -456,14 +460,7 @@ function FunderFormDialog({
     onSubmit(data);
   };
 
-  const toggleOutcomeFocus = (focusId: string) => {
-    setForm(prev => ({
-      ...prev,
-      outcomeFocus: prev.outcomeFocus.includes(focusId)
-        ? prev.outcomeFocus.filter(f => f !== focusId)
-        : [...prev.outcomeFocus, focusId],
-    }));
-  };
+  
 
   const toggleSection = (sectionId: string) => {
     setForm(prev => ({
@@ -596,8 +593,8 @@ function FunderFormDialog({
             <Textarea
               value={form.outcomesFramework}
               onChange={(e) => setForm(p => ({ ...p, outcomesFramework: e.target.value }))}
-              placeholder="Describe the funder's outcomes framework, e.g. Tāmaki Ora 2025–2027 — focused on community wellbeing, economic participation, and cultural identity outcomes."
-              rows={3}
+              placeholder="Name of the outcomes framework, e.g. Tāmaki Ora 2025–2027, Auckland Plan, Community Wellbeing"
+              rows={2}
               data-testid="input-outcomes-framework"
             />
           </div>
@@ -620,22 +617,13 @@ function FunderFormDialog({
 
             <div className="space-y-2">
               <Label className="text-sm">Outcome Focus</Label>
-              <div className="grid grid-cols-2 gap-2">
-                {OUTCOME_FOCUS_OPTIONS.map(o => (
-                  <label key={o} className="flex items-start gap-2 text-sm cursor-pointer p-2 rounded-md border bg-background hover:bg-muted/50 transition-colors">
-                    <Checkbox
-                      checked={form.outcomeFocus.includes(o)}
-                      onCheckedChange={() => toggleOutcomeFocus(o)}
-                      data-testid={`checkbox-outcome-${o}`}
-                      className="mt-0.5"
-                    />
-                    <div>
-                      <span className="font-medium">{OUTCOME_FOCUS_LABELS[o]?.label}</span>
-                      <p className="text-xs text-muted-foreground">{OUTCOME_FOCUS_LABELS[o]?.description}</p>
-                    </div>
-                  </label>
-                ))}
-              </div>
+              <Textarea
+                value={form.outcomeFocus}
+                onChange={(e) => setForm(p => ({ ...p, outcomeFocus: e.target.value }))}
+                placeholder="Describe the funder's outcome focus areas and indicators, e.g.&#10;&#10;Whai Rawa Ora (Economic): Māori businesses grow wealth. Indicators: entrepreneur count, repeat usage, revenue.&#10;&#10;Te Hapori Ora (Community): Whānau connected and thriving. Indicators: events hosted, attendees, partnerships."
+                rows={6}
+                data-testid="input-outcome-focus"
+              />
             </div>
 
             <div className="space-y-2">
@@ -643,8 +631,8 @@ function FunderFormDialog({
               <Textarea
                 value={form.reportingGuidance}
                 onChange={(e) => setForm(p => ({ ...p, reportingGuidance: e.target.value }))}
-                placeholder="Any specific guidance for AI when generating reports for this funder, e.g. 'Always emphasise community-led outcomes and whānau wellbeing. Use te reo Māori terms where appropriate.'"
-                rows={3}
+                placeholder="Reporting rhythm and guidance for the AI, e.g.&#10;&#10;• Monthly: Usage numbers, events, activations → Internal&#10;• Quarterly: Progress against Tāmaki Ora indicators, stories of change&#10;• Annual: Full Tāmaki Ora outcomes report with data visualisations"
+                rows={6}
                 data-testid="input-reporting-guidance"
               />
             </div>

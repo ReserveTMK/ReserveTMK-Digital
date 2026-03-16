@@ -1714,7 +1714,7 @@ export type CommunityLens = typeof COMMUNITY_LENS_OPTIONS[number];
 export const REPORTING_CADENCES = ["monthly", "quarterly", "annual", "adhoc"] as const;
 export type ReportingCadence = typeof REPORTING_CADENCES[number];
 
-export const NARRATIVE_STYLES = ["compliance", "story"] as const;
+export const NARRATIVE_STYLES = ["compliance", "story", "partnership"] as const;
 export type NarrativeStyle = typeof NARRATIVE_STYLES[number];
 
 export const FUNDER_DOCUMENT_TYPES = ["contract", "eoi", "framework", "report", "other"] as const;
