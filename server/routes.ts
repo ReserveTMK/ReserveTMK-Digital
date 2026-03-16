@@ -1261,6 +1261,7 @@ export async function registerRoutes(
           whyMentoring: application?.whyMentoring || null,
           whatStuckOn: application?.whatStuckOn || null,
           alreadyTried: application?.alreadyTried || null,
+          timeCommitmentPerWeek: application?.timeCommitmentPerWeek || null,
           onboardingAnswers: application?.onboardingAnswers || null,
           applicationNotes: application?.reviewNotes || null,
           applicationId: application?.id || null,

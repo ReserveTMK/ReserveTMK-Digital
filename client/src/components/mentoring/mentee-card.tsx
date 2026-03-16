@@ -358,7 +358,7 @@ export function MenteeCard({ relationship, defaultExpanded }: { relationship: En
             </div>
 
             <div className="space-y-2 p-3 rounded-lg bg-muted/30 border border-border">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Mentee Info</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Discovery Info</p>
 
               <div>
                 <p className="text-[10px] font-medium text-muted-foreground mb-0.5">Venture / Idea</p>
@@ -433,6 +433,20 @@ export function MenteeCard({ relationship, defaultExpanded }: { relationship: En
                   placeholder="What have they already attempted?"
                   multiline
                   testId={`edit-already-tried-${relationship.id}`}
+                />
+              </div>
+
+              <div>
+                <p className="text-[10px] font-medium text-muted-foreground mb-0.5">Time Commitment</p>
+                <InlineEditText
+                  value={relationship.timeCommitmentPerWeek || ""}
+                  onSave={(v) => {
+                    if (relationship.applicationId) {
+                      updateApplication.mutate({ id: relationship.applicationId, timeCommitmentPerWeek: v || null } as any);
+                    }
+                  }}
+                  placeholder="Hours per week they can commit?"
+                  testId={`edit-time-commitment-${relationship.id}`}
                 />
               </div>
             </div>
