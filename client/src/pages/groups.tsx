@@ -68,10 +68,7 @@ const ENGAGEMENT_COLORS: Record<string, string> = {
   "Dormant": "bg-gray-500/10 text-gray-700 dark:text-gray-300",
 };
 
-function displayGroupType(group: { type: string; organizationTypeOther?: string | null }): string {
-  if (group.type === "Other" && group.organizationTypeOther) {
-    return `Other - ${group.organizationTypeOther}`;
-  }
+function displayGroupType(group: { type: string }): string {
   return group.type;
 }
 
@@ -145,8 +142,8 @@ export default function Groups() {
 
 
   const bulkTypeMutation = useMutation({
-    mutationFn: async ({ groupIds, type, organizationTypeOther }: { groupIds: number[]; type: string; organizationTypeOther?: string }) => {
-      const res = await apiRequest('POST', '/api/groups/bulk-update-type', { groupIds, type, organizationTypeOther: type === "Other" ? organizationTypeOther : null });
+    mutationFn: async ({ groupIds, type }: { groupIds: number[]; type: string }) => {
+      const res = await apiRequest('POST', '/api/groups/bulk-update-type', { groupIds, type });
       return res.json();
     },
     onSuccess: (data: any) => {
@@ -397,7 +394,7 @@ export default function Groups() {
         g.description?.toLowerCase().includes(search.toLowerCase()) ||
         g.contactEmail?.toLowerCase().includes(search.toLowerCase());
       const matchesType = typeFilter === "all" || g.type === typeFilter;
-      const matchesEngagement = engagementFilter === "all" || ((g as any).engagementLevel || "Active") === engagementFilter;
+      const matchesEngagement = engagementFilter === "all" || (g.engagementLevel || "Active") === engagementFilter;
       return matchesSearch && matchesType && matchesEngagement;
     });
   }, [groups, search, typeFilter, engagementFilter]);
@@ -889,21 +886,13 @@ export default function Groups() {
                   ))}
                 </SelectContent>
               </Select>
-              {bulkTypeValue === "Other" && (
-                <Input
-                  value={bulkTypeOther}
-                  onChange={(e) => setBulkTypeOther(e.target.value)}
-                  placeholder="Specify organization type..."
-                  data-testid="input-bulk-type-other"
-                />
-              )}
             </div>
             <DialogFooter className="gap-2">
               <Button variant="outline" onClick={() => { setBulkTypeOpen(false); setBulkTypeValue(""); setBulkTypeOther(""); }} data-testid="button-cancel-bulk-type">
                 Cancel
               </Button>
               <Button
-                onClick={() => bulkTypeMutation.mutate({ groupIds: Array.from(selectedGroups), type: bulkTypeValue, organizationTypeOther: bulkTypeOther })}
+                onClick={() => bulkTypeMutation.mutate({ groupIds: Array.from(selectedGroups), type: bulkTypeValue })}
                 disabled={!bulkTypeValue || bulkTypeMutation.isPending}
                 data-testid="button-confirm-bulk-type"
               >
@@ -1482,7 +1471,6 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
 }) {
   const [name, setName] = useState("");
   const [type, setType] = useState<string>("Uncategorised");
-  const [organizationTypeOther, setOrganizationTypeOther] = useState("");
   const [engagementLevel, setEngagementLevel] = useState<string>("Active");
   const [description, setDescription] = useState("");
   const [contactEmail, setContactEmail] = useState("");
@@ -1494,8 +1482,7 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
   const resetForm = () => {
     setName(group?.name || "");
     setType(group?.type || "Uncategorised");
-    setOrganizationTypeOther(group?.organizationTypeOther || "");
-    setEngagementLevel((group as any)?.engagementLevel || "Active");
+    setEngagementLevel(group?.engagementLevel || "Active");
     setDescription(group?.description || "");
     setContactEmail(group?.contactEmail || "");
     setContactPhone(group?.contactPhone || "");
@@ -1514,7 +1501,6 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
     const data: Record<string, any> = {
       name: name.trim(),
       type,
-      organizationTypeOther: type === "Other" ? (organizationTypeOther.trim() || null) : null,
       engagementLevel,
       description: description.trim() || undefined,
       contactEmail: contactEmail.trim() || undefined,

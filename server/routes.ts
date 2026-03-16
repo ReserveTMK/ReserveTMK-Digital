@@ -9580,9 +9580,6 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
         if (targetGroups.length === 0) {
           return res.json({ suggestions: [], message: "No Business or Uncategorised groups found to recategorise." });
         }
-        if (targetGroups.length > 100) {
-          targetGroups = targetGroups.slice(0, 100);
-        }
       } else {
         if (!Array.isArray(groupIds) || groupIds.length === 0) {
           return res.status(400).json({ message: "No group IDs provided" });
@@ -9614,14 +9611,20 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       const { GROUP_TYPES } = await import("@shared/schema");
       const validTypes = GROUP_TYPES.filter((t: string) => t !== "Uncategorised");
 
-      const groupList = targetGroups.map(g => {
-        const emails = memberEmailMap[g.id];
-        const emailStr = emails ? ` | MemberEmails: "${emails.join(", ")}"` : "";
-        const domain = g.website ? g.website.replace(/^https?:\/\//, "").replace(/\/.*$/, "") : "";
-        return `ID: ${g.id} | Name: "${g.name}" | Current: "${g.type}" | Email: "${g.contactEmail || ""}" | Domain: "${domain}" | Description: "${g.description || ""}" | Notes: "${(g.notes || "").slice(0, 200)}"${emailStr}`;
-      }).join("\n");
+      const suggestions: Array<{ id: number; name: string; currentType: string; suggestedType: string; currentEngagement: string; suggestedEngagement: string }> = [];
 
-      const prompt = `You are categorising organisations for a community hub in Tāmaki (East Auckland), Aotearoa New Zealand called The Reserve. Based on each organisation's name and available information, assign the most appropriate category.
+      const batchSize = 40;
+      for (let batchStart = 0; batchStart < targetGroups.length; batchStart += batchSize) {
+        const batch = targetGroups.slice(batchStart, batchStart + batchSize);
+
+        const groupList = batch.map(g => {
+          const emails = memberEmailMap[g.id];
+          const emailStr = emails ? ` | MemberEmails: "${emails.join(", ")}"` : "";
+          const domain = g.website ? g.website.replace(/^https?:\/\//, "").replace(/\/.*$/, "") : "";
+          return `ID: ${g.id} | Name: "${g.name}" | Current: "${g.type}" | Email: "${g.contactEmail || ""}" | Domain: "${domain}" | Description: "${g.description || ""}" | Notes: "${(g.notes || "").slice(0, 200)}"${emailStr}`;
+        }).join("\n");
+
+        const prompt = `You are categorising organisations for a community hub in Tāmaki (East Auckland), Aotearoa New Zealand called The Reserve. Based on each organisation's name and available information, assign the most appropriate category.
 
 Available categories:
 ${validTypes.map((t: string) => `- "${t}"`).join("\n")}
@@ -9653,31 +9656,31 @@ ${groupList}
 Return a JSON array:
 [{ "id": <number>, "type": "<category>", "engagementLevel": "<Active|Occasional|Dormant>" }]`;
 
-      const raw = await claudeJSON({
-        model: "claude-haiku-4-5",
-        prompt,
-        temperature: 0.2,
-      });
-
-      const suggestions: Array<{ id: number; name: string; currentType: string; suggestedType: string; currentEngagement: string; suggestedEngagement: string }> = [];
-      const parsed = Array.isArray(raw) ? raw : (raw.results || raw.groups || []);
-      
-      for (const item of parsed) {
-        if (!item.id || !item.type) continue;
-        const group = targetGroups.find(g => g.id === item.id);
-        if (!group) continue;
-
-        const typeValid = (GROUP_TYPES as readonly string[]).includes(item.type);
-        const engValid = ["Active", "Occasional", "Dormant"].includes(item.engagementLevel);
-
-        suggestions.push({
-          id: group.id,
-          name: group.name,
-          currentType: group.type,
-          suggestedType: typeValid ? item.type : group.type,
-          currentEngagement: group.engagementLevel || "Active",
-          suggestedEngagement: engValid ? item.engagementLevel : (group.engagementLevel || "Active"),
+        const raw = await claudeJSON({
+          model: "claude-haiku-4-5",
+          prompt,
+          temperature: 0.2,
         });
+
+        const parsed = Array.isArray(raw) ? raw : (raw.results || raw.groups || []);
+        
+        for (const item of parsed) {
+          if (!item.id || !item.type) continue;
+          const group = batch.find(g => g.id === item.id);
+          if (!group) continue;
+
+          const typeValid = (GROUP_TYPES as readonly string[]).includes(item.type);
+          const engValid = ["Active", "Occasional", "Dormant"].includes(item.engagementLevel);
+
+          suggestions.push({
+            id: group.id,
+            name: group.name,
+            currentType: group.type,
+            suggestedType: typeValid ? item.type : group.type,
+            currentEngagement: group.engagementLevel || "Active",
+            suggestedEngagement: engValid ? item.engagementLevel : (group.engagementLevel || "Active"),
+          });
+        }
       }
 
       res.json({ suggestions });
