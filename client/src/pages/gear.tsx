@@ -8,6 +8,13 @@ import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -29,6 +36,7 @@ import {
   Package,
   Users,
 } from "lucide-react";
+import { GEAR_SUBCATEGORIES, type BookableResource } from "@shared/schema";
 import {
   useBookableResources,
   useCreateBookableResource,
@@ -199,10 +207,11 @@ function GearAvailabilityTab() {
 }
 
 function GearInventoryTab() {
-  const [editingGear, setEditingGear] = useState<any>(null);
+  const [editingGear, setEditingGear] = useState<BookableResource | null>(null);
   const [gearFormOpen, setGearFormOpen] = useState(false);
   const [gearName, setGearName] = useState("");
   const [gearDescription, setGearDescription] = useState("");
+  const [gearSubcategory, setGearSubcategory] = useState("");
   const [gearRequiresApproval, setGearRequiresApproval] = useState(false);
 
   const { data: gearResources, isLoading: gearLoading } = useBookableResources("gear");
@@ -211,16 +220,32 @@ function GearInventoryTab() {
   const deleteMutation = useDeleteBookableResource();
   const { toast } = useToast();
 
-  const openGearForm = (gear?: any) => {
+  const groupedGear = useMemo(() => {
+    if (!gearResources || gearResources.length === 0) return [];
+    const groups: Record<string, BookableResource[]> = {};
+    for (const item of gearResources) {
+      const key = item.subcategory || "Uncategorized";
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(item);
+    }
+    const knownSet = new Set<string>([...GEAR_SUBCATEGORIES, "Uncategorized"]);
+    const unknownKeys = Object.keys(groups).filter(k => !knownSet.has(k)).sort();
+    const orderedKeys = [...GEAR_SUBCATEGORIES.filter(c => groups[c]), ...unknownKeys, ...(groups["Uncategorized"] ? ["Uncategorized"] : [])];
+    return orderedKeys.map(key => ({ category: key, items: groups[key] }));
+  }, [gearResources]);
+
+  const openGearForm = (gear?: BookableResource) => {
     if (gear) {
       setEditingGear(gear);
       setGearName(gear.name);
       setGearDescription(gear.description || "");
+      setGearSubcategory(gear.subcategory || "");
       setGearRequiresApproval(gear.requiresApproval || false);
     } else {
       setEditingGear(null);
       setGearName("");
       setGearDescription("");
+      setGearSubcategory("");
       setGearRequiresApproval(false);
     }
     setGearFormOpen(true);
@@ -232,7 +257,7 @@ function GearInventoryTab() {
       if (editingGear) {
         await updateMutation.mutateAsync({
           id: editingGear.id,
-          data: { name: gearName, description: gearDescription || null, requiresApproval: gearRequiresApproval },
+          data: { name: gearName, description: gearDescription || null, subcategory: gearSubcategory || null, requiresApproval: gearRequiresApproval },
         });
         toast({ title: "Updated", description: "Gear item updated" });
       } else {
@@ -240,6 +265,7 @@ function GearInventoryTab() {
           name: gearName,
           category: "gear",
           description: gearDescription || null,
+          subcategory: gearSubcategory || null,
           requiresApproval: gearRequiresApproval,
           active: true,
         });
@@ -287,38 +313,48 @@ function GearInventoryTab() {
           </Button>
         </Card>
       ) : (
-        <Card>
-          <CardContent className="p-3">
-            <div className="space-y-2">
-              {(gearResources || []).map((item) => (
-                <div key={item.id} className="flex items-center justify-between gap-3 py-2 px-2 rounded-md hover:bg-muted/50" data-testid={`row-gear-setting-${item.id}`}>
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Wrench className="w-4 h-4 text-muted-foreground shrink-0" />
-                    <div className="min-w-0">
-                      <span className="text-sm font-medium">{item.name}</span>
-                      <div className="flex items-center gap-2">
-                        {item.requiresApproval && (
-                          <Badge variant="outline" className="text-[10px]">Approval req.</Badge>
-                        )}
-                        {item.active === false && (
-                          <Badge variant="secondary" className="text-[10px]">Inactive</Badge>
-                        )}
+        <div className="space-y-4">
+          {groupedGear.map((group) => (
+            <div key={group.category}>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2" data-testid={`text-gear-category-${group.category}`}>{group.category}</h4>
+              <Card>
+                <CardContent className="p-3">
+                  <div className="space-y-2">
+                    {group.items.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between gap-3 py-2 px-2 rounded-md hover:bg-muted/50" data-testid={`row-gear-setting-${item.id}`}>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Wrench className="w-4 h-4 text-muted-foreground shrink-0" />
+                          <div className="min-w-0">
+                            <span className="text-sm font-medium">{item.name}</span>
+                            <div className="flex items-center gap-2">
+                              {item.subcategory && (
+                                <Badge variant="secondary" className="text-[10px]" data-testid={`badge-subcategory-${item.id}`}>{item.subcategory}</Badge>
+                              )}
+                              {item.requiresApproval && (
+                                <Badge variant="outline" className="text-[10px]">Approval req.</Badge>
+                              )}
+                              {item.active === false && (
+                                <Badge variant="secondary" className="text-[10px]">Inactive</Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button size="icon" variant="ghost" onClick={() => openGearForm(item)} data-testid={`button-edit-gear-${item.id}`}>
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button size="icon" variant="ghost" onClick={() => handleDeleteGear(item.id)} data-testid={`button-delete-gear-${item.id}`}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
                       </div>
-                    </div>
+                    ))}
                   </div>
-                  <div className="flex items-center gap-1">
-                    <Button size="icon" variant="ghost" onClick={() => openGearForm(item)} data-testid={`button-edit-gear-${item.id}`}>
-                      <Pencil className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button size="icon" variant="ghost" onClick={() => handleDeleteGear(item.id)} data-testid={`button-delete-gear-${item.id}`}>
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                </CardContent>
+              </Card>
             </div>
-          </CardContent>
-        </Card>
+          ))}
+        </div>
       )}
 
       <Dialog open={gearFormOpen} onOpenChange={setGearFormOpen}>
@@ -336,6 +372,20 @@ function GearInventoryTab() {
                 placeholder="e.g. Camera Gear"
                 data-testid="input-gear-name"
               />
+            </div>
+            <div>
+              <Label>Category</Label>
+              <Select value={gearSubcategory || "__none__"} onValueChange={(v) => setGearSubcategory(v === "__none__" ? "" : v)} data-testid="select-gear-subcategory">
+                <SelectTrigger data-testid="select-trigger-gear-subcategory">
+                  <SelectValue placeholder="Select a category (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  {GEAR_SUBCATEGORIES.map((cat) => (
+                    <SelectItem key={cat} value={cat} data-testid={`select-item-subcategory-${cat}`}>{cat}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label>Description</Label>
