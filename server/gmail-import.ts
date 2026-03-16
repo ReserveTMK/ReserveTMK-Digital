@@ -414,7 +414,7 @@ async function finalizeImport(
   }
 
   const orgEntries = Array.from(orgMap.values());
-  let orgNames: Record<string, string> = {};
+  let orgNames: Record<string, { name: string; type: string }> = {};
   if (orgEntries.length > 0) {
     try {
       orgNames = await getAIOrgNames(orgEntries.map(o => o.domain));
@@ -442,9 +442,11 @@ async function finalizeImport(
 
   const createdGroupIds = new Map<string, number>();
 
+  const { GROUP_TYPES } = await import("@shared/schema");
   for (const org of orgEntries) {
-    const aiName = orgNames[org.domain];
-    const orgName = aiName || org.suggestedName;
+    const aiResult = orgNames[org.domain];
+    const orgName = aiResult?.name || org.suggestedName;
+    const aiType = (aiResult?.type && (GROUP_TYPES as readonly string[]).includes(aiResult.type) ? aiResult.type : 'Uncategorised') as typeof GROUP_TYPES[number];
     const tier = determineTier(org.frequency);
 
     if (existingGroupNameSet.has(orgName.toLowerCase())) {
@@ -458,7 +460,7 @@ async function finalizeImport(
       const newGroup = await storage.createGroup({
         userId,
         name: orgName,
-        type: 'Uncategorised',
+        type: aiType,
         engagementLevel: 'Active',
         contactEmail: org.memberEmails[0],
         website: org.domain,
@@ -537,24 +539,31 @@ async function finalizeImport(
   await storage.updateGmailSyncLastSync(userId, new Date());
 }
 
-async function getAIOrgNames(domains: string[]): Promise<Record<string, string>> {
+async function getAIOrgNames(domains: string[]): Promise<Record<string, { name: string; type: string }>> {
   const batchSize = 50;
-  const results: Record<string, string> = {};
+  const results: Record<string, { name: string; type: string }> = {};
 
   for (let i = 0; i < domains.length; i += batchSize) {
     const batch = domains.slice(i, i + batchSize);
     try {
       const parsed = await claudeJSON({
         model: 'claude-haiku-4-5',
-        system: `You are a New Zealand business domain expert. Given email domains, return the proper organisation name. 
+        system: `You are a New Zealand business/organisation domain expert. Given email domains, return the proper organisation name and category.
 Focus on NZ organisations (.co.nz, .govt.nz, .ac.nz, .org.nz).
-Examples: "auckland.ac.nz" → "University of Auckland", "mbie.govt.nz" → "MBIE", "waikato.ac.nz" → "University of Waikato".
+Examples: "auckland.ac.nz" → { "name": "University of Auckland", "type": "Education / Training" }, "mbie.govt.nz" → { "name": "MBIE", "type": "Government / Council" }.
 For international or unfamiliar domains, create a clean title-case name from the domain.
-Return a JSON object mapping domain → organisation name.`,
-        prompt: `Map these domains to organisation names:\n${batch.join('\n')}`,
+Categories: Business, Social Enterprise, Creative / Arts, Community Organisation, Iwi / Hapū, Government / Council, Education / Training, Health / Social Services, Funder, Corporate / Sponsor, Resident Company, NGO, Uncategorised.
+Return a JSON object mapping domain → { "name": "<org name>", "type": "<category>" }.`,
+        prompt: `Map these domains to organisation names and categories:\n${batch.join('\n')}`,
         temperature: 0.3,
       });
-      Object.assign(results, parsed);
+      for (const [domain, val] of Object.entries(parsed as any)) {
+        if (typeof val === 'string') {
+          results[domain] = { name: val, type: 'Uncategorised' };
+        } else if (val && typeof val === 'object' && 'name' in val) {
+          results[domain] = { name: (val as any).name, type: (val as any).type || 'Uncategorised' };
+        }
+      }
     } catch (err) {
       console.error('AI org name batch failed:', err);
     }

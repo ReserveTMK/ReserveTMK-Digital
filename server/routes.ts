@@ -9570,26 +9570,56 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
   app.post("/api/groups/ai-recategorise/preview", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { groupIds } = req.body;
-      if (!Array.isArray(groupIds) || groupIds.length === 0) {
-        return res.status(400).json({ message: "No group IDs provided" });
-      }
-      if (groupIds.length > 50) {
-        return res.status(400).json({ message: "Maximum 50 groups at a time" });
-      }
+      const { groupIds, autoTarget } = req.body;
 
       const allGroups = await storage.getGroups(userId);
-      const targetGroups = allGroups.filter(g => groupIds.includes(g.id));
+      let targetGroups: typeof allGroups;
+
+      if (autoTarget) {
+        targetGroups = allGroups.filter(g => g.type === "Business" || g.type === "Uncategorised");
+        if (targetGroups.length === 0) {
+          return res.json({ suggestions: [], message: "No Business or Uncategorised groups found to recategorise." });
+        }
+        if (targetGroups.length > 100) {
+          targetGroups = targetGroups.slice(0, 100);
+        }
+      } else {
+        if (!Array.isArray(groupIds) || groupIds.length === 0) {
+          return res.status(400).json({ message: "No group IDs provided" });
+        }
+        if (groupIds.length > 50) {
+          return res.status(400).json({ message: "Maximum 50 groups at a time" });
+        }
+        targetGroups = allGroups.filter(g => groupIds.includes(g.id));
+      }
+
       if (targetGroups.length === 0) {
         return res.status(404).json({ message: "No matching groups found" });
+      }
+
+      const memberEmailMap: Record<number, string[]> = {};
+      for (const g of targetGroups) {
+        const members = await storage.getGroupMembers(g.id);
+        if (members.length > 0) {
+          const contactIds = members.map(m => m.contactId);
+          const contacts = await Promise.all(contactIds.map(cid => storage.getContact(cid)));
+          const emails = contacts
+            .filter(c => c && c.email)
+            .map(c => c!.email!)
+            .slice(0, 5);
+          if (emails.length > 0) memberEmailMap[g.id] = emails;
+        }
       }
 
       const { GROUP_TYPES } = await import("@shared/schema");
       const validTypes = GROUP_TYPES.filter((t: string) => t !== "Uncategorised");
 
-      const groupList = targetGroups.map(g =>
-        `ID: ${g.id} | Name: "${g.name}" | Current: "${g.type}" | Email: "${g.contactEmail || ""}" | Website: "${g.website || ""}" | Description: "${g.description || ""}" | Notes: "${(g.notes || "").slice(0, 200)}"`
-      ).join("\n");
+      const groupList = targetGroups.map(g => {
+        const emails = memberEmailMap[g.id];
+        const emailStr = emails ? ` | MemberEmails: "${emails.join(", ")}"` : "";
+        const domain = g.website ? g.website.replace(/^https?:\/\//, "").replace(/\/.*$/, "") : "";
+        return `ID: ${g.id} | Name: "${g.name}" | Current: "${g.type}" | Email: "${g.contactEmail || ""}" | Domain: "${domain}" | Description: "${g.description || ""}" | Notes: "${(g.notes || "").slice(0, 200)}"${emailStr}`;
+      }).join("\n");
 
       const prompt = `You are categorising organisations for a community hub in Tāmaki (East Auckland), Aotearoa New Zealand called The Reserve. Based on each organisation's name and available information, assign the most appropriate category.
 

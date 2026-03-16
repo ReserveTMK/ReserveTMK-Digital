@@ -166,8 +166,8 @@ export default function Groups() {
   const [aiSuggestions, setAiSuggestions] = useState<Array<{ id: number; name: string; currentType: string; suggestedType: string; currentEngagement: string; suggestedEngagement: string; accepted: boolean }>>([]);
 
   const aiPreviewMutation = useMutation({
-    mutationFn: async (groupIds: number[]) => {
-      const res = await apiRequest('POST', '/api/groups/ai-recategorise/preview', { groupIds });
+    mutationFn: async (payload: { groupIds?: number[]; autoTarget?: boolean }) => {
+      const res = await apiRequest('POST', '/api/groups/ai-recategorise/preview', payload);
       return res.json();
     },
     onSuccess: (data: any) => {
@@ -534,7 +534,7 @@ export default function Groups() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => aiPreviewMutation.mutate(Array.from(selectedGroups))}
+                  onClick={() => aiPreviewMutation.mutate({ groupIds: Array.from(selectedGroups) })}
                   disabled={aiPreviewMutation.isPending}
                   data-testid="button-ai-recategorise"
                 >
@@ -570,6 +570,15 @@ export default function Groups() {
             <div className="flex items-center gap-2 flex-wrap">
               {!editMode && (
                 <>
+                  <Button
+                    variant="outline"
+                    onClick={() => aiPreviewMutation.mutate({ autoTarget: true })}
+                    disabled={aiPreviewMutation.isPending}
+                    data-testid="button-ai-recategorise-all"
+                  >
+                    {aiPreviewMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                    {aiPreviewMutation.isPending ? "Analysing..." : "AI Recategorise"}
+                  </Button>
                   <Button variant="outline" onClick={toggleEditMode} data-testid="button-toggle-edit-mode">
                     <Edit3 className="w-4 h-4 mr-2" />
                     Edit

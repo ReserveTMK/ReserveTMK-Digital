@@ -11,7 +11,7 @@ import {
   Search, Building2, Users, User,
   Edit3, Trash2, Merge, Check, X, ChevronDown, ChevronRight,
   ExternalLink, UserCheck, Activity, AlertTriangle, Clock,
-  Star, Zap, Shield, Calendar, MoreVertical
+  Star, Shield, Calendar, MoreVertical
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
@@ -29,40 +29,20 @@ import { useToast } from "@/hooks/use-toast";
 import { useLocation, Link } from "wouter";
 import { GROUP_TYPES, type Group } from "@shared/schema";
 
-const ECOSYSTEM_ROLES = [
-  { value: "funder", label: "Funders", icon: "dollar" },
-  { value: "delivery_partner", label: "Delivery Partners", icon: "handshake" },
-  { value: "referral_partner", label: "Referral Partners", icon: "share" },
-  { value: "corporate", label: "Corporate", icon: "building" },
-  { value: "government", label: "Government", icon: "landmark" },
-  { value: "supplier", label: "Suppliers", icon: "package" },
-  { value: "creative", label: "Creatives", icon: "palette" },
-  { value: "alumni_business", label: "Alumni Businesses", icon: "graduation" },
-  { value: "connector", label: "Connectors", icon: "link" },
-] as const;
-
-const ROLE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  funder: { bg: "bg-emerald-50 dark:bg-emerald-950/30", text: "text-emerald-700 dark:text-emerald-400", border: "border-emerald-200 dark:border-emerald-800" },
-  delivery_partner: { bg: "bg-blue-50 dark:bg-blue-950/30", text: "text-blue-700 dark:text-blue-400", border: "border-blue-200 dark:border-blue-800" },
-  referral_partner: { bg: "bg-purple-50 dark:bg-purple-950/30", text: "text-purple-700 dark:text-purple-400", border: "border-purple-200 dark:border-purple-800" },
-  corporate: { bg: "bg-slate-50 dark:bg-slate-950/30", text: "text-slate-700 dark:text-slate-400", border: "border-slate-200 dark:border-slate-700" },
-  government: { bg: "bg-amber-50 dark:bg-amber-950/30", text: "text-amber-700 dark:text-amber-400", border: "border-amber-200 dark:border-amber-800" },
-  supplier: { bg: "bg-cyan-50 dark:bg-cyan-950/30", text: "text-cyan-700 dark:text-cyan-400", border: "border-cyan-200 dark:border-cyan-800" },
-  creative: { bg: "bg-pink-50 dark:bg-pink-950/30", text: "text-pink-700 dark:text-pink-400", border: "border-pink-200 dark:border-pink-800" },
-  alumni_business: { bg: "bg-indigo-50 dark:bg-indigo-950/30", text: "text-indigo-700 dark:text-indigo-400", border: "border-indigo-200 dark:border-indigo-800" },
-  connector: { bg: "bg-orange-50 dark:bg-orange-950/30", text: "text-orange-700 dark:text-orange-400", border: "border-orange-200 dark:border-orange-800" },
-};
-
-const ROLE_BADGE_COLORS: Record<string, string> = {
-  funder: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
-  delivery_partner: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
-  referral_partner: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
-  corporate: "bg-slate-100 text-slate-800 dark:bg-slate-900/40 dark:text-slate-300",
-  government: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
-  supplier: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300",
-  creative: "bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300",
-  alumni_business: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300",
-  connector: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
+const CATEGORY_SECTION_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  "Business": { bg: "bg-amber-50 dark:bg-amber-950/30", text: "text-amber-700 dark:text-amber-400", border: "border-amber-200 dark:border-amber-800" },
+  "Social Enterprise": { bg: "bg-teal-50 dark:bg-teal-950/30", text: "text-teal-700 dark:text-teal-400", border: "border-teal-200 dark:border-teal-800" },
+  "Creative / Arts": { bg: "bg-pink-50 dark:bg-pink-950/30", text: "text-pink-700 dark:text-pink-400", border: "border-pink-200 dark:border-pink-800" },
+  "Community Organisation": { bg: "bg-violet-50 dark:bg-violet-950/30", text: "text-violet-700 dark:text-violet-400", border: "border-violet-200 dark:border-violet-800" },
+  "Iwi / Hapū": { bg: "bg-orange-50 dark:bg-orange-950/30", text: "text-orange-700 dark:text-orange-400", border: "border-orange-200 dark:border-orange-800" },
+  "Government / Council": { bg: "bg-blue-50 dark:bg-blue-950/30", text: "text-blue-700 dark:text-blue-400", border: "border-blue-200 dark:border-blue-800" },
+  "Education / Training": { bg: "bg-cyan-50 dark:bg-cyan-950/30", text: "text-cyan-700 dark:text-cyan-400", border: "border-cyan-200 dark:border-cyan-800" },
+  "Health / Social Services": { bg: "bg-rose-50 dark:bg-rose-950/30", text: "text-rose-700 dark:text-rose-400", border: "border-rose-200 dark:border-rose-800" },
+  "Funder": { bg: "bg-emerald-50 dark:bg-emerald-950/30", text: "text-emerald-700 dark:text-emerald-400", border: "border-emerald-200 dark:border-emerald-800" },
+  "Corporate / Sponsor": { bg: "bg-indigo-50 dark:bg-indigo-950/30", text: "text-indigo-700 dark:text-indigo-400", border: "border-indigo-200 dark:border-indigo-800" },
+  "Resident Company": { bg: "bg-purple-50 dark:bg-purple-950/30", text: "text-purple-700 dark:text-purple-400", border: "border-purple-200 dark:border-purple-800" },
+  "NGO": { bg: "bg-lime-50 dark:bg-lime-950/30", text: "text-lime-700 dark:text-lime-400", border: "border-lime-200 dark:border-lime-800" },
+  "Uncategorised": { bg: "bg-slate-50 dark:bg-slate-950/30", text: "text-slate-700 dark:text-slate-400", border: "border-slate-200 dark:border-slate-800" },
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -243,27 +223,20 @@ export default function EcosystemPage() {
     return (groups as Group[]).filter((g) => {
       const matchesSearch = !search || g.name.toLowerCase().includes(search.toLowerCase()) ||
         g.description?.toLowerCase().includes(search.toLowerCase());
-      const matchesRole = roleFilter === "all" || (g.ecosystemRoles && g.ecosystemRoles.includes(roleFilter));
-      return matchesSearch && matchesRole;
+      const matchesType = roleFilter === "all" || g.type === roleFilter;
+      return matchesSearch && matchesType;
     });
   }, [groups, search, roleFilter]);
 
-  const groupedByRole = useMemo(() => {
+  const groupedByType = useMemo(() => {
     const result: Record<string, Group[]> = {};
-    for (const role of ECOSYSTEM_ROLES) {
-      result[role.value] = [];
+    for (const t of GROUP_TYPES) {
+      result[t] = [];
     }
-    result["unassigned"] = [];
     for (const g of filtered) {
-      if (!g.ecosystemRoles || g.ecosystemRoles.length === 0) {
-        result["unassigned"].push(g);
-      } else {
-        for (const role of g.ecosystemRoles) {
-          if (result[role]) {
-            result[role].push(g);
-          }
-        }
-      }
+      const key = g.type || "Uncategorised";
+      if (!result[key]) result[key] = [];
+      result[key].push(g);
     }
     if (densityData) {
       for (const key of Object.keys(result)) {
@@ -430,12 +403,12 @@ export default function EcosystemPage() {
         </div>
         <Select value={roleFilter} onValueChange={setRoleFilter}>
           <SelectTrigger className="w-full sm:w-56" data-testid="select-role-filter">
-            <SelectValue placeholder="All roles" />
+            <SelectValue placeholder="All categories" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All roles</SelectItem>
-            {ECOSYSTEM_ROLES.map(r => (
-              <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+            <SelectItem value="all">All categories</SelectItem>
+            {GROUP_TYPES.map(t => (
+              <SelectItem key={t} value={t}>{t}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -457,32 +430,27 @@ export default function EcosystemPage() {
       )}
 
       <div className="space-y-6">
-        {ECOSYSTEM_ROLES.map(role => {
-          const roleGroups = groupedByRole[role.value] || [];
-          if (roleGroups.length === 0 && roleFilter !== "all") return null;
-          const isCollapsed = collapsedRoles[role.value];
-          const colors = ROLE_COLORS[role.value] || { bg: "", text: "", border: "" };
+        {GROUP_TYPES.map(categoryType => {
+          const typeGroups = groupedByType[categoryType] || [];
+          if (typeGroups.length === 0) return null;
+          const isCollapsed = collapsedRoles[categoryType];
+          const colors = CATEGORY_SECTION_COLORS[categoryType] || { bg: "", text: "", border: "" };
 
           return (
-            <div key={role.value} data-testid={`role-section-${role.value}`}>
+            <div key={categoryType} data-testid={`role-section-${categoryType}`}>
               <button
                 className="flex items-center gap-2 w-full text-left mb-2"
-                onClick={() => toggleRoleCollapse(role.value)}
-                data-testid={`button-toggle-role-${role.value}`}
+                onClick={() => toggleRoleCollapse(categoryType)}
+                data-testid={`button-toggle-role-${categoryType}`}
               >
                 {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                <h2 className={`text-base font-semibold ${colors.text}`}>{role.label}</h2>
-                <span className="text-sm text-muted-foreground">({roleGroups.length})</span>
+                <h2 className={`text-base font-semibold ${colors.text}`}>{categoryType}</h2>
+                <span className="text-sm text-muted-foreground">({typeGroups.length})</span>
               </button>
 
               {!isCollapsed && (
                 <div className="space-y-1">
-                  {roleGroups.length === 0 && (
-                    <p className="text-sm text-muted-foreground py-3 text-center">
-                      No organisations with this role
-                    </p>
-                  )}
-                  {roleGroups.map(group => (
+                  {typeGroups.map(group => (
                     <EcoGroupCard
                       key={group.id}
                       group={group}
@@ -501,39 +469,6 @@ export default function EcosystemPage() {
             </div>
           );
         })}
-
-        {(groupedByRole["unassigned"] || []).length > 0 && (
-          <div data-testid="role-section-unassigned">
-            <button
-              className="flex items-center gap-2 w-full text-left mb-2"
-              onClick={() => toggleRoleCollapse("unassigned")}
-              data-testid="button-toggle-role-unassigned"
-            >
-              {collapsedRoles["unassigned"] ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-              <h2 className="text-base font-semibold text-muted-foreground">No Role Assigned</h2>
-              <span className="text-sm text-muted-foreground">({groupedByRole["unassigned"].length})</span>
-            </button>
-
-            {!collapsedRoles["unassigned"] && (
-              <div className="space-y-1">
-                {groupedByRole["unassigned"].map(group => (
-                  <EcoGroupCard
-                    key={group.id}
-                    group={group}
-                    editMode={editMode}
-                    isSelected={selectedForMerge.includes(group.id)}
-                    onToggleSelect={() => toggleMergeSelection(group.id)}
-                    onDelete={() => setDeleteConfirmId(group.id)}
-                    communityCount={densityData?.[group.id]?.communityCount || 0}
-                    totalMembers={densityData?.[group.id]?.totalMembers || 0}
-                    metrics={engagementData?.[group.id]}
-                    onUpdateGroup={(data) => updateGroupMutation.mutate({ id: group.id, data })}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       <Dialog open={mergeDialogOpen} onOpenChange={setMergeDialogOpen}>
@@ -686,12 +621,10 @@ function VipCard({ item }: { item: VipItem }) {
                 {item.groupType}
               </Badge>
             )}
-            {!isContact && Array.isArray(item.ecosystemRoles) && item.ecosystemRoles.length > 0 && (
-              item.ecosystemRoles.slice(0, 2).map(role => (
-                <Badge key={role} variant="outline" className={`text-[10px] h-5 px-1.5 ${ROLE_BADGE_COLORS[role] || ''}`}>
-                  {ECOSYSTEM_ROLES.find(r => r.value === role)?.label || role}
-                </Badge>
-              ))
+            {!isContact && item.engagementLevel && item.engagementLevel !== "Active" && (
+              <Badge variant="outline" className="text-[10px] h-5 px-1.5">
+                {item.engagementLevel}
+              </Badge>
             )}
           </div>
           {item.vipReason && (
@@ -748,8 +681,6 @@ function EcoGroupCard({
 }) {
   const typeColor = TYPE_COLORS[group.type] || "bg-gray-500/10 text-gray-700 dark:text-gray-300";
   const engagementStatus = getEngagementStatus(metrics?.lastEngagementDate || null);
-  const [rolesOpen, setRolesOpen] = useState(false);
-
   const statusIndicator = {
     active: { color: "bg-emerald-500", label: "Active" },
     recent: { color: "bg-amber-400", label: "Recent" },
@@ -814,13 +745,6 @@ function EcoGroupCard({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem
-              onClick={() => setRolesOpen(true)}
-              data-testid={`menu-roles-${group.id}`}
-            >
-              <Zap className="w-4 h-4 mr-2" />
-              Manage Roles
-            </DropdownMenuItem>
-            <DropdownMenuItem
               className="text-destructive focus:text-destructive"
               onClick={onDelete}
               data-testid={`menu-delete-${group.id}`}
@@ -843,57 +767,6 @@ function EcoGroupCard({
         </button>
       )}
 
-      {rolesOpen && (
-        <RolesPopover
-          group={group}
-          open={rolesOpen}
-          onOpenChange={setRolesOpen}
-          onUpdateGroup={onUpdateGroup}
-        />
-      )}
     </div>
-  );
-}
-
-function RolesPopover({ group, open, onOpenChange, onUpdateGroup }: {
-  group: Group;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onUpdateGroup: (data: Record<string, any>) => void;
-}) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[320px]">
-        <DialogHeader>
-          <DialogTitle>Ecosystem Roles - {group.name}</DialogTitle>
-          <DialogDescription className="sr-only">Manage ecosystem roles for this group</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-1">
-          {ECOSYSTEM_ROLES.map(role => {
-            const isSelected = group.ecosystemRoles?.includes(role.value) || false;
-            return (
-              <button
-                key={role.value}
-                className={`w-full text-left px-3 py-2 text-sm rounded flex items-center gap-2 transition ${
-                  isSelected ? "bg-primary/10 font-medium" : "hover:bg-muted"
-                }`}
-                onClick={() => {
-                  const current = group.ecosystemRoles || [];
-                  const updated = isSelected
-                    ? current.filter(r => r !== role.value)
-                    : [...current, role.value];
-                  onUpdateGroup({ ecosystemRoles: updated });
-                  group.ecosystemRoles = updated;
-                }}
-                data-testid={`option-role-${role.value}-${group.id}`}
-              >
-                {isSelected && <Check className="w-3.5 h-3.5 text-primary" />}
-                <span className={isSelected ? "" : "ml-5"}>{role.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </DialogContent>
-    </Dialog>
   );
 }

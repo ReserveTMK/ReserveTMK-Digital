@@ -386,8 +386,6 @@ export const groups = pgTable("groups", {
   relationshipStage: text("relationship_stage").default("kakano"),
   relationshipTier: text("relationship_tier").default("mentioned"),
   relationshipStrength: integer("relationship_strength"),
-  strategicImportance: text("strategic_importance"),
-  ecosystemRoles: text("ecosystem_roles").array(),
   engagementLevel: text("engagement_level").default("Active"),
   importSource: text("import_source"),
   isCommunity: boolean("is_community").default(false),
