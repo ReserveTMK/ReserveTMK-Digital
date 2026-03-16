@@ -1,6 +1,6 @@
 import express, { type Express, type Request, type Response } from "express";
 import { chatStorage } from "../chat/storage";
-import { openai, speechToText, ensureCompatibleFormat } from "./client";
+import { openai, speechToText, ensureCompatibleFormat, isOpenAIKeyConfigured } from "./client";
 
 // Body parser with 50MB limit for audio payloads
 const audioBodyParser = express.json({ limit: "50mb" });
@@ -64,6 +64,10 @@ export function registerAudioRoutes(app: Express): void {
     try {
       const conversationId = parseInt(req.params.id as string);
       const { audio, voice = "alloy" } = req.body;
+
+      if (!isOpenAIKeyConfigured()) {
+        return res.status(503).json({ error: "Voice features unavailable: OpenAI API key is not configured" });
+      }
 
       if (!audio) {
         return res.status(400).json({ error: "Audio data (base64) is required" });

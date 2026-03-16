@@ -1,10 +1,28 @@
 import OpenAI, { toFile } from "openai";
 import { Buffer } from "node:buffer";
-import { spawn } from "child_process";
+import { spawn, execSync } from "child_process";
 import { writeFile, unlink, readFile } from "fs/promises";
 import { randomUUID } from "crypto";
 import { tmpdir } from "os";
 import { join } from "path";
+
+export function isOpenAIKeyConfigured(): boolean {
+  return !!process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+}
+
+let _ffmpegAvailable: boolean | null = null;
+
+export function isFfmpegAvailable(): boolean {
+  if (_ffmpegAvailable === null) {
+    try {
+      execSync("which ffmpeg", { stdio: "ignore" });
+      _ffmpegAvailable = true;
+    } catch {
+      _ffmpegAvailable = false;
+    }
+  }
+  return _ffmpegAvailable;
+}
 
 export const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -52,6 +70,10 @@ export function detectAudioFormat(buffer: Buffer): AudioFormat {
  * require seeking to find the audio track.
  */
 export async function convertToWav(audioBuffer: Buffer): Promise<Buffer> {
+  if (!isFfmpegAvailable()) {
+    throw new Error("ffmpeg is not installed or not available on PATH. Audio conversion requires ffmpeg.");
+  }
+
   const inputPath = join(tmpdir(), `input-${randomUUID()}`);
   const outputPath = join(tmpdir(), `output-${randomUUID()}.wav`);
 
@@ -101,12 +123,11 @@ export async function ensureCompatibleFormat(
   if (detected === "wav") return { buffer: audioBuffer, format: "wav" };
   if (detected === "mp3") return { buffer: audioBuffer, format: "mp3" };
   if (detected === "webm") return { buffer: audioBuffer, format: "webm" };
-  try {
-    const wavBuffer = await convertToWav(audioBuffer);
-    return { buffer: wavBuffer, format: "wav" };
-  } catch {
-    return { buffer: audioBuffer, format: "webm" };
+  if (!isFfmpegAvailable()) {
+    throw new Error("ffmpeg is not installed or not available on PATH. Audio format conversion requires ffmpeg for this file type.");
   }
+  const wavBuffer = await convertToWav(audioBuffer);
+  return { buffer: wavBuffer, format: "wav" };
 }
 
 /**
@@ -120,6 +141,9 @@ export async function voiceChat(
   inputFormat: "wav" | "mp3" = "wav",
   outputFormat: "wav" | "mp3" = "mp3"
 ): Promise<{ transcript: string; audioResponse: Buffer }> {
+  if (!isOpenAIKeyConfigured()) {
+    throw new Error("AI service unavailable: OpenAI API key is not configured");
+  }
   const audioBase64 = audioBuffer.toString("base64");
   const response = await openai.chat.completions.create({
     model: "gpt-audio",
@@ -156,6 +180,9 @@ export async function voiceChatStream(
   voice: "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer" = "alloy",
   inputFormat: "wav" | "mp3" = "wav"
 ): Promise<AsyncIterable<{ type: "transcript" | "audio"; data: string }>> {
+  if (!isOpenAIKeyConfigured()) {
+    throw new Error("AI service unavailable: OpenAI API key is not configured");
+  }
   const audioBase64 = audioBuffer.toString("base64");
   const stream = await openai.chat.completions.create({
     model: "gpt-audio",
@@ -193,6 +220,9 @@ export async function textToSpeech(
   voice: "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer" = "alloy",
   format: "wav" | "mp3" | "flac" | "opus" | "pcm16" = "wav"
 ): Promise<Buffer> {
+  if (!isOpenAIKeyConfigured()) {
+    throw new Error("AI service unavailable: OpenAI API key is not configured");
+  }
   const response = await openai.chat.completions.create({
     model: "gpt-audio",
     modalities: ["text", "audio"],
@@ -215,6 +245,9 @@ export async function textToSpeechStream(
   text: string,
   voice: "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer" = "alloy"
 ): Promise<AsyncIterable<string>> {
+  if (!isOpenAIKeyConfigured()) {
+    throw new Error("AI service unavailable: OpenAI API key is not configured");
+  }
   const stream = await openai.chat.completions.create({
     model: "gpt-audio",
     modalities: ["text", "audio"],
@@ -245,6 +278,9 @@ export async function speechToText(
   audioBuffer: Buffer,
   format: "wav" | "mp3" | "webm" = "wav"
 ): Promise<string> {
+  if (!isOpenAIKeyConfigured()) {
+    throw new Error("AI service unavailable: OpenAI API key is not configured");
+  }
   const ext = format === "webm" ? "webm" : format;
   const file = await toFile(audioBuffer, `audio.${ext}`);
   const response = await openai.audio.transcriptions.create({
@@ -262,6 +298,9 @@ export async function speechToTextStream(
   audioBuffer: Buffer,
   format: "wav" | "mp3" | "webm" = "wav"
 ): Promise<AsyncIterable<string>> {
+  if (!isOpenAIKeyConfigured()) {
+    throw new Error("AI service unavailable: OpenAI API key is not configured");
+  }
   const file = await toFile(audioBuffer, `audio.${format}`);
   const stream = await openai.audio.transcriptions.create({
     file,

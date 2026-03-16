@@ -5,7 +5,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { registerAudioRoutes } from "./replit_integrations/audio/routes";
-import { claudeJSON } from "./replit_integrations/anthropic/client";
+import { claudeJSON, isAnthropicKeyConfigured, AIKeyMissingError } from "./replit_integrations/anthropic/client";
 import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getReachMetrics, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, type ReportFilters, type CohortDefinition, type OrgProfileContext, type FunderContext } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
 import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings, } from "@shared/schema";
@@ -794,7 +794,8 @@ export async function registerRoutes(
 
       res.json(analysis);
 
-    } catch (error) {
+    } catch (error: any) {
+      if (error instanceof AIKeyMissingError) return res.status(503).json({ message: error.message });
       console.error("Analysis error:", error);
       res.status(500).json({ message: "Failed to analyze text" });
     }
@@ -3012,7 +3013,8 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         await storage.updateImpactLog(impactLog.id, { rawExtraction: extraction });
         res.status(201).json({ id: impactLog.id, impactLog, extraction });
       }
-    } catch (error) {
+    } catch (error: any) {
+      if (error instanceof AIKeyMissingError) return res.status(503).json({ message: error.message });
       console.error("Impact extraction error:", error);
       res.status(500).json({ message: "Failed to extract impact data" });
     }
@@ -3119,18 +3121,40 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
       const updatedTags = await storage.getImpactTags(logId);
       res.json({ tags: updatedTags, impactTags: extractedTags });
-    } catch (error) {
+    } catch (error: any) {
+      if (error instanceof AIKeyMissingError) return res.status(503).json({ message: error.message });
       console.error("Impact tag re-analysis error:", error);
       res.status(500).json({ message: "Failed to re-analyse impact tags" });
     }
   });
 
 
+  const MAX_AUDIO_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
+
   app.post("/api/impact-transcribe", isAuthenticated, async (req, res) => {
     try {
+      const { isOpenAIKeyConfigured } = await import("./replit_integrations/audio/client");
+      if (!isOpenAIKeyConfigured()) {
+        return res.status(503).json({ message: "Audio transcription is unavailable: OpenAI API key is not configured" });
+      }
+
       const chunks: Buffer[] = [];
-      req.on("data", (chunk: Buffer) => chunks.push(chunk));
+      let totalBytes = 0;
+      let aborted = false;
+
+      req.on("data", (chunk: Buffer) => {
+        if (aborted) return;
+        totalBytes += chunk.length;
+        if (totalBytes > MAX_AUDIO_UPLOAD_BYTES) {
+          aborted = true;
+          res.status(413).json({ message: `Audio file too large. Maximum upload size is ${MAX_AUDIO_UPLOAD_BYTES / (1024 * 1024)}MB` });
+          req.destroy();
+          return;
+        }
+        chunks.push(chunk);
+      });
       req.on("end", async () => {
+        if (aborted) return;
         try {
           const audioBuffer = Buffer.concat(chunks);
           if (audioBuffer.length === 0) {
@@ -3142,8 +3166,11 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
           const transcript = await speechToText(buffer, format);
 
           res.json({ transcript });
-        } catch (err) {
+        } catch (err: any) {
           console.error("Transcription error:", err);
+          if (err.message?.includes("ffmpeg")) {
+            return res.status(503).json({ message: "Audio conversion unavailable: ffmpeg is not installed on this server" });
+          }
           res.status(500).json({ message: "Failed to transcribe audio" });
         }
       });
@@ -5541,6 +5568,7 @@ Important:
 
       res.json(enrichment);
     } catch (err: any) {
+      if (err instanceof AIKeyMissingError) return res.status(503).json({ message: err.message });
       console.error("Group enrichment error:", err);
       res.status(500).json({ message: "Failed to enrich group data" });
     }
@@ -6176,7 +6204,8 @@ Important:
               prompt,
               temperature: 0.2,
             });
-          } catch {
+          } catch (e) {
+            if (e instanceof AIKeyMissingError) throw e;
             parsed = { metrics: [] };
           }
 
@@ -6279,6 +6308,7 @@ Important:
             extraction: { suggestedMetrics, autoAppliedCount, reviewNeededCount, extractedOrganisations, extractedHighlights, extractedPeople, detectedMonth, detectedYear },
           });
         } catch (extractErr: any) {
+          if (extractErr instanceof AIKeyMissingError) return res.status(503).json({ message: extractErr.message });
           console.error("Auto-extraction error (non-fatal):", extractErr);
           return res.status(201).json({
             ...report,
@@ -6599,11 +6629,13 @@ Return a JSON object with this exact structure:
           prompt,
           temperature: 0.3,
         });
-      } catch {
+      } catch (e) {
+        if (e instanceof AIKeyMissingError) throw e;
         result = { suggestions: [] };
       }
       res.json(result.suggestions || []);
     } catch (err: any) {
+      if (err instanceof AIKeyMissingError) return res.status(503).json({ message: err.message });
       console.error("Taxonomy suggestions GET error:", err);
       res.status(500).json({ message: "Failed to generate taxonomy suggestions" });
     }
@@ -7289,7 +7321,8 @@ Return a JSON object with this exact structure:
           prompt,
           temperature: 0.2,
         });
-      } catch {
+      } catch (e) {
+        if (e instanceof AIKeyMissingError) throw e;
         parsed = { metrics: [] };
       }
 
@@ -7331,6 +7364,7 @@ Return a JSON object with this exact structure:
 
       res.json(extraction);
     } catch (err: any) {
+      if (err instanceof AIKeyMissingError) return res.status(503).json({ message: err.message });
       console.error("PDF extraction error:", err);
       res.status(500).json({ message: "Failed to extract metrics from PDF" });
     }
@@ -7828,7 +7862,8 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
           prompt,
           temperature: 0.3,
         });
-      } catch {
+      } catch (e) {
+        if (e instanceof AIKeyMissingError) throw e;
         result = { categorySuggestions: [], keywordSuggestions: [] };
       }
       res.json({
@@ -7838,6 +7873,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
         scannedInteractions: interactionSummaries.length,
       });
     } catch (err: any) {
+      if (err instanceof AIKeyMissingError) return res.status(503).json({ message: err.message });
       console.error("Taxonomy scan error:", err);
       res.status(500).json({ message: "Failed to scan for taxonomy suggestions" });
     }
@@ -10217,6 +10253,7 @@ Be specific, practical, and grounded in the actual documents and context provide
       };
       res.json(sanitized);
     } catch (err: any) {
+      if (err instanceof AIKeyMissingError) return res.status(503).json({ message: err.message });
       console.error("AI generate funder profile error:", err);
       res.status(500).json({ message: "Failed to generate profile" });
     }
@@ -10801,6 +10838,7 @@ Rules:
 
       res.json(result);
     } catch (err: any) {
+      if (err instanceof AIKeyMissingError) return res.status(503).json({ message: err.message });
       console.error("Task extraction error:", err);
       res.status(500).json({ message: err.message || "Failed to extract tasks" });
     }

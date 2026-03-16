@@ -1,11 +1,22 @@
 import Anthropic from "@anthropic-ai/sdk";
 
+export function isAnthropicKeyConfigured(): boolean {
+  return !!process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY;
+}
+
 const anthropic = new Anthropic({
   apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
 });
 
 export { anthropic };
+
+export class AIKeyMissingError extends Error {
+  constructor(service: string) {
+    super(`AI service unavailable: ${service} API key is not configured`);
+    this.name = "AIKeyMissingError";
+  }
+}
 
 export async function claudeChat(options: {
   model?: string;
@@ -14,6 +25,10 @@ export async function claudeChat(options: {
   temperature?: number;
   maxTokens?: number;
 }): Promise<string> {
+  if (!isAnthropicKeyConfigured()) {
+    throw new AIKeyMissingError("Anthropic");
+  }
+
   const {
     model = "claude-sonnet-4-6",
     system,

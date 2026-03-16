@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { AIKeyMissingError } from "./replit_integrations/anthropic/client";
 
 const app = express();
 const httpServer = createServer(app);
@@ -61,17 +62,28 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  if (!process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY) {
+    console.warn("WARNING: AI_INTEGRATIONS_ANTHROPIC_API_KEY is not set. AI features using Anthropic (interaction analysis, impact extraction) will be unavailable.");
+  }
+  if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+    console.warn("WARNING: AI_INTEGRATIONS_OPENAI_API_KEY is not set. AI features using OpenAI (audio transcription, text-to-speech) will be unavailable.");
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+    if (res.headersSent) {
+      return next(err);
+    }
+
+    if (err instanceof AIKeyMissingError || err?.name === "AIKeyMissingError") {
+      return res.status(503).json({ message: err.message });
+    }
+
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
     console.error("Internal Server Error:", err);
-
-    if (res.headersSent) {
-      return next(err);
-    }
 
     return res.status(status).json({ message });
   });
