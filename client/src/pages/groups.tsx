@@ -162,14 +162,34 @@ export default function Groups() {
     },
   });
 
-  const aiRecategoriseMutation = useMutation({
+  const [aiPreviewOpen, setAiPreviewOpen] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<Array<{ id: number; name: string; currentType: string; suggestedType: string; currentEngagement: string; suggestedEngagement: string; accepted: boolean }>>([]);
+
+  const aiPreviewMutation = useMutation({
     mutationFn: async (groupIds: number[]) => {
-      const res = await apiRequest('POST', '/api/groups/ai-recategorise', { groupIds });
+      const res = await apiRequest('POST', '/api/groups/ai-recategorise/preview', { groupIds });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      const suggestions = (data.suggestions || []).map((s: any) => ({ ...s, accepted: true }));
+      setAiSuggestions(suggestions);
+      setAiPreviewOpen(true);
+    },
+    onError: (error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const aiApplyMutation = useMutation({
+    mutationFn: async (updates: Array<{ id: number; type: string; engagementLevel: string }>) => {
+      const res = await apiRequest('POST', '/api/groups/ai-recategorise/apply', { updates });
       return res.json();
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
-      toast({ title: "AI Recategorised", description: `${data.updated || 0} group(s) updated` });
+      toast({ title: "Recategorised", description: `${data.updated || 0} group(s) updated` });
+      setAiPreviewOpen(false);
+      setAiSuggestions([]);
       setSelectedGroups(new Set());
       setEditMode(false);
     },
@@ -514,12 +534,12 @@ export default function Groups() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => aiRecategoriseMutation.mutate(Array.from(selectedGroups))}
-                  disabled={aiRecategoriseMutation.isPending}
+                  onClick={() => aiPreviewMutation.mutate(Array.from(selectedGroups))}
+                  disabled={aiPreviewMutation.isPending}
                   data-testid="button-ai-recategorise"
                 >
-                  {aiRecategoriseMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
-                  {aiRecategoriseMutation.isPending ? "Analysing..." : `AI Categorise (${selectedGroups.size})`}
+                  {aiPreviewMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                  {aiPreviewMutation.isPending ? "Analysing..." : `AI Categorise (${selectedGroups.size})`}
                 </Button>
               </>
             )}
@@ -985,6 +1005,94 @@ export default function Groups() {
           </DialogContent>
         </Dialog>
 
+        <Dialog open={aiPreviewOpen} onOpenChange={(v) => { setAiPreviewOpen(v); if (!v) setAiSuggestions([]); }}>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto" data-testid="dialog-ai-recategorise">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-primary" />
+                AI Category Suggestions
+              </DialogTitle>
+              <DialogDescription className="sr-only">Review AI category suggestions</DialogDescription>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">Review the suggested categories below. Uncheck any you want to skip, then apply.</p>
+            {aiSuggestions.length > 0 ? (
+              <div className="space-y-2 py-2">
+                {aiSuggestions.map((s, idx) => {
+                  const typeChanged = s.suggestedType !== s.currentType;
+                  const engChanged = s.suggestedEngagement !== s.currentEngagement;
+                  if (!typeChanged && !engChanged) return null;
+                  return (
+                    <div
+                      key={s.id}
+                      className={`flex items-start gap-3 p-3 rounded-lg border transition-colors ${s.accepted ? 'border-primary/30 bg-primary/5' : 'border-border opacity-50'}`}
+                      data-testid={`ai-suggestion-${s.id}`}
+                    >
+                      <Checkbox
+                        checked={s.accepted}
+                        onCheckedChange={(checked) => {
+                          const updated = [...aiSuggestions];
+                          updated[idx] = { ...updated[idx], accepted: !!checked };
+                          setAiSuggestions(updated);
+                        }}
+                        className="mt-1 shrink-0"
+                        data-testid={`ai-suggestion-checkbox-${s.id}`}
+                      />
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <p className="font-medium text-sm truncate">{s.name}</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {typeChanged && (
+                            <>
+                              <Badge variant="outline" className="text-[10px]">{s.currentType}</Badge>
+                              <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                              <Badge className={`text-[10px] ${GROUP_TYPE_COLORS[s.suggestedType] || ""}`}>{s.suggestedType}</Badge>
+                            </>
+                          )}
+                          {engChanged && (
+                            <>
+                              {typeChanged && <span className="text-muted-foreground text-[10px]">·</span>}
+                              <Badge variant="outline" className="text-[10px]">{s.currentEngagement}</Badge>
+                              <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                              <Badge className={`text-[10px] ${ENGAGEMENT_COLORS[s.suggestedEngagement] || ""}`}>{s.suggestedEngagement}</Badge>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {aiSuggestions.every(s => s.suggestedType === s.currentType && s.suggestedEngagement === s.currentEngagement) && (
+                  <p className="text-sm text-center text-muted-foreground py-4">All groups are already correctly categorised.</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-center text-muted-foreground py-4">No suggestions generated.</p>
+            )}
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => { setAiPreviewOpen(false); setAiSuggestions([]); }} data-testid="button-cancel-ai-recategorise">
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  const accepted = aiSuggestions
+                    .filter(s => s.accepted && (s.suggestedType !== s.currentType || s.suggestedEngagement !== s.currentEngagement))
+                    .map(s => ({ id: s.id, type: s.suggestedType, engagementLevel: s.suggestedEngagement }));
+                  if (accepted.length > 0) {
+                    aiApplyMutation.mutate(accepted);
+                  } else {
+                    setAiPreviewOpen(false);
+                    setAiSuggestions([]);
+                  }
+                }}
+                disabled={aiApplyMutation.isPending || aiSuggestions.filter(s => s.accepted).length === 0}
+                data-testid="button-apply-ai-recategorise"
+              >
+                {aiApplyMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+                {aiApplyMutation.isPending ? "Applying..." : `Apply (${aiSuggestions.filter(s => s.accepted && (s.suggestedType !== s.currentType || s.suggestedEngagement !== s.currentEngagement)).length})`}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
       </main>
   );
 }
@@ -1131,9 +1239,16 @@ function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, t
                     </button>
                   </td>
                   <td className="px-3 py-2">
-                    <Badge className={`text-[10px] h-5 px-2 ${GROUP_TYPE_COLORS[group.type] || ""}`} data-testid={`table-type-group-${group.id}`}>
-                      {displayGroupType(group)}
-                    </Badge>
+                    <div className="flex items-center gap-1.5">
+                      <Badge className={`text-[10px] h-5 px-2 ${GROUP_TYPE_COLORS[group.type] || ""}`} data-testid={`table-type-group-${group.id}`}>
+                        {displayGroupType(group)}
+                      </Badge>
+                      {(group as any).engagementLevel && (group as any).engagementLevel !== "Active" && (
+                        <Badge className={`text-[9px] h-4 px-1.5 ${ENGAGEMENT_COLORS[(group as any).engagementLevel] || ""}`} data-testid={`table-engagement-${group.id}`}>
+                          {(group as any).engagementLevel}
+                        </Badge>
+                      )}
+                    </div>
                   </td>
                   <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                     {group.isCommunity ? (
@@ -1273,6 +1388,11 @@ function GroupCard({ group, onSelect, onEdit, onDelete, editMode, isSelected, on
         <Badge className={`text-[10px] ${GROUP_TYPE_COLORS[group.type] || ""}`}>
           {displayGroupType(group)}
         </Badge>
+        {(group as any).engagementLevel && (group as any).engagementLevel !== "Active" && (
+          <Badge className={`text-[9px] ${ENGAGEMENT_COLORS[(group as any).engagementLevel] || ""}`} data-testid={`badge-engagement-card-${group.id}`}>
+            {(group as any).engagementLevel}
+          </Badge>
+        )}
         <span className="flex items-center gap-1 text-xs text-muted-foreground" data-testid={`text-members-${group.id}`}>
           <Users className="w-3 h-3" />
           {memberCount}

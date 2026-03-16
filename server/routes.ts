@@ -9567,7 +9567,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     }
   });
 
-  app.post("/api/groups/ai-recategorise", isAuthenticated, async (req, res) => {
+  app.post("/api/groups/ai-recategorise/preview", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
       const { groupIds } = req.body;
@@ -9629,10 +9629,9 @@ Return a JSON array:
         temperature: 0.2,
       });
 
-      const results: Array<{ id: number; type: string; engagementLevel: string }> = [];
+      const suggestions: Array<{ id: number; name: string; currentType: string; suggestedType: string; currentEngagement: string; suggestedEngagement: string }> = [];
       const parsed = Array.isArray(raw) ? raw : (raw.results || raw.groups || []);
       
-      let updated = 0;
       for (const item of parsed) {
         if (!item.id || !item.type) continue;
         const group = targetGroups.find(g => g.id === item.id);
@@ -9641,22 +9640,55 @@ Return a JSON array:
         const typeValid = (GROUP_TYPES as readonly string[]).includes(item.type);
         const engValid = ["Active", "Occasional", "Dormant"].includes(item.engagementLevel);
 
-        const updates: Record<string, any> = {};
-        if (typeValid) updates.type = item.type;
-        if (engValid) updates.engagementLevel = item.engagementLevel;
-
-        if (Object.keys(updates).length > 0) {
-          await storage.updateGroup(group.id, updates);
-          updated++;
-          results.push({ id: group.id, type: updates.type || group.type, engagementLevel: updates.engagementLevel || group.engagementLevel || "Active" });
-        }
+        suggestions.push({
+          id: group.id,
+          name: group.name,
+          currentType: group.type,
+          suggestedType: typeValid ? item.type : group.type,
+          currentEngagement: (group as any).engagementLevel || "Active",
+          suggestedEngagement: engValid ? item.engagementLevel : "Active",
+        });
       }
 
-      res.json({ updated, results });
+      res.json({ suggestions });
     } catch (err: any) {
       if (err instanceof AIKeyMissingError) return res.status(503).json({ message: err.message });
-      console.error("AI recategorise error:", err);
-      res.status(500).json({ message: "Failed to recategorise groups" });
+      console.error("AI recategorise preview error:", err);
+      res.status(500).json({ message: "Failed to generate recategorisation suggestions" });
+    }
+  });
+
+  app.post("/api/groups/ai-recategorise/apply", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { updates } = req.body;
+      if (!Array.isArray(updates) || updates.length === 0) {
+        return res.status(400).json({ message: "No updates provided" });
+      }
+
+      const { GROUP_TYPES } = await import("@shared/schema");
+      let updated = 0;
+      for (const item of updates) {
+        if (!item.id) continue;
+        const group = await storage.getGroup(item.id);
+        if (!group || group.userId !== userId) continue;
+
+        const changes: Record<string, any> = {};
+        if (item.type && (GROUP_TYPES as readonly string[]).includes(item.type)) {
+          changes.type = item.type;
+        }
+        if (item.engagementLevel && ["Active", "Occasional", "Dormant"].includes(item.engagementLevel)) {
+          changes.engagementLevel = item.engagementLevel;
+        }
+        if (Object.keys(changes).length > 0) {
+          await storage.updateGroup(group.id, changes);
+          updated++;
+        }
+      }
+      res.json({ updated });
+    } catch (err: any) {
+      console.error("AI recategorise apply error:", err);
+      res.status(500).json({ message: "Failed to apply recategorisation" });
     }
   });
 
