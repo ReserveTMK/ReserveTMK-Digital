@@ -18,6 +18,7 @@ import { useMentoringApplications } from "@/components/mentoring/mentoring-hooks
 
 export default function MentoringPage() {
   const [showSettings, setShowSettings] = useState(false);
+  const [activeTab, setActiveTab] = useState("sessions");
   const { data: applications } = useMentoringApplications();
   const pendingCount = applications?.filter(a => a.status === "pending").length || 0;
 
@@ -28,14 +29,16 @@ export default function MentoringPage() {
           <h1 className="text-2xl font-bold" data-testid="heading-mentoring">Mentoring</h1>
           <p className="text-muted-foreground text-sm">Manage mentoring relationships, sessions, and mentee journeys</p>
         </div>
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={() => setShowSettings(true)}
-          data-testid="button-mentoring-settings"
-        >
-          <Settings className="w-5 h-5" />
-        </Button>
+        {activeTab === "sessions" && (
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => setShowSettings(true)}
+            data-testid="button-mentoring-settings"
+          >
+            <Settings className="w-5 h-5" />
+          </Button>
+        )}
       </div>
 
       <Dialog open={showSettings} onOpenChange={setShowSettings}>
@@ -50,7 +53,7 @@ export default function MentoringPage() {
         </DialogContent>
       </Dialog>
 
-      <Tabs defaultValue="sessions">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList data-testid="mentoring-tabs">
           <TabsTrigger value="sessions" data-testid="tab-sessions">Sessions</TabsTrigger>
           <TabsTrigger value="mentees" data-testid="tab-mentees" className="relative">
