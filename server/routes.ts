@@ -8,7 +8,7 @@ import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON, isAnthropicKeyConfigured, AIKeyMissingError } from "./replit_integrations/anthropic/client";
 import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getReachMetrics, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, type ReportFilters, type CohortDefinition, type OrgProfileContext, type FunderContext } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings, normalizeStage, DEFAULT_AVAILABILITY_SCHEDULE, type AvailabilitySchedule, } from "@shared/schema";
+import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings, normalizeStage, DEFAULT_AVAILABILITY_SCHEDULE, DEFAULT_VENUE_AVAILABILITY_SCHEDULE, DESK_AVAILABILITY, type AvailabilitySchedule, } from "@shared/schema";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { ObjectStorageService } from "./replit_integrations/object_storage";
 import crypto from "crypto";
@@ -93,6 +93,22 @@ function timesOverlap(
   const b0 = parseTimeToMinutes(startB);
   const b1 = parseTimeToMinutes(endB);
   return a0 < b1 && b0 < a1;
+}
+
+function validateDeskBookingWindow(date: Date, startTime: string, endTime: string): string | null {
+  const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+  const dayName = dayNames[date.getDay()];
+  if (!(DESK_AVAILABILITY.days as readonly string[]).includes(dayName)) {
+    return "Desks are only available Monday to Friday";
+  }
+  const startMins = parseTimeToMinutes(startTime);
+  const endMins = parseTimeToMinutes(endTime);
+  const windowStart = parseTimeToMinutes(DESK_AVAILABILITY.startTime);
+  const windowEnd = parseTimeToMinutes(DESK_AVAILABILITY.endTime);
+  if (startMins < windowStart || endMins > windowEnd) {
+    return `Desks are only available ${DESK_AVAILABILITY.startTime} – ${DESK_AVAILABILITY.endTime}, Monday to Friday`;
+  }
+  return null;
 }
 
 function datesOverlap(
@@ -4069,7 +4085,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const userId = (req.user as any).claims.sub;
       const body = { ...req.body, userId };
       if (!body.availabilitySchedule) {
-        body.availabilitySchedule = DEFAULT_AVAILABILITY_SCHEDULE;
+        body.availabilitySchedule = DEFAULT_VENUE_AVAILABILITY_SCHEDULE;
       }
       const input = api.venues.create.input.parse(body);
       const venue = await storage.createVenue(input);
@@ -4267,7 +4283,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
       const venue = await storage.getVenue(targetVenueId);
       if (venue && venue.userId !== userId) return res.status(403).json({ message: "Forbidden" });
-      const schedule = (venue?.availabilitySchedule as AvailabilitySchedule) || DEFAULT_AVAILABILITY_SCHEDULE;
+      const schedule = (venue?.availabilitySchedule as AvailabilitySchedule) || DEFAULT_VENUE_AVAILABILITY_SCHEDULE;
       const requestDate = new Date(startDate as string + "T12:00:00");
       const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
       const dayName = dayNames[requestDate.getDay()];
@@ -11768,6 +11784,23 @@ Rules:
       const resources = await storage.getBookableResourcesByCategory(booker.userId, "hot_desking");
       const activeResources = resources.filter(r => r.active);
 
+      const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+      const dayName = dayNames[targetDate.getDay()];
+      const isDeskDay = (DESK_AVAILABILITY.days as readonly string[]).includes(dayName);
+
+      if (!isDeskDay) {
+        const availability = activeResources.map(resource => ({
+          resourceId: resource.id,
+          resourceName: resource.name,
+          description: resource.description,
+          slots: [],
+          isAvailable: false,
+          closedToday: true,
+          availableWindow: null,
+        }));
+        return res.json({ date, availability });
+      }
+
       const dayStart = new Date(targetDate);
       dayStart.setHours(0, 0, 0, 0);
       const dayEnd = new Date(targetDate);
@@ -11786,6 +11819,8 @@ Rules:
             isYours: b.regularBookerId === booker.id,
           })),
           isAvailable: resourceBookings.length === 0,
+          closedToday: false,
+          availableWindow: { startTime: DESK_AVAILABILITY.startTime, endTime: DESK_AVAILABILITY.endTime },
         };
       });
 
@@ -11873,6 +11908,12 @@ Rules:
       }
 
       const bookingDate = new Date(date);
+
+      const deskWindowError = validateDeskBookingWindow(bookingDate, startTime, endTime);
+      if (deskWindowError) {
+        return res.status(400).json({ message: deskWindowError });
+      }
+
       const dayStart = new Date(bookingDate);
       dayStart.setHours(0, 0, 0, 0);
       const dayEnd = new Date(bookingDate);
@@ -12473,6 +12514,19 @@ Rules:
       const body = { ...req.body, userId };
       if (body.date && typeof body.date === "string") body.date = new Date(body.date);
 
+      if (!body.date || !body.startTime || !body.endTime) {
+        return res.status(400).json({ message: "date, startTime, and endTime are required" });
+      }
+
+      const deskWindowError = validateDeskBookingWindow(
+        new Date(body.date),
+        body.startTime,
+        body.endTime
+      );
+      if (deskWindowError) {
+        return res.status(400).json({ message: deskWindowError });
+      }
+
       if (body.isRecurring && body.recurringPattern) {
         const pattern = body.recurringPattern as { dayOfWeek: number; frequency: string; endDate: string };
         const recurringGroupId = crypto.randomUUID();
@@ -12666,12 +12720,31 @@ Rules:
     try {
       const userId = (req.user as any).claims.sub;
       const date = parseDate(req.params.date);
+
+      const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+      const dayName = dayNames[date.getDay()];
+      const isDeskDay = (DESK_AVAILABILITY.days as readonly string[]).includes(dayName);
+
+      const desks = await storage.getBookableResourcesByCategory(userId, "hot_desking");
+
+      if (!isDeskDay) {
+        const availability = desks.map(desk => ({
+          resourceId: desk.id,
+          resourceName: desk.name,
+          active: desk.active,
+          bookings: [],
+          isAvailable: false,
+          closedToday: true,
+          availableWindow: null,
+        }));
+        return res.json(availability);
+      }
+
       const dayStart = new Date(date);
       dayStart.setHours(0, 0, 0, 0);
       const dayEnd = new Date(date);
       dayEnd.setHours(23, 59, 59, 999);
 
-      const desks = await storage.getBookableResourcesByCategory(userId, "hot_desking");
       const dayBookings = await storage.getDeskBookingsByDateRange(userId, dayStart, dayEnd);
 
       const availability = desks.map(desk => {
@@ -12687,6 +12760,8 @@ Rules:
             status: b.status,
           })),
           isAvailable: deskBookings.length === 0,
+          closedToday: false,
+          availableWindow: { startTime: DESK_AVAILABILITY.startTime, endTime: DESK_AVAILABILITY.endTime },
         };
       });
 

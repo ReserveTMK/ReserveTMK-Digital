@@ -42,7 +42,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import type { Venue, BookableResource, VenueInstruction } from "@shared/schema";
-import { INSTRUCTION_TYPES, DEFAULT_AVAILABILITY_SCHEDULE, type AvailabilitySchedule, type DayAvailability } from "@shared/schema";
+import { INSTRUCTION_TYPES, DEFAULT_AVAILABILITY_SCHEDULE, DEFAULT_VENUE_AVAILABILITY_SCHEDULE, type AvailabilitySchedule, type DayAvailability } from "@shared/schema";
 
 const INSTRUCTION_TYPE_LABELS: Record<string, string> = {
   access: "Access",
@@ -510,12 +510,12 @@ function VenueAvailabilitySection({ venue }: { venue: Venue }) {
   const updateVenue = useUpdateVenue();
   const { toast } = useToast();
 
-  const currentSchedule = (venue.availabilitySchedule as AvailabilitySchedule) || DEFAULT_AVAILABILITY_SCHEDULE;
+  const currentSchedule = (venue.availabilitySchedule as AvailabilitySchedule) || DEFAULT_VENUE_AVAILABILITY_SCHEDULE;
   const [schedule, setSchedule] = useState<AvailabilitySchedule>(currentSchedule);
   const [isDirty, setIsDirty] = useState(false);
 
   useEffect(() => {
-    setSchedule((venue.availabilitySchedule as AvailabilitySchedule) || DEFAULT_AVAILABILITY_SCHEDULE);
+    setSchedule((venue.availabilitySchedule as AvailabilitySchedule) || DEFAULT_VENUE_AVAILABILITY_SCHEDULE);
     setIsDirty(false);
   }, [venue.availabilitySchedule]);
 
@@ -590,7 +590,7 @@ function VenueAvailabilitySection({ venue }: { venue: Venue }) {
             Save Schedule
           </Button>
           <Button size="sm" variant="outline" onClick={() => {
-            setSchedule((venue.availabilitySchedule as AvailabilitySchedule) || DEFAULT_AVAILABILITY_SCHEDULE);
+            setSchedule((venue.availabilitySchedule as AvailabilitySchedule) || DEFAULT_VENUE_AVAILABILITY_SCHEDULE);
             setIsDirty(false);
           }} data-testid={`button-cancel-availability-${venue.id}`}>
             Cancel

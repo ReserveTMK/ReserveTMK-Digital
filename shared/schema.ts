@@ -1470,6 +1470,22 @@ export const DEFAULT_AVAILABILITY_SCHEDULE: AvailabilitySchedule = {
   sunday: { open: false, startTime: "08:00", endTime: "17:00" },
 };
 
+export const DEFAULT_VENUE_AVAILABILITY_SCHEDULE: AvailabilitySchedule = {
+  monday: { open: true, startTime: "00:00", endTime: "23:59" },
+  tuesday: { open: true, startTime: "00:00", endTime: "23:59" },
+  wednesday: { open: true, startTime: "00:00", endTime: "23:59" },
+  thursday: { open: true, startTime: "00:00", endTime: "23:59" },
+  friday: { open: true, startTime: "00:00", endTime: "23:59" },
+  saturday: { open: true, startTime: "00:00", endTime: "23:59" },
+  sunday: { open: true, startTime: "00:00", endTime: "23:59" },
+};
+
+export const DESK_AVAILABILITY = {
+  startTime: "09:00",
+  endTime: "15:00",
+  days: ["monday", "tuesday", "wednesday", "thursday", "friday"] as const,
+} as const;
+
 export type Booking = typeof bookings.$inferSelect;
 export type InsertBooking = z.infer<typeof insertBookingSchema>;
 

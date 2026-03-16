@@ -87,6 +87,46 @@ app.use((req, res, next) => {
     console.warn("[migration] Stage migration skipped:", migrationErr.message);
   }
 
+  try {
+    const { db } = await import("./db");
+    const { sql } = await import("drizzle-orm");
+    const newSchedule = JSON.stringify({
+      monday: { open: true, startTime: "00:00", endTime: "23:59" },
+      tuesday: { open: true, startTime: "00:00", endTime: "23:59" },
+      wednesday: { open: true, startTime: "00:00", endTime: "23:59" },
+      thursday: { open: true, startTime: "00:00", endTime: "23:59" },
+      friday: { open: true, startTime: "00:00", endTime: "23:59" },
+      saturday: { open: true, startTime: "00:00", endTime: "23:59" },
+      sunday: { open: true, startTime: "00:00", endTime: "23:59" },
+    });
+    const result = await db.execute(
+      sql`UPDATE venues SET availability_schedule = ${newSchedule}::jsonb
+          WHERE availability_schedule IS NULL
+          OR (
+            (availability_schedule->'monday'->>'open') = 'true'
+            AND (availability_schedule->'monday'->>'startTime') = '08:00'
+            AND (availability_schedule->'monday'->>'endTime') = '17:00'
+            AND (availability_schedule->'tuesday'->>'open') = 'true'
+            AND (availability_schedule->'tuesday'->>'startTime') = '08:00'
+            AND (availability_schedule->'tuesday'->>'endTime') = '17:00'
+            AND (availability_schedule->'wednesday'->>'open') = 'true'
+            AND (availability_schedule->'wednesday'->>'startTime') = '08:00'
+            AND (availability_schedule->'wednesday'->>'endTime') = '17:00'
+            AND (availability_schedule->'thursday'->>'open') = 'true'
+            AND (availability_schedule->'thursday'->>'startTime') = '08:00'
+            AND (availability_schedule->'thursday'->>'endTime') = '17:00'
+            AND (availability_schedule->'friday'->>'open') = 'true'
+            AND (availability_schedule->'friday'->>'startTime') = '08:00'
+            AND (availability_schedule->'friday'->>'endTime') = '17:00'
+            AND (availability_schedule->'saturday'->>'open') = 'false'
+            AND (availability_schedule->'sunday'->>'open') = 'false'
+          )`
+    );
+    console.log("[migration] Venue availability schedules migrated to 24/7 default");
+  } catch (migrationErr: any) {
+    console.warn("[migration] Venue availability migration skipped:", migrationErr.message);
+  }
+
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     if (res.headersSent) {
       return next(err);

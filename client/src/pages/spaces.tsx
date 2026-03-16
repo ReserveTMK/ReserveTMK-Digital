@@ -20,8 +20,14 @@ import Bookings from "./bookings";
 import ResourcesTab from "@/components/spaces/resources-tab";
 import RegularBookersPage from "./regular-bookers";
 import type { Meeting } from "@shared/schema";
+import { DESK_AVAILABILITY } from "@shared/schema";
 
 const HOURS = Array.from({ length: 15 }, (_, i) => i + 7);
+const VENUE_HOURS = Array.from({ length: 24 }, (_, i) => i);
+const DESK_START_HOUR = parseInt(DESK_AVAILABILITY.startTime.split(":")[0]);
+const DESK_END_HOUR = parseInt(DESK_AVAILABILITY.endTime.split(":")[0]);
+const DESK_HOURS = Array.from({ length: DESK_END_HOUR - DESK_START_HOUR }, (_, i) => i + DESK_START_HOUR);
+const DESK_DAYS = DESK_AVAILABILITY.days as readonly string[];
 
 function formatDate(date: Date): string {
   const y = date.getFullYear();
@@ -55,10 +61,10 @@ function parseTime(timeStr: string | null | undefined): number | null {
 
 type BookingBlock = { start: number; end: number; type: "venue_hire" | "internal" | "desk" };
 
-function TimeSlotGrid({ bookingBlocks }: { bookingBlocks: BookingBlock[] }) {
+function TimeSlotGrid({ bookingBlocks, hours = HOURS }: { bookingBlocks: BookingBlock[]; hours?: number[] }) {
   return (
     <div className="flex flex-1 min-w-0">
-      {HOURS.map((hour) => {
+      {hours.map((hour) => {
         const venueBlock = bookingBlocks.find(
           (block) => block.type === "venue_hire" && block.start < hour + 1 && block.end > hour
         );
@@ -88,12 +94,12 @@ function TimeSlotGrid({ bookingBlocks }: { bookingBlocks: BookingBlock[] }) {
   );
 }
 
-function TimeHeader() {
+function TimeHeader({ hours = HOURS }: { hours?: number[] }) {
   return (
     <div className="flex">
       <div className="w-40 shrink-0" />
       <div className="flex flex-1 min-w-0">
-        {HOURS.map((hour) => (
+        {hours.map((hour) => (
           <div
             key={hour}
             className="flex-1 text-[10px] text-muted-foreground text-center border-r border-border/40 last:border-r-0"
@@ -298,7 +304,7 @@ function SpacesCalendarTab() {
                 <Card>
                   <CardContent className="p-3 overflow-x-auto">
                     <div className="min-w-[600px]">
-                      <TimeHeader />
+                      <TimeHeader hours={VENUE_HOURS} />
                       {activeVenues.map((venue) => {
                         const dayBookings = (bookings || []).filter(
                           (b) => b.venueId === venue.id && b.startDate && formatDate(new Date(b.startDate)) === dateStr && b.status !== "cancelled"
@@ -331,7 +337,7 @@ function SpacesCalendarTab() {
                                 )}
                               </div>
                             </div>
-                            <TimeSlotGrid bookingBlocks={blocks} />
+                            <TimeSlotGrid bookingBlocks={blocks} hours={VENUE_HOURS} />
                           </div>
                         );
                       })}
@@ -355,16 +361,21 @@ function SpacesCalendarTab() {
                       <div className="flex">
                         <div className="w-40 shrink-0" />
                         <div className="flex flex-1 min-w-0">
-                          {weekDays.map((day) => (
-                            <div
-                              key={day.toISOString()}
-                              className={`flex-1 text-xs font-medium text-center py-1 ${
-                                formatDate(day) === formatDate(new Date()) ? "text-foreground" : "text-muted-foreground"
-                              }`}
-                            >
-                              {shortDay(day)}
-                            </div>
-                          ))}
+                          {weekDays.map((day) => {
+                            const dayNameLower = day.toLocaleDateString("en-US", { weekday: "long" }).toLowerCase();
+                            const isDeskDay = DESK_DAYS.includes(dayNameLower);
+                            return (
+                              <div
+                                key={day.toISOString()}
+                                className={`flex-1 text-xs font-medium text-center py-1 ${
+                                  !isDeskDay ? "text-muted-foreground/50" :
+                                  formatDate(day) === formatDate(new Date()) ? "text-foreground" : "text-muted-foreground"
+                                }`}
+                              >
+                                {shortDay(day)}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                       {activeDesks.map((desk) => (
@@ -375,6 +386,19 @@ function SpacesCalendarTab() {
                           </div>
                           <div className="flex flex-1 min-w-0">
                             {weekDays.map((day, dayIdx) => {
+                              const dayNameLower = day.toLocaleDateString("en-US", { weekday: "long" }).toLowerCase();
+                              const isDeskDay = DESK_DAYS.includes(dayNameLower);
+                              if (!isDeskDay) {
+                                return (
+                                  <div
+                                    key={day.toISOString()}
+                                    className="flex-1 h-10 border-r border-border/40 last:border-r-0 flex items-center justify-center bg-muted/40"
+                                    title={`${shortDay(day)} - Closed`}
+                                  >
+                                    <span className="text-[10px] text-muted-foreground/60">Closed</span>
+                                  </div>
+                                );
+                              }
                               const dayAvailData = weekAvailData[dayIdx]?.data || [];
                               const deskEntry = dayAvailData.find((a: any) => a.resourceId === desk.id);
                               const hasBooking = deskEntry ? !deskEntry.isAvailable : false;
@@ -384,7 +408,7 @@ function SpacesCalendarTab() {
                                   className={`flex-1 h-10 border-r border-border/40 last:border-r-0 flex items-center justify-center ${
                                     hasBooking ? "bg-violet-200/60 dark:bg-violet-800/30" : "bg-emerald-100/60 dark:bg-emerald-900/20"
                                   }`}
-                                  title={`${shortDay(day)} - ${hasBooking ? "Booked" : "Available"}`}
+                                  title={`${shortDay(day)} - ${hasBooking ? "Booked" : "Available (9am–3pm)"}`}
                                 />
                               );
                             })}
@@ -394,11 +418,22 @@ function SpacesCalendarTab() {
                     </div>
                   </CardContent>
                 </Card>
-              ) : (
+              ) : (() => {
+                const dayNameLower = currentDate.toLocaleDateString("en-US", { weekday: "long" }).toLowerCase();
+                const isDeskDay = DESK_DAYS.includes(dayNameLower);
+                return (
                 <Card>
                   <CardContent className="p-3 overflow-x-auto">
+                    {!isDeskDay ? (
+                      <div className="py-6 text-center">
+                        <p className="text-sm text-muted-foreground" data-testid="text-desks-closed">Desks are closed on weekends. Available Monday–Friday, 9am–3pm.</p>
+                      </div>
+                    ) : (
                     <div className="min-w-[600px]">
-                      <TimeHeader />
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-[10px] text-muted-foreground">Available {DESK_AVAILABILITY.startTime} – {DESK_AVAILABILITY.endTime}</span>
+                      </div>
+                      <TimeHeader hours={DESK_HOURS} />
                       {activeDesks.map((desk) => {
                         const availability = (deskAvailability || []).find((a: any) => a.resourceId === desk.id);
                         const isBooked = availability ? !availability.isAvailable : false;
@@ -415,7 +450,7 @@ function SpacesCalendarTab() {
                             .filter(Boolean) as BookingBlock[];
                           blocks = parsed.length > 0
                             ? parsed
-                            : [{ start: HOURS[0], end: HOURS[HOURS.length - 1] + 1, type: "desk" as const }];
+                            : [{ start: DESK_HOURS[0], end: DESK_HOURS[DESK_HOURS.length - 1] + 1, type: "desk" as const }];
                         }
                         return (
                           <div key={desk.id} className="flex items-center border-t border-border/40">
@@ -428,14 +463,16 @@ function SpacesCalendarTab() {
                                 )}
                               </div>
                             </div>
-                            <TimeSlotGrid bookingBlocks={blocks} />
+                            <TimeSlotGrid bookingBlocks={blocks} hours={DESK_HOURS} />
                           </div>
                         );
                       })}
                     </div>
+                    )}
                   </CardContent>
                 </Card>
-              )}
+                );
+              })()}
             </div>
           )}
 
@@ -470,7 +507,10 @@ function HotDeskingTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h3 className="text-base font-semibold">Desk Availability</h3>
+        <div>
+          <h3 className="text-base font-semibold">Desk Availability</h3>
+          <p className="text-xs text-muted-foreground" data-testid="text-desk-hours-info">Mon–Fri, {DESK_AVAILABILITY.startTime} – {DESK_AVAILABILITY.endTime}</p>
+        </div>
         <div className="flex items-center gap-2">
           <Button size="icon" variant="outline" onClick={() => navigateDay(-1)} data-testid="button-desk-prev">
             <ChevronLeft className="w-4 h-4" />
@@ -484,35 +524,56 @@ function HotDeskingTab() {
         </div>
       </div>
 
-      {desksLoading || deskAvailLoading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
-        </div>
-      ) : activeDesks.length === 0 ? (
-        <Card className="p-8 text-center">
-          <p className="text-muted-foreground" data-testid="text-no-desks">No desk resources configured</p>
-        </Card>
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {activeDesks.map((desk) => {
-            const availability = (deskAvailability || []).find((a: any) => a.resourceId === desk.id);
-            const isAvailable = availability ? availability.isAvailable : true;
-            return (
-              <Card key={desk.id} className={`p-4 ${isAvailable ? "border-emerald-200 dark:border-emerald-800" : "border-destructive/30"}`} data-testid={`card-desk-${desk.id}`}>
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Monitor className="w-4 h-4 text-muted-foreground shrink-0" />
-                    <span className="text-sm font-medium truncate">{desk.name}</span>
+      {(() => {
+        const dayNameLower = currentDate.toLocaleDateString("en-US", { weekday: "long" }).toLowerCase();
+        const isDeskDay = DESK_DAYS.includes(dayNameLower);
+
+        if (desksLoading || deskAvailLoading) {
+          return (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
+            </div>
+          );
+        }
+
+        if (activeDesks.length === 0) {
+          return (
+            <Card className="p-8 text-center">
+              <p className="text-muted-foreground" data-testid="text-no-desks">No desk resources configured</p>
+            </Card>
+          );
+        }
+
+        if (!isDeskDay) {
+          return (
+            <Card className="p-8 text-center">
+              <p className="text-muted-foreground" data-testid="text-desks-closed-hotdesking">Desks are closed on weekends. Available Monday–Friday, 9am–3pm.</p>
+            </Card>
+          );
+        }
+
+        return (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {activeDesks.map((desk) => {
+              const availability = (deskAvailability || []).find((a: any) => a.resourceId === desk.id);
+              const isAvailable = availability ? availability.isAvailable : true;
+              return (
+                <Card key={desk.id} className={`p-4 ${isAvailable ? "border-emerald-200 dark:border-emerald-800" : "border-destructive/30"}`} data-testid={`card-desk-${desk.id}`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Monitor className="w-4 h-4 text-muted-foreground shrink-0" />
+                      <span className="text-sm font-medium truncate">{desk.name}</span>
+                    </div>
+                    <Badge variant={isAvailable ? "secondary" : "destructive"} data-testid={`badge-desk-status-${desk.id}`}>
+                      {isAvailable ? "Available" : "Booked"}
+                    </Badge>
                   </div>
-                  <Badge variant={isAvailable ? "secondary" : "destructive"} data-testid={`badge-desk-status-${desk.id}`}>
-                    {isAvailable ? "Available" : "Booked"}
-                  </Badge>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+                </Card>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {upcomingBookings.length > 0 && (
         <div>

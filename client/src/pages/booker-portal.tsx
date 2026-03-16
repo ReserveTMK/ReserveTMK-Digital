@@ -613,7 +613,7 @@ function DeskBookingView({
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [selectedResource, setSelectedResource] = useState<number | null>(null);
   const [startTime, setStartTime] = useState("09:00");
-  const [endTime, setEndTime] = useState("17:00");
+  const [endTime, setEndTime] = useState("15:00");
   const [bookingConfirmed, setBookingConfirmed] = useState(false);
   const [confirmedDetails, setConfirmedDetails] = useState<{ date: string; resourceName: string; startTime: string; endTime: string } | null>(null);
 
@@ -710,7 +710,7 @@ function DeskBookingView({
           <div className="flex items-center gap-2">
             <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
             <p className="text-sm text-blue-700 dark:text-blue-300" data-testid="text-desk-info">
-              Hot desking is first-come-first-served. Select a date to see available desks.
+              Hot desking is available Monday–Friday, 9am–3pm. First-come-first-served.
             </p>
           </div>
         </Card>
@@ -724,16 +724,24 @@ function DeskBookingView({
             onChange={(e) => { setSelectedDate(e.target.value); setSelectedResource(null); }}
             data-testid="input-desk-date"
           />
+          {(() => {
+            const d = new Date(selectedDate + "T12:00:00");
+            const day = d.getDay();
+            if (day === 0 || day === 6) {
+              return <p className="text-xs text-amber-600 dark:text-amber-400" data-testid="text-desk-weekend-warning">Desks are not available on weekends. Please select a weekday.</p>;
+            }
+            return null;
+          })()}
         </div>
 
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1">
             <Label className="text-xs">Start Time</Label>
-            <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} data-testid="input-desk-start-time" />
+            <Input type="time" value={startTime} min="09:00" max="15:00" onChange={(e) => setStartTime(e.target.value)} data-testid="input-desk-start-time" />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">End Time</Label>
-            <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} data-testid="input-desk-end-time" />
+            <Input type="time" value={endTime} min="09:00" max="15:00" onChange={(e) => setEndTime(e.target.value)} data-testid="input-desk-end-time" />
           </div>
         </div>
 
@@ -744,6 +752,8 @@ function DeskBookingView({
               <Skeleton className="h-16 w-full" />
               <Skeleton className="h-16 w-full" />
             </div>
+          ) : availabilityData?.availability?.[0]?.closedToday ? (
+            <p className="text-sm text-muted-foreground" data-testid="text-desks-closed-portal">Desks are closed on this day. Available Monday–Friday, 9am–3pm.</p>
           ) : !availabilityData?.availability?.length ? (
             <p className="text-sm text-muted-foreground" data-testid="text-no-desks">No desks available for this date</p>
           ) : (
@@ -758,7 +768,7 @@ function DeskBookingView({
                   const b1 = parseTimeToMinutes(s.endTime);
                   return a0 < b1 && b0 < a1;
                 });
-                const isAvailable = desk.isAvailable || !hasConflict;
+                const isAvailable = !desk.closedToday && (desk.isAvailable || !hasConflict);
 
                 return (
                   <button
@@ -796,7 +806,7 @@ function DeskBookingView({
 
         <Button
           className="w-full"
-          disabled={!selectedResource || bookMutation.isPending}
+          disabled={!selectedResource || bookMutation.isPending || (() => { const d = new Date(selectedDate + "T12:00:00"); return d.getDay() === 0 || d.getDay() === 6; })()}
           onClick={handleBook}
           data-testid="button-submit-desk-booking"
         >
