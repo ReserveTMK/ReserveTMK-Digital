@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "HLe7nWItGiinykkE2mKf8"
+uri = "file://.local/legacy-data-extraction-prompt.txt"
+type = "text"
+title = "Legacy Data Extraction Prompt for Claude"
