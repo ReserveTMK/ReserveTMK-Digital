@@ -287,9 +287,11 @@ function BookingCalendarCard({ booking, venueMap, allContacts }: {
   });
 
   const saveAttendance = () => {
+    const parsedAttendee = attendeeCount ? parseInt(attendeeCount, 10) : null;
+    const parsedRangatahi = rangatahiCount ? parseInt(rangatahiCount, 10) : null;
     attendanceMutation.mutate({
-      attendeeCount: attendeeCount ? parseInt(attendeeCount) : null,
-      rangatahiCount: rangatahiCount ? parseInt(rangatahiCount) : null,
+      attendeeCount: parsedAttendee !== null && !isNaN(parsedAttendee) ? parsedAttendee : null,
+      rangatahiCount: parsedRangatahi !== null && !isNaN(parsedRangatahi) ? parsedRangatahi : null,
       attendees: taggedIds,
       isRangatahi,
     });
@@ -298,10 +300,12 @@ function BookingCalendarCard({ booking, venueMap, allContacts }: {
   const toggleRangatahi = () => {
     const next = !isRangatahi;
     setIsRangatahi(next);
+    const parsedAttendee = attendeeCount ? parseInt(attendeeCount, 10) : null;
+    const parsedRangatahi = rangatahiCount ? parseInt(rangatahiCount, 10) : null;
     attendanceMutation.mutate({
       isRangatahi: next,
-      attendeeCount: attendeeCount ? parseInt(attendeeCount) : null,
-      rangatahiCount: rangatahiCount ? parseInt(rangatahiCount) : null,
+      attendeeCount: parsedAttendee !== null && !isNaN(parsedAttendee) ? parsedAttendee : null,
+      rangatahiCount: parsedRangatahi !== null && !isNaN(parsedRangatahi) ? parsedRangatahi : null,
       attendees: taggedIds,
     });
   };

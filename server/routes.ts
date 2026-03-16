@@ -10615,6 +10615,16 @@ Be specific, practical, and grounded in the actual documents and context provide
     }
   });
 
+  app.get("/api/projects/all-tasks", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const tasks = await storage.getAllProjectTasks(userId);
+      res.json(tasks);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to get all tasks" });
+    }
+  });
+
   app.get("/api/projects/:id", isAuthenticated, async (req, res) => {
     try {
       const id = parseId(req.params.id);
@@ -10719,16 +10729,6 @@ Be specific, practical, and grounded in the actual documents and context provide
       res.status(201).json(update);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Failed to create project update" });
-    }
-  });
-
-  app.get("/api/projects/all-tasks", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      const tasks = await storage.getAllProjectTasks(userId);
-      res.json(tasks);
-    } catch (err: any) {
-      res.status(500).json({ message: err.message || "Failed to get all tasks" });
     }
   });
 
