@@ -1232,7 +1232,7 @@ function SurveySettingsTab() {
             <Input
               value={emailSubject}
               onChange={(e) => setEmailSubject(e.target.value)}
-              placeholder="How was your experience at Reserve Tamaki?"
+              placeholder="How was your experience at ReserveTMK Digital?"
               data-testid="input-email-subject"
             />
           </div>
@@ -1251,7 +1251,7 @@ function SurveySettingsTab() {
             <Input
               value={emailSignoff}
               onChange={(e) => setEmailSignoff(e.target.value)}
-              placeholder="Nga mihi, The Reserve Tamaki Team"
+              placeholder="Nga mihi, The ReserveTMK Digital Team"
               data-testid="input-email-signoff"
             />
           </div>
@@ -2616,7 +2616,7 @@ function HirerPreviewDialog({ open, onOpenChange, venues }: {
             <div className="rounded-lg border overflow-hidden">
               <div className="bg-[#1e40af] text-white text-center py-6 px-4">
                 <h2 className="text-lg font-bold">Booking Confirmed!</h2>
-                <p className="text-blue-200 text-sm mt-1">Reserve Tāmaki</p>
+                <p className="text-blue-200 text-sm mt-1">ReserveTMK Digital</p>
               </div>
               <div className="p-6 space-y-4 bg-white dark:bg-card">
                 <div>
@@ -2646,7 +2646,7 @@ function HirerPreviewDialog({ open, onOpenChange, venues }: {
 
                 <div className="border-l-4 border-blue-500 bg-gray-50 dark:bg-muted/30 p-4">
                   <h3 className="text-xs font-semibold uppercase tracking-wider text-blue-800 dark:text-blue-300 mb-2">Arrival</h3>
-                  <p className="text-sm"><span className="font-medium">Reserve Tāmaki Hub</span></p>
+                  <p className="text-sm"><span className="font-medium">ReserveTMK Digital Hub</span></p>
                   <p className="text-sm text-muted-foreground">133a Line Road, Glen Innes, Auckland 1072</p>
                   <p className="text-sm text-muted-foreground">Free parking available</p>
                   {(activeInstructions["arrival"] || []).map(inst => (
@@ -2696,11 +2696,11 @@ function HirerPreviewDialog({ open, onOpenChange, venues }: {
                 <div>
                   <p className="text-sm text-muted-foreground">Questions or need to make changes?</p>
                   <p className="text-sm text-muted-foreground">Reply to this email or call <span className="font-medium">021 022 98172</span></p>
-                  <p className="text-sm text-muted-foreground mt-3">Ngā mihi,<br /><span className="font-medium">Reserve Tāmaki Team</span></p>
+                  <p className="text-sm text-muted-foreground mt-3">Ngā mihi,<br /><span className="font-medium">ReserveTMK Digital Team</span></p>
                 </div>
 
                 <div className="bg-gray-50 dark:bg-muted/30 text-center py-3 rounded-b-lg">
-                  <p className="text-xs text-muted-foreground">Reserve Tāmaki Hub • 133a Line Road, Glen Innes, Auckland 1072</p>
+                  <p className="text-xs text-muted-foreground">ReserveTMK Digital Hub • 133a Line Road, Glen Innes, Auckland 1072</p>
                 </div>
               </div>
             </div>
@@ -2716,12 +2716,12 @@ function HirerPreviewDialog({ open, onOpenChange, venues }: {
             <div className="rounded-lg border overflow-hidden">
               <div className="bg-[#1e40af] text-white text-center py-6 px-4">
                 <h2 className="text-lg font-bold">How was your experience?</h2>
-                <p className="text-blue-200 text-sm mt-1">Reserve Tāmaki</p>
+                <p className="text-blue-200 text-sm mt-1">ReserveTMK Digital</p>
               </div>
               <div className="p-6 bg-white dark:bg-card">
                 <p className="text-sm text-muted-foreground mb-1">
                   <span className="font-medium text-foreground">Subject:</span>{" "}
-                  {surveySettings?.emailSubject || "How was your experience at Reserve Tāmaki?"}
+                  {surveySettings?.emailSubject || "How was your experience at ReserveTMK Digital?"}
                 </p>
                 <div className="border-b pb-4 mb-4">
                   <p className="text-sm text-muted-foreground italic">
@@ -2794,7 +2794,7 @@ function HirerPreviewDialog({ open, onOpenChange, venues }: {
                   <p className="text-gray-300 text-xs mt-0.5">Generated via Xero</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-medium">Reserve Tāmaki</p>
+                  <p className="text-sm font-medium">ReserveTMK Digital</p>
                   <p className="text-xs text-gray-400">133a Line Road, Glen Innes</p>
                 </div>
               </div>

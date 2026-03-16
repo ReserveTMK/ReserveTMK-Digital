@@ -216,7 +216,7 @@ export function TopNav() {
               <span className="text-white font-display font-bold text-sm">R</span>
             </div>
             <span className="font-display font-bold text-base text-white hidden sm:block">
-              ReserveTMK
+              ReserveTMK Digital
             </span>
           </Link>
 

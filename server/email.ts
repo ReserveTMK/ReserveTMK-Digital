@@ -260,7 +260,7 @@ export async function sendAfterHoursReminderEmail(booking: Booking, userId: stri
   const grouped = groupInstructions(instructions);
 
   const clientName = contact.name || contact.email;
-  const venueName = venue?.name || "Reserve Tamaki Space";
+  const venueName = venue?.name || "ReserveTMK Digital Space";
   const dateStr = formatDate(booking.startDate);
   const startStr = formatTime(booking.startTime);
   const endStr = formatTime(booking.endTime);
@@ -288,7 +288,7 @@ export async function sendAfterHoursReminderEmail(booking: Booking, userId: stri
     </td></tr>
     <tr><td style="padding:10px 30px 20px;background:#f8f9fa;border-left:4px solid #f59e0b;">
       <p style="margin:0 0 5px;color:#374151;font-size:14px;line-height:1.6;">
-        <strong>Reserve Tamaki Hub</strong><br>
+        <strong>ReserveTMK Digital Hub</strong><br>
         133a Line Road, Glen Innes, Auckland 1072<br>
         <span style="color:#6b7280;">Free parking available</span>
       </p>
@@ -334,7 +334,7 @@ export async function sendAfterHoursReminderEmail(booking: Booking, userId: stri
 <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:20px auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
   <tr><td style="padding:30px;background:#92400e;text-align:center;">
     <h1 style="margin:0;color:#ffffff;font-size:22px;">After-Hours Booking Reminder</h1>
-    <p style="margin:8px 0 0;color:#fde68a;font-size:14px;">Reserve Tamaki</p>
+    <p style="margin:8px 0 0;color:#fde68a;font-size:14px;">ReserveTMK Digital</p>
   </td></tr>
 
   <tr><td style="padding:25px 30px 10px;">
@@ -364,17 +364,17 @@ export async function sendAfterHoursReminderEmail(booking: Booking, userId: stri
 
   <tr><td style="padding:25px 30px;">
     <p style="margin:0;font-size:14px;color:#374151;">Questions or need help?<br>Call <strong>021 022 98172</strong> (may have limited availability after hours)</p>
-    <p style="margin:15px 0 0;font-size:14px;color:#374151;">Nga mihi,<br><strong>Reserve Tamaki Team</strong></p>
+    <p style="margin:15px 0 0;font-size:14px;color:#374151;">Nga mihi,<br><strong>ReserveTMK Digital Team</strong></p>
   </td></tr>
 
   <tr><td style="padding:15px 30px;background:#f9fafb;text-align:center;">
-    <p style="margin:0;font-size:12px;color:#9ca3af;">Reserve Tamaki Hub - 133a Line Road, Glen Innes, Auckland 1072</p>
+    <p style="margin:0;font-size:12px;color:#9ca3af;">ReserveTMK Digital Hub - 133a Line Road, Glen Innes, Auckland 1072</p>
   </td></tr>
 </table>
 </body>
 </html>`;
 
-  const subject = `After-Hours Reminder - Reserve Tamaki ${venueName} ${countdown === "TODAY" ? "Today" : countdown === "TOMORROW" ? "Tomorrow" : dateStr}`;
+  const subject = `After-Hours Reminder - ReserveTMK Digital ${venueName} ${countdown === "TODAY" ? "Today" : countdown === "TOMORROW" ? "Tomorrow" : dateStr}`;
   await sendEmail(contact.email, subject, htmlBody);
 }
 
@@ -556,7 +556,7 @@ export async function sendProgrammeReminderEmail(
 <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:20px auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
   <tr><td style="padding:30px;background:#7c3aed;text-align:center;">
     <h1 style="margin:0;color:#ffffff;font-size:22px;">Event Reminder</h1>
-    <p style="margin:8px 0 0;color:#e9d5ff;font-size:14px;">Reserve Tāmaki</p>
+    <p style="margin:8px 0 0;color:#e9d5ff;font-size:14px;">ReserveTMK Digital</p>
   </td></tr>
 
   <tr><td style="padding:25px 30px;">
@@ -569,13 +569,13 @@ export async function sendProgrammeReminderEmail(
     </div>
 
     <p style="margin:10px 0 0;font-size:14px;color:#374151;">We look forward to seeing you there!</p>
-    <p style="margin:15px 0 0;font-size:14px;color:#374151;">Ngā mihi,<br><strong>Reserve Tāmaki Team</strong></p>
+    <p style="margin:15px 0 0;font-size:14px;color:#374151;">Ngā mihi,<br><strong>ReserveTMK Digital Team</strong></p>
   </td></tr>
 
   ${directionsHtml}
 
   <tr><td style="padding:15px 30px;background:#f9fafb;text-align:center;">
-    <p style="margin:0;font-size:12px;color:#9ca3af;">Reserve Tāmaki Hub &bull; 133a Line Road, Glen Innes, Auckland 1072</p>
+    <p style="margin:0;font-size:12px;color:#9ca3af;">ReserveTMK Digital Hub &bull; 133a Line Road, Glen Innes, Auckland 1072</p>
   </td></tr>
 </table>
 </body>
@@ -599,7 +599,7 @@ export async function sendProgrammeSurveyEmail(
 <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:20px auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
   <tr><td style="padding:30px;background:#7c3aed;text-align:center;">
     <h1 style="margin:0;color:#ffffff;font-size:22px;">How was it?</h1>
-    <p style="margin:8px 0 0;color:#e9d5ff;font-size:14px;">Reserve Tāmaki</p>
+    <p style="margin:8px 0 0;color:#e9d5ff;font-size:14px;">ReserveTMK Digital</p>
   </td></tr>
 
   <tr><td style="padding:25px 30px;">
@@ -612,11 +612,11 @@ export async function sendProgrammeSurveyEmail(
       <a href="${surveyUrl}" style="display:inline-block;padding:14px 32px;background:#7c3aed;color:#ffffff;text-decoration:none;border-radius:6px;font-size:16px;font-weight:600;">Share Your Feedback</a>
     </div>
 
-    <p style="margin:15px 0 0;font-size:14px;color:#374151;">Ngā mihi,<br><strong>Reserve Tāmaki Team</strong></p>
+    <p style="margin:15px 0 0;font-size:14px;color:#374151;">Ngā mihi,<br><strong>ReserveTMK Digital Team</strong></p>
   </td></tr>
 
   <tr><td style="padding:15px 30px;background:#f9fafb;text-align:center;">
-    <p style="margin:0;font-size:12px;color:#9ca3af;">Reserve Tāmaki Hub &bull; 133a Line Road, Glen Innes, Auckland 1072</p>
+    <p style="margin:0;font-size:12px;color:#9ca3af;">ReserveTMK Digital Hub &bull; 133a Line Road, Glen Innes, Auckland 1072</p>
   </td></tr>
 </table>
 </body>

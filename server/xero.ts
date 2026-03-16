@@ -324,7 +324,7 @@ export async function generateXeroInvoice(
 
   const venues = await storage.getVenues(userId);
   const venue = venues.find(v => v.id === booking.venueId);
-  const venueName = venue?.name || "Reserve Tamaki Space";
+  const venueName = venue?.name || "ReserveTMK Digital Space";
 
   const dateStr = booking.startDate
     ? new Date(booking.startDate).toLocaleDateString("en-NZ", { timeZone: "Pacific/Auckland" })

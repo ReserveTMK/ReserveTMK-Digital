@@ -483,7 +483,7 @@ export default function PublicBookingPage() {
 
   const baseMentorName = mentorInfo ? `${mentorInfo.firstName || ""} ${mentorInfo.lastName || ""}`.trim() : "";
   const mentorName = selectedMentor ? selectedMentor.name : baseMentorName;
-  const orgName = mentorInfo?.orgName || "ReserveTMK";
+  const orgName = mentorInfo?.orgName || "ReserveTMK Digital";
 
   if (mentorError && !mentorLoading) {
     return (

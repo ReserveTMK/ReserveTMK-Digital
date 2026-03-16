@@ -268,7 +268,7 @@ function VenuesSubSection({
             <Input
               value={newSpaceName}
               onChange={(e) => setNewSpaceName(e.target.value)}
-              placeholder="Space (e.g. ReserveTMK Office, ReserveTMK Studio)"
+              placeholder="Space (e.g. ReserveTMK Digital Office, ReserveTMK Digital Studio)"
               data-testid="input-new-venue-space"
               list="space-name-options"
             />

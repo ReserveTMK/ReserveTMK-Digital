@@ -235,7 +235,7 @@ function QuestionRenderer({
                 htmlFor={`consent-${question.id}`}
                 className="text-sm text-muted-foreground leading-snug cursor-pointer"
               >
-                I consent to Reserve Tamaki using this testimonial in promotional materials
+                I consent to ReserveTMK Digital using this testimonial in promotional materials
               </Label>
             </div>
           )}
@@ -416,7 +416,7 @@ export default function PublicSurveyPage() {
               ? "Your responses help us understand how to best support you on your journey. Keep going!"
               : survey.surveyType === "programme"
               ? "Your feedback helps us improve future events and programmes for the community."
-              : "We appreciate you taking the time to share your experience with Reserve Tamaki."}
+              : "We appreciate you taking the time to share your experience with ReserveTMK Digital."}
           </p>
           {survey?.googleReviewUrl && survey.googleReviewUrl.startsWith("https://") && (
             <div className="mt-6 pt-4 border-t">
@@ -459,7 +459,7 @@ export default function PublicSurveyPage() {
                 Growth Check-in
               </h1>
               <p className="text-sm text-muted-foreground mt-1" data-testid="text-survey-subtitle">
-                Reserve Tāmaki
+                ReserveTMK Digital
               </p>
             </>
           ) : survey.surveyType === "programme" ? (
@@ -468,7 +468,7 @@ export default function PublicSurveyPage() {
                 Event Feedback
               </h1>
               <p className="text-sm text-muted-foreground mt-1" data-testid="text-survey-subtitle">
-                Reserve Tāmaki
+                ReserveTMK Digital
               </p>
             </>
           ) : (
@@ -477,7 +477,7 @@ export default function PublicSurveyPage() {
                 Venue Hire Feedback
               </h1>
               <p className="text-sm text-muted-foreground mt-1" data-testid="text-survey-subtitle">
-                Reserve Tamaki
+                ReserveTMK Digital
               </p>
             </>
           )}
@@ -559,7 +559,7 @@ export default function PublicSurveyPage() {
 
         <div className="text-center mt-6">
           <p className="text-xs text-muted-foreground" data-testid="text-footer">
-            Reserve Tamaki - Community Venue
+            ReserveTMK Digital - Community Venue
           </p>
         </div>
       </div>

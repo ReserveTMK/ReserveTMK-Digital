@@ -1,7 +1,7 @@
-# ReserveTMK
+# ReserveTMK Digital
 
 ## Overview
-ReserveTMK is a full-stack web application designed to track and manage mentorship relationships, focusing on measuring mentee growth. It provides tools for contact management, logging interactions, and using AI to analyze conversation transcripts for insights into mindset, skill, and confidence. Key capabilities include voice recording, AI analysis, trend visualization, comprehensive reporting aligned with conditional Tāmaki Ora principles, Google Calendar integration, and a mobile-friendly PWA. The project aims to deliver detailed insights into engagement, delivery, and impact for mentorship organizations and individuals.
+ReserveTMK Digital is a full-stack web application designed to track and manage mentorship relationships, focusing on measuring mentee growth. It provides tools for contact management, logging interactions, and using AI to analyze conversation transcripts for insights into mindset, skill, and confidence. Key capabilities include voice recording, AI analysis, trend visualization, comprehensive reporting aligned with conditional Tāmaki Ora principles, Google Calendar integration, and a mobile-friendly PWA. The project aims to deliver detailed insights into engagement, delivery, and impact for mentorship organizations and individuals.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.

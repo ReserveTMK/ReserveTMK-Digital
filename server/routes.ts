@@ -1785,12 +1785,12 @@ export async function registerRoutes(
         const profile = await storage.getMentorProfile(mentorId);
         if (!profile) return res.status(404).json({ message: "Not found" });
         const nameParts = profile.name.split(' ');
-        return res.json({ firstName: nameParts[0], lastName: nameParts.slice(1).join(' ') || '', orgName: 'ReserveTMK' });
+        return res.json({ firstName: nameParts[0], lastName: nameParts.slice(1).join(' ') || '', orgName: 'ReserveTMK Digital' });
       }
       const { users } = await import("@shared/schema");
       const result = await db.select().from(users).where(eq(users.id, userId));
       if (result.length === 0) return res.status(404).json({ message: "Not found" });
-      res.json({ firstName: result[0].firstName, lastName: result[0].lastName, orgName: 'ReserveTMK' });
+      res.json({ firstName: result[0].firstName, lastName: result[0].lastName, orgName: 'ReserveTMK Digital' });
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch info" });
     }
@@ -2868,7 +2868,7 @@ export async function registerRoutes(
         `- ${c.name}${c.businessName ? ` (${c.businessName})` : ''} [ID: ${c.id}]`
       ).join('\n');
 
-      const prompt = `You are an impact analysis system for Reserve Tāmaki, a Māori and Pasifika entrepreneurship hub in Aotearoa New Zealand. Analyze the following debrief transcript and extract structured data for both community impact tracking and operational management.
+      const prompt = `You are an impact analysis system for ReserveTMK Digital, a Māori and Pasifika entrepreneurship hub in Aotearoa New Zealand. Analyze the following debrief transcript and extract structured data for both community impact tracking and operational management.
 
 IMPACT TAXONOMY (use these categories for tagging):
 ${taxonomyContext || `- Hub Engagement: Track facility usage and programme participation metrics
@@ -3068,7 +3068,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         return `"${k.phrase}" → ${tax?.name || 'unknown'}`;
       }).join('\n');
 
-      const tagPrompt = `You are an impact analysis system for Reserve Tāmaki, a Māori and Pasifika entrepreneurship hub in Aotearoa New Zealand. Analyze the following debrief transcript and extract impact tags ONLY.
+      const tagPrompt = `You are an impact analysis system for ReserveTMK Digital, a Māori and Pasifika entrepreneurship hub in Aotearoa New Zealand. Analyze the following debrief transcript and extract impact tags ONLY.
 
 IMPACT TAXONOMY (use these categories for tagging):
 ${taxonomyContext || `- Hub Engagement: Track facility usage and programme participation metrics
@@ -10322,7 +10322,7 @@ Return a JSON array:
       let profile = await storage.getOrganisationProfile(userId);
       if (!profile) {
         const defaults = {
-          mission: "ReserveTMK is a Māori-centred innovation and coworking hub in Glen Innes, serving the people of the Tāmaki rohe. We exist as infrastructure for Māori and Pacific economic and community self-determination — not a programme delivered to people, but a place people use to build their own futures.",
+          mission: "ReserveTMK Digital is a Māori-centred innovation and coworking hub in Glen Innes, serving the people of the Tāmaki rohe. We exist as infrastructure for Māori and Pacific economic and community self-determination — not a programme delivered to people, but a place people use to build their own futures.",
           description: "We are part of the GridAKL innovation network — the eastern anchor serving Māori and Pacific peoples' led startups and enterprises in East Auckland. We hold recognised investment from the Auckland Council Māori Outcomes Fund and operate as named infrastructure within Auckland's economic development ecosystem. We serve Māori entrepreneurs, community enterprises, rangatahi and emerging founders, Pacific peoples' led startups, and mana whenua and mātaawaka with whakapapa and community ties to this rohe.",
           focusAreas: ["Māori entrepreneurs", "community enterprises", "rangatahi and emerging founders", "Pacific peoples' led startups", "mana whenua and mātaawaka", "coworking", "innovation"],
           values: "Tino Rangatiratanga — Māori self-determination is at the centre of everything we do. Whanaungatanga — Connection is the core product. Manaakitanga — How people are welcomed matters as much as what they do here. Kaitiakitanga — We hold this space in trust for the community. Ōhanga Māori — Māori economic participation built from the inside out through local enterprise, local networks and local infrastructure. Kotahitanga — We are stronger as a network, acting with one shared purpose across GridAKL, MOF hubs, local boards and partner organisations.",
@@ -10586,7 +10586,7 @@ Notes: ${funder.notes || ""}`;
         ? "\n\nUPLOADED DOCUMENTS:\n" + documentContents.map(d => `--- ${d.name} (${d.type}) ---\n${d.content}`).join("\n\n")
         : "";
 
-      const systemPrompt = `You are an expert in Aotearoa New Zealand community development, Māori and Pasifika outcomes frameworks, and funder relationship management. You help organisations like Reserve Tāmaki build rich funder profiles.
+      const systemPrompt = `You are an expert in Aotearoa New Zealand community development, Māori and Pasifika outcomes frameworks, and funder relationship management. You help organisations like ReserveTMK Digital build rich funder profiles.
 
 Given the organisation context, existing funder information, and any uploaded documents, generate a comprehensive funder profile. Use te reo Māori terms where appropriate and be specific to the funder's actual framework and focus areas.
 
@@ -11185,7 +11185,7 @@ Be specific, practical, and grounded in the actual documents and context provide
 
       const result = await claudeJSON({
         model: "claude-sonnet-4-6",
-        system: `You are a project management assistant for Reserve Tāmaki, a Māori and Pasifika community development organisation in Tāmaki Makaurau (Auckland), Aotearoa New Zealand. You extract actionable tasks from voice debriefs, meeting notes, and freeform text, and organise them into logical groups.
+        system: `You are a project management assistant for ReserveTMK Digital, a Māori and Pasifika community development organisation in Tāmaki Makaurau (Auckland), Aotearoa New Zealand. You extract actionable tasks from voice debriefs, meeting notes, and freeform text, and organise them into logical groups.
 
 You understand Te Reo Māori terms (whānau, rangatahi, kaitiaki, mahi, kaupapa, etc.) and NZ business context.
 

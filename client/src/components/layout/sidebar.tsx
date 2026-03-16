@@ -131,7 +131,7 @@ export function Sidebar() {
             <BrainCircuit className="w-5 h-5 text-white" />
           </div>
           <span className="font-display font-bold text-lg tracking-tight text-white">
-            ReserveTMK
+            ReserveTMK Digital
           </span>
         </Link>
       </div>

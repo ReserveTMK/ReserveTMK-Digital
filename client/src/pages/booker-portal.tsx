@@ -124,7 +124,7 @@ function LoginView({ onSent }: { onSent: () => void }) {
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/30 flex items-center justify-center p-4">
       <Card className="w-full max-w-md p-8">
         <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold" data-testid="heading-booker-login">Reserve Tamaki</h1>
+          <h1 className="text-2xl font-bold" data-testid="heading-booker-login">ReserveTMK Digital</h1>
           <p className="text-sm text-muted-foreground mt-1" data-testid="text-login-subtitle">Venue Hire Portal</p>
         </div>
         <div className="space-y-4">
@@ -268,7 +268,7 @@ function DashboardView({
       <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-6">
         <div>
           <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase" data-testid="text-portal-brand">
-            Reserve Tamaki
+            ReserveTMK Digital
           </p>
           <h1 className="text-2xl font-bold mt-1" data-testid="heading-welcome">
             Welcome{isGroupLink ? `, ${authData.linkedGroupName || booker.organizationName || "Team"}` : `, ${contact?.name || booker.organizationName || "there"}`}
@@ -1171,7 +1171,7 @@ function CalendarView({
           </div>
           <h2 className="text-xl font-bold mb-2" data-testid="heading-booking-confirmed">Venue Hire Request Submitted</h2>
           <p className="text-sm text-muted-foreground mb-4" data-testid="text-booking-confirmed">
-            Your venue hire request has been submitted as an enquiry. The Reserve Tamaki team will review and confirm it shortly.
+            Your venue hire request has been submitted as an enquiry. The ReserveTMK Digital team will review and confirm it shortly.
           </p>
           {allowanceWarning && (
             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3 mb-4 text-sm text-amber-800 dark:text-amber-200" data-testid="text-allowance-warning">
