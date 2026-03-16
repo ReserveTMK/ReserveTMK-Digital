@@ -77,6 +77,14 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    restore: {
+      method: 'POST' as const,
+      path: '/api/contacts/:id/restore' as const,
+      responses: {
+        200: z.object({ message: z.string() }),
+        404: errorSchemas.notFound,
+      },
+    },
   },
   interactions: {
     list: {

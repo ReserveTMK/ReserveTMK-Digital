@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/beautiful-button";
-import { useContacts, useDeleteContact } from "@/hooks/use-contacts";
-import { Plus, Search, Filter, Loader2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, Lightbulb, ChevronRight, Upload, Star, BookUser, Sprout, Leaf, Sun, Ban, Mail } from "lucide-react";
+import { useContacts, useArchiveContact, useRestoreContact } from "@/hooks/use-contacts";
+import { Plus, Search, Filter, Loader2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, Lightbulb, ChevronRight, Upload, Star, BookUser, Sprout, Leaf, Sun, Ban, Mail, Archive, ArchiveRestore } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useState, useMemo, useEffect } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -51,7 +51,8 @@ function getCircleBadge(circle: string | null | undefined) {
 }
 
 export default function Contacts() {
-  const { data: contacts, isLoading } = useContacts();
+  const [showArchived, setShowArchived] = useState(false);
+  const { data: contacts, isLoading } = useContacts(showArchived);
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const [search, setSearch] = useState("");
@@ -99,7 +100,8 @@ export default function Contacts() {
     },
   });
 
-  const deleteContact = useDeleteContact();
+  const archiveContact = useArchiveContact();
+  const restoreContact = useRestoreContact();
 
   const bulkDeleteMutation = useMutation({
     mutationFn: async (contactIds: number[]) => {
@@ -108,7 +110,7 @@ export default function Contacts() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-      toast({ title: "Success", description: `${selectedContacts.size} contact${selectedContacts.size !== 1 ? 's' : ''} deleted successfully` });
+      toast({ title: "Success", description: `${selectedContacts.size} contact${selectedContacts.size !== 1 ? 's' : ''} archived successfully` });
       setSelectedContacts(new Set());
       setBulkDeleteConfirmOpen(false);
     },
@@ -944,23 +946,35 @@ export default function Contacts() {
                 </TabsTrigger>
               </TabsList>
             </Tabs>
-            <div className="flex items-center gap-1 border rounded-lg p-0.5" data-testid="layout-toggle">
+            <div className="flex items-center gap-2">
               <Button
-                variant={layoutView === "list" ? "secondary" : "ghost"}
+                variant={showArchived ? "secondary" : "ghost"}
                 size="sm"
-                onClick={() => setLayoutView("list")}
-                data-testid="button-layout-list"
+                onClick={() => setShowArchived(!showArchived)}
+                data-testid="button-toggle-archived"
+                title={showArchived ? "Showing all including archived" : "Show archived contacts"}
               >
-                <List className="w-4 h-4" />
+                <Archive className="w-4 h-4" />
+                {showArchived && <span className="ml-1 text-xs">Archived</span>}
               </Button>
-              <Button
-                variant={layoutView === "table" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setLayoutView("table")}
-                data-testid="button-layout-table"
-              >
-                <Table className="w-4 h-4" />
-              </Button>
+              <div className="flex items-center gap-1 border rounded-lg p-0.5" data-testid="layout-toggle">
+                <Button
+                  variant={layoutView === "list" ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setLayoutView("list")}
+                  data-testid="button-layout-list"
+                >
+                  <List className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant={layoutView === "table" ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setLayoutView("table")}
+                  data-testid="button-layout-table"
+                >
+                  <Table className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -1103,8 +1117,9 @@ export default function Contacts() {
                     </div>
                     
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-sm font-bold font-display text-foreground truncate group-hover:text-primary transition-colors" data-testid={`text-name-${contact.id}`}>
+                      <h3 className={`text-sm font-bold font-display truncate group-hover:text-primary transition-colors ${contact.isArchived ? 'text-muted-foreground' : 'text-foreground'}`} data-testid={`text-name-${contact.id}`}>
                         {contact.name}
+                        {contact.isArchived && <Badge variant="outline" className="ml-2 text-[10px] h-4 px-1.5 bg-muted text-muted-foreground" data-testid={`badge-archived-${contact.id}`}>Archived</Badge>}
                       </h3>
                       {(contact.linkedGroupName || contact.businessName) && (
                         <span className="flex items-center gap-1 text-xs text-muted-foreground truncate" data-testid={`text-group-link-${contact.id}`}>
@@ -1233,14 +1248,24 @@ export default function Contacts() {
                           Unlink from {contact.linkedGroupName}
                         </DropdownMenuItem>
                       )}
-                      <DropdownMenuItem
-                        className="text-destructive focus:text-destructive"
-                        onClick={() => deleteContact.mutate(contact.id)}
-                        data-testid={`menu-delete-${contact.id}`}
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Delete Contact
-                      </DropdownMenuItem>
+                      {contact.isArchived ? (
+                        <DropdownMenuItem
+                          onClick={() => restoreContact.mutate(contact.id)}
+                          data-testid={`menu-restore-${contact.id}`}
+                        >
+                          <ArchiveRestore className="w-4 h-4 mr-2" />
+                          Restore Contact
+                        </DropdownMenuItem>
+                      ) : (
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => archiveContact.mutate(contact.id)}
+                          data-testid={`menu-archive-${contact.id}`}
+                        >
+                          <Archive className="w-4 h-4 mr-2" />
+                          Archive Contact
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>

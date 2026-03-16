@@ -212,10 +212,12 @@ import { authStorage, type IAuthStorage } from "./replit_integrations/auth/stora
 
 export interface IStorage {
   // Contacts
-  getContacts(userId: string): Promise<Contact[]>;
+  getContacts(userId: string, includeArchived?: boolean): Promise<Contact[]>;
   getContact(id: number): Promise<Contact | undefined>;
   createContact(contact: InsertContact): Promise<Contact>;
   updateContact(id: number, updates: UpdateContactRequest): Promise<Contact>;
+  archiveContact(id: number): Promise<void>;
+  restoreContact(id: number): Promise<void>;
   deleteContact(id: number): Promise<void>;
 
   // Interactions
@@ -623,7 +625,7 @@ export class DatabaseStorage implements IStorage {
   public auth = authStorage;
 
   // Contacts
-  async getContacts(userId: string): Promise<any[]> {
+  async getContacts(userId: string, includeArchived: boolean = false): Promise<any[]> {
     const interactionStats = db
       .select({
         contactId: interactions.contactId,
@@ -664,7 +666,10 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(interactionStats, eq(contacts.id, interactionStats.contactId))
       .leftJoin(attendanceStats, eq(contacts.id, attendanceStats.contactId))
       .leftJoin(debriefStats, eq(contacts.id, debriefStats.contactId))
-      .where(eq(contacts.userId, userId))
+      .where(includeArchived 
+        ? eq(contacts.userId, userId)
+        : and(eq(contacts.userId, userId), eq(contacts.isArchived, false))
+      )
       .orderBy(desc(sql`COALESCE(${contacts.lastActiveDate}, ${interactionStats.lastInteractionDate}, ${contacts.createdAt})`));
 
     const allMemberships = await db
@@ -707,6 +712,14 @@ export class DatabaseStorage implements IStorage {
       .where(eq(contacts.id, id))
       .returning();
     return contact;
+  }
+
+  async archiveContact(id: number): Promise<void> {
+    await db.update(contacts).set({ isArchived: true, updatedAt: new Date() }).where(eq(contacts.id, id));
+  }
+
+  async restoreContact(id: number): Promise<void> {
+    await db.update(contacts).set({ isArchived: false, updatedAt: new Date() }).where(eq(contacts.id, id));
   }
 
   async deleteContact(id: number): Promise<void> {
@@ -795,7 +808,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteMeeting(id: number): Promise<void> {
-    await db.delete(meetings).where(eq(meetings.id, id));
+    await db.transaction(async (tx) => {
+      const [meeting] = await tx.select().from(meetings).where(eq(meetings.id, id));
+      if (meeting?.interactionId) {
+        await tx.delete(interactions).where(eq(interactions.id, meeting.interactionId));
+      }
+      await tx.delete(meetings).where(eq(meetings.id, id));
+    });
   }
 
   // Mentor Availability
@@ -911,7 +930,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteEvent(id: number): Promise<void> {
-    await db.delete(events).where(eq(events.id, id));
+    await db.transaction(async (tx) => {
+      await tx.delete(eventAttendance).where(eq(eventAttendance.eventId, id));
+      await tx.delete(programmeEvents).where(eq(programmeEvents.eventId, id));
+      await tx.delete(events).where(eq(events.id, id));
+    });
   }
 
   // Event Attendance
@@ -966,7 +989,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteImpactLog(id: number): Promise<void> {
-    await db.delete(impactLogs).where(eq(impactLogs.id, id));
+    await db.transaction(async (tx) => {
+      await tx.delete(impactLogContacts).where(eq(impactLogContacts.impactLogId, id));
+      await tx.delete(impactTags).where(eq(impactTags.impactLogId, id));
+      await tx.delete(actionItems).where(eq(actionItems.impactLogId, id));
+      await tx.delete(impactLogGroups).where(eq(impactLogGroups.impactLogId, id));
+      await tx.delete(impactLogs).where(eq(impactLogs.id, id));
+    });
   }
 
   // Impact Log Contacts
@@ -1329,7 +1358,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteBooking(id: number): Promise<void> {
-    await db.delete(bookings).where(eq(bookings.id, id));
+    await db.transaction(async (tx) => {
+      const linkedEvents = await tx.select({ id: events.id }).from(events).where(eq(events.linkedBookingId, id));
+      for (const evt of linkedEvents) {
+        await tx.delete(eventAttendance).where(eq(eventAttendance.eventId, evt.id));
+        await tx.delete(programmeEvents).where(eq(programmeEvents.eventId, evt.id));
+      }
+      await tx.delete(events).where(eq(events.linkedBookingId, id));
+      await tx.delete(surveys).where(and(eq(surveys.surveyType, "post_booking"), eq(surveys.relatedId, id)));
+      await tx.delete(bookings).where(eq(bookings.id, id));
+    });
   }
 
   async getBookingPricingDefaults(userId: string): Promise<BookingPricingDefaults | undefined> {

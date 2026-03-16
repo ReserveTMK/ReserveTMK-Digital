@@ -243,9 +243,9 @@ export async function registerRoutes(
   // === Contacts API ===
 
   app.get(api.contacts.list.path, isAuthenticated, async (req, res) => {
-    // req.user is populated by Replit Auth (passport)
-    const userId = (req.user as any).claims.sub; 
-    const contacts = await storage.getContacts(userId);
+    const userId = (req.user as any).claims.sub;
+    const includeArchived = req.query.includeArchived === "true";
+    const contacts = await storage.getContacts(userId, includeArchived);
     res.json(contacts);
   });
 
@@ -450,8 +450,18 @@ export async function registerRoutes(
     if (!existing) return res.status(404).json({ message: "Contact not found" });
     if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
 
-    await storage.deleteContact(id);
+    await storage.archiveContact(id);
     res.status(204).send();
+  });
+
+  app.post(api.contacts.restore.path, isAuthenticated, async (req, res) => {
+    const id = parseId(req.params.id);
+    const existing = await storage.getContact(id);
+    if (!existing) return res.status(404).json({ message: "Contact not found" });
+    if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+
+    await storage.restoreContact(id);
+    res.json({ message: "Contact restored" });
   });
 
   app.post("/api/mentoring-relationships/backfill-from-support-type", isAuthenticated, async (req, res) => {
@@ -8503,15 +8513,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       for (const id of contactIds) {
         if (!ownedIds.has(id)) continue;
         try {
-          const memberships = await storage.getContactGroups(id);
-          for (const m of memberships) {
-            await storage.removeGroupMember(m.id);
-          }
-          const contactInteractions = await storage.getInteractions(id);
-          for (const i of contactInteractions) {
-            await storage.deleteInteraction(i.id);
-          }
-          await storage.deleteContact(id);
+          await storage.archiveContact(id);
           deleted++;
         } catch (err) {
           console.error(`Failed to delete contact ${id}:`, err);
@@ -8998,7 +9000,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       for (const id of contactIds) {
         const contact = await storage.getContact(id);
         if (contact && contact.userId === userId) {
-          await storage.deleteContact(id);
+          await storage.archiveContact(id);
           deleted++;
         }
       }

@@ -103,6 +103,7 @@ export const contacts = pgTable("contacts", {
   connectionStrength: text("connection_strength"),
   relationshipCircle: text("relationship_circle"),
   relationshipCircleOverride: boolean("relationship_circle_override").default(false),
+  isArchived: boolean("is_archived").default(false),
   importSource: text("import_source"),
   lastActiveDate: timestamp("last_active_date"),
   movedToCommunityAt: timestamp("moved_to_community_at"),

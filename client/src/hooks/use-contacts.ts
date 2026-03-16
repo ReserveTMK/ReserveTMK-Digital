@@ -2,12 +2,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
 import { useToast } from "@/hooks/use-toast";
 
-// GET /api/contacts
-export function useContacts() {
+export function useContacts(includeArchived: boolean = false) {
   return useQuery({
-    queryKey: [api.contacts.list.path],
+    queryKey: [api.contacts.list.path, { includeArchived }],
     queryFn: async () => {
-      const res = await fetch(api.contacts.list.path, { credentials: "include" });
+      const url = includeArchived ? `${api.contacts.list.path}?includeArchived=true` : api.contacts.list.path;
+      const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch contacts");
       return api.contacts.list.responses[200].parse(await res.json());
     },
@@ -91,8 +91,7 @@ export function useUpdateContact() {
   });
 }
 
-// DELETE /api/contacts/:id
-export function useDeleteContact() {
+export function useArchiveContact() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -100,11 +99,34 @@ export function useDeleteContact() {
     mutationFn: async (id: number) => {
       const url = buildUrl(api.contacts.delete.path, { id });
       const res = await fetch(url, { method: api.contacts.delete.method, credentials: "include" });
-      if (!res.ok) throw new Error("Failed to delete contact");
+      if (!res.ok) throw new Error("Failed to archive contact");
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.contacts.list.path] });
-      toast({ title: "Success", description: "Contact deleted successfully" });
+      queryClient.invalidateQueries({ queryKey: [api.contacts.list.path], exact: false });
+      toast({ title: "Success", description: "Contact archived successfully" });
+    },
+    onError: (error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+}
+
+export function useRestoreContact() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const url = buildUrl(api.contacts.restore.path, { id });
+      const res = await fetch(url, {
+        method: api.contacts.restore.method,
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to restore contact");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.contacts.list.path], exact: false });
+      toast({ title: "Success", description: "Contact restored successfully" });
     },
     onError: (error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
