@@ -446,7 +446,7 @@ async function finalizeImport(
   for (const org of orgEntries) {
     const aiResult = orgNames[org.domain];
     const orgName = aiResult?.name || org.suggestedName;
-    const aiType = (aiResult?.type && (GROUP_TYPES as readonly string[]).includes(aiResult.type) ? aiResult.type : 'Uncategorised') as typeof GROUP_TYPES[number];
+    const suggestedType = aiResult?.type && (GROUP_TYPES as readonly string[]).includes(aiResult.type) ? aiResult.type : null;
     const tier = determineTier(org.frequency);
 
     if (existingGroupNameSet.has(orgName.toLowerCase())) {
@@ -460,12 +460,13 @@ async function finalizeImport(
       const newGroup = await storage.createGroup({
         userId,
         name: orgName,
-        type: aiType,
+        type: 'Uncategorised',
         engagementLevel: 'Active',
         contactEmail: org.memberEmails[0],
         website: org.domain,
         relationshipTier: tier,
         importSource: 'gmail',
+        notes: suggestedType && suggestedType !== 'Uncategorised' ? `AI suggested type: ${suggestedType}` : undefined,
       });
       createdGroupIds.set(org.domain, newGroup.id);
       existingGroupNameSet.set(orgName.toLowerCase(), newGroup);

@@ -96,7 +96,6 @@ export default function Groups() {
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
   const [bulkTypeOpen, setBulkTypeOpen] = useState(false);
   const [bulkTypeValue, setBulkTypeValue] = useState<string>("");
-  const [bulkTypeOther, setBulkTypeOther] = useState<string>("");
   const [vipReasonDialogOpen, setVipReasonDialogOpen] = useState(false);
   const [vipReasonGroupId, setVipReasonGroupId] = useState<number | null>(null);
   const [vipReasonText, setVipReasonText] = useState("");
@@ -152,7 +151,7 @@ export default function Groups() {
       setSelectedGroups(new Set());
       setBulkTypeOpen(false);
       setBulkTypeValue("");
-      setBulkTypeOther("");
+
     },
     onError: (error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -869,14 +868,14 @@ export default function Groups() {
           </DialogContent>
         </Dialog>
 
-        <Dialog open={bulkTypeOpen} onOpenChange={(v) => { setBulkTypeOpen(v); if (!v) { setBulkTypeValue(""); setBulkTypeOther(""); } }}>
+        <Dialog open={bulkTypeOpen} onOpenChange={(v) => { setBulkTypeOpen(v); if (!v) setBulkTypeValue(""); }}>
           <DialogContent className="sm:max-w-[400px]" data-testid="dialog-bulk-set-type">
             <DialogHeader>
               <DialogTitle data-testid="text-bulk-type-title">Set Organization Type for {selectedGroups.size} group(s)</DialogTitle>
               <DialogDescription className="sr-only">Set organization type for selected groups</DialogDescription>
             </DialogHeader>
             <div className="space-y-3">
-              <Select value={bulkTypeValue} onValueChange={(v) => { setBulkTypeValue(v); if (v !== "Other") setBulkTypeOther(""); }}>
+              <Select value={bulkTypeValue} onValueChange={setBulkTypeValue}>
                 <SelectTrigger data-testid="select-bulk-type">
                   <SelectValue placeholder="Select type..." />
                 </SelectTrigger>
@@ -888,7 +887,7 @@ export default function Groups() {
               </Select>
             </div>
             <DialogFooter className="gap-2">
-              <Button variant="outline" onClick={() => { setBulkTypeOpen(false); setBulkTypeValue(""); setBulkTypeOther(""); }} data-testid="button-cancel-bulk-type">
+              <Button variant="outline" onClick={() => { setBulkTypeOpen(false); setBulkTypeValue(""); }} data-testid="button-cancel-bulk-type">
                 Cancel
               </Button>
               <Button
@@ -1538,7 +1537,7 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Type</Label>
-              <Select value={type} onValueChange={(v) => { setType(v); if (v !== "Other") setOrganizationTypeOther(""); }}>
+              <Select value={type} onValueChange={setType}>
                 <SelectTrigger data-testid="select-group-type">
                   <SelectValue />
                 </SelectTrigger>
