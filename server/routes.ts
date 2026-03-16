@@ -2456,8 +2456,56 @@ export async function registerRoutes(
         if (!allowed.includes(input.status)) {
           return res.status(400).json({ message: `Cannot transition from '${currentStatus}' to '${input.status}'` });
         }
+        if (input.status === 'confirmed') {
+          input.confirmedAt = new Date();
+        }
       }
       const updated = await storage.updateImpactLog(id, input);
+
+      if (input.status === 'confirmed' && input.reviewedData) {
+        const userId = (req.user as any).claims.sub;
+        const reviewed = input.reviewedData as Record<string, unknown>;
+        const actionItemsArr = Array.isArray(reviewed.actionItems) ? reviewed.actionItems : [];
+        const communityArr = Array.isArray(reviewed.communityActions) ? reviewed.communityActions : [];
+        const operationalArr = Array.isArray(reviewed.operationalActions) ? reviewed.operationalActions : [];
+        const allActions: Array<{ title: string; category: string }> = [
+          ...actionItemsArr.map((a: Record<string, unknown>) => ({
+            title: String(a.title || a.task || 'Untitled action'),
+            category: 'action',
+          })),
+          ...communityArr.map((a: Record<string, unknown>) => ({
+            title: String(a.task || a.title || 'Untitled action'),
+            category: 'community',
+          })),
+          ...operationalArr.map((a: Record<string, unknown>) => ({
+            title: String(a.task || a.title || 'Untitled action'),
+            category: 'operational',
+          })),
+        ];
+        const actionErrors: string[] = [];
+        for (const action of allActions) {
+          try {
+            await storage.createActionItem({
+              userId,
+              impactLogId: id,
+              title: action.title,
+              description: `[${action.category}]`,
+              status: 'pending',
+            });
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            actionErrors.push(msg);
+          }
+        }
+        if (actionErrors.length > 0) {
+          console.error(`Failed to persist ${actionErrors.length} action item(s) for impact log ${id}:`, actionErrors);
+          return res.status(207).json({
+            ...updated,
+            _warnings: [`${actionErrors.length} action item(s) could not be saved`],
+          });
+        }
+      }
+
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -2518,6 +2566,11 @@ export async function registerRoutes(
 
   app.delete(api.impactLogs.contacts.remove.path, isAuthenticated, async (req, res) => {
     const id = parseId(req.params.id);
+    const userId = (req.user as any).claims.sub;
+    const contactLink = await db.select().from(impactLogContacts).where(eq(impactLogContacts.id, id));
+    if (!contactLink.length) return res.status(404).json({ message: "Contact link not found" });
+    const log = await storage.getImpactLog(contactLink[0].impactLogId);
+    if (!log || log.userId !== userId) return res.status(403).json({ message: "Forbidden" });
     await storage.removeImpactLogContact(id);
     res.status(204).send();
   });
@@ -2557,6 +2610,11 @@ export async function registerRoutes(
 
   app.delete(api.impactLogs.tags.remove.path, isAuthenticated, async (req, res) => {
     const id = parseId(req.params.id);
+    const userId = (req.user as any).claims.sub;
+    const [tag] = await db.select().from(impactTags).where(eq(impactTags.id, id));
+    if (!tag) return res.status(404).json({ message: "Impact tag not found" });
+    const log = await storage.getImpactLog(tag.impactLogId);
+    if (!log || log.userId !== userId) return res.status(403).json({ message: "Forbidden" });
     await storage.removeImpactTag(id);
     res.status(204).send();
   });
@@ -3067,90 +3125,6 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     }
   });
 
-  app.get("/api/impact-logs/:id/tags", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      const logId = parseId(req.params.id);
-      if (isNaN(logId)) return res.status(400).json({ message: "Invalid log ID" });
-      const log = await storage.getImpactLog(logId);
-      if (!log || log.userId !== userId) return res.status(404).json({ message: "Not found" });
-      const tags = await storage.getImpactTags(logId);
-      res.json(tags);
-    } catch (error) {
-      console.error("Get impact tags error:", error);
-      res.status(500).json({ message: "Failed to get impact tags" });
-    }
-  });
-
-  app.post("/api/impact-logs/:id/tags", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      const logId = parseId(req.params.id);
-      if (isNaN(logId)) return res.status(400).json({ message: "Invalid log ID" });
-      const log = await storage.getImpactLog(logId);
-      if (!log || log.userId !== userId) return res.status(404).json({ message: "Not found" });
-      const { taxonomyId, confidence, notes } = req.body;
-      if (!taxonomyId) return res.status(400).json({ message: "taxonomyId required" });
-      const userTaxonomy = await storage.getTaxonomy(userId);
-      if (!userTaxonomy.find(t => t.id === taxonomyId)) {
-        return res.status(403).json({ message: "Taxonomy category not found" });
-      }
-      const tag = await storage.addImpactTag({
-        impactLogId: logId,
-        taxonomyId,
-        confidence: confidence || 50,
-        notes: notes || null,
-        evidence: notes || null,
-      });
-      res.status(201).json(tag);
-    } catch (error) {
-      console.error("Add impact tag error:", error);
-      res.status(500).json({ message: "Failed to add impact tag" });
-    }
-  });
-
-  app.post("/api/impact-logs/:id/contacts", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      const logId = parseId(req.params.id);
-      if (isNaN(logId)) return res.status(400).json({ message: "Invalid log ID" });
-      const log = await storage.getImpactLog(logId);
-      if (!log || log.userId !== userId) return res.status(404).json({ message: "Not found" });
-      const { contactId, role } = req.body;
-      if (!contactId) return res.status(400).json({ message: "contactId required" });
-      const contact = await storage.getContact(contactId);
-      if (!contact || contact.userId !== userId) {
-        return res.status(403).json({ message: "Contact not found" });
-      }
-      await storage.addImpactLogContact({ impactLogId: logId, contactId, role: role || "mentioned" });
-      res.status(201).json({ success: true });
-    } catch (error) {
-      console.error("Add impact log contact error:", error);
-      res.status(500).json({ message: "Failed to add contact" });
-    }
-  });
-
-  app.delete("/api/impact-tags/:tagId", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      const tagId = parseId(req.params.tagId);
-      if (isNaN(tagId)) return res.status(400).json({ message: "Invalid tag ID" });
-
-      const [tag] = await db.select().from(impactTags).where(eq(impactTags.id, tagId));
-      if (!tag) return res.status(404).json({ message: "Impact tag not found" });
-
-      const log = await storage.getImpactLog(tag.impactLogId);
-      if (!log || log.userId !== userId) {
-        return res.status(403).json({ message: "Forbidden" });
-      }
-
-      await storage.removeImpactTag(tagId);
-      res.status(204).send();
-    } catch (error) {
-      console.error("Delete impact tag error:", error);
-      res.status(500).json({ message: "Failed to delete impact tag" });
-    }
-  });
 
   app.post("/api/impact-transcribe", isAuthenticated, async (req, res) => {
     try {
@@ -7492,12 +7466,15 @@ Return a JSON object with this exact structure:
 
       const allTaxonomy = await storage.getTaxonomy(userId);
       const taxonomyCounts: Record<string, number> = {};
-      confirmedDebriefs.forEach((d: any) => {
-        const tags = d.taxonomyTags || [];
-        tags.forEach((tag: string) => {
-          taxonomyCounts[tag] = (taxonomyCounts[tag] || 0) + 1;
-        });
-      });
+      for (const d of confirmedDebriefs) {
+        const tags = await storage.getImpactTags(d.id);
+        for (const tag of tags) {
+          const tax = allTaxonomy.find((t: any) => t.id === tag.taxonomyId);
+          if (tax) {
+            taxonomyCounts[tax.name] = (taxonomyCounts[tax.name] || 0) + 1;
+          }
+        }
+      }
       const topThemes = Object.entries(taxonomyCounts)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5)
@@ -7512,11 +7489,11 @@ Return a JSON object with this exact structure:
         : null;
 
       const outstandingDebriefs = (allDebriefs as any[]).filter((d: any) => {
-        if (d.status !== "pending" && d.status !== "draft") return false;
+        if (d.status !== "pending_review" && d.status !== "draft") return false;
         const created = new Date(d.createdAt);
         return created >= weekStart && created <= weekEnd;
       }).length;
-      const backlogDebriefs = (allDebriefs as any[]).filter((d: any) => d.status === "pending" || d.status === "draft").length;
+      const backlogDebriefs = (allDebriefs as any[]).filter((d: any) => d.status === "pending_review" || d.status === "draft").length;
 
       const allEvents = await storage.getEvents(userId);
       const nextWeekDate = new Date(weekEnd);
@@ -7629,12 +7606,15 @@ Return a JSON object with this exact structure:
 
       const allTaxonomy = await storage.getTaxonomy(userId);
       const taxonomyCounts: Record<string, number> = {};
-      confirmedDebriefs.forEach((d: any) => {
-        const tags = d.taxonomyTags || [];
-        tags.forEach((tag: string) => {
-          taxonomyCounts[tag] = (taxonomyCounts[tag] || 0) + 1;
-        });
-      });
+      for (const d of confirmedDebriefs) {
+        const tags = await storage.getImpactTags(d.id);
+        for (const tag of tags) {
+          const tax = allTaxonomy.find((t: any) => t.id === tag.taxonomyId);
+          if (tax) {
+            taxonomyCounts[tax.name] = (taxonomyCounts[tax.name] || 0) + 1;
+          }
+        }
+      }
       const topThemes = Object.entries(taxonomyCounts)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5)
@@ -7649,11 +7629,11 @@ Return a JSON object with this exact structure:
         : null;
 
       const outstandingDebriefs = (allDebriefs as any[]).filter((d: any) => {
-        if (d.status !== "pending" && d.status !== "draft") return false;
+        if (d.status !== "pending_review" && d.status !== "draft") return false;
         const created = new Date(d.createdAt);
         return created >= weekStart && created <= weekEnd;
       }).length;
-      const backlogDebriefs = (allDebriefs as any[]).filter((d: any) => d.status === "pending" || d.status === "draft").length;
+      const backlogDebriefs = (allDebriefs as any[]).filter((d: any) => d.status === "pending_review" || d.status === "draft").length;
 
       const allEvents = await storage.getEvents(userId);
       const nextWeekDate = new Date(weekEnd);

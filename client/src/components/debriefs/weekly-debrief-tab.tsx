@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Loader2,
   Mic,
@@ -119,6 +119,13 @@ function WeeklyDebriefCard({ debrief }: { debrief: WeeklyDebrief }) {
   const summaryMediaRecorderRef = useRef<MediaRecorder | null>(null);
   const summaryChunksRef = useRef<Blob[]>([]);
   const summaryTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (summaryTimerRef.current) clearInterval(summaryTimerRef.current);
+      if (summaryAudioUrl) URL.revokeObjectURL(summaryAudioUrl);
+    };
+  }, [summaryAudioUrl]);
 
   const startSummaryRecording = async () => {
     try {

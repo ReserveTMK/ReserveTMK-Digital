@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Loader2,
   Mic,
@@ -48,12 +48,20 @@ export function ManualUpdateDialog({ open, onOpenChange }: { open: boolean; onOp
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+    };
+  }, [audioUrl]);
+
   const resetState = () => {
     setTitle("");
     setNotes("");
     setSelectedContacts([]);
     setIsSaving(false);
     setInputMode("text");
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioBlob(null);
     setAudioUrl(null);
     setIsRecording(false);
@@ -262,7 +270,7 @@ export function ManualUpdateDialog({ open, onOpenChange }: { open: boolean; onOp
                   <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border border-border">
                     <Play className="w-5 h-5 text-muted-foreground shrink-0" />
                     <audio controls src={audioUrl || undefined} className="flex-1 h-8" data-testid="audio-manual-playback" />
-                    <Button variant="ghost" size="icon" onClick={() => { setAudioBlob(null); setAudioUrl(null); setNotes(""); }}>
+                    <Button variant="ghost" size="icon" onClick={() => { if (audioUrl) URL.revokeObjectURL(audioUrl); setAudioBlob(null); setAudioUrl(null); setNotes(""); }}>
                       <Trash2 className="w-4 h-4" />
                     </Button>
                   </div>

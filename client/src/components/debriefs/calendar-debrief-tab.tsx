@@ -459,11 +459,19 @@ function ReconcileDialog({ event, open, onClose }: { event: QueueItem | null; op
       setDebriefTranscript("");
       setStep("input");
       setInputMode("record");
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
       setAudioBlob(null);
       setAudioUrl(null);
       setCreatedId(null);
     }
   }, [event]);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+    };
+  }, [audioUrl]);
 
   const startRecording = async () => {
     try {
@@ -628,7 +636,7 @@ function ReconcileDialog({ event, open, onClose }: { event: QueueItem | null; op
                     <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border border-border">
                       <Play className="w-5 h-5 text-muted-foreground shrink-0" />
                       <audio controls src={audioUrl || undefined} className="flex-1 h-8" data-testid="audio-reconcile-playback" />
-                      <Button variant="ghost" size="icon" onClick={() => { setAudioBlob(null); setAudioUrl(null); setDebriefTranscript(""); }}>
+                      <Button variant="ghost" size="icon" onClick={() => { if (audioUrl) URL.revokeObjectURL(audioUrl); setAudioBlob(null); setAudioUrl(null); setDebriefTranscript(""); }}>
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>

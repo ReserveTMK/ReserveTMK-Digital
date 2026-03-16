@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { useLocation } from "wouter";
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import {
   Loader2,
   Mic,
@@ -49,6 +49,7 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
     setActiveTab("record");
     setIsRecording(false);
     setRecordingTime(0);
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioBlob(null);
     setAudioUrl(null);
     setIsTranscribing(false);
@@ -57,7 +58,15 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
     setTranscriptionFailed(false);
     chunksRef.current = [];
     if (timerRef.current) clearInterval(timerRef.current);
-  }, []);
+  }, [audioUrl]);
+
+  useEffect(() => {
+    const currentAudioUrl = audioUrl;
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (currentAudioUrl) URL.revokeObjectURL(currentAudioUrl);
+    };
+  }, [audioUrl]);
 
   const startRecording = async () => {
     try {
@@ -275,7 +284,7 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => { setAudioBlob(null); setAudioUrl(null); setTranscriptionFailed(false); }}
+                      onClick={() => { if (audioUrl) URL.revokeObjectURL(audioUrl); setAudioBlob(null); setAudioUrl(null); setTranscriptionFailed(false); }}
                       data-testid="button-discard-recording"
                     >
                       <Trash2 className="w-4 h-4" />

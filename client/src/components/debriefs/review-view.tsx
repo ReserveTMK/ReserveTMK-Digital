@@ -94,7 +94,7 @@ export function ReviewView({ id }: { id: number }) {
   const [sentiment, setSentiment] = useState("neutral");
   const [milestones, setMilestones] = useState<string[]>([]);
   const [newMilestone, setNewMilestone] = useState("");
-  const [funderTags, setFunderTags] = useState<string[]>(impactLog?.funderTags || []);
+  const [funderTags, setFunderTags] = useState<string[]>([]);
   const [funderTagInput, setFunderTagInput] = useState("");
   const [actionItemsList, setActionItemsList] = useState<any[]>([]);
   const [newAction, setNewAction] = useState({ title: "", owner: "", priority: "medium" });
@@ -361,7 +361,8 @@ export function ReviewView({ id }: { id: number }) {
   };
 
   const hasTranscriptPlaceholder = impactLog?.transcript === "(Audio saved - transcription pending)";
-  const needsRecording = impactLog && impactLog.status === "draft" && (!impactLog.transcript || hasTranscriptPlaceholder) && !extraction;
+  const isManualUpdate = impactLog?.type === "manual_update";
+  const needsRecording = impactLog && impactLog.status === "draft" && (!impactLog.transcript || hasTranscriptPlaceholder) && !extraction && !isManualUpdate;
 
   useEffect(() => {
     if (fromQueue && impactLog && impactLog.status === "draft" && impactLog.transcript && !extraction && !autoAnalyzeTriggered && !isAnalyzing) {
@@ -389,6 +390,23 @@ export function ReviewView({ id }: { id: number }) {
       })();
     }
   }, [fromQueue, impactLog, extraction, autoAnalyzeTriggered, isAnalyzing]);
+
+  useEffect(() => {
+    if (impactLog && !extraction && isManualUpdate && !initialized && savedTags !== undefined) {
+      setSummary(impactLog.summary || impactLog.transcript || "");
+      setSentiment(impactLog.sentiment || "neutral");
+      setMilestones(impactLog.milestones || []);
+      setImpactTags([]);
+      setPeople([]);
+      setMetrics({});
+      setReflections({ wins: [], concerns: [], learnings: [] });
+      setActionItemsList([]);
+      setCommunityActions([]);
+      setOperationalActions([]);
+      setFunderTags(impactLog.funderTags || []);
+      setInitialized(true);
+    }
+  }, [impactLog, extraction, isManualUpdate, initialized, savedTags]);
 
   useEffect(() => {
     if (impactLog && extraction && !initialized && savedTags !== undefined) {
@@ -447,9 +465,19 @@ export function ReviewView({ id }: { id: number }) {
         }
       }
 
+      setFunderTags(impactLog.funderTags || []);
       setInitialized(true);
     }
   }, [impactLog, extraction, initialized, savedTags, taxonomyCategories]);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (followUpTimerRef.current) clearInterval(followUpTimerRef.current);
+      if (audioUrl && audioUrl.startsWith('blob:')) URL.revokeObjectURL(audioUrl);
+      if (followUpAudioUrl && followUpAudioUrl.startsWith('blob:')) URL.revokeObjectURL(followUpAudioUrl);
+    };
+  }, [audioUrl, followUpAudioUrl]);
 
   const handleSave = async (status: string) => {
     const reviewedData = {
@@ -477,6 +505,7 @@ export function ReviewView({ id }: { id: number }) {
       });
 
       if (status === "confirmed") {
+        const linkErrors: string[] = [];
         for (const person of people) {
           if (person.contactId) {
             const role = person.section === "primary" || (!person.section && ["primary", "mentor", "mentee"].includes(person.role)) ? "primary" : "mentioned";
@@ -486,7 +515,9 @@ export function ReviewView({ id }: { id: number }) {
                 contactId: person.contactId,
                 role,
               });
-            } catch {}
+            } catch (e: any) {
+              linkErrors.push(`Contact ${person.name || person.contactId}: ${e.message || 'failed'}`);
+            }
           }
         }
 
@@ -498,8 +529,18 @@ export function ReviewView({ id }: { id: number }) {
                 confidence: tag.confidence,
                 notes: tag.evidence,
               });
-            } catch {}
+            } catch (e: any) {
+              linkErrors.push(`Tag ${tag.category || tag.taxonomyId}: ${e.message || 'failed'}`);
+            }
           }
+        }
+
+        if (linkErrors.length > 0) {
+          toast({
+            title: "Some links couldn't be saved",
+            description: `${linkErrors.length} contact/tag link(s) failed. The debrief was confirmed but some associations may be missing.`,
+            variant: "destructive",
+          });
         }
       }
 
@@ -690,7 +731,7 @@ export function ReviewView({ id }: { id: number }) {
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => { setAudioBlob(null); setAudioUrl(null); }}
+                              onClick={() => { if (audioUrl) URL.revokeObjectURL(audioUrl); setAudioBlob(null); setAudioUrl(null); }}
                               data-testid="button-discard-recording-review"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -884,7 +925,7 @@ export function ReviewView({ id }: { id: number }) {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                onClick={() => { setFollowUpAudioBlob(null); setFollowUpAudioUrl(null); setFollowUpText(""); }}
+                                onClick={() => { if (followUpAudioUrl) URL.revokeObjectURL(followUpAudioUrl); setFollowUpAudioBlob(null); setFollowUpAudioUrl(null); setFollowUpText(""); }}
                                 data-testid="button-followup-discard"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -940,7 +981,7 @@ export function ReviewView({ id }: { id: number }) {
                       <Button
                         variant="outline"
                         className="flex-1"
-                        onClick={() => { setShowFollowUp(false); setFollowUpText(""); setFollowUpAudioBlob(null); setFollowUpAudioUrl(null); }}
+                        onClick={() => { setShowFollowUp(false); setFollowUpText(""); if (followUpAudioUrl) URL.revokeObjectURL(followUpAudioUrl); setFollowUpAudioBlob(null); setFollowUpAudioUrl(null); }}
                         data-testid="button-followup-cancel"
                       >
                         Cancel
