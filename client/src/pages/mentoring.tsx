@@ -10,7 +10,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState } from "react";
 import { Settings } from "lucide-react";
 import { MeetingTypesSection } from "@/components/meeting-types-section";
-import { MentoringOnboardingSetup } from "@/components/mentoring-onboarding-setup";
 import { SessionsTab } from "@/components/mentoring/sessions-tab";
 import { MenteesTab } from "@/components/mentoring/mentees-tab";
 import { MentorsTab } from "@/components/mentoring/mentors-tab";
@@ -43,20 +42,11 @@ export default function MentoringPage() {
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Session Settings</DialogTitle>
-            <DialogDescription>Configure session types and onboarding</DialogDescription>
+            <DialogDescription>Configure session types for mentoring</DialogDescription>
           </DialogHeader>
-          <Tabs defaultValue="meeting-types">
-            <TabsList>
-              <TabsTrigger value="meeting-types" data-testid="tab-settings-meeting-types">Session Types</TabsTrigger>
-              <TabsTrigger value="onboarding" data-testid="tab-settings-onboarding">Onboarding</TabsTrigger>
-            </TabsList>
-            <TabsContent value="meeting-types" className="mt-4">
-              <MeetingTypesSection category="mentoring" />
-            </TabsContent>
-            <TabsContent value="onboarding" className="mt-4">
-              <MentoringOnboardingSetup />
-            </TabsContent>
-          </Tabs>
+          <div className="mt-4">
+            <MeetingTypesSection category="mentoring" />
+          </div>
         </DialogContent>
       </Dialog>
 

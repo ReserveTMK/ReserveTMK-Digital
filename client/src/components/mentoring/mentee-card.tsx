@@ -391,16 +391,50 @@ export function MenteeCard({ relationship, defaultExpanded }: { relationship: En
                 />
               </div>
 
-              {relationship.onboardingAnswers && Object.keys(relationship.onboardingAnswers).length > 0 && (
-                <div>
-                  <p className="text-[10px] font-medium text-muted-foreground">Onboarding Responses</p>
-                  <div className="space-y-0.5 mt-0.5">
-                    {Object.entries(relationship.onboardingAnswers).map(([q, a]) => (
-                      <p key={q} className="text-xs"><span className="text-muted-foreground">{q}:</span> {a}</p>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <div>
+                <p className="text-[10px] font-medium text-muted-foreground mb-0.5">Why Mentoring?</p>
+                <InlineEditText
+                  value={relationship.whyMentoring || ""}
+                  onSave={(v) => {
+                    if (relationship.applicationId) {
+                      updateApplication.mutate({ id: relationship.applicationId, whyMentoring: v || null } as any);
+                    }
+                  }}
+                  placeholder="Why are they seeking mentoring?"
+                  multiline
+                  testId={`edit-why-mentoring-${relationship.id}`}
+                />
+              </div>
+
+              <div>
+                <p className="text-[10px] font-medium text-muted-foreground mb-0.5">What Are You Stuck On?</p>
+                <InlineEditText
+                  value={relationship.whatStuckOn || ""}
+                  onSave={(v) => {
+                    if (relationship.applicationId) {
+                      updateApplication.mutate({ id: relationship.applicationId, whatStuckOn: v || null } as any);
+                    }
+                  }}
+                  placeholder="Current blockers or challenges?"
+                  multiline
+                  testId={`edit-stuck-on-${relationship.id}`}
+                />
+              </div>
+
+              <div>
+                <p className="text-[10px] font-medium text-muted-foreground mb-0.5">What Have You Already Tried?</p>
+                <InlineEditText
+                  value={relationship.alreadyTried || ""}
+                  onSave={(v) => {
+                    if (relationship.applicationId) {
+                      updateApplication.mutate({ id: relationship.applicationId, alreadyTried: v || null } as any);
+                    }
+                  }}
+                  placeholder="What have they already attempted?"
+                  multiline
+                  testId={`edit-already-tried-${relationship.id}`}
+                />
+              </div>
             </div>
 
             <div>
