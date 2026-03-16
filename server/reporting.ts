@@ -749,12 +749,13 @@ export async function generateNarrative(
   legacyContext?: { metrics: any; highlights: string[]; reportCount: number } | null,
   narrativeStyle: "compliance" | "story" = "compliance",
 ) {
-  const [reach, delivery, impact, value, mentoring] = await Promise.all([
+  const [reach, delivery, impact, value, mentoring, connectionStrength] = await Promise.all([
     getReachMetrics(filters),
     getDeliveryMetrics(filters),
     getImpactMetrics(filters),
     getValueContribution(filters),
     getMentoringMetrics(filters),
+    getConnectionStrengthDistribution(filters),
   ]);
 
   const topCategories = impact.taxonomyBreakdown.slice(0, 3);
@@ -811,7 +812,9 @@ export async function generateNarrative(
         const gm = impact.growthMetrics;
         impText += `${impact.contactsWithMetrics} people have tracked growth - mindset shifted positively for ${gm.mindset?.positiveMovementPercent ?? 0}%, skill for ${gm.skill?.positiveMovementPercent ?? 0}%, and confidence for ${gm.confidence?.positiveMovementPercent ?? 0}%.`;
       }
-      if (impact.connectionMovement > 0) impText += ` ${impact.connectionMovement} people deepened their connection strength.`;
+      if (connectionStrength.movements.totalDeepened > 0) {
+        impText += ` ${connectionStrength.movements.summary}`;
+      }
       if (topCategories.length > 0) {
         impText += `\n\nKey impact areas:\n`;
         impText += topCategories.map(c => {
@@ -870,7 +873,16 @@ export async function generateNarrative(
       impText += ` Average scores - mindset: ${gm.mindset?.averageScore ?? 0}, skill: ${gm.skill?.averageScore ?? 0}, confidence: ${gm.confidence?.averageScore ?? 0}.`;
       impText += ` Positive movement - mindset: ${gm.mindset?.positiveMovementPercent ?? 0}%, skill: ${gm.skill?.positiveMovementPercent ?? 0}%, confidence: ${gm.confidence?.positiveMovementPercent ?? 0}%.`;
     }
-    if (impact.connectionMovement > 0) impText += ` ${impact.connectionMovement} connections deepened.`;
+    if (connectionStrength.movements.totalDeepened > 0) {
+      const upMoves = connectionStrength.movements.transitions.filter((t: any) => t.direction === "up");
+      impText += ` Connection movement: ${connectionStrength.movements.totalDeepened} people deepened.`;
+      if (upMoves.length > 0) {
+        impText += ` Transitions: ${upMoves.map((t: any) => `${t.count} ${t.from}→${t.to}`).join(", ")}.`;
+      }
+    }
+    if (connectionStrength.movements.totalDeclined > 0) {
+      impText += ` ${connectionStrength.movements.totalDeclined} connections declined.`;
+    }
     if (topCategories.length > 0) {
       const catLines = topCategories.map(c => {
         let line = `- **${c.name}**: ${c.debriefCount} debriefs, ${c.peopleAffected} affected (score: ${c.impactScore})`;
@@ -1519,6 +1531,8 @@ export async function getCommunityDiscounts(filters: ReportFilters) {
 export async function getConnectionStrengthDistribution(filters: ReportFilters) {
   const lensIds = await getCommunityLensContactIds(filters);
   const LEVELS = ["known", "connected", "engaged", "embedded", "partnering"];
+  const start = parseDate(filters.startDate);
+  const end = parseDate(filters.endDate);
 
   const allContacts = await db.select({
     id: contacts.id,
@@ -1534,10 +1548,69 @@ export async function getConnectionStrengthDistribution(filters: ReportFilters) 
     distMap.set(s, (distMap.get(s) || 0) + 1);
   }
 
+  const userContactIds = new Set(allContacts.map(c => c.id));
+
+  const stageHistory = await db.select({
+    entityId: relationshipStageHistory.entityId,
+    previousStage: relationshipStageHistory.previousStage,
+    newStage: relationshipStageHistory.newStage,
+  }).from(relationshipStageHistory).where(and(
+    eq(relationshipStageHistory.entityType, "contact"),
+    gte(relationshipStageHistory.changedAt, start),
+    lte(relationshipStageHistory.changedAt, end),
+  ));
+
+  const transitionPeopleMap = new Map<string, Set<number>>();
+  const deepenedIds = new Set<number>();
+  const declinedIds = new Set<number>();
+
+  for (const sh of stageHistory) {
+    if (!userContactIds.has(sh.entityId)) continue;
+    if (lensIds && !lensIds.has(sh.entityId)) continue;
+    const from = sh.previousStage;
+    const to = sh.newStage;
+    if (!from || !LEVELS.includes(from) || !LEVELS.includes(to)) continue;
+    if (from === to) continue;
+    const fromIdx = LEVELS.indexOf(from);
+    const toIdx = LEVELS.indexOf(to);
+    const key = `${from}→${to}`;
+    if (!transitionPeopleMap.has(key)) transitionPeopleMap.set(key, new Set());
+    transitionPeopleMap.get(key)!.add(sh.entityId);
+    if (toIdx > fromIdx) deepenedIds.add(sh.entityId);
+    if (toIdx < fromIdx) declinedIds.add(sh.entityId);
+  }
+
+  const transitions: { from: string; to: string; count: number; direction: "up" | "down" }[] = [];
+  for (const [key, peopleSet] of transitionPeopleMap.entries()) {
+    const [from, to] = key.split("→");
+    const fromIdx = LEVELS.indexOf(from);
+    const toIdx = LEVELS.indexOf(to);
+    const direction = toIdx > fromIdx ? "up" as const : "down" as const;
+    transitions.push({ from, to, count: peopleSet.size, direction });
+  }
+
+  transitions.sort((a, b) => b.count - a.count);
+
   return {
     distribution: LEVELS.map(s => ({ strength: s, count: distMap.get(s) || 0 })),
     total: filtered.length,
+    movements: {
+      transitions,
+      totalDeepened: deepenedIds.size,
+      totalDeclined: declinedIds.size,
+      summary: buildMovementSummary(deepenedIds.size, transitions),
+    },
   };
+}
+
+function buildMovementSummary(totalDeepened: number, transitions: { from: string; to: string; count: number; direction: "up" | "down" }[]): string {
+  const upMoves = transitions.filter(t => t.direction === "up");
+  if (upMoves.length === 0 || totalDeepened === 0) return "";
+  const details = upMoves
+    .sort((a, b) => b.count - a.count)
+    .map(t => `${t.count} moved from ${t.from} to ${t.to}`)
+    .join(", ");
+  return `${totalDeepened} people deepened their connection — ${details}`;
 }
 
 export async function getFullMonthlyReport(filters: ReportFilters) {

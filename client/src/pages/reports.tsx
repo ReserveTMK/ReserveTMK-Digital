@@ -20,7 +20,7 @@ import {
   Download, Activity, Tag, TrendingUp, Building2, DollarSign,
   Save, BookOpen, ChevronDown, ChevronUp, Handshake, Clock,
   Info, History, Zap, X, Pen, Landmark, Settings, Camera, Star,
-  Plus, Trash2, ArrowUpRight, Briefcase, Rocket, BadgeDollarSign,
+  Plus, Trash2, ArrowUpRight, Briefcase, Rocket, BadgeDollarSign, ArrowDownRight, MoveRight,
 } from "lucide-react";
 import {
   format, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, subMonths, startOfYear,
@@ -1329,12 +1329,6 @@ export default function Reports() {
                     );
                   })()}
 
-                  {(imp?.connectionMovement || 0) > 0 && (
-                    <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800" data-testid="stat-connection-movement">
-                      <ArrowUpRight className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                      <span className="text-sm"><strong>{imp.connectionMovement}</strong> people deepened their connection strength during this period</span>
-                    </div>
-                  )}
 
                   {reportData?.journeyProgression && (reportData.journeyProgression.totalProgressions > 0 || Object.values(reportData.journeyProgression.currentDistribution).some((v: any) => v > 0)) && (
                     <div className="pt-3 border-t" data-testid="journey-progression">
@@ -1378,20 +1372,62 @@ export default function Reports() {
                         <Handshake className="w-4 h-4 text-indigo-600" /> Connection Strength Distribution
                       </h4>
                       <div className="space-y-2">
-                        {reportData.connectionStrength.distribution.map((item: any) => {
+                        {reportData.connectionStrength.distribution.map((item: any, idx: number) => {
                           const pct = reportData.connectionStrength.total > 0 ? Math.round((item.count / reportData.connectionStrength.total) * 100) : 0;
                           const strengthColors: Record<string, string> = { known: "bg-slate-400", connected: "bg-blue-400", engaged: "bg-green-500", embedded: "bg-violet-500", partnering: "bg-amber-500" };
+                          const upTransitions = (reportData.connectionStrength.movements?.transitions || []).filter(
+                            (t: any) => t.from === item.strength && t.direction === "up"
+                          );
+                          const downTransitions = (reportData.connectionStrength.movements?.transitions || []).filter(
+                            (t: any) => t.from === item.strength && t.direction === "down"
+                          );
+                          const hasMovement = upTransitions.length > 0 || downTransitions.length > 0;
                           return (
-                            <div key={item.strength} className="flex items-center gap-3" data-testid={`connection-${item.strength}`}>
-                              <span className="text-xs font-medium w-20 capitalize">{item.strength}</span>
-                              <div className="flex-1 h-3 bg-muted rounded-full overflow-hidden">
-                                <div className={`h-full ${strengthColors[item.strength] || "bg-primary"} rounded-full transition-all`} style={{ width: `${pct}%` }} />
+                            <div key={item.strength}>
+                              <div className="flex items-center gap-3" data-testid={`connection-${item.strength}`}>
+                                <span className="text-xs font-medium w-20 capitalize">{item.strength}</span>
+                                <div className="flex-1 h-3 bg-muted rounded-full overflow-hidden">
+                                  <div className={`h-full ${strengthColors[item.strength] || "bg-primary"} rounded-full transition-all`} style={{ width: `${pct}%` }} />
+                                </div>
+                                <span className="text-xs font-medium w-16 text-right">{item.count} ({pct}%)</span>
                               </div>
-                              <span className="text-xs font-medium w-16 text-right">{item.count} ({pct}%)</span>
+                              {hasMovement && (
+                                <div className="flex items-center gap-1 ml-20 pl-3 py-0.5 flex-wrap">
+                                  {upTransitions.map((t: any, i: number) => (
+                                    <span key={`up-${i}`} className="inline-flex items-center gap-1 text-[10px] font-semibold text-green-600 dark:text-green-400" data-testid={`movement-${item.strength}-to-${t.to}`}>
+                                      {i > 0 && <span className="text-muted-foreground mx-0.5">·</span>}
+                                      <ArrowUpRight className="w-3 h-3" /> {t.count} <MoveRight className="w-3 h-3" /> {t.to}
+                                    </span>
+                                  ))}
+                                  {upTransitions.length > 0 && downTransitions.length > 0 && <span className="text-muted-foreground mx-1">·</span>}
+                                  {downTransitions.map((t: any, i: number) => (
+                                    <span key={`down-${i}`} className="inline-flex items-center gap-1 text-[10px] font-semibold text-orange-500 dark:text-orange-400" data-testid={`movement-${item.strength}-to-${t.to}`}>
+                                      {i > 0 && <span className="text-muted-foreground mx-0.5">·</span>}
+                                      <ArrowDownRight className="w-3 h-3" /> {t.count} <MoveRight className="w-3 h-3" /> {t.to}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           );
                         })}
                       </div>
+                      {reportData.connectionStrength.movements && reportData.connectionStrength.movements.totalDeepened > 0 && (
+                        <div className="mt-3 p-3 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800" data-testid="connection-movement-summary">
+                          <div className="flex items-center gap-2">
+                            <ArrowUpRight className="w-4 h-4 text-green-600 dark:text-green-400" />
+                            <span className="text-sm font-medium text-green-800 dark:text-green-200">{reportData.connectionStrength.movements.summary}</span>
+                          </div>
+                        </div>
+                      )}
+                      {reportData.connectionStrength.movements && reportData.connectionStrength.movements.totalDeclined > 0 && (
+                        <div className="mt-2 p-2 rounded-lg bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800" data-testid="connection-decline-summary">
+                          <div className="flex items-center gap-2">
+                            <ArrowDownRight className="w-4 h-4 text-orange-500 dark:text-orange-400" />
+                            <span className="text-xs text-orange-700 dark:text-orange-300">{reportData.connectionStrength.movements.totalDeclined} {reportData.connectionStrength.movements.totalDeclined === 1 ? "person" : "people"} moved to a lower connection level</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
