@@ -2,7 +2,7 @@ import { storage } from './storage';
 import { claudeJSON } from './replit_integrations/anthropic/client';
 import { google } from 'googleapis';
 import { getBaseUrl } from './url';
-import type { GmailConnectedAccount } from '@shared/schema';
+import type { GmailConnectedAccount, GmailImportHistory } from '@shared/schema';
 
 const PUBLIC_DOMAINS = new Set([
   'gmail.com', 'googlemail.com', 'google.com',
@@ -71,6 +71,8 @@ interface ExtractedPerson {
   email: string;
   domain: string;
   frequency: number;
+  recentSubjects: string[];
+  latestEmailDate: string | null;
 }
 
 interface ExtractedOrg {
@@ -186,7 +188,7 @@ export async function scanGmailEmails(
   userId: string,
   scanType: 'initial' | 'sync' | 'manual',
   daysBack: number = 365,
-  accountId?: number
+  accountIds?: number[]
 ): Promise<{ historyId: number }> {
   const now = new Date();
   const fromDate = new Date(now.getTime() - daysBack * 24 * 60 * 60 * 1000);
@@ -208,11 +210,17 @@ export async function scanGmailEmails(
     try {
       const gmailClients: Array<{ gmail: any; label: string }> = [];
 
-      if (accountId) {
-        const account = await storage.getGmailConnectedAccount(accountId);
-        if (!account || account.userId !== userId) throw new Error('Account not found');
-        const gmail = await getGmailClientForAccount(account);
-        gmailClients.push({ gmail, label: account.email });
+      if (accountIds && accountIds.length > 0) {
+        for (const accountId of accountIds) {
+          const account = await storage.getGmailConnectedAccount(accountId);
+          if (!account || account.userId !== userId) continue;
+          try {
+            const gmail = await getGmailClientForAccount(account);
+            gmailClients.push({ gmail, label: account.email });
+          } catch (err) {
+            console.error(`Skipping account ${account.email}:`, err);
+          }
+        }
       } else {
         const additionalAccounts = await storage.getGmailConnectedAccounts(userId);
         for (const account of additionalAccounts) {
@@ -229,7 +237,8 @@ export async function scanGmailEmails(
         throw new Error('No Gmail accounts available to scan');
       }
 
-      await processMultiAccountImport(gmailClients, userId, historyRecord.id, fromDate, now);
+      const isAutoSync = scanType === 'sync';
+      await processMultiAccountImport(gmailClients, userId, historyRecord.id, fromDate, now, isAutoSync);
     } catch (err: any) {
       console.error('Gmail import error:', err);
       await storage.updateGmailImportHistory(historyRecord.id, {
@@ -248,7 +257,8 @@ async function processMultiAccountImport(
   userId: string,
   historyId: number,
   fromDate: Date,
-  toDate: Date
+  toDate: Date,
+  autoImport: boolean = false
 ) {
   const exclusions = await storage.getGmailExclusions(userId);
   const excludedDomains = new Set(
@@ -275,6 +285,14 @@ async function processMultiAccountImport(
           if (person.name && person.name !== email.split('@')[0] && (!existing.name || existing.name === email.split('@')[0])) {
             existing.name = person.name;
           }
+          for (const subj of person.recentSubjects) {
+            if (existing.recentSubjects.length < 3 && !existing.recentSubjects.includes(subj)) {
+              existing.recentSubjects.push(subj);
+            }
+          }
+          if (person.latestEmailDate && (!existing.latestEmailDate || person.latestEmailDate > existing.latestEmailDate)) {
+            existing.latestEmailDate = person.latestEmailDate;
+          }
         } else {
           peopleMap.set(email, { ...person });
         }
@@ -291,7 +309,11 @@ async function processMultiAccountImport(
     throw new Error(`All accounts failed to scan: ${failedAccounts.join(', ')}`);
   }
 
-  await finalizeImport(peopleMap, userId, historyId, totalEmails, excludedDomains);
+  if (autoImport) {
+    await finalizeImport(peopleMap, userId, historyId, totalEmails, excludedDomains);
+  } else {
+    await buildPreview(peopleMap, userId, historyId, totalEmails, excludedDomains);
+  }
 }
 
 async function scanSingleAccount(
@@ -329,7 +351,7 @@ async function scanSingleAccount(
             userId: 'me',
             id: msg.id,
             format: 'metadata',
-            metadataHeaders: ['From', 'To', 'Cc', 'List-Unsubscribe', 'Precedence'],
+            metadataHeaders: ['From', 'To', 'Cc', 'Subject', 'Date', 'List-Unsubscribe', 'Precedence'],
           }).catch(() => null)
         )
       );
@@ -349,6 +371,15 @@ async function scanSingleAccount(
         const fromHeader = headers.find((h: any) => h.name === 'From')?.value || '';
         const toHeader = headers.find((h: any) => h.name === 'To')?.value || '';
         const ccHeader = headers.find((h: any) => h.name === 'Cc')?.value || '';
+        const subjectHeader = headers.find((h: any) => h.name === 'Subject')?.value || '';
+        const dateHeader = headers.find((h: any) => h.name === 'Date')?.value || '';
+        let emailDateStr: string | null = null;
+        if (dateHeader) {
+          const parsed = new Date(dateHeader);
+          if (!isNaN(parsed.getTime())) {
+            emailDateStr = parsed.toISOString();
+          }
+        }
 
         const allParsed = [
           ...parseEmailHeader(fromHeader),
@@ -370,8 +401,21 @@ async function scanSingleAccount(
             if (name && name !== email.split('@')[0] && (!existing.name || existing.name === email.split('@')[0])) {
               existing.name = name;
             }
+            if (subjectHeader && existing.recentSubjects.length < 3 && !existing.recentSubjects.includes(subjectHeader)) {
+              existing.recentSubjects.push(subjectHeader);
+            }
+            if (emailDateStr && (!existing.latestEmailDate || emailDateStr > existing.latestEmailDate)) {
+              existing.latestEmailDate = emailDateStr;
+            }
           } else {
-            peopleMap.set(email, { name, email, domain, frequency: 1 });
+            peopleMap.set(email, {
+              name,
+              email,
+              domain,
+              frequency: 1,
+              recentSubjects: subjectHeader ? [subjectHeader] : [],
+              latestEmailDate: emailDateStr,
+            });
           }
         }
       }
@@ -381,6 +425,375 @@ async function scanSingleAccount(
   } while (pageToken);
 
   return { emails: totalEmails, people: peopleMap };
+}
+
+async function buildPreview(
+  peopleMap: Map<string, ExtractedPerson>,
+  userId: string,
+  historyId: number,
+  totalEmails: number,
+  excludedDomains: Set<string>
+) {
+  const syncSettings = await storage.getGmailSyncSettings(userId);
+  const minFrequency = syncSettings?.minEmailFrequency ?? 2;
+
+  const orgMap = new Map<string, ExtractedOrg>();
+  for (const person of Array.from(peopleMap.values())) {
+    if (PUBLIC_DOMAINS.has(person.domain)) continue;
+    if (excludedDomains.has(person.domain)) continue;
+    if (person.frequency < minFrequency) continue;
+
+    if (orgMap.has(person.domain)) {
+      const org = orgMap.get(person.domain)!;
+      org.frequency += person.frequency;
+      org.memberEmails.push(person.email);
+    } else {
+      orgMap.set(person.domain, {
+        domain: person.domain,
+        suggestedName: domainToOrgName(person.domain),
+        frequency: person.frequency,
+        memberEmails: [person.email],
+      });
+    }
+  }
+
+  const orgEntries = Array.from(orgMap.values());
+  let orgNames: Record<string, string> = {};
+  if (orgEntries.length > 0) {
+    try {
+      orgNames = await getAIOrgNames(orgEntries.map(o => o.domain));
+    } catch (err) {
+      console.error('AI org name mapping failed, using fallback:', err);
+    }
+  }
+
+  const existingContacts = await storage.getContacts(userId);
+  const existingGroups = await storage.getGroups(userId);
+
+  const existingEmailSet = new Set(
+    existingContacts.filter(c => c.email).map(c => c.email!.toLowerCase())
+  );
+  const existingNameMap = new Map<string, { id: number; email: string }>();
+  for (const c of existingContacts) {
+    if (c.name && c.email) {
+      existingNameMap.set(c.name.toLowerCase(), { id: c.id, email: c.email });
+    }
+  }
+  const existingGroupNameSet = new Map(
+    existingGroups.map(g => [g.name.toLowerCase(), g])
+  );
+
+  const existingContactsByDomain = new Map<string, Array<{ id: number; name: string; email: string }>>();
+  for (const c of existingContacts) {
+    if (!c.email) continue;
+    const domain = getDomain(c.email);
+    if (!domain || PUBLIC_DOMAINS.has(domain)) continue;
+    if (!existingContactsByDomain.has(domain)) {
+      existingContactsByDomain.set(domain, []);
+    }
+    existingContactsByDomain.get(domain)!.push({ id: c.id, name: c.name, email: c.email });
+  }
+
+  const previewPeople: Array<{
+    email: string; name: string; domain: string; frequency: number;
+    recentSubjects: string[]; latestEmailDate: string | null;
+    isDuplicate?: boolean; existingContactId?: number; existingContactEmail?: string;
+  }> = [];
+  const existingContactEmails: Array<{
+    email: string; name: string; contactId: number;
+    recentSubjects: string[]; latestEmailDate: string | null;
+  }> = [];
+
+  for (const person of Array.from(peopleMap.values())) {
+    const isExistingEmail = existingEmailSet.has(person.email);
+    if (isExistingEmail) {
+      const existingContact = existingContacts.find(
+        c => c.email?.toLowerCase() === person.email.toLowerCase()
+      );
+      if (existingContact && person.recentSubjects.length > 0) {
+        existingContactEmails.push({
+          email: person.email,
+          name: existingContact.name,
+          contactId: existingContact.id,
+          recentSubjects: person.recentSubjects.slice(0, 3),
+          latestEmailDate: person.latestEmailDate,
+        });
+      }
+      continue;
+    }
+
+    if (person.frequency < minFrequency) continue;
+
+    const cleanedName = cleanName(person.name);
+    const existingByName = existingNameMap.get(cleanedName.toLowerCase());
+    const isDuplicate = !!existingByName && existingByName.email.toLowerCase() !== person.email.toLowerCase();
+
+    previewPeople.push({
+      email: person.email,
+      name: cleanedName,
+      domain: person.domain,
+      frequency: person.frequency,
+      recentSubjects: person.recentSubjects.slice(0, 3),
+      latestEmailDate: person.latestEmailDate,
+      isDuplicate,
+      existingContactId: isDuplicate ? existingByName!.id : undefined,
+      existingContactEmail: isDuplicate ? existingByName!.email : undefined,
+    });
+  }
+
+  const previewOrgs: Array<{
+    domain: string; suggestedName: string; aiName?: string; frequency: number;
+    memberEmails: string[]; existingGroupId?: number;
+    unmatchedExistingContacts?: Array<{ id: number; name: string; email: string }>;
+  }> = [];
+
+  for (const org of orgEntries) {
+    const aiName = orgNames[org.domain];
+    const orgName = aiName || org.suggestedName;
+    const existingGroup = existingGroupNameSet.get(orgName.toLowerCase());
+
+    const existingGroupMembers = existingGroup
+      ? (await storage.getGroupMembers(existingGroup.id)).map(m => m.contactId)
+      : [];
+    const existingGroupMemberSet = new Set(existingGroupMembers);
+
+    const domainContacts = existingContactsByDomain.get(org.domain) || [];
+    const unmatchedExistingContacts = domainContacts.filter(c => !existingGroupMemberSet.has(c.id));
+
+    previewOrgs.push({
+      domain: org.domain,
+      suggestedName: org.suggestedName,
+      aiName: aiName || undefined,
+      frequency: org.frequency,
+      memberEmails: org.memberEmails,
+      existingGroupId: existingGroup?.id,
+      unmatchedExistingContacts: unmatchedExistingContacts.length > 0 ? unmatchedExistingContacts : undefined,
+    });
+  }
+
+  await storage.updateGmailImportHistory(historyId, {
+    emailsScanned: totalEmails,
+    status: 'preview',
+    previewData: {
+      people: previewPeople,
+      orgs: previewOrgs,
+      existingContactEmails: existingContactEmails.length > 0 ? existingContactEmails : undefined,
+    },
+  });
+}
+
+export async function confirmImport(
+  historyId: number,
+  userId: string,
+  selectedEmails: string[],
+  selectedDomains: string[],
+  duplicateActions: Record<string, 'skip' | 'create' | 'merge'>,
+  linkExistingContacts: boolean = true
+): Promise<{ contactsCreated: number; groupsCreated: number; interactionsCreated: number; contactsLinked: number }> {
+  const historyItem = await storage.getGmailImportHistoryItem(historyId);
+  if (!historyItem || historyItem.userId !== userId || historyItem.status !== 'preview') {
+    throw new Error('Invalid import to confirm');
+  }
+
+  const preview = historyItem.previewData;
+  if (!preview) throw new Error('No preview data available');
+
+  const selectedEmailSet = new Set(selectedEmails);
+  const selectedDomainSet = new Set(selectedDomains);
+
+  const existingContacts = await storage.getContacts(userId);
+  const existingGroups = await storage.getGroups(userId);
+  const existingEmailSet = new Set(
+    existingContacts.filter(c => c.email).map(c => c.email!.toLowerCase())
+  );
+  const existingGroupNameSet = new Map(
+    existingGroups.map(g => [g.name.toLowerCase(), g])
+  );
+
+  let contactsCreated = 0;
+  let groupsCreated = 0;
+  let groupsSkipped = 0;
+  let interactionsCreated = 0;
+  let contactsLinked = 0;
+
+  const createdGroupIds = new Map<string, number>();
+
+  for (const org of preview.orgs) {
+    if (!selectedDomainSet.has(org.domain)) continue;
+
+    const orgName = org.aiName || org.suggestedName;
+    const tier = determineTier(org.frequency);
+
+    if (org.existingGroupId) {
+      createdGroupIds.set(org.domain, org.existingGroupId);
+      groupsSkipped++;
+    } else if (existingGroupNameSet.has(orgName.toLowerCase())) {
+      const existingGroup = existingGroupNameSet.get(orgName.toLowerCase())!;
+      createdGroupIds.set(org.domain, existingGroup.id);
+      groupsSkipped++;
+    } else {
+      try {
+        const newGroup = await storage.createGroup({
+          userId,
+          name: orgName,
+          type: 'Partner Organization',
+          contactEmail: org.memberEmails[0],
+          website: org.domain,
+          relationshipTier: tier,
+          importSource: 'gmail',
+        });
+        createdGroupIds.set(org.domain, newGroup.id);
+        existingGroupNameSet.set(orgName.toLowerCase(), newGroup);
+        groupsCreated++;
+      } catch (err) {
+        console.error(`Failed to create group ${orgName}:`, err);
+        groupsSkipped++;
+      }
+    }
+
+    if (linkExistingContacts && org.unmatchedExistingContacts) {
+      const groupId = createdGroupIds.get(org.domain);
+      if (groupId) {
+        for (const existing of org.unmatchedExistingContacts) {
+          try {
+            await storage.addGroupMember({
+              groupId,
+              contactId: existing.id,
+              role: 'member',
+            });
+            contactsLinked++;
+          } catch {}
+        }
+      }
+    }
+  }
+
+  const contactsWithInteraction = new Set<number>();
+
+  for (const person of preview.people) {
+    if (!selectedEmailSet.has(person.email)) continue;
+
+    if (person.isDuplicate) {
+      const action = duplicateActions[person.email] || 'skip';
+      if (action === 'skip') continue;
+      if (action === 'merge' && person.existingContactId) {
+        try {
+          const existingContact = await storage.getContact(person.existingContactId);
+          const existingNotes = existingContact?.notes || '';
+          const appendedNotes = existingNotes
+            ? `${existingNotes}\nAlso known as: ${person.email}`
+            : `Also known as: ${person.email}`;
+          await storage.updateContact(person.existingContactId, {
+            notes: appendedNotes,
+          });
+          if (person.recentSubjects.length > 0 && !contactsWithInteraction.has(person.existingContactId)) {
+            await storage.createInteraction({
+              contactId: person.existingContactId,
+              type: 'Email',
+              date: person.latestEmailDate ? new Date(person.latestEmailDate) : new Date(),
+              summary: person.recentSubjects[0],
+              transcript: `Recent emails: ${person.recentSubjects.join(' | ')}`,
+            });
+            contactsWithInteraction.add(person.existingContactId);
+            interactionsCreated++;
+          }
+        } catch (err) {
+          console.error(`Failed to merge contact ${person.email}:`, err);
+        }
+        continue;
+      }
+    }
+
+    if (existingEmailSet.has(person.email)) continue;
+
+    try {
+      const newContact = await storage.createContact({
+        userId,
+        name: person.name,
+        email: person.email,
+        role: 'Professional',
+        notes: `Imported from Gmail (${person.frequency} email${person.frequency > 1 ? 's' : ''})${person.recentSubjects.length > 0 ? '\nRecent emails: ' + person.recentSubjects.join(' | ') : ''}`,
+        active: true,
+      });
+
+      existingEmailSet.add(person.email);
+
+      const groupId = createdGroupIds.get(person.domain);
+      if (groupId && !PUBLIC_DOMAINS.has(person.domain)) {
+        try {
+          await storage.addGroupMember({
+            groupId,
+            contactId: newContact.id,
+            role: 'member',
+          });
+        } catch {}
+      }
+
+      if (person.recentSubjects.length > 0) {
+        try {
+          await storage.createInteraction({
+            contactId: newContact.id,
+            type: 'Email',
+            date: person.latestEmailDate ? new Date(person.latestEmailDate) : new Date(),
+            summary: person.recentSubjects[0],
+            transcript: person.recentSubjects.length > 1
+              ? `Recent emails: ${person.recentSubjects.join(' | ')}`
+              : undefined,
+          });
+          interactionsCreated++;
+        } catch (err) {
+          console.error(`Failed to create interaction for ${person.email}:`, err);
+        }
+      }
+
+      contactsCreated++;
+    } catch (err) {
+      console.error(`Failed to create contact ${person.email}:`, err);
+    }
+  }
+
+  if (preview.existingContactEmails) {
+    for (const existing of preview.existingContactEmails) {
+      if (contactsWithInteraction.has(existing.contactId)) continue;
+      try {
+        await storage.createInteraction({
+          contactId: existing.contactId,
+          type: 'Email',
+          date: existing.latestEmailDate ? new Date(existing.latestEmailDate) : new Date(),
+          summary: existing.recentSubjects[0],
+          transcript: existing.recentSubjects.length > 1
+            ? `Recent emails: ${existing.recentSubjects.join(' | ')}`
+            : undefined,
+        });
+        contactsWithInteraction.add(existing.contactId);
+        interactionsCreated++;
+      } catch (err) {
+        console.error(`Failed to create interaction for existing contact ${existing.email}:`, err);
+      }
+    }
+  }
+
+  await storage.updateGmailImportHistory(historyId, {
+    contactsCreated,
+    groupsCreated,
+    contactsSkipped: selectedEmailSet.size - contactsCreated,
+    groupsSkipped,
+    status: 'completed',
+    completedAt: new Date(),
+    previewData: null,
+  });
+
+  const existingSyncSettings = await storage.getGmailSyncSettings(userId);
+  if (!existingSyncSettings) {
+    await storage.createGmailSyncSettings({
+      userId,
+      autoSyncEnabled: true,
+      syncIntervalHours: 24,
+    });
+  }
+  await storage.updateGmailSyncLastSync(userId, new Date());
+
+  return { contactsCreated, groupsCreated, interactionsCreated, contactsLinked };
 }
 
 async function finalizeImport(
@@ -439,6 +852,7 @@ async function finalizeImport(
   let contactsSkipped = 0;
   let groupsCreated = 0;
   let groupsSkipped = 0;
+  let interactionsCreated = 0;
 
   const createdGroupIds = new Map<string, number>();
 
@@ -453,6 +867,18 @@ async function finalizeImport(
       groupsSkipped++;
       const existingGroup = existingGroupNameSet.get(orgName.toLowerCase())!;
       createdGroupIds.set(org.domain, existingGroup.id);
+
+      const existingMembers = await storage.getGroupMembers(existingGroup.id);
+      const memberContactIds = new Set(existingMembers.map(m => m.contactId));
+      const domainContacts = existingContacts.filter(
+        c => c.email && getDomain(c.email) === org.domain && !memberContactIds.has(c.id)
+      );
+      for (const c of domainContacts) {
+        try {
+          await storage.addGroupMember({ groupId: existingGroup.id, contactId: c.id, role: 'member' });
+        } catch {}
+      }
+
       continue;
     }
 
@@ -471,6 +897,15 @@ async function finalizeImport(
       createdGroupIds.set(org.domain, newGroup.id);
       existingGroupNameSet.set(orgName.toLowerCase(), newGroup);
       groupsCreated++;
+
+      const domainContacts = existingContacts.filter(
+        c => c.email && getDomain(c.email) === org.domain
+      );
+      for (const c of domainContacts) {
+        try {
+          await storage.addGroupMember({ groupId: newGroup.id, contactId: c.id, role: 'member' });
+        } catch {}
+      }
     } catch (err) {
       console.error(`Failed to create group ${orgName}:`, err);
       groupsSkipped++;
@@ -479,6 +914,23 @@ async function finalizeImport(
 
   for (const person of Array.from(peopleMap.values())) {
     if (existingEmailSet.has(person.email)) {
+      const existingContact = existingContacts.find(
+        c => c.email?.toLowerCase() === person.email.toLowerCase()
+      );
+      if (existingContact && person.recentSubjects.length > 0) {
+        try {
+          await storage.createInteraction({
+            contactId: existingContact.id,
+            type: 'Email',
+            date: person.latestEmailDate ? new Date(person.latestEmailDate) : new Date(),
+            summary: person.recentSubjects[0],
+            transcript: person.recentSubjects.length > 1
+              ? `Recent emails: ${person.recentSubjects.join(' | ')}`
+              : undefined,
+          });
+          interactionsCreated++;
+        } catch {}
+      }
       contactsSkipped++;
       continue;
     }
@@ -495,7 +947,7 @@ async function finalizeImport(
         name: cleanedName,
         email: person.email,
         role: 'Professional',
-        notes: `Imported from Gmail (${person.frequency} email${person.frequency > 1 ? 's' : ''})`,
+        notes: `Imported from Gmail (${person.frequency} email${person.frequency > 1 ? 's' : ''})${person.recentSubjects.length > 0 ? '\nRecent emails: ' + person.recentSubjects.join(' | ') : ''}`,
         active: true,
       });
 
@@ -509,6 +961,21 @@ async function finalizeImport(
             contactId: newContact.id,
             role: 'member',
           });
+        } catch {}
+      }
+
+      if (person.recentSubjects.length > 0) {
+        try {
+          await storage.createInteraction({
+            contactId: newContact.id,
+            type: 'Email',
+            date: person.latestEmailDate ? new Date(person.latestEmailDate) : new Date(),
+            summary: person.recentSubjects[0],
+            transcript: person.recentSubjects.length > 1
+              ? `Recent emails: ${person.recentSubjects.join(' | ')}`
+              : undefined,
+          });
+          interactionsCreated++;
         } catch {}
       }
 

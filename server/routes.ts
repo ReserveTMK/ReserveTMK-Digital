@@ -74,7 +74,7 @@ async function deduplicatedReportCall<T>(key: string, fn: () => Promise<T>): Pro
   inflightReports.set(key, promise);
   return promise;
 }
-import { scanGmailEmails, startAutoSync, getGmailOAuth2Client, isNoreplyEmail } from "./gmail-import";
+import { scanGmailEmails, confirmImport, startAutoSync, getGmailOAuth2Client, isNoreplyEmail } from "./gmail-import";
 
 function parseTimeToMinutes(timeStr: string): number {
   const parts = timeStr.split(":");
@@ -8585,15 +8585,44 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       const scanSchema = z.object({
         daysBack: z.number().min(1).max(730).default(365),
         scanType: z.enum(['initial', 'manual', 'sync']).default('manual'),
+        accountIds: z.array(z.number()).optional(),
         accountId: z.number().optional(),
       });
       const parsed = scanSchema.parse(req.body);
-      const result = await scanGmailEmails(userId, parsed.scanType, parsed.daysBack, parsed.accountId);
+      const ids = parsed.accountIds || (parsed.accountId ? [parsed.accountId] : undefined);
+      const result = await scanGmailEmails(userId, parsed.scanType, parsed.daysBack, ids);
       res.json(result);
     } catch (err: any) {
       console.error("Gmail scan error:", err);
       if (err.name === 'ZodError') return res.status(400).json({ message: "Invalid parameters" });
       res.status(500).json({ message: err.message || "Failed to start scan" });
+    }
+  });
+
+  app.post("/api/gmail/import/confirm", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const confirmSchema = z.object({
+        historyId: z.number(),
+        selectedEmails: z.array(z.string()),
+        selectedDomains: z.array(z.string()),
+        duplicateActions: z.record(z.enum(['skip', 'create', 'merge'])).optional(),
+        linkExistingContacts: z.boolean().optional(),
+      });
+      const parsed = confirmSchema.parse(req.body);
+      const result = await confirmImport(
+        parsed.historyId,
+        userId,
+        parsed.selectedEmails,
+        parsed.selectedDomains,
+        parsed.duplicateActions || {},
+        parsed.linkExistingContacts ?? true
+      );
+      res.json(result);
+    } catch (err: any) {
+      console.error("Gmail confirm import error:", err);
+      if (err.name === 'ZodError') return res.status(400).json({ message: "Invalid parameters" });
+      res.status(500).json({ message: err.message || "Failed to confirm import" });
     }
   });
 

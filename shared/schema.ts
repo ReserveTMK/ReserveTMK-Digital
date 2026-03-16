@@ -1679,6 +1679,35 @@ export const gmailImportHistory = pgTable("gmail_import_history", {
   errorMessage: text("error_message"),
   scanFromDate: timestamp("scan_from_date"),
   scanToDate: timestamp("scan_to_date"),
+  previewData: jsonb("preview_data").$type<{
+    people: Array<{
+      email: string;
+      name: string;
+      domain: string;
+      frequency: number;
+      recentSubjects: string[];
+      latestEmailDate: string | null;
+      isDuplicate?: boolean;
+      existingContactId?: number;
+      existingContactEmail?: string;
+    }>;
+    orgs: Array<{
+      domain: string;
+      suggestedName: string;
+      aiName?: string;
+      frequency: number;
+      memberEmails: string[];
+      existingGroupId?: number;
+      unmatchedExistingContacts?: Array<{ id: number; name: string; email: string }>;
+    }>;
+    existingContactEmails?: Array<{
+      email: string;
+      name: string;
+      contactId: number;
+      recentSubjects: string[];
+      latestEmailDate: string | null;
+    }>;
+  } | null>(),
   createdAt: timestamp("created_at").defaultNow(),
   completedAt: timestamp("completed_at"),
 });

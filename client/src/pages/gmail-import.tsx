@@ -32,6 +32,9 @@ import {
   UserPlus,
   LogOut,
   AlertTriangle,
+  Eye,
+  Link2,
+  Search,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -71,6 +74,41 @@ interface ImportHistoryItem {
   scanToDate: string | null;
   createdAt: string;
   completedAt: string | null;
+  previewData?: PreviewData | null;
+}
+
+interface PreviewPerson {
+  email: string;
+  name: string;
+  domain: string;
+  frequency: number;
+  recentSubjects: string[];
+  latestEmailDate: string | null;
+  isDuplicate?: boolean;
+  existingContactId?: number;
+  existingContactEmail?: string;
+}
+
+interface PreviewOrg {
+  domain: string;
+  suggestedName: string;
+  aiName?: string;
+  frequency: number;
+  memberEmails: string[];
+  existingGroupId?: number;
+  unmatchedExistingContacts?: Array<{ id: number; name: string; email: string }>;
+}
+
+interface PreviewData {
+  people: PreviewPerson[];
+  orgs: PreviewOrg[];
+  existingContactEmails?: Array<{
+    email: string;
+    name: string;
+    contactId: number;
+    recentSubjects: string[];
+    latestEmailDate: string | null;
+  }>;
 }
 
 interface GmailExclusion {
@@ -100,6 +138,12 @@ export default function GmailImportPage() {
   const [pollingId, setPollingId] = useState<number | null>(null);
   const [selectedCleanup, setSelectedCleanup] = useState<Set<number>>(new Set());
   const [location] = useLocation();
+
+  const [selectedAccountIds, setSelectedAccountIds] = useState<Set<number>>(new Set());
+  const [previewHistoryId, setPreviewHistoryId] = useState<number | null>(null);
+  const [selectedPeople, setSelectedPeople] = useState<Set<string>>(new Set());
+  const [selectedOrgs, setSelectedOrgs] = useState<Set<string>>(new Set());
+  const [duplicateActions, setDuplicateActions] = useState<Record<string, 'skip' | 'create' | 'merge'>>({});
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -144,27 +188,43 @@ export default function GmailImportPage() {
   });
 
   useEffect(() => {
-    if (pollingQuery.data?.status === 'completed' || pollingQuery.data?.status === 'error') {
+    if (!pollingQuery.data) return;
+    const { status } = pollingQuery.data;
+
+    if (status === 'preview') {
+      setPollingId(null);
+      setPreviewHistoryId(pollingQuery.data.id);
+      if (pollingQuery.data.previewData) {
+        const preview = pollingQuery.data.previewData;
+        setSelectedPeople(new Set(preview.people.filter(p => !p.isDuplicate).map(p => p.email)));
+        setSelectedOrgs(new Set(preview.orgs.map(o => o.domain)));
+        const defaultActions: Record<string, 'skip' | 'create' | 'merge'> = {};
+        preview.people.filter(p => p.isDuplicate).forEach(p => {
+          defaultActions[p.email] = 'skip';
+        });
+        setDuplicateActions(defaultActions);
+      }
+      toast({ title: "Scan Complete", description: "Review the results below before importing." });
+    } else if (status === 'completed') {
       setPollingId(null);
       queryClient.invalidateQueries({ queryKey: ["/api/gmail/status"] });
       queryClient.invalidateQueries({ queryKey: ["/api/gmail/history"] });
-      if (pollingQuery.data.status === 'completed') {
-        toast({
-          title: "Import Complete",
-          description: `Created ${pollingQuery.data.contactsCreated} contacts and ${pollingQuery.data.groupsCreated} organisations`,
-        });
-      } else {
-        toast({
-          title: "Import Failed",
-          description: pollingQuery.data.errorMessage || "An error occurred",
-          variant: "destructive",
-        });
-      }
+      toast({
+        title: "Import Complete",
+        description: `Created ${pollingQuery.data.contactsCreated} contacts and ${pollingQuery.data.groupsCreated} organisations`,
+      });
+    } else if (status === 'error') {
+      setPollingId(null);
+      toast({
+        title: "Import Failed",
+        description: pollingQuery.data.errorMessage || "An error occurred",
+        variant: "destructive",
+      });
     }
   }, [pollingQuery.data?.status]);
 
   const scanMutation = useMutation({
-    mutationFn: async (params: { daysBack: number; scanType: string; accountId?: number }) => {
+    mutationFn: async (params: { daysBack: number; scanType: string; accountIds?: number[] }) => {
       const res = await apiRequest("POST", "/api/gmail/scan", params);
       return res.json();
     },
@@ -176,6 +236,38 @@ export default function GmailImportPage() {
       toast({
         title: "Scan Failed",
         description: err.message || "Could not start the scan",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const confirmMutation = useMutation({
+    mutationFn: async (params: {
+      historyId: number;
+      selectedEmails: string[];
+      selectedDomains: string[];
+      duplicateActions: Record<string, 'skip' | 'create' | 'merge'>;
+      linkExistingContacts: boolean;
+    }) => {
+      const res = await apiRequest("POST", "/api/gmail/import/confirm", params);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setPreviewHistoryId(null);
+      setSelectedPeople(new Set());
+      setSelectedOrgs(new Set());
+      setDuplicateActions({});
+      queryClient.invalidateQueries({ queryKey: ["/api/gmail/status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/gmail/history"] });
+      toast({
+        title: "Import Complete",
+        description: `Created ${data.contactsCreated} contacts, ${data.groupsCreated} organisations, ${data.interactionsCreated} interactions${data.contactsLinked > 0 ? `, linked ${data.contactsLinked} existing contacts` : ''}`,
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Import Failed",
+        description: err.message || "Could not complete import",
         variant: "destructive",
       });
     },
@@ -278,10 +370,321 @@ export default function GmailImportPage() {
   const hasAnyConnection = status?.connected || accounts.length > 0;
   const hasInitialImport = history.some(h => h.status === 'completed');
 
+  const previewQuery = useQuery<ImportHistoryItem>({
+    queryKey: ["/api/gmail/history", previewHistoryId],
+    enabled: !!previewHistoryId && !pollingId,
+  });
+  const previewData = previewHistoryId
+    ? (previewQuery.data?.previewData || pollingQuery.data?.previewData || null)
+    : null;
+
+  useEffect(() => {
+    if (accounts.length > 0) {
+      setSelectedAccountIds(prev => {
+        const validIds = new Set(accounts.map(a => a.id));
+        const next = new Set<number>();
+        for (const id of prev) {
+          if (validIds.has(id)) next.add(id);
+        }
+        if (next.size === 0) {
+          return validIds;
+        }
+        return next;
+      });
+    }
+  }, [accounts]);
+
+  const handleScan = (daysBack: number, scanType: string) => {
+    const ids = accounts.length > 0 ? Array.from(selectedAccountIds) : undefined;
+    scanMutation.mutate({ daysBack, scanType, accountIds: ids });
+  };
+
+  const handleScanSingleAccount = (accountId: number) => {
+    scanMutation.mutate({ daysBack: 365, scanType: 'manual', accountIds: [accountId] });
+  };
+
+  const toggleAccountSelection = (id: number) => {
+    const next = new Set(selectedAccountIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedAccountIds(next);
+  };
+
   if (statusQuery.isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (previewData) {
+    return (
+      <div className="space-y-6" data-testid="gmail-preview-page">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => { setPreviewHistoryId(null); setSelectedPeople(new Set()); setSelectedOrgs(new Set()); }}
+            className="text-muted-foreground hover:text-foreground"
+            data-testid="button-back-from-preview"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-preview-title">Review Import</h1>
+            <p className="text-muted-foreground text-sm">
+              Review discovered contacts and organisations before importing
+            </p>
+          </div>
+        </div>
+
+        <Card data-testid="card-preview-people">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  People ({previewData.people.length})
+                </CardTitle>
+                <CardDescription>
+                  {selectedPeople.size} selected for import
+                </CardDescription>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedPeople(new Set(previewData.people.map(p => p.email)))}
+                  data-testid="button-select-all-people"
+                >
+                  Select All
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedPeople(new Set())}
+                  data-testid="button-deselect-all-people"
+                >
+                  Deselect All
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2 max-h-[400px] overflow-y-auto">
+              {previewData.people.map((person) => (
+                <div
+                  key={person.email}
+                  className={`flex items-start gap-3 py-3 px-4 rounded-lg border ${person.isDuplicate ? 'border-amber-300 bg-amber-50/50 dark:bg-amber-950/20' : ''}`}
+                  data-testid={`preview-person-${person.email}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedPeople.has(person.email)}
+                    onChange={() => {
+                      const next = new Set(selectedPeople);
+                      if (next.has(person.email)) next.delete(person.email);
+                      else next.add(person.email);
+                      setSelectedPeople(next);
+                    }}
+                    className="mt-1 rounded"
+                    data-testid={`checkbox-person-${person.email}`}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{person.name}</span>
+                      <Badge variant="outline" className="text-xs">
+                        {person.frequency} email{person.frequency !== 1 ? 's' : ''}
+                      </Badge>
+                      {person.isDuplicate && (
+                        <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                          <AlertTriangle className="h-3 w-3 mr-1" />
+                          Possible Duplicate
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground font-mono truncate">{person.email}</p>
+
+                    {person.isDuplicate && (
+                      <div className="mt-2 p-2 rounded bg-amber-100/50 dark:bg-amber-900/30 text-xs">
+                        <p className="text-amber-800 dark:text-amber-200">
+                          Existing contact "{person.name}" has email: {person.existingContactEmail}
+                        </p>
+                        <div className="flex gap-2 mt-2">
+                          <Button
+                            size="sm"
+                            variant={duplicateActions[person.email] === 'skip' ? 'default' : 'outline'}
+                            className="h-6 text-xs px-2"
+                            onClick={() => setDuplicateActions(prev => ({ ...prev, [person.email]: 'skip' }))}
+                            data-testid={`button-dup-skip-${person.email}`}
+                          >
+                            Skip
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={duplicateActions[person.email] === 'create' ? 'default' : 'outline'}
+                            className="h-6 text-xs px-2"
+                            onClick={() => {
+                              setDuplicateActions(prev => ({ ...prev, [person.email]: 'create' }));
+                              setSelectedPeople(prev => new Set([...prev, person.email]));
+                            }}
+                            data-testid={`button-dup-create-${person.email}`}
+                          >
+                            Create Anyway
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={duplicateActions[person.email] === 'merge' ? 'default' : 'outline'}
+                            className="h-6 text-xs px-2"
+                            onClick={() => {
+                              setDuplicateActions(prev => ({ ...prev, [person.email]: 'merge' }));
+                              setSelectedPeople(prev => new Set([...prev, person.email]));
+                            }}
+                            data-testid={`button-dup-merge-${person.email}`}
+                          >
+                            Merge
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {person.recentSubjects.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground">Recent emails:</p>
+                        {person.recentSubjects.map((subj, i) => (
+                          <p key={i} className="text-xs text-muted-foreground truncate pl-2 border-l-2 border-muted">
+                            {subj}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {previewData.people.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-6">No new contacts found</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-preview-orgs">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Building2 className="h-5 w-5" />
+                  Organisations ({previewData.orgs.length})
+                </CardTitle>
+                <CardDescription>
+                  {selectedOrgs.size} selected for import
+                </CardDescription>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedOrgs(new Set(previewData.orgs.map(o => o.domain)))}
+                  data-testid="button-select-all-orgs"
+                >
+                  Select All
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedOrgs(new Set())}
+                  data-testid="button-deselect-all-orgs"
+                >
+                  Deselect All
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2 max-h-[400px] overflow-y-auto">
+              {previewData.orgs.map((org) => (
+                <div
+                  key={org.domain}
+                  className="flex items-start gap-3 py-3 px-4 rounded-lg border"
+                  data-testid={`preview-org-${org.domain}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedOrgs.has(org.domain)}
+                    onChange={() => {
+                      const next = new Set(selectedOrgs);
+                      if (next.has(org.domain)) next.delete(org.domain);
+                      else next.add(org.domain);
+                      setSelectedOrgs(next);
+                    }}
+                    className="mt-1 rounded"
+                    data-testid={`checkbox-org-${org.domain}`}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{org.aiName || org.suggestedName}</span>
+                      {org.existingGroupId && (
+                        <Badge variant="secondary" className="text-xs">Existing</Badge>
+                      )}
+                      <Badge variant="outline" className="text-xs">
+                        {org.memberEmails.length} member{org.memberEmails.length !== 1 ? 's' : ''}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground font-mono">{org.domain}</p>
+
+                    {org.unmatchedExistingContacts && org.unmatchedExistingContacts.length > 0 && (
+                      <div className="mt-2 p-2 rounded bg-blue-50 dark:bg-blue-950/30 text-xs">
+                        <div className="flex items-center gap-1 text-blue-700 dark:text-blue-300 mb-1">
+                          <Link2 className="h-3 w-3" />
+                          <span>{org.unmatchedExistingContacts.length} existing contact{org.unmatchedExistingContacts.length !== 1 ? 's' : ''} can be linked:</span>
+                        </div>
+                        {org.unmatchedExistingContacts.map(c => (
+                          <p key={c.id} className="text-blue-600 dark:text-blue-400 pl-2">
+                            {c.name} ({c.email})
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {previewData.orgs.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-6">No new organisations found</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="flex items-center justify-between">
+          <Button
+            variant="outline"
+            onClick={() => { setPreviewHistoryId(null); setSelectedPeople(new Set()); setSelectedOrgs(new Set()); }}
+            data-testid="button-cancel-import"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              if (previewHistoryId) {
+                confirmMutation.mutate({
+                  historyId: previewHistoryId,
+                  selectedEmails: Array.from(selectedPeople),
+                  selectedDomains: Array.from(selectedOrgs),
+                  duplicateActions,
+                  linkExistingContacts: true,
+                });
+              }
+            }}
+            disabled={confirmMutation.isPending || (selectedPeople.size === 0 && selectedOrgs.size === 0 && (!previewData?.existingContactEmails || previewData.existingContactEmails.length === 0))}
+            data-testid="button-confirm-import"
+          >
+            {confirmMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <CheckCircle2 className="h-4 w-4 mr-2" />
+            )}
+            Confirm Import ({selectedPeople.size} people, {selectedOrgs.size} orgs)
+          </Button>
+        </div>
       </div>
     );
   }
@@ -410,6 +813,13 @@ export default function GmailImportPage() {
               data-testid={`account-item-${account.id}`}
             >
               <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={selectedAccountIds.has(account.id)}
+                  onChange={() => toggleAccountSelection(account.id)}
+                  className="rounded"
+                  data-testid={`checkbox-account-${account.id}`}
+                />
                 <Mail className="h-5 w-5 text-indigo-500 shrink-0" />
                 <div>
                   <div className="flex items-center gap-2">
@@ -430,15 +840,27 @@ export default function GmailImportPage() {
                   </p>
                 </div>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => removeAccountMutation.mutate(account.id)}
-                disabled={removeAccountMutation.isPending}
-                data-testid={`button-remove-account-${account.id}`}
-              >
-                <LogOut className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleScanSingleAccount(account.id)}
+                  disabled={isScanning || !account.hasValidToken}
+                  data-testid={`button-scan-account-${account.id}`}
+                >
+                  {isScanning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3 mr-1" />}
+                  Scan
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeAccountMutation.mutate(account.id)}
+                  disabled={removeAccountMutation.isPending}
+                  data-testid={`button-remove-account-${account.id}`}
+                >
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           ))}
 
@@ -482,9 +904,9 @@ export default function GmailImportPage() {
             </CardTitle>
             <CardDescription>
               {hasInitialImport
-                ? "Run a new scan to import any new contacts since your last import"
-                : "Run your initial scan to import contacts from the past 12 months of emails"}
-              {accounts.length > 0 && status?.connected && " (scans all connected accounts)"}
+                ? "Run a new scan to discover new contacts since your last import"
+                : "Run your initial scan to discover contacts from the past 12 months of emails"}
+              {accounts.length > 1 && ` (${selectedAccountIds.size} of ${accounts.length} accounts selected)`}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -505,8 +927,8 @@ export default function GmailImportPage() {
             <div className="flex flex-wrap gap-3">
               {!hasInitialImport ? (
                 <Button
-                  onClick={() => scanMutation.mutate({ daysBack: 365, scanType: 'initial' })}
-                  disabled={isScanning}
+                  onClick={() => handleScan(365, 'initial')}
+                  disabled={isScanning || (accounts.length > 0 && selectedAccountIds.size === 0)}
                   data-testid="button-initial-scan"
                 >
                   {isScanning ? (
@@ -519,8 +941,8 @@ export default function GmailImportPage() {
               ) : (
                 <>
                   <Button
-                    onClick={() => scanMutation.mutate({ daysBack: 30, scanType: 'manual' })}
-                    disabled={isScanning}
+                    onClick={() => handleScan(30, 'manual')}
+                    disabled={isScanning || (accounts.length > 0 && selectedAccountIds.size === 0)}
                     data-testid="button-scan-30d"
                   >
                     {isScanning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
@@ -528,16 +950,16 @@ export default function GmailImportPage() {
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => scanMutation.mutate({ daysBack: 90, scanType: 'manual' })}
-                    disabled={isScanning}
+                    onClick={() => handleScan(90, 'manual')}
+                    disabled={isScanning || (accounts.length > 0 && selectedAccountIds.size === 0)}
                     data-testid="button-scan-90d"
                   >
                     Last 90 Days
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => scanMutation.mutate({ daysBack: 365, scanType: 'manual' })}
-                    disabled={isScanning}
+                    onClick={() => handleScan(365, 'manual')}
+                    disabled={isScanning || (accounts.length > 0 && selectedAccountIds.size === 0)}
                     data-testid="button-scan-365d"
                   >
                     Last 12 Months
@@ -772,6 +1194,7 @@ export default function GmailImportPage() {
                   <div className="flex items-center gap-3">
                     {item.status === 'completed' && <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />}
                     {item.status === 'running' && <Loader2 className="h-5 w-5 animate-spin text-indigo-500 shrink-0" />}
+                    {item.status === 'preview' && <Eye className="h-5 w-5 text-amber-500 shrink-0" />}
                     {item.status === 'error' && <XCircle className="h-5 w-5 text-red-500 shrink-0" />}
                     <div>
                       <div className="flex items-center gap-2">
@@ -779,7 +1202,7 @@ export default function GmailImportPage() {
                           {item.scanType === 'initial' ? 'Initial Import' : item.scanType === 'sync' ? 'Auto-Sync' : 'Manual Scan'}
                         </span>
                         <Badge variant={item.status === 'completed' ? 'default' : item.status === 'error' ? 'destructive' : 'secondary'} className="text-xs">
-                          {item.status}
+                          {item.status === 'preview' ? 'Awaiting Review' : item.status}
                         </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground">
@@ -797,22 +1220,38 @@ export default function GmailImportPage() {
                     </div>
                   </div>
 
-                  {item.status === 'completed' && (
-                    <div className="flex items-center gap-4 text-sm">
-                      <div className="flex items-center gap-1 text-muted-foreground">
-                        <Mail className="h-3.5 w-3.5" />
-                        <span>{item.emailsScanned}</span>
+                  <div className="flex items-center gap-3">
+                    {item.status === 'completed' && (
+                      <div className="flex items-center gap-4 text-sm">
+                        <div className="flex items-center gap-1 text-muted-foreground">
+                          <Mail className="h-3.5 w-3.5" />
+                          <span>{item.emailsScanned}</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-green-600">
+                          <Users className="h-3.5 w-3.5" />
+                          <span>+{item.contactsCreated}</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-blue-600">
+                          <Building2 className="h-3.5 w-3.5" />
+                          <span>+{item.groupsCreated}</span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1 text-green-600">
-                        <Users className="h-3.5 w-3.5" />
-                        <span>+{item.contactsCreated}</span>
-                      </div>
-                      <div className="flex items-center gap-1 text-blue-600">
-                        <Building2 className="h-3.5 w-3.5" />
-                        <span>+{item.groupsCreated}</span>
-                      </div>
-                    </div>
-                  )}
+                    )}
+                    {item.status === 'preview' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setPreviewHistoryId(item.id);
+                          setPollingId(item.id);
+                        }}
+                        data-testid={`button-review-${item.id}`}
+                      >
+                        <Eye className="h-3 w-3 mr-1" />
+                        Review
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

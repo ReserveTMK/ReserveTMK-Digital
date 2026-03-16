@@ -54,7 +54,7 @@ PostgreSQL is used as the database, integrated with Drizzle ORM. The schema incl
 -   **OpenAI API** (via Replit AI Integrations): Used for audio functionalities (speech-to-text, text-to-speech, voice chat) and image generation.
 -   **Replit Auth (OIDC)**: Handles user authentication and authorization.
 -   **Xero Integration**: OAuth2 connection for automated invoice generation and contact/invoice syncing.
--   **Gmail Sync**: Multi-account Gmail import with filtering and mailing list detection.
+-   **Gmail Sync**: Multi-account Gmail import with filtering and mailing list detection. Features account selection checkboxes, preview-before-import step, email interaction logging (creates "Email" type interactions with subject lines), duplicate name detection with skip/create/merge options, existing contact org linking, per-account scan buttons, and email context capture (recent subjects displayed in preview and contact notes).
 
 ### System Dependencies
 -   **ffmpeg**: Essential for server-side audio format conversion.
