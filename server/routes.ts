@@ -3229,8 +3229,25 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const timeMin = (parseStr(req.query.timeMin)) || new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
       const timeMax = (parseStr(req.query.timeMax)) || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
+      const scopeCalendarId = req.query.calendarId ? parseStr(req.query.calendarId) : null;
+
       const additionalCalendars = await storage.getCalendarSettings(userId);
-      const calendarIds = ["primary", ...additionalCalendars.filter(c => c.active).map(c => c.calendarId)];
+      const defaultCalendarIds = ["primary", ...additionalCalendars.filter(c => c.active).map(c => c.calendarId)];
+
+      let calendarIds: string[];
+      if (scopeCalendarId) {
+        const allowedCalendarIds = new Set(defaultCalendarIds);
+        const allMentorProfs = await db.select().from(mentorProfiles).where(eq(mentorProfiles.userId, userId));
+        for (const mp of allMentorProfs) {
+          if (mp.googleCalendarId) allowedCalendarIds.add(mp.googleCalendarId);
+        }
+        if (!allowedCalendarIds.has(scopeCalendarId)) {
+          return res.status(403).json({ message: "Calendar not authorized" });
+        }
+        calendarIds = [scopeCalendarId];
+      } else {
+        calendarIds = defaultCalendarIds;
+      }
 
       const allEvents: any[] = [];
       const seenKeys = new Set<string>();

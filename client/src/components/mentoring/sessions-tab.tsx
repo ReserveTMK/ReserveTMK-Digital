@@ -92,14 +92,9 @@ export function ScheduleSessionDialog({
   const [attendees, setAttendees] = useState<Attendee[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
   const [sendInvites, setSendInvites] = useState(false);
-  const [weekStart, setWeekStart] = useState<Date>(() => {
+  const [currentMonth, setCurrentMonth] = useState<Date>(() => {
     const now = new Date();
-    const day = now.getDay();
-    const diff = day === 0 ? -6 : 1 - day;
-    const mon = new Date(now);
-    mon.setDate(now.getDate() + diff);
-    mon.setHours(0, 0, 0, 0);
-    return mon;
+    return new Date(now.getFullYear(), now.getMonth(), 1);
   });
   const [selectedDay, setSelectedDay] = useState<string>("");
   const [showManualTime, setShowManualTime] = useState(false);
@@ -111,23 +106,116 @@ export function ScheduleSessionDialog({
     return `${y}-${m}-${day}`;
   }, []);
 
-  const weekDays = useMemo(() => {
-    const days: { date: Date; label: string; dateStr: string; isPast: boolean }[] = [];
+  const monthCalendarDays = useMemo(() => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(weekStart);
-      d.setDate(weekStart.getDate() + i);
-      const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-      days.push({
-        date: d,
-        label: dayNames[i],
-        dateStr: formatLocalDate(d),
-        isPast: d < today,
-      });
+
+    let startDow = firstDay.getDay();
+    if (startDow === 0) startDow = 7;
+    const prefixDays = startDow - 1;
+
+    const days: { date: Date; dateStr: string; isPast: boolean; isCurrentMonth: boolean; dayNum: number }[] = [];
+
+    for (let i = prefixDays - 1; i >= 0; i--) {
+      const d = new Date(year, month, -i);
+      days.push({ date: d, dateStr: formatLocalDate(d), isPast: d < today, isCurrentMonth: false, dayNum: d.getDate() });
     }
+
+    for (let i = 1; i <= lastDay.getDate(); i++) {
+      const d = new Date(year, month, i);
+      days.push({ date: d, dateStr: formatLocalDate(d), isPast: d < today, isCurrentMonth: true, dayNum: i });
+    }
+
+    const remaining = 7 - (days.length % 7);
+    if (remaining < 7) {
+      for (let i = 1; i <= remaining; i++) {
+        const d = new Date(year, month + 1, i);
+        days.push({ date: d, dateStr: formatLocalDate(d), isPast: d < today, isCurrentMonth: false, dayNum: d.getDate() });
+      }
+    }
+
     return days;
-  }, [weekStart, formatLocalDate]);
+  }, [currentMonth, formatLocalDate]);
+
+  const monthLabel = useMemo(() => {
+    return currentMonth.toLocaleDateString("en-NZ", { month: "long", year: "numeric" });
+  }, [currentMonth]);
+
+  const mentorGoogleCalendarId = useMemo(() => {
+    if (!mentorUserId || !mentorProfiles) return null;
+    const profile = mentorProfiles.find(p => getMentorBookingId(p) === mentorUserId);
+    return profile?.googleCalendarId || null;
+  }, [mentorUserId, mentorProfiles]);
+
+  const { data: gcalEvents } = useQuery<{ id: string; summary: string; start: string; end: string }[]>({
+    queryKey: ["/api/google-calendar/events", mentorUserId, mentorGoogleCalendarId, currentMonth.toISOString()],
+    queryFn: async () => {
+      if (!mentorGoogleCalendarId) return [];
+      const year = currentMonth.getFullYear();
+      const month = currentMonth.getMonth();
+      const timeMin = new Date(year, month, 1).toISOString();
+      const timeMax = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
+      const url = `/api/google-calendar/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&calendarId=${encodeURIComponent(mentorGoogleCalendarId)}`;
+      const res = await fetch(url);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!mentorUserId,
+  });
+
+  const busyDays = useMemo(() => {
+    const set = new Set<string>();
+    if (allMeetings && mentorUserId && mentorProfiles) {
+      const selectedProfile = mentorProfiles.find(p => getMentorBookingId(p) === mentorUserId);
+      const matchIds = new Set<string>();
+      if (selectedProfile) {
+        if (selectedProfile.mentorUserId) matchIds.add(selectedProfile.mentorUserId);
+        matchIds.add(`mentor-${selectedProfile.id}`);
+      }
+      matchIds.add(mentorUserId);
+      for (const m of allMeetings) {
+        if (!matchIds.has(m.userId) || m.status === "cancelled") continue;
+        const d = new Date(m.startTime);
+        set.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+      }
+    }
+    if (gcalEvents) {
+      for (const e of gcalEvents) {
+        const startD = new Date(e.start);
+        const endD = new Date(e.end);
+        if (isNaN(startD.getTime())) continue;
+        const effectiveEnd = isNaN(endD.getTime()) ? startD : endD;
+        const isAllDay = typeof e.start === "string" && !e.start.includes("T");
+        const cursor = new Date(startD);
+        cursor.setHours(0, 0, 0, 0);
+        const endDay = new Date(effectiveEnd);
+        endDay.setHours(0, 0, 0, 0);
+        if (isAllDay && endDay > cursor) {
+          endDay.setDate(endDay.getDate() - 1);
+        }
+        while (cursor <= endDay) {
+          set.add(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`);
+          cursor.setDate(cursor.getDate() + 1);
+        }
+      }
+    }
+    return set;
+  }, [allMeetings, mentorUserId, mentorProfiles, gcalEvents]);
+
+  const navigateMonth = useCallback((dir: number) => {
+    setCurrentMonth(prev => {
+      const next = new Date(prev);
+      next.setMonth(prev.getMonth() + dir);
+      return next;
+    });
+    setSelectedDay("");
+    setDate("");
+    setTime("09:00");
+  }, []);
 
   const { data: availableSlots, isLoading: slotsLoading } = useQuery<{ time: string; endTime: string }[]>({
     queryKey: ["/api/public/mentoring", mentorUserId, "slots", selectedDay],
@@ -148,14 +236,6 @@ export function ScheduleSessionDialog({
     return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
   }, []);
 
-  const navigateWeek = useCallback((dir: number) => {
-    setWeekStart(prev => {
-      const next = new Date(prev);
-      next.setDate(prev.getDate() + dir * 7);
-      return next;
-    });
-    setSelectedDay("");
-  }, []);
 
   const handleSlotClick = useCallback((dayStr: string, timeStr: string) => {
     setDate(dayStr);
@@ -185,6 +265,29 @@ export function ScheduleSessionDialog({
       })
       .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
   }, [selectedDay, allMeetings, mentorUserId, mentorProfiles]);
+
+  const dayGcalEvents = useMemo(() => {
+    if (!selectedDay || !gcalEvents) return [];
+    const selDate = new Date(selectedDay + "T00:00:00");
+    selDate.setHours(0, 0, 0, 0);
+    return gcalEvents
+      .filter(e => {
+        const startD = new Date(e.start);
+        if (isNaN(startD.getTime())) return false;
+        const endD = new Date(e.end);
+        const effectiveEnd = isNaN(endD.getTime()) ? startD : endD;
+        const isAllDay = typeof e.start === "string" && !e.start.includes("T");
+        const startDay = new Date(startD);
+        startDay.setHours(0, 0, 0, 0);
+        const endDay = new Date(effectiveEnd);
+        endDay.setHours(0, 0, 0, 0);
+        if (isAllDay && endDay > startDay) {
+          endDay.setDate(endDay.getDate() - 1);
+        }
+        return selDate >= startDay && selDate <= endDay;
+      })
+      .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+  }, [selectedDay, gcalEvents]);
 
   const getVenueName = useCallback((vid: number | null | undefined) => {
     if (!vid || !venues) return null;
@@ -418,89 +521,135 @@ export function ScheduleSessionDialog({
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 shrink-0"
-                  onClick={() => navigateWeek(-1)}
-                  data-testid="button-prev-week"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </Button>
-                <div className="grid grid-cols-7 gap-1 flex-1">
-                  {weekDays.map(d => {
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => navigateMonth(-1)}
+                    data-testid="button-prev-month"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <span className="text-sm font-medium" data-testid="text-month-label">{monthLabel}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => navigateMonth(1)}
+                    data-testid="button-next-month"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+                <div className="grid grid-cols-7 gap-0">
+                  {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map(d => (
+                    <div key={d} className="text-center text-[10px] font-medium text-muted-foreground py-1">{d}</div>
+                  ))}
+                  {monthCalendarDays.map(d => {
                     const isSelected = d.dateStr === selectedDay;
                     const isBooked = d.dateStr === date;
+                    const isBusy = busyDays.has(d.dateStr);
+                    const isToday = d.dateStr === formatLocalDate(new Date());
                     return (
                       <button
                         key={d.dateStr}
                         type="button"
-                        disabled={d.isPast}
-                        className={`flex flex-col items-center py-1.5 px-0.5 rounded-lg text-center transition-all ${
-                          d.isPast
+                        disabled={d.isPast || !d.isCurrentMonth}
+                        className={`relative flex flex-col items-center justify-center h-9 rounded-md text-xs transition-all ${
+                          !d.isCurrentMonth
+                            ? "text-muted-foreground/30 cursor-default"
+                            : d.isPast
                             ? "opacity-30 cursor-not-allowed"
                             : isSelected
-                            ? "bg-primary text-primary-foreground"
+                            ? "bg-primary text-primary-foreground font-semibold"
                             : isBooked
-                            ? "bg-primary/20 border border-primary"
-                            : "hover:bg-muted border border-transparent"
+                            ? "bg-primary/20 border border-primary font-semibold"
+                            : isToday
+                            ? "bg-accent font-semibold"
+                            : "hover:bg-muted"
                         }`}
                         onClick={() => { setSelectedDay(d.dateStr); setDate(""); setTime("09:00"); }}
                         data-testid={`day-${d.dateStr}`}
                       >
-                        <span className="text-[10px] font-medium">{d.label}</span>
-                        <span className="text-sm font-semibold">{d.date.getDate()}</span>
+                        <span>{d.dayNum}</span>
+                        {isBusy && d.isCurrentMonth && !d.isPast && (
+                          <span className={`absolute bottom-0.5 w-1 h-1 rounded-full ${isSelected ? "bg-primary-foreground" : "bg-primary"}`} />
+                        )}
                       </button>
                     );
                   })}
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 shrink-0"
-                  onClick={() => navigateWeek(1)}
-                  data-testid="button-next-week"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
               </div>
 
               {selectedDay && (
                 <div className="space-y-3">
-                  {dayMeetings.length > 0 && (
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Your schedule</p>
-                      <div className="space-y-0.5">
-                        {dayMeetings.map(m => {
-                          const start = new Date(m.startTime);
-                          const end = new Date(m.endTime);
-                          const startStr = formatSlotTime(`${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}`);
-                          const endStr = formatSlotTime(`${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`);
-                          const venueName = getVenueName(m.venueId);
-                          const loc = venueName || m.location;
-                          return (
-                            <div
-                              key={m.id}
-                              className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-muted/60 text-xs"
-                              data-testid={`schedule-event-${m.id}`}
-                            >
-                              <span className="text-muted-foreground whitespace-nowrap">{startStr}–{endStr}</span>
-                              <span className="font-medium truncate flex-1">{m.title}</span>
-                              {loc && (
-                                <span className="text-[10px] text-muted-foreground flex items-center gap-0.5 shrink-0">
-                                  {venueName ? <Building2 className="w-2.5 h-2.5" /> : <MapPin className="w-2.5 h-2.5" />}
-                                  {loc}
-                                </span>
-                              )}
-                            </div>
-                          );
-                        })}
+                  {(dayMeetings.length > 0 || dayGcalEvents.length > 0) && (() => {
+                    const combined: { key: string; startTime: number; node: JSX.Element }[] = [];
+                    for (const m of dayMeetings) {
+                      const start = new Date(m.startTime);
+                      const end = new Date(m.endTime);
+                      const startStr = formatSlotTime(`${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}`);
+                      const endStr = formatSlotTime(`${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`);
+                      const venueName = getVenueName(m.venueId);
+                      const loc = venueName || m.location;
+                      combined.push({
+                        key: `meeting-${m.id}`,
+                        startTime: start.getTime(),
+                        node: (
+                          <div
+                            className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-muted/60 text-xs"
+                            data-testid={`schedule-event-${m.id}`}
+                          >
+                            <span className="text-muted-foreground whitespace-nowrap">{startStr}–{endStr}</span>
+                            <span className="font-medium truncate flex-1">{m.title}</span>
+                            {loc && (
+                              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5 shrink-0">
+                                {venueName ? <Building2 className="w-2.5 h-2.5" /> : <MapPin className="w-2.5 h-2.5" />}
+                                {loc}
+                              </span>
+                            )}
+                          </div>
+                        ),
+                      });
+                    }
+                    for (const e of dayGcalEvents) {
+                      const isAllDay = typeof e.start === "string" && !e.start.includes("T");
+                      const start = new Date(e.start);
+                      const end = new Date(e.end);
+                      const timeLabel = isAllDay
+                        ? "All day"
+                        : `${formatSlotTime(`${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}`)}–${formatSlotTime(`${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`)}`;
+                      combined.push({
+                        key: `gcal-${e.id}`,
+                        startTime: isAllDay ? 0 : start.getTime(),
+                        node: (
+                          <div
+                            className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-blue-500/10 text-xs"
+                            data-testid={`schedule-gcal-${e.id}`}
+                          >
+                            <span className="text-muted-foreground whitespace-nowrap">{timeLabel}</span>
+                            <span className="font-medium truncate flex-1">{e.summary}</span>
+                            <Calendar className="w-2.5 h-2.5 text-blue-500 shrink-0" />
+                          </div>
+                        ),
+                      });
+                    }
+                    combined.sort((a, b) => a.startTime - b.startTime);
+                    return (
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Your schedule</p>
+                        <div className="space-y-0.5">
+                          {combined.map(item => (
+                            <div key={item.key}>{item.node}</div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   <div className="space-y-1">
                     <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Available slots</p>
