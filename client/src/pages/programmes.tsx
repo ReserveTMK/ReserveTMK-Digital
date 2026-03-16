@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useProgrammes, useCreateProgramme, useUpdateProgramme, useDeleteProgramme } from "@/hooks/use-programmes";
 import { useContacts, useCreateContact } from "@/hooks/use-contacts";
 import { useToast } from "@/hooks/use-toast";
@@ -49,6 +49,10 @@ import {
   Download,
   ExternalLink,
   Link2,
+  Mail,
+  FileText,
+  Send,
+  MessageSquare,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -58,7 +62,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import { QRCodeSVG } from "qrcode.react";
-import { PROGRAMME_CLASSIFICATIONS, PROGRAMME_STATUSES, type Programme, type Contact } from "@shared/schema";
+import { PROGRAMME_CLASSIFICATIONS, PROGRAMME_STATUSES, PROGRAMME_LOCATION_TYPES, type Programme, type Contact } from "@shared/schema";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { MetricCard } from "@/components/ui/metric-card";
 
@@ -92,13 +96,50 @@ export default function Programmes() {
   const deleteMutation = useDeleteProgramme();
   const { toast } = useToast();
 
+  const { data: regCounts } = useQuery<Record<number, number>>({
+    queryKey: ["/api/programmes/registration-counts"],
+  });
+
   const [search, setSearch] = useState("");
   const [classFilter, setClassFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [createOpen, setCreateOpen] = useState(false);
   const [editProgramme, setEditProgramme] = useState<Programme | null>(null);
   const [registrationsProgramme, setRegistrationsProgramme] = useState<Programme | null>(null);
+  const [wixContentProgramme, setWixContentProgramme] = useState<Programme | null>(null);
+  const [reminderProgramme, setReminderProgramme] = useState<Programme | null>(null);
+  const [surveyProgramme, setSurveyProgramme] = useState<Programme | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "kanban" | "monthly">("kanban");
+
+  const getAttendeeCount = (p: Programme) => {
+    const internal = p.attendees?.length || 0;
+    const external = regCounts?.[p.id] || 0;
+    return internal + external;
+  };
+
+  const sendReminderMutation = useMutation({
+    mutationFn: async (programmeId: number) => {
+      const res = await apiRequest("POST", `/api/programmes/${programmeId}/send-reminder`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Reminders sent", description: `${data.sent} reminder${data.sent !== 1 ? "s" : ""} sent successfully` });
+      setReminderProgramme(null);
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const sendSurveyMutation = useMutation({
+    mutationFn: async (programmeId: number) => {
+      const res = await apiRequest("POST", `/api/programmes/${programmeId}/send-survey`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Surveys sent", description: `${data.sent} survey${data.sent !== 1 ? "s" : ""} sent successfully` });
+      setSurveyProgramme(null);
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
 
   const filtered = programmes?.filter((p) => {
     const matchesSearch =
@@ -251,6 +292,8 @@ export default function Programmes() {
         startTime: p.startTime || undefined,
         endTime: p.endTime || undefined,
         location: p.location || undefined,
+        locationType: p.locationType || undefined,
+        customDirections: p.customDirections || undefined,
         facilitatorCost: p.facilitatorCost || "0",
         cateringCost: p.cateringCost || "0",
         promoCost: p.promoCost || "0",
@@ -465,9 +508,13 @@ export default function Programmes() {
                 onDuplicate={handleDuplicate}
                 onDelete={handleDelete}
                 onRegistrations={setRegistrationsProgramme}
+                onWixContent={setWixContentProgramme}
+                onReminder={setReminderProgramme}
+                onSurvey={setSurveyProgramme}
                 formatDateTime={formatDateTime}
                 getFacilitatorNames={getFacilitatorNames}
                 getTotalBudget={getTotalBudget}
+                getAttendeeCount={getAttendeeCount}
                 contacts={contacts}
               />
             )
@@ -478,9 +525,13 @@ export default function Programmes() {
               onDuplicate={handleDuplicate}
               onDelete={handleDelete}
               onRegistrations={setRegistrationsProgramme}
+              onWixContent={setWixContentProgramme}
+              onReminder={setReminderProgramme}
+              onSurvey={setSurveyProgramme}
               formatDateTime={formatDateTime}
               getFacilitatorNames={getFacilitatorNames}
               getTotalBudget={getTotalBudget}
+              getAttendeeCount={getAttendeeCount}
             />
           ) : (
             <div className="space-y-3">
@@ -549,6 +600,12 @@ export default function Programmes() {
                             <DollarSign className="w-3 h-3" />
                             Budget: ${getTotalBudget(programme).toFixed(2)}
                           </span>
+                          {getAttendeeCount(programme) > 0 && (
+                            <span className="flex items-center gap-1" data-testid={`text-attendee-count-${programme.id}`}>
+                              <Users className="w-3 h-3" />
+                              {getAttendeeCount(programme)} attendee{getAttendeeCount(programme) !== 1 ? "s" : ""}
+                            </span>
+                          )}
                         </div>
                         {facNames.length > 0 && (
                           <div className="flex items-center gap-1.5 mt-2 flex-wrap" data-testid={`text-facilitators-${programme.id}`}>
@@ -589,6 +646,22 @@ export default function Programmes() {
                             <DropdownMenuItem onClick={() => setRegistrationsProgramme(programme)} data-testid={`button-registrations-${programme.id}`}>
                               <ClipboardList className="w-4 h-4 mr-2" />
                               Registrations
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem onClick={() => setWixContentProgramme(programme)} data-testid={`button-wix-content-${programme.id}`}>
+                            <FileText className="w-4 h-4 mr-2" />
+                            Generate for Wix
+                          </DropdownMenuItem>
+                          {programme.publicRegistrations && (
+                            <DropdownMenuItem onClick={() => setReminderProgramme(programme)} data-testid={`button-send-reminder-${programme.id}`}>
+                              <Mail className="w-4 h-4 mr-2" />
+                              Send Reminder
+                            </DropdownMenuItem>
+                          )}
+                          {programme.publicRegistrations && (
+                            <DropdownMenuItem onClick={() => setSurveyProgramme(programme)} data-testid={`button-send-survey-${programme.id}`}>
+                              <MessageSquare className="w-4 h-4 mr-2" />
+                              Send Survey
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem onClick={() => handleDuplicate(programme)} data-testid={`button-duplicate-programme-${programme.id}`}>
@@ -672,6 +745,72 @@ export default function Programmes() {
           onOpenChange={(open) => { if (!open) setRegistrationsProgramme(null); }}
         />
       )}
+
+      {wixContentProgramme && (
+        <WixContentDialog
+          programme={wixContentProgramme}
+          open={!!wixContentProgramme}
+          onOpenChange={(open) => { if (!open) setWixContentProgramme(null); }}
+          formatDateTime={formatDateTime}
+          getFacilitatorNames={getFacilitatorNames}
+        />
+      )}
+
+      <Dialog open={!!reminderProgramme} onOpenChange={(open) => { if (!open) setReminderProgramme(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle data-testid="text-reminder-dialog-title">Send Reminder Emails</DialogTitle>
+            <DialogDescription>
+              Send a reminder email to all registered attendees for "{reminderProgramme?.name}".
+            </DialogDescription>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This will send an email with event details and directions to everyone who registered for this programme.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReminderProgramme(null)} data-testid="button-cancel-reminder">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => reminderProgramme && sendReminderMutation.mutate(reminderProgramme.id)}
+              disabled={sendReminderMutation.isPending}
+              data-testid="button-confirm-reminder"
+            >
+              {sendReminderMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              <Send className="w-4 h-4 mr-2" />
+              Send Reminders
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!surveyProgramme} onOpenChange={(open) => { if (!open) setSurveyProgramme(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle data-testid="text-survey-dialog-title">Send Post-Event Survey</DialogTitle>
+            <DialogDescription>
+              Send a feedback survey to all registered attendees for "{surveyProgramme?.name}".
+            </DialogDescription>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Each attendee will receive a unique survey link via email. The survey includes a rating, feedback questions, and a newsletter opt-in.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSurveyProgramme(null)} data-testid="button-cancel-survey">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => surveyProgramme && sendSurveyMutation.mutate(surveyProgramme.id)}
+              disabled={sendSurveyMutation.isPending}
+              data-testid="button-confirm-survey"
+            >
+              {sendSurveyMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              <Send className="w-4 h-4 mr-2" />
+              Send Surveys
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -875,6 +1014,92 @@ function RegistrationsDialog({ programme, open, onOpenChange }: { programme: Pro
   );
 }
 
+function WixContentDialog({
+  programme,
+  open,
+  onOpenChange,
+  formatDateTime,
+  getFacilitatorNames,
+}: {
+  programme: Programme;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  formatDateTime: (p: Programme) => { date: string; time: string | null } | null;
+  getFacilitatorNames: (p: Programme) => string[];
+}) {
+  const [copied, setCopied] = useState(false);
+  const dt = formatDateTime(programme);
+  const facNames = getFacilitatorNames(programme);
+
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+  const content = [
+    `<h2>${esc(programme.name)}</h2>`,
+    programme.description ? `<p>${esc(programme.description)}</p>` : "",
+    `<h3>Details</h3>`,
+    `<ul>`,
+    dt ? `<li><strong>Date:</strong> ${esc(dt.date)}</li>` : "",
+    dt?.time ? `<li><strong>Time:</strong> ${esc(dt.time)}</li>` : "",
+    programme.location ? `<li><strong>Location:</strong> ${esc(programme.location)}</li>` : "",
+    facNames.length > 0 ? `<li><strong>Facilitator${facNames.length > 1 ? "s" : ""}:</strong> ${esc(facNames.join(", "))}</li>` : "",
+    programme.capacity ? `<li><strong>Capacity:</strong> ${programme.capacity} spots</li>` : "",
+    `</ul>`,
+    programme.publicRegistrations && programme.slug
+      ? `<p><a href="${window.location.origin}/register/${programme.slug}">Register Now</a></p>`
+      : "",
+  ].filter(Boolean).join("\n");
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle data-testid="text-wix-content-title">Wix Content - {programme.name}</DialogTitle>
+          <DialogDescription>Copy this HTML to paste into your Wix website editor.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="bg-muted/50 rounded-lg p-4">
+            <pre className="text-xs whitespace-pre-wrap font-mono overflow-x-auto" data-testid="text-wix-content">
+              {content}
+            </pre>
+          </div>
+          <div className="bg-card border rounded-lg p-4">
+            <h4 className="text-sm font-medium mb-2">Preview</h4>
+            <div className="space-y-2">
+              <h3 className="text-lg font-bold">{programme.name}</h3>
+              {programme.description && <p className="text-sm text-muted-foreground">{programme.description}</p>}
+              <div className="text-sm space-y-1">
+                {dt && <div><span className="font-medium">Date:</span> {dt.date}</div>}
+                {dt?.time && <div><span className="font-medium">Time:</span> {dt.time}</div>}
+                {programme.location && <div><span className="font-medium">Location:</span> {programme.location}</div>}
+                {facNames.length > 0 && <div><span className="font-medium">Facilitator{facNames.length > 1 ? "s" : ""}:</span> {facNames.join(", ")}</div>}
+                {programme.capacity && <div><span className="font-medium">Capacity:</span> {programme.capacity} spots</div>}
+              </div>
+              {programme.publicRegistrations && programme.slug && (
+                <p className="text-primary underline text-sm">Register Now</p>
+              )}
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-close-wix">
+            Close
+          </Button>
+          <Button onClick={handleCopy} data-testid="button-copy-wix">
+            {copied ? <CheckCircle2 className="w-4 h-4 mr-2" /> : <Copy className="w-4 h-4 mr-2" />}
+            {copied ? "Copied!" : "Copy HTML"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 const COLUMN_STYLES: Record<string, { header: string; dot: string; bg: string }> = {
   planned: {
     header: "text-slate-700 dark:text-slate-300",
@@ -904,18 +1129,26 @@ function MonthlyView({
   onDuplicate,
   onDelete,
   onRegistrations,
+  onWixContent,
+  onReminder,
+  onSurvey,
   formatDateTime,
   getFacilitatorNames,
   getTotalBudget,
+  getAttendeeCount,
 }: {
   monthlyGroups: { month: string; monthIndex: number; programmes: Programme[] }[];
   onEdit: (p: Programme) => void;
   onDuplicate: (p: Programme) => void;
   onDelete: (id: number) => void;
   onRegistrations: (p: Programme) => void;
+  onWixContent: (p: Programme) => void;
+  onReminder: (p: Programme) => void;
+  onSurvey: (p: Programme) => void;
   formatDateTime: (p: Programme) => { date: string; time: string | null } | null;
   getFacilitatorNames: (p: Programme) => string[];
   getTotalBudget: (p: Programme) => number;
+  getAttendeeCount: (p: Programme) => number;
 }) {
   const currentMonth = new Date().getMonth();
 
@@ -1012,6 +1245,12 @@ function MonthlyView({
                                 ${budget.toFixed(2)}
                               </span>
                             )}
+                            {getAttendeeCount(programme) > 0 && (
+                              <span className="flex items-center gap-1">
+                                <Users className="w-3 h-3" />
+                                {getAttendeeCount(programme)}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1030,6 +1269,22 @@ function MonthlyView({
                             <DropdownMenuItem onClick={() => onRegistrations(programme)} data-testid={`button-monthly-registrations-${programme.id}`}>
                               <ClipboardList className="w-3.5 h-3.5 mr-2" />
                               Registrations
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem onClick={() => onWixContent(programme)} data-testid={`button-monthly-wix-${programme.id}`}>
+                            <FileText className="w-3.5 h-3.5 mr-2" />
+                            Generate for Wix
+                          </DropdownMenuItem>
+                          {programme.publicRegistrations && (
+                            <DropdownMenuItem onClick={() => onReminder(programme)} data-testid={`button-monthly-reminder-${programme.id}`}>
+                              <Mail className="w-3.5 h-3.5 mr-2" />
+                              Send Reminder
+                            </DropdownMenuItem>
+                          )}
+                          {programme.publicRegistrations && (
+                            <DropdownMenuItem onClick={() => onSurvey(programme)} data-testid={`button-monthly-survey-${programme.id}`}>
+                              <MessageSquare className="w-3.5 h-3.5 mr-2" />
+                              Send Survey
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem onClick={() => onDuplicate(programme)} data-testid={`button-monthly-duplicate-${programme.id}`}>
@@ -1061,9 +1316,13 @@ function KanbanBoard({
   onDuplicate,
   onDelete,
   onRegistrations,
+  onWixContent,
+  onReminder,
+  onSurvey,
   formatDateTime,
   getFacilitatorNames,
   getTotalBudget,
+  getAttendeeCount,
   contacts,
 }: {
   columns: Record<string, Programme[]>;
@@ -1072,9 +1331,13 @@ function KanbanBoard({
   onDuplicate: (p: Programme) => void;
   onDelete: (id: number) => void;
   onRegistrations: (p: Programme) => void;
+  onWixContent: (p: Programme) => void;
+  onReminder: (p: Programme) => void;
+  onSurvey: (p: Programme) => void;
   formatDateTime: (p: Programme) => { date: string; time: string | null } | null;
   getFacilitatorNames: (p: Programme) => string[];
   getTotalBudget: (p: Programme) => number;
+  getAttendeeCount: (p: Programme) => number;
   contacts?: Contact[];
 }) {
   const columnOrder = ["planned", "active", "completed", "cancelled"];
@@ -1138,6 +1401,22 @@ function KanbanBoard({
                                         Registrations
                                       </DropdownMenuItem>
                                     )}
+                                    <DropdownMenuItem onClick={() => onWixContent(programme)} data-testid={`kanban-wix-${programme.id}`}>
+                                      <FileText className="w-3.5 h-3.5 mr-2" />
+                                      Generate for Wix
+                                    </DropdownMenuItem>
+                                    {programme.publicRegistrations && (
+                                      <DropdownMenuItem onClick={() => onReminder(programme)} data-testid={`kanban-reminder-${programme.id}`}>
+                                        <Mail className="w-3.5 h-3.5 mr-2" />
+                                        Send Reminder
+                                      </DropdownMenuItem>
+                                    )}
+                                    {programme.publicRegistrations && (
+                                      <DropdownMenuItem onClick={() => onSurvey(programme)} data-testid={`kanban-survey-${programme.id}`}>
+                                        <MessageSquare className="w-3.5 h-3.5 mr-2" />
+                                        Send Survey
+                                      </DropdownMenuItem>
+                                    )}
                                     <DropdownMenuItem onClick={() => onDuplicate(programme)} data-testid={`kanban-duplicate-${programme.id}`}>
                                       <Copy className="w-3.5 h-3.5 mr-2" />
                                       Duplicate
@@ -1173,7 +1452,7 @@ function KanbanBoard({
                                 )}
                               </div>
 
-                              {(getTotalBudget(programme) > 0 || getFacilitatorNames(programme).length > 0) && (
+                              {(getTotalBudget(programme) > 0 || getFacilitatorNames(programme).length > 0 || getAttendeeCount(programme) > 0) && (
                                 <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/30">
                                   {getTotalBudget(programme) > 0 && (
                                     <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
@@ -1181,12 +1460,20 @@ function KanbanBoard({
                                       {getTotalBudget(programme).toFixed(2)}
                                     </span>
                                   )}
-                                  {getFacilitatorNames(programme).length > 0 && (
-                                    <span className="text-[11px] text-muted-foreground flex items-center gap-0.5 ml-auto">
-                                      <Users className="w-3 h-3" />
-                                      {getFacilitatorNames(programme).length}
-                                    </span>
-                                  )}
+                                  <div className="flex items-center gap-2 ml-auto">
+                                    {getAttendeeCount(programme) > 0 && (
+                                      <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
+                                        <ClipboardList className="w-3 h-3" />
+                                        {getAttendeeCount(programme)}
+                                      </span>
+                                    )}
+                                    {getFacilitatorNames(programme).length > 0 && (
+                                      <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
+                                        <Users className="w-3 h-3" />
+                                        {getFacilitatorNames(programme).length}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -1248,6 +1535,8 @@ function ProgrammeFormDialog({
   const [tbcYear, setTbcYear] = useState(programme?.tbcYear || new Date().getFullYear().toString());
   const [isTBC, setIsTBC] = useState(!!(programme?.tbcMonth || programme?.tbcYear));
   const [location, setLocation] = useState(programme?.location || "");
+  const [locationType, setLocationType] = useState(programme?.locationType || (programme?.location ? "Other" : ""));
+  const [customDirections, setCustomDirections] = useState(programme?.customDirections || "");
 
   const MONTHS = [
     "January", "February", "March", "April", "May", "June",
@@ -1341,6 +1630,8 @@ function ProgrammeFormDialog({
       tbcMonth: isTBC ? tbcMonth : null,
       tbcYear: isTBC ? tbcYear : null,
       location: location.trim() || undefined,
+      locationType: locationType || null,
+      customDirections: locationType === "Other" ? (customDirections.trim() || null) : null,
       facilitatorCost: facilitatorCost || "0",
       cateringCost: cateringCost || "0",
       promoCost: promoCost || "0",
@@ -1552,14 +1843,49 @@ function ProgrammeFormDialog({
             </div>
 
             <div>
-              <Label>Location</Label>
-              <Input
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="Venue or address"
-                data-testid="input-programme-location"
-              />
+              <Label>Location Type</Label>
+              <Select value={locationType} onValueChange={(val) => {
+                setLocationType(val);
+                if (val !== "Other") {
+                  setLocation(val);
+                  setCustomDirections("");
+                } else {
+                  setLocation("");
+                }
+              }}>
+                <SelectTrigger data-testid="select-programme-location-type">
+                  <SelectValue placeholder="Select location type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PROGRAMME_LOCATION_TYPES.map((lt) => (
+                    <SelectItem key={lt} value={lt}>{lt}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
+            {locationType === "Other" && (
+              <>
+                <div>
+                  <Label>Location Name</Label>
+                  <Input
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    placeholder="Venue name or address"
+                    data-testid="input-programme-location"
+                  />
+                </div>
+                <div>
+                  <Label>Directions</Label>
+                  <Textarea
+                    value={customDirections}
+                    onChange={(e) => setCustomDirections(e.target.value)}
+                    placeholder="How to find the venue, parking info, etc."
+                    rows={3}
+                    data-testid="input-programme-custom-directions"
+                  />
+                </div>
+              </>
+            )}
 
             <div className="space-y-2">
               <Label className="text-sm font-semibold">Facilitators</Label>

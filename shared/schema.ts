@@ -425,6 +425,8 @@ export const programmes = pgTable("programmes", {
   tbcMonth: text("tbc_month"),
   tbcYear: text("tbc_year"),
   location: text("location"),
+  locationType: text("location_type"),
+  customDirections: text("custom_directions"),
   facilitatorCost: numeric("facilitator_cost", { precision: 10, scale: 2 }).default("0"),
   cateringCost: numeric("catering_cost", { precision: 10, scale: 2 }).default("0"),
   promoCost: numeric("promo_cost", { precision: 10, scale: 2 }).default("0"),
@@ -573,7 +575,7 @@ export const venueInstructions = pgTable("venue_instructions", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const SURVEY_TYPES = ["post_booking", "growth"] as const;
+export const SURVEY_TYPES = ["post_booking", "growth", "programme"] as const;
 export type SurveyType = typeof SURVEY_TYPES[number];
 
 export const SURVEY_STATUSES = ["pending", "sent", "completed", "expired"] as const;
@@ -1354,6 +1356,9 @@ export type ProgrammeClassification = typeof PROGRAMME_CLASSIFICATIONS[number];
 
 export const PROGRAMME_STATUSES = ["planned", "active", "completed", "cancelled"] as const;
 export type ProgrammeStatus = typeof PROGRAMME_STATUSES[number];
+
+export const PROGRAMME_LOCATION_TYPES = ["Studio", "Workshop Space", "Other"] as const;
+export type ProgrammeLocationType = typeof PROGRAMME_LOCATION_TYPES[number];
 
 export const insertProgrammeSchema = createInsertSchema(programmes).omit({
   id: true,
@@ -2200,6 +2205,7 @@ export const organisationProfile = pgTable("organisation_profile", {
   values: text("values"),
   location: text("location"),
   targetCommunity: text("target_community"),
+  venueDirections: jsonb("venue_directions").$type<Record<string, string>>(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

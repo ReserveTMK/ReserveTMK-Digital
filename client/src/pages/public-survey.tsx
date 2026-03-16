@@ -196,6 +196,24 @@ function QuestionRenderer({
         />
       );
 
+    case "consent":
+      return (
+        <div className="flex items-start gap-2">
+          <Checkbox
+            id={`consent-${question.id}`}
+            checked={typeof response === "boolean" ? response : false}
+            onCheckedChange={(checked) => onResponseChange(!!checked)}
+            data-testid={`consent-checkbox-${question.id}`}
+          />
+          <Label
+            htmlFor={`consent-${question.id}`}
+            className="text-sm text-muted-foreground leading-snug cursor-pointer"
+          >
+            {question.question}
+          </Label>
+        </div>
+      );
+
     case "testimonial":
       return (
         <div className="space-y-3">
@@ -389,11 +407,15 @@ export default function PublicSurveyPage() {
           <p className="text-sm text-muted-foreground mb-1" data-testid="text-thank-you">
             {survey.surveyType === "growth"
               ? "Your growth check-in has been submitted successfully."
+              : survey.surveyType === "programme"
+              ? "Your feedback has been submitted successfully."
               : "Your feedback has been submitted successfully."}
           </p>
           <p className="text-sm text-muted-foreground" data-testid="text-thank-you-detail">
             {survey.surveyType === "growth"
               ? "Your responses help us understand how to best support you on your journey. Keep going!"
+              : survey.surveyType === "programme"
+              ? "Your feedback helps us improve future events and programmes for the community."
               : "We appreciate you taking the time to share your experience with Reserve Tamaki."}
           </p>
           {survey?.googleReviewUrl && survey.googleReviewUrl.startsWith("https://") && (
@@ -422,9 +444,10 @@ export default function PublicSurveyPage() {
   }
 
   const isGrowthSurvey = survey.surveyType === "growth";
+  const isProgrammeSurvey = survey.surveyType === "programme";
 
   return (
-    <div className={`min-h-screen bg-gradient-to-b ${isGrowthSurvey ? "from-green-50/50 to-background dark:from-green-950/20 dark:to-background" : "from-background to-muted/30"}`}>
+    <div className={`min-h-screen bg-gradient-to-b ${isGrowthSurvey ? "from-green-50/50 to-background dark:from-green-950/20 dark:to-background" : isProgrammeSurvey ? "from-blue-50/50 to-background dark:from-blue-950/20 dark:to-background" : "from-background to-muted/30"}`}>
       <div className="max-w-2xl mx-auto px-4 py-8 sm:py-12">
         <div className="text-center mb-6">
           {isGrowthSurvey ? (
@@ -434,6 +457,15 @@ export default function PublicSurveyPage() {
               </div>
               <h1 className="text-2xl font-bold text-foreground" data-testid="heading-survey-title">
                 Growth Check-in
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1" data-testid="text-survey-subtitle">
+                Reserve Tāmaki
+              </p>
+            </>
+          ) : survey.surveyType === "programme" ? (
+            <>
+              <h1 className="text-2xl font-bold text-foreground" data-testid="heading-survey-title">
+                Event Feedback
               </h1>
               <p className="text-sm text-muted-foreground mt-1" data-testid="text-survey-subtitle">
                 Reserve Tāmaki
@@ -456,6 +488,8 @@ export default function PublicSurveyPage() {
             <p className="text-sm text-muted-foreground" data-testid="text-survey-intro">
               {isGrowthSurvey
                 ? "Take a moment to reflect on where you're at right now. Rate yourself across key growth areas and share what's on your mind — there are no right or wrong answers."
+                : survey.surveyType === "programme"
+                ? "We'd love to hear how the event went for you. Your feedback helps us plan better programmes for the community."
                 : "We'd love to hear about your experience. Your feedback helps us improve our venue and services for the community."}
             </p>
           </div>
@@ -504,7 +538,7 @@ export default function PublicSurveyPage() {
                     Submitting...
                   </>
                 ) : (
-                  isGrowthSurvey ? "Submit Check-in" : "Submit Feedback"
+                  isGrowthSurvey ? "Submit Check-in" : survey.surveyType === "programme" ? "Submit Feedback" : "Submit Feedback"
                 )}
               </Button>
             </div>

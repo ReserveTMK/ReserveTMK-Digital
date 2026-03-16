@@ -3783,6 +3783,131 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     }
   });
 
+  // === Programme Send Reminder ===
+  app.post('/api/programmes/:id/send-reminder', isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const programmeId = parseId(req.params.id);
+      const programme = await storage.getProgramme(programmeId);
+      if (!programme || programme.userId !== userId) {
+        return res.status(404).json({ message: "Programme not found" });
+      }
+      const registrations = await storage.getProgrammeRegistrations(programmeId);
+      const activeRegs = registrations.filter(r => r.status === "registered" && r.email);
+      if (activeRegs.length === 0) {
+        return res.status(400).json({ message: "No registered attendees with email addresses" });
+      }
+
+      let directions: string | null = null;
+      if (programme.locationType === "Other") {
+        directions = programme.customDirections || null;
+      } else if (programme.locationType) {
+        const orgProfile = await storage.getOrganisationProfile(userId);
+        const venueDirections = orgProfile?.venueDirections as Record<string, string> | null;
+        if (venueDirections) {
+          directions = venueDirections[programme.locationType] || null;
+        }
+      }
+
+      const { sendProgrammeReminderEmail } = await import("./email");
+      let sent = 0;
+      for (const reg of activeRegs) {
+        try {
+          await sendProgrammeReminderEmail(
+            reg.email,
+            reg.firstName || reg.email,
+            {
+              name: programme.name,
+              startDate: programme.startDate,
+              startTime: programme.startTime,
+              endTime: programme.endTime,
+              location: programme.location,
+            },
+            directions
+          );
+          sent++;
+        } catch (emailErr: any) {
+          console.error(`Failed to send reminder to ${reg.email}:`, emailErr.message);
+        }
+      }
+      res.json({ success: true, sent, total: activeRegs.length });
+    } catch (err) {
+      console.error("Send reminder error:", err);
+      res.status(500).json({ message: "Failed to send reminders" });
+    }
+  });
+
+  // === Programme Send Survey ===
+  app.post('/api/programmes/:id/send-survey', isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const programmeId = parseId(req.params.id);
+      const programme = await storage.getProgramme(programmeId);
+      if (!programme || programme.userId !== userId) {
+        return res.status(404).json({ message: "Programme not found" });
+      }
+      const registrations = await storage.getProgrammeRegistrations(programmeId);
+      const activeRegs = registrations.filter(r => r.status === "registered" && r.email);
+      if (activeRegs.length === 0) {
+        return res.status(400).json({ message: "No registered attendees with email addresses" });
+      }
+
+      const questions = [
+        { id: 1, type: "rating", question: "How would you rate this event overall?", scale: 5, required: true, key: "overall_rating" },
+        { id: 2, type: "text", question: "What did you enjoy most?", required: false, key: "enjoyed_most", placeholder: "Tell us what you liked..." },
+        { id: 3, type: "text", question: "What could be improved?", required: false, key: "could_improve", placeholder: "Any suggestions for next time..." },
+        { id: 4, type: "yes_no", question: "Would you attend again?", required: true, key: "would_attend_again" },
+        { id: 5, type: "consent", question: "I'd like to hear about upcoming workshops and events", required: false, key: "newsletter_optin", consent: true },
+      ];
+
+      const { sendProgrammeSurveyEmail } = await import("./email");
+      const crypto = await import("crypto");
+      let sent = 0;
+      for (const reg of activeRegs) {
+        try {
+          const surveyToken = crypto.randomUUID();
+          await storage.createSurvey({
+            userId,
+            surveyType: "programme",
+            relatedId: programmeId,
+            contactId: reg.contactId,
+            questions,
+            status: "pending",
+            surveyToken,
+          });
+          await sendProgrammeSurveyEmail(
+            reg.email,
+            reg.firstName || reg.email,
+            programme.name,
+            surveyToken
+          );
+          sent++;
+        } catch (emailErr: any) {
+          console.error(`Failed to send survey to ${reg.email}:`, emailErr.message);
+        }
+      }
+      res.json({ success: true, sent, total: activeRegs.length });
+    } catch (err) {
+      console.error("Send survey error:", err);
+      res.status(500).json({ message: "Failed to send surveys" });
+    }
+  });
+
+  // === Programme Registration Counts (bulk) ===
+  app.get('/api/programmes/registration-counts', isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const programmesList = await storage.getProgrammes(userId);
+      const counts: Record<number, number> = {};
+      for (const p of programmesList) {
+        counts[p.id] = await storage.getProgrammeRegistrationCount(p.id);
+      }
+      res.json(counts);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch registration counts" });
+    }
+  });
+
   // === Memberships API ===
 
   app.get(api.memberships.list.path, isAuthenticated, async (req, res) => {

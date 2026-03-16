@@ -520,6 +520,111 @@ export async function sendBookerLoginEmail(
   await sendEmail(email, subject, htmlBody);
 }
 
+export async function sendProgrammeReminderEmail(
+  email: string,
+  name: string,
+  programme: {
+    name: string;
+    startDate: Date | string | null;
+    startTime: string | null;
+    endTime: string | null;
+    location: string | null;
+  },
+  directions: string | null
+): Promise<void> {
+  const dateStr = formatDate(programme.startDate);
+  const timeStr = programme.startTime
+    ? formatTime(programme.startTime) + (programme.endTime ? ` – ${formatTime(programme.endTime)}` : "")
+    : null;
+
+  const detailRows = [
+    dateStr ? `<tr><td style="padding:4px 0;color:#6b7280;font-size:14px;width:80px;vertical-align:top;">Date</td><td style="padding:4px 0;font-size:14px;color:#111827;font-weight:600;">${dateStr}</td></tr>` : "",
+    timeStr ? `<tr><td style="padding:4px 0;color:#6b7280;font-size:14px;vertical-align:top;">Time</td><td style="padding:4px 0;font-size:14px;color:#111827;font-weight:600;">${timeStr}</td></tr>` : "",
+    programme.location ? `<tr><td style="padding:4px 0;color:#6b7280;font-size:14px;vertical-align:top;">Location</td><td style="padding:4px 0;font-size:14px;color:#111827;font-weight:600;">${programme.location}</td></tr>` : "",
+  ].filter(Boolean).join("");
+
+  const directionsHtml = directions
+    ? `<tr><td style="padding:20px 30px;background:#f0fdf4;border-top:1px solid #e5e7eb;">
+        <h3 style="margin:0 0 8px;font-size:14px;color:#166534;">How to find us</h3>
+        <p style="margin:0;font-size:13px;color:#374151;line-height:1.6;white-space:pre-wrap;">${directions}</p>
+      </td></tr>`
+    : "";
+
+  const htmlBody = `<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:20px auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+  <tr><td style="padding:30px;background:#7c3aed;text-align:center;">
+    <h1 style="margin:0;color:#ffffff;font-size:22px;">Event Reminder</h1>
+    <p style="margin:8px 0 0;color:#e9d5ff;font-size:14px;">Reserve Tāmaki</p>
+  </td></tr>
+
+  <tr><td style="padding:25px 30px;">
+    <p style="margin:0;font-size:16px;color:#111827;">Kia ora ${name},</p>
+    <p style="margin:10px 0;font-size:14px;color:#374151;">Just a reminder about the upcoming event:</p>
+
+    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:15px 0;">
+      <h2 style="margin:0 0 10px;font-size:18px;color:#111827;">${programme.name}</h2>
+      <table cellpadding="0" cellspacing="0">${detailRows}</table>
+    </div>
+
+    <p style="margin:10px 0 0;font-size:14px;color:#374151;">We look forward to seeing you there!</p>
+    <p style="margin:15px 0 0;font-size:14px;color:#374151;">Ngā mihi,<br><strong>Reserve Tāmaki Team</strong></p>
+  </td></tr>
+
+  ${directionsHtml}
+
+  <tr><td style="padding:15px 30px;background:#f9fafb;text-align:center;">
+    <p style="margin:0;font-size:12px;color:#9ca3af;">Reserve Tāmaki Hub &bull; 133a Line Road, Glen Innes, Auckland 1072</p>
+  </td></tr>
+</table>
+</body>
+</html>`;
+
+  await sendEmail(email, `Reminder: ${programme.name}`, htmlBody);
+}
+
+export async function sendProgrammeSurveyEmail(
+  email: string,
+  name: string,
+  programmeName: string,
+  surveyToken: string
+): Promise<void> {
+  const baseUrl = getBaseUrl();
+  const surveyUrl = `${baseUrl}/survey/${surveyToken}`;
+
+  const htmlBody = `<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:20px auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+  <tr><td style="padding:30px;background:#7c3aed;text-align:center;">
+    <h1 style="margin:0;color:#ffffff;font-size:22px;">How was it?</h1>
+    <p style="margin:8px 0 0;color:#e9d5ff;font-size:14px;">Reserve Tāmaki</p>
+  </td></tr>
+
+  <tr><td style="padding:25px 30px;">
+    <p style="margin:0;font-size:16px;color:#111827;">Kia ora ${name},</p>
+    <p style="margin:10px 0;font-size:14px;color:#374151;">
+      Thanks for attending <strong>${programmeName}</strong>! We'd love to hear your thoughts — it only takes a minute.
+    </p>
+
+    <div style="text-align:center;margin:25px 0;">
+      <a href="${surveyUrl}" style="display:inline-block;padding:14px 32px;background:#7c3aed;color:#ffffff;text-decoration:none;border-radius:6px;font-size:16px;font-weight:600;">Share Your Feedback</a>
+    </div>
+
+    <p style="margin:15px 0 0;font-size:14px;color:#374151;">Ngā mihi,<br><strong>Reserve Tāmaki Team</strong></p>
+  </td></tr>
+
+  <tr><td style="padding:15px 30px;background:#f9fafb;text-align:center;">
+    <p style="margin:0;font-size:12px;color:#9ca3af;">Reserve Tāmaki Hub &bull; 133a Line Road, Glen Innes, Auckland 1072</p>
+  </td></tr>
+</table>
+</body>
+</html>`;
+
+  await sendEmail(email, `How was ${programmeName}?`, htmlBody);
+}
+
 export async function sendSessionNotesEmail(
   menteeEmail: string,
   menteeName: string,
