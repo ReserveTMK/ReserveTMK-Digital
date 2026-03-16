@@ -115,7 +115,7 @@ export default function Dashboard() {
   });
 
   const { data: allTasks } = useQuery<ProjectTask[]>({
-    queryKey: ["/api/projects/all-tasks"],
+    queryKey: ["/api/projects", "all-tasks"],
   });
 
   const { data: catchUpItems } = useQuery<{

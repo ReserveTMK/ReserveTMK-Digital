@@ -313,7 +313,7 @@ function TrendsSection({ communityLens, funderFilter, programmeFilter, taxonomyF
                     <div key={metric.key} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border bg-card" data-testid={`trend-pop-${metric.key}`}>
                       <div className="min-w-0">
                         <p className="text-xs text-muted-foreground truncate">{metric.label}</p>
-                        <p className="text-sm font-semibold">{metric.key === "communitySpend" ? `$${current.toLocaleString()}` : current.toLocaleString()}</p>
+                        <p className="text-sm font-semibold">{metric.key === "communitySpend" ? `$${(current ?? 0).toLocaleString()}` : (current ?? 0).toLocaleString()}</p>
                       </div>
                       <Badge
                         variant="secondary"
@@ -349,10 +349,10 @@ function TrendsSection({ communityLens, funderFilter, programmeFilter, taxonomyF
                       <Tooltip
                         formatter={(value: number) =>
                           metric.key === "communitySpend"
-                            ? [`$${value.toLocaleString()}`, metric.label]
+                            ? [`$${(value ?? 0).toLocaleString()}`, metric.label]
                             : metric.key === "repeatEngagementRate"
-                            ? [`${value}%`, metric.label]
-                            : [value.toLocaleString(), metric.label]
+                            ? [`${value ?? 0}%`, metric.label]
+                            : [(value ?? 0).toLocaleString(), metric.label]
                         }
                       />
                       <Line
@@ -407,6 +407,7 @@ export default function Reports() {
   const [generated, setGenerated] = useState(false);
   const [reportData, setReportData] = useState<any>(null);
   const [narrativeData, setNarrativeData] = useState<string | null>(null);
+  const [narrativeFiltersSnapshot, setNarrativeFiltersSnapshot] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [communityLens, setCommunityLens] = useState<"all" | "maori" | "pasifika" | "maori_pasifika">("all");
   const [communityComparisonData, setCommunityComparisonData] = useState<any>(null);
@@ -577,6 +578,13 @@ export default function Reports() {
 
   const countWords = (text: string) => text.trim() ? text.trim().split(/\s+/).length : 0;
 
+  const getCurrentFiltersKey = () => {
+    const { startDate, endDate } = getDateRange();
+    return JSON.stringify({ startDate, endDate, programmeFilter, taxonomyFilter, funderFilter, communityLens, narrativeStyle });
+  };
+
+  const isNarrativeStale = narrativeData && narrativeFiltersSnapshot && narrativeFiltersSnapshot !== getCurrentFiltersKey();
+
   const handleGenerateNarrative = async () => {
     const { startDate, endDate } = getDateRange();
     const filters: any = { startDate, endDate, narrativeStyle };
@@ -589,6 +597,7 @@ export default function Reports() {
       const res = await apiRequest("POST", "/api/reports/narrative", filters);
       const data = await res.json();
       setNarrativeData(data.narrative);
+      setNarrativeFiltersSnapshot(getCurrentFiltersKey());
     } catch (err: any) {
       toast({ title: "Error", description: "Failed to generate narrative", variant: "destructive" });
     }
@@ -1252,7 +1261,7 @@ export default function Reports() {
                     <StatCard icon={Users} label="Total Attendees" value={(del?.totalAttendees || 0).toLocaleString()} color="blue" testId="stat-total-attendees" />
                     <StatCard icon={Clock} label="Community Hours" value={del?.communityHours || 0} color="green" testId="stat-community-hours" />
                     {reportData?.communityDiscounts && reportData.communityDiscounts.discountedBookingsCount > 0 && (
-                      <StatCard icon={DollarSign} label="Community Discounts" value={`$${reportData.communityDiscounts.totalDiscountValue.toLocaleString()}`} color="emerald" testId="stat-community-discounts" />
+                      <StatCard icon={DollarSign} label="Community Discounts" value={`$${(reportData.communityDiscounts.totalDiscountValue ?? 0).toLocaleString()}`} color="emerald" testId="stat-community-discounts" />
                     )}
                   </div>
 
@@ -1416,7 +1425,7 @@ export default function Reports() {
                         <HeadlineStatCard
                           icon={BadgeDollarSign}
                           label="Total Economic Value"
-                          value={`$${reportData.economicRollup.totalEconomicValue.toLocaleString()}`}
+                          value={`$${(reportData.economicRollup.totalEconomicValue ?? 0).toLocaleString()}`}
                           color="emerald"
                           testId="stat-total-economic-value"
                         />
@@ -1424,7 +1433,7 @@ export default function Reports() {
                           <HeadlineStatCard
                             icon={Landmark}
                             label="Funding Secured"
-                            value={`$${reportData.economicRollup.fundingSecured.toLocaleString()}`}
+                            value={`$${(reportData.economicRollup.fundingSecured ?? 0).toLocaleString()}`}
                             color="green"
                             testId="stat-funding-secured"
                           />
@@ -1451,7 +1460,7 @@ export default function Reports() {
                           <HeadlineStatCard
                             icon={DollarSign}
                             label="Revenue Milestones"
-                            value={`$${reportData.economicRollup.revenueMilestones.toLocaleString()}`}
+                            value={`$${(reportData.economicRollup.revenueMilestones ?? 0).toLocaleString()}`}
                             color="teal"
                             testId="stat-revenue-milestones"
                           />
@@ -2049,7 +2058,7 @@ export default function Reports() {
                         {Object.entries(val.revenue.byPricingTier).map(([tier, data]: [string, any]) => (
                           <Card key={tier} className="p-3">
                             <p className="text-sm text-muted-foreground capitalize">{tier.replace("_", " ")}</p>
-                            <p className="text-lg font-bold">${data.revenue?.toLocaleString()}</p>
+                            <p className="text-lg font-bold">${(data.revenue ?? 0).toLocaleString()}</p>
                             <p className="text-xs text-muted-foreground">{data.count} venue hires</p>
                           </Card>
                         ))}
@@ -2120,8 +2129,8 @@ export default function Reports() {
               </CollapsibleSection>
 
               {/* Section 6: Benchmark Insights */}
-              {benchmarkData && benchmarkData.insights?.length > 0 && (
-                <CollapsibleSection title="Benchmark Insights" icon={TrendingUp} testId="section-benchmark" defaultOpen={true}>
+              <CollapsibleSection title="Benchmark Insights" icon={TrendingUp} testId="section-benchmark" defaultOpen={true}>
+                {benchmarkData && benchmarkData.insights?.length > 0 ? (
                   <div className="pt-4 space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <MetricBenchmarkCard
@@ -2150,8 +2159,16 @@ export default function Reports() {
                       ))}
                     </div>
                   </div>
-                </CollapsibleSection>
-              )}
+                ) : (
+                  <div className="pt-4 text-center py-8" data-testid="benchmark-empty-state">
+                    <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-3">
+                      <BarChart3 className="w-6 h-6 text-muted-foreground" />
+                    </div>
+                    <p className="text-sm font-medium mb-1">No benchmark data available</p>
+                    <p className="text-xs text-muted-foreground max-w-md mx-auto">Benchmark insights require monthly metric snapshots. Record snapshots regularly to enable period-over-period comparisons and trend analysis.</p>
+                  </div>
+                )}
+              </CollapsibleSection>
 
               {/* Section 7: Community Comparison */}
               {/* Section 8: Tamaki Ora Alignment */}
@@ -2282,6 +2299,15 @@ export default function Reports() {
 
                   {narrativeData ? (
                     <div className="space-y-6">
+                      {isNarrativeStale && (
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-sm text-amber-700 dark:text-amber-400" data-testid="narrative-stale-indicator">
+                          <Info className="w-4 h-4 shrink-0" />
+                          <span>Report filters have changed since this narrative was generated. Regenerate to reflect the current filters.</span>
+                          <Button variant="outline" size="sm" className="ml-auto shrink-0" onClick={handleGenerateNarrative} data-testid="button-regenerate-narrative">
+                            Regenerate
+                          </Button>
+                        </div>
+                      )}
                       <div className="prose prose-sm dark:prose-invert max-w-none" data-testid="text-narrative">
                         {narrativeData.split("\n").map((line, i) => {
                           if (line.startsWith("## ")) return <h3 key={i} className="text-lg font-semibold mt-4 mb-2">{line.replace("## ", "")}</h3>;

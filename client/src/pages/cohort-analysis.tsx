@@ -13,7 +13,7 @@ import {
 } from "recharts";
 import {
   Loader2, Users, Trophy, TrendingUp, Clock, ArrowRight,
-  BarChart3, GitCompareArrows,
+  BarChart3, GitCompareArrows, Info,
 } from "lucide-react";
 import { format, startOfQuarter, endOfQuarter, subQuarters } from "date-fns";
 
@@ -94,7 +94,7 @@ function StatCard({ icon: Icon, label, value, subtitle, testId }: {
 }
 
 function CohortTimeline({ data, label }: { data: CohortMetrics; label?: string }) {
-  if (data.timeline.length === 0) {
+  if (!data.timeline || data.timeline.length === 0) {
     return (
       <Card className="p-8 text-center" data-testid="empty-timeline">
         <p className="text-muted-foreground">No timeline data available for this cohort.</p>
@@ -399,6 +399,11 @@ export default function CohortAnalysisPage() {
                         subtitle={`${cohortData.keyStats.avgBaselineGrowthScore} → ${cohortData.keyStats.avgCurrentGrowthScore}`}
                         testId="stat-growth"
                       />
+                    </div>
+
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground" data-testid="active-definition-note">
+                      <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>"Active" means the contact has had engagement within the last 3 months (based on their last recorded activity date).</span>
                     </div>
 
                     <CohortTimeline data={cohortData} />

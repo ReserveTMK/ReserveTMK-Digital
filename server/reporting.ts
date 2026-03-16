@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { sql, eq, ne, and, gte, lte, inArray, count, sum } from "drizzle-orm";
+import { sql, eq, ne, and, gte, lte, inArray, count, sum, asc } from "drizzle-orm";
 import {
   impactLogs, impactLogContacts, impactLogGroups, impactTags, impactTaxonomy,
   contacts, groups, groupMembers, events, eventAttendance,
@@ -647,15 +647,24 @@ export async function getImpactMetrics(filters: ReportFilters) {
     eq(relationshipStageHistory.entityType, "contact"),
     gte(relationshipStageHistory.changedAt, start),
     lte(relationshipStageHistory.changedAt, end),
-  ));
+  )).orderBy(asc(relationshipStageHistory.changedAt));
 
-  const deepened = new Set<number>();
+  const contactFirstStage = new Map<number, number>();
+  const contactLastStage = new Map<number, number>();
   for (const sh of stageHist) {
     if (lensIds && !lensIds.has(sh.entityId)) continue;
-    const prevIdx = sh.previousStage ? CONNECTION_ORDER.indexOf(sh.previousStage) : -1;
+    if (!contactFirstStage.has(sh.entityId)) {
+      const prevIdx = sh.previousStage ? CONNECTION_ORDER.indexOf(sh.previousStage) : -1;
+      contactFirstStage.set(sh.entityId, prevIdx);
+    }
     const newIdx = CONNECTION_ORDER.indexOf(sh.newStage);
-    if (newIdx > prevIdx && newIdx >= 0) deepened.add(sh.entityId);
+    contactLastStage.set(sh.entityId, newIdx);
   }
+  const deepened = new Set<number>();
+  contactLastStage.forEach((finalIdx, entityId) => {
+    const initialIdx = contactFirstStage.get(entityId) ?? -1;
+    if (finalIdx > initialIdx && finalIdx >= 0) deepened.add(entityId);
+  });
 
   return {
     communitySpend: communitySpendTotal,

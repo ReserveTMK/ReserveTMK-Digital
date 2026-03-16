@@ -133,7 +133,7 @@ export default function ProgrammeEffectivenessPage() {
   }, [programmes, sortBy, sortDir, outcomeMap]);
 
   const totalProgrammes = programmes?.length ?? 0;
-  const totalAttendance = programmes?.reduce((sum, p) => sum + p.totalAttendance, 0) ?? 0;
+  const totalAttendance = programmes?.reduce((sum, p) => sum + (p.totalAttendance || 0), 0) ?? 0;
   const totalMilestones = programmes?.reduce((sum, p) => sum + p.milestoneCount, 0) ?? 0;
   const totalMilestoneValue = outcomes?.reduce((sum, o) => sum + o.totalMilestoneValue, 0) ?? 0;
   const totalStageProgressions = outcomes?.reduce((sum, o) => sum + o.stageProgressions, 0) ?? 0;
