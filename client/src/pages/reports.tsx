@@ -20,7 +20,7 @@ import {
   Download, Activity, Tag, TrendingUp, Building2, DollarSign,
   Save, BookOpen, ChevronDown, ChevronUp, Handshake, Clock,
   Info, History, Zap, X, Pen, Landmark, Settings, Camera, Star,
-  Plus, Trash2, ArrowUpRight, Briefcase, Rocket, BadgeDollarSign, ArrowDownRight, MoveRight, ArrowRight,
+  Plus, Trash2, ArrowUpRight, Briefcase, Rocket, BadgeDollarSign, ArrowDownRight, MoveRight, ArrowRight, MessageSquare,
 } from "lucide-react";
 import {
   format, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, subMonths, startOfYear,
@@ -1187,6 +1187,33 @@ export default function Reports() {
                       </div>
                     </details>
                   )}
+
+                  {reportData?.surveyData?.postBooking && reportData.surveyData.postBooking.totalCompleted > 0 && (
+                    <div className="pt-3 border-t" data-testid="post-booking-satisfaction">
+                      <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                        <MessageSquare className="w-4 h-4 text-emerald-600" /> Post-Booking Feedback
+                      </h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                        <StatCard icon={MessageSquare} label="Responses" value={reportData.surveyData.postBooking.totalCompleted} color="emerald" testId="stat-pb-responses" />
+                        <StatCard icon={Activity} label="Response Rate" value={`${reportData.surveyData.postBooking.completionRate}%`} color="green" testId="stat-pb-response-rate" />
+                        {reportData.surveyData.postBooking.overallSatisfaction !== null && (
+                          <StatCard icon={Star} label="Avg Satisfaction" value={`${reportData.surveyData.postBooking.overallSatisfaction}/10`} color="amber" testId="stat-pb-satisfaction" />
+                        )}
+                        <StatCard icon={FileText} label="Surveys Sent" value={reportData.surveyData.postBooking.totalSent} color="slate" testId="stat-pb-sent" />
+                      </div>
+                      {reportData.surveyData.postBooking.aggregatedQuestions.length > 0 && (
+                        <div className="space-y-2">
+                          {reportData.surveyData.postBooking.aggregatedQuestions.filter((q: any) => q.averageRating !== null).map((q: any) => (
+                            <div key={q.questionId} className="flex items-center gap-3 text-sm" data-testid={`pb-question-${q.questionId}`}>
+                              <span className="flex-1 text-muted-foreground truncate">{q.question}</span>
+                              <span className="font-semibold">{q.averageRating}/10</span>
+                              <span className="text-xs text-muted-foreground">({q.responseCount} responses)</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </CollapsibleSection>
 
@@ -1383,6 +1410,76 @@ export default function Reports() {
                     );
                   })()}
 
+
+                  {reportData?.surveyData?.growth && reportData.surveyData.growth.totalCompleted > 0 && (
+                    <div className="pt-3 border-t" data-testid="community-voice">
+                      <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                        <MessageSquare className="w-4 h-4 text-purple-600" /> Community Voice
+                        <span className="text-xs font-normal text-muted-foreground ml-1">Self-reported outcomes from growth surveys</span>
+                      </h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                        <StatCard icon={MessageSquare} label="Responses" value={reportData.surveyData.growth.totalCompleted} color="purple" testId="stat-survey-responses" />
+                        <StatCard icon={Activity} label="Completion Rate" value={`${reportData.surveyData.growth.completionRate}%`} color="violet" testId="stat-survey-completion" />
+                        <StatCard icon={FileText} label="Surveys Sent" value={reportData.surveyData.growth.totalSent} color="slate" testId="stat-survey-sent" />
+                        <StatCard icon={Users} label="Completed Surveys" value={reportData.surveyData.totalCompletedSurveys} color="indigo" testId="stat-survey-total" />
+                      </div>
+
+                      {reportData.surveyData.growth.aggregatedQuestions.filter((q: any) => q.averageRating !== null).length > 0 && (
+                        <div className="space-y-3">
+                          <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Self-Reported Growth Ratings</h5>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {reportData.surveyData.growth.aggregatedQuestions.filter((q: any) => q.averageRating !== null).map((q: any) => {
+                              const pct = q.averageRating ? Math.round((q.averageRating / 10) * 100) : 0;
+                              const aiMetricKey = q.question.toLowerCase().includes("mindset") ? "mindset"
+                                : q.question.toLowerCase().includes("skill") ? "skill"
+                                : q.question.toLowerCase().includes("confidence") ? "confidence"
+                                : null;
+                              const aiData = aiMetricKey && imp?.growthMetrics?.[aiMetricKey];
+                              return (
+                                <Card key={q.questionId} className="p-4" data-testid={`survey-question-${q.questionId}`}>
+                                  <h4 className="text-sm font-semibold mb-2 text-purple-600 dark:text-purple-400">{q.question}</h4>
+                                  <div className="flex items-baseline gap-2">
+                                    <span className="text-2xl font-bold">{q.averageRating}</span>
+                                    <span className="text-xs text-muted-foreground">/10 avg ({q.responseCount} responses)</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-2">
+                                    <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                                      <div className="h-full bg-purple-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                                    </div>
+                                    <span className="text-xs font-medium text-purple-600 dark:text-purple-400">{q.averageRating}/10</span>
+                                  </div>
+                                  {aiData && (aiData.averageScore > 0 || aiData.positiveMovementPercent > 0) && (
+                                    <div className="mt-3 pt-2 border-t border-dashed">
+                                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                        <TrendingUp className="w-3 h-3" />
+                                        AI-detected: {aiData.averageScore}/10 avg, {aiData.positiveMovementPercent}% positive movement
+                                      </p>
+                                    </div>
+                                  )}
+                                </Card>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {reportData.surveyData.growth.aggregatedQuestions.some((q: any) => q.sampleTextAnswers?.length > 0) && (
+                        <details className="mt-3" data-testid="survey-open-ended-details">
+                          <summary className="text-xs font-semibold cursor-pointer hover:text-primary transition-colors text-muted-foreground uppercase tracking-wider" data-testid="toggle-survey-open-ended">Open-Ended Responses</summary>
+                          <div className="mt-2 space-y-2">
+                            {reportData.surveyData.growth.aggregatedQuestions.filter((q: any) => q.sampleTextAnswers?.length > 0).map((q: any) => (
+                              <div key={q.questionId} data-testid={`survey-text-${q.questionId}`}>
+                                <p className="text-sm font-medium mb-1">{q.question}</p>
+                                {q.sampleTextAnswers.slice(0, 3).map((a: string, i: number) => (
+                                  <p key={i} className="text-sm italic text-muted-foreground border-l-2 border-purple-300 dark:border-purple-700 pl-3 mb-1">"{a}"</p>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  )}
 
                   {reportData?.journeyProgression && (reportData.journeyProgression.totalProgressions > 0 || Object.values(reportData.journeyProgression.currentDistribution).some((v: any) => v > 0)) && (
                     <div className="pt-3 border-t" data-testid="journey-progression">

@@ -7,6 +7,7 @@ import {
   milestones, relationshipStageHistory, communitySpend, meetings, interactions,
   meetingTypes, monthlySnapshots, footTrafficTouchpoints, dailyFootTraffic,
   metricSnapshots,
+  surveys,
 } from "@shared/schema";
 
 export interface ReportFilters {
@@ -814,13 +815,14 @@ export async function generateNarrative(
   legacyContext?: { metrics: any; highlights: string[]; reportCount: number } | null,
   narrativeStyle: "compliance" | "story" = "compliance",
 ) {
-  const [reach, delivery, impact, value, mentoring, connectionStrength] = await Promise.all([
+  const [reach, delivery, impact, value, mentoring, connectionStrength, surveyData] = await Promise.all([
     getReachMetrics(filters),
     getDeliveryMetrics(filters),
     getImpactMetrics(filters),
     getValueContribution(filters),
     getMentoringMetrics(filters),
     getConnectionStrengthDistribution(filters),
+    getSurveyAggregation(filters),
   ]);
 
   const topCategories = impact.taxonomyBreakdown.slice(0, 3);
@@ -887,6 +889,21 @@ export async function generateNarrative(
           if (c.topQuotes.length > 0) line += `\n  > "${c.topQuotes[0]}"`;
           return line;
         }).join("\n");
+      }
+      if (surveyData.totalCompletedSurveys > 0) {
+        impText += `\n\n### Community Voice\n\n`;
+        impText += `${surveyData.totalCompletedSurveys} completed surveys were collected (${surveyData.totalSent} sent, ${surveyData.totalSent > 0 ? Math.round((surveyData.totalCompletedSurveys / surveyData.totalSent) * 100) : 0}% completion rate).`;
+        if (surveyData.growth.totalCompleted > 0) {
+          const ratedGrowthQs = surveyData.growth.aggregatedQuestions.filter(q => q.averageRating !== null);
+          if (ratedGrowthQs.length > 0) {
+            impText += ` Self-reported growth ratings: `;
+            impText += ratedGrowthQs.slice(0, 3).map(q => `${q.question}: ${q.averageRating}/10`).join(", ");
+            impText += `.`;
+          }
+        }
+        if (surveyData.postBooking.overallSatisfaction !== null) {
+          impText += ` Post-booking satisfaction averaged ${surveyData.postBooking.overallSatisfaction}/10.`;
+        }
       }
       sections.push(impText);
     }
@@ -955,6 +972,20 @@ export async function generateNarrative(
         return line;
       }).join("\n");
       impText += `\n\nTop impact areas:\n${catLines}`;
+    }
+    if (surveyData.totalCompletedSurveys > 0) {
+      impText += `\n\nSelf-reported survey data: ${surveyData.totalCompletedSurveys} completed surveys (${surveyData.totalSent} sent, ${surveyData.totalSent > 0 ? Math.round((surveyData.totalCompletedSurveys / surveyData.totalSent) * 100) : 0}% completion).`;
+      if (surveyData.growth.totalCompleted > 0) {
+        const ratedGrowthQs = surveyData.growth.aggregatedQuestions.filter(q => q.averageRating !== null);
+        if (ratedGrowthQs.length > 0) {
+          impText += ` Growth survey averages: `;
+          impText += ratedGrowthQs.slice(0, 3).map(q => `${q.question}: ${q.averageRating}`).join(", ");
+          impText += `.`;
+        }
+      }
+      if (surveyData.postBooking.overallSatisfaction !== null) {
+        impText += ` Post-booking satisfaction: ${surveyData.postBooking.overallSatisfaction}/10.`;
+      }
     }
     sections.push(impText);
 
@@ -1678,8 +1709,117 @@ function buildMovementSummary(totalDeepened: number, transitions: { from: string
   return `${totalDeepened} people deepened their connection — ${details}`;
 }
 
+export async function getSurveyAggregation(filters: ReportFilters) {
+  const start = parseDate(filters.startDate);
+  const end = parseDate(filters.endDate);
+
+  const sentSurveys = await db.select().from(surveys).where(
+    and(
+      eq(surveys.userId, filters.userId),
+      gte(surveys.createdAt, start),
+      lte(surveys.createdAt, end),
+    )
+  );
+
+  const completedInPeriod = await db.select().from(surveys).where(
+    and(
+      eq(surveys.userId, filters.userId),
+      eq(surveys.status, "completed"),
+      gte(surveys.completedAt, start),
+      lte(surveys.completedAt, end),
+    )
+  );
+
+  const allSurveyIds = new Set([...sentSurveys.map(s => s.id), ...completedInPeriod.map(s => s.id)]);
+  const allSurveys = [...sentSurveys];
+  for (const s of completedInPeriod) {
+    if (!allSurveyIds.has(s.id) || !sentSurveys.some(ss => ss.id === s.id)) {
+      allSurveys.push(s);
+    }
+  }
+
+  const growthSurveys = allSurveys.filter(s => s.surveyType === "growth");
+  const postBookingSurveys = allSurveys.filter(s => s.surveyType === "post_booking");
+
+  const completedGrowth = allSurveys.filter(s => s.surveyType === "growth" && s.status === "completed" && s.responses && s.responses.length > 0 && s.completedAt && s.completedAt >= start && s.completedAt <= end);
+  const completedPostBooking = allSurveys.filter(s => s.surveyType === "post_booking" && s.status === "completed" && s.responses && s.responses.length > 0 && s.completedAt && s.completedAt >= start && s.completedAt <= end);
+
+  const aggregateResponses = (completed: typeof allSurveys) => {
+    const questionMap = new Map<string, { questionId: number; question: string; type: string; values: number[]; textAnswers: string[] }>();
+
+    for (const survey of completed) {
+      const questions = survey.questions || [];
+      const responses = survey.responses || [];
+
+      for (const resp of responses) {
+        const qDef = questions.find(q => q.id === resp.questionId);
+        if (!qDef) continue;
+
+        const compositeKey = `${qDef.question.trim().toLowerCase()}::${qDef.type}`;
+
+        if (!questionMap.has(compositeKey)) {
+          questionMap.set(compositeKey, {
+            questionId: resp.questionId,
+            question: qDef.question,
+            type: qDef.type,
+            values: [],
+            textAnswers: [],
+          });
+        }
+
+        const entry = questionMap.get(compositeKey)!;
+        if (typeof resp.answer === "number") {
+          entry.values.push(resp.answer);
+        } else if (typeof resp.answer === "string") {
+          const numVal = Number(resp.answer);
+          if (!isNaN(numVal) && (qDef.type === "rating" || qDef.type === "scale" || qDef.type === "number")) {
+            entry.values.push(numVal);
+          } else if (resp.answer.trim()) {
+            entry.textAnswers.push(resp.answer.trim());
+          }
+        }
+      }
+    }
+
+    return Array.from(questionMap.values()).map(data => ({
+      questionId: data.questionId,
+      question: data.question,
+      type: data.type,
+      averageRating: data.values.length > 0 ? Math.round((data.values.reduce((a, b) => a + b, 0) / data.values.length) * 10) / 10 : null,
+      responseCount: data.values.length + data.textAnswers.length,
+      sampleTextAnswers: data.textAnswers.slice(0, 5),
+    }));
+  };
+
+  const growthAggregated = aggregateResponses(completedGrowth);
+  const postBookingAggregated = aggregateResponses(completedPostBooking);
+
+  const postBookingRatings = postBookingAggregated.filter(q => q.averageRating !== null);
+  const overallSatisfaction = postBookingRatings.length > 0
+    ? Math.round((postBookingRatings.reduce((s, q) => s + (q.averageRating || 0), 0) / postBookingRatings.length) * 10) / 10
+    : null;
+
+  return {
+    growth: {
+      totalSent: growthSurveys.length,
+      totalCompleted: completedGrowth.length,
+      completionRate: growthSurveys.length > 0 ? Math.round((completedGrowth.length / growthSurveys.length) * 100) : 0,
+      aggregatedQuestions: growthAggregated,
+    },
+    postBooking: {
+      totalSent: postBookingSurveys.length,
+      totalCompleted: completedPostBooking.length,
+      completionRate: postBookingSurveys.length > 0 ? Math.round((completedPostBooking.length / postBookingSurveys.length) * 100) : 0,
+      overallSatisfaction,
+      aggregatedQuestions: postBookingAggregated,
+    },
+    totalCompletedSurveys: completedGrowth.length + completedPostBooking.length,
+    totalSent: allSurveys.length,
+  };
+}
+
 export async function getFullMonthlyReport(filters: ReportFilters) {
-  const [reach, delivery, impact, value, mentoring, organisationsEngaged, peopleFeatured, journeyProgression, communityDiscounts, connectionStrength] = await Promise.all([
+  const [reach, delivery, impact, value, mentoring, organisationsEngaged, peopleFeatured, journeyProgression, communityDiscounts, connectionStrength, surveyData] = await Promise.all([
     getReachMetrics(filters),
     getDeliveryMetrics(filters),
     getImpactMetrics(filters),
@@ -1690,6 +1830,7 @@ export async function getFullMonthlyReport(filters: ReportFilters) {
     getJourneyStageProgression(filters),
     getCommunityDiscounts(filters),
     getConnectionStrengthDistribution(filters),
+    getSurveyAggregation(filters),
   ]);
 
   const averageChange: Record<string, number> = {};
@@ -1717,6 +1858,7 @@ export async function getFullMonthlyReport(filters: ReportFilters) {
     journeyProgression,
     communityDiscounts,
     connectionStrength,
+    surveyData,
     engagement: reach,
     outcomes: {
       totalContacts: impact.contactsWithMetrics,
