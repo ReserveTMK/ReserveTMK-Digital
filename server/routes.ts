@@ -1203,6 +1203,16 @@ export async function registerRoutes(
     }
   });
 
+  function getOnboardingAnswer(answers: Record<string, string> | null | undefined, keywords: string[]): string | null {
+    if (!answers || typeof answers !== 'object') return null;
+    const lowerKeys = Object.keys(answers);
+    for (const keyword of keywords) {
+      const match = lowerKeys.find(k => k.toLowerCase().includes(keyword.toLowerCase()));
+      if (match && answers[match]) return String(answers[match]);
+    }
+    return null;
+  }
+
   app.get('/api/mentoring-relationships/enriched', isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
@@ -1258,10 +1268,10 @@ export async function registerRoutes(
           recentSessionIds: completedSessions.slice(0, 5).map((s: any) => s.id),
           ventureDescription: application?.ventureDescription || null,
           whatNeedHelpWith: application?.whatNeedHelpWith || null,
-          whyMentoring: application?.whyMentoring || null,
-          whatStuckOn: application?.whatStuckOn || null,
-          alreadyTried: application?.alreadyTried || null,
-          timeCommitmentPerWeek: application?.timeCommitmentPerWeek || null,
+          whyMentoring: application?.whyMentoring || getOnboardingAnswer(application?.onboardingAnswers, ["why mentoring", "why are you"]),
+          whatStuckOn: application?.whatStuckOn || getOnboardingAnswer(application?.onboardingAnswers, ["stuck on", "stuck", "blockers", "challenges"]),
+          alreadyTried: application?.alreadyTried || getOnboardingAnswer(application?.onboardingAnswers, ["already tried", "tried so far", "attempted"]),
+          timeCommitmentPerWeek: application?.timeCommitmentPerWeek || getOnboardingAnswer(application?.onboardingAnswers, ["hours", "time commitment", "commit"]),
           onboardingAnswers: application?.onboardingAnswers || null,
           applicationNotes: application?.reviewNotes || null,
           applicationId: application?.id || null,

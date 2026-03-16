@@ -366,7 +366,7 @@ export function MenteeCard({ relationship, defaultExpanded }: { relationship: En
                   value={relationship.ventureDescription || ""}
                   onSave={(v) => {
                     if (relationship.applicationId) {
-                      updateApplication.mutate({ id: relationship.applicationId, ventureDescription: v || null } as any);
+                      updateApplication.mutate({ id: relationship.applicationId, ventureDescription: v || null });
                     }
                     updateContact.mutate({ id: relationship.contactId, whatTheyAreBuilding: v || null });
                   }}
@@ -382,7 +382,7 @@ export function MenteeCard({ relationship, defaultExpanded }: { relationship: En
                   value={relationship.whatNeedHelpWith || ""}
                   onSave={(v) => {
                     if (relationship.applicationId) {
-                      updateApplication.mutate({ id: relationship.applicationId, whatNeedHelpWith: v || null } as any);
+                      updateApplication.mutate({ id: relationship.applicationId, whatNeedHelpWith: v || null });
                     }
                   }}
                   placeholder="What do they need help with?"
@@ -397,7 +397,7 @@ export function MenteeCard({ relationship, defaultExpanded }: { relationship: En
                   value={relationship.whyMentoring || ""}
                   onSave={(v) => {
                     if (relationship.applicationId) {
-                      updateApplication.mutate({ id: relationship.applicationId, whyMentoring: v || null } as any);
+                      updateApplication.mutate({ id: relationship.applicationId, whyMentoring: v || null });
                     }
                   }}
                   placeholder="Why are they seeking mentoring?"
@@ -412,7 +412,7 @@ export function MenteeCard({ relationship, defaultExpanded }: { relationship: En
                   value={relationship.whatStuckOn || ""}
                   onSave={(v) => {
                     if (relationship.applicationId) {
-                      updateApplication.mutate({ id: relationship.applicationId, whatStuckOn: v || null } as any);
+                      updateApplication.mutate({ id: relationship.applicationId, whatStuckOn: v || null });
                     }
                   }}
                   placeholder="Current blockers or challenges?"
@@ -427,7 +427,7 @@ export function MenteeCard({ relationship, defaultExpanded }: { relationship: En
                   value={relationship.alreadyTried || ""}
                   onSave={(v) => {
                     if (relationship.applicationId) {
-                      updateApplication.mutate({ id: relationship.applicationId, alreadyTried: v || null } as any);
+                      updateApplication.mutate({ id: relationship.applicationId, alreadyTried: v || null });
                     }
                   }}
                   placeholder="What have they already attempted?"
@@ -442,7 +442,7 @@ export function MenteeCard({ relationship, defaultExpanded }: { relationship: En
                   value={relationship.timeCommitmentPerWeek || ""}
                   onSave={(v) => {
                     if (relationship.applicationId) {
-                      updateApplication.mutate({ id: relationship.applicationId, timeCommitmentPerWeek: v || null } as any);
+                      updateApplication.mutate({ id: relationship.applicationId, timeCommitmentPerWeek: v || null });
                     }
                   }}
                   placeholder="Hours per week they can commit?"
