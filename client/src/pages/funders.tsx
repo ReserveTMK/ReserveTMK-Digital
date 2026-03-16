@@ -346,11 +346,16 @@ function FunderCard({
                 {CADENCE_LABELS[funder.reportingCadence] || funder.reportingCadence}
               </span>
             )}
-            {funder.outcomeFocus && funder.outcomeFocus.length > 0 && funder.outcomeFocus.map(f => (
+            {funder.outcomeFocus && Array.isArray(funder.outcomeFocus) && funder.outcomeFocus.length > 0 && funder.outcomeFocus.map(f => (
               <Badge key={f} variant="outline" className="text-xs" data-testid={`badge-outcome-${f}-${funder.id}`}>
                 {OUTCOME_FOCUS_LABELS[f]?.label || f}
               </Badge>
             ))}
+            {funder.outcomeFocus && typeof funder.outcomeFocus === "string" && (
+              <span className="text-xs text-muted-foreground truncate max-w-[200px]" title={funder.outcomeFocus}>
+                {funder.outcomeFocus.split("\n")[0].substring(0, 60)}{funder.outcomeFocus.length > 60 ? "…" : ""}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0 ml-4">
@@ -861,16 +866,20 @@ function FunderDetailDialog({
             </div>
           )}
 
-          {funder.outcomeFocus && funder.outcomeFocus.length > 0 && (
+          {funder.outcomeFocus && (
             <div className="text-sm">
               <span className="text-muted-foreground">Outcome Focus: </span>
-              <span className="flex gap-1 mt-1 flex-wrap">
-                {funder.outcomeFocus.map(f => (
-                  <Badge key={f} variant="outline" className="text-xs">
-                    {OUTCOME_FOCUS_LABELS[f]?.label || f}
-                  </Badge>
-                ))}
-              </span>
+              {Array.isArray(funder.outcomeFocus) ? (
+                <span className="flex gap-1 mt-1 flex-wrap">
+                  {funder.outcomeFocus.map(f => (
+                    <Badge key={f} variant="outline" className="text-xs">
+                      {OUTCOME_FOCUS_LABELS[f]?.label || f}
+                    </Badge>
+                  ))}
+                </span>
+              ) : (
+                <p className="text-sm text-muted-foreground mt-1 whitespace-pre-line">{funder.outcomeFocus}</p>
+              )}
             </div>
           )}
 
