@@ -752,7 +752,7 @@ export class DatabaseStorage implements IStorage {
         if (analysis.skillScore !== undefined) newMetrics.skill = analysis.skillScore;
         if (analysis.confidenceScore !== undefined) newMetrics.confidence = analysis.confidenceScore;
         if (analysis.bizConfidenceScore !== undefined) newMetrics.bizConfidence = analysis.bizConfidenceScore;
-        if (analysis.confidenceScoreMetric !== undefined) newMetrics.bizConfidence = analysis.confidenceScoreMetric;
+        if (analysis.confidenceScoreMetric !== undefined) newMetrics.confidenceScore = analysis.confidenceScoreMetric;
         if (analysis.systemsInPlaceScore !== undefined) newMetrics.systemsInPlace = analysis.systemsInPlaceScore;
         if (analysis.fundingReadinessScore !== undefined) newMetrics.fundingReadiness = analysis.fundingReadinessScore;
         if (analysis.networkStrengthScore !== undefined) newMetrics.networkStrength = analysis.networkStrengthScore;
