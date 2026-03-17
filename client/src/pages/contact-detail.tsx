@@ -291,27 +291,6 @@ export default function ContactDetail() {
     },
   });
 
-  if (contactLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background/50">
-        <Loader2 className="w-10 h-10 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (!contact) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background/50 flex-col gap-4">
-        <h1 className="text-2xl font-bold">Community member not found</h1>
-        <Link href="/community/people"><Button>Go Back</Button></Link>
-      </div>
-    );
-  }
-
-  const contactImpactLogs = (contactDebriefs as any[]) || [];
-
-  const contactActionItems = (actionItems as any[])?.filter((item: any) => item.contactId === id) || [];
-
   const snapshotChartData = useMemo(() => {
     const points: Array<{ date: string; timestamp: number; source: string; mindset?: number; skill?: number; confidence?: number; bizConfidence?: number; systems?: number; funding?: number; network?: number; community?: number }> = [];
 
@@ -354,6 +333,27 @@ export default function ContactDetail() {
 
     return points;
   }, [metricSnapshotsData, contact?.metrics]);
+
+  if (contactLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background/50">
+        <Loader2 className="w-10 h-10 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!contact) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background/50 flex-col gap-4">
+        <h1 className="text-2xl font-bold">Community member not found</h1>
+        <Link href="/community/people"><Button>Go Back</Button></Link>
+      </div>
+    );
+  }
+
+  const contactImpactLogs = (contactDebriefs as any[]) || [];
+
+  const contactActionItems = (actionItems as any[])?.filter((item: any) => item.contactId === id) || [];
 
   const chartData = [...(interactions || [])]
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
