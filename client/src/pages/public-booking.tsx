@@ -67,7 +67,7 @@ interface OnboardingQuestion {
 }
 
 type Pathway = "mentoring" | "meeting";
-type StepId = "pathway" | "name" | "contact" | "goals" | "info" | "onboarding" | "mentor" | "type" | "date" | "details" | "confirmed";
+type StepId = "pathway" | "email" | "name" | "goals" | "onboarding" | "mentor" | "type" | "date" | "details" | "confirmed";
 
 interface MentorOption {
   id: number;
@@ -134,10 +134,9 @@ export default function PublicBookingPage() {
   const [pathway, setPathway] = useState<Pathway | null>(null);
   const [step, setStep] = useState<StepId>("pathway");
   const [isReturningMentee, setIsReturningMentee] = useState(false);
-  const [menteeChecked, setMenteeChecked] = useState(false);
-  const [nameChecked, setNameChecked] = useState(false);
-  const [nameFound, setNameFound] = useState(false);
-  const [emailMatchName, setEmailMatchName] = useState<string | null>(null);
+  const [emailChecked, setEmailChecked] = useState(false);
+  const [knownContact, setKnownContact] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -217,73 +216,40 @@ export default function PublicBookingPage() {
     enabled: !!userId && pathway === "mentoring",
   });
 
-  const [returningConfirmed, setReturningConfirmed] = useState(false);
+  const isPreview = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("preview");
 
-  const checkByNameMutation = useMutation({
-    mutationFn: async (checkName: string) => {
-      const res = await fetch(`/api/public/mentoring/${userId}/check-mentee?name=${encodeURIComponent(checkName)}`);
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
-    },
-    onSuccess: (data: { isReturning: boolean; nameFound?: boolean; contactName?: string }) => {
-      setNameChecked(true);
-      if (data.isReturning) {
-        setIsReturningMentee(true);
-        setNameFound(true);
-        if (data.contactName) setName(data.contactName);
-      } else if (data.nameFound) {
-        setNameFound(true);
-        setStep("contact");
-      } else {
-        setNameFound(false);
-        setStep("contact");
-      }
-    },
-  });
-
-  const checkByEmailMutation = useMutation({
+  const emailCheckMutation = useMutation({
     mutationFn: async (checkEmail: string) => {
       const res = await fetch(`/api/public/mentoring/${userId}/check-mentee?email=${encodeURIComponent(checkEmail)}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
     onSuccess: (data: { isReturning: boolean; contactName?: string; matchedByEmail?: boolean }) => {
-      setMenteeChecked(true);
+      setEmailChecked(true);
       if (data.matchedByEmail && data.contactName) {
-        setEmailMatchName(data.contactName);
-        if (data.isReturning) {
-          setIsReturningMentee(true);
-          setName(data.contactName);
-          setStep(getReturningNextStep());
+        setKnownContact(true);
+        setName(data.contactName);
+        if (pathway === "mentoring") {
+          if (data.isReturning) {
+            setIsReturningMentee(true);
+            setStep(getReturningNextStep());
+          } else {
+            setIsReturningMentee(false);
+            setStep("goals");
+          }
+        } else {
+          setIsReturningMentee(false);
+          const hasMT = meetingTypes && meetingTypes.length > 0;
+          setStep(hasMT ? "type" : "date");
         }
       } else {
-        setEmailMatchName(null);
+        setKnownContact(false);
+        setIsReturningMentee(false);
+        setStep("name");
       }
     },
   });
 
-  const checkMenteeMutation = useMutation({
-    mutationFn: async (checkEmail: string) => {
-      const res = await fetch(`/api/public/mentoring/${userId}/check-mentee?email=${encodeURIComponent(checkEmail)}`);
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
-    },
-    onSuccess: (data: { isReturning: boolean; contactName?: string }) => {
-      setIsReturningMentee(data.isReturning);
-      setMenteeChecked(true);
-      if (data.isReturning) {
-        if (data.contactName) setName(data.contactName);
-        setStep(getReturningNextStep());
-      } else {
-        if (onboardingQuestions && onboardingQuestions.length > 0) {
-          setStep("onboarding");
-        } else {
-          const hasMeetingTypes = meetingTypes && meetingTypes.length > 0;
-          setStep(hasMeetingTypes ? "type" : "date");
-        }
-      }
-    },
-  });
 
   const { data: slotsData, isLoading: slotsLoading } = useQuery({
     queryKey: ["/api/public/mentoring", activeMentorId, "slots", selectedDate, pathway, selectedMeetingType?.duration],
@@ -336,10 +302,10 @@ export default function PublicBookingPage() {
   }, [availability, selectedMeetingType]);
 
   const hasRealMeetingTypes = meetingTypes && meetingTypes.length > 0;
-  const hasMeetingTypes = hasRealMeetingTypes || (pathway === "mentoring" && nameChecked);
+  const hasMeetingTypes = hasRealMeetingTypes || (pathway === "mentoring" && emailChecked);
   const hasMultipleMentors = mentorOptions && mentorOptions.length > 1;
 
-  const isDiscoverySession = pathway === "mentoring" && !isReturningMentee && nameChecked;
+  const isDiscoverySession = pathway === "mentoring" && !isReturningMentee && emailChecked;
 
   const discoveryMeetingType: MeetingType = {
     id: -1,
@@ -392,9 +358,12 @@ export default function PublicBookingPage() {
   const currentSteps = useMemo((): { id: StepId; label: string }[] => {
     if (!pathway) return [];
     if (pathway === "mentoring") {
-      const steps: { id: StepId; label: string }[] = [{ id: "name", label: "You" }];
-      if (nameChecked && !isReturningMentee) {
-        steps.push({ id: "contact", label: "Details" });
+      const steps: { id: StepId; label: string }[] = [{ id: "email", label: "Email" }];
+      if (emailChecked && !knownContact && !isReturningMentee) {
+        steps.push({ id: "name", label: "You" });
+        steps.push({ id: "goals", label: "Goals" });
+      }
+      if (emailChecked && knownContact && !isReturningMentee) {
         steps.push({ id: "goals", label: "Goals" });
       }
       if (isReturningMentee && hasMultipleMentors) {
@@ -406,12 +375,16 @@ export default function PublicBookingPage() {
       steps.push({ id: "date", label: "When" });
       return steps;
     }
-    return [
-      { id: "info", label: "You" },
-      ...(hasMeetingTypes ? [{ id: "type" as StepId, label: "Session" }] : []),
-      { id: "date", label: "When" },
-    ];
-  }, [pathway, isReturningMentee, nameChecked, hasMeetingTypes, hasMultipleMentors]);
+    const meetingSteps: { id: StepId; label: string }[] = [{ id: "email", label: "Email" }];
+    if (emailChecked && !knownContact) {
+      meetingSteps.push({ id: "name", label: "You" });
+    }
+    if (hasMeetingTypes) {
+      meetingSteps.push({ id: "type" as StepId, label: "Session" });
+    }
+    meetingSteps.push({ id: "date", label: "When" });
+    return meetingSteps;
+  }, [pathway, isReturningMentee, emailChecked, knownContact, hasMeetingTypes, hasMultipleMentors]);
 
   const getReturningNextStep = (): StepId => {
     if (hasMultipleMentors) return "mentor";
@@ -435,40 +408,29 @@ export default function PublicBookingPage() {
     setSelectedDate("");
     setSelectedSlot("");
     setSelectedMeetingType(null);
-    setStep(p === "mentoring" ? "name" : "info");
+    setEmailChecked(false);
+    setKnownContact(false);
+    setIsReturningMentee(false);
+    setStep("email");
+  };
+
+  const handleEmailContinue = () => {
+    if (!email.trim() || !email.includes("@")) return;
+    emailCheckMutation.mutate(email.trim());
   };
 
   const handleNameContinue = () => {
     if (!name.trim()) return;
-    checkByNameMutation.mutate(name.trim());
-  };
-
-  const handleContactContinue = () => {
-    if (email.trim() && !menteeChecked) {
-      checkByEmailMutation.mutate(email.trim());
-      return;
+    if (pathway === "mentoring") {
+      setStep("goals");
+    } else {
+      const hasMT = meetingTypes && meetingTypes.length > 0;
+      setStep(hasMT ? "type" : "date");
     }
-    if (emailMatchName && !isReturningMentee) {
-      setName(emailMatchName);
-    }
-    setStep("goals");
   };
 
   const handleGoalsContinue = () => {
     setStep("type");
-  };
-
-  const handleInfoContinue = () => {
-    if (!name.trim()) return;
-    if (pathway === "mentoring" && email.trim()) {
-      checkMenteeMutation.mutate(email.trim());
-    } else {
-      if (pathway === "mentoring" && onboardingQuestions && onboardingQuestions.length > 0) {
-        setStep("onboarding");
-      } else {
-        setStep(hasMeetingTypes ? "type" : "date");
-      }
-    }
   };
 
   const handleOnboardingContinue = () => {
@@ -518,11 +480,6 @@ export default function PublicBookingPage() {
     setBookingResult(null);
     setPathway(null);
     setIsReturningMentee(false);
-    setMenteeChecked(false);
-    setNameChecked(false);
-    setNameFound(false);
-    setEmailMatchName(null);
-    setReturningConfirmed(false);
     setOnboardingAnswers({});
     setVentureDescription("");
     setVentureStage("");
@@ -530,6 +487,9 @@ export default function PublicBookingPage() {
     setExtras([]);
     setExtraEmail("");
     setSelectedMentor(null);
+    setEmailChecked(false);
+    setKnownContact(false);
+    setShowNotes(false);
     setStep("pathway");
   };
 
@@ -742,118 +702,69 @@ export default function PublicBookingPage() {
             </div>
           )}
 
-          {step === "name" && pathway === "mentoring" && (
+          {step === "email" && (
             <div className="p-5 sm:p-6 space-y-4 step-animate">
               <button
                 className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-[44px]"
-                onClick={() => { setPathway(null); setStep("pathway"); setNameChecked(false); setNameFound(false); setIsReturningMentee(false); setReturningConfirmed(false); }}
+                onClick={() => { setPathway(null); setStep("pathway"); setEmailChecked(false); setKnownContact(false); setIsReturningMentee(false); }}
                 data-testid="button-back-to-pathway"
               >
                 <ChevronLeft className="w-4 h-4" /> Back
               </button>
               <div>
-                <h3 className="font-semibold text-sm" data-testid="heading-name">Kia ora! What's your name?</h3>
-                <p className="text-xs text-muted-foreground mt-1">We'll check if you're already in our whanau</p>
+                <h3 className="font-semibold text-sm flex items-center gap-2" data-testid="heading-email">
+                  <Mail className="w-4 h-4" /> Kia ora! What's your email?
+                </h3>
+                <p className="text-xs text-muted-foreground mt-1">We'll check if you're already in our whānau</p>
               </div>
               <div className="space-y-2">
-                <Label>Your Name *</Label>
+                <Label>Email *</Label>
                 <Input
-                  value={name}
-                  onChange={(e) => { setName(e.target.value); setNameChecked(false); setNameFound(false); setIsReturningMentee(false); setReturningConfirmed(false); }}
-                  placeholder="Full name"
-                  data-testid="input-book-name"
+                  type="email"
+                  value={email}
+                  onChange={(e) => { setEmail(e.target.value); setEmailChecked(false); setKnownContact(false); setIsReturningMentee(false); }}
+                  placeholder="your@email.com"
+                  data-testid="input-book-email"
                   autoFocus
                 />
               </div>
-              {nameChecked && isReturningMentee && !returningConfirmed && (
-                <div className="bg-green-500/10 border border-green-200 dark:border-green-800 rounded-lg p-4 space-y-3 step-animate">
-                  <div className="flex items-center gap-2">
-                    <Check className="w-5 h-5 text-green-600 shrink-0" />
-                    <div>
-                      <p className="text-sm font-medium text-green-800 dark:text-green-300">Welcome back, {name}!</p>
-                      <p className="text-xs text-green-700 dark:text-green-400 mt-0.5">You're already one of our mentees. Book your next session below.</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      className="text-xs"
-                      onClick={() => {
-                        setReturningConfirmed(true);
-                        setStep(getReturningNextStep());
-                      }}
-                      data-testid="button-confirm-returning"
-                    >
-                      That's me - book a session
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-xs"
-                      onClick={() => {
-                        setIsReturningMentee(false);
-                        setNameFound(true);
-                        setStep("contact");
-                      }}
-                      data-testid="button-not-me"
-                    >
-                      That's not me
-                    </Button>
-                  </div>
-                </div>
-              )}
-              {checkByNameMutation.isError && (
+              {emailCheckMutation.isError && (
                 <p className="text-sm text-red-500">Something went wrong. Please try again.</p>
               )}
             </div>
           )}
 
-          {step === "contact" && pathway === "mentoring" && (
+          {step === "name" && (
             <div className="p-5 sm:p-6 space-y-4 step-animate">
               <button
                 className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-[44px]"
-                onClick={() => { setStep("name"); setNameChecked(false); setMenteeChecked(false); setEmailMatchName(null); }}
-                data-testid="button-back-to-name"
+                onClick={() => { setStep("email"); setEmailChecked(false); setKnownContact(false); }}
+                data-testid="button-back-to-email"
               >
                 <ChevronLeft className="w-4 h-4" /> Back
               </button>
-
-              {nameFound && !isReturningMentee && (
-                <div className="bg-amber-500/10 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
-                  <p className="text-xs text-amber-800 dark:text-amber-300">
-                    We found someone with that name but they don't have an active mentoring relationship yet. Please add your contact details so we can set you up.
+              <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 flex items-start gap-2">
+                <Sprout className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-xs font-medium text-foreground">Welcome! Looks like you're new here</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {pathway === "mentoring"
+                      ? "Tell us your name so we can set you up with a discovery session"
+                      : "Tell us a bit about yourself so we can prepare for your meeting"
+                    }
                   </p>
                 </div>
-              )}
-
-              {!nameFound && (
-                <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 flex items-start gap-2">
-                  <Sprout className="w-4 h-4 text-primary mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-xs font-medium text-foreground">Welcome! Looks like you're new here</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Add your details below and we'll book you a discovery session to get started</p>
-                  </div>
-                </div>
-              )}
-
+              </div>
               <div className="space-y-3">
                 <div className="space-y-2">
-                  <Label>Email *</Label>
+                  <Label>Your Name *</Label>
                   <Input
-                    type="email"
-                    value={email}
-                    onChange={(e) => { setEmail(e.target.value); setMenteeChecked(false); setEmailMatchName(null); }}
-                    placeholder="your@email.com"
-                    data-testid="input-book-email"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Full name"
+                    data-testid="input-book-name"
+                    autoFocus
                   />
-                  {emailMatchName && !isReturningMentee && (
-                    <div className="bg-green-500/10 border border-green-200 dark:border-green-800 rounded-lg p-2.5 flex items-center gap-2">
-                      <Check className="w-4 h-4 text-green-600 shrink-0" />
-                      <p className="text-xs text-green-800 dark:text-green-300">
-                        Found you! Is this you: <span className="font-semibold">{emailMatchName}</span>?
-                      </p>
-                    </div>
-                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>Phone</Label>
@@ -866,9 +777,6 @@ export default function PublicBookingPage() {
                   />
                 </div>
               </div>
-              {checkByEmailMutation.isError && (
-                <p className="text-sm text-red-500">Something went wrong checking your details.</p>
-              )}
             </div>
           )}
 
@@ -876,8 +784,8 @@ export default function PublicBookingPage() {
             <div className="p-5 sm:p-6 space-y-4 step-animate">
               <button
                 className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-[44px]"
-                onClick={() => setStep("contact")}
-                data-testid="button-back-to-contact"
+                onClick={() => { knownContact ? setStep("email") : setStep("name"); }}
+                data-testid="button-back-from-goals"
               >
                 <ChevronLeft className="w-4 h-4" /> Back
               </button>
@@ -942,48 +850,14 @@ export default function PublicBookingPage() {
             </div>
           )}
 
-          {step === "info" && (
-            <div className="p-5 sm:p-6 space-y-4 step-animate">
-              <button
-                className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-[44px]"
-                onClick={() => { setPathway(null); setStep("pathway"); }}
-                data-testid="button-back-to-pathway"
-              >
-                <ChevronLeft className="w-4 h-4" /> Back
-              </button>
-              <h3 className="font-semibold text-sm" data-testid="heading-info">Tell us about yourself</h3>
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  <Label>Your Name *</Label>
-                  <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" data-testid="input-book-name" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Email</Label>
-                  <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com" data-testid="input-book-email" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Phone</Label>
-                  <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+64..." data-testid="input-book-phone" />
-                </div>
-                {pathway === "meeting" && (
-                  <div className="space-y-2">
-                    <Label>What's this about?</Label>
-                    <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Brief description of what you'd like to discuss..." data-testid="input-book-notes" />
-                  </div>
-                )}
-              </div>
-              {checkMenteeMutation.isError && (
-                <p className="text-sm text-red-500">Something went wrong checking your details. Please try again.</p>
-              )}
-            </div>
-          )}
+          {/* info step removed - replaced by email-first flow */}
 
           {step === "onboarding" && (
             <div className="p-5 sm:p-6 space-y-4 step-animate">
               <button
                 className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-[44px]"
-                onClick={() => setStep("info")}
-                data-testid="button-back-to-info"
+                onClick={() => setStep("goals")}
+                data-testid="button-back-to-goals"
               >
                 <ChevronLeft className="w-4 h-4" /> Back
               </button>
@@ -1045,7 +919,7 @@ export default function PublicBookingPage() {
             <div className="p-5 sm:p-6 space-y-5 step-animate">
               <button
                 className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-[44px]"
-                onClick={() => { setStep("name"); setNameChecked(false); }}
+                onClick={() => { setStep("email"); setEmailChecked(false); }}
                 data-testid="button-back-from-mentor"
               >
                 <ChevronLeft className="w-4 h-4" /> Back
@@ -1078,17 +952,15 @@ export default function PublicBookingPage() {
               <button
                 className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-[44px]"
                 onClick={() => {
-                  if (pathway === "mentoring" && isDiscoverySession) {
+                  if (pathway === "mentoring" && !isReturningMentee) {
                     setStep("goals");
                   } else if (pathway === "mentoring" && isReturningMentee && hasMultipleMentors) {
                     setStep("mentor");
                   } else if (pathway === "mentoring" && isReturningMentee) {
-                    setStep("name");
-                    setNameChecked(false);
-                  } else if (pathway === "mentoring" && !isReturningMentee && onboardingQuestions && onboardingQuestions.length > 0) {
-                    setStep("onboarding");
+                    setStep("email");
+                    setEmailChecked(false);
                   } else {
-                    setStep("info");
+                    setStep(knownContact ? "email" : "name");
                   }
                 }}
                 data-testid="button-back-to-prev"
@@ -1141,12 +1013,12 @@ export default function PublicBookingPage() {
                   } else if (pathway === "mentoring" && isReturningMentee && hasMultipleMentors) {
                     setStep("mentor");
                   } else if (pathway === "mentoring" && isReturningMentee) {
-                    setStep("name");
-                    setNameChecked(false);
-                  } else if (pathway === "mentoring" && !isReturningMentee && onboardingQuestions && onboardingQuestions.length > 0) {
-                    setStep("onboarding");
+                    setStep("email");
+                    setEmailChecked(false);
+                  } else if (pathway === "mentoring" && !isReturningMentee) {
+                    setStep("goals");
                   } else {
-                    setStep("info");
+                    setStep(knownContact ? "email" : "name");
                   }
                 }}
                 data-testid="button-back"
@@ -1288,10 +1160,20 @@ export default function PublicBookingPage() {
 
               {pathway === "meeting" && (
                 <div className="space-y-3">
-                  <div className="space-y-2">
-                    <Label>Anything you'd like to discuss?</Label>
-                    <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Any specific topics or questions..." data-testid="input-book-notes" />
-                  </div>
+                  <button
+                    type="button"
+                    className="text-sm text-primary hover:underline flex items-center gap-1"
+                    onClick={() => { setShowNotes(!showNotes); if (showNotes) setNotes(""); }}
+                    data-testid="button-toggle-notes"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> {showNotes ? "Remove hui notes" : "Add hui notes"}
+                  </button>
+                  {showNotes && (
+                    <div className="space-y-2">
+                      <Label>Anything you'd like to discuss?</Label>
+                      <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Any specific topics or questions..." data-testid="input-book-notes" />
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1375,33 +1257,7 @@ export default function PublicBookingPage() {
           )}
         </div>
 
-        {step === "name" && (
-          <div className="sticky bottom-0 z-10 p-4 border-t bg-background sm:static sm:border-0 sm:bg-transparent sm:px-6 sm:pb-6 sm:pt-0">
-            <Button
-              className="w-full"
-              disabled={!name.trim() || checkByNameMutation.isPending}
-              onClick={handleNameContinue}
-              data-testid="button-continue-name"
-            >
-              {checkByNameMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Continue
-            </Button>
-          </div>
-        )}
-
-        {step === "contact" && (
-          <div className="sticky bottom-0 z-10 p-4 border-t bg-background sm:static sm:border-0 sm:bg-transparent sm:px-6 sm:pb-6 sm:pt-0">
-            <Button
-              className="w-full"
-              disabled={!email.trim() || checkByEmailMutation.isPending}
-              onClick={handleContactContinue}
-              data-testid="button-continue-contact"
-            >
-              {checkByEmailMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Continue
-            </Button>
-          </div>
-        )}
+        {/* Old name/contact footer buttons removed - replaced by email-first flow buttons above */}
 
         {step === "goals" && (
           <div className="sticky bottom-0 z-10 p-4 border-t bg-background sm:static sm:border-0 sm:bg-transparent sm:px-6 sm:pb-6 sm:pt-0">
@@ -1415,15 +1271,28 @@ export default function PublicBookingPage() {
           </div>
         )}
 
-        {step === "info" && (
+        {step === "email" && (
           <div className="sticky bottom-0 z-10 p-4 border-t bg-background sm:static sm:border-0 sm:bg-transparent sm:px-6 sm:pb-6 sm:pt-0">
             <Button
               className="w-full"
-              disabled={!name.trim() || checkMenteeMutation.isPending}
-              onClick={handleInfoContinue}
-              data-testid="button-continue-info"
+              disabled={!email.trim() || !email.includes("@") || emailCheckMutation.isPending}
+              onClick={handleEmailContinue}
+              data-testid="button-continue-email"
             >
-              {checkMenteeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              {emailCheckMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Continue
+            </Button>
+          </div>
+        )}
+
+        {step === "name" && (
+          <div className="sticky bottom-0 z-10 p-4 border-t bg-background sm:static sm:border-0 sm:bg-transparent sm:px-6 sm:pb-6 sm:pt-0">
+            <Button
+              className="w-full"
+              disabled={!name.trim()}
+              onClick={handleNameContinue}
+              data-testid="button-continue-name"
+            >
               Continue
             </Button>
           </div>
@@ -1478,6 +1347,24 @@ export default function PublicBookingPage() {
           </div>
         )}
       </Card>
+
+      {isPreview && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-background border shadow-lg rounded-full px-4 py-2 flex items-center gap-2 z-50" data-testid="preview-navigator">
+          <Badge variant="outline" className="text-xs bg-amber-100 text-amber-800 border-amber-300">Preview</Badge>
+          <div className="flex gap-1">
+            {(["pathway", "email", "name", "goals", "mentor", "type", "date", "details", "confirmed"] as StepId[]).map((s) => (
+              <button
+                key={s}
+                onClick={() => setStep(s)}
+                className={`px-2 py-1 text-xs rounded transition-colors ${step === s ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"}`}
+                data-testid={`preview-step-${s}`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
