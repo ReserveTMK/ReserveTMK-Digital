@@ -1,8 +1,10 @@
 export function getBaseUrl(): string {
   if (process.env.REPLIT_DEPLOYMENT === "1") {
     if (process.env.REPLIT_DOMAINS) {
-      const primaryDomain = process.env.REPLIT_DOMAINS.split(",")[0].trim();
-      if (primaryDomain) return `https://${primaryDomain}`;
+      const domains = process.env.REPLIT_DOMAINS.split(",").map(d => d.trim()).filter(Boolean);
+      const customDomain = domains.find(d => !d.endsWith(".replit.app") && !d.endsWith(".replit.dev"));
+      if (customDomain) return `https://${customDomain}`;
+      if (domains[0]) return `https://${domains[0]}`;
     }
     return "https://reservetmkdigital.com";
   }
