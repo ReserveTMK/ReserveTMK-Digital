@@ -95,6 +95,20 @@ function timesOverlap(
   return a0 < b1 && b0 < a1;
 }
 
+async function autoPromoteToInnovator(contactId: number) {
+  try {
+    const contact = await storage.getContact(contactId);
+    if (contact && (!contact.isCommunityMember || !contact.isInnovator)) {
+      await storage.updateContact(contactId, {
+        isCommunityMember: true,
+        isInnovator: true,
+      } as any);
+    }
+  } catch (err) {
+    console.warn(`Failed to auto-promote contact ${contactId} to innovator:`, err);
+  }
+}
+
 async function getDeskHoursForDay(userId: string, dayName: string): Promise<{ open: boolean; startTime: string; endTime: string } | null> {
   let hours = await storage.getOperatingHours(userId);
   if (hours.length === 0) {
@@ -1401,6 +1415,7 @@ export async function registerRoutes(
 
       const contactUpdate: any = {
         isCommunityMember: true,
+        isInnovator: true,
         stage: reqStage,
         relationshipStage: reqStage,
       };
@@ -2100,6 +2115,7 @@ export async function registerRoutes(
       if (existingContact) {
         contactId = existingContact.id;
         await storage.updateContact(existingContact.id, { updatedAt: new Date() } as any);
+        await autoPromoteToInnovator(existingContact.id);
       } else {
         const newContact = await storage.createContact({
           userId: programme.userId,
@@ -2110,6 +2126,8 @@ export async function registerRoutes(
           stage: "kakano",
           active: true,
           source: "programme_registration",
+          isCommunityMember: true,
+          isInnovator: true,
         } as any);
         contactId = newContact.id;
       }
@@ -4121,6 +4139,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const body = coerceDateFields({ ...req.body, userId });
       const input = api.memberships.create.input.parse(body);
       const membership = await storage.createMembership(input);
+      if (input.contactId) await autoPromoteToInnovator(input.contactId);
       res.status(201).json(membership);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -4178,6 +4197,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const body = coerceDateFields({ ...req.body, userId });
       const input = api.mous.create.input.parse(body);
       const mou = await storage.createMou(input);
+      if (input.contactId) await autoPromoteToInnovator(input.contactId);
       res.status(201).json(mou);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -11017,6 +11037,7 @@ Be specific, practical, and grounded in the actual documents and context provide
         return res.status(403).json({ message: "Forbidden" });
       }
       const relationship = await storage.createMentoringRelationship(input);
+      await autoPromoteToInnovator(input.contactId);
       res.status(201).json(relationship);
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
@@ -12228,6 +12249,7 @@ Rules:
         status: "booked",
       });
 
+      if (booker.contactId) await autoPromoteToInnovator(booker.contactId);
       res.json(deskBooking);
     } catch (err: any) {
       if (err.message === "CONFLICT") {
@@ -12292,6 +12314,7 @@ Rules:
         approved: !resource.requiresApproval,
       });
 
+      if (booker.contactId) await autoPromoteToInnovator(booker.contactId);
       res.json({
         ...gearBooking,
         requiresApproval: resource.requiresApproval,
@@ -12899,6 +12922,8 @@ Rules:
 
       const data = insertDeskBookingSchema.parse(body);
       const booking = await storage.createDeskBookingWithConflictCheck(data);
+      const deskBooker = await storage.getRegularBooker(data.regularBookerId);
+      if (deskBooker?.contactId) await autoPromoteToInnovator(deskBooker.contactId);
       res.status(201).json(booking);
     } catch (err: any) {
       if (err instanceof z.ZodError) {
@@ -13027,6 +13052,8 @@ Rules:
 
       const data = insertGearBookingSchema.parse(body);
       const booking = await storage.createGearBookingWithConflictCheck(data);
+      const gearBooker = await storage.getRegularBooker(data.regularBookerId);
+      if (gearBooker?.contactId) await autoPromoteToInnovator(gearBooker.contactId);
       res.status(201).json(booking);
     } catch (err: any) {
       if (err instanceof z.ZodError) {
