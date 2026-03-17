@@ -327,8 +327,10 @@ export async function registerRoutes(
             reason = "Same name";
           } else if (na && nb && similarity(na, nb) >= 0.8) {
             reason = "Similar names";
-          } else if (a.email && b.email && normalize(a.email) === normalize(b.email)) {
-            reason = "Same email";
+          } else if (a.email && b.email) {
+            const aEmails = a.email.split(/[,;]\s*/).map(e => normalize(e)).filter(e => e.includes('@'));
+            const bEmails = b.email.split(/[,;]\s*/).map(e => normalize(e)).filter(e => e.includes('@'));
+            if (aEmails.some(ae => bEmails.includes(ae))) reason = "Same email";
           } else if (a.phone && b.phone && a.phone.replace(/\D/g, "") === b.phone.replace(/\D/g, "") && a.phone.replace(/\D/g, "").length >= 6) {
             reason = "Same phone";
           }

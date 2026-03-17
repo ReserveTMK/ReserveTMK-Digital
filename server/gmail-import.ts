@@ -471,7 +471,7 @@ async function buildPreview(
   const existingGroups = await storage.getGroups(userId);
 
   const existingEmailSet = new Set(
-    existingContacts.filter(c => c.email).map(c => c.email!.toLowerCase())
+    existingContacts.filter(c => c.email).flatMap(c => c.email!.split(/[,;]\s*/).map(e => e.trim().toLowerCase()).filter(e => e.includes('@')))
   );
   const existingNameMap = new Map<string, { id: number; email: string }>();
   for (const c of existingContacts) {
@@ -508,7 +508,7 @@ async function buildPreview(
     const isExistingEmail = existingEmailSet.has(person.email);
     if (isExistingEmail) {
       const existingContact = existingContacts.find(
-        c => c.email?.toLowerCase() === person.email.toLowerCase()
+        c => c.email?.toLowerCase().split(/[,;]\s*/).some(e => e.trim().toLowerCase() === person.email.toLowerCase())
       );
       if (existingContact && person.recentSubjects.length > 0) {
         existingContactEmails.push({
@@ -604,7 +604,7 @@ export async function confirmImport(
   const existingContacts = await storage.getContacts(userId);
   const existingGroups = await storage.getGroups(userId);
   const existingEmailSet = new Set(
-    existingContacts.filter(c => c.email).map(c => c.email!.toLowerCase())
+    existingContacts.filter(c => c.email).flatMap(c => c.email!.split(/[,;]\s*/).map(e => e.trim().toLowerCase()).filter(e => e.includes('@')))
   );
   const existingGroupNameSet = new Map(
     existingGroups.map(g => [g.name.toLowerCase(), g])
@@ -842,7 +842,7 @@ async function finalizeImport(
   const existingEmailSet = new Set(
     existingContacts
       .filter(c => c.email)
-      .map(c => c.email!.toLowerCase())
+      .flatMap(c => c.email!.split(/[,;]\s*/).map(e => e.trim().toLowerCase()).filter(e => e.includes('@')))
   );
   const existingGroupNameSet = new Map(
     existingGroups.map(g => [g.name.toLowerCase(), g])
@@ -915,7 +915,7 @@ async function finalizeImport(
   for (const person of Array.from(peopleMap.values())) {
     if (existingEmailSet.has(person.email)) {
       const existingContact = existingContacts.find(
-        c => c.email?.toLowerCase() === person.email.toLowerCase()
+        c => c.email?.toLowerCase().split(/[,;]\s*/).some(e => e.trim().toLowerCase() === person.email.toLowerCase())
       );
       if (existingContact && person.recentSubjects.length > 0) {
         try {
