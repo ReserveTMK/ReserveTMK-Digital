@@ -26,6 +26,8 @@ import {
   Plus,
   X,
   Mail,
+  MapPin,
+  Navigation,
 } from "lucide-react";
 
 const GOAL_STAGE_OPTIONS = [
@@ -304,7 +306,7 @@ export default function PublicBookingPage() {
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.message || "Venue hire request failed");
+        throw new Error(err.message || "Session booking failed");
       }
       return res.json();
     },
@@ -334,7 +336,7 @@ export default function PublicBookingPage() {
   }, [availability, selectedMeetingType]);
 
   const hasRealMeetingTypes = meetingTypes && meetingTypes.length > 0;
-  const hasMeetingTypes = hasRealMeetingTypes || (pathway === "mentoring" && !isReturningMentee && nameChecked);
+  const hasMeetingTypes = hasRealMeetingTypes || (pathway === "mentoring" && nameChecked);
   const hasMultipleMentors = mentorOptions && mentorOptions.length > 1;
 
   const isDiscoverySession = pathway === "mentoring" && !isReturningMentee && nameChecked;
@@ -343,28 +345,49 @@ export default function PublicBookingPage() {
     id: -1,
     name: "Discovery Session",
     description: "A get-to-know-you session to explore your idea and see how we can help",
-    duration: 30,
+    duration: 60,
     focus: null,
     color: "#22c55e",
     sortOrder: -1,
     category: "mentoring",
   };
 
+  const returningQuickSession: MeetingType = {
+    id: -2,
+    name: "Quick Session",
+    description: "A focused 30-minute check-in",
+    duration: 30,
+    focus: null,
+    color: "#3b82f6",
+    sortOrder: 0,
+    category: "mentoring",
+  };
+
+  const returningStandardSession: MeetingType = {
+    id: -3,
+    name: "Standard Session",
+    description: "A full 60-minute mentoring session",
+    duration: 60,
+    focus: null,
+    color: "#8b5cf6",
+    sortOrder: 1,
+    category: "mentoring",
+  };
+
   const displayMeetingTypes = useMemo(() => {
-    const types: MeetingType[] = [];
-    if (isDiscoverySession) {
-      const hasExistingDiscovery = meetingTypes?.some(
-        (mt) => mt.name.toLowerCase().includes("discovery")
-      );
-      if (!hasExistingDiscovery) {
-        types.push(discoveryMeetingType);
+    if (pathway === "mentoring") {
+      if (isDiscoverySession) {
+        return [discoveryMeetingType];
+      }
+      if (isReturningMentee) {
+        return [returningQuickSession, returningStandardSession];
       }
     }
     if (meetingTypes) {
-      types.push(...meetingTypes);
+      return [...meetingTypes];
     }
-    return types;
-  }, [meetingTypes, isDiscoverySession]);
+    return [];
+  }, [meetingTypes, isDiscoverySession, isReturningMentee, pathway]);
 
   const currentSteps = useMemo((): { id: StepId; label: string }[] => {
     if (!pathway) return [];
@@ -555,7 +578,7 @@ export default function PublicBookingPage() {
                 {isDiscoverySession ? "Discovery Session" : pathway === "mentoring" ? "Mentoring" : "Meeting / Hui"}
               </span>
             </div>
-            {selectedMeetingType && selectedMeetingType.id > 0 && (
+            {selectedMeetingType && (
               <div className="flex justify-between gap-2 flex-wrap">
                 <span className="text-muted-foreground">Session</span>
                 <span className="font-medium" data-testid="text-meeting-type-name">{selectedMeetingType.name}</span>
@@ -574,13 +597,37 @@ export default function PublicBookingPage() {
               <span className="font-medium">{slotDuration} minutes</span>
             </div>
           </div>
-          <div className="mt-5 p-3 bg-muted/30 rounded-lg text-left">
+          {mentorInfo?.location && (
+            <div className="mt-5 p-3 bg-muted/30 rounded-lg text-left space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5" /> Where to find us
+              </p>
+              <p className="text-sm font-medium">{mentorInfo.location}</p>
+              {mentorInfo?.venueDirections && Object.entries(mentorInfo.venueDirections).some(([_, v]) => v) && (
+                <div className="space-y-1.5 pt-1 border-t border-border/50">
+                  {Object.entries(mentorInfo.venueDirections as Record<string, string>)
+                    .filter(([_, v]) => v)
+                    .map(([key, value]) => (
+                      <div key={key} className="flex items-start gap-1.5">
+                        <Navigation className="w-3 h-3 text-muted-foreground mt-0.5 shrink-0" />
+                        <p className="text-xs text-muted-foreground">
+                          <span className="font-medium text-foreground">{key}:</span> {value}
+                        </p>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="mt-3 p-3 bg-muted/30 rounded-lg text-left">
             <p className="text-xs font-semibold text-muted-foreground mb-1">What happens next</p>
             <p className="text-xs text-muted-foreground">
               {isDiscoverySession
                 ? `This is a get-to-know-you session. ${mentorName || "Your mentor"} will learn about your goals and ideas, and together you'll map out how mentoring can support your journey.`
                 : `${mentorName || "They"} will receive your booking and may reach out to confirm details. Keep an eye on your email or phone for any updates.`
               }
+              {email ? " You'll receive a calendar invite shortly." : ""}
             </p>
           </div>
           <Button variant="outline" className="w-full mt-5" onClick={handleBookAnother} data-testid="button-book-another">
@@ -1111,12 +1158,12 @@ export default function PublicBookingPage() {
                 <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 flex items-start gap-2">
                   <Sprout className="w-4 h-4 text-primary mt-0.5 shrink-0" />
                   <p className="text-xs text-muted-foreground">
-                    Choose a time for your discovery session. This is a relaxed get-to-know-you conversation (about 30 minutes).
+                    Choose a time for your discovery session. This is a relaxed get-to-know-you conversation (about {slotDuration} minutes).
                   </p>
                 </div>
               )}
 
-              {selectedMeetingType && selectedMeetingType.id > 0 && (
+              {selectedMeetingType && !isDiscoverySession && (
                 <div className="bg-muted/50 rounded-md p-3 text-sm flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: selectedMeetingType.color || "#3b82f6" }} />
                   <span className="font-medium">{selectedMeetingType.name}</span>

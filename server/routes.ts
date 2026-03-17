@@ -854,16 +854,18 @@ export async function registerRoutes(
         }
       }
 
+      const calDescription = meeting.description || [
+        meeting.mentoringFocus ? `Focus: ${meeting.mentoringFocus}` : null,
+        meeting.notes ? `Notes: ${meeting.notes}` : null,
+        meeting.location ? `Location: ${meeting.location}` : null,
+      ].filter(Boolean).join("\n");
+
       const event = await calendar.events.insert({
         calendarId: options?.calendarId || "primary",
         sendUpdates: options?.sendInvites ? "all" : "none",
         requestBody: {
           summary: meeting.title,
-          description: [
-            meeting.mentoringFocus ? `Focus: ${meeting.mentoringFocus}` : null,
-            meeting.notes ? `Notes: ${meeting.notes}` : null,
-            meeting.location ? `Location: ${meeting.location}` : null,
-          ].filter(Boolean).join("\n"),
+          description: calDescription || undefined,
           start: { dateTime: new Date(meeting.startTime).toISOString(), timeZone: "Pacific/Auckland" },
           end: { dateTime: new Date(meeting.endTime).toISOString(), timeZone: "Pacific/Auckland" },
           location: meeting.location || undefined,
@@ -1798,17 +1800,38 @@ export async function registerRoutes(
   app.get('/api/public/mentoring/:userId/info', async (req, res) => {
     try {
       const { userId } = req.params;
+      let firstName = '';
+      let lastName = '';
+
+      const resolved = await resolveMentorUserId(userId);
+      const resolvedOwnerUserId = resolved.ownerUserId || resolved.availabilityUserId;
+
       if (userId.startsWith('mentor-')) {
         const mentorId = parseInt(userId.replace('mentor-', ''));
         const profile = await storage.getMentorProfile(mentorId);
         if (!profile) return res.status(404).json({ message: "Not found" });
         const nameParts = profile.name.split(' ');
-        return res.json({ firstName: nameParts[0], lastName: nameParts.slice(1).join(' ') || '', orgName: 'ReserveTMK Digital' });
+        firstName = nameParts[0];
+        lastName = nameParts.slice(1).join(' ') || '';
+      } else {
+        const { users } = await import("@shared/schema");
+        const result = await db.select().from(users).where(eq(users.id, userId));
+        if (result.length === 0) return res.status(404).json({ message: "Not found" });
+        firstName = result[0].firstName || '';
+        lastName = result[0].lastName || '';
       }
-      const { users } = await import("@shared/schema");
-      const result = await db.select().from(users).where(eq(users.id, userId));
-      if (result.length === 0) return res.status(404).json({ message: "Not found" });
-      res.json({ firstName: result[0].firstName, lastName: result[0].lastName, orgName: 'ReserveTMK Digital' });
+
+      let location: string | null = null;
+      let venueDirections: Record<string, string> | null = null;
+      try {
+        const orgProfile = await storage.getOrganisationProfile(resolvedOwnerUserId);
+        if (orgProfile) {
+          location = orgProfile.location || null;
+          venueDirections = orgProfile.venueDirections || null;
+        }
+      } catch (e) {}
+
+      res.json({ firstName, lastName, orgName: 'ReserveTMK Digital', location, venueDirections });
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch info" });
     }
@@ -1885,14 +1908,40 @@ export async function registerRoutes(
         }
       }
 
-      // Create Google Calendar event asynchronously
       (async () => {
         try {
+          let orgLocation: string | null = null;
+          let orgDirections: Record<string, string> | null = null;
+          try {
+            const orgProfile = await storage.getOrganisationProfile(contactOwnerUserId);
+            if (orgProfile) {
+              orgLocation = orgProfile.location || null;
+              orgDirections = orgProfile.venueDirections || null;
+            }
+          } catch (e) {}
+
+          const directionsText = orgDirections ? Object.entries(orgDirections)
+            .filter(([_, v]) => v)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join('\n') : '';
+
+          const descriptionParts = [
+            notes ? `Notes: ${notes}` : null,
+            orgLocation ? `Location: ${orgLocation}` : null,
+            directionsText ? `\nHow to find us:\n${directionsText}` : null,
+          ].filter(Boolean).join('\n');
+
+          const meetingWithLocation = {
+            ...meeting,
+            location: orgLocation || meeting.location,
+            description: descriptionParts || meeting.description,
+          };
+
           const mentorEmail = resolved.ownerUserId ? 
             (await storage.getMentorProfiles(resolved.ownerUserId))
               .find(p => p.mentorUserId === meetingUserId || `mentor-${p.id}` === meetingUserId)?.email : undefined;
           const additionalAttendees = Array.isArray(extras) ? extras.filter((e: string) => e && e.includes('@')) : [];
-          await createCalendarEventForMeeting(meeting, {
+          await createCalendarEventForMeeting(meetingWithLocation, {
             mentorEmail: mentorEmail || undefined,
             menteeEmail: email || undefined,
             calendarId: resolved.googleCalendarId || undefined,
