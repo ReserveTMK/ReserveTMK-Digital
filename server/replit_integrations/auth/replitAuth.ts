@@ -242,13 +242,13 @@ export async function setupAuth(app: Express) {
           console.error("[auth] Callback no user, info:", info);
           return res.redirect("/api/login");
         }
+        const returnTo = (req.session as any).loginReturnTo;
+        console.log(`[auth] Pre-logIn returnTo=${returnTo || 'none'}`);
         req.logIn(user, (loginErr) => {
           if (loginErr) {
             console.error("[auth] Callback logIn error:", loginErr);
             return res.redirect("/api/login");
           }
-          const returnTo = (req.session as any).loginReturnTo;
-          delete (req.session as any).loginReturnTo;
           console.log(`[auth] Login successful, user=${user.claims?.sub}, returnTo=${returnTo || 'none'}, hostname=${req.hostname}`);
           if (returnTo && returnTo !== req.hostname) {
             const token = generateAuthToken(user);
