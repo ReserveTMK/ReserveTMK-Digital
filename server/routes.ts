@@ -4555,13 +4555,14 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.get("/api/booking-pricing-defaults", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
     const defaults = await storage.getBookingPricingDefaults(userId);
-    res.json(defaults || { fullDayRate: "0", halfDayRate: "0" });
+    res.json(defaults || { fullDayRate: "0", halfDayRate: "0", maxAdvanceMonths: 3 });
   });
 
   app.put("/api/booking-pricing-defaults", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
-    const { fullDayRate, halfDayRate } = req.body;
-    const result = await storage.upsertBookingPricingDefaults(userId, { fullDayRate, halfDayRate });
+    const { fullDayRate, halfDayRate, maxAdvanceMonths: rawMaxMonths } = req.body;
+    const maxAdvanceMonths = rawMaxMonths != null ? Math.max(1, Math.min(12, parseInt(rawMaxMonths) || 3)) : undefined;
+    const result = await storage.upsertBookingPricingDefaults(userId, { fullDayRate, halfDayRate, maxAdvanceMonths });
     res.json(result);
   });
 
@@ -11429,6 +11430,7 @@ Rules:
         coveredByAgreement: hasMembership || hasMou,
         hasPackageCredits: hasPackage,
         packageRemaining: hasPackage ? (booker.packageTotalBookings || 0) - (booker.packageUsedBookings || 0) : 0,
+        maxAdvanceMonths: defaults?.maxAdvanceMonths ?? 3,
       });
     } catch (err: any) {
       res.status(500).json({ message: "Failed to fetch pricing" });
@@ -11546,10 +11548,23 @@ Rules:
       }
       const booker = linkResult.booker;
 
-      const { venueId, startDate, startTime, endTime, classification, specialRequests, usePackageCredit, bookerName } = req.body;
+      const { venueId, venueIds: rawVenueIds, startDate, startTime, endTime, classification, specialRequests, usePackageCredit, bookerName } = req.body;
       if (!venueId || !startDate || !startTime || !endTime || !classification) {
         return res.status(400).json({ message: "Missing required fields" });
       }
+      const resolvedVenueIds: number[] = Array.isArray(rawVenueIds) && rawVenueIds.length > 0
+        ? rawVenueIds.map((id: any) => parseInt(id)).filter((id: number) => !isNaN(id))
+        : [venueId];
+
+      const defaults = await storage.getBookingPricingDefaults(booker.userId);
+      const maxAdvanceMonths = defaults?.maxAdvanceMonths ?? 3;
+      const maxDate = new Date();
+      maxDate.setMonth(maxDate.getMonth() + maxAdvanceMonths);
+      maxDate.setHours(23, 59, 59, 999);
+      if (new Date(startDate) > maxDate) {
+        return res.status(400).json({ message: `Bookings cannot be made more than ${maxAdvanceMonths} month${maxAdvanceMonths !== 1 ? "s" : ""} in advance` });
+      }
+
       const isGroupLink = linkResult.link.isGroupLink === true;
 
       const venue = await storage.getVenue(venueId);
@@ -11562,7 +11577,8 @@ Rules:
       const allBookings = await storage.getBookings(booker.userId);
       const conflicting = allBookings.filter(b => {
         const bIds = b.venueIds || (b.venueId ? [b.venueId] : []);
-        if (!bIds.includes(venueId) || b.status === "cancelled") return false;
+        const hasOverlappingVenue = resolvedVenueIds.some(vid => bIds.includes(vid));
+        if (!hasOverlappingVenue || b.status === "cancelled") return false;
         if (!b.startDate) return false;
         const bDate = new Date(b.startDate).toISOString().split("T")[0];
         const reqDate = new Date(startDate).toISOString().split("T")[0];
@@ -11587,7 +11603,7 @@ Rules:
       const allMeetings = await storage.getMeetings(booker.userId);
       for (const m of allMeetings) {
         if (m.status === "cancelled") continue;
-        if (m.venueId !== venueId) continue;
+        if (!m.venueId || !resolvedVenueIds.includes(m.venueId)) continue;
         const mStartDate = m.startTime ? new Date(m.startTime).toISOString().slice(0, 10) : null;
         const mStartTimeStr = m.startTime ? new Date(m.startTime).toTimeString().slice(0, 5) : null;
         const mEndTimeStr = m.endTime ? new Date(m.endTime).toTimeString().slice(0, 5) : null;
@@ -11700,8 +11716,8 @@ Rules:
 
       const booking = await storage.createBooking({
         userId: booker.userId,
-        venueId,
-        venueIds: [venueId],
+        venueId: resolvedVenueIds[0],
+        venueIds: resolvedVenueIds,
         title: `${classification} - Portal Booking${titleSuffix}`,
         classification,
         status: "enquiry",

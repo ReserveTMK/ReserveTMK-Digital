@@ -482,6 +482,7 @@ type PricingInfo = {
   coveredByAgreement: boolean;
   hasPackageCredits: boolean;
   packageRemaining: number;
+  maxAdvanceMonths?: number;
 };
 
 function calculateBookingPrice(
@@ -546,12 +547,9 @@ function PricingBreakdown({ pricing, startTime, endTime, usePackageCredit }: { p
   if (result.isCovered) {
     return (
       <Card className="p-3 border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/20" data-testid="card-pricing-breakdown">
-        <div className="flex items-center gap-2 mb-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
           <FileText className="w-4 h-4 text-green-600 dark:text-green-400" />
           <span className="text-sm font-medium text-green-700 dark:text-green-300" data-testid="text-pricing-covered">Covered by agreement</span>
-        </div>
-        <div className="text-xs text-muted-foreground">
-          <span data-testid="text-pricing-value-saved">Value: {formatCurrency(result.basePrice)} — no charge</span>
         </div>
       </Card>
     );
@@ -1074,7 +1072,7 @@ function CalendarView({
   const now = new Date();
   const [currentYear, setCurrentYear] = useState(now.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(now.getMonth());
-  const [selectedVenue, setSelectedVenue] = useState<string>("");
+  const [selectedVenues, setSelectedVenues] = useState<number[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [presetSlot, setPresetSlot] = useState<string>("");
   const [customStart, setCustomStart] = useState("09:00");
@@ -1106,15 +1104,52 @@ function CalendarView({
 
   const monthStr = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}`;
 
-  const { data: availabilityData, isLoading: availLoading } = useQuery<{ dates: Record<string, { status: string; bookings: any[] }> }>({
-    queryKey: ["/api/booker/availability", token, selectedVenue, monthStr],
+  const venueIds = useMemo(() => (venues || []).map((v: any) => v.id as number), [venues]);
+
+  const { data: allVenueAvailability, isLoading: availLoading } = useQuery<Record<number, { dates: Record<string, { status: string; bookings: any[] }> }>>({
+    queryKey: ["/api/booker/availability-all", token, monthStr, venueIds],
     queryFn: async () => {
-      const res = await fetch(`/api/booker/availability/${token}?venueId=${selectedVenue}&month=${monthStr}`);
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
+      const results: Record<number, { dates: Record<string, { status: string; bookings: any[] }> }> = {};
+      await Promise.all(venueIds.map(async (vid) => {
+        const res = await fetch(`/api/booker/availability/${token}?venueId=${vid}&month=${monthStr}`);
+        if (res.ok) {
+          results[vid] = await res.json();
+        }
+      }));
+      return results;
     },
-    enabled: !!selectedVenue,
+    enabled: venueIds.length > 0,
   });
+
+  const mergedAvailability = useMemo(() => {
+    if (!allVenueAvailability) return undefined;
+    const merged: Record<string, { status: string }> = {};
+    for (const venueData of Object.values(allVenueAvailability)) {
+      for (const [dateStr, info] of Object.entries(venueData.dates)) {
+        if (!merged[dateStr]) {
+          merged[dateStr] = { status: info.status };
+        } else {
+          const current = merged[dateStr].status;
+          if (info.status === "yours" || current === "yours") {
+            merged[dateStr].status = "yours";
+          } else if (info.status === "available" || current === "available") {
+            merged[dateStr].status = "available";
+          } else if (info.status === "partial" || current === "partial") {
+            merged[dateStr].status = "partial";
+          }
+        }
+      }
+    }
+    return merged;
+  }, [allVenueAvailability]);
+
+  const getVenueStatusForDate = (venueId: number, date: string) => {
+    return allVenueAvailability?.[venueId]?.dates?.[date]?.status || "available";
+  };
+
+  const getVenueBookingsForDate = (venueId: number, date: string) => {
+    return allVenueAvailability?.[venueId]?.dates?.[date]?.bookings || [];
+  };
 
   const bookMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -1130,24 +1165,35 @@ function CalendarView({
   const days = useMemo(() => getMonthDays(currentYear, currentMonth), [currentYear, currentMonth]);
   const monthName = new Date(currentYear, currentMonth).toLocaleDateString("en-NZ", { month: "long", year: "numeric" });
 
+  const maxAdvanceMonths = pricingData?.maxAdvanceMonths ?? 3;
+  const maxBookingDate = useMemo(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + maxAdvanceMonths);
+    d.setHours(23, 59, 59, 999);
+    return d;
+  }, [maxAdvanceMonths]);
+
   const prevMonth = () => {
     if (currentMonth === 0) { setCurrentMonth(11); setCurrentYear(currentYear - 1); }
     else setCurrentMonth(currentMonth - 1);
     setSelectedDate(null);
+    setSelectedVenues([]);
   };
   const nextMonth = () => {
     if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear(currentYear + 1); }
     else setCurrentMonth(currentMonth + 1);
     setSelectedDate(null);
+    setSelectedVenues([]);
   };
 
   const startTime = presetSlot ? PRESET_SLOTS.find(s => s.label === presetSlot)?.start || customStart : customStart;
   const endTime = presetSlot ? PRESET_SLOTS.find(s => s.label === presetSlot)?.end || customEnd : customEnd;
 
   const handleBook = () => {
-    if (!selectedDate || !selectedVenue || !classification) return;
+    if (!selectedDate || selectedVenues.length === 0 || !classification) return;
     bookMutation.mutate({
-      venueId: parseInt(selectedVenue),
+      venueId: selectedVenues[0],
+      venueIds: selectedVenues,
       startDate: selectedDate,
       startTime,
       endTime,
@@ -1156,6 +1202,14 @@ function CalendarView({
       usePackageCredit,
       bookerName: isGroupLink && bookerName.trim() ? bookerName.trim() : undefined,
     });
+  };
+
+  const toggleVenue = (venueId: number) => {
+    setSelectedVenues(prev =>
+      prev.includes(venueId)
+        ? prev.filter(id => id !== venueId)
+        : [...prev, venueId]
+    );
   };
 
   const getDateColorClass = (status: string) => {
@@ -1168,7 +1222,15 @@ function CalendarView({
     }
   };
 
-  const selectedDateInfo = selectedDate && availabilityData?.dates?.[selectedDate];
+  const getVenueStatusBadge = (status: string) => {
+    switch (status) {
+      case "available": return <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 text-xs">Available</Badge>;
+      case "booked": return <Badge variant="secondary" className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 text-xs">Fully Booked</Badge>;
+      case "yours": return <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs">Your Booking</Badge>;
+      case "partial": return <Badge variant="secondary" className="bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300 text-xs">Partial</Badge>;
+      default: return <Badge variant="secondary" className="text-xs">Available</Badge>;
+    }
+  };
 
   if (bookingConfirmed) {
     return (
@@ -1197,6 +1259,12 @@ function CalendarView({
               <span className="text-muted-foreground">Time</span>
               <span className="font-medium">{formatTimeSlot(startTime)} - {formatTimeSlot(endTime)}</span>
             </div>
+            {selectedVenues.length > 0 && venues && (
+              <div className="flex justify-between gap-2 flex-wrap">
+                <span className="text-muted-foreground">Venue{selectedVenues.length > 1 ? "s" : ""}</span>
+                <span className="font-medium">{selectedVenues.map(id => venues.find((v: any) => v.id === id)?.name).filter(Boolean).join(", ")}</span>
+              </div>
+            )}
             <div className="flex justify-between gap-2 flex-wrap">
               <span className="text-muted-foreground">Type</span>
               <span className="font-medium">{classification}</span>
@@ -1231,7 +1299,7 @@ function CalendarView({
             })()}
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={() => { setBookingConfirmed(false); setSelectedDate(null); setPresetSlot(""); setClassification(""); setSpecialRequests(""); setBookerName(""); }} data-testid="button-book-another">
+            <Button variant="outline" className="flex-1" onClick={() => { setBookingConfirmed(false); setSelectedDate(null); setSelectedVenues([]); setPresetSlot(""); setClassification(""); setSpecialRequests(""); setBookerName(""); }} data-testid="button-book-another">
               Book Another
             </Button>
             <Button className="flex-1" onClick={onBack} data-testid="button-back-to-dashboard">
@@ -1254,7 +1322,7 @@ function CalendarView({
         </div>
 
         {pricingData && (pricingData.coveredByAgreement || pricingData.hasPackageCredits) && (
-          <Card className="p-4 border-primary/20 bg-primary/5" data-testid="card-agreement-balance">
+          <Card className="p-4 mb-4 border-primary/20 bg-primary/5" data-testid="card-agreement-balance">
             <div className="flex items-start gap-3 flex-wrap">
               <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                 {pricingData.coveredByAgreement ? <FileText className="w-4 h-4 text-primary" /> : <Package className="w-4 h-4 text-primary" />}
@@ -1304,254 +1372,283 @@ function CalendarView({
           </Card>
         )}
 
-        <div className="mb-4">
-          <Label>Select Venue</Label>
-          {venuesLoading ? (
-            <Skeleton className="h-9 w-full mt-1" />
-          ) : (
-            <Select value={selectedVenue} onValueChange={(v) => { setSelectedVenue(v); setSelectedDate(null); }}>
-              <SelectTrigger data-testid="select-venue">
-                <SelectValue placeholder="Choose a venue..." />
-              </SelectTrigger>
-              <SelectContent>
-                {venues?.map((v: any) => (
-                  <SelectItem key={v.id} value={String(v.id)} data-testid={`venue-option-${v.id}`}>
-                    {v.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          {selectedVenue && pricingData && !pricingData.coveredByAgreement && (
-            <div className="mt-2 flex items-center gap-3 flex-wrap text-xs text-muted-foreground" data-testid="text-venue-rates">
-              <Info className="w-3 h-3 shrink-0" />
-              <span>Rates: Half day ${pricingData.halfDayRate.toFixed(0)} | Full day ${pricingData.fullDayRate.toFixed(0)}{pricingData.hourlyRate > 0 ? ` | Hourly $${pricingData.hourlyRate.toFixed(0)}/hr` : ""}</span>
-              {pricingData.discountPercentage > 0 && (
-                <Badge variant="secondary" className="text-xs" data-testid="badge-discount-tier">
-                  {pricingData.discountPercentage}% discount
-                </Badge>
-              )}
+        {pricingData && !pricingData.coveredByAgreement && (
+          <div className="mb-4 flex items-center gap-3 flex-wrap text-xs text-muted-foreground" data-testid="text-venue-rates">
+            <Info className="w-3 h-3 shrink-0" />
+            <span>Rates: Half day ${pricingData.halfDayRate.toFixed(0)} | Full day ${pricingData.fullDayRate.toFixed(0)}{pricingData.hourlyRate > 0 ? ` | Hourly $${pricingData.hourlyRate.toFixed(0)}/hr` : ""}</span>
+            {pricingData.discountPercentage > 0 && (
+              <Badge variant="secondary" className="text-xs" data-testid="badge-discount-tier">
+                {pricingData.discountPercentage}% discount
+              </Badge>
+            )}
+          </div>
+        )}
+
+        <div className="flex flex-col lg:flex-row gap-4">
+          <Card className="flex-1 p-4">
+            <div className="flex items-center justify-between gap-2 mb-4">
+              <Button variant="ghost" size="icon" onClick={prevMonth} data-testid="button-prev-month">
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <h2 className="font-semibold" data-testid="text-current-month">{monthName}</h2>
+              <Button variant="ghost" size="icon" onClick={nextMonth} data-testid="button-next-month">
+                <ChevronRight className="w-4 h-4" />
+              </Button>
             </div>
-          )}
-        </div>
 
-        {selectedVenue && (
-          <div className="flex flex-col lg:flex-row gap-4">
-            <Card className="flex-1 p-4">
-              <div className="flex items-center justify-between gap-2 mb-4">
-                <Button variant="ghost" size="icon" onClick={prevMonth} data-testid="button-prev-month">
-                  <ChevronLeft className="w-4 h-4" />
-                </Button>
-                <h2 className="font-semibold" data-testid="text-current-month">{monthName}</h2>
-                <Button variant="ghost" size="icon" onClick={nextMonth} data-testid="button-next-month">
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
+            <div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-muted-foreground mb-1">
+              {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(d => (
+                <div key={d}>{d}</div>
+              ))}
+            </div>
+
+            {(availLoading || venuesLoading) ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
               </div>
+            ) : (
+              <div className="grid grid-cols-7 gap-1">
+                {days.map((cell, i) => {
+                  const status = cell.inMonth ? mergedAvailability?.[cell.date]?.status || "available" : "";
+                  const isPast = cell.inMonth && new Date(cell.date + "T23:59:59") < new Date();
+                  const isBeyondMax = cell.inMonth && new Date(cell.date + "T00:00:00") > maxBookingDate;
+                  const isClickable = cell.inMonth && !isPast && !isBeyondMax && status !== "booked";
+                  const isSelected = cell.date === selectedDate;
 
-              <div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-muted-foreground mb-1">
-                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(d => (
-                  <div key={d}>{d}</div>
-                ))}
+                  return (
+                    <button
+                      key={i}
+                      disabled={!isClickable}
+                      onClick={() => isClickable ? (() => { setSelectedDate(cell.date); setSelectedVenues([]); })() : undefined}
+                      className={`
+                        aspect-square flex items-center justify-center text-sm rounded-md transition-colors
+                        ${!cell.inMonth ? "text-muted-foreground/30" : ""}
+                        ${(isPast || isBeyondMax) && cell.inMonth ? "text-muted-foreground/40" : ""}
+                        ${cell.inMonth && !isPast && !isBeyondMax ? getDateColorClass(status) : ""}
+                        ${isSelected ? "ring-2 ring-primary ring-offset-1" : ""}
+                        ${isClickable ? "cursor-pointer" : "cursor-default"}
+                      `}
+                      data-testid={`calendar-day-${cell.date}`}
+                    >
+                      {cell.day}
+                    </button>
+                  );
+                })}
               </div>
+            )}
 
-              {availLoading ? (
-                <div className="flex items-center justify-center py-16">
-                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <div className="grid grid-cols-7 gap-1">
-                  {days.map((cell, i) => {
-                    const status = cell.inMonth ? availabilityData?.dates?.[cell.date]?.status || "available" : "";
-                    const isPast = cell.inMonth && new Date(cell.date + "T23:59:59") < new Date();
-                    const isClickable = cell.inMonth && !isPast && status !== "booked";
-                    const isSelected = cell.date === selectedDate;
-
-                    return (
-                      <button
-                        key={i}
-                        disabled={!isClickable}
-                        onClick={() => isClickable ? setSelectedDate(cell.date) : undefined}
-                        className={`
-                          aspect-square flex items-center justify-center text-sm rounded-md transition-colors
-                          ${!cell.inMonth ? "text-muted-foreground/30" : ""}
-                          ${isPast && cell.inMonth ? "text-muted-foreground/40" : ""}
-                          ${cell.inMonth && !isPast ? getDateColorClass(status) : ""}
-                          ${isSelected ? "ring-2 ring-primary ring-offset-1" : ""}
-                          ${isClickable ? "cursor-pointer" : "cursor-default"}
-                        `}
-                        data-testid={`calendar-day-${cell.date}`}
-                      >
-                        {cell.day}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              <div className="flex items-center gap-3 mt-4 flex-wrap text-xs">
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded-sm bg-green-200 dark:bg-green-900/50" />
-                  <span className="text-muted-foreground">Available</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded-sm bg-orange-200 dark:bg-orange-900/50" />
-                  <span className="text-muted-foreground">Partial</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded-sm bg-blue-200 dark:bg-blue-900/50" />
-                  <span className="text-muted-foreground">Yours</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded-sm bg-red-200 dark:bg-red-900/50" />
-                  <span className="text-muted-foreground">Booked</span>
-                </div>
+            <div className="flex items-center gap-3 mt-4 flex-wrap text-xs">
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-sm bg-green-200 dark:bg-green-900/50" />
+                <span className="text-muted-foreground">Available</span>
               </div>
-            </Card>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-sm bg-orange-200 dark:bg-orange-900/50" />
+                <span className="text-muted-foreground">Partial</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-sm bg-blue-200 dark:bg-blue-900/50" />
+                <span className="text-muted-foreground">Yours</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-sm bg-red-200 dark:bg-red-900/50" />
+                <span className="text-muted-foreground">Booked</span>
+              </div>
+            </div>
+          </Card>
 
-            {selectedDate && (
-              <Card className="w-full lg:w-80 p-4 space-y-4" data-testid="panel-booking-form">
+          <Card className="w-full lg:w-80 p-4 space-y-4" data-testid="panel-booking-form">
+            {!selectedDate ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <CalendarDays className="w-8 h-8 text-muted-foreground/50 mb-2" />
+                <p className="text-sm text-muted-foreground">Select a date to see available venues</p>
+              </div>
+            ) : (
+              <>
                 <div className="flex items-center justify-between gap-2">
                   <h3 className="font-semibold text-sm" data-testid="heading-selected-date">
                     {new Date(selectedDate + "T00:00").toLocaleDateString("en-NZ", { weekday: "long", day: "numeric", month: "long", timeZone: "Pacific/Auckland" })}
                   </h3>
-                  <Button variant="ghost" size="icon" onClick={() => setSelectedDate(null)} data-testid="button-close-panel">
+                  <Button variant="ghost" size="icon" onClick={() => { setSelectedDate(null); setSelectedVenues([]); }} data-testid="button-close-panel">
                     <X className="w-4 h-4" />
                   </Button>
                 </div>
 
-                {selectedDateInfo && (selectedDateInfo as any).bookings?.length > 0 && (
-                  <div className="space-y-1">
-                    <p className="text-xs font-medium text-muted-foreground">Existing venue hires:</p>
-                    {(selectedDateInfo as any).bookings.map((b: any, idx: number) => (
-                      <div key={idx} className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">
-                        {b.startTime && b.endTime ? `${formatTimeSlot(b.startTime)} - ${formatTimeSlot(b.endTime)}` : "All day"}: {b.title || "Booked"}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
                 <div className="space-y-2">
-                  <Label className="text-xs">Quick Select</Label>
+                  <Label className="text-xs">Select Venue{(venues?.length || 0) > 1 ? "s" : ""}</Label>
                   <div className="space-y-1">
-                    {PRESET_SLOTS.map(slot => {
-                      const slotPrice = pricingData ? calculateBookingPrice(pricingData, slot.start, slot.end, false) : null;
+                    {venues?.map((v: any) => {
+                      const venueStatus = getVenueStatusForDate(v.id, selectedDate);
+                      const isBooked = venueStatus === "booked";
+                      const isChecked = selectedVenues.includes(v.id);
+                      const venueBookings = getVenueBookingsForDate(v.id, selectedDate);
                       return (
                         <button
-                          key={slot.label}
-                          onClick={() => setPresetSlot(presetSlot === slot.label ? "" : slot.label)}
+                          key={v.id}
+                          disabled={isBooked}
+                          onClick={() => !isBooked && toggleVenue(v.id)}
                           className={`w-full text-left text-sm px-3 py-2 rounded-md border transition-colors ${
-                            presetSlot === slot.label
+                            isChecked
                               ? "border-primary bg-primary/5"
-                              : "border-border"
+                              : isBooked
+                                ? "border-border opacity-50 cursor-not-allowed"
+                                : "border-border hover:border-primary/50"
                           }`}
-                          data-testid={`slot-${slot.start}-${slot.end}`}
+                          data-testid={`venue-checkbox-${v.id}`}
                         >
-                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2">
-                              <Clock className="w-3 h-3 text-muted-foreground" />
-                              {slot.label}
+                              <Checkbox
+                                checked={isChecked}
+                                disabled={isBooked}
+                                onCheckedChange={() => !isBooked && toggleVenue(v.id)}
+                                data-testid={`checkbox-venue-${v.id}`}
+                              />
+                              <span className={isBooked ? "text-muted-foreground" : ""}>{v.name}</span>
                             </div>
-                            {slotPrice && slotPrice.basePrice > 0 && (
-                              <span className="text-xs text-muted-foreground" data-testid={`text-slot-price-${slot.start}`}>
-                                {slotPrice.isCovered ? "Included" : slotPrice.discount > 0 ? `$${slotPrice.finalPrice.toFixed(0)}` : `$${slotPrice.basePrice.toFixed(0)}`}
-                              </span>
-                            )}
+                            {getVenueStatusBadge(venueStatus)}
                           </div>
+                          {venueBookings.length > 0 && (
+                            <div className="ml-6 mt-1 space-y-0.5">
+                              {venueBookings.map((b: any, idx: number) => (
+                                <div key={idx} className="text-xs text-muted-foreground">
+                                  {b.startTime && b.endTime ? `${formatTimeSlot(b.startTime)} - ${formatTimeSlot(b.endTime)}` : "All day"}: {b.title || "Booked"}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </button>
                       );
                     })}
                   </div>
                 </div>
 
-                {!presetSlot && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Start Time</Label>
-                      <Input type="time" value={customStart} onChange={(e) => setCustomStart(e.target.value)} data-testid="input-custom-start" />
+                {selectedVenues.length > 0 && (
+                  <>
+                    <div className="space-y-2">
+                      <Label className="text-xs">Quick Select</Label>
+                      <div className="space-y-1">
+                        {PRESET_SLOTS.map(slot => {
+                          const slotPrice = pricingData ? calculateBookingPrice(pricingData, slot.start, slot.end, false) : null;
+                          return (
+                            <button
+                              key={slot.label}
+                              onClick={() => setPresetSlot(presetSlot === slot.label ? "" : slot.label)}
+                              className={`w-full text-left text-sm px-3 py-2 rounded-md border transition-colors ${
+                                presetSlot === slot.label
+                                  ? "border-primary bg-primary/5"
+                                  : "border-border"
+                              }`}
+                              data-testid={`slot-${slot.start}-${slot.end}`}
+                            >
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <div className="flex items-center gap-2">
+                                  <Clock className="w-3 h-3 text-muted-foreground" />
+                                  {slot.label}
+                                </div>
+                                {slotPrice && slotPrice.basePrice > 0 && (
+                                  <span className="text-xs text-muted-foreground" data-testid={`text-slot-price-${slot.start}`}>
+                                    {slotPrice.isCovered ? "Covered" : slotPrice.discount > 0 ? `$${slotPrice.finalPrice.toFixed(0)}` : `$${slotPrice.basePrice.toFixed(0)}`}
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">End Time</Label>
-                      <Input type="time" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} data-testid="input-custom-end" />
-                    </div>
-                  </div>
-                )}
 
-                {isGroupLink && (
-                  <div className="space-y-1">
-                    <Label className="text-xs">Your Name (optional)</Label>
-                    <Input
-                      value={bookerName}
-                      onChange={(e) => setBookerName(e.target.value)}
-                      placeholder="Who is making this booking?"
-                      data-testid="input-booker-name"
+                    {!presetSlot && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Start Time</Label>
+                          <Input type="time" value={customStart} onChange={(e) => setCustomStart(e.target.value)} data-testid="input-custom-start" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">End Time</Label>
+                          <Input type="time" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} data-testid="input-custom-end" />
+                        </div>
+                      </div>
+                    )}
+
+                    {isGroupLink && (
+                      <div className="space-y-1">
+                        <Label className="text-xs">Your Name (optional)</Label>
+                        <Input
+                          value={bookerName}
+                          onChange={(e) => setBookerName(e.target.value)}
+                          placeholder="Who is making this booking?"
+                          data-testid="input-booker-name"
+                        />
+                      </div>
+                    )}
+
+                    <div className="space-y-1">
+                      <Label className="text-xs">Classification</Label>
+                      <Select value={classification} onValueChange={setClassification}>
+                        <SelectTrigger data-testid="select-classification">
+                          <SelectValue placeholder="Select type..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CLASSIFICATIONS.map(c => (
+                            <SelectItem key={c} value={c}>{c}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs">Special Requests</Label>
+                      <Textarea
+                        value={specialRequests}
+                        onChange={(e) => setSpecialRequests(e.target.value)}
+                        rows={2}
+                        placeholder="Any setup needs, AV requirements..."
+                        data-testid="input-special-requests"
+                      />
+                    </div>
+
+                    {booker.hasBookingPackage && (booker.packageTotalBookings || 0) - (booker.packageUsedBookings || 0) > 0 && (
+                      <div className="flex items-center justify-between gap-2">
+                        <Label className="text-xs">Use package credit</Label>
+                        <button
+                          onClick={() => setUsePackageCredit(!usePackageCredit)}
+                          className={`w-10 h-5 rounded-full transition-colors relative ${usePackageCredit ? "bg-primary" : "bg-muted"}`}
+                          data-testid="toggle-package-credit"
+                        >
+                          <div className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform ${usePackageCredit ? "translate-x-5" : "translate-x-0.5"}`} />
+                        </button>
+                      </div>
+                    )}
+
+                    <PricingBreakdown
+                      pricing={pricingData}
+                      startTime={startTime}
+                      endTime={endTime}
+                      usePackageCredit={usePackageCredit}
                     />
-                  </div>
-                )}
 
-                <div className="space-y-1">
-                  <Label className="text-xs">Classification</Label>
-                  <Select value={classification} onValueChange={setClassification}>
-                    <SelectTrigger data-testid="select-classification">
-                      <SelectValue placeholder="Select type..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CLASSIFICATIONS.map(c => (
-                        <SelectItem key={c} value={c}>{c}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-1">
-                  <Label className="text-xs">Special Requests</Label>
-                  <Textarea
-                    value={specialRequests}
-                    onChange={(e) => setSpecialRequests(e.target.value)}
-                    rows={2}
-                    placeholder="Any setup needs, AV requirements..."
-                    data-testid="input-special-requests"
-                  />
-                </div>
-
-                {booker.hasBookingPackage && (booker.packageTotalBookings || 0) - (booker.packageUsedBookings || 0) > 0 && (
-                  <div className="flex items-center justify-between gap-2">
-                    <Label className="text-xs">Use package credit</Label>
-                    <button
-                      onClick={() => setUsePackageCredit(!usePackageCredit)}
-                      className={`w-10 h-5 rounded-full transition-colors relative ${usePackageCredit ? "bg-primary" : "bg-muted"}`}
-                      data-testid="toggle-package-credit"
+                    <Button
+                      className="w-full"
+                      disabled={!classification || bookMutation.isPending}
+                      onClick={handleBook}
+                      data-testid="button-submit-booking"
                     >
-                      <div className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform ${usePackageCredit ? "translate-x-5" : "translate-x-0.5"}`} />
-                    </button>
-                  </div>
+                      {bookMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                      <span className="ml-1">Submit Booking Request</span>
+                    </Button>
+
+                    {bookMutation.isError && (
+                      <p className="text-xs text-red-500" data-testid="text-booking-error">
+                        {(bookMutation.error as Error)?.message || "Failed to submit booking"}
+                      </p>
+                    )}
+                  </>
                 )}
-
-                <PricingBreakdown
-                  pricing={pricingData}
-                  startTime={startTime}
-                  endTime={endTime}
-                  usePackageCredit={usePackageCredit}
-                />
-
-                <Button
-                  className="w-full"
-                  disabled={!classification || bookMutation.isPending}
-                  onClick={handleBook}
-                  data-testid="button-submit-booking"
-                >
-                  {bookMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                  <span className="ml-1">Submit Booking Request</span>
-                </Button>
-
-                {bookMutation.isError && (
-                  <p className="text-xs text-red-500" data-testid="text-booking-error">
-                    {(bookMutation.error as Error)?.message || "Failed to submit booking"}
-                  </p>
-                )}
-              </Card>
+              </>
             )}
-          </div>
-        )}
+          </Card>
+        </div>
       </div>
     </div>
   );

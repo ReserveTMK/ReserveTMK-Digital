@@ -353,7 +353,7 @@ export interface IStorage {
 
   // Booking Pricing Defaults
   getBookingPricingDefaults(userId: string): Promise<BookingPricingDefaults | undefined>;
-  upsertBookingPricingDefaults(userId: string, data: { fullDayRate?: string; halfDayRate?: string }): Promise<BookingPricingDefaults>;
+  upsertBookingPricingDefaults(userId: string, data: { fullDayRate?: string; halfDayRate?: string; maxAdvanceMonths?: number }): Promise<BookingPricingDefaults>;
 
   getOperatingHours(userId: string): Promise<OperatingHours[]>;
   upsertOperatingHours(userId: string, data: { dayOfWeek: string; openTime: string | null; closeTime: string | null; isStaffed: boolean }[]): Promise<OperatingHours[]>;
@@ -1377,7 +1377,7 @@ export class DatabaseStorage implements IStorage {
     return defaults;
   }
 
-  async upsertBookingPricingDefaults(userId: string, data: { fullDayRate?: string; halfDayRate?: string }): Promise<BookingPricingDefaults> {
+  async upsertBookingPricingDefaults(userId: string, data: { fullDayRate?: string; halfDayRate?: string; maxAdvanceMonths?: number }): Promise<BookingPricingDefaults> {
     const existing = await this.getBookingPricingDefaults(userId);
     if (existing) {
       const [updated] = await db.update(bookingPricingDefaults)
@@ -1387,7 +1387,7 @@ export class DatabaseStorage implements IStorage {
       return updated;
     }
     const [created] = await db.insert(bookingPricingDefaults)
-      .values({ userId, fullDayRate: data.fullDayRate || "0", halfDayRate: data.halfDayRate || "0" })
+      .values({ userId, fullDayRate: data.fullDayRate || "0", halfDayRate: data.halfDayRate || "0", maxAdvanceMonths: data.maxAdvanceMonths ?? 3 })
       .returning();
     return created;
   }

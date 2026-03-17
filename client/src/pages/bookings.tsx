@@ -26,6 +26,7 @@ import {
   useUpdateBooking,
   useDeleteBooking,
   useBookingPricingDefaults,
+  useUpdateBookingPricingDefaults,
   useRegularBookers,
   useVenueInstructions,
   useCreateVenueInstruction,
@@ -965,6 +966,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
               <TabsTrigger value="venue-instructions" data-testid="tab-booking-venue-instructions">Venue Instructions</TabsTrigger>
               <TabsTrigger value="after-hours" data-testid="tab-booking-after-hours">After Hours</TabsTrigger>
               <TabsTrigger value="survey" data-testid="tab-booking-survey">Survey</TabsTrigger>
+              <TabsTrigger value="portal" data-testid="tab-booking-portal">Portal</TabsTrigger>
               <TabsTrigger value="xero" data-testid="tab-booking-xero">Xero</TabsTrigger>
             </TabsList>
             <TabsContent value="venue-instructions" className="mt-4">
@@ -985,6 +987,9 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
             </TabsContent>
             <TabsContent value="survey" className="mt-4">
               <SurveySettingsTab />
+            </TabsContent>
+            <TabsContent value="portal" className="mt-4">
+              <PortalSettingsTab />
             </TabsContent>
             <TabsContent value="xero" className="mt-4">
               <XeroSettingsTab />
@@ -1523,6 +1528,57 @@ function AfterHoursSettingsTab() {
       >
         {(saveHoursMutation.isPending || saveSettingsMutation.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
         Save Settings
+      </Button>
+    </div>
+  );
+}
+
+function PortalSettingsTab() {
+  const { toast } = useToast();
+  const { data: pricingDefaults } = useBookingPricingDefaults();
+  const updateDefaults = useUpdateBookingPricingDefaults();
+  const [maxMonths, setMaxMonths] = useState<number>(3);
+
+  useEffect(() => {
+    if (pricingDefaults?.maxAdvanceMonths != null) {
+      setMaxMonths(pricingDefaults.maxAdvanceMonths);
+    }
+  }, [pricingDefaults?.maxAdvanceMonths]);
+
+  const handleSave = () => {
+    const val = Math.max(1, Math.min(12, maxMonths));
+    updateDefaults.mutate({ maxAdvanceMonths: val }, {
+      onSuccess: () => toast({ title: "Portal settings saved" }),
+      onError: () => toast({ title: "Failed to save settings", variant: "destructive" }),
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">Configure settings for the booker portal.</p>
+      <div className="space-y-2">
+        <Label htmlFor="max-advance-months" className="text-sm font-medium">Max Advance Booking</Label>
+        <p className="text-xs text-muted-foreground">How far in advance bookers can make venue hire requests.</p>
+        <div className="flex items-center gap-2">
+          <Input
+            id="max-advance-months"
+            type="number"
+            min={1}
+            max={12}
+            value={maxMonths}
+            onChange={(e) => setMaxMonths(parseInt(e.target.value) || 1)}
+            className="w-24"
+            data-testid="input-max-advance-months"
+          />
+          <span className="text-sm text-muted-foreground">months</span>
+        </div>
+      </div>
+      <Button
+        onClick={handleSave}
+        disabled={updateDefaults.isPending}
+        data-testid="button-save-portal-settings"
+      >
+        {updateDefaults.isPending ? "Saving..." : "Save"}
       </Button>
     </div>
   );

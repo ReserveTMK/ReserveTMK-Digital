@@ -58,7 +58,7 @@ export function useBookingPricingDefaults() {
 
 export function useUpdateBookingPricingDefaults() {
   return useMutation({
-    mutationFn: (data: { fullDayRate?: string; halfDayRate?: string }) =>
+    mutationFn: (data: { fullDayRate?: string; halfDayRate?: string; maxAdvanceMonths?: number }) =>
       apiRequest('PUT', '/api/booking-pricing-defaults', data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/booking-pricing-defaults'] }),
   });

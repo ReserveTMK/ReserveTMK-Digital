@@ -1495,6 +1495,7 @@ export const bookingPricingDefaults = pgTable("booking_pricing_defaults", {
   userId: text("user_id").notNull(),
   fullDayRate: text("full_day_rate").default("0"),
   halfDayRate: text("half_day_rate").default("0"),
+  maxAdvanceMonths: integer("max_advance_months").default(3),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
