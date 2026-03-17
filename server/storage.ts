@@ -119,6 +119,9 @@ import {
   type InsertOperatingHours,
   type AfterHoursSettings,
   type InsertAfterHoursSettings,
+  bookingReminderSettings,
+  type BookingReminderSettings,
+  type InsertBookingReminderSettings,
   DAYS_OF_WEEK,
   xeroSettings,
   type XeroSettings,
@@ -385,9 +388,14 @@ export interface IStorage {
 
   // Venue Instructions
   getVenueInstructions(userId: string): Promise<VenueInstruction[]>;
+  getVenueInstructionsBySpaceName(userId: string, spaceName: string): Promise<VenueInstruction[]>;
   createVenueInstruction(data: InsertVenueInstruction): Promise<VenueInstruction>;
   updateVenueInstruction(id: number, updates: Partial<InsertVenueInstruction>): Promise<VenueInstruction>;
   deleteVenueInstruction(id: number): Promise<void>;
+
+  // Booking Reminder Settings
+  getBookingReminderSettings(userId: string): Promise<BookingReminderSettings | undefined>;
+  upsertBookingReminderSettings(userId: string, data: { enabled?: boolean; sendTimingHours?: number }): Promise<BookingReminderSettings>;
 
   // Survey Settings
   getSurveySettings(userId: string): Promise<SurveySettings | undefined>;
@@ -1455,6 +1463,26 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
+  async getBookingReminderSettings(userId: string): Promise<BookingReminderSettings | undefined> {
+    const [settings] = await db.select().from(bookingReminderSettings).where(eq(bookingReminderSettings.userId, userId));
+    return settings;
+  }
+
+  async upsertBookingReminderSettings(userId: string, data: { enabled?: boolean; sendTimingHours?: number }): Promise<BookingReminderSettings> {
+    const existing = await this.getBookingReminderSettings(userId);
+    if (existing) {
+      const [updated] = await db.update(bookingReminderSettings)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(bookingReminderSettings.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(bookingReminderSettings)
+      .values({ userId, enabled: data.enabled ?? true, sendTimingHours: data.sendTimingHours ?? 4 })
+      .returning();
+    return created;
+  }
+
   async getXeroSettings(userId: string): Promise<XeroSettings | undefined> {
     const [settings] = await db.select().from(xeroSettings).where(eq(xeroSettings.userId, userId));
     return settings;
@@ -1579,6 +1607,10 @@ export class DatabaseStorage implements IStorage {
   // Venue Instructions
   async getVenueInstructions(userId: string): Promise<VenueInstruction[]> {
     return await db.select().from(venueInstructions).where(eq(venueInstructions.userId, userId)).orderBy(venueInstructions.instructionType, venueInstructions.displayOrder);
+  }
+
+  async getVenueInstructionsBySpaceName(userId: string, spaceName: string): Promise<VenueInstruction[]> {
+    return await db.select().from(venueInstructions).where(and(eq(venueInstructions.userId, userId), eq(venueInstructions.spaceName, spaceName))).orderBy(venueInstructions.instructionType, venueInstructions.displayOrder);
   }
 
   async createVenueInstruction(data: InsertVenueInstruction): Promise<VenueInstruction> {

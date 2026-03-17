@@ -127,6 +127,56 @@ app.use((req, res, next) => {
     console.warn("[migration] Venue availability migration skipped:", migrationErr.message);
   }
 
+  try {
+    const { db } = await import("./db");
+    const { sql } = await import("drizzle-orm");
+
+    await db.execute(sql`ALTER TABLE venue_instructions ADD COLUMN IF NOT EXISTS space_name text`);
+    await db.execute(sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS location_access text[]`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS booking_reminder_settings (
+        id serial PRIMARY KEY,
+        user_id text NOT NULL,
+        enabled boolean DEFAULT true,
+        send_timing_hours integer DEFAULT 4,
+        updated_at timestamp DEFAULT now()
+      )
+    `);
+
+    const needsMigration = await db.execute(
+      sql`SELECT COUNT(*) as cnt FROM venue_instructions WHERE venue_id IS NOT NULL AND space_name IS NULL`
+    );
+    const rows = Array.isArray(needsMigration) ? needsMigration : (needsMigration as { rows: { cnt: string | number }[] }).rows || [];
+    const count = Number(rows[0]?.cnt ?? 0);
+    if (count > 0) {
+      await db.execute(sql`
+        UPDATE venue_instructions vi
+        SET space_name = v.space_name
+        FROM venues v
+        WHERE vi.venue_id = v.id
+          AND vi.space_name IS NULL
+          AND v.space_name IS NOT NULL
+      `);
+      await db.execute(sql`
+        DELETE FROM venue_instructions a
+        USING venue_instructions b
+        WHERE a.id > b.id
+          AND a.space_name IS NOT NULL
+          AND a.space_name = b.space_name
+          AND a.user_id = b.user_id
+          AND a.instruction_type = b.instruction_type
+          AND COALESCE(a.title, '') = COALESCE(b.title, '')
+          AND COALESCE(a.content, '') = COALESCE(b.content, '')
+      `);
+      await db.execute(sql`
+        UPDATE venue_instructions SET venue_id = NULL WHERE space_name IS NOT NULL
+      `);
+      console.log("[migration] Venue instructions migrated to location-level (spaceName)");
+    }
+  } catch (migrationErr: any) {
+    console.warn("[migration] Venue instructions location migration skipped:", migrationErr.message);
+  }
+
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     if (res.headersSent) {
       return next(err);

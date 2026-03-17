@@ -97,6 +97,15 @@ export function useVenueInstructions(venueId?: number | null) {
   return useQuery<VenueInstruction[]>({ queryKey: ['/api/venue-instructions', venueId], queryFn: () => fetch(`/api/venue-instructions${params}`, { credentials: 'include' }).then(r => r.json()) });
 }
 
+export function useLocationInstructions(spaceName?: string | null) {
+  const params = spaceName ? `?spaceName=${encodeURIComponent(spaceName)}` : '';
+  return useQuery<VenueInstruction[]>({
+    queryKey: ['/api/venue-instructions', 'location', spaceName],
+    queryFn: () => fetch(`/api/venue-instructions${params}`, { credentials: 'include' }).then(r => r.json()),
+    enabled: !!spaceName,
+  });
+}
+
 export function useCreateVenueInstruction() {
   return useMutation({
     mutationFn: (data: any) => apiRequest('POST', '/api/venue-instructions', data),

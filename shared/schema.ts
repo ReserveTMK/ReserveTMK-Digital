@@ -521,6 +521,7 @@ export const bookings = pgTable("bookings", {
   usePackageCredit: boolean("use_package_credit").default(false),
   isRangatahi: boolean("is_rangatahi").default(false),
   rangatahiCount: integer("rangatahi_count"),
+  locationAccess: text("location_access").array(),
   isAfterHours: boolean("is_after_hours").default(false),
   autoInstructionsSent: boolean("auto_instructions_sent").default(false),
   autoInstructionsSentAt: timestamp("auto_instructions_sent_at"),
@@ -592,6 +593,7 @@ export const venueInstructions = pgTable("venue_instructions", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
   venueId: integer("venue_id").references(() => venues.id),
+  spaceName: text("space_name"),
   instructionType: text("instruction_type").notNull(),
   title: text("title"),
   content: text("content"),
@@ -1541,6 +1543,22 @@ export const insertAfterHoursSettingsSchema = createInsertSchema(afterHoursSetti
 
 export type AfterHoursSettings = typeof afterHoursSettings.$inferSelect;
 export type InsertAfterHoursSettings = z.infer<typeof insertAfterHoursSettingsSchema>;
+
+export const bookingReminderSettings = pgTable("booking_reminder_settings", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  enabled: boolean("enabled").default(true),
+  sendTimingHours: integer("send_timing_hours").default(4),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertBookingReminderSettingsSchema = createInsertSchema(bookingReminderSettings).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type BookingReminderSettings = typeof bookingReminderSettings.$inferSelect;
+export type InsertBookingReminderSettings = z.infer<typeof insertBookingReminderSettingsSchema>;
 
 export const xeroSettings = pgTable("xero_settings", {
   id: serial("id").primaryKey(),

@@ -960,12 +960,16 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
               </Button>
             </div>
           </DialogHeader>
-          <Tabs defaultValue="survey">
+          <Tabs defaultValue="reminders">
             <TabsList className="flex-wrap">
+              <TabsTrigger value="reminders" data-testid="tab-booking-reminders">Reminders</TabsTrigger>
               <TabsTrigger value="survey" data-testid="tab-booking-survey">Survey</TabsTrigger>
               <TabsTrigger value="portal" data-testid="tab-booking-portal">Portal</TabsTrigger>
               <TabsTrigger value="xero" data-testid="tab-booking-xero">Xero</TabsTrigger>
             </TabsList>
+            <TabsContent value="reminders" className="mt-4">
+              <BookingRemindersSettingsTab />
+            </TabsContent>
             <TabsContent value="survey" className="mt-4">
               <SurveySettingsTab />
             </TabsContent>
@@ -1589,6 +1593,75 @@ function XeroSettingsTab() {
   );
 }
 
+function BookingRemindersSettingsTab() {
+  const { toast } = useToast();
+  const { data: reminderData, isLoading } = useQuery<{ enabled: boolean; sendTimingHours: number }>({
+    queryKey: ['/api/booking-reminder-settings'],
+  });
+
+  const [enabled, setEnabled] = useState(true);
+  const [sendTimingHours, setSendTimingHours] = useState(4);
+
+  useEffect(() => {
+    if (reminderData) {
+      setEnabled(reminderData.enabled ?? true);
+      setSendTimingHours(reminderData.sendTimingHours ?? 4);
+    }
+  }, [reminderData]);
+
+  const saveSettingsMutation = useMutation({
+    mutationFn: () => apiRequest('PUT', '/api/booking-reminder-settings', { enabled, sendTimingHours }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/booking-reminder-settings'] });
+      toast({ title: "Saved", description: "Booking reminder settings updated" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  if (isLoading) {
+    return <div className="flex justify-center p-4"><Loader2 className="w-5 h-5 animate-spin" /></div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">Automatically send location instructions before venue hire bookings.</p>
+      <div className="flex items-center gap-3">
+        <Switch
+          checked={enabled}
+          onCheckedChange={setEnabled}
+          data-testid="switch-booking-reminders-settings"
+        />
+        <span className="text-sm">{enabled ? "Enabled" : "Disabled"}</span>
+      </div>
+      {enabled && (
+        <div>
+          <Label className="text-xs">Send reminder</Label>
+          <Select value={String(sendTimingHours)} onValueChange={(v) => setSendTimingHours(Number(v))}>
+            <SelectTrigger className="w-48 mt-1" data-testid="select-reminder-timing-settings">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="24">1 day before</SelectItem>
+              <SelectItem value="4">4 hours before</SelectItem>
+              <SelectItem value="2">2 hours before</SelectItem>
+              <SelectItem value="0">8am on day of venue hire</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      <Button
+        size="sm"
+        onClick={() => saveSettingsMutation.mutate()}
+        disabled={saveSettingsMutation.isPending}
+        data-testid="button-save-booking-reminders-settings"
+      >
+        {saveSettingsMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+        Save Reminder Settings
+      </Button>
+    </div>
+  );
+}
+
 
 function BookingFormDialog({
   open,
@@ -1661,6 +1734,9 @@ function BookingFormDialog({
   const [mouId, setMouId] = useState<number | null>(booking?.mouId || null);
   const [agreementAutoPopulated, setAgreementAutoPopulated] = useState(false);
   const [conflictOverride, setConflictOverride] = useState(false);
+  const [locationAccessOverride, setLocationAccessOverride] = useState<string[] | null>(
+    (booking?.locationAccess as string[] | null) || null
+  );
 
   const conflictQueryEnabled = !isTBC && selectedVenueIds.length > 0 && !!startDate && !!startTime && !!endTime;
   const { data: conflictData, isLoading: conflictLoading } = useQuery<{
@@ -1760,6 +1836,17 @@ function BookingFormDialog({
     } catch (err: any) {}
   };
 
+  const selectedVenueSpaceNames = useMemo(() => {
+    const selected = venues.filter(v => selectedVenueIds.includes(v.id));
+    return [...new Set(selected.map(v => v.spaceName).filter(Boolean))] as string[];
+  }, [selectedVenueIds, venues]);
+
+  const allSpaceNames = useMemo(() => {
+    return [...new Set(venues.filter(v => v.active !== false).map(v => v.spaceName).filter(Boolean))] as string[];
+  }, [venues]);
+
+  const effectiveLocationAccess = locationAccessOverride ?? selectedVenueSpaceNames;
+
   const handleSubmit = () => {
     if (!classification || selectedVenueIds.length === 0) return;
     const data: any = {
@@ -1783,6 +1870,7 @@ function BookingFormDialog({
       membershipId: membershipId || null,
       mouId: mouId || null,
       notes: notes.trim() || undefined,
+      locationAccess: effectiveLocationAccess.length > 0 ? effectiveLocationAccess : null,
       ...(conflictOverride ? { conflictOverride: true } : {}),
     };
     onSubmit(data);
@@ -2016,6 +2104,31 @@ function BookingFormDialog({
               ))}
             </div>
           </div>
+
+          {allSpaceNames.length > 1 && (
+            <div>
+              <Label>Location Access</Label>
+              <p className="text-xs text-muted-foreground mb-2">Which locations can the booker access? Pre-selected from venues above.</p>
+              <div className="space-y-2">
+                {allSpaceNames.map((name) => (
+                  <label key={name} className="flex items-center gap-2 cursor-pointer" data-testid={`checkbox-location-access-${name}`}>
+                    <Checkbox
+                      checked={effectiveLocationAccess.includes(name)}
+                      onCheckedChange={(checked) => {
+                        const current = [...effectiveLocationAccess];
+                        if (checked) {
+                          setLocationAccessOverride([...current, name]);
+                        } else {
+                          setLocationAccessOverride(current.filter(n => n !== name));
+                        }
+                      }}
+                    />
+                    <span className="text-sm">{name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div>
             <Label>Classification *</Label>

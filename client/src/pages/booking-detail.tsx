@@ -6,11 +6,12 @@ import { useVenues, useBookings } from "@/hooks/use-bookings";
 import { useContacts } from "@/hooks/use-contacts";
 import { useMemberships, useMous } from "@/hooks/use-memberships";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/beautiful-button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -213,6 +214,23 @@ export default function BookingDetail() {
   const bookingVenueIds = booking.venueIds || (booking.venueId ? [booking.venueId] : []);
   const bookingVenues = venues?.filter((v: Venue) => bookingVenueIds.includes(v.id)) || [];
   const venue = bookingVenues[0];
+
+  const allSpaceNames = useMemo(() => {
+    if (!venues) return [];
+    const names = new Set<string>();
+    for (const v of venues) {
+      if (v.spaceName) names.add(v.spaceName);
+    }
+    return Array.from(names).sort();
+  }, [venues]);
+
+  const venueSpaceNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const v of bookingVenues) {
+      if (v.spaceName) names.add(v.spaceName);
+    }
+    return Array.from(names);
+  }, [bookingVenues]);
   const bookerContact = booking.bookerId ? contacts?.find((c: Contact) => c.id === booking.bookerId) : null;
 
   const formatDate = (d: Date | string | null | undefined) => {
@@ -317,53 +335,51 @@ export default function BookingDetail() {
           )}
 
           {booking.status === "confirmed" && (
-            <Card className={`p-4 ${booking.isAfterHours ? "border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/10" : "border-gray-200 dark:border-gray-800"}`}>
-              <div className="flex items-center gap-3 flex-wrap">
-                <div className="flex-1">
-                  <h3 className="font-semibold text-sm flex items-center gap-2" data-testid="text-instructions-status">
-                    {booking.isAfterHours ? (
-                      <>
-                        <Moon className="w-4 h-4 text-amber-600" />
-                        After-Hours Venue Hire
-                      </>
-                    ) : (
-                      <>
-                        <Mail className="w-4 h-4 text-muted-foreground" />
-                        Venue Instructions
-                      </>
-                    )}
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    {booking.isAfterHours ? (
-                      booking.autoInstructionsSent ? (
+            <Card className="p-4 border-gray-200 dark:border-gray-800">
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-sm flex items-center gap-2" data-testid="text-instructions-status">
+                      <Mail className="w-4 h-4 text-muted-foreground" />
+                      Booking Reminder
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      {booking.autoInstructionsSent ? (
                         <>
                           <CheckCircle2 className="w-3.5 h-3.5 inline mr-1 text-green-600" />
-                          After-hours reminder sent {booking.autoInstructionsSentAt ? `on ${format(new Date(booking.autoInstructionsSentAt), "d MMM, h:mm a")}` : ""}
+                          Reminder sent {booking.autoInstructionsSentAt ? `on ${format(new Date(booking.autoInstructionsSentAt), "d MMM, h:mm a")}` : ""}
                         </>
                       ) : (
-                        "After-hours reminder will be sent automatically before the venue hire"
-                      )
+                        "Location instructions will be included with the booking reminder"
+                      )}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => sendInstructionsMutation.mutate()}
+                    disabled={sendInstructionsMutation.isPending}
+                    data-testid="button-send-instructions"
+                  >
+                    {sendInstructionsMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : booking.autoInstructionsSent ? (
+                      <RefreshCw className="w-4 h-4 mr-2" />
                     ) : (
-                      "Instructions were included with the confirmation email"
+                      <Send className="w-4 h-4 mr-2" />
                     )}
-                  </p>
+                    {booking.autoInstructionsSent ? "Resend Instructions" : "Send Instructions Now"}
+                  </Button>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => sendInstructionsMutation.mutate()}
-                  disabled={sendInstructionsMutation.isPending}
-                  data-testid="button-send-instructions"
-                >
-                  {sendInstructionsMutation.isPending ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : booking.autoInstructionsSent ? (
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                  ) : (
-                    <Send className="w-4 h-4 mr-2" />
-                  )}
-                  {booking.autoInstructionsSent ? "Resend Instructions" : "Send Instructions Now"}
-                </Button>
+
+                {allSpaceNames.length > 0 && (
+                  <LocationAccessControl
+                    bookingId={booking.id}
+                    allSpaceNames={allSpaceNames}
+                    defaultSpaceNames={venueSpaceNames}
+                    currentAccess={booking.locationAccess as string[] | null}
+                  />
+                )}
               </div>
             </Card>
           )}
@@ -1017,5 +1033,63 @@ function XeroInvoiceCard({ booking }: { booking: Booking }) {
         </Button>
       </div>
     </Card>
+  );
+}
+
+function LocationAccessControl({
+  bookingId,
+  allSpaceNames,
+  defaultSpaceNames,
+  currentAccess,
+}: {
+  bookingId: number;
+  allSpaceNames: string[];
+  defaultSpaceNames: string[];
+  currentAccess: string[] | null;
+}) {
+  const { toast } = useToast();
+  const effectiveAccess = currentAccess || defaultSpaceNames;
+  const [selected, setSelected] = useState<string[]>(effectiveAccess);
+
+  const updateMutation = useMutation({
+    mutationFn: (locationAccess: string[]) =>
+      apiRequest('PATCH', `/api/bookings/${bookingId}`, { locationAccess }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
+      toast({ title: "Updated", description: "Location access updated" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleToggle = (spaceName: string, checked: boolean) => {
+    const next = checked
+      ? [...selected, spaceName]
+      : selected.filter(s => s !== spaceName);
+    setSelected(next);
+    updateMutation.mutate(next);
+  };
+
+  return (
+    <div className="border-t pt-3">
+      <p className="text-xs font-medium mb-2">Location Access</p>
+      <p className="text-xs text-muted-foreground mb-2">Select which locations this booker has access to. Only instructions for selected locations will be sent.</p>
+      <div className="space-y-2">
+        {allSpaceNames.map(name => (
+          <label key={name} className="flex items-center gap-2 cursor-pointer" data-testid={`checkbox-location-access-${name.replace(/\s+/g, '-')}`}>
+            <Checkbox
+              checked={selected.includes(name)}
+              onCheckedChange={(checked) => handleToggle(name, !!checked)}
+              disabled={updateMutation.isPending}
+            />
+            <span className="text-sm">{name}</span>
+            {defaultSpaceNames.includes(name) && (
+              <Badge variant="secondary" className="text-[10px]">venue location</Badge>
+            )}
+          </label>
+        ))}
+      </div>
+    </div>
   );
 }

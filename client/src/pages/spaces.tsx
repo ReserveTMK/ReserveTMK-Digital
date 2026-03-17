@@ -455,7 +455,7 @@ function SpacesCalendarTab() {
                   <CardContent className="p-3 overflow-x-auto">
                     {!isDeskDay ? (
                       <div className="py-6 text-center">
-                        <p className="text-sm text-muted-foreground" data-testid="text-desks-closed">Desks are closed today. Check operating hours in Settings → Resources.</p>
+                        <p className="text-sm text-muted-foreground" data-testid="text-desks-closed">Desks are closed today. Check hot desking hours in Resources → Desks.</p>
                       </div>
                     ) : (
                     <div className="min-w-[600px]">
@@ -582,7 +582,7 @@ function HotDeskingTab() {
         if (!isDeskDay) {
           return (
             <Card className="p-8 text-center">
-              <p className="text-muted-foreground" data-testid="text-desks-closed-hotdesking">Desks are closed today. Check operating hours in Settings → Resources.</p>
+              <p className="text-muted-foreground" data-testid="text-desks-closed-hotdesking">Desks are closed today. Check hot desking hours in Resources → Desks.</p>
             </Card>
           );
         }

@@ -34,7 +34,7 @@ import {
   useDeskBookings,
   useBookingPricingDefaults,
   useUpdateBookingPricingDefaults,
-  useVenueInstructions,
+  useLocationInstructions,
   useCreateVenueInstruction,
   useUpdateVenueInstruction,
   useDeleteVenueInstruction,
@@ -82,13 +82,12 @@ export default function ResourcesTab() {
     <div className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold" data-testid="text-resources-heading">Resources</h2>
-        <p className="text-sm text-muted-foreground">Manage your venues, desks, and operating hours</p>
+        <p className="text-sm text-muted-foreground">Manage your venues, desks, and booking settings</p>
       </div>
       <Tabs defaultValue="venues">
         <TabsList className="flex-wrap">
           <TabsTrigger value="venues" data-testid="tab-resources-venues">Venues</TabsTrigger>
           <TabsTrigger value="desks" data-testid="tab-resources-desks">Desks</TabsTrigger>
-          <TabsTrigger value="operating-hours" data-testid="tab-resources-operating-hours">Operating Hours</TabsTrigger>
         </TabsList>
         <TabsContent value="venues" className="mt-3">
           <VenuesSubSection
@@ -105,10 +104,7 @@ export default function ResourcesTab() {
           />
         </TabsContent>
         <TabsContent value="desks" className="mt-3">
-          <ResourceSubSection category="hot_desking" label="Desk" />
-        </TabsContent>
-        <TabsContent value="operating-hours" className="mt-3">
-          <OperatingHoursSubTab />
+          <DesksSubTab />
         </TabsContent>
       </Tabs>
     </div>
@@ -256,6 +252,7 @@ function VenuesSubSection({
             )}
           </Card>
         ))}
+          <LocationInstructionsSection spaceName={spaceName} />
         </div>
       ))}
       {(!venues || venues.length === 0) && (
@@ -405,14 +402,6 @@ function VenueManagementPanel({ venue }: { venue: Venue }) {
             <Clock className="w-3.5 h-3.5 mr-1.5" />
             Availability
           </TabsTrigger>
-          <TabsTrigger
-            value="instructions"
-            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2 text-xs"
-            data-testid={`tab-venue-instructions-${venue.id}`}
-          >
-            <FileText className="w-3.5 h-3.5 mr-1.5" />
-            Instructions
-          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="details" className="p-4 mt-0">
@@ -420,9 +409,6 @@ function VenueManagementPanel({ venue }: { venue: Venue }) {
         </TabsContent>
         <TabsContent value="availability" className="p-4 mt-0">
           <VenueAvailabilitySection venue={venue} />
-        </TabsContent>
-        <TabsContent value="instructions" className="p-4 mt-0">
-          <VenueInstructionsSection venue={venue} />
         </TabsContent>
       </Tabs>
     </div>
@@ -607,8 +593,8 @@ function VenueAvailabilitySection({ venue }: { venue: Venue }) {
   );
 }
 
-function VenueInstructionsSection({ venue }: { venue: Venue }) {
-  const { data: instructions, isLoading } = useVenueInstructions(venue.id);
+function LocationInstructionsSection({ spaceName }: { spaceName: string }) {
+  const { data: instructions, isLoading } = useLocationInstructions(spaceName);
   const createMutation = useCreateVenueInstruction();
   const updateMutation = useUpdateVenueInstruction();
   const deleteMutation = useDeleteVenueInstruction();
@@ -616,6 +602,7 @@ function VenueInstructionsSection({ venue }: { venue: Venue }) {
 
   const [showForm, setShowForm] = useState(false);
   const [editingInstruction, setEditingInstruction] = useState<VenueInstruction | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   const groupedInstructions = useMemo(() => {
     if (!instructions) return {};
@@ -670,7 +657,7 @@ function VenueInstructionsSection({ venue }: { venue: Venue }) {
         await updateMutation.mutateAsync({ id: editingInstruction.id, data });
         toast({ title: "Updated", description: "Instruction updated" });
       } else {
-        await createMutation.mutateAsync({ ...data, venueId: venue.id });
+        await createMutation.mutateAsync({ ...data, spaceName });
         toast({ title: "Created", description: "Instruction added" });
       }
       setShowForm(false);
@@ -680,122 +667,143 @@ function VenueInstructionsSection({ venue }: { venue: Venue }) {
     }
   };
 
+  const safeId = spaceName.replace(/\s+/g, '-');
+
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">Instructions specific to this venue (access, arrival, etc.).</p>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => { setEditingInstruction(null); setShowForm(true); }}
-          data-testid={`button-add-venue-instruction-${venue.id}`}
-        >
-          <Plus className="w-3.5 h-3.5 mr-1" />
-          Add
-        </Button>
+    <Card className="overflow-hidden border-dashed" data-testid={`card-location-instructions-${safeId}`}>
+      <div
+        className="p-3 cursor-pointer hover:bg-muted/50 transition-colors flex items-center justify-between"
+        onClick={() => setExpanded(!expanded)}
+        data-testid={`button-expand-location-instructions-${safeId}`}
+      >
+        <div className="flex items-center gap-2">
+          <FileText className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-medium">Location Instructions</span>
+          {instructions && instructions.length > 0 && (
+            <Badge variant="secondary" className="text-xs">{instructions.length}</Badge>
+          )}
+        </div>
+        {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
       </div>
 
-      {showForm && (
-        <InlineInstructionForm
-          instruction={editingInstruction}
-          onSubmit={handleSubmit}
-          onCancel={() => { setShowForm(false); setEditingInstruction(null); }}
-          isPending={createMutation.isPending || updateMutation.isPending}
-          venueId={venue.id}
-        />
-      )}
+      {expanded && (
+        <div className="border-t p-3 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">Instructions shared by all venues in {spaceName}.</p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => { setEditingInstruction(null); setShowForm(true); }}
+              data-testid={`button-add-location-instruction-${safeId}`}
+            >
+              <Plus className="w-3.5 h-3.5 mr-1" />
+              Add
+            </Button>
+          </div>
 
-      {isLoading ? (
-        <div className="flex justify-center py-4">
-          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-        </div>
-      ) : !instructions?.length ? (
-        <div className="text-center py-4">
-          <FileText className="w-8 h-8 text-muted-foreground mx-auto mb-1" />
-          <p className="text-xs text-muted-foreground" data-testid={`text-no-venue-instructions-${venue.id}`}>No instructions for this venue yet.</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {INSTRUCTION_TYPES.map(type => {
-            const typeInstructions = groupedInstructions[type] || [];
-            if (typeInstructions.length === 0) return null;
-            return (
-              <div key={type} data-testid={`venue-instruction-group-${type}-${venue.id}`}>
-                <div className="flex items-center gap-2 mb-1.5">
-                  <Badge className={`text-[10px] ${INSTRUCTION_TYPE_COLORS[type] || ""}`}>
-                    {INSTRUCTION_TYPE_LABELS[type]}
-                  </Badge>
-                  <span className="text-[10px] text-muted-foreground">({typeInstructions.length})</span>
-                </div>
-                <div className="space-y-1">
-                  {typeInstructions.map((inst, index) => (
-                    <div
-                      key={inst.id}
-                      className={`flex items-start justify-between gap-2 p-2 rounded-md border bg-background ${!inst.isActive ? "opacity-50" : ""}`}
-                      data-testid={`card-venue-instruction-${inst.id}`}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium" data-testid={`text-venue-instruction-title-${inst.id}`}>
-                          {inst.title || "Untitled"}
-                        </p>
-                        {inst.content && (
-                          <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{inst.content}</p>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-0.5 shrink-0">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          disabled={index === 0}
-                          onClick={() => handleMoveOrder(inst, "up")}
-                          data-testid={`button-venue-instruction-up-${inst.id}`}
-                        >
-                          <ArrowUp className="w-3 h-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          disabled={index === typeInstructions.length - 1}
-                          onClick={() => handleMoveOrder(inst, "down")}
-                          data-testid={`button-venue-instruction-down-${inst.id}`}
-                        >
-                          <ArrowDown className="w-3 h-3" />
-                        </Button>
-                        <Switch
-                          checked={inst.isActive ?? true}
-                          onCheckedChange={() => handleToggleActive(inst)}
-                          data-testid={`switch-venue-instruction-active-${inst.id}`}
-                        />
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={() => { setEditingInstruction(inst); setShowForm(true); }}
-                          data-testid={`button-edit-venue-instruction-${inst.id}`}
-                        >
-                          <Pencil className="w-3 h-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={() => handleDelete(inst.id)}
-                          data-testid={`button-delete-venue-instruction-${inst.id}`}
-                        >
-                          <Trash2 className="w-3 h-3 text-destructive" />
-                        </Button>
-                      </div>
+          {showForm && (
+            <InlineInstructionForm
+              instruction={editingInstruction}
+              onSubmit={handleSubmit}
+              onCancel={() => { setShowForm(false); setEditingInstruction(null); }}
+              isPending={createMutation.isPending || updateMutation.isPending}
+              formId={safeId}
+            />
+          )}
+
+          {isLoading ? (
+            <div className="flex justify-center py-4">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : !instructions?.length ? (
+            <div className="text-center py-4">
+              <FileText className="w-8 h-8 text-muted-foreground mx-auto mb-1" />
+              <p className="text-xs text-muted-foreground" data-testid={`text-no-location-instructions-${safeId}`}>No instructions for this location yet.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {INSTRUCTION_TYPES.map(type => {
+                const typeInstructions = groupedInstructions[type] || [];
+                if (typeInstructions.length === 0) return null;
+                return (
+                  <div key={type} data-testid={`location-instruction-group-${type}-${safeId}`}>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <Badge className={`text-[10px] ${INSTRUCTION_TYPE_COLORS[type] || ""}`}>
+                        {INSTRUCTION_TYPE_LABELS[type]}
+                      </Badge>
+                      <span className="text-[10px] text-muted-foreground">({typeInstructions.length})</span>
                     </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+                    <div className="space-y-1">
+                      {typeInstructions.map((inst, index) => (
+                        <div
+                          key={inst.id}
+                          className={`flex items-start justify-between gap-2 p-2 rounded-md border bg-background ${!inst.isActive ? "opacity-50" : ""}`}
+                          data-testid={`card-location-instruction-${inst.id}`}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium" data-testid={`text-location-instruction-title-${inst.id}`}>
+                              {inst.title || "Untitled"}
+                            </p>
+                            {inst.content && (
+                              <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{inst.content}</p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-0.5 shrink-0">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              disabled={index === 0}
+                              onClick={() => handleMoveOrder(inst, "up")}
+                              data-testid={`button-location-instruction-up-${inst.id}`}
+                            >
+                              <ArrowUp className="w-3 h-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              disabled={index === typeInstructions.length - 1}
+                              onClick={() => handleMoveOrder(inst, "down")}
+                              data-testid={`button-location-instruction-down-${inst.id}`}
+                            >
+                              <ArrowDown className="w-3 h-3" />
+                            </Button>
+                            <Switch
+                              checked={inst.isActive ?? true}
+                              onCheckedChange={() => handleToggleActive(inst)}
+                              data-testid={`switch-location-instruction-active-${inst.id}`}
+                            />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => { setEditingInstruction(inst); setShowForm(true); }}
+                              data-testid={`button-edit-location-instruction-${inst.id}`}
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => handleDelete(inst.id)}
+                              data-testid={`button-delete-location-instruction-${inst.id}`}
+                            >
+                              <Trash2 className="w-3 h-3 text-destructive" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -804,13 +812,13 @@ function InlineInstructionForm({
   onSubmit,
   onCancel,
   isPending,
-  venueId,
+  formId,
 }: {
   instruction: VenueInstruction | null;
   onSubmit: (data: any) => Promise<void>;
   onCancel: () => void;
   isPending: boolean;
-  venueId: number;
+  formId: string;
 }) {
   const [instructionType, setInstructionType] = useState(instruction?.instructionType || "general");
   const [title, setTitle] = useState(instruction?.title || "");
@@ -843,12 +851,12 @@ function InlineInstructionForm({
   };
 
   return (
-    <div className="border rounded-md p-3 space-y-3 bg-background" data-testid={`form-venue-instruction-${venueId}`}>
+    <div className="border rounded-md p-3 space-y-3 bg-background" data-testid={`form-instruction-${formId}`}>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <Label className="text-xs">Type</Label>
           <Select value={instructionType} onValueChange={setInstructionType}>
-            <SelectTrigger className="h-8 text-xs" data-testid={`select-venue-instruction-type-${venueId}`}>
+            <SelectTrigger className="h-8 text-xs" data-testid={`select-instruction-type-${formId}`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -866,7 +874,7 @@ function InlineInstructionForm({
             value={displayOrder}
             onChange={(e) => setDisplayOrder(e.target.value)}
             className="h-8 text-xs"
-            data-testid={`input-venue-instruction-order-${venueId}`}
+            data-testid={`input-instruction-order-${formId}`}
           />
         </div>
       </div>
@@ -877,7 +885,7 @@ function InlineInstructionForm({
           onChange={(e) => setTitle(e.target.value)}
           placeholder="e.g. Building Access Instructions"
           className="h-8 text-xs"
-          data-testid={`input-venue-instruction-title-${venueId}`}
+          data-testid={`input-instruction-title-${formId}`}
         />
       </div>
       <div className="space-y-1">
@@ -887,15 +895,15 @@ function InlineInstructionForm({
           onChange={(e) => setContent(e.target.value)}
           placeholder="Detailed instructions..."
           className="resize-none min-h-[60px] text-xs"
-          data-testid={`input-venue-instruction-content-${venueId}`}
+          data-testid={`input-instruction-content-${formId}`}
         />
       </div>
       <div className="flex items-center gap-2">
-        <Button size="sm" onClick={handleSubmit} disabled={isPending || !title.trim()} data-testid={`button-save-venue-instruction-${venueId}`}>
+        <Button size="sm" onClick={handleSubmit} disabled={isPending || !title.trim()} data-testid={`button-save-instruction-${formId}`}>
           {isPending && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
           {instruction ? "Save Changes" : "Add Instruction"}
         </Button>
-        <Button size="sm" variant="outline" onClick={onCancel} data-testid={`button-cancel-venue-instruction-${venueId}`}>
+        <Button size="sm" variant="outline" onClick={onCancel} data-testid={`button-cancel-instruction-${formId}`}>
           Cancel
         </Button>
       </div>
@@ -1103,18 +1111,22 @@ function ResourceSubSection({ category, label }: { category: string; label: stri
   );
 }
 
-function OperatingHoursSubTab() {
+function DesksSubTab() {
+  return (
+    <div className="space-y-6">
+      <ResourceSubSection category="hot_desking" label="Desk" />
+      <HotDeskingHoursSection />
+    </div>
+  );
+}
+
+function HotDeskingHoursSection() {
   const { toast } = useToast();
-  const { data: operatingHoursData, isLoading: hoursLoading } = useQuery<OperatingHours[]>({
+  const { data: operatingHoursData, isLoading } = useQuery<OperatingHours[]>({
     queryKey: ['/api/operating-hours'],
-  });
-  const { data: afterHoursData, isLoading: settingsLoading } = useQuery<{ autoSendEnabled: boolean; sendTimingHours: number }>({
-    queryKey: ['/api/after-hours-settings'],
   });
 
   const [hours, setHours] = useState<Array<{ dayOfWeek: string; openTime: string | null; closeTime: string | null; isStaffed: boolean }>>([]);
-  const [autoSendEnabled, setAutoSendEnabled] = useState(true);
-  const [sendTimingHours, setSendTimingHours] = useState(4);
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
@@ -1140,43 +1152,14 @@ function OperatingHoursSubTab() {
     }
   }, [operatingHoursData, initialized]);
 
-  useEffect(() => {
-    if (afterHoursData) {
-      setAutoSendEnabled(afterHoursData.autoSendEnabled ?? true);
-      setSendTimingHours(afterHoursData.sendTimingHours ?? 4);
-    }
-  }, [afterHoursData]);
-
   const saveHoursMutation = useMutation({
     mutationFn: () => apiRequest('PUT', '/api/operating-hours', { hours }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/operating-hours'] });
-      toast({ title: "Saved", description: "Operating hours updated" });
+      toast({ title: "Saved", description: "Hot desking hours updated" });
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
-
-  const saveSettingsMutation = useMutation({
-    mutationFn: () => apiRequest('PUT', '/api/after-hours-settings', { autoSendEnabled, sendTimingHours }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/after-hours-settings'] });
-      toast({ title: "Saved", description: "After-hours settings updated" });
-    },
-    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
-  });
-
-  async function handleSave() {
-    try {
-      await saveHoursMutation.mutateAsync();
-    } catch {
-      return;
-    }
-    try {
-      await saveSettingsMutation.mutateAsync();
-    } catch {
-      return;
-    }
-  }
 
   function handleQuickSetup() {
     setHours(DAYS_OF_WEEK.map(day => ({
@@ -1191,94 +1174,63 @@ function OperatingHoursSubTab() {
     setHours(prev => prev.map(h => h.dayOfWeek === dayOfWeek ? { ...h, [field]: value } : h));
   }
 
-  if (hoursLoading || settingsLoading) {
+  if (isLoading) {
     return <div className="flex justify-center p-8"><Loader2 className="w-6 h-6 animate-spin" /></div>;
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h3 className="font-semibold text-sm">Hot Desking Hours</h3>
-            <p className="text-xs text-muted-foreground">Set when desks are available for hot desking each day. Desk bookings outside these hours won't be allowed.</p>
-          </div>
-          <Button variant="outline" size="sm" onClick={handleQuickSetup} data-testid="button-quick-setup">
-            Quick Setup
-          </Button>
+    <div className="border-t pt-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold text-sm">Hot Desking Hours</h3>
+          <p className="text-xs text-muted-foreground">Set when desks are available for hot desking each day. Desk bookings outside these hours won't be allowed.</p>
         </div>
-        <div className="space-y-2">
-          {hours.map(h => (
-            <div key={h.dayOfWeek} className="flex items-center gap-3 text-sm" data-testid={`row-${h.dayOfWeek}`}>
-              <span className="w-24 font-medium">{DAY_LABELS[h.dayOfWeek]}</span>
-              <Switch
-                checked={h.isStaffed}
-                onCheckedChange={(v) => updateDay(h.dayOfWeek, 'isStaffed', v)}
-                data-testid={`switch-staffed-${h.dayOfWeek}`}
-              />
-              {h.isStaffed ? (
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="time"
-                    value={h.openTime || "09:00"}
-                    onChange={(e) => updateDay(h.dayOfWeek, 'openTime', e.target.value)}
-                    className="w-28 h-8 text-xs"
-                    data-testid={`input-open-${h.dayOfWeek}`}
-                  />
-                  <span className="text-muted-foreground">to</span>
-                  <Input
-                    type="time"
-                    value={h.closeTime || "17:00"}
-                    onChange={(e) => updateDay(h.dayOfWeek, 'closeTime', e.target.value)}
-                    className="w-28 h-8 text-xs"
-                    data-testid={`input-close-${h.dayOfWeek}`}
-                  />
-                </div>
-              ) : (
-                <span className="text-xs text-muted-foreground">Closed — no hot desking available</span>
-              )}
-            </div>
-          ))}
-        </div>
+        <Button variant="outline" size="sm" onClick={handleQuickSetup} data-testid="button-quick-setup">
+          Quick Setup
+        </Button>
       </div>
-
-      <div className="border-t pt-4">
-        <h3 className="font-semibold text-sm mb-1">After-Hours Reminders</h3>
-        <p className="text-xs text-muted-foreground mb-3">Automatically send venue instructions before after-hours venue hires.</p>
-        <div className="flex items-center gap-3">
-          <Switch
-            checked={autoSendEnabled}
-            onCheckedChange={setAutoSendEnabled}
-            data-testid="switch-auto-send"
-          />
-          <span className="text-sm">{autoSendEnabled ? "Enabled" : "Disabled"}</span>
-        </div>
-        {autoSendEnabled && (
-          <div className="mt-3">
-            <Label className="text-xs">Send reminder</Label>
-            <Select value={String(sendTimingHours)} onValueChange={(v) => setSendTimingHours(Number(v))}>
-              <SelectTrigger className="w-48 mt-1" data-testid="select-send-timing">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="24">1 day before</SelectItem>
-                <SelectItem value="4">4 hours before</SelectItem>
-                <SelectItem value="2">2 hours before</SelectItem>
-                <SelectItem value="0">8am on day of venue hire</SelectItem>
-              </SelectContent>
-            </Select>
+      <div className="space-y-2">
+        {hours.map(h => (
+          <div key={h.dayOfWeek} className="flex items-center gap-3 text-sm" data-testid={`row-${h.dayOfWeek}`}>
+            <span className="w-24 font-medium">{DAY_LABELS[h.dayOfWeek]}</span>
+            <Switch
+              checked={h.isStaffed}
+              onCheckedChange={(v) => updateDay(h.dayOfWeek, 'isStaffed', v)}
+              data-testid={`switch-staffed-${h.dayOfWeek}`}
+            />
+            {h.isStaffed ? (
+              <div className="flex items-center gap-2">
+                <Input
+                  type="time"
+                  value={h.openTime || "09:00"}
+                  onChange={(e) => updateDay(h.dayOfWeek, 'openTime', e.target.value)}
+                  className="w-28 h-8 text-xs"
+                  data-testid={`input-open-${h.dayOfWeek}`}
+                />
+                <span className="text-muted-foreground">to</span>
+                <Input
+                  type="time"
+                  value={h.closeTime || "17:00"}
+                  onChange={(e) => updateDay(h.dayOfWeek, 'closeTime', e.target.value)}
+                  className="w-28 h-8 text-xs"
+                  data-testid={`input-close-${h.dayOfWeek}`}
+                />
+              </div>
+            ) : (
+              <span className="text-xs text-muted-foreground">Closed — no hot desking available</span>
+            )}
           </div>
-        )}
+        ))}
       </div>
-
       <Button
-        onClick={handleSave}
-        disabled={saveHoursMutation.isPending || saveSettingsMutation.isPending}
-        data-testid="button-save-operating-hours"
+        onClick={() => saveHoursMutation.mutate()}
+        disabled={saveHoursMutation.isPending}
+        data-testid="button-save-hot-desking-hours"
       >
-        {(saveHoursMutation.isPending || saveSettingsMutation.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-        Save Settings
+        {saveHoursMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+        Save Hours
       </Button>
     </div>
   );
 }
+

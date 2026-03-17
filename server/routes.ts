@@ -4629,8 +4629,12 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   // === Venue Instructions API ===
   app.get("/api/venue-instructions", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
+    const { venueId, spaceName } = req.query;
+    if (spaceName !== undefined) {
+      const instructions = await storage.getVenueInstructionsBySpaceName(userId, spaceName as string);
+      return res.json(instructions);
+    }
     const instructions = await storage.getVenueInstructions(userId);
-    const { venueId } = req.query;
     if (venueId !== undefined) {
       if (venueId === "null") {
         return res.json(instructions.filter(i => i.venueId === null));
@@ -12274,8 +12278,8 @@ Rules:
   app.get("/api/after-hours-settings", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const settings = await storage.getAfterHoursSettings(userId);
-      res.json(settings || { autoSendEnabled: true, sendTimingHours: 4 });
+      const settings = await storage.getBookingReminderSettings(userId);
+      res.json(settings ? { autoSendEnabled: settings.enabled, sendTimingHours: settings.sendTimingHours } : { autoSendEnabled: true, sendTimingHours: 4 });
     } catch (err: any) {
       res.status(500).json({ message: "Failed to fetch after-hours settings" });
     }
@@ -12285,10 +12289,70 @@ Rules:
     try {
       const userId = (req.user as any).claims.sub;
       const { autoSendEnabled, sendTimingHours } = req.body;
-      const result = await storage.upsertAfterHoursSettings(userId, { autoSendEnabled, sendTimingHours });
+      const result = await storage.upsertBookingReminderSettings(userId, { enabled: autoSendEnabled, sendTimingHours });
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ message: "Failed to update after-hours settings" });
+    }
+  });
+
+  app.get("/api/booking-reminder-settings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const settings = await storage.getBookingReminderSettings(userId);
+      res.json(settings || { enabled: true, sendTimingHours: 4 });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch booking reminder settings" });
+    }
+  });
+
+  app.put("/api/booking-reminder-settings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { enabled, sendTimingHours } = req.body;
+      const result = await storage.upsertBookingReminderSettings(userId, { enabled, sendTimingHours });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update booking reminder settings" });
+    }
+  });
+
+  app.get("/api/bookings/:id/instructions", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const bookingId = parseId(req.params.id);
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+      if (booking.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      const locationAccess = booking.locationAccess as string[] | null;
+      if (locationAccess && locationAccess.length > 0) {
+        const allInstructions = [];
+        for (const spaceName of locationAccess) {
+          const spaceInstructions = await storage.getVenueInstructionsBySpaceName(userId, spaceName);
+          allInstructions.push(...spaceInstructions);
+        }
+        return res.json(allInstructions);
+      }
+
+      const venues = await storage.getVenues(userId);
+      const bookingVenueIds = booking.venueIds || (booking.venueId ? [booking.venueId] : []);
+      const bookingVenues = venues.filter(v => bookingVenueIds.includes(v.id));
+      const spaceNames = [...new Set(bookingVenues.map(v => v.spaceName).filter(Boolean))];
+      if (spaceNames.length > 0) {
+        const allInstructions = [];
+        for (const spaceName of spaceNames) {
+          const spaceInstructions = await storage.getVenueInstructionsBySpaceName(userId, spaceName as string);
+          allInstructions.push(...spaceInstructions);
+        }
+        return res.json(allInstructions);
+      }
+
+      const instructions = await storage.getVenueInstructions(userId);
+      res.json(instructions);
+    } catch (err: any) {
+      console.error("Failed to get booking instructions:", err);
+      res.status(500).json({ message: err.message || "Failed to get booking instructions" });
     }
   });
 
@@ -12300,13 +12364,8 @@ Rules:
       if (!booking) return res.status(404).json({ message: "Booking not found" });
       if (booking.userId !== userId) return res.status(403).json({ message: "Forbidden" });
 
-      if (booking.isAfterHours) {
-        const { sendAfterHoursReminderEmail } = await import("./email");
-        await sendAfterHoursReminderEmail(booking, userId);
-      } else {
-        const { sendBookingConfirmationEmail } = await import("./email");
-        await sendBookingConfirmationEmail(booking, userId);
-      }
+      const { sendBookingReminderEmail } = await import("./email");
+      await sendBookingReminderEmail(booking, userId);
 
       await storage.updateBooking(bookingId, {
         autoInstructionsSent: true,
@@ -12474,12 +12533,11 @@ Rules:
     }
   });
 
-  async function runAfterHoursAutoSend() {
+  async function runBookingReminderAutoSend() {
     try {
       const allBookings = await db.select().from(bookings).where(
         and(
           eq(bookings.status, "confirmed"),
-          eq(bookings.isAfterHours, true),
           eq(bookings.autoInstructionsSent, false),
         )
       );
@@ -12493,10 +12551,10 @@ Rules:
         const todayNz = new Date(nzNow.getFullYear(), nzNow.getMonth(), nzNow.getDate());
         if (bookingDate < todayNz) continue;
 
-        const settings = await storage.getAfterHoursSettings(booking.userId);
-        if (settings && !settings.autoSendEnabled) continue;
+        const reminderSettings = await storage.getBookingReminderSettings(booking.userId);
+        if (reminderSettings && !reminderSettings.enabled) continue;
 
-        const sendHoursBefore = settings?.sendTimingHours || 4;
+        const sendHoursBefore = reminderSettings?.sendTimingHours || 4;
         const bookingStartTime = booking.startTime || "09:00";
         const [bh, bm] = bookingStartTime.split(":").map(Number);
         const bookingDateTime = new Date(bookingDate.getFullYear(), bookingDate.getMonth(), bookingDate.getDate(), bh, bm);
@@ -12507,24 +12565,24 @@ Rules:
 
         if (nzNow >= effectiveSendAt) {
           try {
-            const { sendAfterHoursReminderEmail } = await import("./email");
-            await sendAfterHoursReminderEmail(booking, booking.userId);
+            const { sendBookingReminderEmail } = await import("./email");
+            await sendBookingReminderEmail(booking, booking.userId);
             await storage.updateBooking(booking.id, {
               autoInstructionsSent: true,
               autoInstructionsSentAt: new Date(),
             } as any);
-            console.log(`After-hours reminder sent for booking ${booking.id}`);
+            console.log(`Booking reminder sent for booking ${booking.id}`);
           } catch (emailErr) {
-            console.error(`Failed to send after-hours reminder for booking ${booking.id}:`, emailErr);
+            console.error(`Failed to send booking reminder for booking ${booking.id}:`, emailErr);
           }
         }
       }
     } catch (err) {
-      console.error("After-hours auto-send error:", err);
+      console.error("Booking reminder auto-send error:", err);
     }
   }
 
-  setInterval(runAfterHoursAutoSend, 30 * 60 * 1000);
+  setInterval(runBookingReminderAutoSend, 30 * 60 * 1000);
   // === Bookable Resources API ===
 
   app.get("/api/bookable-resources", isAuthenticated, async (req, res) => {
@@ -12921,7 +12979,7 @@ Rules:
     }
   });
 
-  setTimeout(runAfterHoursAutoSend, 10000);
+  setTimeout(runBookingReminderAutoSend, 10000);
 
   startAutoSync();
 
