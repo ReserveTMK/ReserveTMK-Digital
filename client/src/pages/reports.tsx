@@ -306,8 +306,10 @@ function TrendsSection({ communityLens, funderFilter, programmeFilter, taxonomyF
             {latestPeriod && previousPeriod && (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3" data-testid="trend-pop-badges">
                 {TREND_METRICS.map((metric) => {
-                  const current = latestPeriod[metric.key as keyof TrendPeriodData] as number;
-                  const prev = previousPeriod[metric.key as keyof TrendPeriodData] as number;
+                  const rawCurrent = latestPeriod[metric.key as keyof TrendPeriodData] as number;
+                  const rawPrev = previousPeriod[metric.key as keyof TrendPeriodData] as number;
+                  const current = Number.isFinite(rawCurrent) ? rawCurrent : 0;
+                  const prev = Number.isFinite(rawPrev) ? rawPrev : 0;
                   const pop = getPoPChange(current, prev);
                   return (
                     <div key={metric.key} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border bg-card" data-testid={`trend-pop-${metric.key}`}>

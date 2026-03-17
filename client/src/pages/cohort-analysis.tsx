@@ -282,11 +282,13 @@ export default function CohortAnalysisPage() {
   const comparisonChartData = useMemo(() => {
     if (!comparisonData) return [];
     const allMonths = new Set<string>();
-    comparisonData.cohortA.timeline.forEach(t => allMonths.add(t.month));
-    comparisonData.cohortB.timeline.forEach(t => allMonths.add(t.month));
+    const aTimeline = comparisonData.cohortA.timeline || [];
+    const bTimeline = comparisonData.cohortB.timeline || [];
+    aTimeline.forEach(t => allMonths.add(t.month));
+    bTimeline.forEach(t => allMonths.add(t.month));
     const sorted = Array.from(allMonths).sort();
-    const aMap = new Map(comparisonData.cohortA.timeline.map(t => [t.month, t]));
-    const bMap = new Map(comparisonData.cohortB.timeline.map(t => [t.month, t]));
+    const aMap = new Map(aTimeline.map(t => [t.month, t]));
+    const bMap = new Map(bTimeline.map(t => [t.month, t]));
     return sorted.map(m => ({
       month: formatMonth(m),
       cohortARetention: aMap.get(m)?.retentionRate ?? null,
