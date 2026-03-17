@@ -1198,39 +1198,10 @@ function OperatingHoursSubTab() {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="font-semibold text-sm mb-1">Auto-Send Reminders</h3>
-        <p className="text-xs text-muted-foreground mb-3">Automatically send venue instructions before after-hours venue hires.</p>
-        <div className="flex items-center gap-3">
-          <Switch
-            checked={autoSendEnabled}
-            onCheckedChange={setAutoSendEnabled}
-            data-testid="switch-auto-send"
-          />
-          <span className="text-sm">{autoSendEnabled ? "Enabled" : "Disabled"}</span>
-        </div>
-        {autoSendEnabled && (
-          <div className="mt-3">
-            <Label className="text-xs">Send reminder</Label>
-            <Select value={String(sendTimingHours)} onValueChange={(v) => setSendTimingHours(Number(v))}>
-              <SelectTrigger className="w-48 mt-1" data-testid="select-send-timing">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="24">1 day before</SelectItem>
-                <SelectItem value="4">4 hours before</SelectItem>
-                <SelectItem value="2">2 hours before</SelectItem>
-                <SelectItem value="0">8am on day of venue hire</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-      </div>
-
-      <div>
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h3 className="font-semibold text-sm">Operating Hours</h3>
-            <p className="text-xs text-muted-foreground">Venue hires outside these hours are flagged as after-hours.</p>
+            <h3 className="font-semibold text-sm">Hot Desking Hours</h3>
+            <p className="text-xs text-muted-foreground">Set when desks are available for hot desking each day. Desk bookings outside these hours won't be allowed.</p>
           </div>
           <Button variant="outline" size="sm" onClick={handleQuickSetup} data-testid="button-quick-setup">
             Quick Setup
@@ -1264,17 +1235,46 @@ function OperatingHoursSubTab() {
                   />
                 </div>
               ) : (
-                <span className="text-xs text-muted-foreground">Unstaffed - all venue hires are after-hours</span>
+                <span className="text-xs text-muted-foreground">Closed — no hot desking available</span>
               )}
             </div>
           ))}
         </div>
       </div>
 
+      <div className="border-t pt-4">
+        <h3 className="font-semibold text-sm mb-1">After-Hours Reminders</h3>
+        <p className="text-xs text-muted-foreground mb-3">Automatically send venue instructions before after-hours venue hires.</p>
+        <div className="flex items-center gap-3">
+          <Switch
+            checked={autoSendEnabled}
+            onCheckedChange={setAutoSendEnabled}
+            data-testid="switch-auto-send"
+          />
+          <span className="text-sm">{autoSendEnabled ? "Enabled" : "Disabled"}</span>
+        </div>
+        {autoSendEnabled && (
+          <div className="mt-3">
+            <Label className="text-xs">Send reminder</Label>
+            <Select value={String(sendTimingHours)} onValueChange={(v) => setSendTimingHours(Number(v))}>
+              <SelectTrigger className="w-48 mt-1" data-testid="select-send-timing">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="24">1 day before</SelectItem>
+                <SelectItem value="4">4 hours before</SelectItem>
+                <SelectItem value="2">2 hours before</SelectItem>
+                <SelectItem value="0">8am on day of venue hire</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </div>
+
       <Button
         onClick={handleSave}
         disabled={saveHoursMutation.isPending || saveSettingsMutation.isPending}
-        data-testid="button-save-after-hours"
+        data-testid="button-save-operating-hours"
       >
         {(saveHoursMutation.isPending || saveSettingsMutation.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
         Save Settings

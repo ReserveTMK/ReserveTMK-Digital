@@ -20,14 +20,34 @@ import Bookings from "./bookings";
 import ResourcesTab from "@/components/spaces/resources-tab";
 import RegularBookersPage from "./regular-bookers";
 import type { Meeting } from "@shared/schema";
-import { DESK_AVAILABILITY } from "@shared/schema";
 
 const HOURS = Array.from({ length: 15 }, (_, i) => i + 7);
 const VENUE_HOURS = Array.from({ length: 24 }, (_, i) => i);
-const DESK_START_HOUR = parseInt(DESK_AVAILABILITY.startTime.split(":")[0]);
-const DESK_END_HOUR = parseInt(DESK_AVAILABILITY.endTime.split(":")[0]);
-const DESK_HOURS = Array.from({ length: DESK_END_HOUR - DESK_START_HOUR }, (_, i) => i + DESK_START_HOUR);
-const DESK_DAYS = DESK_AVAILABILITY.days as readonly string[];
+
+interface OperatingHoursEntry {
+  dayOfWeek: string;
+  openTime: string | null;
+  closeTime: string | null;
+  isStaffed: boolean;
+}
+
+function getDeskScheduleFromHours(opHours: OperatingHoursEntry[] | undefined) {
+  const defaultDays = ["monday", "tuesday", "wednesday", "thursday", "friday"];
+  const defaultStart = "09:00";
+  const defaultEnd = "17:00";
+  if (!opHours || opHours.length === 0) {
+    return { days: defaultDays, startTime: defaultStart, endTime: defaultEnd };
+  }
+  const openDays = opHours.filter(h => h.isStaffed).map(h => h.dayOfWeek);
+  const staffedEntries = opHours.filter(h => h.isStaffed && h.openTime && h.closeTime);
+  const earliest = staffedEntries.length > 0
+    ? staffedEntries.reduce((min, h) => h.openTime! < min ? h.openTime! : min, staffedEntries[0].openTime!)
+    : defaultStart;
+  const latest = staffedEntries.length > 0
+    ? staffedEntries.reduce((max, h) => h.closeTime! > max ? h.closeTime! : max, staffedEntries[0].closeTime!)
+    : defaultEnd;
+  return { days: openDays.length > 0 ? openDays : defaultDays, startTime: earliest, endTime: latest };
+}
 
 function formatDate(date: Date): string {
   const y = date.getFullYear();
@@ -141,6 +161,15 @@ function SpacesCalendarTab() {
 
   const dateStr = formatDate(currentDate);
   const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate]);
+
+  const { data: operatingHoursData } = useQuery<OperatingHoursEntry[]>({
+    queryKey: ['/api/operating-hours'],
+  });
+  const deskSchedule = useMemo(() => getDeskScheduleFromHours(operatingHoursData), [operatingHoursData]);
+  const DESK_DAYS = deskSchedule.days;
+  const DESK_START_HOUR = parseInt(deskSchedule.startTime.split(":")[0]);
+  const DESK_END_HOUR = parseInt(deskSchedule.endTime.split(":")[0]);
+  const DESK_HOURS = useMemo(() => Array.from({ length: DESK_END_HOUR - DESK_START_HOUR }, (_, i) => i + DESK_START_HOUR), [DESK_START_HOUR, DESK_END_HOUR]);
 
   const { data: venues, isLoading: venuesLoading } = useVenues();
   const { data: bookings, isLoading: bookingsLoading } = useBookings();
@@ -408,7 +437,7 @@ function SpacesCalendarTab() {
                                   className={`flex-1 h-10 border-r border-border/40 last:border-r-0 flex items-center justify-center ${
                                     hasBooking ? "bg-violet-200/60 dark:bg-violet-800/30" : "bg-emerald-100/60 dark:bg-emerald-900/20"
                                   }`}
-                                  title={`${shortDay(day)} - ${hasBooking ? "Booked" : "Available (9am–3pm)"}`}
+                                  title={`${shortDay(day)} - ${hasBooking ? "Booked" : "Available"}`}
                                 />
                               );
                             })}
@@ -426,12 +455,12 @@ function SpacesCalendarTab() {
                   <CardContent className="p-3 overflow-x-auto">
                     {!isDeskDay ? (
                       <div className="py-6 text-center">
-                        <p className="text-sm text-muted-foreground" data-testid="text-desks-closed">Desks are closed on weekends. Available Monday–Friday, 9am–3pm.</p>
+                        <p className="text-sm text-muted-foreground" data-testid="text-desks-closed">Desks are closed today. Check operating hours in Settings → Resources.</p>
                       </div>
                     ) : (
                     <div className="min-w-[600px]">
                       <div className="flex items-center gap-2 mb-2">
-                        <span className="text-[10px] text-muted-foreground">Available {DESK_AVAILABILITY.startTime} – {DESK_AVAILABILITY.endTime}</span>
+                        <span className="text-[10px] text-muted-foreground">Available {deskSchedule.startTime} – {deskSchedule.endTime}</span>
                       </div>
                       <TimeHeader hours={DESK_HOURS} />
                       {activeDesks.map((desk) => {
@@ -491,6 +520,12 @@ function HotDeskingTab() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const dateStr = formatDate(currentDate);
 
+  const { data: operatingHoursData } = useQuery<OperatingHoursEntry[]>({
+    queryKey: ['/api/operating-hours'],
+  });
+  const deskSchedule = useMemo(() => getDeskScheduleFromHours(operatingHoursData), [operatingHoursData]);
+  const DESK_DAYS = deskSchedule.days;
+
   const { data: deskResources, isLoading: desksLoading } = useBookableResources("hot_desking");
   const { data: deskAvailability, isLoading: deskAvailLoading } = useDeskAvailability(dateStr);
   const { data: deskBookings } = useDeskBookings();
@@ -509,7 +544,7 @@ function HotDeskingTab() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h3 className="text-base font-semibold">Desk Availability</h3>
-          <p className="text-xs text-muted-foreground" data-testid="text-desk-hours-info">Mon–Fri, {DESK_AVAILABILITY.startTime} – {DESK_AVAILABILITY.endTime}</p>
+          <p className="text-xs text-muted-foreground" data-testid="text-desk-hours-info">{deskSchedule.startTime} – {deskSchedule.endTime}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button size="icon" variant="outline" onClick={() => navigateDay(-1)} data-testid="button-desk-prev">
@@ -547,7 +582,7 @@ function HotDeskingTab() {
         if (!isDeskDay) {
           return (
             <Card className="p-8 text-center">
-              <p className="text-muted-foreground" data-testid="text-desks-closed-hotdesking">Desks are closed on weekends. Available Monday–Friday, 9am–3pm.</p>
+              <p className="text-muted-foreground" data-testid="text-desks-closed-hotdesking">Desks are closed today. Check operating hours in Settings → Resources.</p>
             </Card>
           );
         }
