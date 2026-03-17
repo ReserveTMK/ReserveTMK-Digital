@@ -284,10 +284,11 @@ export default function PublicBookingPage() {
   });
 
   const { data: slotsData, isLoading: slotsLoading } = useQuery({
-    queryKey: ["/api/public/mentoring", activeMentorId, "slots", selectedDate, pathway],
+    queryKey: ["/api/public/mentoring", activeMentorId, "slots", selectedDate, pathway, selectedMeetingType?.duration],
     queryFn: async () => {
       const categoryParam = pathway ? `&category=${pathway}` : "";
-      const res = await fetch(`/api/public/mentoring/${activeMentorId}/slots?date=${selectedDate}${categoryParam}`);
+      const durationParam = selectedMeetingType?.duration ? `&duration=${selectedMeetingType.duration}` : "";
+      const res = await fetch(`/api/public/mentoring/${activeMentorId}/slots?date=${selectedDate}${categoryParam}${durationParam}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
     },
@@ -332,10 +333,38 @@ export default function PublicBookingPage() {
     return (availability as any[])[0].slotDuration || 30;
   }, [availability, selectedMeetingType]);
 
-  const hasMeetingTypes = meetingTypes && meetingTypes.length > 0;
+  const hasRealMeetingTypes = meetingTypes && meetingTypes.length > 0;
+  const hasMeetingTypes = hasRealMeetingTypes || (pathway === "mentoring" && !isReturningMentee && nameChecked);
   const hasMultipleMentors = mentorOptions && mentorOptions.length > 1;
 
   const isDiscoverySession = pathway === "mentoring" && !isReturningMentee && nameChecked;
+
+  const discoveryMeetingType: MeetingType = {
+    id: -1,
+    name: "Discovery Session",
+    description: "A get-to-know-you session to explore your idea and see how we can help",
+    duration: 30,
+    focus: null,
+    color: "#22c55e",
+    sortOrder: -1,
+    category: "mentoring",
+  };
+
+  const displayMeetingTypes = useMemo(() => {
+    const types: MeetingType[] = [];
+    if (isDiscoverySession) {
+      const hasExistingDiscovery = meetingTypes?.some(
+        (mt) => mt.name.toLowerCase().includes("discovery")
+      );
+      if (!hasExistingDiscovery) {
+        types.push(discoveryMeetingType);
+      }
+    }
+    if (meetingTypes) {
+      types.push(...meetingTypes);
+    }
+    return types;
+  }, [meetingTypes, isDiscoverySession]);
 
   const currentSteps = useMemo((): { id: StepId; label: string }[] => {
     if (!pathway) return [];
@@ -348,7 +377,7 @@ export default function PublicBookingPage() {
       if (isReturningMentee && hasMultipleMentors) {
         steps.push({ id: "mentor", label: "Mentor" });
       }
-      if (hasMeetingTypes && isReturningMentee) {
+      if (hasMeetingTypes) {
         steps.push({ id: "type", label: "Session" });
       }
       steps.push({ id: "date", label: "When" });
@@ -403,7 +432,7 @@ export default function PublicBookingPage() {
   };
 
   const handleGoalsContinue = () => {
-    setStep("date");
+    setStep("type");
   };
 
   const handleInfoContinue = () => {
@@ -438,7 +467,7 @@ export default function PublicBookingPage() {
       time: selectedSlot,
       duration: slotDuration,
       notes: notes.trim() || undefined,
-      meetingTypeId: selectedMeetingType?.id || undefined,
+      meetingTypeId: selectedMeetingType && selectedMeetingType.id > 0 ? selectedMeetingType.id : undefined,
       pathway: pathway,
       extras: extras.length > 0 ? extras : undefined,
     };
@@ -526,7 +555,7 @@ export default function PublicBookingPage() {
                 {isDiscoverySession ? "Discovery Session" : pathway === "mentoring" ? "Mentoring" : "Meeting / Hui"}
               </span>
             </div>
-            {selectedMeetingType && (
+            {selectedMeetingType && selectedMeetingType.id > 0 && (
               <div className="flex justify-between gap-2 flex-wrap">
                 <span className="text-muted-foreground">Session</span>
                 <span className="font-medium" data-testid="text-meeting-type-name">{selectedMeetingType.name}</span>
@@ -1002,7 +1031,9 @@ export default function PublicBookingPage() {
               <button
                 className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-[44px]"
                 onClick={() => {
-                  if (pathway === "mentoring" && isReturningMentee && hasMultipleMentors) {
+                  if (pathway === "mentoring" && isDiscoverySession) {
+                    setStep("goals");
+                  } else if (pathway === "mentoring" && isReturningMentee && hasMultipleMentors) {
                     setStep("mentor");
                   } else if (pathway === "mentoring" && isReturningMentee) {
                     setStep("name");
@@ -1026,17 +1057,20 @@ export default function PublicBookingPage() {
                 </div>
               ) : (
                 <div className="grid gap-3">
-                  {meetingTypes?.map((mt) => (
+                  {displayMeetingTypes.map((mt) => (
                     <button
                       key={mt.id}
                       onClick={() => handleSelectMeetingType(mt)}
-                      className="flex items-stretch rounded-md border border-border text-left transition-colors hover:bg-muted min-h-[44px]"
+                      className={`flex items-stretch rounded-md border text-left transition-colors hover:bg-muted min-h-[44px] ${mt.id === -1 ? "border-primary/30 bg-primary/5" : "border-border"}`}
                       data-testid={`card-meeting-type-${mt.id}`}
                     >
                       <div className="w-1.5 shrink-0 rounded-l-md" style={{ backgroundColor: mt.color || "#3b82f6" }} />
                       <div className="flex-1 p-4">
                         <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <span className="font-semibold text-sm" data-testid={`text-meeting-type-name-${mt.id}`}>{mt.name}</span>
+                          <span className="font-semibold text-sm flex items-center gap-1.5" data-testid={`text-meeting-type-name-${mt.id}`}>
+                            {mt.id === -1 && <Sprout className="w-4 h-4 text-primary" />}
+                            {mt.name}
+                          </span>
                           <Badge variant="secondary" data-testid={`badge-duration-${mt.id}`}>{mt.duration} min</Badge>
                         </div>
                         {mt.description && (
@@ -1055,9 +1089,7 @@ export default function PublicBookingPage() {
               <button
                 className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-[44px]"
                 onClick={() => {
-                  if (pathway === "mentoring" && isDiscoverySession) {
-                    setStep("goals");
-                  } else if (hasMeetingTypes) {
+                  if (hasMeetingTypes) {
                     setStep("type");
                   } else if (pathway === "mentoring" && isReturningMentee && hasMultipleMentors) {
                     setStep("mentor");
@@ -1084,7 +1116,7 @@ export default function PublicBookingPage() {
                 </div>
               )}
 
-              {selectedMeetingType && (
+              {selectedMeetingType && selectedMeetingType.id > 0 && (
                 <div className="bg-muted/50 rounded-md p-3 text-sm flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: selectedMeetingType.color || "#3b82f6" }} />
                   <span className="font-medium">{selectedMeetingType.name}</span>

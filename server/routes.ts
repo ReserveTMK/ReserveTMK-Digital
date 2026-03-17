@@ -1682,10 +1682,11 @@ export async function registerRoutes(
   app.get('/api/public/mentoring/:userId/slots', async (req, res) => {
     try {
       const { userId } = req.params;
-      const { date, category } = req.query;
+      const { date, category, duration } = req.query;
       if (!date || typeof date !== 'string') {
         return res.status(400).json({ message: "date query parameter required (YYYY-MM-DD)" });
       }
+      const requestedDuration = duration && typeof duration === 'string' ? parseInt(duration, 10) : null;
 
       const resolved = await resolveMentorUserId(userId);
       const availabilitySlots = await storage.getMentorAvailability(resolved.availabilityUserId);
@@ -1717,15 +1718,16 @@ export async function registerRoutes(
 
       for (const avail of daySlots) {
         const slotDur = avail.slotDuration || 30;
+        const meetingDur = requestedDuration && requestedDuration > 0 ? requestedDuration : slotDur;
         const buffer = avail.bufferMinutes || 15;
         const [startH, startM] = avail.startTime.split(':').map(Number);
         const [endH, endM] = avail.endTime.split(':').map(Number);
         const startMinutes = startH * 60 + startM;
         const endMinutes = endH * 60 + endM;
 
-        for (let t = startMinutes; t + slotDur <= endMinutes; t += slotDur + buffer) {
+        for (let t = startMinutes; t + meetingDur <= endMinutes; t += slotDur + buffer) {
           const slotStart = `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
-          const slotEndMin = t + slotDur;
+          const slotEndMin = t + meetingDur;
           const slotEnd = `${String(Math.floor(slotEndMin / 60)).padStart(2, '0')}:${String(slotEndMin % 60).padStart(2, '0')}`;
 
           const conflict = dayMeetings.some(m => {

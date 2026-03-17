@@ -410,13 +410,39 @@ function AvailabilitySection({ category }: { category: string }) {
                     <span className="font-medium text-sm w-24">{day}</span>
                     <div className="flex flex-wrap gap-2">
                       {daySlots.map(slot => (
-                        <div key={slot.id} className="flex items-center gap-2">
+                        <div key={slot.id} className="flex items-center gap-2 flex-wrap">
                           <Badge variant="outline" className="text-xs">
                             {formatTimeSlot(slot.startTime)} {"\u2013"} {formatTimeSlot(slot.endTime)}
                           </Badge>
-                          <span className="text-[10px] text-muted-foreground">
-                            {slot.slotDuration}min slots {"\u00b7"} {slot.bufferMinutes}min buffer
-                          </span>
+                          <Select
+                            value={String(slot.slotDuration || 30)}
+                            onValueChange={(v) => updateAvailability.mutate({ id: slot.id, slotDuration: parseInt(v) })}
+                          >
+                            <SelectTrigger className="h-7 w-[90px] text-xs" data-testid={`select-slot-duration-${slot.id}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="15">15 min</SelectItem>
+                              <SelectItem value="30">30 min</SelectItem>
+                              <SelectItem value="45">45 min</SelectItem>
+                              <SelectItem value="60">60 min</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={String(slot.bufferMinutes ?? 15)}
+                            onValueChange={(v) => updateAvailability.mutate({ id: slot.id, bufferMinutes: parseInt(v) })}
+                          >
+                            <SelectTrigger className="h-7 w-[100px] text-xs" data-testid={`select-buffer-${slot.id}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="0">No buffer</SelectItem>
+                              <SelectItem value="5">5 min gap</SelectItem>
+                              <SelectItem value="10">10 min gap</SelectItem>
+                              <SelectItem value="15">15 min gap</SelectItem>
+                              <SelectItem value="30">30 min gap</SelectItem>
+                            </SelectContent>
+                          </Select>
                           <Switch
                             checked={slot.isActive ?? true}
                             onCheckedChange={(checked) => updateAvailability.mutate({ id: slot.id, isActive: checked })}
