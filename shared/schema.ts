@@ -417,10 +417,14 @@ export const groupTaxonomyLinks = pgTable("group_taxonomy_links", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const RELATIONSHIP_TYPES = ["parent", "child", "peer"] as const;
+export type RelationshipType = typeof RELATIONSHIP_TYPES[number];
+
 export const groupAssociations = pgTable("group_associations", {
   id: serial("id").primaryKey(),
   groupId: integer("group_id").notNull(),
   associatedGroupId: integer("associated_group_id").notNull(),
+  relationshipType: text("relationship_type").default("peer").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

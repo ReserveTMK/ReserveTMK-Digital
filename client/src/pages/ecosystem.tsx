@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useGroups, useDeleteGroup } from "@/hooks/use-groups";
+import { useGroups, useDeleteGroup, useAllGroupAssociations, useAddGroupAssociation, useRemoveGroupAssociation, useUpdateGroupAssociation } from "@/hooks/use-groups";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { api } from "@shared/routes";
@@ -11,7 +11,7 @@ import {
   Search, Building2, Users, User,
   Edit3, Trash2, Merge, Check, X, ChevronDown, ChevronRight,
   ExternalLink, UserCheck, Activity, AlertTriangle, Clock,
-  Star, Shield, Calendar, MoreVertical
+  Star, Shield, Calendar, MoreVertical, Network, Link2, Plus, CornerDownRight
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
@@ -25,9 +25,12 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+} from "@/components/ui/command";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation, Link } from "wouter";
-import { GROUP_TYPES, type Group } from "@shared/schema";
+import { GROUP_TYPES, type Group, type GroupAssociation } from "@shared/schema";
 
 const CATEGORY_SECTION_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   "Business": { bg: "bg-amber-50 dark:bg-amber-950/30", text: "text-amber-700 dark:text-amber-400", border: "border-amber-200 dark:border-amber-800" },
@@ -138,6 +141,7 @@ export default function EcosystemPage() {
   const { data: vipItems } = useQuery<VipItem[]>({
     queryKey: ['/api/ecosystem/vip'],
   });
+  const { data: allAssociations } = useAllGroupAssociations();
 
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
@@ -150,10 +154,29 @@ export default function EcosystemPage() {
   const [collapsedRoles, setCollapsedRoles] = useState<Record<string, boolean>>({});
   const [bulkTierOpen, setBulkTierOpen] = useState(false);
   const [bulkTierValue, setBulkTierValue] = useState<string>("");
+  const [viewMode, setViewMode] = useState<"categories" | "connections">("categories");
+  const [connectionPanelGroupId, setConnectionPanelGroupId] = useState<number | null>(null);
+  const [collapsedParents, setCollapsedParents] = useState<Record<number | string, boolean>>({});
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const deleteGroup = useDeleteGroup();
+
+  const parentMap = useMemo(() => {
+    const map: Record<number, { parentId: number; parentName: string }> = {};
+    if (!allAssociations || !groups) return map;
+    const assocs = allAssociations as GroupAssociation[];
+    const groupList = groups as Group[];
+    for (const a of assocs) {
+      if (a.relationshipType === "parent") {
+        const parentGroup = groupList.find(g => g.id === a.groupId);
+        if (parentGroup) {
+          map[a.associatedGroupId] = { parentId: a.groupId, parentName: parentGroup.name };
+        }
+      }
+    }
+    return map;
+  }, [allAssociations, groups]);
 
   const bulkDeleteMutation = useMutation({
     mutationFn: async (groupIds: number[]) => {
@@ -401,6 +424,28 @@ export default function EcosystemPage() {
             data-testid="input-search"
           />
         </div>
+        <div className="flex items-center gap-1 border rounded-lg p-0.5" data-testid="view-toggle">
+          <Button
+            size="sm"
+            variant={viewMode === "categories" ? "default" : "ghost"}
+            className="h-8 text-xs"
+            onClick={() => setViewMode("categories")}
+            data-testid="button-view-categories"
+          >
+            <Building2 className="w-3.5 h-3.5 mr-1" />
+            Categories
+          </Button>
+          <Button
+            size="sm"
+            variant={viewMode === "connections" ? "default" : "ghost"}
+            className="h-8 text-xs"
+            onClick={() => setViewMode("connections")}
+            data-testid="button-view-connections"
+          >
+            <Network className="w-3.5 h-3.5 mr-1" />
+            Connections
+          </Button>
+        </div>
         <Select value={roleFilter} onValueChange={setRoleFilter}>
           <SelectTrigger className="w-full sm:w-56" data-testid="select-role-filter">
             <SelectValue placeholder="All categories" />
@@ -429,47 +474,79 @@ export default function EcosystemPage() {
         </div>
       )}
 
-      <div className="space-y-6">
-        {GROUP_TYPES.map(categoryType => {
-          const typeGroups = groupedByType[categoryType] || [];
-          if (typeGroups.length === 0) return null;
-          const isCollapsed = collapsedRoles[categoryType];
-          const colors = CATEGORY_SECTION_COLORS[categoryType] || { bg: "", text: "", border: "" };
+      {viewMode === "categories" && (
+        <div className="space-y-6">
+          {GROUP_TYPES.map(categoryType => {
+            const typeGroups = groupedByType[categoryType] || [];
+            if (typeGroups.length === 0) return null;
+            const isCollapsed = collapsedRoles[categoryType];
+            const colors = CATEGORY_SECTION_COLORS[categoryType] || { bg: "", text: "", border: "" };
 
-          return (
-            <div key={categoryType} data-testid={`role-section-${categoryType}`}>
-              <button
-                className="flex items-center gap-2 w-full text-left mb-2"
-                onClick={() => toggleRoleCollapse(categoryType)}
-                data-testid={`button-toggle-role-${categoryType}`}
-              >
-                {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                <h2 className={`text-base font-semibold ${colors.text}`}>{categoryType}</h2>
-                <span className="text-sm text-muted-foreground">({typeGroups.length})</span>
-              </button>
+            return (
+              <div key={categoryType} data-testid={`role-section-${categoryType}`}>
+                <button
+                  className="flex items-center gap-2 w-full text-left mb-2"
+                  onClick={() => toggleRoleCollapse(categoryType)}
+                  data-testid={`button-toggle-role-${categoryType}`}
+                >
+                  {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  <h2 className={`text-base font-semibold ${colors.text}`}>{categoryType}</h2>
+                  <span className="text-sm text-muted-foreground">({typeGroups.length})</span>
+                </button>
 
-              {!isCollapsed && (
-                <div className="space-y-1">
-                  {typeGroups.map(group => (
-                    <EcoGroupCard
-                      key={group.id}
-                      group={group}
-                      editMode={editMode}
-                      isSelected={selectedForMerge.includes(group.id)}
-                      onToggleSelect={() => toggleMergeSelection(group.id)}
-                      onDelete={() => setDeleteConfirmId(group.id)}
-                      communityCount={densityData?.[group.id]?.communityCount || 0}
-                      totalMembers={densityData?.[group.id]?.totalMembers || 0}
-                      metrics={engagementData?.[group.id]}
-                      onUpdateGroup={(data) => updateGroupMutation.mutate({ id: group.id, data })}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+                {!isCollapsed && (
+                  <div className="space-y-1">
+                    {typeGroups.map(group => (
+                      <EcoGroupCard
+                        key={group.id}
+                        group={group}
+                        editMode={editMode}
+                        isSelected={selectedForMerge.includes(group.id)}
+                        onToggleSelect={() => toggleMergeSelection(group.id)}
+                        onDelete={() => setDeleteConfirmId(group.id)}
+                        communityCount={densityData?.[group.id]?.communityCount || 0}
+                        totalMembers={densityData?.[group.id]?.totalMembers || 0}
+                        metrics={engagementData?.[group.id]}
+                        onUpdateGroup={(data) => updateGroupMutation.mutate({ id: group.id, data })}
+                        parentName={parentMap[group.id]?.parentName}
+                        onManageConnections={() => setConnectionPanelGroupId(group.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {viewMode === "connections" && (
+        <ConnectionsView
+          groups={filtered}
+          allGroups={(groups as Group[]) || []}
+          associations={(allAssociations as GroupAssociation[]) || []}
+          densityData={densityData}
+          engagementData={engagementData}
+          editMode={editMode}
+          selectedForMerge={selectedForMerge}
+          onToggleSelect={toggleMergeSelection}
+          onDelete={(id) => setDeleteConfirmId(id)}
+          onUpdateGroup={(id, data) => updateGroupMutation.mutate({ id, data })}
+          onManageConnections={(id) => setConnectionPanelGroupId(id)}
+          parentMap={parentMap}
+          collapsedParents={collapsedParents}
+          onToggleParent={(id) => setCollapsedParents(prev => ({ ...prev, [id]: !prev[id] }))}
+        />
+      )}
+
+      {connectionPanelGroupId && (
+        <ConnectionManagementPanel
+          groupId={connectionPanelGroupId}
+          allGroups={(groups as Group[]) || []}
+          associations={(allAssociations as GroupAssociation[]) || []}
+          onClose={() => setConnectionPanelGroupId(null)}
+        />
+      )}
 
       <Dialog open={mergeDialogOpen} onOpenChange={setMergeDialogOpen}>
         <DialogContent data-testid="dialog-merge">
@@ -668,6 +745,8 @@ function EcoGroupCard({
   totalMembers,
   metrics,
   onUpdateGroup,
+  parentName,
+  onManageConnections,
 }: {
   group: Group;
   editMode: boolean;
@@ -678,6 +757,8 @@ function EcoGroupCard({
   totalMembers: number;
   metrics?: EngagementMetrics;
   onUpdateGroup: (data: Record<string, any>) => void;
+  parentName?: string;
+  onManageConnections?: () => void;
 }) {
   const typeColor = TYPE_COLORS[group.type] || "bg-gray-500/10 text-gray-700 dark:text-gray-300";
   const engagementStatus = getEngagementStatus(metrics?.lastEngagementDate || null);
@@ -708,13 +789,21 @@ function EcoGroupCard({
 
       <div className={`w-2 h-2 rounded-full shrink-0 ${statusIndicator.color}`} title={statusIndicator.label} />
 
-      <Link href="/groups" className="flex-1 min-w-0 flex items-center gap-2" data-testid={`link-eco-group-${group.id}`}>
-        <h3 className="text-sm font-medium truncate group-hover:text-primary transition-colors" data-testid={`text-group-name-${group.id}`}>
-          {group.name}
-        </h3>
-        <Badge variant="outline" className={`text-[10px] px-1.5 shrink-0 ${typeColor}`}>
-          {group.type === "Other" && group.organizationTypeOther ? `Other - ${group.organizationTypeOther}` : group.type}
-        </Badge>
+      <Link href="/groups" className="flex-1 min-w-0 flex flex-col gap-0.5" data-testid={`link-eco-group-${group.id}`}>
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-medium truncate group-hover:text-primary transition-colors" data-testid={`text-group-name-${group.id}`}>
+            {group.name}
+          </h3>
+          <Badge variant="outline" className={`text-[10px] px-1.5 shrink-0 ${typeColor}`}>
+            {group.type === "Other" && group.organizationTypeOther ? `Other - ${group.organizationTypeOther}` : group.type}
+          </Badge>
+        </div>
+        {parentName && (
+          <span className="text-[11px] text-muted-foreground flex items-center gap-1" data-testid={`text-parent-indicator-${group.id}`}>
+            <CornerDownRight className="w-3 h-3" />
+            {parentName}
+          </span>
+        )}
       </Link>
 
       <div className="flex items-center gap-3 shrink-0 text-[11px] text-muted-foreground">
@@ -744,6 +833,12 @@ function EcoGroupCard({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            {onManageConnections && (
+              <DropdownMenuItem onClick={onManageConnections} data-testid={`menu-connections-${group.id}`}>
+                <Link2 className="w-4 h-4 mr-2" />
+                Manage Connections
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               className="text-destructive focus:text-destructive"
               onClick={onDelete}
@@ -768,5 +863,339 @@ function EcoGroupCard({
       )}
 
     </div>
+  );
+}
+
+function ConnectionsView({
+  groups,
+  allGroups,
+  associations,
+  densityData,
+  engagementData,
+  editMode,
+  selectedForMerge,
+  onToggleSelect,
+  onDelete,
+  onUpdateGroup,
+  onManageConnections,
+  parentMap,
+  collapsedParents,
+  onToggleParent,
+}: {
+  groups: Group[];
+  allGroups: Group[];
+  associations: GroupAssociation[];
+  densityData?: Record<number, { communityCount: number; totalMembers: number }>;
+  engagementData?: Record<number, EngagementMetrics>;
+  editMode: boolean;
+  selectedForMerge: number[];
+  onToggleSelect: (id: number) => void;
+  onDelete: (id: number) => void;
+  onUpdateGroup: (id: number, data: Record<string, any>) => void;
+  onManageConnections: (id: number) => void;
+  parentMap: Record<number, { parentId: number; parentName: string }>;
+  collapsedParents: Record<number | string, boolean>;
+  onToggleParent: (id: number | string) => void;
+}) {
+  const filteredIds = new Set(groups.map(g => g.id));
+
+  const parentSections = useMemo(() => {
+    const parentChildMap: Record<number, number[]> = {};
+    const childIds = new Set<number>();
+
+    for (const a of associations) {
+      if (a.relationshipType === "parent") {
+        if (!parentChildMap[a.groupId]) parentChildMap[a.groupId] = [];
+        parentChildMap[a.groupId].push(a.associatedGroupId);
+        childIds.add(a.associatedGroupId);
+      }
+    }
+
+    const sections: { parentId: number | null; parentGroup: Group | null; children: Group[] }[] = [];
+
+    for (const [parentIdStr, childGroupIds] of Object.entries(parentChildMap)) {
+      const parentId = Number(parentIdStr);
+      const parentGroup = allGroups.find(g => g.id === parentId) || null;
+      const children = childGroupIds
+        .map(cid => allGroups.find(g => g.id === cid))
+        .filter((g): g is Group => !!g && filteredIds.has(g.id));
+      if (children.length > 0 || (parentGroup && filteredIds.has(parentId))) {
+        sections.push({ parentId, parentGroup, children });
+      }
+    }
+
+    const orphans = groups.filter(g => !childIds.has(g.id) && !parentChildMap[g.id]);
+    if (orphans.length > 0) {
+      sections.push({ parentId: null, parentGroup: null, children: orphans });
+    }
+
+    return sections;
+  }, [groups, allGroups, associations, filteredIds]);
+
+  if (parentSections.length === 0) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        <Network className="w-8 h-8 mx-auto mb-3 opacity-40" />
+        <p>No connections found. Use the group menu to set up parent-child relationships.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4" data-testid="connections-view">
+      {parentSections.map((section) => {
+        const sectionKey = section.parentId ?? "independent";
+        const isCollapsed = collapsedParents[sectionKey];
+
+        return (
+          <div key={sectionKey} className="border rounded-lg overflow-hidden" data-testid={`connection-section-${sectionKey}`}>
+            <button
+              className="flex items-center gap-3 w-full text-left px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors"
+              onClick={() => onToggleParent(sectionKey)}
+              data-testid={`button-toggle-parent-${sectionKey}`}
+            >
+              {isCollapsed ? <ChevronRight className="w-4 h-4 shrink-0" /> : <ChevronDown className="w-4 h-4 shrink-0" />}
+              {section.parentGroup ? (
+                <>
+                  <Building2 className="w-4 h-4 text-primary shrink-0" />
+                  <span className="font-semibold text-sm">{section.parentGroup.name}</span>
+                  <Badge variant="outline" className="text-[10px]">{section.parentGroup.type}</Badge>
+                  <span className="text-xs text-muted-foreground ml-auto">
+                    {section.children.length} {section.children.length === 1 ? "child" : "children"}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="font-semibold text-sm text-muted-foreground">Independent Organisations</span>
+                  <span className="text-xs text-muted-foreground ml-auto">
+                    ({section.children.length})
+                  </span>
+                </>
+              )}
+            </button>
+
+            {!isCollapsed && (
+              <div className="space-y-1 p-2">
+                {section.parentGroup && filteredIds.has(section.parentGroup.id) && (
+                  <EcoGroupCard
+                    group={section.parentGroup}
+                    editMode={editMode}
+                    isSelected={selectedForMerge.includes(section.parentGroup.id)}
+                    onToggleSelect={() => onToggleSelect(section.parentGroup!.id)}
+                    onDelete={() => onDelete(section.parentGroup!.id)}
+                    communityCount={densityData?.[section.parentGroup.id]?.communityCount || 0}
+                    totalMembers={densityData?.[section.parentGroup.id]?.totalMembers || 0}
+                    metrics={engagementData?.[section.parentGroup.id]}
+                    onUpdateGroup={(data) => onUpdateGroup(section.parentGroup!.id, data)}
+                    onManageConnections={() => onManageConnections(section.parentGroup!.id)}
+                  />
+                )}
+                {section.children.map(child => (
+                  <div key={child.id} className={section.parentGroup ? "ml-6" : ""}>
+                    <EcoGroupCard
+                      group={child}
+                      editMode={editMode}
+                      isSelected={selectedForMerge.includes(child.id)}
+                      onToggleSelect={() => onToggleSelect(child.id)}
+                      onDelete={() => onDelete(child.id)}
+                      communityCount={densityData?.[child.id]?.communityCount || 0}
+                      totalMembers={densityData?.[child.id]?.totalMembers || 0}
+                      metrics={engagementData?.[child.id]}
+                      onUpdateGroup={(data) => onUpdateGroup(child.id, data)}
+                      parentName={parentMap[child.id]?.parentName}
+                      onManageConnections={() => onManageConnections(child.id)}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ConnectionManagementPanel({
+  groupId,
+  allGroups,
+  associations,
+  onClose,
+}: {
+  groupId: number;
+  allGroups: Group[];
+  associations: GroupAssociation[];
+  onClose: () => void;
+}) {
+  const [searchVal, setSearchVal] = useState("");
+  const [newRelType, setNewRelType] = useState<string>("peer");
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const { toast } = useToast();
+  const addAssociation = useAddGroupAssociation();
+  const removeAssociation = useRemoveGroupAssociation();
+  const updateAssociation = useUpdateGroupAssociation();
+
+  const group = allGroups.find(g => g.id === groupId);
+  if (!group) return null;
+
+  const groupAssocs = associations.filter(
+    a => a.groupId === groupId || a.associatedGroupId === groupId
+  );
+
+  const connectedEntries = groupAssocs.map(a => {
+    const otherId = a.groupId === groupId ? a.associatedGroupId : a.groupId;
+    const otherGroup = allGroups.find(g => g.id === otherId);
+    let relType: string;
+    if (a.relationshipType === "parent") {
+      relType = a.associatedGroupId === groupId ? "parent" : "child";
+    } else {
+      relType = "peer";
+    }
+    return { assocId: a.id, otherGroup, relType };
+  }).filter(e => e.otherGroup);
+
+  const linkedIds = new Set<number>([groupId, ...connectedEntries.map(e => e.otherGroup!.id)]);
+  const availableGroups = allGroups.filter(
+    g => !linkedIds.has(g.id) && g.name.toLowerCase().includes(searchVal.toLowerCase())
+  ).slice(0, 20);
+
+  return (
+    <Dialog open onOpenChange={() => onClose()}>
+      <DialogContent className="max-w-lg" data-testid="dialog-manage-connections">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Link2 className="w-5 h-5" />
+            Connections — {group.name}
+          </DialogTitle>
+          <DialogDescription className="sr-only">Manage connections for {group.name}</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="flex items-center gap-2" data-testid="add-connection-section">
+            <Select value={newRelType} onValueChange={setNewRelType}>
+              <SelectTrigger className="w-28" data-testid="select-relationship-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="parent">Parent</SelectItem>
+                <SelectItem value="child">Child</SelectItem>
+                <SelectItem value="peer">Peer</SelectItem>
+              </SelectContent>
+            </Select>
+            <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button size="sm" variant="outline" className="flex-1" data-testid="button-add-connection">
+                  <Plus className="w-3.5 h-3.5 mr-1.5" />
+                  Add Connection
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[280px] p-0" align="end">
+                <Command>
+                  <CommandInput
+                    placeholder="Search groups..."
+                    value={searchVal}
+                    onValueChange={setSearchVal}
+                    data-testid="input-search-connection"
+                  />
+                  <CommandList>
+                    <CommandEmpty>No groups found</CommandEmpty>
+                    <CommandGroup>
+                      {availableGroups.map(g => (
+                        <CommandItem
+                          key={g.id}
+                          value={g.name}
+                          onSelect={() => {
+                            addAssociation.mutate(
+                              { groupId, associatedGroupId: g.id, relationshipType: newRelType },
+                              {
+                                onSuccess: () => {
+                                  toast({ title: "Connection added" });
+                                  setPopoverOpen(false);
+                                  setSearchVal("");
+                                },
+                                onError: (err: any) => {
+                                  toast({ title: "Error", description: err.message, variant: "destructive" });
+                                },
+                              }
+                            );
+                          }}
+                          data-testid={`item-add-connection-${g.id}`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
+                            <span className="text-sm">{g.name}</span>
+                            <Badge variant="secondary" className="text-[9px] ml-auto">{g.type}</Badge>
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          {connectedEntries.length === 0 ? (
+            <div className="text-center py-6 text-sm text-muted-foreground">
+              <Link2 className="w-5 h-5 mx-auto mb-1.5 opacity-40" />
+              <p>No connections yet</p>
+            </div>
+          ) : (
+            <div className="space-y-1 max-h-80 overflow-y-auto">
+              {connectedEntries.map(({ assocId, otherGroup, relType }) => (
+                <div
+                  key={assocId}
+                  className="flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-muted/50 group"
+                  data-testid={`row-connection-${assocId}`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center text-xs font-bold text-primary shrink-0">
+                      {otherGroup!.name[0]}
+                    </div>
+                    <span className="text-sm font-medium truncate">{otherGroup!.name}</span>
+                    <Select
+                      value={relType}
+                      onValueChange={(val) => {
+                        updateAssociation.mutate(
+                          { groupId, associationId: assocId, relationshipType: val },
+                          {
+                            onSuccess: () => toast({ title: "Connection updated" }),
+                            onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+                          }
+                        );
+                      }}
+                    >
+                      <SelectTrigger className="h-6 w-20 text-[10px]" data-testid={`select-rel-type-${assocId}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="parent">Parent</SelectItem>
+                        <SelectItem value="child">Child</SelectItem>
+                        <SelectItem value="peer">Peer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity h-7 w-7"
+                    onClick={() => removeAssociation.mutate(
+                      { groupId, associationId: assocId },
+                      {
+                        onSuccess: () => toast({ title: "Connection removed" }),
+                        onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+                      }
+                    )}
+                    data-testid={`button-remove-connection-${assocId}`}
+                  >
+                    <X className="w-3.5 h-3.5 text-muted-foreground" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

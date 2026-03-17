@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1773735566984,
+      "tag": "0000_clammy_catseye",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1773821600000,
+      "tag": "0001_group_categorisation",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1773907200000,
+      "tag": "0002_relationship_type",
+      "breakpoints": true
+    }
+  ]
+}

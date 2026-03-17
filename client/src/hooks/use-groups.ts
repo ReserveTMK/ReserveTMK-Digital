@@ -217,15 +217,26 @@ export function useGroupAssociations(groupId: number) {
   });
 }
 
+export function useAllGroupAssociations() {
+  return useQuery({
+    queryKey: ["/api/groups/all-associations"],
+    queryFn: async () => {
+      const res = await fetch("/api/groups/all-associations", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch all associations");
+      return res.json();
+    },
+  });
+}
+
 export function useAddGroupAssociation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ groupId, associatedGroupId }: { groupId: number; associatedGroupId: number }) => {
+    mutationFn: async ({ groupId, associatedGroupId, relationshipType = "peer" }: { groupId: number; associatedGroupId: number; relationshipType?: string }) => {
       const res = await fetch(`/api/groups/${groupId}/associations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ associatedGroupId }),
+        body: JSON.stringify({ associatedGroupId, relationshipType }),
         credentials: "include",
       });
       if (!res.ok) {
@@ -237,6 +248,31 @@ export function useAddGroupAssociation() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/groups/:id/associations", variables.groupId] });
       queryClient.invalidateQueries({ queryKey: ["/api/groups/:id/associations", variables.associatedGroupId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups/all-associations"] });
+    },
+  });
+}
+
+export function useUpdateGroupAssociation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ groupId, associationId, relationshipType }: { groupId: number; associationId: number; relationshipType: string }) => {
+      const res = await fetch(`/api/groups/${groupId}/associations/${associationId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ relationshipType }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to update association");
+      }
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups/:id/associations", variables.groupId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups/all-associations"] });
     },
   });
 }
@@ -254,6 +290,7 @@ export function useRemoveGroupAssociation() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/groups/:id/associations", variables.groupId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups/all-associations"] });
     },
   });
 }

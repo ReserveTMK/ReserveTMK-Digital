@@ -15,7 +15,7 @@ import crypto from "crypto";
 import { getBaseUrl } from "./url";
 import { fromZonedTime } from "date-fns-tz";
 import { db } from "./db";
-import { eq, and, or, sql, gte, lte } from "drizzle-orm";
+import { eq, and, or, sql, gte, lte, inArray } from "drizzle-orm";
 
 function parseId(val: unknown): number {
   if (Array.isArray(val)) return parseInt(String(val[0]), 10);
@@ -2721,6 +2721,91 @@ export async function registerRoutes(
     if (!log || log.userId !== userId) return res.status(403).json({ message: "Forbidden" });
     await storage.removeImpactTag(id);
     res.status(204).send();
+  });
+
+  async function getParentGroupIds(groupId: number): Promise<number[]> {
+    const parentAssocs = await db.select().from(groupAssociations).where(
+      and(
+        eq(groupAssociations.associatedGroupId, groupId),
+        eq(groupAssociations.relationshipType, "parent")
+      )
+    );
+    return parentAssocs.map(a => a.groupId);
+  }
+
+  app.get("/api/impact-logs/:id/groups", isAuthenticated, async (req, res) => {
+    try {
+      const impactLogId = parseId(req.params.id);
+      const log = await storage.getImpactLog(impactLogId);
+      if (!log) return res.status(404).json({ message: "Impact log not found" });
+      if (log.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+      const linkedGroups = await db.select().from(impactLogGroups).where(eq(impactLogGroups.impactLogId, impactLogId));
+      res.json(linkedGroups);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/impact-logs/:id/groups", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const impactLogId = parseId(req.params.id);
+      const log = await storage.getImpactLog(impactLogId);
+      if (!log) return res.status(404).json({ message: "Impact log not found" });
+      if (log.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+      const { groupId } = req.body;
+      if (!groupId) return res.status(400).json({ message: "groupId is required" });
+
+      const targetGroup = await storage.getGroup(groupId);
+      if (!targetGroup || targetGroup.userId !== userId) {
+        return res.status(404).json({ message: "Group not found" });
+      }
+
+      const existing = await db.select().from(impactLogGroups).where(
+        and(eq(impactLogGroups.impactLogId, impactLogId), eq(impactLogGroups.groupId, groupId))
+      );
+      if (existing.length > 0) {
+        return res.status(409).json({ message: "Group already linked" });
+      }
+      const [link] = await db.insert(impactLogGroups).values({ impactLogId, groupId }).returning();
+
+      const parentIds = await getParentGroupIds(groupId);
+      const autoLinked: any[] = [];
+      for (const parentId of parentIds) {
+        const parentGroup = await storage.getGroup(parentId);
+        if (!parentGroup || parentGroup.userId !== userId) continue;
+        const parentExists = await db.select().from(impactLogGroups).where(
+          and(eq(impactLogGroups.impactLogId, impactLogId), eq(impactLogGroups.groupId, parentId))
+        );
+        if (parentExists.length === 0) {
+          const [parentLink] = await db.insert(impactLogGroups).values({ impactLogId, groupId: parentId }).returning();
+          autoLinked.push(parentLink);
+        }
+      }
+
+      res.status(201).json({ link, autoLinked });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/impact-logs/:logId/groups/:linkId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const logId = parseId(req.params.logId);
+      const linkId = parseId(req.params.linkId);
+      const log = await storage.getImpactLog(logId);
+      if (!log) return res.status(404).json({ message: "Impact log not found" });
+      if (log.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+      const [link] = await db.select().from(impactLogGroups).where(
+        and(eq(impactLogGroups.id, linkId), eq(impactLogGroups.impactLogId, logId))
+      );
+      if (!link) return res.status(404).json({ message: "Link not found" });
+      await db.delete(impactLogGroups).where(eq(impactLogGroups.id, linkId));
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   // === Taxonomy API ===
@@ -5641,6 +5726,24 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     res.status(204).send();
   });
 
+  app.get("/api/groups/all-associations", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const userGroups = await db.select({ id: groups.id }).from(groups).where(eq(groups.userId, userId));
+      const userGroupIds = userGroups.map(g => g.id);
+      if (userGroupIds.length === 0) return res.json([]);
+      const allAssocs = await db.select().from(groupAssociations).where(
+        or(
+          inArray(groupAssociations.groupId, userGroupIds),
+          inArray(groupAssociations.associatedGroupId, userGroupIds)
+        )
+      );
+      res.json(allAssocs);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/groups/:id/associations", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
@@ -5660,9 +5763,12 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     try {
       const userId = (req.user as any).claims.sub;
       const groupId = parseId(req.params.id);
-      const { associatedGroupId } = req.body;
+      const { associatedGroupId, relationshipType = "peer" } = req.body;
       if (!associatedGroupId || groupId === associatedGroupId) {
         return res.status(400).json({ message: "Invalid association" });
+      }
+      if (!["parent", "child", "peer"].includes(relationshipType)) {
+        return res.status(400).json({ message: "Invalid relationship type" });
       }
       const group = await storage.getGroup(groupId);
       if (!group || group.userId !== userId) return res.status(404).json({ message: "Group not found" });
@@ -5677,8 +5783,68 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       if (existing.length > 0) {
         return res.status(409).json({ message: "Association already exists" });
       }
-      const [association] = await db.insert(groupAssociations).values({ groupId, associatedGroupId }).returning();
-      res.status(201).json(association);
+      if (relationshipType === "parent") {
+        const [association] = await db.insert(groupAssociations).values({
+          groupId: associatedGroupId,
+          associatedGroupId: groupId,
+          relationshipType: "parent",
+        }).returning();
+        res.status(201).json(association);
+      } else if (relationshipType === "child") {
+        const [association] = await db.insert(groupAssociations).values({
+          groupId,
+          associatedGroupId,
+          relationshipType: "parent",
+        }).returning();
+        res.status(201).json(association);
+      } else {
+        const [association] = await db.insert(groupAssociations).values({
+          groupId,
+          associatedGroupId,
+          relationshipType: "peer",
+        }).returning();
+        res.status(201).json(association);
+      }
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/groups/:id/associations/:associationId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const groupId = parseId(req.params.id);
+      const group = await storage.getGroup(groupId);
+      if (!group || group.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+      const associationId = parseId(req.params.associationId);
+      const [assoc] = await db.select().from(groupAssociations).where(eq(groupAssociations.id, associationId));
+      if (!assoc || (assoc.groupId !== groupId && assoc.associatedGroupId !== groupId)) {
+        return res.status(404).json({ message: "Association not found" });
+      }
+      const { relationshipType } = req.body;
+      if (!relationshipType || !["parent", "child", "peer"].includes(relationshipType)) {
+        return res.status(400).json({ message: "Invalid relationship type" });
+      }
+      const otherId = assoc.groupId === groupId ? assoc.associatedGroupId : assoc.groupId;
+      if (relationshipType === "parent") {
+        const [updated] = await db.update(groupAssociations)
+          .set({ groupId: otherId, associatedGroupId: groupId, relationshipType: "parent" })
+          .where(eq(groupAssociations.id, associationId))
+          .returning();
+        res.json(updated);
+      } else if (relationshipType === "child") {
+        const [updated] = await db.update(groupAssociations)
+          .set({ groupId, associatedGroupId: otherId, relationshipType: "parent" })
+          .where(eq(groupAssociations.id, associationId))
+          .returning();
+        res.json(updated);
+      } else {
+        const [updated] = await db.update(groupAssociations)
+          .set({ relationshipType: "peer" })
+          .where(eq(groupAssociations.id, associationId))
+          .returning();
+        res.json(updated);
+      }
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

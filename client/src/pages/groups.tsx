@@ -2061,11 +2061,15 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit, allGro
               </Popover>
             </div>
             {(() => {
-              const assocEntries: { id: number; linkedGroup: Group }[] = [];
+              const assocEntries: { id: number; linkedGroup: Group; relType: string }[] = [];
               (associations || []).forEach((a: any) => {
                 const otherId = a.groupId === group.id ? a.associatedGroupId : a.groupId;
                 const other = allGroups.find((g) => g.id === otherId);
-                if (other) assocEntries.push({ id: a.id, linkedGroup: other });
+                let relType = "peer";
+                if (a.relationshipType === "parent") {
+                  relType = a.associatedGroupId === group.id ? "parent" : "child";
+                }
+                if (other) assocEntries.push({ id: a.id, linkedGroup: other, relType });
               });
               if (assocEntries.length === 0) {
                 return (
@@ -2077,7 +2081,7 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit, allGro
               }
               return (
                 <div className="space-y-1">
-                  {assocEntries.map(({ id, linkedGroup }) => (
+                  {assocEntries.map(({ id, linkedGroup, relType }) => (
                     <div
                       key={id}
                       className="flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-muted/50 group"
@@ -2089,6 +2093,11 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit, allGro
                         </div>
                         <span className="text-sm font-medium truncate">{linkedGroup.name}</span>
                         <Badge variant="secondary" className="text-[10px] shrink-0">{linkedGroup.type}</Badge>
+                        {relType !== "peer" && (
+                          <Badge variant="outline" className={`text-[9px] shrink-0 ${relType === "parent" ? "bg-blue-50 text-blue-600 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-800" : "bg-violet-50 text-violet-600 border-violet-200 dark:bg-violet-950/30 dark:text-violet-400 dark:border-violet-800"}`}>
+                            {relType}
+                          </Badge>
+                        )}
                       </div>
                       <Button
                         size="icon"

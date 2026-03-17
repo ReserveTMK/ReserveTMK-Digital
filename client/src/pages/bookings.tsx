@@ -34,7 +34,7 @@ import {
   useDeleteVenueInstruction,
 } from "@/hooks/use-bookings";
 import { useContacts, useCreateContact } from "@/hooks/use-contacts";
-import { useGroups, useCreateGroup } from "@/hooks/use-groups";
+import { useGroups, useCreateGroup, useAllGroupAssociations } from "@/hooks/use-groups";
 import { useMemberships, useMous } from "@/hooks/use-memberships";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useMemo, useCallback, useEffect } from "react";
@@ -187,6 +187,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
   const { data: venues } = useVenues();
   const { data: contacts } = useContacts();
   const { data: allGroups } = useGroups();
+  const { data: allAssociations } = useAllGroupAssociations();
   const { data: allMemberships } = useMemberships();
   const { data: allMous } = useMous();
   const { data: pricingDefaults } = useBookingPricingDefaults();
@@ -282,7 +283,20 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
 
   const getBookingGroupName = (gId: number | null | undefined) => {
     if (!gId || !allGroups) return null;
-    return (allGroups as any[]).find((g: any) => g.id === gId)?.name || null;
+    const groupName = (allGroups as any[]).find((g: any) => g.id === gId)?.name || null;
+    if (!groupName) return null;
+    if (allAssociations) {
+      const parentAssoc = (allAssociations as any[]).find(
+        (a: any) => a.associatedGroupId === gId && a.relationshipType === "parent"
+      );
+      if (parentAssoc) {
+        const parentGroup = (allGroups as any[]).find((g: any) => g.id === parentAssoc.groupId);
+        if (parentGroup) {
+          return `${groupName} · ${parentGroup.name}`;
+        }
+      }
+    }
+    return groupName;
   };
 
   const formatDateTime = (b: Booking) => {
