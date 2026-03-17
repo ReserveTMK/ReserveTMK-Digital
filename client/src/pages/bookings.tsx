@@ -625,10 +625,10 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                                             </div>
                                             <div className="min-w-0 flex-1">
                                               <p className="text-sm font-medium truncate" data-testid={`kanban-name-${booking.id}`}>
-                                                {getBookerName(booking.bookerId) || getBookingGroupName(booking.bookerGroupId) || getVenueNames(booking)}
+                                                {getBookingGroupName(booking.bookerGroupId) || getBookerName(booking.bookerId) || getVenueNames(booking)}
                                               </p>
                                               <p className="text-[10px] text-muted-foreground truncate mt-0.5">
-                                                {(getBookerName(booking.bookerId) || getBookingGroupName(booking.bookerGroupId)) ? getVenueNames(booking) : ""}
+                                                {(getBookingGroupName(booking.bookerGroupId) || getBookerName(booking.bookerId)) ? getVenueNames(booking) : ""}
                                               </p>
                                               <div className="flex items-center gap-1 mt-1 flex-wrap">
                                                 <Badge className={`${CLASSIFICATION_COLORS[booking.classification] || ""} text-[10px]`}>
@@ -750,7 +750,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap mb-1">
                               <h3 className={`font-semibold text-base truncate ${isCancelled ? "line-through opacity-70" : ""}`} data-testid={`text-booking-title-${booking.id}`}>
-                                {bookerName || bookingGroupName || getVenueNames(booking)}
+                                {bookingGroupName || bookerName || getVenueNames(booking)}
                               </h3>
                               <Badge className={CLASSIFICATION_COLORS[booking.classification] || ""} data-testid={`badge-classification-${booking.id}`}>
                                 {booking.classification}
@@ -1002,7 +1002,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
             <div className="space-y-4">
               <div className="rounded-lg border p-3 space-y-1.5 text-sm">
                 <div className="font-medium" data-testid="text-completion-booking-name">
-                  {getBookingGroupName(completionBooking.bookerGroupId) || completionBooking.title || getVenueNames(completionBooking)}
+                  {getBookingGroupName(completionBooking.bookerGroupId) || getBookerName(completionBooking.bookerId) || getVenueNames(completionBooking)}
                 </div>
                 <div className="text-muted-foreground flex items-center gap-1.5">
                   <MapPin className="w-3.5 h-3.5" />
@@ -1020,7 +1020,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                     )}
                   </div>
                 )}
-                {getBookerName(completionBooking.bookerId) && (
+                {getBookingGroupName(completionBooking.bookerGroupId) && getBookerName(completionBooking.bookerId) && (
                   <div className="text-muted-foreground flex items-center gap-1.5">
                     <Users className="w-3.5 h-3.5" />
                     {getBookerName(completionBooking.bookerId)}
