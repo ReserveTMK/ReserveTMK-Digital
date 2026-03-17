@@ -8858,13 +8858,15 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       state,
     });
 
+    console.log('[Gmail OAuth] Generated auth URL redirect_uri:', (oauth2Client as any)._redirectUri || 'unknown');
     res.json({ url });
   });
 
   app.get("/api/gmail/oauth/callback", async (req, res) => {
-    const { code, state } = req.query;
+    const { code, state, error: oauthError } = req.query;
+    console.log('[Gmail OAuth Callback] code:', !!code, 'state:', !!state, 'error:', oauthError || 'none', 'full query:', JSON.stringify(req.query));
     if (!code || !state) {
-      return res.redirect('/gmail-import?error=missing_params');
+      return res.redirect(`/gmail-import?error=${oauthError || 'missing_params'}`);
     }
 
     let userId: string;
