@@ -40,9 +40,11 @@ import {
   useDeleteVenueInstruction,
 } from "@/hooks/use-bookings";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { format } from "date-fns";
-import type { Venue, BookableResource, VenueInstruction } from "@shared/schema";
-import { INSTRUCTION_TYPES, DEFAULT_AVAILABILITY_SCHEDULE, DEFAULT_VENUE_AVAILABILITY_SCHEDULE, type AvailabilitySchedule, type DayAvailability } from "@shared/schema";
+import type { Venue, BookableResource, VenueInstruction, OperatingHours } from "@shared/schema";
+import { INSTRUCTION_TYPES, DEFAULT_AVAILABILITY_SCHEDULE, DEFAULT_VENUE_AVAILABILITY_SCHEDULE, DAYS_OF_WEEK, type AvailabilitySchedule, type DayAvailability } from "@shared/schema";
 
 const INSTRUCTION_TYPE_LABELS: Record<string, string> = {
   access: "Access",
@@ -80,12 +82,13 @@ export default function ResourcesTab() {
     <div className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold" data-testid="text-resources-heading">Resources</h2>
-        <p className="text-sm text-muted-foreground">Manage your venues and desks</p>
+        <p className="text-sm text-muted-foreground">Manage your venues, desks, and operating hours</p>
       </div>
       <Tabs defaultValue="venues">
         <TabsList className="flex-wrap">
           <TabsTrigger value="venues" data-testid="tab-resources-venues">Venues</TabsTrigger>
           <TabsTrigger value="desks" data-testid="tab-resources-desks">Desks</TabsTrigger>
+          <TabsTrigger value="operating-hours" data-testid="tab-resources-operating-hours">Operating Hours</TabsTrigger>
         </TabsList>
         <TabsContent value="venues" className="mt-3">
           <VenuesSubSection
@@ -103,6 +106,9 @@ export default function ResourcesTab() {
         </TabsContent>
         <TabsContent value="desks" className="mt-3">
           <ResourceSubSection category="hot_desking" label="Desk" />
+        </TabsContent>
+        <TabsContent value="operating-hours" className="mt-3">
+          <OperatingHoursSubTab />
         </TabsContent>
       </Tabs>
     </div>
@@ -1093,6 +1099,186 @@ function ResourceSubSection({ category, label }: { category: string; label: stri
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function OperatingHoursSubTab() {
+  const { toast } = useToast();
+  const { data: operatingHoursData, isLoading: hoursLoading } = useQuery<OperatingHours[]>({
+    queryKey: ['/api/operating-hours'],
+  });
+  const { data: afterHoursData, isLoading: settingsLoading } = useQuery<{ autoSendEnabled: boolean; sendTimingHours: number }>({
+    queryKey: ['/api/after-hours-settings'],
+  });
+
+  const [hours, setHours] = useState<Array<{ dayOfWeek: string; openTime: string | null; closeTime: string | null; isStaffed: boolean }>>([]);
+  const [autoSendEnabled, setAutoSendEnabled] = useState(true);
+  const [sendTimingHours, setSendTimingHours] = useState(4);
+  const [initialized, setInitialized] = useState(false);
+
+  useEffect(() => {
+    if (!initialized && operatingHoursData && operatingHoursData.length > 0) {
+      setHours(DAYS_OF_WEEK.map(day => {
+        const existing = operatingHoursData.find(h => h.dayOfWeek === day);
+        return {
+          dayOfWeek: day,
+          openTime: existing?.openTime || null,
+          closeTime: existing?.closeTime || null,
+          isStaffed: existing?.isStaffed ?? !["saturday", "sunday"].includes(day),
+        };
+      }));
+      setInitialized(true);
+    } else if (!initialized && operatingHoursData && operatingHoursData.length === 0) {
+      setHours(DAYS_OF_WEEK.map(day => ({
+        dayOfWeek: day,
+        openTime: ["saturday", "sunday"].includes(day) ? null : "09:00",
+        closeTime: ["saturday", "sunday"].includes(day) ? null : "17:00",
+        isStaffed: !["saturday", "sunday"].includes(day),
+      })));
+      setInitialized(true);
+    }
+  }, [operatingHoursData, initialized]);
+
+  useEffect(() => {
+    if (afterHoursData) {
+      setAutoSendEnabled(afterHoursData.autoSendEnabled ?? true);
+      setSendTimingHours(afterHoursData.sendTimingHours ?? 4);
+    }
+  }, [afterHoursData]);
+
+  const saveHoursMutation = useMutation({
+    mutationFn: () => apiRequest('PUT', '/api/operating-hours', { hours }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/operating-hours'] });
+      toast({ title: "Saved", description: "Operating hours updated" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const saveSettingsMutation = useMutation({
+    mutationFn: () => apiRequest('PUT', '/api/after-hours-settings', { autoSendEnabled, sendTimingHours }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/after-hours-settings'] });
+      toast({ title: "Saved", description: "After-hours settings updated" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  async function handleSave() {
+    try {
+      await saveHoursMutation.mutateAsync();
+    } catch {
+      return;
+    }
+    try {
+      await saveSettingsMutation.mutateAsync();
+    } catch {
+      return;
+    }
+  }
+
+  function handleQuickSetup() {
+    setHours(DAYS_OF_WEEK.map(day => ({
+      dayOfWeek: day,
+      openTime: ["saturday", "sunday"].includes(day) ? null : "09:00",
+      closeTime: ["saturday", "sunday"].includes(day) ? null : "17:00",
+      isStaffed: !["saturday", "sunday"].includes(day),
+    })));
+  }
+
+  function updateDay(dayOfWeek: string, field: string, value: any) {
+    setHours(prev => prev.map(h => h.dayOfWeek === dayOfWeek ? { ...h, [field]: value } : h));
+  }
+
+  if (hoursLoading || settingsLoading) {
+    return <div className="flex justify-center p-8"><Loader2 className="w-6 h-6 animate-spin" /></div>;
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="font-semibold text-sm mb-1">Auto-Send Reminders</h3>
+        <p className="text-xs text-muted-foreground mb-3">Automatically send venue instructions before after-hours venue hires.</p>
+        <div className="flex items-center gap-3">
+          <Switch
+            checked={autoSendEnabled}
+            onCheckedChange={setAutoSendEnabled}
+            data-testid="switch-auto-send"
+          />
+          <span className="text-sm">{autoSendEnabled ? "Enabled" : "Disabled"}</span>
+        </div>
+        {autoSendEnabled && (
+          <div className="mt-3">
+            <Label className="text-xs">Send reminder</Label>
+            <Select value={String(sendTimingHours)} onValueChange={(v) => setSendTimingHours(Number(v))}>
+              <SelectTrigger className="w-48 mt-1" data-testid="select-send-timing">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="24">1 day before</SelectItem>
+                <SelectItem value="4">4 hours before</SelectItem>
+                <SelectItem value="2">2 hours before</SelectItem>
+                <SelectItem value="0">8am on day of venue hire</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="font-semibold text-sm">Operating Hours</h3>
+            <p className="text-xs text-muted-foreground">Venue hires outside these hours are flagged as after-hours.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={handleQuickSetup} data-testid="button-quick-setup">
+            Quick Setup
+          </Button>
+        </div>
+        <div className="space-y-2">
+          {hours.map(h => (
+            <div key={h.dayOfWeek} className="flex items-center gap-3 text-sm" data-testid={`row-${h.dayOfWeek}`}>
+              <span className="w-24 font-medium">{DAY_LABELS[h.dayOfWeek]}</span>
+              <Switch
+                checked={h.isStaffed}
+                onCheckedChange={(v) => updateDay(h.dayOfWeek, 'isStaffed', v)}
+                data-testid={`switch-staffed-${h.dayOfWeek}`}
+              />
+              {h.isStaffed ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="time"
+                    value={h.openTime || "09:00"}
+                    onChange={(e) => updateDay(h.dayOfWeek, 'openTime', e.target.value)}
+                    className="w-28 h-8 text-xs"
+                    data-testid={`input-open-${h.dayOfWeek}`}
+                  />
+                  <span className="text-muted-foreground">to</span>
+                  <Input
+                    type="time"
+                    value={h.closeTime || "17:00"}
+                    onChange={(e) => updateDay(h.dayOfWeek, 'closeTime', e.target.value)}
+                    className="w-28 h-8 text-xs"
+                    data-testid={`input-close-${h.dayOfWeek}`}
+                  />
+                </div>
+              ) : (
+                <span className="text-xs text-muted-foreground">Unstaffed - all venue hires are after-hours</span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <Button
+        onClick={handleSave}
+        disabled={saveHoursMutation.isPending || saveSettingsMutation.isPending}
+        data-testid="button-save-after-hours"
+      >
+        {(saveHoursMutation.isPending || saveSettingsMutation.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+        Save Settings
+      </Button>
     </div>
   );
 }

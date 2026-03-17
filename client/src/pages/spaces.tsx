@@ -634,11 +634,8 @@ export default function SpacesPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange}>
-        <TabsList data-testid="tabs-spaces">
-          <TabsTrigger value="calendar" data-testid="tab-calendar">
-            <CalendarIcon className="w-4 h-4 mr-1.5" />
-            Calendar
-          </TabsTrigger>
+        <TabsList data-testid="tabs-spaces" className="h-auto flex-wrap gap-y-1">
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium px-2 select-none">Bookings</span>
           <TabsTrigger value="venue-hire" data-testid="tab-venue-hire">
             <Building2 className="w-4 h-4 mr-1.5" />
             Venue Hire
@@ -647,6 +644,12 @@ export default function SpacesPage() {
             <Monitor className="w-4 h-4 mr-1.5" />
             Hot Desking
           </TabsTrigger>
+          <TabsTrigger value="calendar" data-testid="tab-calendar">
+            <CalendarIcon className="w-4 h-4 mr-1.5" />
+            Calendar
+          </TabsTrigger>
+          <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium px-2 select-none">Manage</span>
           <TabsTrigger value="resources" data-testid="tab-resources">
             <Package className="w-4 h-4 mr-1.5" />
             Resources
