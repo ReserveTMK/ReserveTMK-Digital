@@ -478,7 +478,8 @@ export const venues = pgTable("venues", {
 export const bookings = pgTable("bookings", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
-  venueId: integer("venue_id").notNull(),
+  venueId: integer("venue_id"),
+  venueIds: integer("venue_ids").array(),
   title: text("title"),
   description: text("description"),
   classification: text("classification").notNull(),

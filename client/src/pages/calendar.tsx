@@ -330,7 +330,8 @@ function BookingCalendarCard({ booking, venueMap, allContacts }: {
     return allContacts.filter(c => c.name?.toLowerCase().includes(q) && !taggedIds.includes(c.id)).slice(0, 8);
   }, [attendeeSearch, allContacts, taggedIds]);
 
-  const venueName = venueMap[booking.venueId] || null;
+  const bookingVIds = booking.venueIds || (booking.venueId ? [booking.venueId] : []);
+  const venueName = bookingVIds.map((id: number) => venueMap[id]).filter(Boolean).join(" + ") || null;
   const cardColor = BOOKING_CARD_COLORS[booking.classification] || BOOKING_CARD_COLORS["Other"];
 
   return (
@@ -1932,7 +1933,7 @@ export default function CalendarPage() {
         endDate: b.endDate ? new Date(b.endDate) : sDate,
         startTime: b.startTime || null,
         endTime: b.endTime || null,
-        venue: venueMap[b.venueId] || null,
+        venue: (b.venueIds || (b.venueId ? [b.venueId] : [])).map((id: number) => venueMap[id]).filter(Boolean).join(" + ") || null,
         venueId: b.venueId,
         status: b.status,
         classification: b.classification,

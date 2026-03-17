@@ -1195,7 +1195,8 @@ export default function Dashboard() {
                       </div>
                     ))}
                     {selectedDayBookings.map((bk: Booking) => {
-                      const venueName = venues?.find((v: any) => v.id === bk.venueId)?.name;
+                      const bkVIds = bk.venueIds || (bk.venueId ? [bk.venueId] : []);
+                      const venueName = bkVIds.map((id: number) => venues?.find((v: any) => v.id === id)?.name).filter(Boolean).join(" + ");
                       return (
                         <div
                           key={`bk-${bk.id}`}

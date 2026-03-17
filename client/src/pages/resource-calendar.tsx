@@ -167,7 +167,7 @@ function VenuesCalendar({ currentDate, viewMode }: { currentDate: Date; viewMode
                     const dayStr = formatDate(day);
                     const dayBookings = (bookings || []).filter(
                       (b) =>
-                        b.venueId === venue.id &&
+                        (b.venueIds || (b.venueId ? [b.venueId] : [])).includes(venue.id) &&
                         b.startDate &&
                         formatDate(new Date(b.startDate)) === dayStr &&
                         b.status !== "cancelled"
@@ -208,7 +208,7 @@ function VenuesCalendar({ currentDate, viewMode }: { currentDate: Date; viewMode
           {activeVenues.map((venue) => {
             const dayBookings = (bookings || []).filter(
               (b) =>
-                b.venueId === venue.id &&
+                (b.venueIds || (b.venueId ? [b.venueId] : [])).includes(venue.id) &&
                 b.startDate &&
                 formatDate(new Date(b.startDate)) === dateStr &&
                 b.status !== "cancelled"

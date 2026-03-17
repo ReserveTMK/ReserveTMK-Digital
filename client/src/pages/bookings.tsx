@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -215,7 +216,8 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
   const filtered = useMemo(() => {
     if (!bookings) return [];
     return bookings.filter((b) => {
-      const venueName = venues?.find((v) => v.id === b.venueId)?.name || "";
+      const bVIds = b.venueIds || (b.venueId ? [b.venueId] : []);
+      const venueName = bVIds.map((id: number) => venues?.find((v) => v.id === id)?.name).filter(Boolean).join(" + ") || "";
       const matchesSearch =
         (b.title || "").toLowerCase().includes(search.toLowerCase()) ||
         (b.description || "").toLowerCase().includes(search.toLowerCase()) ||
@@ -267,6 +269,12 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
     return venues?.find((v) => v.id === venueId)?.name || "Unknown Venue";
   };
 
+  const getVenueNames = (booking: any) => {
+    const ids = booking.venueIds || (booking.venueId ? [booking.venueId] : []);
+    if (ids.length === 0) return "No Venue";
+    return ids.map((id: number) => getVenueName(id)).join(" + ");
+  };
+
   const getBookerName = (bookerId: number | null) => {
     if (!bookerId || !contacts) return null;
     return contacts.find((c) => c.id === bookerId)?.name || null;
@@ -298,7 +306,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
   };
 
   const getBookingDisplayName = (b: Booking) => {
-    const venueName = getVenueName(b.venueId);
+    const venueName = getVenueNames(b);
     const dateTime = formatDateTime(b);
     if (dateTime) return `${venueName} — ${dateTime.date}`;
     return venueName;
@@ -308,6 +316,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
     try {
       await createMutation.mutateAsync({
         venueId: b.venueId,
+        venueIds: b.venueIds || (b.venueId ? [b.venueId] : []),
         title: b.title || undefined,
         description: b.description || undefined,
         classification: b.classification,
@@ -616,10 +625,10 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                                             </div>
                                             <div className="min-w-0 flex-1">
                                               <p className="text-sm font-medium truncate" data-testid={`kanban-name-${booking.id}`}>
-                                                {getBookerName(booking.bookerId) || getBookingGroupName(booking.bookerGroupId) || getVenueName(booking.venueId)}
+                                                {getBookerName(booking.bookerId) || getBookingGroupName(booking.bookerGroupId) || getVenueNames(booking)}
                                               </p>
                                               <p className="text-[10px] text-muted-foreground truncate mt-0.5">
-                                                {(getBookerName(booking.bookerId) || getBookingGroupName(booking.bookerGroupId)) ? getVenueName(booking.venueId) : ""}
+                                                {(getBookerName(booking.bookerId) || getBookingGroupName(booking.bookerGroupId)) ? getVenueNames(booking) : ""}
                                               </p>
                                               <div className="flex items-center gap-1 mt-1 flex-wrap">
                                                 <Badge className={`${CLASSIFICATION_COLORS[booking.classification] || ""} text-[10px]`}>
@@ -741,7 +750,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap mb-1">
                               <h3 className={`font-semibold text-base truncate ${isCancelled ? "line-through opacity-70" : ""}`} data-testid={`text-booking-title-${booking.id}`}>
-                                {bookerName || bookingGroupName || getVenueName(booking.venueId)}
+                                {bookerName || bookingGroupName || getVenueNames(booking)}
                               </h3>
                               <Badge className={CLASSIFICATION_COLORS[booking.classification] || ""} data-testid={`badge-classification-${booking.id}`}>
                                 {booking.classification}
@@ -762,7 +771,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                             {(bookerName || bookingGroupName) && (
                               <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
                                 <MapPin className="w-3 h-3" />
-                                {getVenueName(booking.venueId)}
+                                {getVenueNames(booking)}
                               </p>
                             )}
 
@@ -1011,11 +1020,11 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
             <div className="space-y-4">
               <div className="rounded-lg border p-3 space-y-1.5 text-sm">
                 <div className="font-medium" data-testid="text-completion-booking-name">
-                  {getBookingGroupName(completionBooking.bookerGroupId) || completionBooking.title || getVenueName(completionBooking.venueId)}
+                  {getBookingGroupName(completionBooking.bookerGroupId) || completionBooking.title || getVenueNames(completionBooking)}
                 </div>
                 <div className="text-muted-foreground flex items-center gap-1.5">
                   <MapPin className="w-3.5 h-3.5" />
-                  {getVenueName(completionBooking.venueId)}
+                  {getVenueNames(completionBooking)}
                 </div>
                 {formatDateTime(completionBooking) && (
                   <div className="text-muted-foreground flex items-center gap-1.5">
@@ -1753,7 +1762,9 @@ function BookingFormDialog({
   const { data: allGroups } = useGroups();
   const createGroup = useCreateGroup();
 
-  const [venueId, setVenueId] = useState(booking?.venueId?.toString() || "");
+  const [selectedVenueIds, setSelectedVenueIds] = useState<number[]>(
+    booking?.venueIds || (booking?.venueId ? [booking.venueId] : [])
+  );
   const [classification, setClassification] = useState(booking?.classification || "");
   const [status, setStatus] = useState(booking?.status || "enquiry");
   const [notes, setNotes] = useState(booking?.notes || "");
@@ -1801,15 +1812,15 @@ function BookingFormDialog({
   const [agreementAutoPopulated, setAgreementAutoPopulated] = useState(false);
   const [conflictOverride, setConflictOverride] = useState(false);
 
-  const conflictQueryEnabled = !isTBC && !!venueId && !!startDate && !!startTime && !!endTime;
+  const conflictQueryEnabled = !isTBC && selectedVenueIds.length > 0 && !!startDate && !!startTime && !!endTime;
   const { data: conflictData, isLoading: conflictLoading } = useQuery<{
     conflicts: { type: string; id: number; title: string; date: string; time: string }[];
     availableSlots: { startTime: string; endTime: string }[];
   }>({
-    queryKey: ['/api/venue-conflicts', venueId, startDate, startTime, endTime, booking?.id],
+    queryKey: ['/api/venue-conflicts', selectedVenueIds.join(","), startDate, startTime, endTime, booking?.id],
     queryFn: async () => {
       const params = new URLSearchParams({
-        venueId,
+        venueIds: selectedVenueIds.join(","),
         startDate,
         startTime,
         endTime,
@@ -1826,7 +1837,7 @@ function BookingFormDialog({
 
   useEffect(() => {
     setConflictOverride(false);
-  }, [venueId, startDate, startTime, endTime]);
+  }, [selectedVenueIds, startDate, startTime, endTime]);
 
   const { data: allMemberships } = useMemberships();
   const { data: allMous } = useMous();
@@ -1900,9 +1911,10 @@ function BookingFormDialog({
   };
 
   const handleSubmit = () => {
-    if (!classification || !venueId) return;
+    if (!classification || selectedVenueIds.length === 0) return;
     const data: any = {
-      venueId: parseInt(venueId),
+      venueId: selectedVenueIds[0],
+      venueIds: selectedVenueIds,
       classification,
       status,
       startDate: !isTBC && startDate ? new Date(startDate).toISOString() : null,
@@ -2134,17 +2146,25 @@ function BookingFormDialog({
           </div>
 
           <div>
-            <Label>Venue *</Label>
-            <Select value={venueId} onValueChange={setVenueId}>
-              <SelectTrigger data-testid="select-booking-venue">
-                <SelectValue placeholder="Select venue" />
-              </SelectTrigger>
-              <SelectContent>
-                {venues.filter((v) => v.active !== false).map((v) => (
-                  <SelectItem key={v.id} value={v.id.toString()}>{v.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label>Venue(s) *</Label>
+            <p className="text-xs text-muted-foreground mb-2">Select one or more spaces for this booking</p>
+            <div className="space-y-2">
+              {venues.filter((v) => v.active !== false).map((v) => (
+                <label key={v.id} className="flex items-center gap-2 cursor-pointer" data-testid={`checkbox-venue-${v.id}`}>
+                  <Checkbox
+                    checked={selectedVenueIds.includes(v.id)}
+                    onCheckedChange={(checked) => {
+                      setSelectedVenueIds(prev =>
+                        checked
+                          ? [...prev, v.id]
+                          : prev.filter(id => id !== v.id)
+                      );
+                    }}
+                  />
+                  <span className="text-sm">{v.name}</span>
+                </label>
+              ))}
+            </div>
           </div>
 
           <div>
@@ -2542,7 +2562,7 @@ function BookingFormDialog({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={isPending || !classification || !venueId || (hasConflicts && !conflictOverride)}
+            disabled={isPending || !classification || selectedVenueIds.length === 0 || (hasConflicts && !conflictOverride)}
             data-testid="button-save-booking"
           >
             {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}

@@ -210,7 +210,9 @@ export default function BookingDetail() {
     );
   }
 
-  const venue = venues?.find((v: Venue) => v.id === booking.venueId);
+  const bookingVenueIds = booking.venueIds || (booking.venueId ? [booking.venueId] : []);
+  const bookingVenues = venues?.filter((v: Venue) => bookingVenueIds.includes(v.id)) || [];
+  const venue = bookingVenues[0];
   const bookerContact = booking.bookerId ? contacts?.find((c: Contact) => c.id === booking.bookerId) : null;
 
   const formatDate = (d: Date | string | null | undefined) => {
@@ -238,7 +240,7 @@ export default function BookingDetail() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 flex-wrap">
                 <h1 className="text-2xl font-display font-bold" data-testid="text-booking-header">
-                  {booking.title || venue?.name || "Venue Hire"}
+                  {booking.title || bookingVenues.map(v => v.name).join(" + ") || "Venue Hire"}
                 </h1>
                 <Badge className={STATUS_BADGE_STYLES[booking.status] || ""} data-testid="badge-booking-status">
                   <StatusIcon className="w-3 h-3 mr-1" />
@@ -381,7 +383,7 @@ export default function BookingDetail() {
                   <span className="text-muted-foreground">Venue</span>
                   <span className="font-medium flex items-center gap-1" data-testid="text-venue-name">
                     <MapPin className="w-3 h-3" />
-                    {venue?.name || "Unknown"}
+                    {bookingVenues.map(v => v.name).join(" + ") || "Unknown"}
                   </span>
                 </div>
                 <div className="flex justify-between gap-2">

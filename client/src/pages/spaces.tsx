@@ -267,7 +267,7 @@ function SpacesCalendarTab() {
                             {weekDays.map((day) => {
                               const dayStr = formatDate(day);
                               const dayBookings = (bookings || []).filter(
-                                (b) => b.venueId === venue.id && b.startDate && formatDate(new Date(b.startDate)) === dayStr && b.status !== "cancelled"
+                                (b) => (b.venueIds || (b.venueId ? [b.venueId] : [])).includes(venue.id) && b.startDate && formatDate(new Date(b.startDate)) === dayStr && b.status !== "cancelled"
                               );
                               const dayMeetings = (meetings || []).filter(
                                 (m: any) => m.venueId === venue.id && m.startTime && formatDate(new Date(m.startTime)) === dayStr && m.status !== "cancelled"
@@ -307,7 +307,7 @@ function SpacesCalendarTab() {
                       <TimeHeader hours={VENUE_HOURS} />
                       {activeVenues.map((venue) => {
                         const dayBookings = (bookings || []).filter(
-                          (b) => b.venueId === venue.id && b.startDate && formatDate(new Date(b.startDate)) === dateStr && b.status !== "cancelled"
+                          (b) => (b.venueIds || (b.venueId ? [b.venueId] : [])).includes(venue.id) && b.startDate && formatDate(new Date(b.startDate)) === dateStr && b.status !== "cancelled"
                         );
                         const dayMeetings = (meetings || []).filter(
                           (m: any) => m.venueId === venue.id && m.startTime && formatDate(new Date(m.startTime)) === dateStr && m.status !== "cancelled"

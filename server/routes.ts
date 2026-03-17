@@ -4191,11 +4191,22 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.get("/api/venue-conflicts", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { venueId, startDate, endDate, startTime, endTime, excludeBookingId } = req.query;
-      if (!venueId || !startDate) return res.json({ conflicts: [] });
+      const { venueId, venueIds: venueIdsParam, startDate, endDate, startTime, endTime, excludeBookingId } = req.query;
+      if ((!venueId && !venueIdsParam) || !startDate) return res.json({ conflicts: [] });
 
-      const targetVenueId = parseInt(venueId as string);
-      if (isNaN(targetVenueId)) return res.status(400).json({ message: "Invalid venueId" });
+      let targetVenueIds: number[] = [];
+      if (venueIdsParam) {
+        targetVenueIds = (venueIdsParam as string).split(",").map(Number).filter(n => !isNaN(n));
+      } else if (venueId) {
+        const parsed = parseInt(venueId as string);
+        if (!isNaN(parsed)) targetVenueIds = [parsed];
+      }
+      if (targetVenueIds.length === 0) return res.status(400).json({ message: "Invalid venueId(s)" });
+
+      const bookingVenuesOverlap = (b: any) => {
+        const bIds = b.venueIds || (b.venueId ? [b.venueId] : []);
+        return bIds.some((id: number) => targetVenueIds.includes(id));
+      };
 
       const allBookings = await storage.getBookings(userId);
       const programmes = await storage.getProgrammes(userId);
@@ -4205,7 +4216,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       for (const b of allBookings) {
         if (excludeBookingId && b.id === parseInt(excludeBookingId as string)) continue;
         if (b.status === "cancelled") continue;
-        if (b.venueId !== targetVenueId) continue;
+        if (!bookingVenuesOverlap(b)) continue;
         if (!datesOverlap(startDate as string, (endDate || startDate) as string, b.startDate, b.endDate || b.startDate)) continue;
         if (!timesOverlap(startTime as string, endTime as string, b.startTime, b.endTime)) continue;
         conflicts.push({
@@ -4232,7 +4243,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
       for (const m of allMeetings) {
         if (m.status === "cancelled") continue;
-        if (m.venueId !== targetVenueId) continue;
+        if (!m.venueId || !targetVenueIds.includes(m.venueId)) continue;
         const mStartDate = m.startTime ? new Date(m.startTime).toISOString().slice(0, 10) : null;
         const mEndDate = m.endTime ? new Date(m.endTime).toISOString().slice(0, 10) : mStartDate;
         const mStartTimeStr = m.startTime ? new Date(m.startTime).toTimeString().slice(0, 5) : null;
@@ -4253,7 +4264,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       for (const b of allBookings) {
         if (excludeBookingId && b.id === parseInt(excludeBookingId as string)) continue;
         if (b.status === "cancelled") continue;
-        if (b.venueId !== targetVenueId) continue;
+        if (!bookingVenuesOverlap(b)) continue;
         if (!datesOverlap(startDate as string, startDate as string, b.startDate, b.endDate || b.startDate)) continue;
         if (b.startTime && b.endTime) {
           occupiedIntervals.push({ start: parseTimeToMinutes(b.startTime), end: parseTimeToMinutes(b.endTime) });
@@ -4268,7 +4279,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       }
       for (const m of allMeetings) {
         if (m.status === "cancelled") continue;
-        if (m.venueId !== targetVenueId) continue;
+        if (!m.venueId || !targetVenueIds.includes(m.venueId)) continue;
         const mStartDate = m.startTime ? new Date(m.startTime).toISOString().slice(0, 10) : null;
         if (!mStartDate) continue;
         if (!datesOverlap(startDate as string, startDate as string, mStartDate, mStartDate)) continue;
@@ -4281,20 +4292,28 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
       occupiedIntervals.sort((a, b) => a.start - b.start);
 
-      const venue = await storage.getVenue(targetVenueId);
-      if (venue && venue.userId !== userId) return res.status(403).json({ message: "Forbidden" });
-      const schedule = (venue?.availabilitySchedule as AvailabilitySchedule) || DEFAULT_VENUE_AVAILABILITY_SCHEDULE;
       const requestDate = new Date(startDate as string + "T12:00:00");
       const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
       const dayName = dayNames[requestDate.getDay()];
-      const daySchedule = schedule[dayName];
 
-      if (daySchedule && !daySchedule.open) {
-        return res.json({ conflicts, availableSlots: [] });
+      let dayStart = parseTimeToMinutes("08:00");
+      let dayEnd = parseTimeToMinutes("17:00");
+      let anyVenueClosed = false;
+      for (const vid of targetVenueIds) {
+        const v = await storage.getVenue(vid);
+        if (v && v.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+        const sched = (v?.availabilitySchedule as AvailabilitySchedule) || DEFAULT_VENUE_AVAILABILITY_SCHEDULE;
+        const ds = sched[dayName];
+        if (ds && !ds.open) { anyVenueClosed = true; break; }
+        if (ds) {
+          dayStart = Math.max(dayStart, parseTimeToMinutes(ds.startTime));
+          dayEnd = Math.min(dayEnd, parseTimeToMinutes(ds.endTime));
+        }
       }
 
-      const dayStart = daySchedule ? parseTimeToMinutes(daySchedule.startTime) : parseTimeToMinutes("08:00");
-      const dayEnd = daySchedule ? parseTimeToMinutes(daySchedule.endTime) : parseTimeToMinutes("17:00");
+      if (anyVenueClosed || dayStart >= dayEnd) {
+        return res.json({ conflicts, availableSlots: [] });
+      }
       const availableSlots: { startTime: string; endTime: string }[] = [];
       let cursor = dayStart;
       for (const interval of occupiedIntervals) {
@@ -4337,22 +4356,31 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       delete body.conflictOverride;
       const input = api.bookings.create.input.parse(body);
 
-      if (input.venueId) {
-        const venue = await storage.getVenue(input.venueId);
+      const inputVenueIds = input.venueIds || (input.venueId ? [input.venueId] : []);
+      if (inputVenueIds.length === 0) {
+        return res.status(400).json({ message: "At least one venue must be selected" });
+      }
+      
+      for (const vid of inputVenueIds) {
+        const venue = await storage.getVenue(vid);
         if (venue && venue.capacity && input.attendeeCount && input.attendeeCount > venue.capacity) {
           return res.status(400).json({
-            message: `Attendee count (${input.attendeeCount}) exceeds venue capacity (${venue.capacity})`,
+            message: `Attendee count (${input.attendeeCount}) exceeds ${venue.name} capacity (${venue.capacity})`,
           });
         }
       }
 
-      if (input.startDate && input.venueId && !conflictOverride) {
+      if (input.startDate && inputVenueIds.length > 0 && !conflictOverride) {
         const allBookings = await storage.getBookings(userId);
         const programmes = await storage.getProgrammes(userId);
         const allMeetings = await storage.getMeetings(userId);
+        const inputVenueOverlap = (b: any) => {
+          const bIds = b.venueIds || (b.venueId ? [b.venueId] : []);
+          return bIds.some((id: number) => inputVenueIds.includes(id));
+        };
         for (const b of allBookings) {
           if (b.status === "cancelled") continue;
-          if (b.venueId !== input.venueId) continue;
+          if (!inputVenueOverlap(b)) continue;
           if (!datesOverlap(input.startDate, input.endDate || input.startDate, b.startDate, b.endDate || b.startDate)) continue;
           if (!timesOverlap(input.startTime, input.endTime, b.startTime, b.endTime)) continue;
           return res.status(409).json({
@@ -4369,7 +4397,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         }
         for (const m of allMeetings) {
           if (m.status === "cancelled") continue;
-          if (m.venueId !== input.venueId) continue;
+          if (!m.venueId || !inputVenueIds.includes(m.venueId)) continue;
           const mStartDate = m.startTime ? new Date(m.startTime).toISOString().slice(0, 10) : null;
           const mEndDate = m.endTime ? new Date(m.endTime).toISOString().slice(0, 10) : mStartDate;
           const mStartTimeStr = m.startTime ? new Date(m.startTime).toTimeString().slice(0, 5) : null;
@@ -4449,24 +4477,30 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
       const merged = { ...existing, ...input };
 
-      if (merged.venueId) {
-        const venue = await storage.getVenue(merged.venueId);
+      const mergedVenueIds = merged.venueIds || (merged.venueId ? [merged.venueId] : []);
+      
+      for (const vid of mergedVenueIds) {
+        const venue = await storage.getVenue(vid);
         if (venue && venue.capacity && merged.attendeeCount && merged.attendeeCount > venue.capacity) {
           return res.status(400).json({
-            message: `Attendee count (${merged.attendeeCount}) exceeds venue capacity (${venue.capacity})`,
+            message: `Attendee count (${merged.attendeeCount}) exceeds ${venue.name} capacity (${venue.capacity})`,
           });
         }
       }
 
-      if (merged.startDate && merged.venueId) {
+      if (merged.startDate && mergedVenueIds.length > 0) {
         const userId = (req.user as any).claims.sub;
         const allBookings = await storage.getBookings(userId);
         const programmes = await storage.getProgrammes(userId);
         const allMeetings = await storage.getMeetings(userId);
+        const mergedVenueOverlap = (b: any) => {
+          const bIds = b.venueIds || (b.venueId ? [b.venueId] : []);
+          return bIds.some((id: number) => mergedVenueIds.includes(id));
+        };
         for (const b of allBookings) {
           if (b.id === id) continue;
           if (b.status === "cancelled") continue;
-          if (b.venueId !== merged.venueId) continue;
+          if (!mergedVenueOverlap(b)) continue;
           if (!datesOverlap(merged.startDate, merged.endDate || merged.startDate, b.startDate, b.endDate || b.startDate)) continue;
           if (!timesOverlap(merged.startTime, merged.endTime, b.startTime, b.endTime)) continue;
           return res.status(409).json({
@@ -4483,7 +4517,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         }
         for (const m of allMeetings) {
           if (m.status === "cancelled") continue;
-          if (m.venueId !== merged.venueId) continue;
+          if (!m.venueId || !mergedVenueIds.includes(m.venueId)) continue;
           const mStartDate = m.startTime ? new Date(m.startTime).toISOString().slice(0, 10) : null;
           const mEndDate = m.endTime ? new Date(m.endTime).toISOString().slice(0, 10) : mStartDate;
           const mStartTimeStr = m.startTime ? new Date(m.startTime).toTimeString().slice(0, 5) : null;
@@ -11439,7 +11473,8 @@ Rules:
 
       const allBookings = await storage.getBookings(booker.userId);
       const venueBookings = allBookings.filter(b => {
-        if (b.venueId !== venueId) return false;
+        const bIds = b.venueIds || (b.venueId ? [b.venueId] : []);
+        if (!bIds.includes(venueId)) return false;
         if (b.status === "cancelled") return false;
         if (!b.startDate) return false;
         const sd = new Date(b.startDate);
@@ -11524,7 +11559,8 @@ Rules:
 
       const allBookings = await storage.getBookings(booker.userId);
       const conflicting = allBookings.filter(b => {
-        if (b.venueId !== venueId || b.status === "cancelled") return false;
+        const bIds = b.venueIds || (b.venueId ? [b.venueId] : []);
+        if (!bIds.includes(venueId) || b.status === "cancelled") return false;
         if (!b.startDate) return false;
         const bDate = new Date(b.startDate).toISOString().split("T")[0];
         const reqDate = new Date(startDate).toISOString().split("T")[0];
@@ -11663,6 +11699,7 @@ Rules:
       const booking = await storage.createBooking({
         userId: booker.userId,
         venueId,
+        venueIds: [venueId],
         title: `${classification} - Portal Booking${titleSuffix}`,
         classification,
         status: "enquiry",

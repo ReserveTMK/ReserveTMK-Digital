@@ -111,7 +111,9 @@ export async function sendBookingConfirmationEmail(booking: Booking, userId: str
   if (!contact?.email) throw new Error("Contact has no email address");
 
   const venues = await storage.getVenues(userId);
-  const venue = venues.find(v => v.id === booking.venueId);
+  const bookingVenueIds = booking.venueIds || (booking.venueId ? [booking.venueId] : []);
+  const bookingVenues = venues.filter(v => bookingVenueIds.includes(v.id));
+  const venue = bookingVenues[0];
   const instructions = await storage.getVenueInstructions(userId);
   const grouped = groupInstructions(instructions);
 
@@ -255,7 +257,9 @@ export async function sendAfterHoursReminderEmail(booking: Booking, userId: stri
   if (!contact?.email) throw new Error("Contact has no email address");
 
   const venues = await storage.getVenues(userId);
-  const venue = venues.find(v => v.id === booking.venueId);
+  const bookingVenueIds2 = booking.venueIds || (booking.venueId ? [booking.venueId] : []);
+  const bookingVenues2 = venues.filter(v => bookingVenueIds2.includes(v.id));
+  const venue = bookingVenues2[0];
   const instructions = await storage.getVenueInstructions(userId);
   const grouped = groupInstructions(instructions);
 

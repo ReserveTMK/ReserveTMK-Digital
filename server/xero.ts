@@ -323,8 +323,9 @@ export async function generateXeroInvoice(
   const xeroContactId = await syncContactToXero(userId, booking.bookerId);
 
   const venues = await storage.getVenues(userId);
-  const venue = venues.find(v => v.id === booking.venueId);
-  const venueName = venue?.name || "ReserveTMK Digital Space";
+  const xeroVenueIds = booking.venueIds || (booking.venueId ? [booking.venueId] : []);
+  const xeroVenues = venues.filter(v => xeroVenueIds.includes(v.id));
+  const venueName = xeroVenues.map(v => v.name).join(" + ") || "ReserveTMK Digital Space";
 
   const dateStr = booking.startDate
     ? new Date(booking.startDate).toLocaleDateString("en-NZ", { timeZone: "Pacific/Auckland" })
