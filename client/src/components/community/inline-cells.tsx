@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/beautiful-button";
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useMutation } from "@tanstack/react-query";
-import { Pencil, Check, Loader2, ArrowUp, ArrowDown, ArrowUpDown, Sprout, TreePine, Sun, Pause, Plus, X, Building2 } from "lucide-react";
+import { Pencil, Check, Loader2, ArrowUp, ArrowDown, ArrowUpDown, Sprout, TreePine, Sun, Pause, Plus, X, Building2, ChevronUp, ChevronDown } from "lucide-react";
 import { CONTACT_ROLES } from "@shared/schema";
 
 export const TABLE_ETHNICITY_OPTIONS = [
@@ -405,90 +405,190 @@ export function InlineConnectionCell({ contactId, connectionStrength }: { contac
 
 export function InlineRoleCell({ role, roleOther, contactId }: { role: string; roleOther?: string | null; contactId: number }) {
   const { toast } = useToast();
-  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [localRole, setLocalRole] = useState<string>(role);
   const [otherText, setOtherText] = useState(roleOther || "");
+  const [showOtherInput, setShowOtherInput] = useState(false);
+  const cellRef = useRef<HTMLDivElement>(null);
+  const otherInputRef = useRef<HTMLInputElement>(null);
 
-  const handleSelect = async (newRole: string) => {
-    if (newRole === role && newRole !== "Other") { setOpen(false); return; }
+  useEffect(() => {
+    if (!editing) {
+      setLocalRole(role);
+    }
+  }, [role, editing]);
+
+  const saveRole = useCallback(async (newRole: string, newRoleOther?: string | null) => {
     setSaving(true);
     try {
-      const updates: Record<string, any> = { role: newRole };
+      const updates: { role: string; roleOther?: string | null } = { role: newRole };
       if (newRole !== "Other") {
         updates.roleOther = null;
+      } else if (newRoleOther !== undefined) {
+        updates.roleOther = newRoleOther;
       }
       await apiRequest("PATCH", `/api/contacts/${contactId}`, updates);
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       toast({ title: "Role updated" });
-      if (newRole !== "Other") setOpen(false);
     } catch {
       toast({ title: "Failed to update role", variant: "destructive" });
     } finally {
       setSaving(false);
     }
-  };
+  }, [contactId, toast]);
 
-  const handleSaveOther = async () => {
-    setSaving(true);
-    try {
-      await apiRequest("PATCH", `/api/contacts/${contactId}`, { role: "Other", roleOther: otherText.trim() || null });
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-      toast({ title: "Role updated" });
-      setOpen(false);
-    } catch {
-      toast({ title: "Failed to update role", variant: "destructive" });
-    } finally {
-      setSaving(false);
+  const saveVersionRef = useRef(0);
+
+  const cycleRole = useCallback((direction: 1 | -1) => {
+    setLocalRole((prev) => {
+      const idx = (CONTACT_ROLES as readonly string[]).indexOf(prev);
+      const currentIdx = idx === -1 ? 0 : idx;
+      const nextIdx = (currentIdx + direction + CONTACT_ROLES.length) % CONTACT_ROLES.length;
+      const newRole = CONTACT_ROLES[nextIdx];
+      if (newRole === "Other") {
+        setShowOtherInput(true);
+        setOtherText(roleOther || "");
+      } else {
+        setShowOtherInput(false);
+      }
+      const version = ++saveVersionRef.current;
+      saveRole(newRole).then(() => {
+        if (saveVersionRef.current > version) return;
+      });
+      return newRole;
+    });
+  }, [saveRole, roleOther]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (!editing) return;
+    if (showOtherInput) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      cycleRole(1);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      cycleRole(-1);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setEditing(false);
+      setShowOtherInput(false);
+    } else if (e.key === "Tab" || e.key === "Enter") {
+      e.preventDefault();
+      setEditing(false);
+      setShowOtherInput(false);
+      const row = cellRef.current?.closest("tr");
+      if (row) {
+        const groupTrigger = row.querySelector(`[data-testid="inline-group-${contactId}"]`) as HTMLElement;
+        if (groupTrigger) {
+          groupTrigger.click();
+        }
+      }
     }
-  };
+  }, [editing, showOtherInput, cycleRole, contactId]);
 
+  const handleOtherKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
+      saveRole("Other", otherText.trim() || null);
+      setEditing(false);
+      setShowOtherInput(false);
+      const row = cellRef.current?.closest("tr");
+      if (row) {
+        const groupTrigger = row.querySelector(`[data-testid="inline-group-${contactId}"]`) as HTMLElement;
+        if (groupTrigger) {
+          groupTrigger.click();
+        }
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setEditing(false);
+      setShowOtherInput(false);
+    } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+      setShowOtherInput(false);
+      const direction = e.key === "ArrowDown" ? 1 : -1;
+      cycleRole(direction);
+    }
+  }, [otherText, saveRole, contactId, cycleRole]);
+
+  useEffect(() => {
+    if (showOtherInput && otherInputRef.current) {
+      otherInputRef.current.focus();
+    }
+  }, [showOtherInput]);
+
+  useEffect(() => {
+    if (editing && !showOtherInput && cellRef.current) {
+      cellRef.current.focus();
+    }
+  }, [editing, showOtherInput]);
+
+  const displayLocalRole = localRole === "Other" && otherText ? `Other - ${otherText}` : (localRole || "—");
   const displayRole = role === "Other" && roleOther ? `Other - ${roleOther}` : (role || "—");
 
-  return (
-    <Popover open={open} onOpenChange={(v) => { setOpen(v); if (v) setOtherText(roleOther || ""); }}>
-      <PopoverTrigger asChild>
-        <button 
-          className="text-left px-2 py-1 rounded hover:bg-muted/60 transition-colors cursor-pointer group flex items-center gap-1" 
-          data-testid={`table-cell-role-${contactId}`}
-        >
+  if (editing) {
+    return (
+      <div
+        ref={cellRef}
+        tabIndex={0}
+        className="relative px-2 py-1 rounded ring-2 ring-primary/50 outline-none"
+        onKeyDown={handleKeyDown}
+        onBlur={(e) => {
+          if (!cellRef.current?.contains(e.relatedTarget as Node)) {
+            setEditing(false);
+            setShowOtherInput(false);
+          }
+        }}
+        data-testid={`table-cell-role-${contactId}`}
+      >
+        <div className="flex items-center gap-1">
           <Badge variant="outline" className="text-[10px] h-5 px-2">
-            {displayRole}
+            {saving ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+            {displayLocalRole}
           </Badge>
-          <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-56 p-2" align="start">
-        <div className="space-y-1">
-          {CONTACT_ROLES.map((r: string) => (
-            <button
-              key={r}
-              className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm hover:bg-accent/50 transition-colors ${r === role ? "bg-accent" : ""}`}
-              onClick={() => handleSelect(r)}
-              disabled={saving}
-              data-testid={`role-opt-${r.toLowerCase().replace(/[\s/]+/g, '-')}-${contactId}`}
-            >
-              <span>{r}</span>
-              {r === role && <Check className="w-3 h-3 ml-auto" />}
-            </button>
-          ))}
+          <div className="flex flex-col ml-1">
+            <ChevronUp className="w-3 h-3 text-muted-foreground" />
+            <ChevronDown className="w-3 h-3 text-muted-foreground" />
+          </div>
         </div>
-        {role === "Other" && (
-          <div className="mt-2 pt-2 border-t space-y-2">
+        {showOtherInput && (
+          <div className="mt-1">
             <Input
+              ref={otherInputRef}
               value={otherText}
               onChange={(e) => setOtherText(e.target.value)}
+              onKeyDown={handleOtherKeyDown}
               placeholder="Describe role..."
               className="h-7 text-sm"
               data-testid={`input-role-other-${contactId}`}
             />
-            <Button size="sm" className="w-full" onClick={handleSaveOther} disabled={saving} data-testid={`button-save-role-other-${contactId}`}>
-              {saving ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-              Save
-            </Button>
           </div>
         )}
-      </PopoverContent>
-    </Popover>
+        <div className="absolute -bottom-5 left-0 text-[9px] text-muted-foreground whitespace-nowrap">
+          ↑↓ cycle · {localRole === "Other" ? "Enter save" : "Tab next"} · Esc cancel
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      className="text-left px-2 py-1 rounded hover:bg-muted/60 transition-colors cursor-pointer group flex items-center gap-1"
+      onClick={() => {
+        setEditing(true);
+        setLocalRole(role);
+        setOtherText(roleOther || "");
+        setShowOtherInput(role === "Other");
+      }}
+      data-testid={`table-cell-role-${contactId}`}
+    >
+      <Badge variant="outline" className="text-[10px] h-5 px-2">
+        {displayRole}
+      </Badge>
+      <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+    </button>
   );
 }
 
@@ -520,7 +620,9 @@ export function InlineGroupCell({ contactId, groups, allGroups }: { contactId: n
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState(-1);
   const { toast } = useToast();
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const linkedGroupIds = new Set(groups.map((g) => g.groupId));
 
@@ -573,8 +675,44 @@ export function InlineGroupCell({ contactId, groups, allGroups }: { contactId: n
 
   const exactMatch = allGroups.some((g) => g.name.toLowerCase() === search.trim().toLowerCase());
 
+  const canCreate = !exactMatch && search.trim().length >= 2;
+  const totalItems = filtered.length + (canCreate ? 1 : 0);
+
+  useEffect(() => {
+    setHighlightIndex(totalItems > 0 ? 0 : -1);
+  }, [search, totalItems]);
+
+  useEffect(() => {
+    if (open) {
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 0);
+    }
+  }, [open]);
+
+  const handleSearchKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightIndex((prev) => (prev + 1) % Math.max(totalItems, 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightIndex((prev) => (prev - 1 + totalItems) % Math.max(totalItems, 1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (highlightIndex >= 0 && highlightIndex < filtered.length) {
+        linkMutation.mutate(filtered[highlightIndex].id);
+        setSearch("");
+      } else if (highlightIndex === filtered.length && canCreate) {
+        createAndLinkMutation.mutate(search.trim());
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setOpen(false);
+    }
+  }, [totalItems, highlightIndex, filtered, canCreate, search, linkMutation, createAndLinkMutation]);
+
   return (
-    <Popover open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setSearch(""); setCreating(false); } }}>
+    <Popover open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setSearch(""); setCreating(false); setHighlightIndex(-1); } }}>
       <PopoverTrigger asChild>
         <button className="w-full text-left" data-testid={`inline-group-${contactId}`}>
           {groups.length > 0 ? (
@@ -590,7 +728,7 @@ export function InlineGroupCell({ contactId, groups, allGroups }: { contactId: n
           )}
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-[260px] p-0" align="start">
+      <PopoverContent className="w-[260px] p-0" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>
         <div className="p-2 space-y-2">
           {groups.length > 0 && (
             <div className="flex flex-wrap gap-1">
@@ -609,19 +747,22 @@ export function InlineGroupCell({ contactId, groups, allGroups }: { contactId: n
             </div>
           )}
           <Input
+            ref={searchInputRef}
             placeholder="Search or create group..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
             className="h-8 text-xs"
             data-testid={`input-group-search-${contactId}`}
           />
           {search.trim() && (
             <div className="max-h-[160px] overflow-y-auto space-y-0.5">
-              {filtered.map((g) => (
+              {filtered.map((g, idx) => (
                 <button
                   key={g.id}
-                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs hover:bg-muted/50 transition-colors text-left"
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors text-left ${idx === highlightIndex ? "bg-accent" : "hover:bg-muted/50"}`}
                   onClick={() => { linkMutation.mutate(g.id); setSearch(""); }}
+                  onMouseEnter={() => setHighlightIndex(idx)}
                   data-testid={`item-link-group-${g.id}`}
                 >
                   <Building2 className="w-3 h-3 text-muted-foreground shrink-0" />
@@ -629,10 +770,11 @@ export function InlineGroupCell({ contactId, groups, allGroups }: { contactId: n
                   <Badge variant="secondary" className="text-[9px] ml-auto shrink-0">{g.type}</Badge>
                 </button>
               ))}
-              {!exactMatch && search.trim().length >= 2 && (
+              {canCreate && (
                 <button
-                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs hover:bg-primary/5 transition-colors text-left text-primary"
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors text-left text-primary ${highlightIndex === filtered.length ? "bg-accent" : "hover:bg-primary/5"}`}
                   onClick={() => createAndLinkMutation.mutate(search.trim())}
+                  onMouseEnter={() => setHighlightIndex(filtered.length)}
                   disabled={createAndLinkMutation.isPending}
                   data-testid={`button-create-group-${contactId}`}
                 >
