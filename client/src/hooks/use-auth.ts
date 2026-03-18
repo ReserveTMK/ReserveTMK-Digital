@@ -41,6 +41,7 @@ export function useAuth() {
     user,
     isLoading,
     isAuthenticated: !!user,
+    isAdmin: !!user?.isAdmin,
     logout: logoutMutation.mutate,
     isLoggingOut: logoutMutation.isPending,
   };

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, jsonb, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
+import { boolean, index, jsonb, pgTable, serial, text, timestamp, varchar } from "drizzle-orm/pg-core";
 
 // Session storage table.
 // (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
@@ -21,9 +21,25 @@ export const users = pgTable("users", {
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
+  isAdmin: boolean("is_admin").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
+
+export const ALLOWED_USER_STATUSES = ["pending", "active", "revoked"] as const;
+export type AllowedUserStatus = typeof ALLOWED_USER_STATUSES[number];
+
+export const allowedUsers = pgTable("allowed_users", {
+  id: serial("id").primaryKey(),
+  email: varchar("email").notNull().unique(),
+  invitedBy: varchar("invited_by").notNull(),
+  status: varchar("status").notNull().default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type AllowedUser = typeof allowedUsers.$inferSelect;
+export type InsertAllowedUser = typeof allowedUsers.$inferInsert;

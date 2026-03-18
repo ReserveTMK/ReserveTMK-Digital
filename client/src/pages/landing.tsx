@@ -1,7 +1,18 @@
 import { Button } from "@/components/ui/beautiful-button";
-import { Mic, TrendingUp, Users } from "lucide-react";
+import { Mic, TrendingUp, Users, ShieldAlert } from "lucide-react";
+import { useState, useEffect } from "react";
 
 export default function LandingPage() {
+  const [accessDenied, setAccessDenied] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("access_denied") === "true") {
+      setAccessDenied(true);
+      window.history.replaceState({}, "", "/");
+    }
+  }, []);
+
   const handleLogin = () => {
     window.location.href = "/api/login";
   };
@@ -20,10 +31,19 @@ export default function LandingPage() {
           </div>
           <span className="font-display font-bold text-xl">Reserve<span className="text-[hsl(var(--brand-green))]">TMK</span></span>
         </div>
-        <Button onClick={handleLogin} className="shadow-lg" data-testid="button-login">Login / Sign Up</Button>
+        <Button onClick={handleLogin} className="shadow-lg" data-testid="button-login">Login</Button>
       </nav>
 
       <main className="relative z-10 container mx-auto px-6 pt-20 pb-32">
+        {accessDenied && (
+          <div className="max-w-2xl mx-auto mb-8 p-4 rounded-xl border border-destructive/30 bg-destructive/5 flex items-start gap-3" data-testid="alert-access-denied">
+            <ShieldAlert className="w-5 h-5 text-destructive mt-0.5 shrink-0" />
+            <div>
+              <p className="font-semibold text-destructive">Access Denied</p>
+              <p className="text-sm text-muted-foreground">This platform is by invitation only. Contact your administrator for access.</p>
+            </div>
+          </div>
+        )}
         <div className="max-w-4xl mx-auto text-center space-y-8">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-secondary text-sm font-medium text-secondary-foreground mb-4 border border-border">
             <span className="relative flex h-2 w-2">

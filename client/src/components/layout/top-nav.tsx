@@ -20,6 +20,7 @@ import {
   CalendarClock,
   PhoneCall,
   Wrench,
+  UserCog,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useRef, useEffect } from "react";
@@ -29,6 +30,7 @@ type NavChild = {
   href: string;
   icon: React.ComponentType<{ className?: string }>;
   description?: string;
+  adminOnly?: boolean;
 };
 
 type NavGroup = {
@@ -97,6 +99,7 @@ const navGroups: NavGroup[] = [
     children: [
       { name: "Availability", href: "/scheduling", icon: CalendarClock, description: "Manage staff & mentor availability" },
       { name: "About Us", href: "/settings/about-us", icon: Building2, description: "Organisation profile & identity" },
+      { name: "Team", href: "/settings/team", icon: UserCog, description: "Manage platform access", adminOnly: true },
     ],
   },
 ];
@@ -109,7 +112,9 @@ function DropdownMenu({ group, isOpen, onToggle, onClose, onNavigate }: {
   onNavigate?: () => void;
 }) {
   const [location] = useLocation();
+  const { isAdmin } = useAuth();
   const menuRef = useRef<HTMLDivElement>(null);
+  const visibleChildren = group.children.filter(c => !c.adminOnly || isAdmin);
 
   const isGroupActive = group.children.length === 0
     ? location === group.href
@@ -165,7 +170,7 @@ function DropdownMenu({ group, isOpen, onToggle, onClose, onNavigate }: {
         <div className="absolute top-full left-0 mt-1 w-64 bg-card border border-border rounded-lg shadow-xl z-[60] py-1 animate-in fade-in-0 zoom-in-95 duration-150"
           data-testid={`dropdown-${group.name.toLowerCase()}`}
         >
-          {group.children.map((child) => {
+          {visibleChildren.map((child) => {
             const isActive = location === child.href;
             return (
               <Link
@@ -304,7 +309,13 @@ export function TopNav() {
 
 function MobileNavGroup({ group, onNavigate }: { group: NavGroup; onNavigate: () => void }) {
   const [location] = useLocation();
+  const { isAdmin } = useAuth();
   const [expanded, setExpanded] = useState(false);
+  const visibleChildren = group.children.filter(c => !c.adminOnly || isAdmin);
+
+  if (visibleChildren.length === 0 && group.children.length > 0) {
+    return null;
+  }
 
   if (group.children.length === 0) {
     const isActive = location === group.href;
@@ -340,7 +351,7 @@ function MobileNavGroup({ group, onNavigate }: { group: NavGroup; onNavigate: ()
       </button>
       {expanded && (
         <div className="ml-3 border-l border-border pl-3 space-y-0.5 mb-1">
-          {group.children.map((child) => {
+          {visibleChildren.map((child) => {
             const isActive = location === child.href;
             return (
               <Link

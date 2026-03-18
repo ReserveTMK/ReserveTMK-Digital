@@ -69,6 +69,25 @@ app.use((req, res, next) => {
     console.warn("WARNING: AI_INTEGRATIONS_OPENAI_API_KEY is not set. AI features using OpenAI (audio transcription, text-to-speech) will be unavailable.");
   }
 
+  try {
+    const { db } = await import("./db");
+    const { sql } = await import("drizzle-orm");
+    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin boolean DEFAULT false`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS allowed_users (
+        id serial PRIMARY KEY,
+        email varchar NOT NULL UNIQUE,
+        invited_by varchar NOT NULL,
+        status varchar NOT NULL DEFAULT 'pending',
+        created_at timestamp DEFAULT now(),
+        updated_at timestamp DEFAULT now()
+      )
+    `);
+    console.log("[migration] Invite-only access tables ensured");
+  } catch (migrationErr: any) {
+    console.warn("[migration] Invite-only access migration skipped:", migrationErr.message);
+  }
+
   await registerRoutes(httpServer, app);
 
   try {

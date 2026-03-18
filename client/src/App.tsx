@@ -44,6 +44,7 @@ import ResourceCalendarPage from "@/pages/resource-calendar";
 import SpacesPage from "@/pages/spaces";
 import GearPage from "@/pages/gear";
 import AboutUsPage from "@/pages/about-us";
+import TeamSettingsPage from "@/pages/team-settings";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -241,6 +242,10 @@ function Router() {
 
         <Route path="/settings/about-us">
           <ProtectedRoute component={AboutUsPage} />
+        </Route>
+
+        <Route path="/settings/team">
+          <ProtectedRoute component={TeamSettingsPage} />
         </Route>
 
         <Route path="/resource-calendar">

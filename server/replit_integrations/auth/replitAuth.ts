@@ -118,6 +118,8 @@ function updateUserSession(
   user.expires_at = user.claims?.exp;
 }
 
+const ADMIN_USER_ID = "54568936";
+
 async function upsertUser(claims: any) {
   await authStorage.upsertUser({
     id: claims["sub"],
@@ -126,6 +128,21 @@ async function upsertUser(claims: any) {
     lastName: claims["last_name"],
     profileImageUrl: claims["profile_image_url"],
   });
+}
+
+async function checkUserAllowed(claims: any): Promise<boolean> {
+  const userId = claims["sub"];
+  const email = claims["email"];
+
+  if (userId === ADMIN_USER_ID) return true;
+
+  if (!email) return false;
+
+  const allowed = await authStorage.isEmailAllowed(email);
+  if (allowed) {
+    await authStorage.activateAllowedUser(email);
+  }
+  return allowed;
 }
 
 let oidcConfigPromise: Promise<client.Configuration> | null = null;
@@ -158,13 +175,21 @@ export async function setupAuth(app: Express) {
 
   console.log(`[auth] Setup: REPL_ID=${process.env.REPL_ID}, OIDC_CLIENT_ID=${getOidcClientId()}, REPLIT_DEPLOYMENT=${process.env.REPLIT_DEPLOYMENT}, REPLIT_DEV_DOMAIN=${process.env.REPLIT_DEV_DOMAIN}, REPLIT_DOMAINS=${process.env.REPLIT_DOMAINS}`);
 
+  await authStorage.ensureAdminSeeded();
+
   const verify: VerifyFunction = async (
     tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
     verified: passport.AuthenticateCallback
   ) => {
+    const claims = tokens.claims();
+    const allowed = await checkUserAllowed(claims);
+    if (!allowed) {
+      verified(null, false, { message: "access_denied" });
+      return;
+    }
     const user = {};
     updateUserSession(user, tokens);
-    await upsertUser(tokens.claims());
+    await upsertUser(claims);
     verified(null, user);
   };
 
@@ -239,6 +264,10 @@ export async function setupAuth(app: Express) {
           return res.redirect("/api/login");
         }
         if (!user) {
+          if (info?.message === "access_denied") {
+            console.log("[auth] Access denied - user not in allowed list");
+            return res.redirect("/?access_denied=true");
+          }
           console.error("[auth] Callback no user, info:", info);
           return res.redirect("/api/login");
         }
@@ -315,11 +344,35 @@ export async function setupAuth(app: Express) {
   });
 }
 
+export const isAdmin: RequestHandler = async (req, res, next) => {
+  const user = req.user as any;
+  if (!req.isAuthenticated() || !user?.claims?.sub) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  const dbUser = await authStorage.getUser(user.claims.sub);
+  if (!dbUser?.isAdmin) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+  next();
+};
+
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
   const user = req.user as any;
 
   if (!req.isAuthenticated() || !user.expires_at) {
     return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  const userId = user.claims?.sub;
+  if (userId && userId !== ADMIN_USER_ID) {
+    const dbUser = await authStorage.getUser(userId);
+    if (dbUser?.email) {
+      const allowed = await authStorage.isEmailAllowed(dbUser.email);
+      if (!allowed) {
+        req.logout(() => {});
+        return res.status(401).json({ message: "Access revoked" });
+      }
+    }
   }
 
   const now = Math.floor(Date.now() / 1000);
