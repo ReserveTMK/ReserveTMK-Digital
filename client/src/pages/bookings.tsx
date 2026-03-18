@@ -334,7 +334,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
         title: b.title || undefined,
         description: b.description || undefined,
         classification: b.classification,
-        status: "enquiry",
+        status: "confirmed",
         startDate: b.startDate || undefined,
         endDate: b.endDate || undefined,
         startTime: b.startTime || undefined,
@@ -1677,6 +1677,8 @@ function BookingRemindersSettingsTab() {
 }
 
 
+const VENUE_HIRE_STATUSES = ["confirmed", "completed", "cancelled"] as const;
+
 function BookingFormDialog({
   open,
   onOpenChange,
@@ -1703,7 +1705,7 @@ function BookingFormDialog({
     booking?.venueIds || (booking?.venueId ? [booking.venueId] : [])
   );
   const [classification, setClassification] = useState(booking?.classification || "");
-  const [status, setStatus] = useState(booking?.status || "enquiry");
+  const [status, setStatus] = useState(booking?.status === "enquiry" ? "confirmed" : (booking?.status || "confirmed"));
   const [notes, setNotes] = useState(booking?.notes || "");
 
   const [isTBC, setIsTBC] = useState(!!(booking?.tbcMonth || booking?.tbcYear));
@@ -1747,10 +1749,22 @@ function BookingFormDialog({
   const [membershipId, setMembershipId] = useState<number | null>(booking?.membershipId || null);
   const [mouId, setMouId] = useState<number | null>(booking?.mouId || null);
   const [agreementAutoPopulated, setAgreementAutoPopulated] = useState(false);
+  const [agreementExpanded, setAgreementExpanded] = useState(false);
   const [conflictOverride, setConflictOverride] = useState(false);
   const [locationAccessOverride, setLocationAccessOverride] = useState<string[] | null>(
     (booking?.locationAccess as string[] | null) || null
   );
+  const [groupAutoMatchOptions, setGroupAutoMatchOptions] = useState<any[]>([]);
+  const [showGroupPicker, setShowGroupPicker] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    if (startDate) {
+      const d = new Date(startDate);
+      return new Date(d.getFullYear(), d.getMonth(), 1);
+    }
+    return new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  });
+  const [calendarDayView, setCalendarDayView] = useState<string | null>(null);
+  const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
 
   const conflictQueryEnabled = !isTBC && selectedVenueIds.length > 0 && !!startDate && !!startTime && !!endTime;
   const { data: conflictData, isLoading: conflictLoading } = useQuery<{
@@ -1782,11 +1796,11 @@ function BookingFormDialog({
   const { data: allMemberships } = useMemberships();
   const { data: allMous } = useMous();
   const { data: regularBookers } = useRegularBookers();
-  const { data: bookings } = useBookings();
+  const { data: allBookings } = useBookings();
   const activeMemberships = useMemo(() => (allMemberships || []).filter(m => m.status === "active"), [allMemberships]);
   const activeMous = useMemo(() => (allMous || []).filter(m => m.status === "active"), [allMous]);
 
-  const handleBookerSelected = useCallback((contactId: number) => {
+  const handleBookerSelected = useCallback(async (contactId: number) => {
     setBookerId(contactId);
     setBookerSearch("");
     setAgreementAutoPopulated(false);
@@ -1804,6 +1818,34 @@ function BookingFormDialog({
         setMembershipId(null);
         setMouId(null);
       }
+    }
+
+    try {
+      const res = await fetch(`/api/contacts/${contactId}/groups`, { credentials: 'include' });
+      if (res.ok) {
+        const memberships = await res.json();
+        if (memberships.length === 1) {
+          setGroupId(memberships[0].groupId);
+          setGroupAutoMatchOptions([]);
+          setShowGroupPicker(false);
+        } else if (memberships.length > 1) {
+          setGroupAutoMatchOptions(memberships);
+          setShowGroupPicker(true);
+          setGroupId(null);
+        } else {
+          setGroupId(null);
+          setGroupAutoMatchOptions([]);
+          setShowGroupPicker(false);
+        }
+      } else {
+        setGroupId(null);
+        setGroupAutoMatchOptions([]);
+        setShowGroupPicker(false);
+      }
+    } catch (err) {
+      setGroupId(null);
+      setGroupAutoMatchOptions([]);
+      setShowGroupPicker(false);
     }
   }, [regularBookers]);
 
@@ -1859,7 +1901,59 @@ function BookingFormDialog({
     return [...new Set(venues.filter(v => v.active !== false).map(v => v.spaceName).filter(Boolean))] as string[];
   }, [venues]);
 
+  const venuesByLocation = useMemo(() => {
+    const activeVenues = venues.filter(v => v.active !== false);
+    const grouped: Record<string, typeof activeVenues> = {};
+    for (const v of activeVenues) {
+      const loc = v.spaceName || "Other";
+      if (!grouped[loc]) grouped[loc] = [];
+      grouped[loc].push(v);
+    }
+    return grouped;
+  }, [venues]);
+
   const effectiveLocationAccess = locationAccessOverride ?? selectedVenueSpaceNames;
+
+  const bookingsForCalendar = useMemo(() => {
+    if (!allBookings) return [];
+    return allBookings.filter(b => b.startDate && b.status !== "cancelled");
+  }, [allBookings]);
+
+  const getBookingsForDate = useCallback((dateStr: string) => {
+    return bookingsForCalendar.filter(b => {
+      if (!b.startDate) return false;
+      const sd = new Date(b.startDate);
+      const bDate = `${sd.getFullYear()}-${String(sd.getMonth() + 1).padStart(2, "0")}-${String(sd.getDate()).padStart(2, "0")}`;
+      let bEndDate = bDate;
+      if (b.endDate) {
+        const ed = new Date(b.endDate);
+        bEndDate = `${ed.getFullYear()}-${String(ed.getMonth() + 1).padStart(2, "0")}-${String(ed.getDate()).padStart(2, "0")}`;
+      }
+      return dateStr >= bDate && dateStr <= bEndDate;
+    });
+  }, [bookingsForCalendar]);
+
+  const calendarDays = useMemo(() => {
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const startDow = firstDay.getDay();
+    const days: { date: Date; inMonth: boolean }[] = [];
+    for (let i = startDow - 1; i >= 0; i--) {
+      days.push({ date: new Date(year, month, -i), inMonth: false });
+    }
+    for (let d = 1; d <= lastDay.getDate(); d++) {
+      days.push({ date: new Date(year, month, d), inMonth: true });
+    }
+    const remaining = 7 - (days.length % 7);
+    if (remaining < 7) {
+      for (let i = 1; i <= remaining; i++) {
+        days.push({ date: new Date(year, month + 1, i), inMonth: false });
+      }
+    }
+    return days;
+  }, [calendarMonth]);
 
   const handleSubmit = () => {
     if (!classification || selectedVenueIds.length === 0) return;
@@ -1876,8 +1970,8 @@ function BookingFormDialog({
       tbcMonth: isTBC ? tbcMonth : null,
       tbcYear: isTBC ? tbcYear : null,
       pricingTier,
-      durationType,
-      rateType,
+      durationType: pricingTier === "free_koha" ? "hourly" : durationType,
+      rateType: pricingTier === "free_koha" ? "standard" : rateType,
       amount: amount || "0",
       bookerId: bookerId || null,
       bookerGroupId: groupId || null,
@@ -1889,6 +1983,8 @@ function BookingFormDialog({
     };
     onSubmit(data);
   };
+
+  const isFreeKoha = pricingTier === "free_koha";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1903,6 +1999,7 @@ function BookingFormDialog({
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* STEP 1: Booker */}
           <div className="space-y-2">
             <Label className="text-sm font-semibold">Booker (Person)</Label>
             {bookerId && (
@@ -1910,7 +2007,7 @@ function BookingFormDialog({
                 <Badge variant="secondary" className="text-xs gap-1 pr-1" data-testid="badge-selected-booker">
                   {contacts?.find((c) => c.id === bookerId)?.name || `Contact #${bookerId}`}
                   <button
-                    onClick={() => setBookerId(null)}
+                    onClick={() => { setBookerId(null); setGroupAutoMatchOptions([]); setShowGroupPicker(false); }}
                     className="ml-0.5 transition-colors"
                     type="button"
                     data-testid="button-remove-booker"
@@ -1998,8 +2095,31 @@ function BookingFormDialog({
             )}
           </div>
 
+          {/* Group auto-match picker */}
+          {showGroupPicker && groupAutoMatchOptions.length > 1 && (
+            <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-md p-2.5 space-y-2">
+              <p className="text-xs font-medium text-blue-700 dark:text-blue-300">This booker belongs to multiple groups. Select one:</p>
+              <div className="space-y-1">
+                {groupAutoMatchOptions.map((m: any) => (
+                  <button
+                    key={m.groupId}
+                    type="button"
+                    className="w-full text-left px-2 py-1.5 text-xs rounded hover:bg-blue-100 dark:hover:bg-blue-900/30 flex items-center gap-2"
+                    data-testid={`button-auto-match-group-${m.groupId}`}
+                    onClick={() => { setGroupId(m.groupId); setShowGroupPicker(false); setGroupAutoMatchOptions([]); }}
+                  >
+                    <Network className="w-3 h-3 text-muted-foreground" />
+                    <span>{m.groupName || `Group #${m.groupId}`}</span>
+                    {m.groupType && <Badge variant="outline" className="text-[10px]">{m.groupType}</Badge>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* STEP 2: Organisation / Group */}
           <div className="space-y-2">
-            <Label className="text-sm font-semibold">Venue Hire Group / Organisation</Label>
+            <Label className="text-sm font-semibold">Organisation / Group</Label>
             {groupId && (
               <div className="flex items-center gap-2">
                 <Badge variant="secondary" className="text-xs gap-1 pr-1" data-testid="badge-selected-booking-group">
@@ -2097,25 +2217,79 @@ function BookingFormDialog({
             )}
           </div>
 
+          {/* STEP 3: Location-first venue selection */}
           <div>
             <Label>Venue(s) *</Label>
             <p className="text-xs text-muted-foreground mb-2">Select one or more spaces for this booking</p>
-            <div className="space-y-2">
-              {venues.filter((v) => v.active !== false).map((v) => (
-                <label key={v.id} className="flex items-center gap-2 cursor-pointer" data-testid={`checkbox-venue-${v.id}`}>
-                  <Checkbox
-                    checked={selectedVenueIds.includes(v.id)}
-                    onCheckedChange={(checked) => {
-                      setSelectedVenueIds(prev =>
-                        checked
-                          ? [...prev, v.id]
-                          : prev.filter(id => id !== v.id)
-                      );
-                    }}
-                  />
-                  <span className="text-sm">{v.name}</span>
-                </label>
-              ))}
+            <div className="space-y-1">
+              {Object.entries(venuesByLocation).map(([location, locationVenues]) => {
+                const isExpanded = expandedLocations.has(location);
+                const selectedCount = locationVenues.filter(v => selectedVenueIds.includes(v.id)).length;
+                const allSelected = selectedCount === locationVenues.length;
+                return (
+                  <div key={location} className="border border-border/50 rounded-md" data-testid={`venue-location-${location}`}>
+                    <button
+                      type="button"
+                      className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-muted/30 rounded-md"
+                      onClick={() => {
+                        setExpandedLocations(prev => {
+                          const next = new Set(prev);
+                          if (next.has(location)) next.delete(location);
+                          else next.add(location);
+                          return next;
+                        });
+                      }}
+                      data-testid={`button-toggle-location-${location}`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
+                        <span className="font-medium">{location}</span>
+                        {selectedCount > 0 && (
+                          <Badge variant="secondary" className="text-[10px]">{selectedCount} selected</Badge>
+                        )}
+                      </span>
+                      {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
+                    </button>
+                    {isExpanded && (
+                      <div className="px-3 pb-2 space-y-1.5">
+                        {locationVenues.length > 1 && (
+                          <label className="flex items-center gap-2 cursor-pointer text-xs text-muted-foreground pl-1">
+                            <Checkbox
+                              checked={allSelected}
+                              onCheckedChange={(checked) => {
+                                setSelectedVenueIds(prev => {
+                                  if (checked) {
+                                    const ids = new Set([...prev, ...locationVenues.map(v => v.id)]);
+                                    return [...ids];
+                                  } else {
+                                    return prev.filter(id => !locationVenues.some(v => v.id === id));
+                                  }
+                                });
+                              }}
+                            />
+                            <span className="italic">Select all in {location}</span>
+                          </label>
+                        )}
+                        {locationVenues.map(v => (
+                          <label key={v.id} className="flex items-center gap-2 cursor-pointer pl-1" data-testid={`checkbox-venue-${v.id}`}>
+                            <Checkbox
+                              checked={selectedVenueIds.includes(v.id)}
+                              onCheckedChange={(checked) => {
+                                setSelectedVenueIds(prev =>
+                                  checked
+                                    ? [...prev, v.id]
+                                    : prev.filter(id => id !== v.id)
+                                );
+                              }}
+                            />
+                            <span className="text-sm">{v.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -2144,6 +2318,7 @@ function BookingFormDialog({
             </div>
           )}
 
+          {/* STEP 4: Classification */}
           <div>
             <Label>Classification *</Label>
             <Select value={classification} onValueChange={setClassification}>
@@ -2158,6 +2333,7 @@ function BookingFormDialog({
             </Select>
           </div>
 
+          {/* STEP 5: Status (Confirmed, Completed, Cancelled only) */}
           <div>
             <Label>Status</Label>
             <Select value={status} onValueChange={setStatus}>
@@ -2165,13 +2341,14 @@ function BookingFormDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {BOOKING_STATUSES.map((s) => (
+                {VENUE_HIRE_STATUSES.map((s) => (
                   <SelectItem key={s} value={s}>{STATUS_LABELS[s]}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
+          {/* STEP 6: Date & Time with calendar view */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <Label className="text-sm font-semibold">Date & Time</Label>
@@ -2228,32 +2405,109 @@ function BookingFormDialog({
               </div>
             ) : (
               <div className="space-y-3">
-                <div className={`grid ${isMultiDay ? "grid-cols-2" : "grid-cols-1"} gap-3`}>
+                {/* Mini monthly calendar */}
+                <div className="border border-border rounded-md p-2" data-testid="booking-calendar">
+                  <div className="flex items-center justify-between mb-2">
+                    <button
+                      type="button"
+                      className="text-xs text-muted-foreground hover:text-foreground p-1"
+                      onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}
+                      data-testid="button-calendar-prev-month"
+                    >
+                      <ChevronDown className="w-3.5 h-3.5 rotate-90" />
+                    </button>
+                    <span className="text-xs font-medium">
+                      {calendarMonth.toLocaleDateString("en-NZ", { month: "long", year: "numeric" })}
+                    </span>
+                    <button
+                      type="button"
+                      className="text-xs text-muted-foreground hover:text-foreground p-1"
+                      onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}
+                      data-testid="button-calendar-next-month"
+                    >
+                      <ChevronDown className="w-3.5 h-3.5 -rotate-90" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-7 gap-0">
+                    {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map(d => (
+                      <div key={d} className="text-[10px] text-center text-muted-foreground font-medium py-0.5">{d}</div>
+                    ))}
+                    {calendarDays.map(({ date, inMonth }, i) => {
+                      const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+                      const dayBookings = getBookingsForDate(dateStr);
+                      const isSelected = dateStr === startDate;
+                      const isToday = dateStr === format(new Date(), "yyyy-MM-dd");
+                      return (
+                        <button
+                          key={i}
+                          type="button"
+                          className={`text-[11px] py-1 rounded relative text-center ${
+                            !inMonth ? "text-muted-foreground/30" : ""
+                          } ${isSelected ? "bg-primary text-primary-foreground font-bold" : ""} ${
+                            isToday && !isSelected ? "ring-1 ring-primary/50" : ""
+                          } hover:bg-muted/50`}
+                          onClick={() => {
+                            setStartDate(dateStr);
+                            if (!isMultiDay) setEndDate(dateStr);
+                            setCalendarDayView(dateStr);
+                          }}
+                          data-testid={`calendar-day-${dateStr}`}
+                        >
+                          {date.getDate()}
+                          {dayBookings.length > 0 && (
+                            <span className={`absolute bottom-0 left-1/2 -translate-x-1/2 flex gap-0.5`}>
+                              {dayBookings.length <= 3 ? dayBookings.map((_, idx) => (
+                                <span key={idx} className={`w-1 h-1 rounded-full ${isSelected ? "bg-primary-foreground" : "bg-primary"}`} />
+                              )) : (
+                                <span className={`w-1.5 h-1 rounded-full ${isSelected ? "bg-primary-foreground" : "bg-primary"}`} />
+                              )}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Day view showing existing bookings */}
+                {calendarDayView && (() => {
+                  const dayBookingsList = getBookingsForDate(calendarDayView);
+                  return dayBookingsList.length > 0 ? (
+                    <div className="bg-muted/20 border border-border/50 rounded-md p-2 space-y-1" data-testid="calendar-day-view">
+                      <p className="text-[10px] font-medium text-muted-foreground">
+                        Existing bookings on {new Date(calendarDayView + "T00:00:00").toLocaleDateString("en-NZ", { weekday: "short", day: "numeric", month: "short" })}:
+                      </p>
+                      {dayBookingsList.map(b => (
+                        <div key={b.id} className="flex items-center gap-2 text-[10px] text-muted-foreground" data-testid={`day-view-booking-${b.id}`}>
+                          <Clock className="w-2.5 h-2.5 shrink-0" />
+                          <span>{b.startTime ? formatTimeSlot(b.startTime) : "?"} – {b.endTime ? formatTimeSlot(b.endTime) : "?"}</span>
+                          <span className="truncate">{b.title || b.classification}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null;
+                })()}
+
+                {isMultiDay && (
                   <div>
-                    <Label className="text-xs text-muted-foreground">{isMultiDay ? "Start Date" : "Date"}</Label>
+                    <Label className="text-xs text-muted-foreground">End Date</Label>
                     <Input
                       type="date"
-                      value={startDate}
-                      onChange={(e) => {
-                        setStartDate(e.target.value);
-                        if (!isMultiDay) setEndDate(e.target.value);
-                      }}
-                      data-testid="input-booking-start-date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      min={startDate}
+                      data-testid="input-booking-end-date"
                     />
                   </div>
-                  {isMultiDay && (
-                    <div>
-                      <Label className="text-xs text-muted-foreground">End Date</Label>
-                      <Input
-                        type="date"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        min={startDate}
-                        data-testid="input-booking-end-date"
-                      />
-                    </div>
-                  )}
-                </div>
+                )}
+
+                {startDate && (
+                  <p className="text-xs text-muted-foreground">
+                    Selected: {new Date(startDate + "T00:00:00").toLocaleDateString("en-NZ", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+                    {isMultiDay && endDate && ` – ${new Date(endDate + "T00:00:00").toLocaleDateString("en-NZ", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}`}
+                  </p>
+                )}
+
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label className="text-xs text-muted-foreground">Start Time</Label>
@@ -2354,51 +2608,56 @@ function BookingFormDialog({
             </div>
           )}
 
+          {/* STEP 7: Pricing (conditional fields for Free / Koha) */}
           <div className="space-y-3">
             <Label className="text-sm font-semibold">Pricing (GST Exclusive)</Label>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <Label className="text-xs text-muted-foreground">Duration</Label>
-                <Select value={durationType} onValueChange={(v) => { setDurationType(v); applyDefaultRate(v, rateType); }}>
-                  <SelectTrigger data-testid="select-booking-duration-type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {DURATION_TYPES.map((t) => (
-                      <SelectItem key={t} value={t}>{DURATION_LABELS[t]}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">Rate</Label>
-                <Select value={rateType} onValueChange={(v) => { setRateType(v); applyDefaultRate(durationType, v); }}>
-                  <SelectTrigger data-testid="select-booking-rate-type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {RATE_TYPES.map((t) => (
-                      <SelectItem key={t} value={t}>{RATE_LABELS[t]}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">Pricing Tier</Label>
-                <Select value={pricingTier} onValueChange={setPricingTier}>
-                  <SelectTrigger data-testid="select-booking-pricing-tier">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PRICING_TIERS.map((t) => (
-                      <SelectItem key={t} value={t}>{PRICING_LABELS[t]}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
             <div>
-              <Label className="text-xs text-muted-foreground">Amount (excl. GST)</Label>
+              <Label className="text-xs text-muted-foreground">Pricing Tier</Label>
+              <Select value={pricingTier} onValueChange={setPricingTier}>
+                <SelectTrigger data-testid="select-booking-pricing-tier">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PRICING_TIERS.map((t) => (
+                    <SelectItem key={t} value={t}>{PRICING_LABELS[t]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {!isFreeKoha && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Duration</Label>
+                  <Select value={durationType} onValueChange={(v) => { setDurationType(v); applyDefaultRate(v, rateType); }}>
+                    <SelectTrigger data-testid="select-booking-duration-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DURATION_TYPES.map((t) => (
+                        <SelectItem key={t} value={t}>{DURATION_LABELS[t]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Rate</Label>
+                  <Select value={rateType} onValueChange={(v) => { setRateType(v); applyDefaultRate(durationType, v); }}>
+                    <SelectTrigger data-testid="select-booking-rate-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {RATE_TYPES.map((t) => (
+                        <SelectItem key={t} value={t}>{RATE_LABELS[t]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+            <div>
+              <Label className="text-xs text-muted-foreground">
+                {isFreeKoha ? "Koha Amount (optional)" : "Amount (excl. GST)"}
+              </Label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
                 <Input
@@ -2411,7 +2670,7 @@ function BookingFormDialog({
                   data-testid="input-booking-amount"
                 />
               </div>
-              {rateType === "community" && parseFloat(amount || "0") > 0 && (
+              {!isFreeKoha && rateType === "community" && parseFloat(amount || "0") > 0 && (
                 <p className="text-[10px] text-muted-foreground mt-1" data-testid="text-community-rate-info">
                   Standard rate: ${(parseFloat(amount || "0") / (1 - COMMUNITY_DISCOUNT)).toFixed(2)} → Community rate (20% off): ${parseFloat(amount || "0").toFixed(2)}
                 </p>
@@ -2419,66 +2678,92 @@ function BookingFormDialog({
             </div>
           </div>
 
+          {/* STEP 8: Agreement (de-emphasised, collapsible) */}
           {(activeMemberships.length > 0 || activeMous.length > 0) && (
-            <div className="space-y-3">
-              <Label className="text-sm font-semibold">Agreement</Label>
-              <div className="grid grid-cols-2 gap-3">
-                {activeMemberships.length > 0 && (
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Membership</Label>
-                    <Select
-                      value={membershipId?.toString() || "none"}
-                      onValueChange={(v) => {
-                        setMembershipId(v === "none" ? null : parseInt(v));
-                        if (v !== "none") setMouId(null);
-                        setAgreementAutoPopulated(false);
-                      }}
-                    >
-                      <SelectTrigger data-testid="select-booking-membership">
-                        <SelectValue placeholder="None" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">None</SelectItem>
-                        {activeMemberships.map((m) => (
-                          <SelectItem key={m.id} value={m.id.toString()}>{m.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+            <div>
+              {(membershipId || mouId) ? (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground" data-testid="text-agreement-auto-populated">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                  <span>
+                    {agreementAutoPopulated ? "Auto-linked:" : "Linked:"}{" "}
+                    {(() => {
+                      const m = membershipId ? activeMemberships.find(ms => ms.id === membershipId) : null;
+                      const mou = mouId ? activeMous.find(ms => ms.id === mouId) : null;
+                      return m ? m.name : (mou as any)?.title || "Agreement";
+                    })()}
+                  </span>
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-foreground"
+                    onClick={() => setAgreementExpanded(!agreementExpanded)}
+                    data-testid="button-toggle-agreement"
+                  >
+                    {agreementExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setAgreementExpanded(!agreementExpanded)}
+                  data-testid="button-toggle-agreement"
+                >
+                  <Link2 className="w-3.5 h-3.5" />
+                  <span>Link agreement</span>
+                  {agreementExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                </button>
+              )}
+              {agreementExpanded && (
+                <div className="mt-2 space-y-2 pl-5 border-l-2 border-border/50">
+                  <div className="grid grid-cols-2 gap-3">
+                    {activeMemberships.length > 0 && (
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Membership</Label>
+                        <Select
+                          value={membershipId?.toString() || "none"}
+                          onValueChange={(v) => {
+                            setMembershipId(v === "none" ? null : parseInt(v));
+                            if (v !== "none") setMouId(null);
+                            setAgreementAutoPopulated(false);
+                          }}
+                        >
+                          <SelectTrigger data-testid="select-booking-membership">
+                            <SelectValue placeholder="None" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            {activeMemberships.map((m) => (
+                              <SelectItem key={m.id} value={m.id.toString()}>{m.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    {activeMous.length > 0 && (
+                      <div>
+                        <Label className="text-xs text-muted-foreground">MOU</Label>
+                        <Select
+                          value={mouId?.toString() || "none"}
+                          onValueChange={(v) => {
+                            setMouId(v === "none" ? null : parseInt(v));
+                            if (v !== "none") setMembershipId(null);
+                            setAgreementAutoPopulated(false);
+                          }}
+                        >
+                          <SelectTrigger data-testid="select-booking-mou">
+                            <SelectValue placeholder="None" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            {activeMous.map((m) => (
+                              <SelectItem key={m.id} value={m.id.toString()}>{m.title}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </div>
-                )}
-                {activeMous.length > 0 && (
-                  <div>
-                    <Label className="text-xs text-muted-foreground">MOU</Label>
-                    <Select
-                      value={mouId?.toString() || "none"}
-                      onValueChange={(v) => {
-                        setMouId(v === "none" ? null : parseInt(v));
-                        if (v !== "none") setMembershipId(null);
-                        setAgreementAutoPopulated(false);
-                      }}
-                    >
-                      <SelectTrigger data-testid="select-booking-mou">
-                        <SelectValue placeholder="None" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">None</SelectItem>
-                        {activeMous.map((m) => (
-                          <SelectItem key={m.id} value={m.id.toString()}>{m.title}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-              </div>
-              {(membershipId || mouId) && (
-                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-2.5 text-xs space-y-1.5 mt-2" data-testid="text-agreement-auto-populated">
-                  <div className="flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                    <span className="font-medium text-blue-700 dark:text-blue-300">
-                      {agreementAutoPopulated ? "Auto-linked from regular booker agreement" : "Agreement linked"}
-                    </span>
-                  </div>
-                  {(() => {
+                  {(membershipId || mouId) && (() => {
                     const m = membershipId ? activeMemberships.find(ms => ms.id === membershipId) : null;
                     const mou = mouId ? activeMous.find(ms => ms.id === mouId) : null;
                     const agreement = m || mou;
@@ -2488,46 +2773,34 @@ function BookingFormDialog({
                     const periodLabel = getPeriodLabel(period);
                     const type = membershipId ? "membership" as const : "mou" as const;
                     const id = (membershipId || mouId)!;
-                    const used = getAgreementAllowanceUsage(bookings, type, id, period);
+                    const used = getAgreementAllowanceUsage(allBookings, type, id, period);
                     const remaining = allowance ? Math.max(0, allowance - used) : null;
-                    return (
-                      <div className="pl-5 space-y-1">
-                        <p className="text-muted-foreground font-medium">{m ? m.name : (mou as any)?.title}</p>
-                        {m && (
-                          <p className="text-muted-foreground">
-                            Pricing: {m.annualFee && parseFloat(m.annualFee) > 0 ? "Per Membership" : "Free / Koha"}
-                          </p>
-                        )}
-                        {mou && (
-                          <p className="text-muted-foreground">Pricing: Free / Koha (from MOU)</p>
-                        )}
-                        {allowance && (
-                          <div className="flex items-center gap-2 pt-0.5">
-                            <Calendar className="w-3 h-3 text-blue-500" />
-                            <span className="text-muted-foreground">
-                              {used}/{allowance} used this {periodLabel}
-                            </span>
-                            {remaining !== null && (
-                              <Badge variant="secondary" className={`text-[10px] ${remaining === 0 ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300" : ""}`}>
-                                {remaining} remaining
-                              </Badge>
-                            )}
-                          </div>
+                    return allowance ? (
+                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                        <Calendar className="w-3 h-3 text-blue-500" />
+                        <span>{used}/{allowance} used this {periodLabel}</span>
+                        {remaining !== null && (
+                          <Badge variant="secondary" className={`text-[10px] ${remaining === 0 ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300" : ""}`}>
+                            {remaining} remaining
+                          </Badge>
                         )}
                       </div>
-                    );
+                    ) : null;
                   })()}
                 </div>
               )}
             </div>
           )}
 
+          {/* STEP 9: Notes (prominent with clear kaupapa labelling) */}
           <div>
-            <Label>Notes</Label>
+            <Label className="text-sm font-semibold">Booking Notes / Kaupapa</Label>
+            <p className="text-xs text-muted-foreground mb-1">Capture the purpose of this booking for reporting</p>
             <Textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Any additional notes..."
+              placeholder="What is the kaupapa (purpose) for this booking? E.g., rehearsal for upcoming show, community workshop on..."
+              rows={3}
               data-testid="input-booking-notes"
             />
           </div>
