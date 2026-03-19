@@ -5647,6 +5647,232 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     }
   });
 
+  // === Public Casual Hire Routes (no auth) ===
+  app.get("/api/public/casual-hire/venues", async (_req, res) => {
+    try {
+      const result = await db.execute(sql`SELECT id, name, space_name as "spaceName", capacity, description FROM venues WHERE active = true ORDER BY name`);
+      const rows = (result as any).rows || result;
+      res.json(rows);
+    } catch (err: any) {
+      console.error("Casual hire venues error:", err);
+      res.status(500).json({ message: "Failed to fetch venues" });
+    }
+  });
+
+  app.get("/api/public/casual-hire/org-info", async (_req, res) => {
+    try {
+      const result = await db.execute(sql`SELECT name, location FROM organisation_profile LIMIT 1`);
+      const profile = (result as any).rows?.[0] || (result as any)[0];
+      res.json({
+        name: profile?.name || "ReserveTMK Digital",
+        location: profile?.location || null,
+      });
+    } catch (err: any) {
+      res.json({ name: "ReserveTMK Digital", location: null });
+    }
+  });
+
+  app.get("/api/public/casual-hire/availability", async (req, res) => {
+    try {
+      const venueId = parseId(req.query.venueId);
+      const month = parseStr(req.query.month);
+      if (!venueId || !month) {
+        return res.status(400).json({ message: "venueId and month required" });
+      }
+
+      const [yearStr, monthStr] = month.split("-");
+      const year = parseInt(yearStr);
+      const mon = parseInt(monthStr) - 1;
+      const monthStart = new Date(year, mon, 1);
+      const monthEnd = new Date(year, mon + 1, 0, 23, 59, 59);
+
+      const allBookingsRows = await db.select().from(bookings);
+      const venueBookings = allBookingsRows.filter(b => {
+        const bIds = b.venueIds || (b.venueId ? [b.venueId] : []);
+        if (!bIds.includes(venueId)) return false;
+        if (b.status === "cancelled") return false;
+        if (!b.startDate) return false;
+        const sd = new Date(b.startDate);
+        return sd >= monthStart && sd <= monthEnd;
+      });
+
+      const dates: Record<string, { status: string; bookings: { startTime: string | null; endTime: string | null; title: string | null; isYours: boolean }[] }> = {};
+      const daysInMonth = new Date(year, mon + 1, 0).getDate();
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${year}-${String(mon + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+        dates[dateStr] = { status: "available", bookings: [] };
+      }
+
+      for (const booking of venueBookings) {
+        const sd = new Date(booking.startDate!);
+        const dateStr = `${sd.getFullYear()}-${String(sd.getMonth() + 1).padStart(2, "0")}-${String(sd.getDate()).padStart(2, "0")}`;
+        if (!dates[dateStr]) continue;
+        dates[dateStr].bookings.push({
+          startTime: booking.startTime,
+          endTime: booking.endTime,
+          title: "Booked",
+          isYours: false,
+        });
+      }
+
+      for (const [dateStr, info] of Object.entries(dates)) {
+        if (info.bookings.length === 0) {
+          info.status = "available";
+        } else {
+          const totalMinutesCovered = info.bookings.reduce((acc, b) => {
+            const start = b.startTime ? parseTimeToMinutes(b.startTime) : 480;
+            const end = b.endTime ? parseTimeToMinutes(b.endTime) : 1020;
+            return acc + (end - start);
+          }, 0);
+          const businessDayMinutes = 540;
+          if (totalMinutesCovered >= businessDayMinutes) {
+            info.status = "booked";
+          } else {
+            info.status = "partial";
+          }
+        }
+      }
+
+      res.json({ dates });
+    } catch (err: any) {
+      console.error("Casual hire availability error:", err);
+      res.status(500).json({ message: "Failed to fetch availability" });
+    }
+  });
+
+  app.post("/api/public/casual-hire/book", async (req, res) => {
+    try {
+      const { name, email, phone, organisation, venueId, venueIds: rawVenueIds, startDate, startTime, endTime, classification, bookingSummary, attendeeCount } = req.body;
+      if (!name || !email || !phone || !venueId || !startDate || !startTime || !endTime || !classification) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+      if (!bookingSummary || !String(bookingSummary).trim()) {
+        return res.status(400).json({ message: "Booking summary is required" });
+      }
+
+      const startMin = parseTimeToMinutes(startTime);
+      const endMin = parseTimeToMinutes(endTime);
+      if (endMin <= startMin) {
+        return res.status(400).json({ message: "End time must be after start time" });
+      }
+
+      const resolvedVenueIds: number[] = Array.isArray(rawVenueIds) && rawVenueIds.length > 0
+        ? rawVenueIds.map((id: any) => parseInt(id)).filter((id: number) => !isNaN(id))
+        : [venueId];
+
+      const venue = await storage.getVenue(venueId);
+      if (!venue) {
+        return res.status(400).json({ message: "Invalid venue" });
+      }
+      if (venue.capacity && attendeeCount && attendeeCount > venue.capacity) {
+        return res.status(400).json({
+          message: `Attendee count (${attendeeCount}) exceeds venue capacity (${venue.capacity})`,
+        });
+      }
+
+      const ownerUserId = venue.userId;
+
+      for (const vid of resolvedVenueIds) {
+        const v = await storage.getVenue(vid);
+        if (!v || v.userId !== ownerUserId) {
+          return res.status(400).json({ message: "Invalid venue selection" });
+        }
+      }
+
+      const allBookingsRows = await storage.getBookings(ownerUserId);
+      const conflicting = allBookingsRows.filter(b => {
+        const bIds = b.venueIds || (b.venueId ? [b.venueId] : []);
+        const hasOverlappingVenue = resolvedVenueIds.some(vid => bIds.includes(vid));
+        if (!hasOverlappingVenue || b.status === "cancelled") return false;
+        if (!b.startDate) return false;
+        const bDate = new Date(b.startDate).toISOString().split("T")[0];
+        const reqDate = new Date(startDate).toISOString().split("T")[0];
+        if (bDate !== reqDate) return false;
+        const bStart = parseTimeToMinutes(b.startTime || "08:00");
+        const bEnd = parseTimeToMinutes(b.endTime || "17:00");
+        const rStart = parseTimeToMinutes(startTime);
+        const rEnd = parseTimeToMinutes(endTime);
+        return bStart < rEnd && rStart < bEnd;
+      });
+      if (conflicting.length > 0) {
+        return res.status(409).json({
+          message: "That time slot is already booked. Please choose a different time.",
+          conflicts: conflicting.map(c => ({
+            startTime: c.startTime,
+            endTime: c.endTime,
+          })),
+        });
+      }
+
+      const allContacts = await storage.getContacts(ownerUserId);
+      let contactId: number | null = null;
+      let bookerGroupId: number | null = null;
+      const normalizedEmail = email.trim().toLowerCase();
+      const existingContact = allContacts.find((c: any) => {
+        if (!c.email) return false;
+        const emails = c.email.split(/[,;]\s*/).map((e: string) => e.trim().toLowerCase());
+        return emails.includes(normalizedEmail);
+      });
+
+      if (existingContact) {
+        contactId = existingContact.id;
+        if (phone && !existingContact.phone) {
+          await storage.updateContact(existingContact.id, { phone: phone.trim() } as any);
+        }
+        const contactGroups = await storage.getContactGroups(existingContact.id);
+        if (contactGroups.length > 0) {
+          bookerGroupId = contactGroups[0].groupId;
+        }
+      } else {
+        const newContact = await storage.createContact({
+          userId: ownerUserId,
+          name: name.trim(),
+          email: email.trim(),
+          phone: phone.trim(),
+          organization: organisation?.trim() || null,
+          role: "Booker",
+          isCommunityMember: false,
+          isInnovator: false,
+          communityTier: "all_contacts",
+        } as any);
+        contactId = newContact.id;
+      }
+
+      const startMinutes = parseTimeToMinutes(startTime);
+      const endMinutes = parseTimeToMinutes(endTime);
+      const durationHours = (endMinutes - startMinutes) / 60;
+      let durationType = "hourly";
+      if (durationHours >= 8) durationType = "full_day";
+      else if (durationHours >= 4) durationType = "half_day";
+
+      const booking = await storage.createBooking({
+        userId: ownerUserId,
+        venueId: resolvedVenueIds[0],
+        venueIds: resolvedVenueIds,
+        title: `${classification} - Casual Enquiry`,
+        classification,
+        status: "enquiry",
+        startDate: new Date(startDate),
+        startTime,
+        endTime,
+        durationType,
+        pricingTier: "full_price",
+        amount: "0",
+        bookerId: contactId,
+        bookerGroupId,
+        bookingSummary: String(bookingSummary).trim(),
+        bookerName: name.trim(),
+        bookingSource: "casual",
+        attendeeCount: attendeeCount || null,
+      } as any);
+
+      res.json({ success: true, bookingId: booking.id });
+    } catch (err: any) {
+      console.error("Casual hire booking error:", err);
+      res.status(500).json({ message: err.message || "Failed to submit enquiry" });
+    }
+  });
+
   // === Groups API ===
   app.get(api.groups.list.path, isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;

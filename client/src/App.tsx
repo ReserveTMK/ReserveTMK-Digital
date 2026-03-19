@@ -45,6 +45,7 @@ import SpacesPage from "@/pages/spaces";
 import GearPage from "@/pages/gear";
 import AboutUsPage from "@/pages/about-us";
 import TeamSettingsPage from "@/pages/team-settings";
+import CasualHirePage from "@/pages/casual-hire";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -70,7 +71,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   return <Component />;
 }
 
-const PUBLIC_ROUTE_PREFIXES = ['/book/', '/register/', '/survey/', '/booker/'];
+const PUBLIC_ROUTE_PREFIXES = ['/book/', '/register/', '/survey/', '/booker/', '/casual-hire'];
 
 function AppLayout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -270,6 +271,10 @@ function Router() {
 
         <Route path="/booker/portal/:token">
           <BookerPortalPage />
+        </Route>
+
+        <Route path="/casual-hire">
+          <CasualHirePage />
         </Route>
 
         <Route component={NotFound} />
