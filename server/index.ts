@@ -149,6 +149,25 @@ app.use((req, res, next) => {
   try {
     const { db } = await import("./db");
     const { sql } = await import("drizzle-orm");
+    const colCheck = await db.execute(
+      sql`SELECT column_name FROM information_schema.columns WHERE table_name = 'bookings' AND column_name IN ('special_requests', 'booking_summary')`
+    );
+    const colRows = Array.isArray(colCheck) ? colCheck : (colCheck as any).rows || [];
+    const hasOld = colRows.some((r: any) => r.column_name === 'special_requests');
+    const hasNew = colRows.some((r: any) => r.column_name === 'booking_summary');
+    if (hasOld && !hasNew) {
+      await db.execute(sql`ALTER TABLE bookings RENAME COLUMN special_requests TO booking_summary`);
+      console.log("[migration] Renamed special_requests to booking_summary on bookings table");
+    } else if (hasOld && hasNew) {
+      console.warn("[migration] Both special_requests and booking_summary exist on bookings table; skipping rename");
+    }
+  } catch (migrationErr: any) {
+    console.warn("[migration] booking_summary rename skipped:", migrationErr.message);
+  }
+
+  try {
+    const { db } = await import("./db");
+    const { sql } = await import("drizzle-orm");
 
     await db.execute(sql`ALTER TABLE venue_instructions ADD COLUMN IF NOT EXISTS space_name text`);
     await db.execute(sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS location_access text[]`);
