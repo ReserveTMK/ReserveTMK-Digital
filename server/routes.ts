@@ -8,7 +8,7 @@ import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON, isAnthropicKeyConfigured, AIKeyMissingError } from "./replit_integrations/anthropic/client";
 import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getReachMetrics, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, getStandoutMoments, getOperatorInsights, getParticipantTransformationStories, getPeopleTierBreakdown, getImpactTagHeatmap, getTheoryOfChangeAlignment, getGrowthStory, getOutcomeChain, getQuarterlyMilestones, type ReportFilters, type CohortDefinition, type OrgProfileContext, type FunderContext } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings, normalizeStage, DEFAULT_AVAILABILITY_SCHEDULE, DEFAULT_VENUE_AVAILABILITY_SCHEDULE, type AvailabilitySchedule, } from "@shared/schema";
+import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings, normalizeStage, DEFAULT_AVAILABILITY_SCHEDULE, DEFAULT_VENUE_AVAILABILITY_SCHEDULE, type AvailabilitySchedule, bookingChangeRequests, } from "@shared/schema";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { ObjectStorageService } from "./replit_integrations/object_storage";
 import crypto from "crypto";
@@ -12803,10 +12803,23 @@ Rules:
       const allResources = await storage.getBookableResources(booker.userId);
       const resourceMap = new Map(allResources.map(r => [r.id, r]));
 
+      const allChangeRequests = await Promise.all(
+        venueBookings.map(async (b) => {
+          const requests = await storage.getBookingChangeRequestsByBooking(b.id);
+          return { bookingId: b.id, requests };
+        })
+      );
+      const changeRequestMap = new Map(allChangeRequests.map(cr => [cr.bookingId, cr.requests]));
+
+      const allVenues = await storage.getVenues(booker.userId);
+      const venueMap = new Map(allVenues.map(v => [v.id, v]));
+
       res.json({
         venue: venueBookings.map(b => ({
           ...b,
           bookingType: "venue_hire",
+          changeRequests: changeRequestMap.get(b.id) || [],
+          venueNames: (b.venueIds || (b.venueId ? [b.venueId] : [])).map((id: number) => venueMap.get(id)?.name).filter(Boolean),
         })),
         desk: deskBookingsList.map(b => ({
           ...b,
@@ -12878,6 +12891,336 @@ Rules:
     } catch (err: any) {
       console.error("Booker gear cancel error:", err);
       res.status(500).json({ message: "Failed to cancel gear booking" });
+    }
+  });
+
+  app.delete("/api/booker/bookings/:token/:id", async (req, res) => {
+    try {
+      const { token, id } = req.params;
+      const linkResult = await storage.getBookerByLinkToken(token);
+      if (!linkResult || (linkResult.link.tokenExpiry && new Date(linkResult.link.tokenExpiry) < new Date()) || !linkResult.link.enabled) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+      }
+      const booker = linkResult.booker;
+      const isGroupLink = linkResult.link.isGroupLink === true;
+
+      const bookingId = parseInt(id);
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      const isOwner = isGroupLink
+        ? (booker.groupId ? booking.bookerGroupId === booker.groupId : booking.bookerId === booker.contactId)
+        : booking.bookerId === booker.contactId;
+      if (!isOwner) {
+        return res.status(403).json({ message: "You can only cancel your own bookings" });
+      }
+
+      if (booking.status === "cancelled" || booking.status === "completed") {
+        return res.status(400).json({ message: `Cannot cancel a ${booking.status} booking` });
+      }
+
+      const now = new Date();
+      if (booking.startDate && new Date(booking.startDate) < now) {
+        return res.status(400).json({ message: "Cannot cancel a past booking" });
+      }
+
+      await storage.updateBooking(bookingId, { status: "cancelled" });
+      res.json({ success: true, message: "Venue hire booking cancelled" });
+    } catch (err: any) {
+      console.error("Booker venue cancel error:", err);
+      res.status(500).json({ message: "Failed to cancel booking" });
+    }
+  });
+
+  app.get("/api/booker/check-change-availability/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const linkResult = await storage.getBookerByLinkToken(token);
+      if (!linkResult || (linkResult.link.tokenExpiry && new Date(linkResult.link.tokenExpiry) < new Date()) || !linkResult.link.enabled) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+      }
+      const booker = linkResult.booker;
+      const { date, startTime, endTime, venueIds: venueIdsStr, excludeBookingId } = req.query;
+
+      if (!date || !startTime || !endTime || !venueIdsStr) {
+        return res.json({ available: true, conflicts: [] });
+      }
+
+      const venueIds = String(venueIdsStr).split(",").map(Number).filter(n => !isNaN(n));
+
+      for (const vid of venueIds) {
+        const v = await storage.getVenue(vid);
+        if (!v || v.userId !== booker.userId) {
+          return res.status(400).json({ message: "Invalid venue selection" });
+        }
+      }
+
+      const excludeId = excludeBookingId ? parseInt(String(excludeBookingId)) : 0;
+      const reqDate = new Date(String(date)).toISOString().split("T")[0];
+      const conflicts: string[] = [];
+
+      const allBookings = await storage.getBookings(booker.userId);
+      for (const b of allBookings) {
+        if (b.id === excludeId || b.status === "cancelled") continue;
+        if (!b.startDate) continue;
+        const bIds = b.venueIds || (b.venueId ? [b.venueId] : []);
+        if (!venueIds.some(vid => bIds.includes(vid))) continue;
+        const bDate = new Date(b.startDate).toISOString().split("T")[0];
+        if (bDate !== reqDate) continue;
+        if (timesOverlap(String(startTime), String(endTime), b.startTime, b.endTime)) {
+          conflicts.push(`Existing booking (${b.startTime} - ${b.endTime})`);
+        }
+      }
+
+      const allMeetings = await storage.getMeetings(booker.userId);
+      for (const m of allMeetings) {
+        if (m.status === "cancelled") continue;
+        if (!m.venueId || !venueIds.includes(m.venueId)) continue;
+        const mStartDate = m.startTime ? new Date(m.startTime).toISOString().slice(0, 10) : null;
+        const mStartTimeStr = m.startTime ? new Date(m.startTime).toTimeString().slice(0, 5) : null;
+        const mEndTimeStr = m.endTime ? new Date(m.endTime).toTimeString().slice(0, 5) : null;
+        if (!mStartDate || mStartDate !== reqDate) continue;
+        if (timesOverlap(String(startTime), String(endTime), mStartTimeStr, mEndTimeStr)) {
+          conflicts.push(`Existing event (${mStartTimeStr} - ${mEndTimeStr})`);
+        }
+      }
+
+      res.json({ available: conflicts.length === 0, conflicts });
+    } catch (err: any) {
+      console.error("Check change availability error:", err);
+      res.status(500).json({ message: "Failed to check availability" });
+    }
+  });
+
+  app.post("/api/booker/bookings/:token/:id/change-request", async (req, res) => {
+    try {
+      const { token, id } = req.params;
+      const linkResult = await storage.getBookerByLinkToken(token);
+      if (!linkResult || (linkResult.link.tokenExpiry && new Date(linkResult.link.tokenExpiry) < new Date()) || !linkResult.link.enabled) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+      }
+      const booker = linkResult.booker;
+      const isGroupLink = linkResult.link.isGroupLink === true;
+
+      const bookingId = parseInt(id);
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      const isOwner = isGroupLink
+        ? (booker.groupId ? booking.bookerGroupId === booker.groupId : booking.bookerId === booker.contactId)
+        : booking.bookerId === booker.contactId;
+      if (!isOwner) {
+        return res.status(403).json({ message: "You can only request changes for your own bookings" });
+      }
+
+      if (booking.status === "cancelled" || booking.status === "completed") {
+        return res.status(400).json({ message: `Cannot request changes for a ${booking.status} booking` });
+      }
+
+      const now = new Date();
+      if (booking.startDate && new Date(booking.startDate) < now) {
+        return res.status(400).json({ message: "Cannot request changes for a past booking" });
+      }
+
+      const existingPending = await storage.getBookingChangeRequestsByBooking(bookingId);
+      if (existingPending.some(r => r.status === "pending")) {
+        return res.status(400).json({ message: "There is already a pending change request for this booking" });
+      }
+
+      const { requestedDate, requestedStartTime, requestedEndTime, requestedVenueIds, reason } = req.body;
+
+      if (!requestedDate && !requestedStartTime && !requestedEndTime && (!requestedVenueIds || requestedVenueIds.length === 0)) {
+        return res.status(400).json({ message: "Please specify at least a new date, time, or venue" });
+      }
+
+      const effectiveDate = requestedDate || (booking.startDate ? new Date(booking.startDate).toISOString().split("T")[0] : null);
+      const effectiveStartTime = requestedStartTime || booking.startTime;
+      const effectiveEndTime = requestedEndTime || booking.endTime;
+      const effectiveVenueIds = (requestedVenueIds && requestedVenueIds.length > 0)
+        ? requestedVenueIds
+        : (booking.venueIds || (booking.venueId ? [booking.venueId] : []));
+
+      if (effectiveVenueIds.length > 0) {
+        for (const vid of effectiveVenueIds) {
+          const v = await storage.getVenue(vid);
+          if (!v || v.userId !== booker.userId) {
+            return res.status(400).json({ message: "Invalid venue selection" });
+          }
+        }
+
+        let portalAllowedLocations: string[] | null = null;
+        if (booker.membershipId) {
+          const membership = await storage.getMembership(booker.membershipId);
+          if (membership && membership.allowedLocations && membership.allowedLocations.length > 0) {
+            portalAllowedLocations = membership.allowedLocations;
+          }
+        } else if (booker.mouId) {
+          const mouRecord = await storage.getMou(booker.mouId);
+          if (mouRecord && mouRecord.allowedLocations && mouRecord.allowedLocations.length > 0) {
+            portalAllowedLocations = mouRecord.allowedLocations;
+          }
+        }
+        if (portalAllowedLocations) {
+          for (const vid of effectiveVenueIds) {
+            const v = await storage.getVenue(vid);
+            if (v) {
+              const vLoc = v.spaceName || "Other";
+              if (!portalAllowedLocations.includes(vLoc)) {
+                return res.status(400).json({
+                  message: `Venue "${v.name}" is not in an allowed location for your agreement`,
+                });
+              }
+            }
+          }
+        }
+      }
+
+      if (effectiveDate && effectiveStartTime && effectiveEndTime && effectiveVenueIds.length > 0) {
+        const allBookings = await storage.getBookings(booker.userId);
+        const reqDate = new Date(effectiveDate).toISOString().split("T")[0];
+        const conflicting = allBookings.filter(b => {
+          if (b.id === bookingId) return false;
+          const bIds = b.venueIds || (b.venueId ? [b.venueId] : []);
+          const hasOverlappingVenue = effectiveVenueIds.some((vid: number) => bIds.includes(vid));
+          if (!hasOverlappingVenue || b.status === "cancelled") return false;
+          if (!b.startDate) return false;
+          const bDate = new Date(b.startDate).toISOString().split("T")[0];
+          if (bDate !== reqDate) return false;
+          return timesOverlap(effectiveStartTime, effectiveEndTime, b.startTime, b.endTime);
+        });
+        if (conflicting.length > 0) {
+          return res.status(409).json({
+            message: "Requested time slot conflicts with an existing booking",
+          });
+        }
+
+        const allMeetings = await storage.getMeetings(booker.userId);
+        for (const m of allMeetings) {
+          if (m.status === "cancelled") continue;
+          if (!m.venueId || !effectiveVenueIds.includes(m.venueId)) continue;
+          const mStartDate = m.startTime ? new Date(m.startTime).toISOString().slice(0, 10) : null;
+          const mStartTimeStr = m.startTime ? new Date(m.startTime).toTimeString().slice(0, 5) : null;
+          const mEndTimeStr = m.endTime ? new Date(m.endTime).toTimeString().slice(0, 5) : null;
+          if (!mStartDate || mStartDate !== reqDate) continue;
+          if (timesOverlap(effectiveStartTime, effectiveEndTime, mStartTimeStr, mEndTimeStr)) {
+            return res.status(409).json({
+              message: `Requested time slot conflicts with meeting "${m.title}"`,
+            });
+          }
+        }
+      }
+
+      const changeRequest = await storage.createBookingChangeRequest({
+        bookingId,
+        requestedBy: booker.id,
+        requestedDate: requestedDate ? new Date(requestedDate) : undefined,
+        requestedStartTime: requestedStartTime || undefined,
+        requestedEndTime: requestedEndTime || undefined,
+        requestedVenueIds: requestedVenueIds || undefined,
+        reason: reason || undefined,
+        status: "pending",
+      });
+
+      res.json({ success: true, changeRequest });
+    } catch (err: any) {
+      console.error("Booker change request error:", err);
+      res.status(500).json({ message: "Failed to submit change request" });
+    }
+  });
+
+  app.get("/api/booking-change-requests", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const requests = await storage.getBookingChangeRequests(userId);
+      res.json(requests);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch change requests" });
+    }
+  });
+
+  app.get("/api/bookings/:id/change-requests", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const bookingId = parseId(req.params.id);
+      const booking = await storage.getBooking(bookingId);
+      if (!booking || booking.userId !== userId) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+      const requests = await storage.getBookingChangeRequestsByBooking(bookingId);
+      res.json(requests);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch change requests" });
+    }
+  });
+
+  app.post("/api/booking-change-requests/:id/approve", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const requestId = parseId(req.params.id);
+      const request = await storage.getBookingChangeRequest(requestId);
+      if (!request) return res.status(404).json({ message: "Change request not found" });
+
+      const booking = await storage.getBooking(request.bookingId);
+      if (!booking || booking.userId !== userId) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+      if (request.status !== "pending") return res.status(400).json({ message: "Change request is not pending" });
+
+      const updates: Record<string, any> = {};
+      if (request.requestedDate) updates.startDate = request.requestedDate;
+      if (request.requestedStartTime) updates.startTime = request.requestedStartTime;
+      if (request.requestedEndTime) updates.endTime = request.requestedEndTime;
+      if (request.requestedVenueIds && request.requestedVenueIds.length > 0) {
+        updates.venueIds = request.requestedVenueIds;
+        updates.venueId = request.requestedVenueIds[0];
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await storage.updateBooking(request.bookingId, updates);
+      }
+
+      const { adminNotes } = req.body;
+      await storage.updateBookingChangeRequest(requestId, {
+        status: "approved",
+        adminNotes: adminNotes || undefined,
+        resolvedAt: new Date(),
+      });
+
+      res.json({ success: true, message: "Change request approved and booking updated" });
+    } catch (err: any) {
+      console.error("Approve change request error:", err);
+      res.status(500).json({ message: "Failed to approve change request" });
+    }
+  });
+
+  app.post("/api/booking-change-requests/:id/decline", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const requestId = parseId(req.params.id);
+      const request = await storage.getBookingChangeRequest(requestId);
+      if (!request) return res.status(404).json({ message: "Change request not found" });
+
+      const booking = await storage.getBooking(request.bookingId);
+      if (!booking || booking.userId !== userId) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+      if (request.status !== "pending") return res.status(400).json({ message: "Change request is not pending" });
+
+      const { adminNotes } = req.body;
+      await storage.updateBookingChangeRequest(requestId, {
+        status: "declined",
+        adminNotes: adminNotes || undefined,
+        resolvedAt: new Date(),
+      });
+
+      res.json({ success: true, message: "Change request declined" });
+    } catch (err: any) {
+      console.error("Decline change request error:", err);
+      res.status(500).json({ message: "Failed to decline change request" });
     }
   });
 

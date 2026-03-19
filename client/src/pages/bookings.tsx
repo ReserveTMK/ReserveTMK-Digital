@@ -192,6 +192,15 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
   const { data: allMous } = useMous();
   const { data: pricingDefaults } = useBookingPricingDefaults();
 
+  const { data: allChangeRequests } = useQuery<any[]>({
+    queryKey: ['/api/booking-change-requests'],
+  });
+
+  const pendingChangeRequestBookingIds = useMemo(() => {
+    if (!allChangeRequests) return new Set<number>();
+    return new Set(allChangeRequests.filter(cr => cr.status === "pending").map(cr => cr.bookingId));
+  }, [allChangeRequests]);
+
   const createMutation = useCreateBooking();
   const updateMutation = useUpdateBooking();
   const deleteMutation = useDeleteBooking();
@@ -660,6 +669,12 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                                                     {booking.xeroInvoiceStatus || "invoiced"}
                                                   </Badge>
                                                 )}
+                                                {pendingChangeRequestBookingIds.has(booking.id) && (
+                                                  <Badge variant="outline" className="text-[10px] bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-300 dark:border-orange-800" data-testid={`badge-change-request-kanban-${booking.id}`}>
+                                                    <RefreshCw className="w-2.5 h-2.5 mr-0.5" />
+                                                    Change Request
+                                                  </Badge>
+                                                )}
                                               </div>
                                             </div>
                                           </div>
@@ -779,6 +794,12 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                                 <Badge variant="outline" className={`text-[10px] ${booking.xeroInvoiceStatus === "paid" ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800" : "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800"}`} data-testid={`badge-xero-invoice-list-${booking.id}`}>
                                   <Receipt className="w-2.5 h-2.5 mr-0.5" />
                                   {booking.xeroInvoiceStatus || "invoiced"}
+                                </Badge>
+                              )}
+                              {pendingChangeRequestBookingIds.has(booking.id) && (
+                                <Badge variant="outline" className="text-[10px] bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-300 dark:border-orange-800" data-testid={`badge-change-request-pending-${booking.id}`}>
+                                  <RefreshCw className="w-2.5 h-2.5 mr-0.5" />
+                                  Change Request
                                 </Badge>
                               )}
                             </div>

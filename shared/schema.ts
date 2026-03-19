@@ -2362,3 +2362,30 @@ export const insertMetricSnapshotSchema = createInsertSchema(metricSnapshots).om
 });
 export type MetricSnapshot = typeof metricSnapshots.$inferSelect;
 export type InsertMetricSnapshot = z.infer<typeof insertMetricSnapshotSchema>;
+
+export const CHANGE_REQUEST_STATUSES = ["pending", "approved", "declined"] as const;
+export type ChangeRequestStatus = typeof CHANGE_REQUEST_STATUSES[number];
+
+export const bookingChangeRequests = pgTable("booking_change_requests", {
+  id: serial("id").primaryKey(),
+  bookingId: integer("booking_id").notNull(),
+  requestedBy: integer("requested_by").notNull(),
+  requestedDate: timestamp("requested_date"),
+  requestedStartTime: text("requested_start_time"),
+  requestedEndTime: text("requested_end_time"),
+  requestedVenueIds: integer("requested_venue_ids").array(),
+  reason: text("reason"),
+  status: text("status").notNull().default("pending"),
+  adminNotes: text("admin_notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+});
+
+export const insertBookingChangeRequestSchema = createInsertSchema(bookingChangeRequests).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  status: z.enum(CHANGE_REQUEST_STATUSES).default("pending"),
+});
+export type BookingChangeRequest = typeof bookingChangeRequests.$inferSelect;
+export type InsertBookingChangeRequest = z.infer<typeof insertBookingChangeRequestSchema>;

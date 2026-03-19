@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useRoute } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { formatTimeSlot, getAgreementAllowanceUsage, getPeriodLabel } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   Loader2,
   Mail,
@@ -31,6 +40,7 @@ import {
   Monitor,
   Wrench,
   AlertTriangle,
+  Pencil,
 } from "lucide-react";
 
 type PortalView = "login" | "dashboard" | "calendar" | "desk-booking" | "gear-booking";
@@ -168,6 +178,7 @@ function DashboardView({
   onBookDesk: () => void;
   onBookGear: () => void;
 }) {
+  const { toast } = useToast();
   const booker = authData.booker;
   const contact = authData.contact;
   const isGroupLink = authData.isGroupLink === true;
@@ -209,6 +220,57 @@ function DashboardView({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/booker/all-bookings", token] });
     },
+  });
+
+  const cancelVenueMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/booker/bookings/${token}/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/booker/all-bookings", token] });
+      setCancelDialogBooking(null);
+      toast({ title: "Cancelled", description: "Venue booking has been cancelled" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message || "Failed to cancel booking", variant: "destructive" });
+    },
+  });
+
+  const changeRequestMutation = useMutation({
+    mutationFn: async ({ bookingId, data }: { bookingId: number; data: any }) => {
+      await apiRequest("POST", `/api/booker/bookings/${token}/${bookingId}/change-request`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/booker/all-bookings", token] });
+      setChangeRequestBooking(null);
+      setChangeRequestReason("");
+      setChangeRequestDate("");
+      setChangeRequestStartTime("");
+      setChangeRequestEndTime("");
+      setChangeRequestVenueIds([]);
+      toast({ title: "Submitted", description: "Your change request has been submitted for review" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message || "Failed to submit change request", variant: "destructive" });
+    },
+  });
+
+  const [cancelDialogBooking, setCancelDialogBooking] = useState<any>(null);
+  const [changeRequestBooking, setChangeRequestBooking] = useState<any>(null);
+  const [changeRequestReason, setChangeRequestReason] = useState("");
+  const [changeRequestDate, setChangeRequestDate] = useState("");
+  const [changeRequestStartTime, setChangeRequestStartTime] = useState("");
+  const [changeRequestEndTime, setChangeRequestEndTime] = useState("");
+  const [changeRequestVenueIds, setChangeRequestVenueIds] = useState<number[]>([]);
+
+  const { data: venuesList } = useQuery<any[]>({
+    queryKey: ["/api/booker/venues", token],
+    queryFn: async () => {
+      const res = await fetch(`/api/booker/venues/${token}`);
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: categories.includes("venue_hire"),
   });
 
   const packageRemaining = booker.hasBookingPackage
@@ -402,7 +464,11 @@ function DashboardView({
                 const bookingDate = isVenue
                   ? (b.startDate ? new Date(b.startDate).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric", timeZone: "Pacific/Auckland" }) : "TBC")
                   : (b.date ? new Date(b.date).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric", timeZone: "Pacific/Auckland" }) : "TBC");
-                const canCancel = (isDesk || isGear) && b.status === "booked";
+                const canCancelDeskGear = (isDesk || isGear) && b.status === "booked";
+                const isUpcoming = b.startDate ? new Date(b.startDate) > new Date() : (b.date ? new Date(b.date) > new Date() : false);
+                const canCancelVenue = isVenue && b.status !== "cancelled" && b.status !== "completed" && isUpcoming;
+                const hasPendingChangeRequest = isVenue && b.changeRequests?.some((cr: any) => cr.status === "pending");
+                const canRequestChange = canCancelVenue && !hasPendingChangeRequest;
 
                 return (
                   <Card key={`${b._type}-${b.id}`} className="p-3" data-testid={`card-booking-${b._type}-${b.id}`}>
@@ -425,6 +491,9 @@ function DashboardView({
                           {isVenue && b.startTime && b.endTime ? ` | ${formatTimeSlot(b.startTime)} - ${formatTimeSlot(b.endTime)}` : ""}
                           {isDesk && b.startTime && b.endTime ? ` | ${formatTimeSlot(b.startTime)} - ${formatTimeSlot(b.endTime)}` : ""}
                         </p>
+                        {isVenue && b.venueNames && b.venueNames.length > 0 && (
+                          <p className="text-xs text-muted-foreground mt-0.5">{b.venueNames.join(", ")}</p>
+                        )}
                         {isGroupLink && b.bookerName && (
                           <p className="text-xs text-muted-foreground mt-0.5">
                             Booked by {b.bookerName}
@@ -435,10 +504,53 @@ function DashboardView({
                             <AlertTriangle className="w-3 h-3" /> Pending approval
                           </p>
                         )}
+                        {hasPendingChangeRequest && (
+                          <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5 flex items-center gap-1">
+                            <Pencil className="w-3 h-3" /> Change request pending
+                          </p>
+                        )}
+                        {isVenue && b.changeRequests?.some((cr: any) => cr.status === "approved") && (
+                          <p className="text-xs text-green-600 dark:text-green-400 mt-0.5 flex items-center gap-1">
+                            <Check className="w-3 h-3" /> Change request approved
+                          </p>
+                        )}
+                        {isVenue && b.changeRequests?.some((cr: any) => cr.status === "declined") && !hasPendingChangeRequest && !b.changeRequests?.some((cr: any) => cr.status === "approved") && (
+                          <p className="text-xs text-red-600 dark:text-red-400 mt-0.5 flex items-center gap-1">
+                            <X className="w-3 h-3" /> Change request declined
+                          </p>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <Badge variant="secondary" className="text-xs">{b.status}</Badge>
-                        {canCancel && (
+                        {canRequestChange && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              setChangeRequestBooking(b);
+                              setChangeRequestDate(b.startDate ? new Date(b.startDate).toISOString().split("T")[0] : "");
+                              setChangeRequestStartTime(b.startTime || "");
+                              setChangeRequestEndTime(b.endTime || "");
+                              setChangeRequestVenueIds(b.venueIds || (b.venueId ? [b.venueId] : []));
+                            }}
+                            title="Request change"
+                            data-testid={`button-change-request-${b.id}`}
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                        )}
+                        {canCancelVenue && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setCancelDialogBooking(b)}
+                            title="Cancel booking"
+                            data-testid={`button-cancel-venue-${b.id}`}
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        )}
+                        {canCancelDeskGear && (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -461,6 +573,103 @@ function DashboardView({
           )}
         </div>
       </div>
+
+      <Dialog open={!!cancelDialogBooking} onOpenChange={(open) => !open && setCancelDialogBooking(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel Venue Booking</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to cancel this booking?
+              {cancelDialogBooking && (
+                <span className="block mt-2 font-medium text-foreground">
+                  {cancelDialogBooking.title || cancelDialogBooking.classification} —{" "}
+                  {cancelDialogBooking.startDate
+                    ? new Date(cancelDialogBooking.startDate).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric", timeZone: "Pacific/Auckland" })
+                    : "TBC"}
+                  {cancelDialogBooking.startTime && cancelDialogBooking.endTime
+                    ? ` | ${formatTimeSlot(cancelDialogBooking.startTime)} - ${formatTimeSlot(cancelDialogBooking.endTime)}`
+                    : ""}
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setCancelDialogBooking(null)} data-testid="button-cancel-dialog-dismiss">
+              Keep Booking
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => cancelDialogBooking && cancelVenueMutation.mutate(cancelDialogBooking.id)}
+              disabled={cancelVenueMutation.isPending}
+              data-testid="button-cancel-dialog-confirm"
+            >
+              {cancelVenueMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+              Yes, Cancel Booking
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!changeRequestBooking} onOpenChange={(open) => !open && setChangeRequestBooking(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Request Booking Change</DialogTitle>
+            <DialogDescription>
+              Submit a change request for this booking. The admin will review and approve or decline your request.
+            </DialogDescription>
+          </DialogHeader>
+          <ChangeRequestFormFields
+            token={token}
+            changeRequestDate={changeRequestDate}
+            setChangeRequestDate={setChangeRequestDate}
+            changeRequestStartTime={changeRequestStartTime}
+            setChangeRequestStartTime={setChangeRequestStartTime}
+            changeRequestEndTime={changeRequestEndTime}
+            setChangeRequestEndTime={setChangeRequestEndTime}
+            changeRequestVenueIds={changeRequestVenueIds}
+            setChangeRequestVenueIds={setChangeRequestVenueIds}
+            changeRequestReason={changeRequestReason}
+            setChangeRequestReason={setChangeRequestReason}
+            venuesList={venuesList || []}
+            booking={changeRequestBooking}
+          />
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setChangeRequestBooking(null)} data-testid="button-change-request-cancel">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!changeRequestBooking) return;
+                const origVenueIds = changeRequestBooking.venueIds || (changeRequestBooking.venueId ? [changeRequestBooking.venueId] : []);
+                const origDate = changeRequestBooking.startDate ? new Date(changeRequestBooking.startDate).toISOString().split("T")[0] : "";
+                const dateChanged = changeRequestDate && changeRequestDate !== origDate;
+                const startChanged = changeRequestStartTime && changeRequestStartTime !== changeRequestBooking.startTime;
+                const endChanged = changeRequestEndTime && changeRequestEndTime !== changeRequestBooking.endTime;
+                const venueChanged = JSON.stringify(changeRequestVenueIds.sort()) !== JSON.stringify([...origVenueIds].sort());
+                if (!dateChanged && !startChanged && !endChanged && !venueChanged) {
+                  toast({ title: "No changes", description: "Please modify at least the date, time, or venue", variant: "destructive" });
+                  return;
+                }
+                changeRequestMutation.mutate({
+                  bookingId: changeRequestBooking.id,
+                  data: {
+                    requestedDate: dateChanged ? changeRequestDate : undefined,
+                    requestedStartTime: startChanged ? changeRequestStartTime : undefined,
+                    requestedEndTime: endChanged ? changeRequestEndTime : undefined,
+                    requestedVenueIds: venueChanged ? changeRequestVenueIds : undefined,
+                    reason: changeRequestReason || undefined,
+                  },
+                });
+              }}
+              disabled={changeRequestMutation.isPending}
+              data-testid="button-change-request-submit"
+            >
+              {changeRequestMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+              Submit Request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -484,6 +693,147 @@ type PricingInfo = {
   packageRemaining: number;
   maxAdvanceMonths?: number;
 };
+
+function ChangeRequestFormFields({
+  token,
+  changeRequestDate,
+  setChangeRequestDate,
+  changeRequestStartTime,
+  setChangeRequestStartTime,
+  changeRequestEndTime,
+  setChangeRequestEndTime,
+  changeRequestVenueIds,
+  setChangeRequestVenueIds,
+  changeRequestReason,
+  setChangeRequestReason,
+  venuesList,
+  booking,
+}: {
+  token: string;
+  changeRequestDate: string;
+  setChangeRequestDate: (v: string) => void;
+  changeRequestStartTime: string;
+  setChangeRequestStartTime: (v: string) => void;
+  changeRequestEndTime: string;
+  setChangeRequestEndTime: (v: string) => void;
+  changeRequestVenueIds: number[];
+  setChangeRequestVenueIds: (v: number[] | ((prev: number[]) => number[])) => void;
+  changeRequestReason: string;
+  setChangeRequestReason: (v: string) => void;
+  venuesList: any[];
+  booking: any;
+}) {
+  const effectiveDate = changeRequestDate || (booking?.startDate ? new Date(booking.startDate).toISOString().split("T")[0] : "");
+  const effectiveStartTime = changeRequestStartTime || booking?.startTime || "";
+  const effectiveEndTime = changeRequestEndTime || booking?.endTime || "";
+  const effectiveVenueIds = changeRequestVenueIds.length > 0 ? changeRequestVenueIds : (booking?.venueIds || (booking?.venueId ? [booking.venueId] : []));
+
+  const canCheckAvailability = effectiveDate && effectiveStartTime && effectiveEndTime && effectiveVenueIds.length > 0;
+
+  const { data: availabilityCheck, isLoading: checkingAvailability } = useQuery<{ available: boolean; conflicts: string[] }>({
+    queryKey: ["/api/booker/check-change-availability", token, effectiveDate, effectiveStartTime, effectiveEndTime, effectiveVenueIds, booking?.id],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        date: effectiveDate,
+        startTime: effectiveStartTime,
+        endTime: effectiveEndTime,
+        venueIds: effectiveVenueIds.join(","),
+        excludeBookingId: String(booking?.id || 0),
+      });
+      const res = await fetch(`/api/booker/check-change-availability/${token}?${params}`);
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: !!canCheckAvailability && !!booking,
+  });
+
+  return (
+    <div className="space-y-4 py-2">
+      <div>
+        <label className="text-sm font-medium">New Date</label>
+        <Input
+          type="date"
+          value={changeRequestDate}
+          onChange={(e) => setChangeRequestDate(e.target.value)}
+          min={new Date().toISOString().split("T")[0]}
+          data-testid="input-change-request-date"
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-sm font-medium">Start Time</label>
+          <Input
+            type="time"
+            value={changeRequestStartTime}
+            onChange={(e) => setChangeRequestStartTime(e.target.value)}
+            data-testid="input-change-request-start-time"
+          />
+        </div>
+        <div>
+          <label className="text-sm font-medium">End Time</label>
+          <Input
+            type="time"
+            value={changeRequestEndTime}
+            onChange={(e) => setChangeRequestEndTime(e.target.value)}
+            data-testid="input-change-request-end-time"
+          />
+        </div>
+      </div>
+      {venuesList.length > 0 && (
+        <div>
+          <label className="text-sm font-medium">Venue(s)</label>
+          <div className="space-y-1 mt-1 max-h-32 overflow-y-auto border rounded-md p-2">
+            {venuesList.map((v: any) => (
+              <label key={v.id} className="flex items-center gap-2 cursor-pointer" data-testid={`checkbox-venue-${v.id}`}>
+                <Checkbox
+                  checked={changeRequestVenueIds.includes(v.id)}
+                  onCheckedChange={(checked) => {
+                    setChangeRequestVenueIds((prev: number[]) =>
+                      checked ? [...prev, v.id] : prev.filter((id: number) => id !== v.id)
+                    );
+                  }}
+                />
+                <span className="text-sm">{v.name}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+      {canCheckAvailability && (
+        <div data-testid="availability-check-result">
+          {checkingAvailability ? (
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              <Loader2 className="w-3 h-3 animate-spin" /> Checking availability...
+            </p>
+          ) : availabilityCheck?.available ? (
+            <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+              <Check className="w-3 h-3" /> Time slot is available
+            </p>
+          ) : (
+            <div>
+              <p className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
+                <X className="w-3 h-3" /> Time slot has conflicts
+              </p>
+              {availabilityCheck?.conflicts?.map((c: string, i: number) => (
+                <p key={i} className="text-xs text-red-500 ml-4">{c}</p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      <div>
+        <label className="text-sm font-medium">Reason for Change</label>
+        <Textarea
+          value={changeRequestReason}
+          onChange={(e) => setChangeRequestReason(e.target.value)}
+          placeholder="Please describe why you need this change..."
+          rows={3}
+          data-testid="input-change-request-reason"
+        />
+      </div>
+    </div>
+  );
+}
 
 function calculateBookingPrice(
   pricing: PricingInfo | undefined,

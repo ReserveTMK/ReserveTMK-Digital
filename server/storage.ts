@@ -208,6 +208,9 @@ import {
   metricSnapshots,
   type MetricSnapshot,
   type InsertMetricSnapshot,
+  bookingChangeRequests,
+  type BookingChangeRequest,
+  type InsertBookingChangeRequest,
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, sql, max, count, inArray } from "drizzle-orm";
 
@@ -626,6 +629,13 @@ export interface IStorage {
   createMetricSnapshot(data: InsertMetricSnapshot): Promise<MetricSnapshot>;
   getMetricSnapshots(contactId: number): Promise<MetricSnapshot[]>;
   getMetricSnapshotsByContacts(contactIds: number[], startDate?: Date, endDate?: Date): Promise<MetricSnapshot[]>;
+
+  // Booking Change Requests
+  getBookingChangeRequests(userId: string): Promise<BookingChangeRequest[]>;
+  getBookingChangeRequest(id: number): Promise<BookingChangeRequest | undefined>;
+  getBookingChangeRequestsByBooking(bookingId: number): Promise<BookingChangeRequest[]>;
+  createBookingChangeRequest(data: InsertBookingChangeRequest): Promise<BookingChangeRequest>;
+  updateBookingChangeRequest(id: number, updates: Partial<InsertBookingChangeRequest>): Promise<BookingChangeRequest>;
 
   // Auth (re-exported or separate)
   auth: IAuthStorage;
@@ -2774,6 +2784,35 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(metricSnapshots)
       .where(and(...conditions))
       .orderBy(metricSnapshots.createdAt);
+  }
+
+  async getBookingChangeRequests(userId: string): Promise<BookingChangeRequest[]> {
+    const userBookingIds = await db.select({ id: bookings.id }).from(bookings).where(eq(bookings.userId, userId));
+    if (userBookingIds.length === 0) return [];
+    return db.select().from(bookingChangeRequests)
+      .where(inArray(bookingChangeRequests.bookingId, userBookingIds.map(b => b.id)))
+      .orderBy(desc(bookingChangeRequests.createdAt));
+  }
+
+  async getBookingChangeRequest(id: number): Promise<BookingChangeRequest | undefined> {
+    const [request] = await db.select().from(bookingChangeRequests).where(eq(bookingChangeRequests.id, id));
+    return request;
+  }
+
+  async getBookingChangeRequestsByBooking(bookingId: number): Promise<BookingChangeRequest[]> {
+    return db.select().from(bookingChangeRequests)
+      .where(eq(bookingChangeRequests.bookingId, bookingId))
+      .orderBy(desc(bookingChangeRequests.createdAt));
+  }
+
+  async createBookingChangeRequest(data: InsertBookingChangeRequest): Promise<BookingChangeRequest> {
+    const [request] = await db.insert(bookingChangeRequests).values(data).returning();
+    return request;
+  }
+
+  async updateBookingChangeRequest(id: number, updates: Partial<InsertBookingChangeRequest>): Promise<BookingChangeRequest> {
+    const [request] = await db.update(bookingChangeRequests).set(updates).where(eq(bookingChangeRequests.id, id)).returning();
+    return request;
   }
 }
 

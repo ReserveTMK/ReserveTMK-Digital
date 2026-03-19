@@ -721,6 +721,8 @@ export default function BookingDetail() {
             </Card>
           )}
 
+          <ChangeRequestsSection bookingId={booking.id} venues={venues || []} />
+
           {booking.status === "completed" && (
             <Card className="p-5 space-y-4">
               <h2 className="font-semibold text-base flex items-center gap-2" data-testid="text-section-survey">
@@ -1109,6 +1111,130 @@ function BookerAccessInfoCard({ bookingId }: { bookingId: number }) {
             </div>
           );
         })}
+      </div>
+    </Card>
+  );
+}
+
+function ChangeRequestsSection({ bookingId, venues }: { bookingId: number; venues: Venue[] }) {
+  const { toast } = useToast();
+  const [adminNotes, setAdminNotes] = useState<Record<number, string>>({});
+
+  const { data: changeRequests, isLoading } = useQuery<any[]>({
+    queryKey: ['/api/bookings', bookingId, 'change-requests'],
+    queryFn: async () => {
+      const res = await fetch(`/api/bookings/${bookingId}/change-requests`);
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: async ({ id, notes }: { id: number; notes?: string }) => {
+      await apiRequest("POST", `/api/booking-change-requests/${id}/approve`, { adminNotes: notes });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/bookings', bookingId, 'change-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/booking-change-requests'] });
+      toast({ title: "Approved", description: "Change request approved and booking updated" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const declineMutation = useMutation({
+    mutationFn: async ({ id, notes }: { id: number; notes?: string }) => {
+      await apiRequest("POST", `/api/booking-change-requests/${id}/decline`, { adminNotes: notes });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/bookings', bookingId, 'change-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/booking-change-requests'] });
+      toast({ title: "Declined", description: "Change request declined" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  if (isLoading) return null;
+  if (!changeRequests || changeRequests.length === 0) return null;
+
+  const venueMap = new Map(venues.map(v => [v.id, v]));
+
+  return (
+    <Card className="p-5 space-y-4">
+      <h2 className="font-semibold text-base flex items-center gap-2" data-testid="text-section-change-requests">
+        <RefreshCw className="w-4 h-4 text-muted-foreground" />
+        Change Requests
+      </h2>
+      <div className="space-y-3">
+        {changeRequests.map((cr: any) => (
+          <div key={cr.id} className="border rounded-lg p-3 space-y-2" data-testid={`card-change-request-${cr.id}`}>
+            <div className="flex items-center justify-between gap-2">
+              <Badge
+                variant={cr.status === "pending" ? "outline" : cr.status === "approved" ? "default" : "destructive"}
+                className={cr.status === "approved" ? "bg-green-500/15 text-green-700 dark:text-green-300" : ""}
+                data-testid={`badge-change-request-status-${cr.id}`}
+              >
+                {cr.status}
+              </Badge>
+              <span className="text-xs text-muted-foreground">
+                {cr.createdAt ? format(new Date(cr.createdAt), "d MMM yyyy, h:mm a") : ""}
+              </span>
+            </div>
+            <div className="text-sm space-y-1">
+              {cr.requestedDate && (
+                <p><span className="text-muted-foreground">New date:</span> {format(new Date(cr.requestedDate), "d MMM yyyy")}</p>
+              )}
+              {cr.requestedStartTime && cr.requestedEndTime && (
+                <p><span className="text-muted-foreground">New time:</span> {cr.requestedStartTime} - {cr.requestedEndTime}</p>
+              )}
+              {cr.requestedVenueIds && cr.requestedVenueIds.length > 0 && (
+                <p><span className="text-muted-foreground">New venue(s):</span> {cr.requestedVenueIds.map((id: number) => venueMap.get(id)?.name || `#${id}`).join(", ")}</p>
+              )}
+              {cr.reason && (
+                <p><span className="text-muted-foreground">Reason:</span> {cr.reason}</p>
+              )}
+              {cr.adminNotes && (
+                <p><span className="text-muted-foreground">Admin notes:</span> {cr.adminNotes}</p>
+              )}
+            </div>
+            {cr.status === "pending" && (
+              <div className="space-y-2 pt-2 border-t">
+                <Textarea
+                  placeholder="Admin notes (optional)"
+                  value={adminNotes[cr.id] || ""}
+                  onChange={(e) => setAdminNotes(prev => ({ ...prev, [cr.id]: e.target.value }))}
+                  rows={2}
+                  data-testid={`input-admin-notes-${cr.id}`}
+                />
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => approveMutation.mutate({ id: cr.id, notes: adminNotes[cr.id] })}
+                    disabled={approveMutation.isPending || declineMutation.isPending}
+                    data-testid={`button-approve-change-request-${cr.id}`}
+                  >
+                    {approveMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <CheckCircle2 className="w-3 h-3 mr-1" />}
+                    Approve
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => declineMutation.mutate({ id: cr.id, notes: adminNotes[cr.id] })}
+                    disabled={approveMutation.isPending || declineMutation.isPending}
+                    data-testid={`button-decline-change-request-${cr.id}`}
+                  >
+                    {declineMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <XCircle className="w-3 h-3 mr-1" />}
+                    Decline
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </Card>
   );
