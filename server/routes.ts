@@ -3184,6 +3184,8 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
               notes: tag.evidence || null,
               evidence: tag.evidence || null,
             });
+          } else {
+            console.warn(`[autoApplyTags] No matching taxonomy category for extracted tag "${tag.category}" on log ${logId}. Available categories: ${taxonomy.filter(t => t.active).map(t => t.name).join(', ')}`);
           }
         }
         extraction.impactTags = extractedTags;

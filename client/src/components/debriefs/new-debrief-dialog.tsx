@@ -37,9 +37,11 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSavingAudio, setIsSavingAudio] = useState(false);
   const [transcriptionFailed, setTranscriptionFailed] = useState(false);
+  const [autoAnalyzeReady, setAutoAnalyzeReady] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const analyzeInProgressRef = useRef(false);
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
@@ -56,6 +58,8 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
     setIsAnalyzing(false);
     setIsSavingAudio(false);
     setTranscriptionFailed(false);
+    setAutoAnalyzeReady(false);
+    analyzeInProgressRef.current = false;
     chunksRef.current = [];
     if (timerRef.current) clearInterval(timerRef.current);
   }, [audioUrl]);
@@ -67,6 +71,55 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
       if (currentAudioUrl) URL.revokeObjectURL(currentAudioUrl);
     };
   }, [audioUrl]);
+
+  const runAnalysis = useCallback(async (analyzeTranscript: string, analyzeTitle: string) => {
+    if (analyzeInProgressRef.current) return;
+    analyzeInProgressRef.current = true;
+    setIsAnalyzing(true);
+    try {
+      const res = await fetch("/api/impact-extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: analyzeTranscript, title: analyzeTitle }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Extraction failed");
+      const data = await res.json();
+      if (audioBlob) {
+        try {
+          await fetch(`/api/impact-logs/${data.id}/audio`, {
+            method: "POST",
+            headers: { "Content-Type": "application/octet-stream" },
+            body: audioBlob,
+            credentials: "include",
+          });
+        } catch {}
+      }
+      queryClient.invalidateQueries({ queryKey: ['/api/impact-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/impact-logs', data.id, 'tags'] });
+      resetState();
+      onOpenChange(false);
+      setLocation(`/debriefs/${data.id}`);
+      toast({ title: "Analysis complete", description: "Review the extracted impact data." });
+    } catch (err: any) {
+      analyzeInProgressRef.current = false;
+      setAutoAnalyzeReady(false);
+      toast({ title: "Error", description: err.message || "Analysis failed", variant: "destructive" });
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }, [audioBlob, resetState, onOpenChange, setLocation, toast]);
+
+  const titleRef = useRef(title);
+  titleRef.current = title;
+  const transcriptRef = useRef(transcript);
+  transcriptRef.current = transcript;
+
+  useEffect(() => {
+    if (autoAnalyzeReady && transcriptRef.current.trim() && titleRef.current.trim() && !isAnalyzing && !analyzeInProgressRef.current) {
+      runAnalysis(transcriptRef.current, titleRef.current);
+    }
+  }, [autoAnalyzeReady, isAnalyzing, runAnalysis]);
 
   const startRecording = async () => {
     try {
@@ -118,7 +171,11 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
       });
       if (!res.ok) throw new Error("Transcription failed");
       const data = await res.json();
-      setTranscript(data.transcript || data.text || "");
+      const transcribedText = data.transcript || data.text || "";
+      setTranscript(transcribedText);
+      if (transcribedText.trim()) {
+        setAutoAnalyzeReady(true);
+      }
       toast({ title: "Transcribed", description: "Audio transcription complete." });
     } catch (err: any) {
       setTranscriptionFailed(true);
@@ -175,41 +232,7 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
       toast({ title: "Missing title", description: "Please enter a title for this debrief.", variant: "destructive" });
       return;
     }
-
-    setIsAnalyzing(true);
-    try {
-      const res = await fetch("/api/impact-extract", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript, title }),
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Extraction failed");
-      const data = await res.json();
-
-      if (audioBlob) {
-        try {
-          await fetch(`/api/impact-logs/${data.id}/audio`, {
-            method: "POST",
-            headers: { "Content-Type": "application/octet-stream" },
-            body: audioBlob,
-            credentials: "include",
-          });
-        } catch {
-        }
-      }
-
-      queryClient.invalidateQueries({ queryKey: ['/api/impact-logs'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/impact-logs', data.id, 'tags'] });
-      resetState();
-      onOpenChange(false);
-      setLocation(`/debriefs/${data.id}`);
-      toast({ title: "Analysis complete", description: "Review the extracted impact data." });
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Analysis failed", variant: "destructive" });
-    } finally {
-      setIsAnalyzing(false);
-    }
+    runAnalysis(transcript, title);
   };
 
   const formatTime = (s: number) => {
@@ -233,6 +256,7 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
               data-testid="input-debrief-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              onBlur={() => { if (title.trim() && transcript.trim() && autoAnalyzeReady) runAnalysis(transcript, title); }}
               placeholder="e.g. Weekly check-in with Jane"
             />
           </div>
@@ -353,6 +377,7 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
                 <Textarea
                   value={transcript}
                   onChange={(e) => setTranscript(e.target.value)}
+                  onBlur={() => { if (transcript.trim()) setAutoAnalyzeReady(true); }}
                   placeholder="Paste or type your debrief transcript here..."
                   className="min-h-[200px] resize-none"
                   data-testid="textarea-transcript"

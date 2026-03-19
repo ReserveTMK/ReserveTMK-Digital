@@ -365,7 +365,7 @@ export function ReviewView({ id }: { id: number }) {
   const needsRecording = impactLog && impactLog.status === "draft" && (!impactLog.transcript || hasTranscriptPlaceholder) && !extraction && !isManualUpdate;
 
   useEffect(() => {
-    if (fromQueue && impactLog && impactLog.status === "draft" && impactLog.transcript && !extraction && !autoAnalyzeTriggered && !isAnalyzing) {
+    if (impactLog && impactLog.status === "draft" && impactLog.transcript && !hasTranscriptPlaceholder && !extraction && !autoAnalyzeTriggered && !isAnalyzing) {
       setAutoAnalyzeTriggered(true);
       (async () => {
         setIsAnalyzing(true);
@@ -389,7 +389,7 @@ export function ReviewView({ id }: { id: number }) {
         }
       })();
     }
-  }, [fromQueue, impactLog, extraction, autoAnalyzeTriggered, isAnalyzing]);
+  }, [impactLog, hasTranscriptPlaceholder, extraction, autoAnalyzeTriggered, isAnalyzing]);
 
   useEffect(() => {
     if (impactLog && !extraction && isManualUpdate && !initialized && savedTags !== undefined) {
@@ -1039,7 +1039,7 @@ export function ReviewView({ id }: { id: number }) {
                 <h3 className="font-bold font-display mb-3">Impact Tags</h3>
                 <p className="text-xs text-muted-foreground mb-3">Auto-applied from AI analysis. Remove any that don't apply.</p>
                 {impactTags.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No tags extracted</p>
+                  <p className="text-sm text-muted-foreground">No impact areas identified from this transcript</p>
                 ) : (
                   <div className="space-y-3">
                     {impactTags.map((tag: any, i: number) => {
