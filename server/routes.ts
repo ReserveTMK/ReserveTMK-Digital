@@ -3438,6 +3438,64 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
   // === Audit Logs API ===
 
+  app.get("/api/impact-logs/:id/metric-trends", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const logId = parseId(req.params.id);
+      const log = await storage.getImpactLog(logId);
+      if (!log) return res.status(404).json({ message: "Impact log not found" });
+      if (log.userId !== userId) return res.status(403).json({ message: "Not authorized" });
+
+      const linkedContacts = await storage.getImpactLogContacts(logId);
+      let primaryContactIds = linkedContacts
+        .filter((lc: any) => lc.role === "primary")
+        .map((lc: any) => lc.contactId);
+
+      if (primaryContactIds.length === 0) {
+        const reviewed = (log.reviewedData || log.rawExtraction) as any;
+        const draftPeople = reviewed?.people || [];
+        primaryContactIds = draftPeople
+          .filter((p: any) => p.contactId && (p.section === "primary" || (!p.section && ["primary", "mentor", "mentee"].includes(p.role))))
+          .map((p: any) => p.contactId);
+      }
+
+      if (primaryContactIds.length === 0) {
+        return res.json({ trends: {} });
+      }
+
+      const allLogs = await storage.getImpactLogs(userId);
+      const confirmedLogs = allLogs
+        .filter((l: any) => l.id !== logId && l.status === "confirmed" && l.reviewedData)
+        .sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+      const trends: Record<string, number[]> = {};
+      const metricKeys = ["mindset", "skill", "confidence", "businessConfidence", "systems", "fundingReadiness", "network"];
+
+      for (const confirmedLog of confirmedLogs.slice(0, 10)) {
+        const logContacts = await storage.getImpactLogContacts(confirmedLog.id);
+        const hasOverlap = logContacts.some((lc: any) => primaryContactIds.includes(lc.contactId));
+        if (!hasOverlap) continue;
+
+        const reviewed = confirmedLog.reviewedData as any;
+        const m = reviewed?.metrics || (confirmedLog.rawExtraction as any)?.metrics;
+        if (!m) continue;
+
+        for (const key of metricKeys) {
+          if (m[key] !== undefined && m[key] !== null) {
+            if (!trends[key]) trends[key] = [];
+            if (trends[key].length < 3) {
+              trends[key].push(m[key]);
+            }
+          }
+        }
+      }
+
+      res.json({ trends });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to fetch metric trends" });
+    }
+  });
+
   app.get(api.auditLogs.list.path, isAuthenticated, async (req, res) => {
     const entityType = parseStr(req.query.entityType);
     const entityId = parseId(req.query.entityId);

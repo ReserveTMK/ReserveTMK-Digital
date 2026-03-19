@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -37,7 +38,7 @@ import { useImpactLog, useUpdateImpactLog } from "@/hooks/use-impact-logs";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
 import {
   Plus,
   Loader2,
@@ -51,6 +52,7 @@ import {
   MessageCirclePlus,
   ChevronDown,
   ChevronUp,
+  ChevronRight,
   RefreshCw,
   HeartHandshake,
   Users,
@@ -62,6 +64,13 @@ import {
   Save,
   Check,
   Search,
+  Eye,
+  Clock,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Quote,
+  Trophy,
 } from "lucide-react";
 import type { ImpactLog, Contact } from "@shared/schema";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -73,11 +82,117 @@ import {
   ContactSearchPicker,
 } from "./shared";
 
+function CollapsibleSection({
+  title,
+  count,
+  icon,
+  defaultOpen = false,
+  children,
+  testId,
+}: {
+  title: string;
+  count?: number;
+  icon?: ReactNode;
+  defaultOpen?: boolean;
+  children: ReactNode;
+  testId?: string;
+}) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  return (
+    <Card className="overflow-hidden">
+      <button
+        type="button"
+        className="w-full flex items-center gap-2 p-4 md:p-5 text-left min-h-[44px] hover:bg-muted/30 transition-colors"
+        onClick={() => setIsOpen(!isOpen)}
+        data-testid={testId ? `${testId}-toggle` : undefined}
+      >
+        {icon}
+        <h3 className="font-bold font-display flex-1 text-sm md:text-base">
+          {title}
+          {count !== undefined && (
+            <span className="ml-1.5 text-muted-foreground font-normal text-xs md:text-sm">({count})</span>
+          )}
+        </h3>
+        <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform duration-200 shrink-0 ${isOpen ? "rotate-90" : ""}`} />
+      </button>
+      <div
+        className={`transition-all duration-200 ease-in-out overflow-hidden ${isOpen ? "max-h-[5000px] opacity-100" : "max-h-0 opacity-0"}`}
+      >
+        <div className="px-4 pb-4 md:px-5 md:pb-5 pt-0">
+          {children}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function MiniTrendDots({ current, history }: { current: number | undefined; history: number[] }) {
+  if (current === undefined) return <span className="text-xs text-muted-foreground">—</span>;
+  const allValues = [...history.slice().reverse(), current];
+  if (allValues.length < 2) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <span className="text-sm font-medium">{current}</span>
+        <span className="text-xs text-muted-foreground">/10</span>
+      </div>
+    );
+  }
+
+  const trend = current - allValues[0];
+  const trendColor = trend > 0 ? "text-green-600 dark:text-green-400" : trend < 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground";
+  const TrendIcon = trend > 0 ? TrendingUp : trend < 0 ? TrendingDown : Minus;
+
+  const maxVal = Math.max(...allValues, 10);
+  const minVal = Math.min(...allValues, 1);
+  const range = maxVal - minVal || 1;
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-sm font-medium">{current}</span>
+      <svg width={allValues.length * 14 + 4} height="16" className="shrink-0">
+        {allValues.map((val, i) => {
+          const x = i * 14 + 7;
+          const y = 14 - ((val - minVal) / range) * 10;
+          const nextVal = allValues[i + 1];
+          return (
+            <g key={i}>
+              {nextVal !== undefined && (
+                <line
+                  x1={x}
+                  y1={y}
+                  x2={(i + 1) * 14 + 7}
+                  y2={14 - ((nextVal - minVal) / range) * 10}
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  className={trendColor}
+                  strokeOpacity={0.5}
+                />
+              )}
+              <circle
+                cx={x}
+                cy={y}
+                r={i === allValues.length - 1 ? 3 : 2}
+                fill="currentColor"
+                className={i === allValues.length - 1 ? trendColor : "text-muted-foreground"}
+              />
+            </g>
+          );
+        })}
+      </svg>
+      <TrendIcon className={`w-3 h-3 ${trendColor}`} />
+    </div>
+  );
+}
+
 export function ReviewView({ id }: { id: number }) {
   const { data: log, isLoading } = useImpactLog(id);
   const { data: contacts } = useQuery<Contact[]>({ queryKey: ['/api/contacts'] });
   const { data: taxonomyCategories } = useQuery<any[]>({ queryKey: ['/api/taxonomy'] });
   const { data: savedTags } = useQuery<any[]>({ queryKey: ['/api/impact-logs', id, 'tags'] });
+  const { data: metricTrends } = useQuery<{ trends: Record<string, number[]> }>({
+    queryKey: ['/api/impact-logs', id, 'metric-trends'],
+    enabled: !!id,
+  });
   const updateMutation = useUpdateImpactLog();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -116,6 +231,7 @@ export function ReviewView({ id }: { id: number }) {
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [savedAudioDuration, setSavedAudioDuration] = useState<number | null>(null);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [recordingTranscript, setRecordingTranscript] = useState("");
@@ -134,6 +250,10 @@ export function ReviewView({ id }: { id: number }) {
   const [isAppending, setIsAppending] = useState(false);
   const [followUpTab, setFollowUpTab] = useState("record");
   const [isSavingAudio, setIsSavingAudio] = useState(false);
+  const [showFullTranscript, setShowFullTranscript] = useState(false);
+  const [showSummaryEditor, setShowSummaryEditor] = useState(false);
+  const [checkedCommunityActions, setCheckedCommunityActions] = useState<Record<string, boolean>>({});
+  const [checkedOperationalActions, setCheckedOperationalActions] = useState<Record<string, boolean>>({});
   const followUpMediaRecorderRef = useRef<MediaRecorder | null>(null);
   const followUpChunksRef = useRef<Blob[]>([]);
   const followUpTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -437,8 +557,16 @@ export function ReviewView({ id }: { id: number }) {
       const isConfirmed = impactLog.status === "confirmed";
       if (isConfirmed) {
         setActionItemsList(extraction.actionItems || []);
-        setCommunityActions(extraction.communityActions || []);
-        setOperationalActions(extraction.operationalActions || []);
+        const ca = extraction.communityActions || [];
+        setCommunityActions(ca);
+        const oa = extraction.operationalActions || [];
+        setOperationalActions(oa);
+        const caChecked: Record<string, boolean> = {};
+        ca.forEach((item: any) => { if (item.checked) caChecked[item.task || ""] = true; });
+        setCheckedCommunityActions(caChecked);
+        const oaChecked: Record<string, boolean> = {};
+        oa.forEach((item: any) => { if (item.checked) oaChecked[item.task || ""] = true; });
+        setCheckedOperationalActions(oaChecked);
         setSuggestedActions([]);
         setSuggestedCommunityActions([]);
         setSuggestedOperationalActions([]);
@@ -447,8 +575,16 @@ export function ReviewView({ id }: { id: number }) {
         const hasReviewedActions = reviewed?.actionItems?.length > 0 || reviewed?.communityActions?.length > 0 || reviewed?.operationalActions?.length > 0;
         if (hasReviewedActions) {
           setActionItemsList(reviewed.actionItems || []);
-          setCommunityActions(reviewed.communityActions || []);
-          setOperationalActions(reviewed.operationalActions || []);
+          const rca = reviewed.communityActions || [];
+          setCommunityActions(rca);
+          const roa = reviewed.operationalActions || [];
+          setOperationalActions(roa);
+          const rcaChecked: Record<string, boolean> = {};
+          rca.forEach((item: any) => { if (item.checked) rcaChecked[item.task || ""] = true; });
+          setCheckedCommunityActions(rcaChecked);
+          const roaChecked: Record<string, boolean> = {};
+          roa.forEach((item: any) => { if (item.checked) roaChecked[item.task || ""] = true; });
+          setCheckedOperationalActions(roaChecked);
           setSuggestedActions([]);
           setSuggestedCommunityActions([]);
           setSuggestedOperationalActions([]);
@@ -479,6 +615,19 @@ export function ReviewView({ id }: { id: number }) {
     };
   }, [audioUrl, followUpAudioUrl]);
 
+  useEffect(() => {
+    if (impactLog?.audioUrl) {
+      const audio = new Audio();
+      audio.preload = "metadata";
+      audio.onloadedmetadata = () => {
+        if (audio.duration && isFinite(audio.duration)) {
+          setSavedAudioDuration(Math.round(audio.duration));
+        }
+      };
+      audio.src = impactLog.audioUrl;
+    }
+  }, [impactLog?.audioUrl]);
+
   const handleSave = async (status: string) => {
     const reviewedData = {
       summary,
@@ -488,8 +637,14 @@ export function ReviewView({ id }: { id: number }) {
       impactTags,
       people,
       metrics,
-      communityActions,
-      operationalActions,
+      communityActions: communityActions.map((item: any) => ({
+        ...item,
+        checked: !!checkedCommunityActions[item.task || ""],
+      })),
+      operationalActions: operationalActions.map((item: any) => ({
+        ...item,
+        checked: !!checkedOperationalActions[item.task || ""],
+      })),
       reflections,
     };
 
@@ -622,13 +777,12 @@ export function ReviewView({ id }: { id: number }) {
 
   const METRIC_LABELS: Record<string, string> = {
     mindset: "Mindset",
-    skill: "Capability",
+    skill: "Skill",
     confidence: "Confidence",
-    systemsInPlace: "Structure & Systems",
-    fundingReadiness: "Sustainability Readiness",
-    networkStrength: "Connection Strength",
-    communityImpact: "Community Impact",
-    digitalPresence: "Digital Presence",
+    businessConfidence: "Business Confidence",
+    systems: "Systems",
+    fundingReadiness: "Funding Readiness",
+    network: "Network",
   };
 
   return (
@@ -669,10 +823,13 @@ export function ReviewView({ id }: { id: number }) {
             </Button>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-            <div className="lg:col-span-3 space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+            {/* LEFT COLUMN: contents on mobile (flat for ordering), block on desktop (independent column) */}
+            <div className="contents lg:block lg:space-y-4">
+            {/* TRANSCRIPT - mobile:1 desktop:left */}
+            <div className="order-1 lg:order-none">
               {needsRecording ? (
-                <Card className="p-5">
+                <Card className="p-4 md:p-5">
                   <h2 className="font-bold text-lg font-display mb-3" data-testid="text-record-heading">Record Your Debrief</h2>
                   <p className="text-sm text-muted-foreground mb-4">Record audio or paste text to capture your debrief, then analyse it for impact data.</p>
 
@@ -738,7 +895,7 @@ export function ReviewView({ id }: { id: number }) {
                             </Button>
                           </div>
                           {!recordingTranscript && (
-                            <div className="flex gap-2">
+                            <div className="flex flex-col sm:flex-row gap-2">
                               <Button
                                 onClick={transcribeAudio}
                                 disabled={isTranscribing || isSavingAudio}
@@ -806,7 +963,7 @@ export function ReviewView({ id }: { id: number }) {
                   <Button
                     onClick={handleAnalyzeRecording}
                     disabled={isAnalyzing || !recordingTranscript.trim()}
-                    className="w-full mt-4"
+                    className="w-full mt-4 min-h-[44px]"
                     data-testid="button-analyze-review"
                   >
                     {isAnalyzing ? (
@@ -821,62 +978,133 @@ export function ReviewView({ id }: { id: number }) {
                 </Card>
               ) : (
                 <>
-                {impactLog?.audioUrl && (
-                  <Card className="p-5">
-                    <Label className="text-sm font-medium">Saved Recording</Label>
-                    <div className="flex items-center gap-3 mt-2">
-                      <Play className="w-5 h-5 text-muted-foreground shrink-0" />
-                      <audio controls src={impactLog.audioUrl} className="flex-1 h-10" data-testid="audio-saved-playback-detail" />
-                    </div>
-                  </Card>
-                )}
-                <Card className="p-5">
-                  <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                <Card className="p-4 md:p-5">
+                  <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
                     <h2 className="font-bold text-lg font-display" data-testid="text-transcript-heading">Transcript</h2>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowFollowUp(!showFollowUp)}
-                        data-testid="button-toggle-followup"
-                      >
-                        <MessageCirclePlus className="w-4 h-4 mr-1.5" />
-                        Add Follow-up
-                        {showFollowUp ? <ChevronUp className="w-3.5 h-3.5 ml-1" /> : <ChevronDown className="w-3.5 h-3.5 ml-1" />}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleReanalyze}
-                        disabled={isAnalyzing || !impactLog?.transcript}
-                        data-testid="button-reanalyze"
-                      >
-                        {isAnalyzing ? (
-                          <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
-                        ) : (
-                          <RefreshCw className="w-4 h-4 mr-1.5" />
-                        )}
-                        Re-analyse
-                      </Button>
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
+                      {impactLog.createdAt && (
+                        <span className="flex items-center gap-1" data-testid="text-transcript-timestamp">
+                          <Clock className="w-3 h-3" />
+                          {new Date(impactLog.createdAt).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      )}
+                      {impactLog.audioUrl && (
+                        <Badge variant="secondary" className="text-[10px]" data-testid="badge-audio-debrief">
+                          <Mic className="w-2.5 h-2.5 mr-0.5" />
+                          Audio{savedAudioDuration ? ` · ${Math.floor(savedAudioDuration / 60)}:${String(savedAudioDuration % 60).padStart(2, "0")}` : ""}
+                        </Badge>
+                      )}
                     </div>
                   </div>
-                  <div className="prose prose-sm max-w-none text-foreground/90 whitespace-pre-wrap max-h-[60vh] overflow-y-auto" data-testid="text-transcript-content">
-                    {Array.isArray(transcriptParts) ? (
-                      transcriptParts.map((part, i) => (
-                        part.highlighted ? (
-                          <mark key={i} className="bg-primary/20 text-foreground px-0.5 rounded">{part.text}</mark>
-                        ) : (
-                          <span key={i}>{part.text}</span>
-                        )
-                      ))
-                    ) : (
-                      transcriptParts || <span className="text-muted-foreground italic">No transcript available</span>
-                    )}
+
+                  {(summary || showSummaryEditor) ? (
+                    <div className="mb-3">
+                      <Textarea
+                        value={summary}
+                        onChange={(e) => setSummary(e.target.value)}
+                        className="min-h-[60px] resize-none text-sm bg-muted/20"
+                        placeholder="Summary..."
+                        data-testid="textarea-summary"
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="text-xs text-muted-foreground mb-3 underline min-h-[44px]"
+                      onClick={() => setShowSummaryEditor(true)}
+                      data-testid="button-add-summary"
+                    >
+                      + Add summary
+                    </button>
+                  )}
+
+                  {keyQuotes.length > 0 && (
+                    <div className="space-y-2 mb-4" data-testid="pull-quotes-section">
+                      {keyQuotes.slice(0, 2).map((quote: string, i: number) => (
+                        <blockquote
+                          key={i}
+                          className="border-l-4 border-primary/40 pl-3 py-1 text-sm italic text-foreground/80 bg-primary/5 rounded-r-lg"
+                          data-testid={`pull-quote-${i}`}
+                        >
+                          <Quote className="w-3.5 h-3.5 text-primary/40 mb-0.5 inline-block mr-1" />
+                          {quote}
+                        </blockquote>
+                      ))}
+                    </div>
+                  )}
+
+                  {impactLog?.audioUrl && (
+                    <div className="mb-3 p-3 bg-muted/30 rounded-lg border border-border">
+                      <div className="flex items-center gap-3">
+                        <Play className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <audio controls src={impactLog.audioUrl} className="flex-1 h-8" data-testid="audio-saved-playback-detail" />
+                      </div>
+                    </div>
+                  )}
+
+                  {showFullTranscript && (
+                    <div className="prose prose-sm max-w-none text-foreground/90 whitespace-pre-wrap max-h-[60vh] overflow-y-auto mb-3" data-testid="text-transcript-content">
+                      {Array.isArray(transcriptParts) ? (
+                        transcriptParts.map((part, i) => (
+                          part.highlighted ? (
+                            <mark key={i} className="bg-primary/20 text-foreground px-0.5 rounded">{part.text}</mark>
+                          ) : (
+                            <span key={i}>{part.text}</span>
+                          )
+                        ))
+                      ) : (
+                        transcriptParts || <span className="text-muted-foreground italic">No transcript available</span>
+                      )}
+                    </div>
+                  )}
+
+                  {!showFullTranscript && impactLog.transcript && (
+                    <p className="text-sm text-muted-foreground line-clamp-3 mb-3" data-testid="text-transcript-preview">
+                      {impactLog.transcript.slice(0, 200)}{impactLog.transcript.length > 200 ? "..." : ""}
+                    </p>
+                  )}
+
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 min-h-[44px]"
+                      onClick={() => setShowFullTranscript(!showFullTranscript)}
+                      data-testid="button-view-transcript"
+                    >
+                      <Eye className="w-4 h-4 mr-1.5" />
+                      {showFullTranscript ? "Collapse" : "View"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 min-h-[44px]"
+                      onClick={() => setShowFollowUp(!showFollowUp)}
+                      data-testid="button-toggle-followup"
+                    >
+                      <MessageCirclePlus className="w-4 h-4 mr-1.5" />
+                      Follow-up
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 min-h-[44px]"
+                      onClick={handleReanalyze}
+                      disabled={isAnalyzing || !impactLog?.transcript}
+                      data-testid="button-reanalyze"
+                    >
+                      {isAnalyzing ? (
+                        <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-4 h-4 mr-1.5" />
+                      )}
+                      Re-analyse
+                    </Button>
                   </div>
                 </Card>
 
                 {showFollowUp && (
-                  <Card className="p-5">
+                  <Card className="p-4 md:p-5">
                     <h3 className="font-bold font-display mb-3" data-testid="text-followup-heading">Add Follow-up Notes</h3>
                     <p className="text-sm text-muted-foreground mb-4">Record or type anything you forgot to mention. It will be appended to the transcript above.</p>
 
@@ -935,7 +1163,7 @@ export function ReviewView({ id }: { id: number }) {
                               <Button
                                 onClick={transcribeFollowUpAudio}
                                 disabled={isFollowUpTranscribing}
-                                className="w-full"
+                                className="w-full min-h-[44px]"
                                 data-testid="button-followup-transcribe"
                               >
                                 {isFollowUpTranscribing ? (
@@ -980,14 +1208,14 @@ export function ReviewView({ id }: { id: number }) {
                     <div className="flex items-center gap-2 mt-4">
                       <Button
                         variant="outline"
-                        className="flex-1"
+                        className="flex-1 min-h-[44px]"
                         onClick={() => { setShowFollowUp(false); setFollowUpText(""); if (followUpAudioUrl) URL.revokeObjectURL(followUpAudioUrl); setFollowUpAudioBlob(null); setFollowUpAudioUrl(null); }}
                         data-testid="button-followup-cancel"
                       >
                         Cancel
                       </Button>
                       <Button
-                        className="flex-1"
+                        className="flex-1 min-h-[44px]"
                         onClick={handleAppendFollowUp}
                         disabled={isAppending || !followUpText.trim()}
                         data-testid="button-followup-append"
@@ -1011,32 +1239,364 @@ export function ReviewView({ id }: { id: number }) {
               )}
             </div>
 
-            <div className="lg:col-span-2 space-y-4">
-              <Card className="p-5">
-                <h3 className="font-bold font-display mb-2">Summary</h3>
-                <Textarea
-                  value={summary}
-                  onChange={(e) => setSummary(e.target.value)}
-                  className="min-h-[80px] resize-none"
-                  data-testid="textarea-summary"
-                />
-              </Card>
-
-              <Card className="p-5">
-                <h3 className="font-bold font-display mb-2">Sentiment</h3>
+            {/* SENTIMENT - mobile:2 desktop:left */}
+            <div className="order-2 lg:order-none">
+              <CollapsibleSection title="Sentiment" count={sentiment ? 1 : 0} testId="sentiment">
                 <Badge
                   variant="secondary"
-                  className={`text-sm cursor-pointer ${SENTIMENT_COLORS[sentiment] || ""}`}
+                  className={`text-sm cursor-pointer min-h-[44px] px-4 ${SENTIMENT_COLORS[sentiment] || ""}`}
                   onClick={cycleSentiment}
                   data-testid="badge-sentiment-toggle"
                 >
                   {sentiment}
                 </Badge>
-                <p className="text-xs text-muted-foreground mt-2">Click to change</p>
-              </Card>
+                <p className="text-xs text-muted-foreground mt-2">Tap to change</p>
+              </CollapsibleSection>
+            </div>
 
-              <Card className="p-5">
-                <h3 className="font-bold font-display mb-3">Impact Tags</h3>
+            {/* COMMUNITY ACTIONS - mobile:6 desktop:left */}
+            <div className="order-6 lg:order-none">
+              <CollapsibleSection
+                title="Community Actions"
+                count={communityActions.length + suggestedCommunityActions.length}
+                icon={<Users className="w-4 h-4 text-blue-500 shrink-0" />}
+                testId="community-actions"
+              >
+                <p className="text-xs text-muted-foreground mb-3">Follow-ups with people — introductions, resources, bookings</p>
+                {communityActions.length > 0 && (
+                  <div className="space-y-2 mb-3">
+                    {communityActions.map((item: any, i: number) => (
+                      <div key={i} className="flex items-start gap-2 p-2 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-900" data-testid={`community-action-${i}`}>
+                        <Checkbox
+                          checked={!!checkedCommunityActions[item.task || ""]}
+                          onCheckedChange={(checked) => {
+                            setCheckedCommunityActions({ ...checkedCommunityActions, [item.task || ""]: !!checked });
+                          }}
+                          className="mt-1 h-5 w-5 cursor-pointer"
+                          data-testid={`checkbox-community-action-${i}`}
+                        />
+                        <div className={`flex-1 min-w-0 ${checkedCommunityActions[item.task || ""] ? "opacity-50 line-through" : ""}`}>
+                          <p className="text-sm font-medium">{item.task}</p>
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            {item.contactMentioned && <Badge variant="outline" className="text-xs"><Users className="w-3 h-3 mr-1" />{item.contactMentioned}</Badge>}
+                            {item.priority && (
+                              <Badge variant={item.priority === "high" ? "destructive" : "secondary"} className="text-xs capitalize">
+                                {item.priority}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] shrink-0" onClick={() => setCommunityActions(communityActions.filter((_: any, j: number) => j !== i))} data-testid={`button-remove-community-action-${i}`}>
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {suggestedCommunityActions.length > 0 && (
+                  <div className="mb-3">
+                    <button
+                      type="button"
+                      className="flex items-center gap-2 text-sm font-medium text-purple-600 dark:text-purple-400 mb-2 min-h-[44px]"
+                      onClick={() => setShowSuggestedCommunity(!showSuggestedCommunity)}
+                      data-testid="button-toggle-suggested-community"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      AI Suggestions ({suggestedCommunityActions.length})
+                      {showSuggestedCommunity ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    </button>
+                    {showSuggestedCommunity && (
+                      <div className="space-y-2">
+                        {suggestedCommunityActions.map((item: any, i: number) => (
+                          <div
+                            key={i}
+                            className="flex items-center gap-2 p-3 bg-purple-50 dark:bg-purple-950/20 rounded-lg border border-purple-200 dark:border-purple-900 cursor-pointer hover-elevate min-h-[48px]"
+                            onClick={() => {
+                              setCommunityActions([...communityActions, item]);
+                              setSuggestedCommunityActions(suggestedCommunityActions.filter((_: any, j: number) => j !== i));
+                            }}
+                            data-testid={`suggested-community-action-${i}`}
+                          >
+                            <Plus className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium">{item.task}</p>
+                              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                {item.contactMentioned && <Badge variant="outline" className="text-xs"><Users className="w-3 h-3 mr-1" />{item.contactMentioned}</Badge>}
+                                {item.priority && (
+                                  <Badge variant={item.priority === "high" ? "destructive" : "secondary"} className="text-xs capitalize">
+                                    {item.priority}
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full text-xs text-purple-600 dark:text-purple-400 min-h-[44px]"
+                          onClick={() => {
+                            setCommunityActions([...communityActions, ...suggestedCommunityActions]);
+                            setSuggestedCommunityActions([]);
+                          }}
+                          data-testid="button-accept-all-community"
+                        >
+                          <Check className="w-3 h-3 mr-1" />
+                          Accept All
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {communityActions.length === 0 && suggestedCommunityActions.length === 0 && <p className="text-xs text-muted-foreground italic">No community actions extracted.</p>}
+              </CollapsibleSection>
+            </div>
+
+            {/* OPERATIONAL ACTIONS - mobile:7 desktop:left */}
+            <div className="order-7 lg:order-none">
+              <CollapsibleSection
+                title="Operational Actions"
+                count={operationalActions.length + suggestedOperationalActions.length}
+                icon={<Settings className="w-4 h-4 text-orange-500 shrink-0" />}
+                testId="operational-actions"
+              >
+                <p className="text-xs text-muted-foreground mb-3">Internal hub tasks — processes, admin, marketing, capacity</p>
+                {operationalActions.length > 0 && (
+                  <div className="space-y-2 mb-3">
+                    {operationalActions.map((item: any, i: number) => (
+                      <div key={i} className="flex items-start gap-2 p-2 bg-orange-50 dark:bg-orange-950/20 rounded-lg border border-orange-200 dark:border-orange-900" data-testid={`operational-action-${i}`}>
+                        <Checkbox
+                          checked={!!checkedOperationalActions[item.task || ""]}
+                          onCheckedChange={(checked) => {
+                            setCheckedOperationalActions({ ...checkedOperationalActions, [item.task || ""]: !!checked });
+                          }}
+                          className="mt-1 h-5 w-5 cursor-pointer"
+                          data-testid={`checkbox-operational-action-${i}`}
+                        />
+                        <div className={`flex-1 min-w-0 ${checkedOperationalActions[item.task || ""] ? "opacity-50 line-through" : ""}`}>
+                          <p className="text-sm font-medium">{item.task}</p>
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            {item.category && (
+                              <Badge variant="outline" className="text-xs capitalize">{item.category}</Badge>
+                            )}
+                            {item.priority && (
+                              <Badge variant={item.priority === "high" ? "destructive" : "secondary"} className="text-xs capitalize">
+                                {item.priority}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] shrink-0" onClick={() => setOperationalActions(operationalActions.filter((_: any, j: number) => j !== i))} data-testid={`button-remove-operational-action-${i}`}>
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {suggestedOperationalActions.length > 0 && (
+                  <div className="mb-3">
+                    <button
+                      type="button"
+                      className="flex items-center gap-2 text-sm font-medium text-purple-600 dark:text-purple-400 mb-2 min-h-[44px]"
+                      onClick={() => setShowSuggestedOperational(!showSuggestedOperational)}
+                      data-testid="button-toggle-suggested-operational"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      AI Suggestions ({suggestedOperationalActions.length})
+                      {showSuggestedOperational ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    </button>
+                    {showSuggestedOperational && (
+                      <div className="space-y-2">
+                        {suggestedOperationalActions.map((item: any, i: number) => (
+                          <div
+                            key={i}
+                            className="flex items-center gap-2 p-3 bg-purple-50 dark:bg-purple-950/20 rounded-lg border border-purple-200 dark:border-purple-900 cursor-pointer hover-elevate min-h-[48px]"
+                            onClick={() => {
+                              setOperationalActions([...operationalActions, item]);
+                              setSuggestedOperationalActions(suggestedOperationalActions.filter((_: any, j: number) => j !== i));
+                            }}
+                            data-testid={`suggested-operational-action-${i}`}
+                          >
+                            <Plus className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium">{item.task}</p>
+                              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                {item.category && (
+                                  <Badge variant="outline" className="text-xs capitalize">{item.category}</Badge>
+                                )}
+                                {item.priority && (
+                                  <Badge variant={item.priority === "high" ? "destructive" : "secondary"} className="text-xs capitalize">
+                                    {item.priority}
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full text-xs text-purple-600 dark:text-purple-400 min-h-[44px]"
+                          onClick={() => {
+                            setOperationalActions([...operationalActions, ...suggestedOperationalActions]);
+                            setSuggestedOperationalActions([]);
+                          }}
+                          data-testid="button-accept-all-operational"
+                        >
+                          <Check className="w-3 h-3 mr-1" />
+                          Accept All
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {operationalActions.length === 0 && suggestedOperationalActions.length === 0 && <p className="text-xs text-muted-foreground italic">No operational actions extracted.</p>}
+              </CollapsibleSection>
+            </div>
+
+            {/* OPERATOR REFLECTIONS - mobile:9 desktop:left */}
+            <div className="order-9 lg:order-none">
+              <CollapsibleSection
+                title="Operator Reflections"
+                count={reflections.wins.length + reflections.concerns.length + reflections.learnings.length}
+                icon={<Sparkles className="w-4 h-4 text-purple-500 shrink-0" />}
+                testId="reflections"
+              >
+                <div className="space-y-4">
+                  <div className="rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900 p-3" data-testid="reflections-wins">
+                    <h4 className="text-xs font-semibold text-green-700 dark:text-green-400 uppercase tracking-wide mb-2">Wins</h4>
+                    {reflections.wins.length > 0 ? (
+                      <ul className="space-y-2">
+                        {reflections.wins.map((w, i) => (
+                          <li key={i} className="flex items-start gap-2 text-sm">
+                            <span className="flex-1">{w}</span>
+                            <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] shrink-0" onClick={() => setReflections({ ...reflections, wins: reflections.wins.filter((_, j) => j !== i) })} data-testid={`button-remove-win-${i}`}>
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <p className="text-xs text-muted-foreground italic">No wins extracted.</p>}
+                  </div>
+                  <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 p-3" data-testid="reflections-concerns">
+                    <h4 className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-2">Concerns</h4>
+                    {reflections.concerns.length > 0 ? (
+                      <ul className="space-y-2">
+                        {reflections.concerns.map((c, i) => (
+                          <li key={i} className="flex items-start gap-2 text-sm">
+                            <span className="flex-1">{c}</span>
+                            <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] shrink-0" onClick={() => setReflections({ ...reflections, concerns: reflections.concerns.filter((_, j) => j !== i) })} data-testid={`button-remove-concern-${i}`}>
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <p className="text-xs text-muted-foreground italic">No concerns extracted.</p>}
+                  </div>
+                  <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 p-3" data-testid="reflections-learnings">
+                    <h4 className="text-xs font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wide mb-2">Learnings</h4>
+                    {reflections.learnings.length > 0 ? (
+                      <ul className="space-y-2">
+                        {reflections.learnings.map((l, i) => (
+                          <li key={i} className="flex items-start gap-2 text-sm">
+                            <span className="flex-1">{l}</span>
+                            <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] shrink-0" onClick={() => setReflections({ ...reflections, learnings: reflections.learnings.filter((_, j) => j !== i) })} data-testid={`button-remove-learning-${i}`}>
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <p className="text-xs text-muted-foreground italic">No learnings extracted.</p>}
+                  </div>
+                </div>
+              </CollapsibleSection>
+            </div>
+            </div>
+
+            {/* RIGHT COLUMN: contents on mobile (flat for ordering), block on desktop (independent column) */}
+            <div className="contents lg:block lg:space-y-4">
+            {/* LINKED COMMUNITY - mobile:3 desktop:right */}
+            <div className="order-3 lg:order-none">
+              <CollapsibleSection title="Linked Community" count={people.length} defaultOpen testId="linked-community">
+                <PeopleSection
+                  label="Primary"
+                  description="Main people involved"
+                  people={people.filter((p: any) => p.section === "primary" || (!p.section && ["primary", "mentor", "mentee"].includes(p.role)))}
+                  allPeople={people}
+                  setPeople={setPeople}
+                  contacts={contacts || []}
+                  toast={toast}
+                  section="primary"
+                  testIdPrefix="primary"
+                />
+                <div className="my-4 border-t border-border" />
+                <PeopleSection
+                  label="Mentioned"
+                  description="Others referenced in the debrief"
+                  people={people.filter((p: any) => p.section === "secondary" || (!p.section && !["primary", "mentor", "mentee"].includes(p.role)))}
+                  allPeople={people}
+                  setPeople={setPeople}
+                  contacts={contacts || []}
+                  toast={toast}
+                  section="secondary"
+                  testIdPrefix="secondary"
+                />
+              </CollapsibleSection>
+            </div>
+
+            {/* METRICS - mobile:4 desktop:right */}
+            <div className="order-4 lg:order-none">
+              <CollapsibleSection
+                title="Metrics"
+                count={Object.values(metrics).filter(v => v !== undefined && v !== null).length}
+                testId="metrics"
+              >
+                <div className="space-y-3">
+                  {Object.entries(METRIC_LABELS).map(([key, label]) => {
+                    const trendHistory = metricTrends?.trends?.[key] || [];
+                    return (
+                      <div key={key} className="flex items-center gap-3">
+                        <Label className="text-xs text-muted-foreground w-28 md:w-36 shrink-0">{label}</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={10}
+                          value={metrics[key] || ""}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value);
+                            if (!isNaN(val) && val >= 1 && val <= 10) {
+                              setMetrics({ ...metrics, [key]: val });
+                            } else if (e.target.value === "") {
+                              const updated = { ...metrics };
+                              delete updated[key];
+                              setMetrics(updated);
+                            }
+                          }}
+                          placeholder="1-10"
+                          className="w-16 text-center"
+                          data-testid={`input-metric-${key}`}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <MiniTrendDots current={metrics[key]} history={trendHistory} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CollapsibleSection>
+            </div>
+
+            {/* IMPACT TAGS - mobile:5 desktop:right */}
+            <div className="order-5 lg:order-none">
+              <CollapsibleSection
+                title="Impact Tags"
+                count={impactTags.length}
+                testId="impact-tags"
+              >
                 <p className="text-xs text-muted-foreground mb-3">Auto-applied from AI analysis. Remove any that don't apply.</p>
                 {impactTags.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No impact areas identified from this transcript</p>
@@ -1046,6 +1606,8 @@ export function ReviewView({ id }: { id: number }) {
                       const matchedTaxonomy = tag.taxonomyId
                         ? taxonomyCategories?.find((t: any) => t.id === tag.taxonomyId)
                         : null;
+                      const conf = tag.confidence || 0;
+                      const confDotColor = conf >= 70 ? "bg-green-500" : conf >= 40 ? "bg-amber-500" : "bg-red-500";
                       return (
                         <div key={tag.dbId || i} className="space-y-1.5 p-3 rounded-lg border bg-muted/30 border-border" data-testid={`impact-tag-entry-${i}`}>
                           <div className="flex items-center gap-2">
@@ -1056,7 +1618,7 @@ export function ReviewView({ id }: { id: number }) {
                                     <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: matchedTaxonomy.color }} />
                                   )}
                                   <span className="text-sm font-medium truncate">{matchedTaxonomy.name}</span>
-                                  <Badge variant="secondary" className="text-[10px] shrink-0">Applied</Badge>
+                                  <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${confDotColor}`} title={`${conf}% confidence`} data-testid={`confidence-dot-${i}`} />
                                 </div>
                               ) : (
                                 <div className="flex-1 min-w-0">
@@ -1128,15 +1690,6 @@ export function ReviewView({ id }: { id: number }) {
                               </Button>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all ${confidenceColor(tag.confidence || 0)}`}
-                                style={{ width: `${tag.confidence || 0}%` }}
-                              />
-                            </div>
-                            <span className="text-xs text-muted-foreground w-10 text-right">{tag.confidence || 0}%</span>
-                          </div>
                           {tag.evidence && (
                             <p className="text-xs text-muted-foreground italic">{tag.evidence}</p>
                           )}
@@ -1148,44 +1701,24 @@ export function ReviewView({ id }: { id: number }) {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="mt-3 w-full"
+                  className="mt-3 w-full min-h-[44px]"
                   onClick={() => setImpactTags([...impactTags, { category: "", confidence: 50, evidence: "", taxonomyId: null }])}
                   data-testid="button-add-tag"
                 >
                   <Plus className="w-3 h-3 mr-1" />
                   Add Tag
                 </Button>
-              </Card>
+              </CollapsibleSection>
+            </div>
 
-              <Card className="p-5">
-                <h3 className="font-bold font-display mb-4">Linked Community Members</h3>
-                <PeopleSection
-                  label="Primary"
-                  description="Main people involved"
-                  people={people.filter((p: any) => p.section === "primary" || (!p.section && ["primary", "mentor", "mentee"].includes(p.role)))}
-                  allPeople={people}
-                  setPeople={setPeople}
-                  contacts={contacts || []}
-                  toast={toast}
-                  section="primary"
-                  testIdPrefix="primary"
-                />
-                <div className="my-4 border-t border-border" />
-                <PeopleSection
-                  label="Secondary"
-                  description="Others mentioned"
-                  people={people.filter((p: any) => p.section === "secondary" || (!p.section && !["primary", "mentor", "mentee"].includes(p.role)))}
-                  allPeople={people}
-                  setPeople={setPeople}
-                  contacts={contacts || []}
-                  toast={toast}
-                  section="secondary"
-                  testIdPrefix="secondary"
-                />
-              </Card>
-
-              <Card className="p-5">
-                <h3 className="font-bold font-display mb-3">Milestones</h3>
+            {/* MILESTONES - mobile:8 desktop:right */}
+            <div className="order-8 lg:order-none">
+              <CollapsibleSection
+                title="Milestones"
+                count={milestones.length}
+                icon={<Trophy className="w-4 h-4 text-amber-500 shrink-0" />}
+                testId="milestones"
+              >
                 {milestones.length > 0 && (
                   <div className="space-y-3 mb-3">
                     {milestones.map((m, i) => (
@@ -1221,6 +1754,7 @@ export function ReviewView({ id }: { id: number }) {
                   <Button
                     variant="outline"
                     size="icon"
+                    className="min-h-[44px] min-w-[44px]"
                     onClick={() => {
                       if (newMilestone.trim()) {
                         setMilestones([...milestones, newMilestone.trim()]);
@@ -1232,10 +1766,16 @@ export function ReviewView({ id }: { id: number }) {
                     <Plus className="w-4 h-4" />
                   </Button>
                 </div>
-              </Card>
+              </CollapsibleSection>
+            </div>
 
-              <Card className="p-5">
-                <h3 className="font-bold font-display mb-3">Funder Tags</h3>
+            {/* FUNDER TAGS - mobile:10 desktop:right */}
+            <div className="order-10 lg:order-none">
+              <CollapsibleSection
+                title="Funder Tags"
+                count={funderTags.length}
+                testId="funder-tags"
+              >
                 {funderTags.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mb-3">
                     {funderTags.map((tag, i) => (
@@ -1243,7 +1783,7 @@ export function ReviewView({ id }: { id: number }) {
                         {tag}
                         <button
                           onClick={() => setFunderTags(funderTags.filter(t => t !== tag))}
-                          className="ml-0.5 transition-colors"
+                          className="ml-0.5 transition-colors min-h-[20px] min-w-[20px] flex items-center justify-center"
                           type="button"
                           data-testid={`button-remove-funder-tag-${i}`}
                         >
@@ -1273,6 +1813,7 @@ export function ReviewView({ id }: { id: number }) {
                   <Button
                     variant="outline"
                     size="icon"
+                    className="min-h-[44px] min-w-[44px]"
                     onClick={() => {
                       if (funderTagInput.trim() && !funderTags.includes(funderTagInput.trim())) {
                         setFunderTags([...funderTags, funderTagInput.trim()]);
@@ -1284,401 +1825,8 @@ export function ReviewView({ id }: { id: number }) {
                     <Plus className="w-4 h-4" />
                   </Button>
                 </div>
-              </Card>
-
-              <Card className="p-5">
-                <h3 className="font-bold font-display mb-3">Action Items</h3>
-                {actionItemsList.length > 0 && (
-                  <div className="space-y-2 mb-3">
-                    {actionItemsList.map((item: any, i: number) => (
-                      <div key={i} className="flex items-center gap-2 p-2 bg-muted/30 rounded-lg border border-border">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{item.title}</p>
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            {item.owner && <span className="text-xs text-muted-foreground">{item.owner}</span>}
-                            {item.priority && (
-                              <Badge variant="secondary" className="text-xs">
-                                {item.priority}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="min-h-[44px] min-w-[44px]"
-                          onClick={() => setActionItemsList(actionItemsList.filter((_: any, j: number) => j !== i))}
-                          data-testid={`button-remove-action-${i}`}
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {suggestedActions.length > 0 && (
-                  <div className="mb-3">
-                    <button
-                      type="button"
-                      className="flex items-center gap-2 text-sm font-medium text-purple-600 dark:text-purple-400 mb-2"
-                      onClick={() => setShowSuggestedActions(!showSuggestedActions)}
-                      data-testid="button-toggle-suggested-actions"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      AI Suggestions ({suggestedActions.length})
-                      {showSuggestedActions ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                    </button>
-                    {showSuggestedActions && (
-                      <div className="space-y-2">
-                        {suggestedActions.map((item: any, i: number) => (
-                          <div
-                            key={i}
-                            className="flex items-center gap-2 p-2 bg-purple-50 dark:bg-purple-950/20 rounded-lg border border-purple-200 dark:border-purple-900 cursor-pointer hover-elevate"
-                            onClick={() => {
-                              setActionItemsList([...actionItemsList, item]);
-                              setSuggestedActions(suggestedActions.filter((_: any, j: number) => j !== i));
-                            }}
-                            data-testid={`suggested-action-${i}`}
-                          >
-                            <Plus className="w-3.5 h-3.5 text-purple-500 shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium truncate">{item.title}</p>
-                              <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                {item.owner && <span className="text-xs text-muted-foreground">{item.owner}</span>}
-                                {item.priority && (
-                                  <Badge variant="secondary" className="text-xs">
-                                    {item.priority}
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="w-full text-xs text-purple-600 dark:text-purple-400"
-                          onClick={() => {
-                            setActionItemsList([...actionItemsList, ...suggestedActions]);
-                            setSuggestedActions([]);
-                          }}
-                          data-testid="button-accept-all-actions"
-                        >
-                          <Check className="w-3 h-3 mr-1" />
-                          Accept All
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="space-y-2 p-3 bg-muted/20 rounded-lg border border-border">
-                  <Input
-                    value={newAction.title}
-                    onChange={(e) => setNewAction({ ...newAction, title: e.target.value })}
-                    placeholder="Action title..."
-                    data-testid="input-new-action-title"
-                  />
-                  <div className="flex items-center gap-2">
-                    <Input
-                      value={newAction.owner}
-                      onChange={(e) => setNewAction({ ...newAction, owner: e.target.value })}
-                      placeholder="Owner"
-                      className="flex-1"
-                      data-testid="input-new-action-owner"
-                    />
-                    <select
-                      value={newAction.priority}
-                      onChange={(e) => setNewAction({ ...newAction, priority: e.target.value })}
-                      className="flex h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
-                      data-testid="select-new-action-priority"
-                    >
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
-                    </select>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => {
-                      if (newAction.title.trim()) {
-                        setActionItemsList([...actionItemsList, { ...newAction }]);
-                        setNewAction({ title: "", owner: "", priority: "medium" });
-                      }
-                    }}
-                    data-testid="button-add-action"
-                  >
-                    <Plus className="w-3 h-3 mr-1" />
-                    Add Action
-                  </Button>
-                </div>
-              </Card>
-
-              <Card className="p-5">
-                <h3 className="font-bold font-display mb-3 flex items-center gap-2">
-                  <Users className="w-4 h-4 text-blue-500" />
-                  Community Actions
-                </h3>
-                <p className="text-xs text-muted-foreground mb-3">Follow-ups with people — introductions, resources, bookings</p>
-                {communityActions.length > 0 && (
-                  <div className="space-y-2 mb-3">
-                    {communityActions.map((item: any, i: number) => (
-                      <div key={i} className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-900" data-testid={`community-action-${i}`}>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium">{item.task}</p>
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            {item.contactMentioned && <Badge variant="outline" className="text-xs"><Users className="w-3 h-3 mr-1" />{item.contactMentioned}</Badge>}
-                            {item.priority && (
-                              <Badge variant={item.priority === "high" ? "destructive" : "secondary"} className="text-xs capitalize">
-                                {item.priority}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                        <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]" onClick={() => setCommunityActions(communityActions.filter((_: any, j: number) => j !== i))} data-testid={`button-remove-community-action-${i}`}>
-                          <X className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {suggestedCommunityActions.length > 0 && (
-                  <div className="mb-3">
-                    <button
-                      type="button"
-                      className="flex items-center gap-2 text-sm font-medium text-purple-600 dark:text-purple-400 mb-2"
-                      onClick={() => setShowSuggestedCommunity(!showSuggestedCommunity)}
-                      data-testid="button-toggle-suggested-community"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      AI Suggestions ({suggestedCommunityActions.length})
-                      {showSuggestedCommunity ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                    </button>
-                    {showSuggestedCommunity && (
-                      <div className="space-y-2">
-                        {suggestedCommunityActions.map((item: any, i: number) => (
-                          <div
-                            key={i}
-                            className="flex items-center gap-2 p-3 bg-purple-50 dark:bg-purple-950/20 rounded-lg border border-purple-200 dark:border-purple-900 cursor-pointer hover-elevate min-h-[48px]"
-                            onClick={() => {
-                              setCommunityActions([...communityActions, item]);
-                              setSuggestedCommunityActions(suggestedCommunityActions.filter((_: any, j: number) => j !== i));
-                            }}
-                            data-testid={`suggested-community-action-${i}`}
-                          >
-                            <Plus className="w-3.5 h-3.5 text-purple-500 shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium">{item.task}</p>
-                              <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                {item.contactMentioned && <Badge variant="outline" className="text-xs"><Users className="w-3 h-3 mr-1" />{item.contactMentioned}</Badge>}
-                                {item.priority && (
-                                  <Badge variant={item.priority === "high" ? "destructive" : "secondary"} className="text-xs capitalize">
-                                    {item.priority}
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="w-full text-xs text-purple-600 dark:text-purple-400"
-                          onClick={() => {
-                            setCommunityActions([...communityActions, ...suggestedCommunityActions]);
-                            setSuggestedCommunityActions([]);
-                          }}
-                          data-testid="button-accept-all-community"
-                        >
-                          <Check className="w-3 h-3 mr-1" />
-                          Accept All
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {communityActions.length === 0 && suggestedCommunityActions.length === 0 && <p className="text-xs text-muted-foreground italic mb-3">No community actions extracted.</p>}
-              </Card>
-
-              <Card className="p-5">
-                <h3 className="font-bold font-display mb-3 flex items-center gap-2">
-                  <Settings className="w-4 h-4 text-orange-500" />
-                  Operational Actions
-                </h3>
-                <p className="text-xs text-muted-foreground mb-3">Internal hub tasks — processes, admin, marketing, capacity</p>
-                {operationalActions.length > 0 && (
-                  <div className="space-y-2 mb-3">
-                    {operationalActions.map((item: any, i: number) => (
-                      <div key={i} className="flex items-center gap-2 p-2 bg-orange-50 dark:bg-orange-950/20 rounded-lg border border-orange-200 dark:border-orange-900" data-testid={`operational-action-${i}`}>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium">{item.task}</p>
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            {item.category && (
-                              <Badge variant="outline" className="text-xs capitalize">{item.category}</Badge>
-                            )}
-                            {item.priority && (
-                              <Badge variant={item.priority === "high" ? "destructive" : "secondary"} className="text-xs capitalize">
-                                {item.priority}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                        <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]" onClick={() => setOperationalActions(operationalActions.filter((_: any, j: number) => j !== i))} data-testid={`button-remove-operational-action-${i}`}>
-                          <X className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {suggestedOperationalActions.length > 0 && (
-                  <div className="mb-3">
-                    <button
-                      type="button"
-                      className="flex items-center gap-2 text-sm font-medium text-purple-600 dark:text-purple-400 mb-2"
-                      onClick={() => setShowSuggestedOperational(!showSuggestedOperational)}
-                      data-testid="button-toggle-suggested-operational"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      AI Suggestions ({suggestedOperationalActions.length})
-                      {showSuggestedOperational ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                    </button>
-                    {showSuggestedOperational && (
-                      <div className="space-y-2">
-                        {suggestedOperationalActions.map((item: any, i: number) => (
-                          <div
-                            key={i}
-                            className="flex items-center gap-2 p-3 bg-purple-50 dark:bg-purple-950/20 rounded-lg border border-purple-200 dark:border-purple-900 cursor-pointer hover-elevate min-h-[48px]"
-                            onClick={() => {
-                              setOperationalActions([...operationalActions, item]);
-                              setSuggestedOperationalActions(suggestedOperationalActions.filter((_: any, j: number) => j !== i));
-                            }}
-                            data-testid={`suggested-operational-action-${i}`}
-                          >
-                            <Plus className="w-3.5 h-3.5 text-purple-500 shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium">{item.task}</p>
-                              <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                {item.category && (
-                                  <Badge variant="outline" className="text-xs capitalize">{item.category}</Badge>
-                                )}
-                                {item.priority && (
-                                  <Badge variant={item.priority === "high" ? "destructive" : "secondary"} className="text-xs capitalize">
-                                    {item.priority}
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="w-full text-xs text-purple-600 dark:text-purple-400"
-                          onClick={() => {
-                            setOperationalActions([...operationalActions, ...suggestedOperationalActions]);
-                            setSuggestedOperationalActions([]);
-                          }}
-                          data-testid="button-accept-all-operational"
-                        >
-                          <Check className="w-3 h-3 mr-1" />
-                          Accept All
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {operationalActions.length === 0 && suggestedOperationalActions.length === 0 && <p className="text-xs text-muted-foreground italic mb-3">No operational actions extracted.</p>}
-              </Card>
-
-              <Card className="p-5">
-                <h3 className="font-bold font-display mb-3 flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-purple-500" />
-                  Operator Reflections
-                </h3>
-                <div className="space-y-4">
-                  <div className="rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900 p-3" data-testid="reflections-wins">
-                    <h4 className="text-xs font-semibold text-green-700 dark:text-green-400 uppercase tracking-wide mb-2">Wins</h4>
-                    {reflections.wins.length > 0 ? (
-                      <ul className="space-y-2">
-                        {reflections.wins.map((w, i) => (
-                          <li key={i} className="flex items-start gap-2 text-sm">
-                            <span className="flex-1">{w}</span>
-                            <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] shrink-0" onClick={() => setReflections({ ...reflections, wins: reflections.wins.filter((_, j) => j !== i) })} data-testid={`button-remove-win-${i}`}>
-                              <X className="w-4 h-4" />
-                            </Button>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : <p className="text-xs text-muted-foreground italic">No wins extracted.</p>}
-                  </div>
-                  <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 p-3" data-testid="reflections-concerns">
-                    <h4 className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-2">Concerns</h4>
-                    {reflections.concerns.length > 0 ? (
-                      <ul className="space-y-2">
-                        {reflections.concerns.map((c, i) => (
-                          <li key={i} className="flex items-start gap-2 text-sm">
-                            <span className="flex-1">{c}</span>
-                            <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] shrink-0" onClick={() => setReflections({ ...reflections, concerns: reflections.concerns.filter((_, j) => j !== i) })} data-testid={`button-remove-concern-${i}`}>
-                              <X className="w-4 h-4" />
-                            </Button>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : <p className="text-xs text-muted-foreground italic">No concerns extracted.</p>}
-                  </div>
-                  <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 p-3" data-testid="reflections-learnings">
-                    <h4 className="text-xs font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wide mb-2">Learnings</h4>
-                    {reflections.learnings.length > 0 ? (
-                      <ul className="space-y-2">
-                        {reflections.learnings.map((l, i) => (
-                          <li key={i} className="flex items-start gap-2 text-sm">
-                            <span className="flex-1">{l}</span>
-                            <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] shrink-0" onClick={() => setReflections({ ...reflections, learnings: reflections.learnings.filter((_, j) => j !== i) })} data-testid={`button-remove-learning-${i}`}>
-                              <X className="w-4 h-4" />
-                            </Button>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : <p className="text-xs text-muted-foreground italic">No learnings extracted.</p>}
-                  </div>
-                </div>
-              </Card>
-
-              <Card className="p-5">
-                <h3 className="font-bold font-display mb-3">Metrics</h3>
-                <div className="grid grid-cols-2 gap-3">
-                  {Object.entries(METRIC_LABELS).map(([key, label]) => (
-                    <div key={key} className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">{label}</Label>
-                      <Input
-                        type="number"
-                        min={1}
-                        max={10}
-                        value={metrics[key] || ""}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value);
-                          if (!isNaN(val) && val >= 1 && val <= 10) {
-                            setMetrics({ ...metrics, [key]: val });
-                          } else if (e.target.value === "") {
-                            const updated = { ...metrics };
-                            delete updated[key];
-                            setMetrics(updated);
-                          }
-                        }}
-                        placeholder="1-10"
-                        data-testid={`input-metric-${key}`}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </Card>
+              </CollapsibleSection>
+            </div>
             </div>
           </div>
         </div>
