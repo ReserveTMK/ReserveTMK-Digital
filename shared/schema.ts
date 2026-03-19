@@ -507,7 +507,7 @@ export const bookings = pgTable("bookings", {
   mouId: integer("mou_id"),
   funderTags: text("funder_tags").array(),
   notes: text("notes"),
-  specialRequests: text("special_requests"),
+  bookingSummary: text("booking_summary"),
   bookerName: text("booker_name"),
   confirmationSent: boolean("confirmation_sent").default(false),
   instructionsSent: boolean("instructions_sent").default(false),

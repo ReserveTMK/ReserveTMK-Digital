@@ -187,13 +187,13 @@ export async function sendBookingConfirmationEmail(booking: Booking, userId: str
     packageHtml = `<p style="margin:5px 0;color:#6b7280;">Package Status: ${remaining} bookings remaining</p>`;
   }
 
-  const specialRequestsHtml = booking.specialRequests
+  const bookingSummaryHtml = booking.bookingSummary
     ? `
     <tr><td style="padding:15px 30px;">
       <table width="100%" style="background:#fefce8;border-radius:6px;border:1px solid #fde68a;" cellpadding="0" cellspacing="0">
         <tr><td style="padding:12px 15px;">
-          <p style="margin:0 0 5px;font-size:13px;font-weight:600;color:#92400e;">Your Special Requests</p>
-          <p style="margin:0;font-size:14px;color:#374151;">${booking.specialRequests.replace(/\n/g, "<br>")}</p>
+          <p style="margin:0 0 5px;font-size:13px;font-weight:600;color:#92400e;">Tell Us About Your Booking</p>
+          <p style="margin:0;font-size:14px;color:#374151;">${booking.bookingSummary.replace(/\n/g, "<br>")}</p>
         </td></tr>
       </table>
     </td></tr>`
@@ -247,7 +247,7 @@ export async function sendBookingConfirmationEmail(booking: Booking, userId: str
     </table>
   </td></tr>
 
-  ${specialRequestsHtml}
+  ${bookingSummaryHtml}
 
   ${buildInstructionSection("Access Information", grouped["access"] || [])}
   ${arrivalSection}

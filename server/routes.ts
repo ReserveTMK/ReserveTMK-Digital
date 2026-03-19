@@ -11946,9 +11946,12 @@ Rules:
       }
       const booker = linkResult.booker;
 
-      const { venueId, venueIds: rawVenueIds, startDate, startTime, endTime, classification, specialRequests, usePackageCredit, bookerName } = req.body;
+      const { venueId, venueIds: rawVenueIds, startDate, startTime, endTime, classification, bookingSummary, usePackageCredit, bookerName } = req.body;
       if (!venueId || !startDate || !startTime || !endTime || !classification) {
         return res.status(400).json({ message: "Missing required fields" });
+      }
+      if (!bookingSummary || !String(bookingSummary).trim()) {
+        return res.status(400).json({ message: "Booking summary is required" });
       }
       const resolvedVenueIds: number[] = Array.isArray(rawVenueIds) && rawVenueIds.length > 0
         ? rawVenueIds.map((id: any) => parseInt(id)).filter((id: number) => !isNaN(id))
@@ -12129,7 +12132,7 @@ Rules:
         bookerGroupId,
         membershipId,
         mouId,
-        specialRequests: specialRequests || null,
+        bookingSummary: String(bookingSummary).trim(),
         bookerName: bookerName || null,
         bookingSource: "regular_booker_portal",
         usePackageCredit: shouldUsePackageCredit,

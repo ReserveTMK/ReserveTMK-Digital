@@ -1078,7 +1078,7 @@ function CalendarView({
   const [customStart, setCustomStart] = useState("09:00");
   const [customEnd, setCustomEnd] = useState("12:00");
   const [classification, setClassification] = useState("");
-  const [specialRequests, setSpecialRequests] = useState("");
+  const [bookingSummary, setBookingSummary] = useState("");
   const [bookerName, setBookerName] = useState("");
   const [usePackageCredit, setUsePackageCredit] = useState(false);
   const [bookingConfirmed, setBookingConfirmed] = useState(false);
@@ -1189,8 +1189,15 @@ function CalendarView({
   const startTime = presetSlot ? PRESET_SLOTS.find(s => s.label === presetSlot)?.start || customStart : customStart;
   const endTime = presetSlot ? PRESET_SLOTS.find(s => s.label === presetSlot)?.end || customEnd : customEnd;
 
+  const [bookingSummaryError, setBookingSummaryError] = useState(false);
+
   const handleBook = () => {
     if (!selectedDate || selectedVenues.length === 0 || !classification) return;
+    if (!bookingSummary.trim()) {
+      setBookingSummaryError(true);
+      return;
+    }
+    setBookingSummaryError(false);
     bookMutation.mutate({
       venueId: selectedVenues[0],
       venueIds: selectedVenues,
@@ -1198,7 +1205,7 @@ function CalendarView({
       startTime,
       endTime,
       classification,
-      specialRequests: specialRequests.trim() || undefined,
+      bookingSummary: bookingSummary.trim() || undefined,
       usePackageCredit,
       bookerName: isGroupLink && bookerName.trim() ? bookerName.trim() : undefined,
     });
@@ -1299,7 +1306,7 @@ function CalendarView({
             })()}
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={() => { setBookingConfirmed(false); setSelectedDate(null); setSelectedVenues([]); setPresetSlot(""); setClassification(""); setSpecialRequests(""); setBookerName(""); }} data-testid="button-book-another">
+            <Button variant="outline" className="flex-1" onClick={() => { setBookingConfirmed(false); setSelectedDate(null); setSelectedVenues([]); setPresetSlot(""); setClassification(""); setBookingSummary(""); setBookerName(""); }} data-testid="button-book-another">
               Book Another
             </Button>
             <Button className="flex-1" onClick={onBack} data-testid="button-back-to-dashboard">
@@ -1598,14 +1605,18 @@ function CalendarView({
                     </div>
 
                     <div className="space-y-1">
-                      <Label className="text-xs">Special Requests</Label>
+                      <Label className="text-xs">Tell us about your booking <span className="text-red-500">*</span></Label>
                       <Textarea
-                        value={specialRequests}
-                        onChange={(e) => setSpecialRequests(e.target.value)}
+                        value={bookingSummary}
+                        onChange={(e) => setBookingSummary(e.target.value)}
                         rows={2}
-                        placeholder="Any setup needs, AV requirements..."
-                        data-testid="input-special-requests"
+                        placeholder="What's the event, how many people, any special needs..."
+                        data-testid="input-booking-summary"
+                        required
                       />
+                      {bookingSummary.trim() === "" && bookingSummaryError && (
+                        <p className="text-xs text-red-500" data-testid="text-booking-summary-required">This field is required</p>
+                      )}
                     </div>
 
                     {booker.hasBookingPackage && (booker.packageTotalBookings || 0) - (booker.packageUsedBookings || 0) > 0 && (

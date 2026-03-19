@@ -686,13 +686,13 @@ export default function BookingDetail() {
             )}
           </div>
 
-          {booking.specialRequests && (
+          {booking.bookingSummary && (
             <Card className="p-5 space-y-2">
               <h2 className="font-semibold text-base flex items-center gap-2" data-testid="text-section-requests">
                 <FileText className="w-4 h-4 text-muted-foreground" />
-                Special Requests
+                Tell Us About Your Booking
               </h2>
-              <p className="text-sm whitespace-pre-wrap" data-testid="text-special-requests">{booking.specialRequests}</p>
+              <p className="text-sm whitespace-pre-wrap" data-testid="text-booking-summary">{booking.bookingSummary}</p>
             </Card>
           )}
 
