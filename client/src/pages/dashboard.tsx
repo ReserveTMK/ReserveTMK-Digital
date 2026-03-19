@@ -5,7 +5,7 @@ import { useImpactLogs } from "@/hooks/use-impact-logs";
 import { useAuth } from "@/hooks/use-auth";
 import { useProgrammes } from "@/hooks/use-programmes";
 import { useBookings, useVenues } from "@/hooks/use-bookings";
-import { Calendar as CalendarIcon, ArrowRight, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, PartyPopper, Mic, Building2, Layers, AlertTriangle, ClipboardCheck, ListChecks, Rocket, Sprout, TreePine, Sun, Eye, Loader2, Users, DollarSign, TrendingUp, TrendingDown, Lightbulb, UserPlus, Coffee } from "lucide-react";
+import { Calendar as CalendarIcon, ArrowRight, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, PartyPopper, Mic, Building2, Layers, AlertTriangle, ClipboardCheck, ListChecks, Rocket, Sprout, TreePine, Sun, Eye, Loader2, Users, DollarSign, TrendingUp, TrendingDown, Lightbulb, UserPlus, Coffee, RefreshCw } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { format, startOfMonth, endOfMonth, startOfDay, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, addDays, isToday, isBefore, isAfter } from "date-fns";
 import { formatTimeSlot } from "@/lib/utils";
@@ -143,6 +143,20 @@ export default function Dashboard() {
     if (!mentoringApplications) return 0;
     return mentoringApplications.filter((a: any) => a.status === "pending").length;
   }, [mentoringApplications]);
+
+  const pendingEnquiries = useMemo(() => {
+    if (!bookings) return [];
+    return (bookings as any[]).filter((b: any) => b.status === "enquiry");
+  }, [bookings]);
+
+  const { data: changeRequests } = useQuery<any[]>({
+    queryKey: ['/api/booking-change-requests'],
+  });
+
+  const pendingChangeRequests = useMemo(() => {
+    if (!changeRequests) return [];
+    return changeRequests.filter((cr: any) => cr.status === "pending");
+  }, [changeRequests]);
 
   const catchUpSummary = useMemo(() => {
     if (!catchUpItems || catchUpItems.length === 0) return null;
@@ -678,6 +692,81 @@ export default function Dashboard() {
                       <p className="text-xs text-muted-foreground">{pendingApplicationCount} mentoring application{pendingApplicationCount !== 1 ? "s" : ""} awaiting review</p>
                     </div>
                     <Link href="/mentoring" data-testid="link-review-applications">
+                      <Button size="sm" className="gap-1">
+                        Review <ArrowRight className="w-3 h-3" />
+                      </Button>
+                    </Link>
+                  </div>
+                </Card>
+              )}
+            </div>
+          )}
+
+          {(pendingEnquiries.length > 0 || pendingChangeRequests.length > 0) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {pendingEnquiries.length > 0 && (
+                <Card className="border-l-4 border-l-yellow-500 p-4 md:p-6" data-testid="card-pending-enquiries">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-yellow-500/10">
+                        <Building2 className="w-5 h-5 text-yellow-600" />
+                      </div>
+                      <div>
+                        <h3 className="font-display font-semibold" data-testid="text-pending-enquiries-heading">Venue Enquiries</h3>
+                        <p className="text-xs text-muted-foreground">{pendingEnquiries.length} enquir{pendingEnquiries.length !== 1 ? "ies" : "y"} awaiting review</p>
+                      </div>
+                    </div>
+                    <Link href="/spaces?tab=venue-hire" data-testid="link-review-enquiries">
+                      <Button size="sm" className="gap-1">
+                        Review <ArrowRight className="w-3 h-3" />
+                      </Button>
+                    </Link>
+                  </div>
+                  <div className="space-y-1.5">
+                    {pendingEnquiries.slice(0, 4).map((b: any) => {
+                      const venueName = venues?.find((v: any) => v.id === b.venueId)?.name || "Venue";
+                      const dateStr = b.startDate ? new Date(b.startDate).toLocaleDateString("en-NZ", { day: "numeric", month: "short" }) : "";
+                      const calDateStr = b.startDate ? (typeof b.startDate === "string" ? b.startDate.slice(0, 10) : new Date(b.startDate).toISOString().slice(0, 10)) : "";
+                      return (
+                        <div key={b.id} className="flex items-center justify-between p-2 rounded-lg bg-muted/40 hover:bg-muted transition-colors" data-testid={`enquiry-card-${b.id}`}>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium truncate">{b.bookerName || b.title}</p>
+                            <p className="text-xs text-muted-foreground">{venueName} · {dateStr}{b.startTime ? ` · ${b.startTime}` : ""}</p>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {calDateStr && (
+                              <Link href={`/spaces?date=${calDateStr}&view=week`}>
+                                <Button variant="ghost" size="icon" className="h-7 w-7" data-testid={`enquiry-calendar-${b.id}`}>
+                                  <CalendarIcon className="w-3.5 h-3.5" />
+                                </Button>
+                              </Link>
+                            )}
+                            <Link href={`/bookings/${b.id}`}>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" data-testid={`enquiry-view-${b.id}`}>
+                                <Eye className="w-3.5 h-3.5" />
+                              </Button>
+                            </Link>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {pendingEnquiries.length > 4 && (
+                      <p className="text-xs text-muted-foreground text-center pt-1">+ {pendingEnquiries.length - 4} more</p>
+                    )}
+                  </div>
+                </Card>
+              )}
+              {pendingChangeRequests.length > 0 && (
+                <Card className="border-l-4 border-l-orange-500 p-4 md:p-6" data-testid="card-pending-change-requests">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-orange-500/10">
+                      <RefreshCw className="w-5 h-5 text-orange-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-display font-semibold" data-testid="text-change-requests-heading">Booking Change Requests</h3>
+                      <p className="text-xs text-muted-foreground">{pendingChangeRequests.length} change request{pendingChangeRequests.length !== 1 ? "s" : ""} pending</p>
+                    </div>
+                    <Link href="/spaces?tab=venue-hire" data-testid="link-review-change-requests">
                       <Button size="sm" className="gap-1">
                         Review <ArrowRight className="w-3 h-3" />
                       </Button>

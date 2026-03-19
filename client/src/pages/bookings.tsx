@@ -84,6 +84,7 @@ import {
   Star,
   ThumbsUp,
   ThumbsDown,
+  CalendarDays,
 } from "lucide-react";
 import {
   Table,
@@ -691,6 +692,17 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                                               <DropdownMenuItem onClick={() => setEditBooking(booking)} data-testid={`kanban-edit-${booking.id}`}>
                                                 <Pencil className="w-4 h-4 mr-2" /> Edit
                                               </DropdownMenuItem>
+                                              {booking.startDate && (
+                                                <DropdownMenuItem
+                                                  onClick={() => {
+                                                    const dateStr = typeof booking.startDate === "string" ? booking.startDate.slice(0, 10) : new Date(booking.startDate!).toISOString().slice(0, 10);
+                                                    setLocation(`/spaces?date=${dateStr}&view=week`);
+                                                  }}
+                                                  data-testid={`kanban-calendar-${booking.id}`}
+                                                >
+                                                  <CalendarDays className="w-4 h-4 mr-2" /> View on Calendar
+                                                </DropdownMenuItem>
+                                              )}
                                               {booking.status === "completed" && (!booking.servedAt || !booking.xeroInvoiceId) && (
                                                 <DropdownMenuItem onClick={() => openCompletionDialogForExisting(booking)} data-testid={`kanban-actions-${booking.id}`}>
                                                   <CheckCircle2 className="w-4 h-4 mr-2" /> Post-completion Actions
@@ -895,6 +907,18 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                                 <Pencil className="w-4 h-4 mr-2" />
                                 Edit
                               </DropdownMenuItem>
+                              {booking.startDate && (
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    const dateStr = typeof booking.startDate === "string" ? booking.startDate.slice(0, 10) : new Date(booking.startDate!).toISOString().slice(0, 10);
+                                    setLocation(`/spaces?date=${dateStr}&view=week`);
+                                  }}
+                                  data-testid={`button-calendar-booking-${booking.id}`}
+                                >
+                                  <CalendarDays className="w-4 h-4 mr-2" />
+                                  View on Calendar
+                                </DropdownMenuItem>
+                              )}
                               {booking.status === "completed" && (!booking.servedAt || !booking.xeroInvoiceId) && (
                                 <DropdownMenuItem onClick={() => openCompletionDialogForExisting(booking)} data-testid={`button-actions-booking-${booking.id}`}>
                                   <CheckCircle2 className="w-4 h-4 mr-2" />

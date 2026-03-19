@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
+import { useSearch } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/beautiful-button";
@@ -155,9 +156,15 @@ function SpacesLegend() {
   );
 }
 
-function SpacesCalendarTab() {
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState<"day" | "week">("day");
+function SpacesCalendarTab({ initialDate, initialView }: { initialDate?: string; initialView?: "day" | "week" }) {
+  const [currentDate, setCurrentDate] = useState(() => {
+    if (initialDate) {
+      const d = new Date(initialDate + "T12:00:00");
+      if (!isNaN(d.getTime())) return d;
+    }
+    return new Date();
+  });
+  const [viewMode, setViewMode] = useState<"day" | "week">(initialView || "day");
 
   const dateStr = formatDate(currentDate);
   const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate]);
@@ -645,15 +652,30 @@ function getTabFromUrl(): string {
   return (VALID_TABS as readonly string[]).includes(tab) ? tab : "calendar";
 }
 
+function getCalendarParamsFromUrl(): { date?: string; view?: "day" | "week" } {
+  const params = new URLSearchParams(window.location.search);
+  const date = params.get("date") || undefined;
+  const view = params.get("view") as "day" | "week" | null;
+  return { date, view: view === "week" ? "week" : view === "day" ? "day" : undefined };
+}
+
 export default function SpacesPage() {
+  const searchString = useSearch();
   const [activeTab, setActiveTab] = useState(getTabFromUrl);
+  const [calendarParams, setCalendarParams] = useState(getCalendarParamsFromUrl);
+  const [calendarKey, setCalendarKey] = useState(0);
 
   useEffect(() => {
-    setActiveTab(getTabFromUrl());
-    const onPopState = () => setActiveTab(getTabFromUrl());
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, []);
+    const params = getCalendarParamsFromUrl();
+    const tab = getTabFromUrl();
+    if (params.date) {
+      setActiveTab("calendar");
+      setCalendarParams(params);
+      setCalendarKey(k => k + 1);
+    } else {
+      setActiveTab(tab);
+    }
+  }, [searchString]);
 
   const handleTabChange = useCallback((tab: string) => {
     setActiveTab(tab);
@@ -696,7 +718,7 @@ export default function SpacesPage() {
         </TabsList>
 
         <TabsContent value="calendar">
-          <SpacesCalendarTab />
+          <SpacesCalendarTab key={calendarKey} initialDate={calendarParams.date} initialView={calendarParams.view} />
         </TabsContent>
 
         <TabsContent value="venue-hire">
