@@ -1901,16 +1901,42 @@ function BookingFormDialog({
     return [...new Set(venues.filter(v => v.active !== false).map(v => v.spaceName).filter(Boolean))] as string[];
   }, [venues]);
 
+  const agreementAllowedLocations = useMemo(() => {
+    if (membershipId) {
+      const m = activeMemberships.find(ms => ms.id === membershipId);
+      const locs = m?.allowedLocations;
+      return locs && locs.length > 0 ? locs as string[] : null;
+    }
+    if (mouId) {
+      const m = activeMous.find(ms => ms.id === mouId);
+      const locs = m?.allowedLocations;
+      return locs && locs.length > 0 ? locs as string[] : null;
+    }
+    return null;
+  }, [membershipId, mouId, activeMemberships, activeMous]);
+
   const venuesByLocation = useMemo(() => {
     const activeVenues = venues.filter(v => v.active !== false);
     const grouped: Record<string, typeof activeVenues> = {};
     for (const v of activeVenues) {
       const loc = v.spaceName || "Other";
+      if (agreementAllowedLocations && !agreementAllowedLocations.includes(loc)) continue;
       if (!grouped[loc]) grouped[loc] = [];
       grouped[loc].push(v);
     }
     return grouped;
-  }, [venues]);
+  }, [venues, agreementAllowedLocations]);
+
+  useEffect(() => {
+    if (!agreementAllowedLocations || selectedVenueIds.length === 0) return;
+    const allowedVenueIds = venues
+      .filter(v => v.active !== false && agreementAllowedLocations.includes(v.spaceName || "Other"))
+      .map(v => v.id);
+    const filtered = selectedVenueIds.filter(id => allowedVenueIds.includes(id));
+    if (filtered.length !== selectedVenueIds.length) {
+      setSelectedVenueIds(filtered);
+    }
+  }, [agreementAllowedLocations]);
 
   const effectiveLocationAccess = locationAccessOverride ?? selectedVenueSpaceNames;
 
@@ -2221,6 +2247,12 @@ function BookingFormDialog({
           <div>
             <Label>Venue(s) *</Label>
             <p className="text-xs text-muted-foreground mb-2">Select one or more spaces for this booking</p>
+            {agreementAllowedLocations && (
+              <div className="flex items-start gap-1.5 text-xs text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/20 rounded-md p-2 mb-2" data-testid="text-location-restriction-note">
+                <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <span>Showing venues in allowed locations only: {agreementAllowedLocations.join(", ")}</span>
+              </div>
+            )}
             <div className="space-y-1">
               {Object.entries(venuesByLocation).map(([location, locationVenues]) => {
                 const isExpanded = expandedLocations.has(location);

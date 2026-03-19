@@ -4643,19 +4643,37 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       let allowanceWarning: string | null = null;
       let agreementAllowance = 0;
       let agreementPeriod = "quarterly";
+      let agreementAllowedLocations: string[] | null = null;
       if (input.membershipId) {
         const membership = await storage.getMembership(input.membershipId);
         if (membership) {
           agreementAllowance = membership.bookingAllowance || 0;
           agreementPeriod = membership.allowancePeriod || "quarterly";
+          agreementAllowedLocations = membership.allowedLocations && membership.allowedLocations.length > 0 ? membership.allowedLocations : null;
         }
       } else if (input.mouId) {
         const mou = await storage.getMou(input.mouId);
         if (mou) {
           agreementAllowance = mou.bookingAllowance || 0;
           agreementPeriod = mou.allowancePeriod || "quarterly";
+          agreementAllowedLocations = mou.allowedLocations && mou.allowedLocations.length > 0 ? mou.allowedLocations : null;
         }
       }
+
+      if (agreementAllowedLocations) {
+        for (const vid of inputVenueIds) {
+          const venue = await storage.getVenue(vid);
+          if (venue) {
+            const venueLoc = venue.spaceName || "Other";
+            if (!agreementAllowedLocations.includes(venueLoc)) {
+              return res.status(400).json({
+                message: `Venue "${venue.name}" is in location "${venueLoc}" which is not allowed by the linked agreement (allowed: ${agreementAllowedLocations.join(", ")})`,
+              });
+            }
+          }
+        }
+      }
+
       if (agreementAllowance > 0) {
         const linkedId = (input.membershipId || input.mouId)!;
         const linkedType = input.membershipId ? "membership" : "mou";
@@ -11845,7 +11863,27 @@ Rules:
       const booker = linkResult.booker;
 
       const allVenues = await storage.getVenues(booker.userId);
-      const activeVenues = allVenues.filter(v => v.active);
+      let activeVenues = allVenues.filter(v => v.active);
+
+      let allowedLocations: string[] | null = null;
+      if (booker.membershipId) {
+        const membership = await storage.getMembership(booker.membershipId);
+        if (membership && membership.allowedLocations && membership.allowedLocations.length > 0) {
+          allowedLocations = membership.allowedLocations;
+        }
+      } else if (booker.mouId) {
+        const mou = await storage.getMou(booker.mouId);
+        if (mou && mou.allowedLocations && mou.allowedLocations.length > 0) {
+          allowedLocations = mou.allowedLocations;
+        }
+      }
+      if (allowedLocations) {
+        activeVenues = activeVenues.filter(v => {
+          const loc = v.spaceName || "Other";
+          return allowedLocations!.includes(loc);
+        });
+      }
+
       res.json(activeVenues);
     } catch (err: any) {
       res.status(500).json({ message: "Failed to fetch venues" });
@@ -11967,6 +12005,32 @@ Rules:
       }
 
       const isGroupLink = linkResult.link.isGroupLink === true;
+
+      let portalAllowedLocations: string[] | null = null;
+      if (booker.membershipId) {
+        const membership = await storage.getMembership(booker.membershipId);
+        if (membership && membership.allowedLocations && membership.allowedLocations.length > 0) {
+          portalAllowedLocations = membership.allowedLocations;
+        }
+      } else if (booker.mouId) {
+        const mouRecord = await storage.getMou(booker.mouId);
+        if (mouRecord && mouRecord.allowedLocations && mouRecord.allowedLocations.length > 0) {
+          portalAllowedLocations = mouRecord.allowedLocations;
+        }
+      }
+      if (portalAllowedLocations) {
+        for (const vid of resolvedVenueIds) {
+          const v = await storage.getVenue(vid);
+          if (v) {
+            const vLoc = v.spaceName || "Other";
+            if (!portalAllowedLocations.includes(vLoc)) {
+              return res.status(400).json({
+                message: `Venue "${v.name}" is not in an allowed location for your agreement`,
+              });
+            }
+          }
+        }
+      }
 
       const venue = await storage.getVenue(venueId);
       if (venue && venue.capacity && req.body.attendeeCount && req.body.attendeeCount > venue.capacity) {

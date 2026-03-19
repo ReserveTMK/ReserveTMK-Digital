@@ -25,7 +25,7 @@ import {
 } from "@/hooks/use-memberships";
 import { useContacts, useCreateContact } from "@/hooks/use-contacts";
 import { useGroups, useCreateGroup } from "@/hooks/use-groups";
-import { useBookings } from "@/hooks/use-bookings";
+import { useBookings, useVenues } from "@/hooks/use-bookings";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { useState, useMemo, useRef, useCallback, createElement } from "react";
@@ -49,6 +49,7 @@ import {
   Undo2,
   TrendingDown,
   Info,
+  MapPin,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -714,6 +715,7 @@ function MembershipFormDialog({
 }) {
   const { data: contacts } = useContacts();
   const { data: allGroups } = useGroups();
+  const { data: venues } = useVenues();
   const createContact = useCreateContact();
   const createGroupMutation = useCreateGroup();
 
@@ -731,6 +733,14 @@ function MembershipFormDialog({
   const [bookingCategories, setBookingCategories] = useState<string[]>(
     membership?.bookingCategories || []
   );
+  const [allowedLocations, setAllowedLocations] = useState<string[]>(
+    membership?.allowedLocations || []
+  );
+
+  const availableLocations = useMemo(() => {
+    if (!venues) return [];
+    return [...new Set(venues.filter(v => v.active !== false && v.spaceName).map(v => v.spaceName!))];
+  }, [venues]);
   const [bookingAllowance, setBookingAllowance] = useState((membership?.bookingAllowance || 0).toString());
   const [allowancePeriod, setAllowancePeriod] = useState(membership?.allowancePeriod || "quarterly");
   const [membershipYear, setMembershipYear] = useState(
@@ -805,6 +815,7 @@ function MembershipFormDialog({
       standardValue: standardValue || "0",
       annualFee: annualFee || "0",
       bookingCategories,
+      allowedLocations: allowedLocations.length > 0 ? allowedLocations : null,
       bookingAllowance: parseInt(bookingAllowance) || 0,
       allowancePeriod,
       membershipYear: year,
@@ -815,6 +826,12 @@ function MembershipFormDialog({
       notes: notes.trim() || undefined,
     };
     onSubmit(data);
+  };
+
+  const toggleLocation = (loc: string) => {
+    setAllowedLocations(prev =>
+      prev.includes(loc) ? prev.filter(l => l !== loc) : [...prev, loc]
+    );
   };
 
   return (
@@ -1107,31 +1124,57 @@ function MembershipFormDialog({
           </div>
 
           {bookingCategories.includes("venue_hire") && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Booking Allowance</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={bookingAllowance}
-                  onChange={(e) => setBookingAllowance(e.target.value)}
-                  placeholder="Full-day bookings"
-                  data-testid="input-membership-booking-allowance"
-                />
+            <>
+              {availableLocations.length > 0 && (
+                <div>
+                  <Label>Allowed Locations</Label>
+                  <p className="text-[10px] text-muted-foreground mb-2">Restrict which locations this membership can book. Leave empty to allow all locations.</p>
+                  <div className="space-y-2">
+                    {availableLocations.map((loc) => (
+                      <label key={loc} className="flex items-center gap-2 cursor-pointer" data-testid={`checkbox-membership-location-${loc}`}>
+                        <Checkbox
+                          checked={allowedLocations.includes(loc)}
+                          onCheckedChange={() => toggleLocation(loc)}
+                        />
+                        <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
+                        <span className="text-sm">{loc}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {allowedLocations.length === 0 && (
+                    <div className="flex items-start gap-1.5 text-xs text-muted-foreground bg-muted/30 rounded-md p-2 mt-2">
+                      <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                      <span>All locations are currently allowed</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Booking Allowance</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={bookingAllowance}
+                    onChange={(e) => setBookingAllowance(e.target.value)}
+                    placeholder="Full-day bookings"
+                    data-testid="input-membership-booking-allowance"
+                  />
+                </div>
+                <div>
+                  <Label>Period</Label>
+                  <Select value={allowancePeriod} onValueChange={setAllowancePeriod}>
+                    <SelectTrigger data-testid="select-membership-allowance-period">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="monthly">Monthly</SelectItem>
+                      <SelectItem value="quarterly">Quarterly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div>
-                <Label>Period</Label>
-                <Select value={allowancePeriod} onValueChange={setAllowancePeriod}>
-                  <SelectTrigger data-testid="select-membership-allowance-period">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="monthly">Monthly</SelectItem>
-                    <SelectItem value="quarterly">Quarterly</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+            </>
           )}
 
           <div className="grid grid-cols-3 gap-3">
@@ -1247,6 +1290,7 @@ function MouFormDialog({
 }) {
   const { data: contacts } = useContacts();
   const { data: allGroups } = useGroups();
+  const { data: venues } = useVenues();
   const createContact = useCreateContact();
   const createGroupMutation = useCreateGroup();
 
@@ -1267,6 +1311,14 @@ function MouFormDialog({
   const [bookingCategories, setBookingCategories] = useState<string[]>(
     mou?.bookingCategories || []
   );
+  const [allowedLocations, setAllowedLocations] = useState<string[]>(
+    mou?.allowedLocations || []
+  );
+
+  const availableLocations = useMemo(() => {
+    if (!venues) return [];
+    return [...new Set(venues.filter(v => v.active !== false && v.spaceName).map(v => v.spaceName!))];
+  }, [venues]);
   const [bookingAllowance, setBookingAllowance] = useState((mou?.bookingAllowance || 0).toString());
   const [allowancePeriod, setAllowancePeriod] = useState(mou?.allowancePeriod || "quarterly");
   const [startDate, setStartDate] = useState(
@@ -1337,6 +1389,7 @@ function MouFormDialog({
       actualValue: actualValue || "0",
       inKindValue: inKindValue || "0",
       bookingCategories,
+      allowedLocations: allowedLocations.length > 0 ? allowedLocations : null,
       bookingAllowance: parseInt(bookingAllowance) || 0,
       allowancePeriod,
       startDate: startDate ? new Date(startDate).toISOString() : null,
@@ -1345,6 +1398,12 @@ function MouFormDialog({
       notes: notes.trim() || undefined,
     };
     onSubmit(data);
+  };
+
+  const toggleMouLocation = (loc: string) => {
+    setAllowedLocations(prev =>
+      prev.includes(loc) ? prev.filter(l => l !== loc) : [...prev, loc]
+    );
   };
 
   return (
@@ -1666,31 +1725,57 @@ function MouFormDialog({
           </div>
 
           {bookingCategories.includes("venue_hire") && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Booking Allowance</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={bookingAllowance}
-                  onChange={(e) => setBookingAllowance(e.target.value)}
-                  placeholder="Free bookings per period"
-                  data-testid="input-mou-booking-allowance"
-                />
+            <>
+              {availableLocations.length > 0 && (
+                <div>
+                  <Label>Allowed Locations</Label>
+                  <p className="text-[10px] text-muted-foreground mb-2">Restrict which locations this MOU can book. Leave empty to allow all locations.</p>
+                  <div className="space-y-2">
+                    {availableLocations.map((loc) => (
+                      <label key={loc} className="flex items-center gap-2 cursor-pointer" data-testid={`checkbox-mou-location-${loc}`}>
+                        <Checkbox
+                          checked={allowedLocations.includes(loc)}
+                          onCheckedChange={() => toggleMouLocation(loc)}
+                        />
+                        <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
+                        <span className="text-sm">{loc}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {allowedLocations.length === 0 && (
+                    <div className="flex items-start gap-1.5 text-xs text-muted-foreground bg-muted/30 rounded-md p-2 mt-2">
+                      <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                      <span>All locations are currently allowed</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Booking Allowance</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={bookingAllowance}
+                    onChange={(e) => setBookingAllowance(e.target.value)}
+                    placeholder="Free bookings per period"
+                    data-testid="input-mou-booking-allowance"
+                  />
+                </div>
+                <div>
+                  <Label>Allowance Period</Label>
+                  <Select value={allowancePeriod} onValueChange={setAllowancePeriod}>
+                    <SelectTrigger data-testid="select-mou-allowance-period">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="monthly">Monthly</SelectItem>
+                      <SelectItem value="quarterly">Quarterly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div>
-                <Label>Allowance Period</Label>
-                <Select value={allowancePeriod} onValueChange={setAllowancePeriod}>
-                  <SelectTrigger data-testid="select-mou-allowance-period">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="monthly">Monthly</SelectItem>
-                    <SelectItem value="quarterly">Quarterly</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+            </>
           )}
 
           <div className="grid grid-cols-2 gap-3">

@@ -152,6 +152,8 @@ app.use((req, res, next) => {
 
     await db.execute(sql`ALTER TABLE venue_instructions ADD COLUMN IF NOT EXISTS space_name text`);
     await db.execute(sql`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS location_access text[]`);
+    await db.execute(sql`ALTER TABLE memberships ADD COLUMN IF NOT EXISTS allowed_locations text[]`);
+    await db.execute(sql`ALTER TABLE mous ADD COLUMN IF NOT EXISTS allowed_locations text[]`);
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS booking_reminder_settings (
         id serial PRIMARY KEY,
