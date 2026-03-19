@@ -20,7 +20,7 @@ import {
   Download, Activity, Tag, TrendingUp, Building2, DollarSign,
   Save, BookOpen, ChevronDown, ChevronUp, Handshake, Clock,
   Info, History, Zap, X, Pen, Landmark, Settings, Camera, Star,
-  Plus, Trash2, ArrowUpRight, Briefcase, Rocket, BadgeDollarSign, ArrowDownRight, MoveRight, ArrowRight, MessageSquare,
+  Plus, Trash2, ArrowUpRight, Briefcase, Rocket, BadgeDollarSign, ArrowDownRight, MoveRight, ArrowRight, MessageSquare, Trophy, Target, GitBranch,
 } from "lucide-react";
 import {
   format, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, subMonths, startOfYear,
@@ -513,10 +513,15 @@ export default function Reports() {
     if (funder.funderTag) {
       setFunderFilter(funder.funderTag);
     }
+    if (funder.reportingCadence === "monthly" || funder.reportingCadence === "quarterly") {
+      setActiveTab(funder.reportingCadence);
+    }
     setGenerated(false);
   };
 
   const isSectionDefaultOpen = (sectionKey: string) => {
+    const quarterlyCollapsed = ["impact-heatmap", "theory-of-change"];
+    if (activeTab === "quarterly" && quarterlyCollapsed.includes(sectionKey)) return false;
     if (!activeFunder?.prioritySections || activeFunder.prioritySections.length === 0) return true;
     return activeFunder.prioritySections.includes(sectionKey);
   };
@@ -536,6 +541,8 @@ export default function Reports() {
       if (funderFilter !== "all") filters.funder = funderFilter;
       if (communityLens !== "all") filters.communityLens = communityLens;
 
+      const effectiveReportType = activeTab === "quarterly" ? "quarterly" : "monthly";
+      filters.reportType = effectiveReportType;
       const reportRes = await apiRequest("POST", "/api/reports/generate", filters);
       const data = await reportRes.json();
       setReportData(data);
@@ -582,14 +589,15 @@ export default function Reports() {
 
   const getCurrentFiltersKey = () => {
     const { startDate, endDate } = getDateRange();
-    return JSON.stringify({ startDate, endDate, programmeFilter, taxonomyFilter, funderFilter, communityLens, narrativeStyle });
+    return JSON.stringify({ startDate, endDate, programmeFilter, taxonomyFilter, funderFilter, communityLens, narrativeStyle, reportType: activeTab });
   };
 
   const isNarrativeStale = narrativeData && narrativeFiltersSnapshot && narrativeFiltersSnapshot !== getCurrentFiltersKey();
 
   const handleGenerateNarrative = async () => {
     const { startDate, endDate } = getDateRange();
-    const filters: any = { startDate, endDate, narrativeStyle };
+    const effectiveReportType = activeTab === "quarterly" ? "quarterly" : "monthly";
+    const filters: any = { startDate, endDate, narrativeStyle, reportType: effectiveReportType };
     if (programmeFilter !== "all") filters.programmeIds = [parseInt(programmeFilter)];
     if (taxonomyFilter !== "all") filters.taxonomyIds = [parseInt(taxonomyFilter)];
     if (funderFilter !== "all") filters.funder = funderFilter;
@@ -1154,6 +1162,38 @@ export default function Reports() {
                 </div>
               )}
 
+              {/* Report Type Badge */}
+              {reportData?.reportType && (
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <Badge variant={reportData.reportType === "quarterly" ? "default" : "secondary"} className="text-xs uppercase tracking-wider" data-testid="badge-report-type">
+                      {reportData.templateMeta?.templateName || (reportData.reportType === "quarterly" ? "Quarterly Report" : "Monthly Report")}
+                    </Badge>
+                  </div>
+                  {reportData.templateMeta?.templatePurpose && (
+                    <p className="text-xs text-muted-foreground" data-testid="text-template-purpose">{reportData.templateMeta.templatePurpose}</p>
+                  )}
+                </div>
+              )}
+
+              {/* People Tiers */}
+              {reportData?.peopleTiers && reportData.peopleTiers.total > 0 && (
+                <Card className="p-5" data-testid="section-people-tiers">
+                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                    <Users className="w-4 h-4 text-primary" /> Community Tiers
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {(reportData.peopleTiers.breakdown || []).map((tier: any) => (
+                      <div key={tier.tier} className="text-center p-3 rounded-lg border bg-card" data-testid={`tier-${tier.tier.toLowerCase()}`}>
+                        <p className="text-2xl font-bold">{tier.count}</p>
+                        <p className="text-sm font-medium">{tier.tier}</p>
+                        <p className="text-xs text-muted-foreground">{tier.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
+
               {/* Section 0: Trends */}
               <TrendsSection
                 communityLens={communityLens}
@@ -1163,6 +1203,382 @@ export default function Reports() {
                 activeFunder={activeFunder}
                 reportEndDate={filterEnd}
               />
+
+              {/* Standout Moments */}
+              {reportData?.standoutMoments && reportData.standoutMoments.length > 0 && (
+                <CollapsibleSection title="Standout Moments" icon={Star} testId="section-standout" defaultOpen={isSectionDefaultOpen("standout")}>
+                  <div className="pt-4 space-y-3">
+                    <p className="text-sm text-muted-foreground">Auto-selected from the richest debriefs this period — the moments with the most evidence, quotes, and impact tags.</p>
+                    {reportData.standoutMoments.map((moment: any) => (
+                      <Card key={moment.id} className="p-4 border-l-4 border-l-primary/60" data-testid={`standout-${moment.id}`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1">
+                            <h4 className="font-semibold text-sm">{moment.title}</h4>
+                            {moment.participantNames.length > 0 && (
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                Participants: {moment.participantNames.join(", ")}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {moment.sentiment && (
+                              <Badge variant="secondary" className={`text-xs capitalize ${
+                                moment.sentiment === "positive" ? "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400" :
+                                moment.sentiment === "negative" ? "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400" :
+                                ""
+                              }`}>{moment.sentiment}</Badge>
+                            )}
+                            <Badge variant="outline" className="text-xs">{moment.tagCount} tags</Badge>
+                            <Badge variant="outline" className="text-xs">{moment.peopleCount} people</Badge>
+                          </div>
+                        </div>
+                        {moment.summary && (
+                          <p className="text-sm text-muted-foreground mt-2">{moment.summary.length > 250 ? moment.summary.slice(0, 250) + "..." : moment.summary}</p>
+                        )}
+                        {moment.keyQuotes.length > 0 && (
+                          <div className="mt-2 space-y-1">
+                            {moment.keyQuotes.slice(0, 2).map((q: string, i: number) => (
+                              <p key={i} className="text-sm italic text-muted-foreground border-l-2 border-primary/30 pl-3">"{q}"</p>
+                            ))}
+                          </div>
+                        )}
+                        {moment.milestones.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {moment.milestones.map((m: string, i: number) => (
+                              <Badge key={i} variant="secondary" className="text-xs"><Rocket className="w-3 h-3 mr-1" />{m}</Badge>
+                            ))}
+                          </div>
+                        )}
+                      </Card>
+                    ))}
+                  </div>
+                </CollapsibleSection>
+              )}
+
+              {/* Operator Insights */}
+              {reportData?.operatorInsights && reportData.operatorInsights.totalDebriefs > 0 && (
+                <CollapsibleSection title="Operator Insights" icon={Briefcase} testId="section-operator-insights" defaultOpen={isSectionDefaultOpen("operator-insights")}>
+                  <div className="pt-4 space-y-4">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <Badge variant="secondary" data-testid="stat-total-debriefs">{reportData.operatorInsights.totalDebriefs} debriefs this period</Badge>
+                      {Object.entries(reportData.operatorInsights.sentimentBreakdown || {}).map(([sentiment, sentCount]: [string, any]) => (
+                        <Badge key={sentiment} variant="outline" className={`text-xs capitalize ${
+                          sentiment === "positive" ? "border-green-300 text-green-700 dark:border-green-700 dark:text-green-400" :
+                          sentiment === "negative" ? "border-red-300 text-red-700 dark:border-red-700 dark:text-red-400" :
+                          ""
+                        }`}>
+                          {sentiment}: {sentCount}
+                        </Badge>
+                      ))}
+                    </div>
+
+                    {reportData.operatorInsights.wins.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold mb-2 flex items-center gap-2 text-green-700 dark:text-green-400">
+                          <ArrowUpRight className="w-4 h-4" /> Wins & Highlights
+                        </h4>
+                        <div className="space-y-1.5">
+                          {reportData.operatorInsights.wins.map((win: string, i: number) => (
+                            <p key={i} className="text-sm text-muted-foreground border-l-2 border-green-300 dark:border-green-700 pl-3">{win}</p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {reportData.operatorInsights.concerns.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold mb-2 flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                          <Info className="w-4 h-4" /> Challenges & Concerns
+                        </h4>
+                        <div className="space-y-1.5">
+                          {reportData.operatorInsights.concerns.map((concern: string, i: number) => (
+                            <p key={i} className="text-sm text-muted-foreground border-l-2 border-amber-300 dark:border-amber-700 pl-3">{concern}</p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {reportData.operatorInsights.learnings.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold mb-2 flex items-center gap-2 text-blue-700 dark:text-blue-400">
+                          <Activity className="w-4 h-4" /> Learnings
+                        </h4>
+                        <div className="space-y-1.5">
+                          {reportData.operatorInsights.learnings.map((learning: string, i: number) => (
+                            <p key={i} className="text-sm text-muted-foreground border-l-2 border-blue-300 dark:border-blue-700 pl-3">{learning}</p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {reportData.operatorInsights.standoutQuotes.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                          <MessageSquare className="w-4 h-4 text-purple-600" /> Standout Quotes
+                        </h4>
+                        <div className="space-y-1.5">
+                          {reportData.operatorInsights.standoutQuotes.map((quote: string, i: number) => (
+                            <p key={i} className="text-sm italic text-muted-foreground border-l-2 border-purple-300 dark:border-purple-700 pl-3">"{quote}"</p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </CollapsibleSection>
+              )}
+
+              {/* Quarterly-only: Transformation Stories */}
+              {reportData?.reportType === "quarterly" && reportData?.transformationStories && reportData.transformationStories.length > 0 && (
+                <CollapsibleSection title="Participant Transformation Stories" icon={Pen} testId="section-transformation-stories" defaultOpen={isSectionDefaultOpen("transformation-stories")}>
+                  <div className="pt-4 space-y-4">
+                    <p className="text-sm text-muted-foreground">Auto-selected participants with the richest journey data — the people whose stories best illustrate the impact of your work.</p>
+                    {reportData.transformationStories.map((story: any) => (
+                      <Card key={story.id} className="p-5 border-l-4 border-l-violet-500/60" data-testid={`story-${story.id}`}>
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                          <div>
+                            <h4 className="font-semibold">{story.name}</h4>
+                            <div className="flex items-center gap-2 mt-1">
+                              <Badge variant="secondary" className="text-xs">{story.tier}</Badge>
+                              {story.stage && <Badge variant="outline" className="text-xs capitalize">{story.stage}</Badge>}
+                              <span className="text-xs text-muted-foreground">{story.debriefCount} debriefs</span>
+                            </div>
+                          </div>
+                          {story.growthScore !== 0 && (
+                            <div className={`text-center px-3 py-1.5 rounded-lg ${story.growthScore > 0 ? "bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400" : "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400"}`}>
+                              <p className="text-xs text-muted-foreground">Growth</p>
+                              <p className="text-lg font-bold">{story.growthScore > 0 ? "+" : ""}{story.growthScore}</p>
+                            </div>
+                          )}
+                        </div>
+                        {story.milestones.length > 0 && (
+                          <div className="mb-3">
+                            <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Milestones</h5>
+                            <div className="flex flex-wrap gap-1.5">
+                              {story.milestones.map((m: string, i: number) => (
+                                <Badge key={i} variant="secondary" className="text-xs"><Rocket className="w-3 h-3 mr-1" />{m}</Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {story.quotes.length > 0 && (
+                          <div className="space-y-1.5 mb-3">
+                            {story.quotes.map((q: string, i: number) => (
+                              <p key={i} className="text-sm italic text-muted-foreground border-l-2 border-violet-300 dark:border-violet-700 pl-3">"{q}"</p>
+                            ))}
+                          </div>
+                        )}
+                        {story.summaryExcerpt && (
+                          <p className="text-sm text-muted-foreground">{story.summaryExcerpt.length > 300 ? story.summaryExcerpt.slice(0, 300) + "..." : story.summaryExcerpt}</p>
+                        )}
+                      </Card>
+                    ))}
+                  </div>
+                </CollapsibleSection>
+              )}
+
+              {/* Quarterly-only: Impact Tag Heatmap */}
+              {reportData?.reportType === "quarterly" && reportData?.impactHeatmap && reportData.impactHeatmap.length > 0 && (
+                <CollapsibleSection title="Impact Tag Heatmap" icon={Tag} testId="section-impact-heatmap" defaultOpen={isSectionDefaultOpen("impact-heatmap")}>
+                  <div className="pt-4 space-y-3">
+                    <p className="text-sm text-muted-foreground">Which impact areas showed up most frequently this quarter.</p>
+                    <div className="space-y-2">
+                      {reportData.impactHeatmap.map((tag: any, idx: number) => {
+                        const maxFreq = reportData.impactHeatmap[0]?.frequency || 1;
+                        const pct = Math.round((tag.frequency / maxFreq) * 100);
+                        return (
+                          <div key={idx} className="flex items-center gap-3" data-testid={`heatmap-${idx}`}>
+                            <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: tag.color || "hsl(14, 88%, 68%)" }} />
+                            <span className="text-sm font-medium w-36 truncate">{tag.name}</span>
+                            <div className="flex-1 h-4 bg-muted rounded-full overflow-hidden">
+                              <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: tag.color || "hsl(14, 88%, 68%)", opacity: 0.7 }} />
+                            </div>
+                            <span className="text-xs font-medium w-24 text-right">{tag.frequency} debriefs · {tag.avgConfidence}%</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </CollapsibleSection>
+              )}
+
+              {/* Quarterly-only: Theory of Change Alignment */}
+              {reportData?.reportType === "quarterly" && reportData?.theoryOfChange && (
+                <CollapsibleSection title="Theory of Change Alignment" icon={Landmark} testId="section-theory-of-change" defaultOpen={isSectionDefaultOpen("theory-of-change")}>
+                  <div className="pt-4 space-y-4">
+                    {reportData.theoryOfChange.orgMission && (
+                      <p className="text-sm italic text-muted-foreground border-l-2 border-primary/30 pl-3">
+                        Mission: {reportData.theoryOfChange.orgMission}
+                      </p>
+                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {(reportData.theoryOfChange.pillars || []).map((pillar: any, idx: number) => {
+                        const pillarColors = ["bg-amber-500/10 border-amber-500/30", "bg-green-500/10 border-green-500/30", "bg-blue-500/10 border-blue-500/30"];
+                        return (
+                          <Card key={idx} className={`p-4 border-2 ${pillarColors[idx] || ""}`} data-testid={`pillar-${idx}`}>
+                            <h4 className="font-semibold text-sm mb-1">{pillar.pillar}</h4>
+                            <p className="text-xs text-muted-foreground mb-3">{pillar.description}</p>
+                            {pillar.activities.length > 0 && (
+                              <div className="mb-3">
+                                <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Activities</h5>
+                                <ul className="space-y-0.5">
+                                  {pillar.activities.map((a: string, i: number) => (
+                                    <li key={i} className="text-xs text-muted-foreground flex items-start gap-1">
+                                      <span className="text-primary mt-0.5">•</span> {a}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {pillar.evidence.length > 0 && (
+                              <div>
+                                <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Evidence</h5>
+                                <ul className="space-y-0.5">
+                                  {pillar.evidence.map((e: string, i: number) => (
+                                    <li key={i} className="text-xs text-muted-foreground flex items-start gap-1">
+                                      <TrendingUp className="w-3 h-3 text-green-500 mt-0.5 shrink-0" /> {e}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </Card>
+                        );
+                      })}
+                    </div>
+                    {reportData.theoryOfChange.funderAlignment && (
+                      <Card className="p-4 bg-indigo-50/50 dark:bg-indigo-950/20 border-indigo-200 dark:border-indigo-800" data-testid="funder-framework-alignment">
+                        <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                          <Handshake className="w-4 h-4 text-indigo-600" /> {reportData.theoryOfChange.funderAlignment.framework} Alignment
+                        </h4>
+                        <div className="space-y-1">
+                          {(reportData.theoryOfChange.funderAlignment.mappings || []).map((m: string, i: number) => (
+                            <p key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                              <ArrowRight className="w-3.5 h-3.5 mt-0.5 text-indigo-500 shrink-0" /> {m}
+                            </p>
+                          ))}
+                        </div>
+                      </Card>
+                    )}
+                  </div>
+                </CollapsibleSection>
+              )}
+
+              {/* Quarterly-only: Growth Story (period-over-period) */}
+              {reportData?.reportType === "quarterly" && reportData?.growthStory && (
+                <CollapsibleSection title="Growth Story" icon={TrendingUp} testId="section-growth-story" defaultOpen={isSectionDefaultOpen("growth-story")}>
+                  <div className="pt-4 space-y-4">
+                    <p className="text-sm text-muted-foreground">How this quarter compares to the previous period — tracking momentum and growth trajectory.</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                      {[
+                        { label: "People Reached", current: reportData.growthStory.current.peopleReached, change: reportData.growthStory.changes.peopleReached },
+                        { label: "Unique Contacts", current: reportData.growthStory.current.uniqueContacts, change: reportData.growthStory.changes.uniqueContacts },
+                        { label: "Total Activations", current: reportData.growthStory.current.totalActivations, change: reportData.growthStory.changes.totalActivations },
+                        { label: "Milestones", current: reportData.growthStory.current.milestones, change: reportData.growthStory.changes.milestones },
+                      ].map((item, idx) => (
+                        <Card key={idx} className="p-4 text-center" data-testid={`growth-${idx}`}>
+                          <p className="text-2xl font-bold">{item.current}</p>
+                          <p className="text-sm font-medium text-muted-foreground">{item.label}</p>
+                          <div className={`flex items-center justify-center gap-1 mt-1 text-sm font-medium ${item.change > 0 ? "text-green-600" : item.change < 0 ? "text-red-500" : "text-muted-foreground"}`}>
+                            {item.change > 0 ? <ArrowUpRight className="w-3.5 h-3.5" /> : item.change < 0 ? <ArrowDownRight className="w-3.5 h-3.5" /> : null}
+                            {item.change > 0 ? "+" : ""}{item.change}% vs prev period
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                    {reportData.growthStory.journeyProgressions && reportData.growthStory.journeyProgressions.totalProgressions > 0 && (
+                      <Card className="p-4" data-testid="growth-journey">
+                        <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                          <GitBranch className="w-4 h-4 text-primary" /> Journey Stage Progressions
+                        </h4>
+                        <p className="text-sm text-muted-foreground mb-2">{reportData.growthStory.journeyProgressions.totalProgressions} people progressed this quarter</p>
+                        <div className="flex flex-wrap gap-2">
+                          {(reportData.growthStory.journeyProgressions.transitions || []).map((t: any, i: number) => (
+                            <Badge key={i} variant="secondary" data-testid={`transition-${i}`}>
+                              {t.from} → {t.to}: {t.count}
+                            </Badge>
+                          ))}
+                        </div>
+                      </Card>
+                    )}
+                  </div>
+                </CollapsibleSection>
+              )}
+
+              {/* Quarterly-only: Outcome Chain */}
+              {reportData?.reportType === "quarterly" && reportData?.outcomeChain && (
+                <CollapsibleSection title="Outcome Chain" icon={Target} testId="section-outcome-chain" defaultOpen={isSectionDefaultOpen("outcome-chain")}>
+                  <div className="pt-4 space-y-4">
+                    <p className="text-sm text-muted-foreground">Activities → Tracking → Impact → Outcomes: how your delivery connects to measurable change.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                      <Card className="p-4 border-t-4 border-t-blue-500/60" data-testid="chain-activities">
+                        <h4 className="text-xs font-semibold uppercase text-blue-600 mb-2">Activities</h4>
+                        <div className="space-y-1">
+                          {(reportData.outcomeChain.activities || []).map((a: any, i: number) => (
+                            <p key={i} className="text-sm"><span className="font-semibold">{a.count}</span> {a.label}</p>
+                          ))}
+                        </div>
+                      </Card>
+                      <Card className="p-4 border-t-4 border-t-green-500/60" data-testid="chain-tracking">
+                        <h4 className="text-xs font-semibold uppercase text-green-600 mb-2">Tracking</h4>
+                        <div className="space-y-1">
+                          {(reportData.outcomeChain.tracking || []).map((t: any, i: number) => (
+                            <p key={i} className="text-sm"><span className="font-semibold">{t.count}{t.suffix || ""}</span> {t.label}</p>
+                          ))}
+                        </div>
+                      </Card>
+                      <Card className="p-4 border-t-4 border-t-amber-500/60" data-testid="chain-impacts">
+                        <h4 className="text-xs font-semibold uppercase text-amber-600 mb-2">Impact</h4>
+                        <div className="space-y-1">
+                          {(reportData.outcomeChain.impacts || []).map((imp: any, i: number) => (
+                            <p key={i} className="text-sm capitalize"><span className="font-semibold">{imp.positiveMovement}%</span> positive {imp.metric.replace(/([A-Z])/g, ' $1').trim()}</p>
+                          ))}
+                        </div>
+                      </Card>
+                      {reportData.outcomeChain.funderOutcomes && reportData.outcomeChain.funderOutcomes.length > 0 && (
+                        <Card className="p-4 border-t-4 border-t-violet-500/60" data-testid="chain-outcomes">
+                          <h4 className="text-xs font-semibold uppercase text-violet-600 mb-2">
+                            {reportData.outcomeChain.funderFramework || "Funder"} Outcomes
+                          </h4>
+                          <div className="space-y-1">
+                            {reportData.outcomeChain.funderOutcomes.map((o: string, i: number) => (
+                              <p key={i} className="text-sm flex items-start gap-1">
+                                <ArrowRight className="w-3 h-3 mt-1 text-violet-500 shrink-0" /> {o}
+                              </p>
+                            ))}
+                          </div>
+                        </Card>
+                      )}
+                    </div>
+                  </div>
+                </CollapsibleSection>
+              )}
+
+              {/* Quarterly-only: Milestones Summary */}
+              {reportData?.reportType === "quarterly" && reportData?.quarterlyMilestones && reportData.quarterlyMilestones.total > 0 && (
+                <CollapsibleSection title={`Milestones (${reportData.quarterlyMilestones.total})`} icon={Trophy} testId="section-milestones" defaultOpen={isSectionDefaultOpen("milestones")}>
+                  <div className="pt-4 space-y-3">
+                    <p className="text-sm text-muted-foreground">All milestones achieved this quarter, grouped by type.</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {(reportData.quarterlyMilestones.byType || []).map((group: any, idx: number) => (
+                        <Card key={idx} className="p-4" data-testid={`milestone-type-${idx}`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="text-sm font-semibold capitalize">{group.type.replace(/_/g, " ")}</h4>
+                            <Badge variant="secondary">{group.count}</Badge>
+                          </div>
+                          {group.totalValue > 0 && (
+                            <p className="text-xs text-muted-foreground mb-1">${group.totalValue.toLocaleString()} value</p>
+                          )}
+                          <div className="space-y-0.5">
+                            {group.examples.map((ex: string, i: number) => (
+                              <p key={i} className="text-xs text-muted-foreground truncate">• {ex}</p>
+                            ))}
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
+                </CollapsibleSection>
+              )}
 
               {/* Section 1: Reach */}
               <CollapsibleSection title="Reach" icon={Users} testId="section-reach" defaultOpen={isSectionDefaultOpen("reach")} key={`reach-${activeFunder?.id || 'none'}`}>

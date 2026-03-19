@@ -6,7 +6,7 @@ import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON, isAnthropicKeyConfigured, AIKeyMissingError } from "./replit_integrations/anthropic/client";
-import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getReachMetrics, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, type ReportFilters, type CohortDefinition, type OrgProfileContext, type FunderContext } from "./reporting";
+import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getReachMetrics, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, getStandoutMoments, getOperatorInsights, getParticipantTransformationStories, getPeopleTierBreakdown, getImpactTagHeatmap, getTheoryOfChangeAlignment, getGrowthStory, getOutcomeChain, getQuarterlyMilestones, type ReportFilters, type CohortDefinition, type OrgProfileContext, type FunderContext } from "./reporting";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
 import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings, normalizeStage, DEFAULT_AVAILABILITY_SCHEDULE, DEFAULT_VENUE_AVAILABILITY_SCHEDULE, type AvailabilitySchedule, } from "@shared/schema";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -6188,7 +6188,8 @@ Important:
   app.post("/api/reports/generate", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder, communityLens } = req.body;
+      const { startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder, communityLens, reportType: reqReportType } = req.body;
+      const reportType: "monthly" | "quarterly" = reqReportType === "quarterly" ? "quarterly" : "monthly";
 
       if (!startDate || !endDate) {
         return res.status(400).json({ message: "startDate and endDate are required" });
@@ -6236,8 +6237,75 @@ Important:
 
       const cacheKey = getReportCacheKey("generate", { userId, startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder, communityLens: resolvedLens });
 
-      const result = await deduplicatedReportCall(cacheKey, async () => {
+      const result = await deduplicatedReportCall(cacheKey + `:${reportType}`, async () => {
         const report = await getFullMonthlyReport(filters);
+
+        interface EnhancedReportData {
+          standoutMoments: Awaited<ReturnType<typeof getStandoutMoments>>;
+          operatorInsights: Awaited<ReturnType<typeof getOperatorInsights>> | null;
+          peopleTiers: Awaited<ReturnType<typeof getPeopleTierBreakdown>> | null;
+          transformationStories: Awaited<ReturnType<typeof getParticipantTransformationStories>>;
+          impactHeatmap: Awaited<ReturnType<typeof getImpactTagHeatmap>>;
+          theoryOfChange: Awaited<ReturnType<typeof getTheoryOfChangeAlignment>> | null;
+          growthStory: Awaited<ReturnType<typeof getGrowthStory>> | null;
+          outcomeChain: Awaited<ReturnType<typeof getOutcomeChain>> | null;
+          quarterlyMilestones: Awaited<ReturnType<typeof getQuarterlyMilestones>> | null;
+        }
+
+        const enhancedData: EnhancedReportData = {
+          standoutMoments: [],
+          operatorInsights: null,
+          peopleTiers: null,
+          transformationStories: [],
+          impactHeatmap: [],
+          theoryOfChange: null,
+          growthStory: null,
+          outcomeChain: null,
+          quarterlyMilestones: null,
+        };
+
+        try {
+          if (reportType === "quarterly") {
+            const funderCtxForFns = funderProfileCtx ? {
+              name: funderProfileCtx.name,
+              outcomesFramework: funderProfileCtx.outcomesFramework,
+              outcomeFocus: funderProfileCtx.outcomeFocus,
+              reportingGuidance: funderProfileCtx.reportingGuidance,
+              partnershipStrategy: funderProfileCtx.partnershipStrategy,
+            } : null;
+            const results = await Promise.allSettled([
+              getStandoutMoments(filters, 5),
+              getOperatorInsights(filters),
+              getParticipantTransformationStories(filters, 3),
+              getPeopleTierBreakdown(filters),
+              getImpactTagHeatmap(filters),
+              getTheoryOfChangeAlignment(filters, orgProfileCtx, funderCtxForFns),
+              getGrowthStory(filters),
+              getOutcomeChain(filters, funderCtxForFns),
+              getQuarterlyMilestones(filters),
+            ]);
+            enhancedData.standoutMoments = results[0].status === "fulfilled" ? results[0].value : [];
+            enhancedData.operatorInsights = results[1].status === "fulfilled" ? results[1].value : null;
+            enhancedData.transformationStories = results[2].status === "fulfilled" ? results[2].value : [];
+            enhancedData.peopleTiers = results[3].status === "fulfilled" ? results[3].value : null;
+            enhancedData.impactHeatmap = results[4].status === "fulfilled" ? results[4].value : [];
+            enhancedData.theoryOfChange = results[5].status === "fulfilled" ? results[5].value : null;
+            enhancedData.growthStory = results[6].status === "fulfilled" ? results[6].value : null;
+            enhancedData.outcomeChain = results[7].status === "fulfilled" ? results[7].value : null;
+            enhancedData.quarterlyMilestones = results[8].status === "fulfilled" ? results[8].value : null;
+          } else {
+            const results = await Promise.allSettled([
+              getStandoutMoments(filters, 3),
+              getOperatorInsights(filters),
+              getPeopleTierBreakdown(filters),
+            ]);
+            enhancedData.standoutMoments = results[0].status === "fulfilled" ? results[0].value : [];
+            enhancedData.operatorInsights = results[1].status === "fulfilled" ? results[1].value : null;
+            enhancedData.peopleTiers = results[2].status === "fulfilled" ? results[2].value : null;
+          }
+        } catch (enhanceErr) {
+          console.error("Enhanced data error (non-fatal):", enhanceErr);
+        }
 
         let legacyMetrics = null;
         let isBlended = false;
@@ -6325,8 +6393,20 @@ Important:
           reportingGuidance: funderProfileCtx.reportingGuidance,
         } : null;
 
+        const templateMeta = reportType === "quarterly" ? {
+          templateName: "Quarterly Flagship Report",
+          templatePurpose: "Comprehensive impact proof with growth story, transformation vignettes, outcome alignment, and trend analysis",
+          sections: ["growthStory", "peopleTiers", "standoutMoments", "transformationStories", "outcomeChain", "operatorInsights", "impactHeatmap", "quarterlyMilestones", "theoryOfChange", "reach", "delivery", "impact"],
+        } : {
+          templateName: "Monthly Pulse Report",
+          templatePurpose: "Concise activity summary and standout moments — a quick read for funders",
+          sections: ["peopleTiers", "standoutMoments", "operatorInsights", "reach", "delivery", "impact"],
+        };
+
         return {
           ...report,
+          reportType,
+          templateMeta,
           isBlended,
           boundaryDate: boundaryDateStr,
           legacyReportCount,
@@ -6335,6 +6415,7 @@ Important:
           legacyHighlights: legacyHighlights.slice(0, 20),
           orgProfile: orgProfileData,
           funderProfile: funderProfileData,
+          ...enhancedData,
         };
       });
 
@@ -6378,7 +6459,7 @@ Important:
   app.post("/api/reports/narrative", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder, communityLens, narrativeStyle } = req.body;
+      const { startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder, communityLens, narrativeStyle, reportType: reqNarrReportType } = req.body;
 
       if (!startDate || !endDate) {
         return res.status(400).json({ message: "startDate and endDate are required" });
@@ -6387,6 +6468,7 @@ Important:
       let resolvedNarrativeLens = communityLens;
 
       const style: "compliance" | "story" = narrativeStyle === "story" ? "story" : "compliance";
+      const narrativeReportType: "monthly" | "quarterly" = reqNarrReportType === "quarterly" ? "quarterly" : "monthly";
 
       let legacyContext: { metrics: any; highlights: string[]; reportCount: number } | null = null;
       try {
@@ -6466,6 +6548,7 @@ Important:
               reportingGuidance: funderProfile.reportingGuidance,
               narrativeStyle: funderProfile.narrativeStyle,
               communityLens: funderProfile.communityLens,
+              partnershipStrategy: funderProfile.partnershipStrategy,
             };
             if (funderProfile.communityLens) {
               resolvedNarrativeLens = funderProfile.communityLens;
@@ -6485,7 +6568,7 @@ Important:
         communityLens: resolvedNarrativeLens,
       };
 
-      const result = await generateNarrative(filters, legacyContext, style, orgProfileCtx, funderCtx);
+      const result = await generateNarrative(filters, legacyContext, style, orgProfileCtx, funderCtx, narrativeReportType);
       res.json(result);
     } catch (err: any) {
       console.error("Narrative generation error:", err);

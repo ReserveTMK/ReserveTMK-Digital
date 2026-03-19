@@ -853,6 +853,669 @@ export interface FunderContext {
   reportingGuidance?: string | null;
   narrativeStyle?: string | null;
   communityLens?: string | null;
+  partnershipStrategy?: string | null;
+}
+
+export async function getStandoutMoments(filters: ReportFilters, limit = 5) {
+  const where = confirmedDebriefWhere(filters);
+  const lensIds = await getCommunityLensContactIds(filters);
+  const logs = await db.select({
+    id: impactLogs.id,
+    title: impactLogs.title,
+    summary: impactLogs.summary,
+    keyQuotes: impactLogs.keyQuotes,
+    milestones: impactLogs.milestones,
+    sentiment: impactLogs.sentiment,
+    createdAt: impactLogs.createdAt,
+    programmeId: impactLogs.programmeId,
+  }).from(impactLogs).where(where);
+
+  if (logs.length === 0) return [];
+
+  const logIds = logs.map(l => l.id);
+
+  let filteredLogIds = logIds;
+  if (lensIds && logIds.length > 0) {
+    const logContactRows = await db.select({
+      impactLogId: impactLogContacts.impactLogId,
+      contactId: impactLogContacts.contactId,
+    }).from(impactLogContacts).where(inArray(impactLogContacts.impactLogId, logIds));
+    const logsWithLensContacts = new Set<number>();
+    for (const r of logContactRows) {
+      if (lensIds.has(r.contactId)) logsWithLensContacts.add(r.impactLogId);
+    }
+    filteredLogIds = logIds.filter(id => logsWithLensContacts.has(id));
+    if (filteredLogIds.length === 0) return [];
+  }
+
+  const filteredLogs = lensIds ? logs.filter(l => filteredLogIds.includes(l.id)) : logs;
+  if (filteredLogIds.length === 0) return [];
+
+  const tagCounts = await db.select({
+    impactLogId: impactTags.impactLogId,
+    tagCount: count(),
+  }).from(impactTags)
+    .where(inArray(impactTags.impactLogId, filteredLogIds))
+    .groupBy(impactTags.impactLogId);
+  const tagCountMap = new Map(tagCounts.map(t => [t.impactLogId, safeNum(t.tagCount)]));
+
+  const contactCounts = await db.select({
+    impactLogId: impactLogContacts.impactLogId,
+    contactCount: count(),
+  }).from(impactLogContacts)
+    .where(inArray(impactLogContacts.impactLogId, filteredLogIds))
+    .groupBy(impactLogContacts.impactLogId);
+  const contactCountMap = new Map(contactCounts.map(c => [c.impactLogId, safeNum(c.contactCount)]));
+
+  const contactNames = new Map<number, string[]>();
+  if (filteredLogIds.length > 0) {
+    const contactRows = await db.select({
+      ilcLogId: impactLogContacts.impactLogId,
+      firstName: contacts.firstName,
+      lastName: contacts.lastName,
+    }).from(impactLogContacts)
+      .innerJoin(contacts, eq(impactLogContacts.contactId, contacts.id))
+      .where(inArray(impactLogContacts.impactLogId, filteredLogIds));
+    for (const r of contactRows) {
+      if (!contactNames.has(r.ilcLogId)) contactNames.set(r.ilcLogId, []);
+      contactNames.get(r.ilcLogId)!.push(`${r.firstName || ""} ${r.lastName || ""}`.trim());
+    }
+  }
+
+  const scored = filteredLogs.map(log => {
+    const quotesCount = log.keyQuotes?.length || 0;
+    const milestonesCount = log.milestones?.length || 0;
+    const tags = tagCountMap.get(log.id) || 0;
+    const pplCount = contactCountMap.get(log.id) || 0;
+    const hasSummary = log.summary ? 1 : 0;
+    const richness = (quotesCount * 3) + (milestonesCount * 4) + (tags * 2) + (pplCount * 1) + (hasSummary * 2);
+    return { ...log, richness, peopleCount: pplCount, tagCount: tags, participantNames: contactNames.get(log.id) || [] };
+  });
+
+  scored.sort((a, b) => b.richness - a.richness);
+
+  return scored.slice(0, limit).map(s => ({
+    id: s.id,
+    title: s.title,
+    summary: s.summary,
+    keyQuotes: s.keyQuotes || [],
+    milestones: s.milestones || [],
+    sentiment: s.sentiment,
+    createdAt: s.createdAt,
+    peopleCount: s.peopleCount,
+    tagCount: s.tagCount,
+    participantNames: s.participantNames.slice(0, 5),
+  }));
+}
+
+export async function getOperatorInsights(filters: ReportFilters) {
+  const where = confirmedDebriefWhere(filters);
+  const lensIds = await getCommunityLensContactIds(filters);
+  let allLogs = await db.select({
+    id: impactLogs.id,
+    title: impactLogs.title,
+    summary: impactLogs.summary,
+    sentiment: impactLogs.sentiment,
+    keyQuotes: impactLogs.keyQuotes,
+    milestones: impactLogs.milestones,
+  }).from(impactLogs).where(where);
+
+  if (lensIds && allLogs.length > 0) {
+    const logContactRows = await db.select({
+      impactLogId: impactLogContacts.impactLogId,
+      contactId: impactLogContacts.contactId,
+    }).from(impactLogContacts).where(inArray(impactLogContacts.impactLogId, allLogs.map(l => l.id)));
+    const logsWithLensContacts = new Set<number>();
+    for (const r of logContactRows) {
+      if (lensIds.has(r.contactId)) logsWithLensContacts.add(r.impactLogId);
+    }
+    allLogs = allLogs.filter(l => logsWithLensContacts.has(l.id));
+  }
+  const logs = allLogs;
+
+  const wins: string[] = [];
+  const concerns: string[] = [];
+  const learnings: string[] = [];
+  const allQuotes: string[] = [];
+  let totalDebriefs = 0;
+  const sentimentCounts: Record<string, number> = {};
+
+  for (const log of logs) {
+    totalDebriefs++;
+    if (log.sentiment) sentimentCounts[log.sentiment] = (sentimentCounts[log.sentiment] || 0) + 1;
+    if (log.keyQuotes) for (const q of log.keyQuotes) allQuotes.push(q);
+
+    if (log.summary) {
+      const lower = log.summary.toLowerCase();
+      if (log.sentiment === "positive" || lower.includes("success") || lower.includes("breakthrough") || lower.includes("achieved") || lower.includes("proud")) {
+        wins.push(log.summary.length > 200 ? log.summary.slice(0, 200) + "..." : log.summary);
+      }
+      if (log.sentiment === "negative" || lower.includes("concern") || lower.includes("challenge") || lower.includes("struggling") || lower.includes("barrier")) {
+        concerns.push(log.summary.length > 200 ? log.summary.slice(0, 200) + "..." : log.summary);
+      }
+      if (lower.includes("learn") || lower.includes("insight") || lower.includes("realised") || lower.includes("discovered") || lower.includes("noticed")) {
+        learnings.push(log.summary.length > 200 ? log.summary.slice(0, 200) + "..." : log.summary);
+      }
+    }
+
+    if (log.milestones) {
+      for (const m of log.milestones) {
+        wins.push(m);
+      }
+    }
+  }
+
+  return {
+    totalDebriefs,
+    sentimentBreakdown: sentimentCounts,
+    wins: wins.slice(0, 8),
+    concerns: concerns.slice(0, 5),
+    learnings: learnings.slice(0, 5),
+    standoutQuotes: allQuotes.slice(0, 6),
+  };
+}
+
+export async function getParticipantTransformationStories(filters: ReportFilters, limit = 3) {
+  const where = confirmedDebriefWhere(filters);
+  const lensIds = await getCommunityLensContactIds(filters);
+  const start = parseDate(filters.startDate);
+  const end = parseDate(filters.endDate);
+
+  const contactDebriefs = await db.select({
+    contactId: impactLogContacts.contactId,
+    impactLogId: impactLogContacts.impactLogId,
+  }).from(impactLogContacts)
+    .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
+    .where(where);
+
+  if (contactDebriefs.length === 0) return [];
+
+  const contactLogMap = new Map<number, number[]>();
+  for (const cd of contactDebriefs) {
+    if (lensIds && !lensIds.has(cd.contactId)) continue;
+    if (!contactLogMap.has(cd.contactId)) contactLogMap.set(cd.contactId, []);
+    contactLogMap.get(cd.contactId)!.push(cd.impactLogId);
+  }
+
+  const contactIds = Array.from(contactLogMap.keys());
+  if (contactIds.length === 0) return [];
+
+  const contactDetails = await db.select({
+    id: contacts.id,
+    firstName: contacts.firstName,
+    lastName: contacts.lastName,
+    metrics: contacts.metrics,
+    stage: contacts.stage,
+    isCommunityMember: contacts.isCommunityMember,
+    isInnovator: contacts.isInnovator,
+  }).from(contacts).where(and(eq(contacts.userId, filters.userId), inArray(contacts.id, contactIds)));
+
+  const contactMilestones = await db.select({
+    linkedContactId: milestones.linkedContactId,
+    title: milestones.title,
+    milestoneType: milestones.milestoneType,
+    valueAmount: milestones.valueAmount,
+  }).from(milestones).where(and(
+    eq(milestones.userId, filters.userId),
+    inArray(milestones.linkedContactId, contactIds),
+    gte(milestones.createdAt, start),
+    lte(milestones.createdAt, end),
+  ));
+  const milestonesByContact = new Map<number, typeof contactMilestones>();
+  for (const m of contactMilestones) {
+    if (!m.linkedContactId) continue;
+    if (!milestonesByContact.has(m.linkedContactId)) milestonesByContact.set(m.linkedContactId, []);
+    milestonesByContact.get(m.linkedContactId)!.push(m);
+  }
+
+  const allLogIds = Array.from(new Set(contactDebriefs.map(cd => cd.impactLogId)));
+  const logDetails = await db.select({
+    id: impactLogs.id,
+    keyQuotes: impactLogs.keyQuotes,
+    summary: impactLogs.summary,
+    milestones: impactLogs.milestones,
+  }).from(impactLogs).where(inArray(impactLogs.id, allLogIds));
+  const logMap = new Map(logDetails.map(l => [l.id, l]));
+
+  const snapshots = await db.select({
+    contactId: metricSnapshots.contactId,
+    metrics: metricSnapshots.metrics,
+    createdAt: metricSnapshots.createdAt,
+  }).from(metricSnapshots).where(and(
+    eq(metricSnapshots.userId, filters.userId),
+    inArray(metricSnapshots.contactId, contactIds),
+    gte(metricSnapshots.createdAt, start),
+    lte(metricSnapshots.createdAt, end),
+  ));
+  type SnapshotRow = typeof snapshots[number];
+  const earliestSnap = new Map<number, SnapshotRow>();
+  const latestSnap = new Map<number, SnapshotRow>();
+  for (const s of snapshots) {
+    const existing = earliestSnap.get(s.contactId);
+    if (!existing || (s.createdAt && existing.createdAt && s.createdAt < existing.createdAt)) {
+      earliestSnap.set(s.contactId, s);
+    }
+    const existingL = latestSnap.get(s.contactId);
+    if (!existingL || (s.createdAt && existingL.createdAt && s.createdAt > existingL.createdAt)) {
+      latestSnap.set(s.contactId, s);
+    }
+  }
+
+  const scored = contactDetails.map(c => {
+    const logIds = contactLogMap.get(c.id) || [];
+    const cMilestones = milestonesByContact.get(c.id) || [];
+    const quotes: string[] = [];
+    const summaries: string[] = [];
+
+    for (const lid of logIds) {
+      const log = logMap.get(lid);
+      if (log?.keyQuotes) quotes.push(...log.keyQuotes);
+      if (log?.summary) summaries.push(log.summary);
+    }
+
+    const early = earliestSnap.get(c.id);
+    const latest = latestSnap.get(c.id);
+    let growthScore = 0;
+    if (early && latest && early !== latest) {
+      const startGrowth = computeGrowthScore(early.metrics);
+      const endGrowth = computeGrowthScore(latest.metrics);
+      if (startGrowth !== null && endGrowth !== null) growthScore = endGrowth - startGrowth;
+    }
+
+    const richness = (quotes.length * 3) + (cMilestones.length * 5) + (logIds.length * 2) + (growthScore > 0 ? growthScore * 4 : 0) + (summaries.length * 1);
+
+    return {
+      id: c.id,
+      name: `${c.firstName || ""} ${c.lastName || ""}`.trim(),
+      tier: c.isInnovator ? "Innovator" : c.isCommunityMember ? "Community" : "User",
+      stage: c.stage,
+      debriefCount: logIds.length,
+      milestones: cMilestones.map(m => m.title).slice(0, 3),
+      quotes: quotes.slice(0, 3),
+      growthScore: Math.round(growthScore * 10) / 10,
+      summaryExcerpt: summaries[0]?.slice(0, 300) || null,
+      richness,
+    };
+  });
+
+  scored.sort((a, b) => b.richness - a.richness);
+  return scored.slice(0, limit);
+}
+
+export async function getPeopleTierBreakdown(filters: ReportFilters) {
+  const lensIds = await getCommunityLensContactIds(filters);
+  const start = parseDate(filters.startDate);
+  const end = parseDate(filters.endDate);
+  const where = confirmedDebriefWhere(filters);
+
+  const debriefContacts = await db.selectDistinct({ contactId: impactLogContacts.contactId })
+    .from(impactLogContacts)
+    .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
+    .where(where);
+
+  const mtgRows = await db.selectDistinct({ contactId: meetings.contactId })
+    .from(meetings)
+    .where(and(
+      eq(meetings.userId, filters.userId),
+      inArray(meetings.status, ["completed", "confirmed"]),
+      gte(meetings.startTime, start),
+      lte(meetings.startTime, end),
+    ));
+
+  const evtRows = await db.select({ id: events.id }).from(events)
+    .where(and(eq(events.userId, filters.userId), eq(events.eventStatus, "active"), gte(events.startTime, start), lte(events.startTime, end)));
+  const evtIds = evtRows.map(e => e.id);
+  let evtContactIds: number[] = [];
+  if (evtIds.length > 0) {
+    const attRows = await db.selectDistinct({ contactId: eventAttendance.contactId })
+      .from(eventAttendance).where(inArray(eventAttendance.eventId, evtIds));
+    evtContactIds = attRows.map(a => a.contactId);
+  }
+
+  const allEngagedIds = new Set<number>();
+  for (const r of debriefContacts) { if (!lensIds || lensIds.has(r.contactId)) allEngagedIds.add(r.contactId); }
+  for (const r of mtgRows) { if (r.contactId && (!lensIds || lensIds.has(r.contactId))) allEngagedIds.add(r.contactId); }
+  for (const id of evtContactIds) { if (!lensIds || lensIds.has(id)) allEngagedIds.add(id); }
+
+  let footTraffic = 0;
+  const dailyCheck = await db.select({ cnt: count() }).from(dailyFootTraffic)
+    .where(and(eq(dailyFootTraffic.userId, filters.userId), gte(dailyFootTraffic.date, start), lte(dailyFootTraffic.date, end)));
+  if (safeNum(dailyCheck[0]?.cnt) > 0) {
+    const ftSum = await db.select({ total: sum(dailyFootTraffic.count) }).from(dailyFootTraffic)
+      .where(and(eq(dailyFootTraffic.userId, filters.userId), gte(dailyFootTraffic.date, start), lte(dailyFootTraffic.date, end)));
+    footTraffic = safeNum(ftSum[0]?.total);
+  } else {
+    const legSum = await db.select({ total: sum(monthlySnapshots.footTraffic) }).from(monthlySnapshots)
+      .where(and(eq(monthlySnapshots.userId, filters.userId), gte(monthlySnapshots.month, start), lte(monthlySnapshots.month, end)));
+    footTraffic = safeNum(legSum[0]?.total);
+  }
+
+  const trackedContacts = allEngagedIds.size;
+  const totalUsers = trackedContacts + footTraffic;
+
+  if (totalUsers === 0) {
+    return { total: 0, users: 0, trackedContacts: 0, footTraffic: 0, community: 0, innovators: 0, breakdown: [] };
+  }
+
+  let community = 0, innovators = 0;
+  if (trackedContacts > 0) {
+    const cRows = await db.select({
+      id: contacts.id,
+      isCommunityMember: contacts.isCommunityMember,
+      isInnovator: contacts.isInnovator,
+    }).from(contacts).where(and(eq(contacts.userId, filters.userId), inArray(contacts.id, Array.from(allEngagedIds))));
+
+    for (const c of cRows) {
+      if (c.isInnovator) innovators++;
+      if (c.isCommunityMember) community++;
+    }
+  }
+
+  return {
+    total: totalUsers,
+    users: totalUsers,
+    trackedContacts,
+    footTraffic,
+    community,
+    innovators,
+    breakdown: [
+      { tier: "Users", count: totalUsers, description: `All people in/out of the space (${trackedContacts} identified contacts + ${footTraffic} untracked foot traffic)` },
+      { tier: "Community", count: community, description: "Active community members" },
+      { tier: "Innovators", count: innovators, description: "Innovation programme participants" },
+    ],
+  };
+}
+
+export async function getImpactTagHeatmap(filters: ReportFilters) {
+  const where = confirmedDebriefWhere(filters);
+  const lensIds = await getCommunityLensContactIds(filters);
+  let logIds = (await db.select({ id: impactLogs.id }).from(impactLogs).where(where)).map(r => r.id);
+  if (logIds.length === 0) return [];
+
+  if (lensIds && logIds.length > 0) {
+    const logContactRows = await db.select({
+      impactLogId: impactLogContacts.impactLogId,
+      contactId: impactLogContacts.contactId,
+    }).from(impactLogContacts).where(inArray(impactLogContacts.impactLogId, logIds));
+    const logsWithLensContacts = new Set<number>();
+    for (const r of logContactRows) {
+      if (lensIds.has(r.contactId)) logsWithLensContacts.add(r.impactLogId);
+    }
+    logIds = logIds.filter(id => logsWithLensContacts.has(id));
+    if (logIds.length === 0) return [];
+  }
+
+  const tagRows = await db.select({
+    taxonomyId: impactTags.taxonomyId,
+    taxonomyName: impactTaxonomy.name,
+    taxonomyColor: impactTaxonomy.color,
+    confidence: impactTags.confidence,
+    impactLogId: impactTags.impactLogId,
+  }).from(impactTags)
+    .innerJoin(impactTaxonomy, eq(impactTags.taxonomyId, impactTaxonomy.id))
+    .where(inArray(impactTags.impactLogId, logIds));
+
+  const grouped = new Map<number, { name: string; color: string | null; count: number; avgConfidence: number; totalConf: number; logIds: Set<number> }>();
+  for (const tag of tagRows) {
+    if (!grouped.has(tag.taxonomyId)) {
+      grouped.set(tag.taxonomyId, { name: tag.taxonomyName, color: tag.taxonomyColor, count: 0, avgConfidence: 0, totalConf: 0, logIds: new Set() });
+    }
+    const g = grouped.get(tag.taxonomyId)!;
+    if (!g.logIds.has(tag.impactLogId)) {
+      g.count++;
+      g.logIds.add(tag.impactLogId);
+    }
+    g.totalConf += safeNum(tag.confidence);
+  }
+
+  return Array.from(grouped.values()).map(g => ({
+    name: g.name,
+    color: g.color,
+    frequency: g.count,
+    avgConfidence: g.logIds.size > 0 ? Math.round(g.totalConf / g.logIds.size) : 0,
+  })).sort((a, b) => b.frequency - a.frequency);
+}
+
+export async function getTheoryOfChangeAlignment(filters: ReportFilters, orgProfile?: OrgProfileContext | null, funderContext?: FunderContext | null) {
+  const [reach, delivery, impact, mentoring] = await Promise.all([
+    getReachMetrics(filters),
+    getDeliveryMetrics(filters),
+    getImpactMetrics(filters),
+    getMentoringMetrics(filters),
+  ]);
+
+  const pillars: Array<{ pillar: string; description: string; activities: string[]; evidence: string[]; metrics: Record<string, number | string> }> = [];
+
+  pillars.push({
+    pillar: "Whanaungatanga (Connection)",
+    description: "Building and strengthening community relationships",
+    activities: [
+      `${delivery.events.total} community events delivered`,
+      `${mentoring.totalSessions} mentoring sessions facilitated`,
+      delivery.partnerMeetings > 0 ? `${delivery.partnerMeetings} partner meetings held` : "",
+    ].filter(Boolean),
+    evidence: [
+      `${reach.repeatEngagementRate}% repeat engagement rate`,
+      `${reach.ecosystemGrowth.newContacts} new people joined the community`,
+      reach.ecosystemGrowth.promotedToCommunity > 0 ? `${reach.ecosystemGrowth.promotedToCommunity} deepened into community` : "",
+    ].filter(Boolean),
+    metrics: {
+      peopleReached: reach.peopleReached,
+      repeatRate: reach.repeatEngagementRate,
+      newConnections: reach.ecosystemGrowth.newContacts,
+    },
+  });
+
+  pillars.push({
+    pillar: "Manaakitanga (Empowerment)",
+    description: "Supporting growth, skill development, and confidence",
+    activities: [
+      mentoring.totalHours > 0 ? `${mentoring.totalHours} hours of mentoring support` : "",
+      `${delivery.programmes.total} programmes delivered`,
+      delivery.workshops > 0 ? `${delivery.workshops} workshops run` : "",
+    ].filter(Boolean),
+    evidence: [
+      impact.contactsWithMetrics > 0 ? `${impact.contactsWithMetrics} people with tracked growth` : "",
+      impact.growthMetrics?.mindset?.positiveMovementPercent > 0 ? `${impact.growthMetrics.mindset.positiveMovementPercent}% positive mindset movement` : "",
+      impact.growthMetrics?.confidence?.positiveMovementPercent > 0 ? `${impact.growthMetrics.confidence.positiveMovementPercent}% positive confidence movement` : "",
+      impact.growthMetrics?.skill?.positiveMovementPercent > 0 ? `${impact.growthMetrics.skill.positiveMovementPercent}% positive skill movement` : "",
+    ].filter(Boolean),
+    metrics: {
+      contactsGrowing: impact.contactsWithMetrics,
+      mentoringHours: mentoring.totalHours,
+      milestones: impact.milestoneCount,
+    },
+  });
+
+  const econ = impact.economicRollup;
+  pillars.push({
+    pillar: "Ohanga (Economic Wellbeing)",
+    description: "Supporting economic independence and venture creation",
+    activities: [
+      econ.businessesLaunched > 0 ? `${econ.businessesLaunched} businesses launched` : "",
+      econ.jobsCreated > 0 ? `${econ.jobsCreated} jobs created` : "",
+      econ.fundingSecured > 0 ? `$${econ.fundingSecured.toLocaleString()} funding secured` : "",
+    ].filter(Boolean),
+    evidence: [
+      econ.totalEconomicValue > 0 ? `$${econ.totalEconomicValue.toLocaleString()} total economic value generated` : "",
+      impact.growthMetrics?.bizConfidence?.positiveMovementPercent > 0 ? `${impact.growthMetrics.bizConfidence.positiveMovementPercent}% positive business confidence movement` : "",
+      impact.growthMetrics?.fundingReadiness?.positiveMovementPercent > 0 ? `${impact.growthMetrics.fundingReadiness.positiveMovementPercent}% improved funding readiness` : "",
+    ].filter(Boolean),
+    metrics: {
+      economicValue: econ.totalEconomicValue,
+      businessesLaunched: econ.businessesLaunched,
+      jobsCreated: econ.jobsCreated,
+    },
+  });
+
+  let funderAlignment: { framework: string; mappings: string[] } | null = null;
+  if (funderContext?.outcomesFramework) {
+    const mappings: string[] = [];
+    if (funderContext.outcomeFocus === "economic") {
+      mappings.push(`Economic value: $${econ.totalEconomicValue.toLocaleString()}`);
+      if (econ.businessesLaunched > 0) mappings.push(`${econ.businessesLaunched} ventures launched`);
+      if (econ.jobsCreated > 0) mappings.push(`${econ.jobsCreated} jobs created`);
+    } else if (funderContext.outcomeFocus === "wellbeing") {
+      mappings.push(`${impact.contactsWithMetrics} people with measured growth`);
+      if (impact.milestoneCount > 0) mappings.push(`${impact.milestoneCount} personal milestones achieved`);
+    } else if (funderContext.outcomeFocus === "community") {
+      mappings.push(`${reach.peopleReached} people reached`);
+      mappings.push(`${reach.repeatEngagementRate}% repeat engagement`);
+    }
+    if (impact.milestoneCount > 0) mappings.push(`${impact.milestoneCount} milestones achieved this period`);
+    funderAlignment = { framework: funderContext.outcomesFramework, mappings };
+  }
+
+  return { pillars, funderAlignment, orgMission: orgProfile?.mission || null };
+}
+
+export async function getGrowthStory(filters: ReportFilters) {
+  const end = parseDate(filters.endDate);
+  const start = parseDate(filters.startDate);
+
+  const dayCount = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const prevEnd = new Date(start);
+  prevEnd.setDate(prevEnd.getDate() - 1);
+  const prevStart = new Date(prevEnd);
+  prevStart.setDate(prevStart.getDate() - dayCount + 1);
+
+  const prevFilters: ReportFilters = {
+    ...filters,
+    startDate: formatLocalDate(prevStart),
+    endDate: formatLocalDate(prevEnd),
+  };
+
+  const [currentReach, currentDelivery, currentImpact, prevReach, prevDelivery, prevImpact, journeyProg] = await Promise.all([
+    getReachMetrics(filters),
+    getDeliveryMetrics(filters),
+    getImpactMetrics(filters),
+    getReachMetrics(prevFilters),
+    getDeliveryMetrics(prevFilters),
+    getImpactMetrics(prevFilters),
+    getJourneyStageProgression(filters),
+  ]);
+
+  const pctChange = (current: number, prev: number) => prev === 0 ? (current > 0 ? 100 : 0) : Math.round(((current - prev) / prev) * 100);
+
+  return {
+    current: {
+      peopleReached: currentReach.peopleReached,
+      uniqueContacts: currentReach.uniqueContacts,
+      totalActivations: currentDelivery.totalActivations,
+      milestones: currentImpact.milestoneCount,
+      repeatRate: currentReach.repeatEngagementRate,
+      newContacts: currentReach.ecosystemGrowth.newContacts,
+    },
+    previous: {
+      peopleReached: prevReach.peopleReached,
+      uniqueContacts: prevReach.uniqueContacts,
+      totalActivations: prevDelivery.totalActivations,
+      milestones: prevImpact.milestoneCount,
+      repeatRate: prevReach.repeatEngagementRate,
+      newContacts: prevReach.ecosystemGrowth.newContacts,
+    },
+    changes: {
+      peopleReached: pctChange(currentReach.peopleReached, prevReach.peopleReached),
+      uniqueContacts: pctChange(currentReach.uniqueContacts, prevReach.uniqueContacts),
+      totalActivations: pctChange(currentDelivery.totalActivations, prevDelivery.totalActivations),
+      milestones: pctChange(currentImpact.milestoneCount, prevImpact.milestoneCount),
+    },
+    journeyProgressions: journeyProg,
+  };
+}
+
+export async function getOutcomeChain(filters: ReportFilters, funderContext?: FunderContext | null) {
+  const [delivery, reach, impact] = await Promise.all([
+    getDeliveryMetrics(filters),
+    getReachMetrics(filters),
+    getImpactMetrics(filters),
+  ]);
+
+  const activities = [
+    { label: "Events delivered", count: delivery.events.total },
+    { label: "Programmes active", count: delivery.programmes.total },
+    { label: "Mentoring sessions", count: delivery.meetings },
+    { label: "Workshops", count: delivery.workshops },
+    delivery.partnerMeetings > 0 ? { label: "Partner meetings", count: delivery.partnerMeetings } : null,
+  ].filter(Boolean) as Array<{ label: string; count: number }>;
+
+  const tracking = [
+    { label: "People reached", count: reach.peopleReached },
+    { label: "Unique contacts", count: reach.uniqueContacts },
+    { label: "Repeat engagement rate", count: reach.repeatEngagementRate, suffix: "%" },
+    { label: "Community hours", count: delivery.communityHours },
+  ];
+
+  const growthMetrics = impact.growthMetrics || {};
+  const growthKeys = Object.keys(growthMetrics);
+  const impacts: Array<{ metric: string; positiveMovement: number; average: number }> = [];
+  for (const k of growthKeys) {
+    const m = growthMetrics[k as keyof typeof growthMetrics];
+    if (m && typeof m === "object" && "positiveMovementPercent" in m) {
+      impacts.push({ metric: k, positiveMovement: m.positiveMovementPercent, average: m.averageScore });
+    }
+  }
+
+  let funderOutcomes: string[] = [];
+  if (funderContext?.outcomeFocus) {
+    if (funderContext.outcomeFocus === "economic") {
+      const econ = impact.economicRollup;
+      if (econ.totalEconomicValue > 0) funderOutcomes.push(`$${econ.totalEconomicValue.toLocaleString()} economic value generated`);
+      if (econ.businessesLaunched > 0) funderOutcomes.push(`${econ.businessesLaunched} ventures launched`);
+      if (econ.jobsCreated > 0) funderOutcomes.push(`${econ.jobsCreated} jobs created`);
+    } else if (funderContext.outcomeFocus === "wellbeing") {
+      if (impact.contactsWithMetrics > 0) funderOutcomes.push(`${impact.contactsWithMetrics} people with measured growth`);
+      if (impact.milestoneCount > 0) funderOutcomes.push(`${impact.milestoneCount} milestones achieved`);
+    } else if (funderContext.outcomeFocus === "community") {
+      funderOutcomes.push(`${reach.peopleReached} people engaged`);
+      funderOutcomes.push(`${reach.repeatEngagementRate}% return rate`);
+    }
+  }
+
+  return { activities, tracking, impacts, funderOutcomes, funderFramework: funderContext?.outcomesFramework || null };
+}
+
+export async function getQuarterlyMilestones(filters: ReportFilters) {
+  const start = parseDate(filters.startDate);
+  const end = parseDate(filters.endDate);
+  const lensIds = await getCommunityLensContactIds(filters);
+
+  const allMilestones = await db.select({
+    id: milestones.id,
+    title: milestones.title,
+    milestoneType: milestones.milestoneType,
+    valueAmount: milestones.valueAmount,
+    linkedContactId: milestones.linkedContactId,
+    createdAt: milestones.createdAt,
+  }).from(milestones).where(and(
+    eq(milestones.userId, filters.userId),
+    gte(milestones.createdAt, start),
+    lte(milestones.createdAt, end),
+  ));
+
+  const filtered = lensIds
+    ? allMilestones.filter(m => m.linkedContactId && lensIds.has(m.linkedContactId))
+    : allMilestones;
+
+  const byType = new Map<string, { count: number; totalValue: number; examples: string[] }>();
+  for (const m of filtered) {
+    const type = m.milestoneType || "other";
+    if (!byType.has(type)) byType.set(type, { count: 0, totalValue: 0, examples: [] });
+    const entry = byType.get(type)!;
+    entry.count++;
+    entry.totalValue += safeNum(m.valueAmount);
+    if (entry.examples.length < 3 && m.title) entry.examples.push(m.title);
+  }
+
+  return {
+    total: filtered.length,
+    byType: Array.from(byType.entries()).map(([type, data]) => ({
+      type,
+      count: data.count,
+      totalValue: data.totalValue,
+      examples: data.examples,
+    })).sort((a, b) => b.count - a.count),
+  };
 }
 
 export async function generateNarrative(
@@ -861,6 +1524,7 @@ export async function generateNarrative(
   narrativeStyle: "compliance" | "story" = "compliance",
   orgProfile?: OrgProfileContext | null,
   funderContext?: FunderContext | null,
+  reportType: "monthly" | "quarterly" = "monthly",
 ) {
   const [reach, delivery, impact, value, mentoring, connectionStrength, surveyData] = await Promise.all([
     getReachMetrics(filters),
@@ -1086,6 +1750,65 @@ export async function generateNarrative(
     sections.push(`## [What's Next]\n\n*[Outline upcoming priorities, planned activities, or strategic focus for the next reporting period.]*`);
   }
 
+  if (reportType === "quarterly") {
+    const [standout, insights, stories, tierBreakdown] = await Promise.all([
+      getStandoutMoments(filters, 3),
+      getOperatorInsights(filters),
+      getParticipantTransformationStories(filters, 2),
+      getPeopleTierBreakdown(filters),
+    ]);
+
+    if (tierBreakdown.total > 0) {
+      sections.push(`## Community Tiers\n\n${tierBreakdown.total} people engaged across our ecosystem: ${tierBreakdown.users} Users, ${tierBreakdown.community} Community members, ${tierBreakdown.innovators} Innovators.`);
+    }
+
+    if (standout.length > 0) {
+      let standoutText = `## Standout Moments\n\n`;
+      for (const s of standout) {
+        standoutText += `**${s.title}**`;
+        if (s.participantNames.length > 0) standoutText += ` (${s.participantNames.join(", ")})`;
+        standoutText += `\n`;
+        if (s.summary) standoutText += `${s.summary.slice(0, 200)}\n`;
+        if (s.keyQuotes.length > 0) standoutText += `> "${s.keyQuotes[0]}"\n`;
+        standoutText += `\n`;
+      }
+      sections.push(standoutText.trimEnd());
+    }
+
+    if (stories.length > 0) {
+      let storyText = `## Transformation Stories\n\n`;
+      for (const s of stories) {
+        storyText += `**${s.name}** (${s.tier})`;
+        if (s.growthScore > 0) storyText += ` — growth score +${s.growthScore}`;
+        storyText += `\n`;
+        if (s.milestones.length > 0) storyText += `Milestones: ${s.milestones.join(", ")}\n`;
+        if (s.quotes.length > 0) storyText += `> "${s.quotes[0]}"\n`;
+        if (s.summaryExcerpt) storyText += `${s.summaryExcerpt.slice(0, 200)}\n`;
+        storyText += `\n`;
+      }
+      sections.push(storyText.trimEnd());
+    }
+
+    if (insights.totalDebriefs > 0) {
+      let insightsText = `## Operator Reflections\n\n`;
+      insightsText += `From ${insights.totalDebriefs} debriefs this quarter:\n\n`;
+      if (insights.wins.length > 0) {
+        insightsText += `**Wins & Highlights:**\n${insights.wins.slice(0, 4).map(w => `- ${w}`).join("\n")}\n\n`;
+      }
+      if (insights.concerns.length > 0) {
+        insightsText += `**Challenges & Concerns:**\n${insights.concerns.slice(0, 3).map(c => `- ${c}`).join("\n")}\n\n`;
+      }
+      if (insights.learnings.length > 0) {
+        insightsText += `**Learnings:**\n${insights.learnings.slice(0, 3).map(l => `- ${l}`).join("\n")}\n\n`;
+      }
+      sections.push(insightsText.trimEnd());
+    }
+
+    if (funderContext?.partnershipStrategy) {
+      sections.push(`## Partnership Approach\n\n${funderContext.partnershipStrategy}`);
+    }
+  }
+
   if (hasLegacy && legacyContext.highlights.length > 0) {
     const hlLines = legacyContext.highlights.slice(0, 5).map(h => `- ${h}`).join("\n");
     sections.push(`## Legacy Highlights\n\nKey highlights from legacy reports:\n${hlLines}`);
@@ -1094,6 +1817,7 @@ export async function generateNarrative(
   return {
     narrative: sections.join("\n\n"),
     narrativeStyle,
+    reportType,
     sections: { reach, delivery, impact, value },
   };
 }
