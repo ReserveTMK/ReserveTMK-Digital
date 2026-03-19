@@ -48,18 +48,16 @@ import { INSTRUCTION_TYPES, DEFAULT_AVAILABILITY_SCHEDULE, DEFAULT_VENUE_AVAILAB
 
 const INSTRUCTION_TYPE_LABELS: Record<string, string> = {
   access: "Access",
-  arrival: "Arrival",
-  departure: "Departure",
+  opening: "Opening Procedure",
+  closing: "Closing Procedure",
   emergency: "Emergency",
-  general: "General",
 };
 
 const INSTRUCTION_TYPE_COLORS: Record<string, string> = {
   access: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
-  arrival: "bg-green-500/15 text-green-700 dark:text-green-300",
-  departure: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+  opening: "bg-green-500/15 text-green-700 dark:text-green-300",
+  closing: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
   emergency: "bg-red-500/15 text-red-700 dark:text-red-300",
-  general: "bg-gray-500/15 text-gray-700 dark:text-gray-300",
 };
 
 const DAY_NAMES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
@@ -252,7 +250,7 @@ function VenuesSubSection({
             )}
           </Card>
         ))}
-          <LocationInstructionsSection spaceName={spaceName} />
+          <BookerAccessInfoSection spaceName={spaceName} />
         </div>
       ))}
       {(!venues || venues.length === 0) && (
@@ -593,7 +591,7 @@ function VenueAvailabilitySection({ venue }: { venue: Venue }) {
   );
 }
 
-function LocationInstructionsSection({ spaceName }: { spaceName: string }) {
+function BookerAccessInfoSection({ spaceName }: { spaceName: string }) {
   const { data: instructions, isLoading } = useLocationInstructions(spaceName);
   const createMutation = useCreateVenueInstruction();
   const updateMutation = useUpdateVenueInstruction();
@@ -678,7 +676,7 @@ function LocationInstructionsSection({ spaceName }: { spaceName: string }) {
       >
         <div className="flex items-center gap-2">
           <FileText className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Location Instructions</span>
+          <span className="text-sm font-medium">Booker Access Info</span>
           {instructions && instructions.length > 0 && (
             <Badge variant="secondary" className="text-xs">{instructions.length}</Badge>
           )}
@@ -689,7 +687,7 @@ function LocationInstructionsSection({ spaceName }: { spaceName: string }) {
       {expanded && (
         <div className="border-t p-3 space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">Instructions shared by all venues in {spaceName}.</p>
+            <p className="text-xs text-muted-foreground">Access and operational info for bookers at {spaceName}.</p>
             <Button
               size="sm"
               variant="outline"
@@ -718,7 +716,7 @@ function LocationInstructionsSection({ spaceName }: { spaceName: string }) {
           ) : !instructions?.length ? (
             <div className="text-center py-4">
               <FileText className="w-8 h-8 text-muted-foreground mx-auto mb-1" />
-              <p className="text-xs text-muted-foreground" data-testid={`text-no-location-instructions-${safeId}`}>No instructions for this location yet.</p>
+              <p className="text-xs text-muted-foreground" data-testid={`text-no-location-instructions-${safeId}`}>No booker access info for this location yet.</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -820,7 +818,7 @@ function InlineInstructionForm({
   isPending: boolean;
   formId: string;
 }) {
-  const [instructionType, setInstructionType] = useState(instruction?.instructionType || "general");
+  const [instructionType, setInstructionType] = useState(instruction?.instructionType || "access");
   const [title, setTitle] = useState(instruction?.title || "");
   const [content, setContent] = useState(instruction?.content || "");
   const [displayOrder, setDisplayOrder] = useState(instruction?.displayOrder?.toString() || "0");
@@ -832,7 +830,7 @@ function InlineInstructionForm({
       setContent(instruction.content || "");
       setDisplayOrder(instruction.displayOrder?.toString() || "0");
     } else {
-      setInstructionType("general");
+      setInstructionType("access");
       setTitle("");
       setContent("");
       setDisplayOrder("0");

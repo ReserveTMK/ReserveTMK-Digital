@@ -1850,16 +1850,16 @@ export async function registerRoutes(
       }
 
       let location: string | null = null;
-      let venueDirections: Record<string, string> | null = null;
+      let locationInstructions: Record<string, any> | null = null;
       try {
         const orgProfile = await storage.getOrganisationProfile(resolvedOwnerUserId);
         if (orgProfile) {
           location = orgProfile.location || null;
-          venueDirections = orgProfile.venueDirections || null;
+          locationInstructions = orgProfile.locationInstructions || null;
         }
       } catch (e) {}
 
-      res.json({ firstName, lastName, orgName: 'ReserveTMK Digital', location, venueDirections });
+      res.json({ firstName, lastName, orgName: 'ReserveTMK Digital', location, locationInstructions });
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch info" });
     }
@@ -1939,18 +1939,24 @@ export async function registerRoutes(
       (async () => {
         try {
           let orgLocation: string | null = null;
-          let orgDirections: Record<string, string> | null = null;
+          let orgLocationInstructions: Record<string, { howToFindUs?: string; parking?: string; generalInfo?: string }> | null = null;
           try {
             const orgProfile = await storage.getOrganisationProfile(contactOwnerUserId);
             if (orgProfile) {
               orgLocation = orgProfile.location || null;
-              orgDirections = orgProfile.venueDirections || null;
+              orgLocationInstructions = orgProfile.locationInstructions || null;
             }
           } catch (e) {}
 
-          const directionsText = orgDirections ? Object.entries(orgDirections)
-            .filter(([_, v]) => v)
-            .map(([k, v]) => `${k}: ${v}`)
+          const directionsText = orgLocationInstructions ? Object.entries(orgLocationInstructions)
+            .filter(([_, v]) => v && (v.howToFindUs || v.parking || v.generalInfo))
+            .map(([k, v]) => {
+              const parts = [];
+              if (v.howToFindUs) parts.push(v.howToFindUs);
+              if (v.parking) parts.push(`Parking: ${v.parking}`);
+              if (v.generalInfo) parts.push(v.generalInfo);
+              return `${k}: ${parts.join('. ')}`;
+            })
             .join('\n') : '';
 
           const descriptionParts = [
@@ -4072,9 +4078,14 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         directions = programme.customDirections || null;
       } else if (programme.locationType) {
         const orgProfile = await storage.getOrganisationProfile(userId);
-        const venueDirections = orgProfile?.venueDirections as Record<string, string> | null;
-        if (venueDirections) {
-          directions = venueDirections[programme.locationType] || null;
+        const locInstructions = orgProfile?.locationInstructions as Record<string, { howToFindUs?: string; parking?: string; generalInfo?: string }> | null;
+        if (locInstructions && locInstructions[programme.locationType]) {
+          const info = locInstructions[programme.locationType];
+          const parts = [];
+          if (info.howToFindUs) parts.push(info.howToFindUs);
+          if (info.parking) parts.push(`Parking: ${info.parking}`);
+          if (info.generalInfo) parts.push(info.generalInfo);
+          directions = parts.join('\n') || null;
         }
       }
 

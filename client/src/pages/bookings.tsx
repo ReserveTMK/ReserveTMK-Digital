@@ -2951,18 +2951,12 @@ function HirerPreviewDialog({ open, onOpenChange, venues }: {
                   <p className="text-sm"><span className="font-medium">ReserveTMK Digital Hub</span></p>
                   <p className="text-sm text-muted-foreground">133a Line Road, Glen Innes, Auckland 1072</p>
                   <p className="text-sm text-muted-foreground">Free parking available</p>
-                  {(activeInstructions["arrival"] || []).map(inst => (
-                    <div key={inst.id} className="mt-2">
-                      {inst.title && <p className="text-sm font-medium">{inst.title}</p>}
-                      <p className="text-sm text-muted-foreground whitespace-pre-line">{inst.content}</p>
-                    </div>
-                  ))}
                 </div>
 
-                {(activeInstructions["general"] || []).length > 0 && (
-                  <div className="border-l-4 border-blue-500 bg-gray-50 dark:bg-muted/30 p-4">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-blue-800 dark:text-blue-300 mb-2">What's Included</h3>
-                    {activeInstructions["general"].map(inst => (
+                {(activeInstructions["opening"] || []).length > 0 && (
+                  <div className="border-l-4 border-green-500 bg-gray-50 dark:bg-muted/30 p-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-green-800 dark:text-green-300 mb-2">Opening Procedure</h3>
+                    {activeInstructions["opening"].map(inst => (
                       <div key={inst.id} className="mb-2">
                         {inst.title && <p className="text-sm font-medium">{inst.title}</p>}
                         <p className="text-sm text-muted-foreground whitespace-pre-line">{inst.content}</p>
@@ -2971,10 +2965,10 @@ function HirerPreviewDialog({ open, onOpenChange, venues }: {
                   </div>
                 )}
 
-                {(activeInstructions["departure"] || []).length > 0 && (
-                  <div className="border-l-4 border-blue-500 bg-gray-50 dark:bg-muted/30 p-4">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-blue-800 dark:text-blue-300 mb-2">Before You Leave</h3>
-                    {activeInstructions["departure"].map(inst => (
+                {(activeInstructions["closing"] || []).length > 0 && (
+                  <div className="border-l-4 border-amber-500 bg-gray-50 dark:bg-muted/30 p-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-amber-800 dark:text-amber-300 mb-2">Closing Procedure</h3>
+                    {activeInstructions["closing"].map(inst => (
                       <div key={inst.id} className="mb-2">
                         {inst.title && <p className="text-sm font-medium">{inst.title}</p>}
                         <p className="text-sm text-muted-foreground whitespace-pre-line">{inst.content}</p>
@@ -3189,18 +3183,16 @@ function HirerPreviewDialog({ open, onOpenChange, venues }: {
 
 const INSTRUCTION_TYPE_LABELS: Record<string, string> = {
   access: "Access",
-  arrival: "Arrival",
-  departure: "Departure",
+  opening: "Opening Procedure",
+  closing: "Closing Procedure",
   emergency: "Emergency",
-  general: "General",
 };
 
 const INSTRUCTION_TYPE_COLORS: Record<string, string> = {
   access: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
-  arrival: "bg-green-500/15 text-green-700 dark:text-green-300",
-  departure: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+  opening: "bg-green-500/15 text-green-700 dark:text-green-300",
+  closing: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
   emergency: "bg-red-500/15 text-red-700 dark:text-red-300",
-  general: "bg-gray-500/15 text-gray-700 dark:text-gray-300",
 };
 
 function VenueInstructionsDialog({
@@ -3416,7 +3408,7 @@ function VenueInstructionFormDialog({
   onSubmit: (data: any) => Promise<void>;
   isPending: boolean;
 }) {
-  const [instructionType, setInstructionType] = useState(instruction?.instructionType || "general");
+  const [instructionType, setInstructionType] = useState(instruction?.instructionType || "access");
   const [title, setTitle] = useState(instruction?.title || "");
   const [content, setContent] = useState(instruction?.content || "");
   const [displayOrder, setDisplayOrder] = useState(instruction?.displayOrder?.toString() || "0");

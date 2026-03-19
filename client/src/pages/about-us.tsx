@@ -7,10 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Loader2, Save, X, Plus, Building2, MapPin } from "lucide-react";
-import type { OrganisationProfile } from "@shared/schema";
-import { PROGRAMME_LOCATION_TYPES } from "@shared/schema";
+import type { OrganisationProfile, Venue } from "@shared/schema";
+
+type LocationInfo = { howToFindUs?: string; parking?: string; generalInfo?: string };
 
 export default function AboutUsPage() {
   const { toast } = useToast();
@@ -19,6 +20,19 @@ export default function AboutUsPage() {
     queryKey: ["/api/organisation-profile"],
   });
 
+  const { data: venues } = useQuery<Venue[]>({
+    queryKey: ["/api/venues"],
+  });
+
+  const spaceNames = useMemo(() => {
+    if (!venues) return [];
+    const names = new Set<string>();
+    for (const v of venues) {
+      if (v.spaceName) names.add(v.spaceName);
+    }
+    return Array.from(names).sort();
+  }, [venues]);
+
   const [form, setForm] = useState({
     mission: "",
     description: "",
@@ -26,7 +40,7 @@ export default function AboutUsPage() {
     values: "",
     location: "",
     targetCommunity: "",
-    venueDirections: {} as Record<string, string>,
+    locationInstructions: {} as Record<string, LocationInfo>,
   });
 
   const [focusInput, setFocusInput] = useState("");
@@ -40,7 +54,7 @@ export default function AboutUsPage() {
         values: profile.values || "",
         location: profile.location || "",
         targetCommunity: profile.targetCommunity || "",
-        venueDirections: (profile.venueDirections as Record<string, string>) || {},
+        locationInstructions: (profile.locationInstructions as Record<string, LocationInfo>) || {},
       });
     }
   }, [profile]);
@@ -56,9 +70,13 @@ export default function AboutUsPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanDirections: Record<string, string> = {};
-    for (const [key, val] of Object.entries(form.venueDirections)) {
-      if (val.trim()) cleanDirections[key] = val.trim();
+    const cleanInstructions: Record<string, LocationInfo> = {};
+    for (const [key, val] of Object.entries(form.locationInstructions)) {
+      const cleaned: LocationInfo = {};
+      if (val.howToFindUs?.trim()) cleaned.howToFindUs = val.howToFindUs.trim();
+      if (val.parking?.trim()) cleaned.parking = val.parking.trim();
+      if (val.generalInfo?.trim()) cleaned.generalInfo = val.generalInfo.trim();
+      if (Object.keys(cleaned).length > 0) cleanInstructions[key] = cleaned;
     }
     saveMutation.mutate({
       mission: form.mission.trim() || null,
@@ -67,7 +85,7 @@ export default function AboutUsPage() {
       values: form.values.trim() || null,
       location: form.location.trim() || null,
       targetCommunity: form.targetCommunity.trim() || null,
-      venueDirections: Object.keys(cleanDirections).length > 0 ? cleanDirections : null,
+      locationInstructions: Object.keys(cleanInstructions).length > 0 ? cleanInstructions : null,
     });
   };
 
@@ -88,6 +106,19 @@ export default function AboutUsPage() {
       e.preventDefault();
       addFocusArea();
     }
+  };
+
+  const updateLocationField = (spaceName: string, field: keyof LocationInfo, value: string) => {
+    setForm(prev => ({
+      ...prev,
+      locationInstructions: {
+        ...prev.locationInstructions,
+        [spaceName]: {
+          ...prev.locationInstructions[spaceName],
+          [field]: value,
+        },
+      },
+    }));
   };
 
   if (isLoading) {
@@ -218,41 +249,74 @@ export default function AboutUsPage() {
           </div>
         </Card>
 
-        <Card className="p-6 space-y-6">
+        <Card className="p-6 space-y-6 mt-6">
           <div className="flex items-center gap-3 pb-4 border-b">
             <div className="bg-violet-500/10 p-2.5 rounded-lg">
               <MapPin className="w-5 h-5 text-violet-600 dark:text-violet-400" />
             </div>
             <div>
-              <h2 className="font-semibold text-foreground">Venue Directions</h2>
-              <p className="text-xs text-muted-foreground">Directions for each venue — included in event reminder emails</p>
+              <h2 className="font-semibold text-foreground" data-testid="text-location-instructions-heading">Location Instructions</h2>
+              <p className="text-xs text-muted-foreground">How to find each location — directions, parking, and general visitor info</p>
             </div>
           </div>
 
-          {PROGRAMME_LOCATION_TYPES.filter(t => t !== "Other").map((venue) => (
-            <div key={venue} className="space-y-2">
-              <Label>{venue}</Label>
-              <Textarea
-                value={form.venueDirections[venue] || ""}
-                onChange={(e) => setForm(p => ({
-                  ...p,
-                  venueDirections: { ...p.venueDirections, [venue]: e.target.value },
-                }))}
-                placeholder={`e.g. Parking available on Line Road. Enter through the main glass doors. ${venue} is on the ground floor.`}
-                rows={3}
-                data-testid={`input-directions-${venue.replace(/\s+/g, "-").toLowerCase()}`}
-              />
-            </div>
-          ))}
+          {spaceNames.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4" data-testid="text-no-locations">
+              No locations found. Add venues with a space name in the Spaces section first.
+            </p>
+          ) : (
+            spaceNames.map((spaceName) => {
+              const info = form.locationInstructions[spaceName] || {};
+              const safeId = spaceName.replace(/\s+/g, "-").toLowerCase();
+              return (
+                <div key={spaceName} className="space-y-3 pb-4 border-b last:border-b-0 last:pb-0">
+                  <h3 className="text-sm font-semibold text-foreground" data-testid={`text-location-name-${safeId}`}>{spaceName}</h3>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">How to find us</Label>
+                    <Textarea
+                      value={info.howToFindUs || ""}
+                      onChange={(e) => updateLocationField(spaceName, "howToFindUs", e.target.value)}
+                      placeholder="e.g. 133a Line Road, Glen Innes, Auckland. Enter through the main glass doors. Take the first left past reception."
+                      rows={3}
+                      data-testid={`input-how-to-find-${safeId}`}
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Parking</Label>
+                    <Textarea
+                      value={info.parking || ""}
+                      onChange={(e) => updateLocationField(spaceName, "parking", e.target.value)}
+                      placeholder="e.g. Free parking available on Line Road. Loading zone at the front entrance for 15 minutes."
+                      rows={2}
+                      data-testid={`input-parking-${safeId}`}
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">General info</Label>
+                    <Textarea
+                      value={info.generalInfo || ""}
+                      onChange={(e) => updateLocationField(spaceName, "generalInfo", e.target.value)}
+                      placeholder="e.g. Accessible entrance available via the side ramp. Nearest bus stop: GI Train Station (5 min walk)."
+                      rows={2}
+                      data-testid={`input-general-info-${safeId}`}
+                    />
+                  </div>
+                </div>
+              );
+            })
+          )}
 
           <div className="flex justify-end pt-4 border-t">
-            <Button type="submit" disabled={saveMutation.isPending} data-testid="button-save-directions">
+            <Button type="submit" disabled={saveMutation.isPending} data-testid="button-save-location-instructions">
               {saveMutation.isPending ? (
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
               ) : (
                 <Save className="w-4 h-4 mr-2" />
               )}
-              Save Directions
+              Save Location Instructions
             </Button>
           </div>
         </Card>

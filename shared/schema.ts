@@ -590,7 +590,7 @@ export const bookerLinks = pgTable("booker_links", {
   lastAccessedAt: timestamp("last_accessed_at"),
 });
 
-export const INSTRUCTION_TYPES = ["access", "arrival", "departure", "emergency", "general"] as const;
+export const INSTRUCTION_TYPES = ["access", "opening", "closing", "emergency"] as const;
 export type InstructionType = typeof INSTRUCTION_TYPES[number];
 
 export const venueInstructions = pgTable("venue_instructions", {
@@ -2323,7 +2323,7 @@ export const organisationProfile = pgTable("organisation_profile", {
   values: text("values"),
   location: text("location"),
   targetCommunity: text("target_community"),
-  venueDirections: jsonb("venue_directions").$type<Record<string, string>>(),
+  locationInstructions: jsonb("venue_directions").$type<Record<string, { howToFindUs?: string; parking?: string; generalInfo?: string }>>(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

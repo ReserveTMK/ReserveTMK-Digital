@@ -563,16 +563,31 @@ export default function PublicBookingPage() {
                 <MapPin className="w-3.5 h-3.5" /> Where to find us
               </p>
               <p className="text-sm font-medium">{mentorInfo.location}</p>
-              {mentorInfo?.venueDirections && Object.entries(mentorInfo.venueDirections).some(([_, v]) => v) && (
+              {mentorInfo?.locationInstructions && Object.entries(mentorInfo.locationInstructions as Record<string, { howToFindUs?: string; parking?: string; generalInfo?: string }>).some(([_, v]) => v && (v.howToFindUs || v.parking || v.generalInfo)) && (
                 <div className="space-y-1.5 pt-1 border-t border-border/50">
-                  {Object.entries(mentorInfo.venueDirections as Record<string, string>)
-                    .filter(([_, v]) => v)
-                    .map(([key, value]) => (
-                      <div key={key} className="flex items-start gap-1.5">
-                        <Navigation className="w-3 h-3 text-muted-foreground mt-0.5 shrink-0" />
-                        <p className="text-xs text-muted-foreground">
-                          <span className="font-medium text-foreground">{key}:</span> {value}
-                        </p>
+                  {Object.entries(mentorInfo.locationInstructions as Record<string, { howToFindUs?: string; parking?: string; generalInfo?: string }>)
+                    .filter(([_, v]) => v && (v.howToFindUs || v.parking || v.generalInfo))
+                    .map(([key, info]) => (
+                      <div key={key} className="space-y-0.5">
+                        <p className="text-xs font-medium text-foreground">{key}</p>
+                        {info.howToFindUs && (
+                          <div className="flex items-start gap-1.5">
+                            <Navigation className="w-3 h-3 text-muted-foreground mt-0.5 shrink-0" />
+                            <p className="text-xs text-muted-foreground">{info.howToFindUs}</p>
+                          </div>
+                        )}
+                        {info.parking && (
+                          <div className="flex items-start gap-1.5">
+                            <Navigation className="w-3 h-3 text-muted-foreground mt-0.5 shrink-0" />
+                            <p className="text-xs text-muted-foreground">Parking: {info.parking}</p>
+                          </div>
+                        )}
+                        {info.generalInfo && (
+                          <div className="flex items-start gap-1.5">
+                            <Navigation className="w-3 h-3 text-muted-foreground mt-0.5 shrink-0" />
+                            <p className="text-xs text-muted-foreground">{info.generalInfo}</p>
+                          </div>
+                        )}
                       </div>
                     ))}
                 </div>

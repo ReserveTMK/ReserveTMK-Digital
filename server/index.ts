@@ -194,8 +194,38 @@ app.use((req, res, next) => {
       `);
       console.log("[migration] Venue instructions migrated to location-level (spaceName)");
     }
+
+    await db.execute(sql`UPDATE venue_instructions SET instruction_type = 'opening' WHERE instruction_type = 'arrival'`);
+    await db.execute(sql`UPDATE venue_instructions SET instruction_type = 'closing' WHERE instruction_type = 'departure'`);
+    await db.execute(sql`UPDATE venue_instructions SET instruction_type = 'access' WHERE instruction_type = 'general'`);
   } catch (migrationErr: any) {
-    console.warn("[migration] Venue instructions location migration skipped:", migrationErr.message);
+    console.warn("[migration] Venue instructions migration skipped:", migrationErr.message);
+  }
+
+  try {
+    const { db } = await import("./db");
+    const { sql } = await import("drizzle-orm");
+    const profiles = await db.execute(sql`SELECT id, venue_directions FROM organisation_profile WHERE venue_directions IS NOT NULL`);
+    for (const row of (profiles as any).rows || []) {
+      const data = typeof row.venue_directions === 'string' ? JSON.parse(row.venue_directions) : row.venue_directions;
+      if (!data || typeof data !== 'object') continue;
+      let needsMigration = false;
+      const migrated: Record<string, { howToFindUs?: string; parking?: string; generalInfo?: string }> = {};
+      for (const [key, val] of Object.entries(data)) {
+        if (typeof val === 'string') {
+          needsMigration = true;
+          migrated[key] = { howToFindUs: val };
+        } else {
+          migrated[key] = val as any;
+        }
+      }
+      if (needsMigration) {
+        await db.execute(sql`UPDATE organisation_profile SET venue_directions = ${JSON.stringify(migrated)}::jsonb WHERE id = ${row.id}`);
+      }
+    }
+    console.log("[migration] Location instructions structure migrated");
+  } catch (migrationErr: any) {
+    console.warn("[migration] Location instructions structure migration skipped:", migrationErr.message);
   }
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

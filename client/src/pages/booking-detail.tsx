@@ -2,7 +2,7 @@ import { getAgreementAllowanceUsage, getPeriodLabel } from "@/lib/utils";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useVenues, useBookings } from "@/hooks/use-bookings";
+import { useVenues, useBookings, useLocationInstructions } from "@/hooks/use-bookings";
 import { useContacts } from "@/hooks/use-contacts";
 import { useMemberships, useMous } from "@/hooks/use-memberships";
 import { useToast } from "@/hooks/use-toast";
@@ -45,7 +45,8 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { format } from "date-fns";
-import type { Booking, Contact, Venue, RegularBooker, Survey } from "@shared/schema";
+import type { Booking, Contact, Venue, RegularBooker, Survey, VenueInstruction } from "@shared/schema";
+import { INSTRUCTION_TYPES } from "@shared/schema";
 
 const STATUS_BADGE_STYLES: Record<string, string> = {
   enquiry: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300",
@@ -382,6 +383,10 @@ export default function BookingDetail() {
                 )}
               </div>
             </Card>
+          )}
+
+          {(booking.status === "confirmed" || booking.status === "completed") && (
+            <BookerAccessInfoCard bookingId={booking.id} />
           )}
 
           {(booking.status === "confirmed" || booking.status === "completed") && (
@@ -1031,6 +1036,79 @@ function XeroInvoiceCard({ booking }: { booking: Booking }) {
           )}
           Generate Invoice
         </Button>
+      </div>
+    </Card>
+  );
+}
+
+const BOOKER_ACCESS_LABELS: Record<string, string> = {
+  access: "Access",
+  opening: "Opening Procedure",
+  closing: "Closing Procedure",
+  emergency: "Emergency",
+};
+
+const BOOKER_ACCESS_COLORS: Record<string, string> = {
+  access: "text-blue-700 dark:text-blue-300",
+  opening: "text-green-700 dark:text-green-300",
+  closing: "text-amber-700 dark:text-amber-300",
+  emergency: "text-red-700 dark:text-red-300",
+};
+
+function BookerAccessInfoCard({ bookingId }: { bookingId: number }) {
+  const { data: instructions, isLoading } = useQuery<VenueInstruction[]>({
+    queryKey: ['/api/bookings', bookingId, 'instructions'],
+    enabled: bookingId > 0,
+  });
+
+  const activeInstructions = instructions?.filter(i => i.isActive) || [];
+
+  if (isLoading) {
+    return (
+      <Card className="p-4">
+        <div className="flex items-center gap-2">
+          <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">Loading access info...</span>
+        </div>
+      </Card>
+    );
+  }
+
+  if (activeInstructions.length === 0) return null;
+
+  const grouped: Record<string, VenueInstruction[]> = {};
+  for (const inst of activeInstructions) {
+    const key = inst.instructionType;
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(inst);
+  }
+
+  return (
+    <Card className="p-5 space-y-4" data-testid="card-booker-access-info">
+      <h3 className="font-semibold text-sm flex items-center gap-2" data-testid="text-booker-access-heading">
+        <FileText className="w-4 h-4 text-muted-foreground" />
+        Booker Access Info
+      </h3>
+      <div className="space-y-3">
+        {INSTRUCTION_TYPES.map(type => {
+          const typeInstructions = grouped[type];
+          if (!typeInstructions || typeInstructions.length === 0) return null;
+          return (
+            <div key={type} className="space-y-1" data-testid={`booker-access-section-${type}`}>
+              <p className={`text-xs font-semibold uppercase tracking-wide ${BOOKER_ACCESS_COLORS[type] || "text-muted-foreground"}`}>
+                {BOOKER_ACCESS_LABELS[type] || type}
+              </p>
+              {typeInstructions
+                .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0))
+                .map(inst => (
+                  <div key={inst.id} className="text-sm text-foreground" data-testid={`booker-access-item-${inst.id}`}>
+                    {inst.title && <span className="font-medium">{inst.title}: </span>}
+                    <span className="text-muted-foreground whitespace-pre-wrap">{inst.content}</span>
+                  </div>
+                ))}
+            </div>
+          );
+        })}
       </div>
     </Card>
   );

@@ -211,10 +211,6 @@ export async function sendBookingConfirmationEmail(booking: Booking, userId: str
         133a Line Road, Glen Innes, Auckland 1072<br>
         <span style="color:#6b7280;">Free parking available</span>
       </p>
-      ${(grouped["arrival"] || []).map(i => {
-        const heading = i.title ? `<strong>${i.title}</strong><br>` : "";
-        return `<p style="margin:8px 0 0;color:#374151;font-size:14px;line-height:1.6;">${heading}${(i.content || "").replace(/\n/g, "<br>")}</p>`;
-      }).join("")}
     </td></tr>
   `;
 
@@ -251,8 +247,8 @@ export async function sendBookingConfirmationEmail(booking: Booking, userId: str
 
   ${buildInstructionSection("Access Information", grouped["access"] || [])}
   ${arrivalSection}
-  ${buildInstructionSection("What's Included", grouped["general"] || [])}
-  ${buildInstructionSection("Before You Leave", grouped["departure"] || [])}
+  ${buildInstructionSection("Opening Procedure", grouped["opening"] || [])}
+  ${buildInstructionSection("Closing Procedure", grouped["closing"] || [])}
   ${buildInstructionSection("Emergency Contacts", grouped["emergency"] || [])}
 
   <tr><td style="padding:25px 30px;">
@@ -318,10 +314,6 @@ export async function sendAfterHoursReminderEmail(booking: Booking, userId: stri
         133a Line Road, Glen Innes, Auckland 1072<br>
         <span style="color:#6b7280;">Free parking available</span>
       </p>
-      ${(grouped["arrival"] || []).map(i => {
-        const heading = i.title ? `<strong>${i.title}</strong><br>` : "";
-        return `<p style="margin:8px 0 0;color:#374151;font-size:14px;line-height:1.6;">${heading}${(i.content || "").replace(/\n/g, "<br>")}</p>`;
-      }).join("")}
     </td></tr>
   `;
 
@@ -342,7 +334,7 @@ export async function sendAfterHoursReminderEmail(booking: Booking, userId: stri
     `;
   }
 
-  const departureInstructions = grouped["departure"] || [];
+  const closingInstructions = grouped["closing"] || [];
   const lockUpReminder = `
     <tr><td style="padding:15px 30px;">
       <table width="100%" style="background:#fef2f2;border-radius:6px;border:1px solid #fecaca;" cellpadding="0" cellspacing="0">
@@ -383,9 +375,9 @@ export async function sendAfterHoursReminderEmail(booking: Booking, userId: stri
 
   ${buildAfterHoursSection("Access Information", grouped["access"] || [])}
   ${arrivalSection}
-  ${buildAfterHoursSection("What's Included", grouped["general"] || [])}
+  ${buildAfterHoursSection("Opening Procedure", grouped["opening"] || [])}
   ${lockUpReminder}
-  ${buildAfterHoursSection("Departure Checklist", departureInstructions)}
+  ${buildAfterHoursSection("Closing Procedure", grouped["closing"] || [])}
   ${buildAfterHoursSection("Emergency Contacts", grouped["emergency"] || [])}
 
   <tr><td style="padding:25px 30px;">
@@ -439,10 +431,6 @@ export async function sendBookingReminderEmail(booking: Booking, userId: string)
         133a Line Road, Glen Innes, Auckland 1072<br>
         <span style="color:#6b7280;">Free parking available</span>
       </p>
-      ${(grouped["arrival"] || []).map(i => {
-        const heading = i.title ? `<strong>${i.title}</strong><br>` : "";
-        return `<p style="margin:8px 0 0;color:#374151;font-size:14px;line-height:1.6;">${heading}${(i.content || "").replace(/\n/g, "<br>")}</p>`;
-      }).join("")}
     </td></tr>
   `;
 
@@ -474,8 +462,8 @@ export async function sendBookingReminderEmail(booking: Booking, userId: string)
 
   ${buildInstructionSection("Access Information", grouped["access"] || [])}
   ${arrivalSection}
-  ${buildInstructionSection("What's Included", grouped["general"] || [])}
-  ${buildInstructionSection("Before You Leave", grouped["departure"] || [])}
+  ${buildInstructionSection("Opening Procedure", grouped["opening"] || [])}
+  ${buildInstructionSection("Closing Procedure", grouped["closing"] || [])}
   ${buildInstructionSection("Emergency Contacts", grouped["emergency"] || [])}
 
   <tr><td style="padding:25px 30px;">
