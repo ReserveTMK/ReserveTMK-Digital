@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui/beautiful-button";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -58,6 +58,7 @@ import {
   Users,
   Link2,
   Unlink,
+  User,
   UserPlus,
   Settings,
   Sparkles,
@@ -1946,12 +1947,21 @@ export function ReviewView({ id }: { id: number }) {
                                   size="sm"
                                   className="h-6 px-2 text-xs text-muted-foreground"
                                   onClick={async () => {
-                                    toast({ title: "No match", description: `"${o.name}" doesn't match any group. Use Edit to correct the name, or link manually below.`, variant: "default" });
+                                    try {
+                                      const res = await apiRequest("POST", "/api/groups", { name: o.name });
+                                      const newGroup = await res.json();
+                                      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+                                      await apiRequest("POST", `/api/impact-logs/${id}/groups`, { groupId: newGroup.id });
+                                      refetchLinkedGroups();
+                                      toast({ title: "Created & linked", description: `Group "${o.name}" created and linked to debrief.` });
+                                    } catch (err: any) {
+                                      toast({ title: "Error", description: err.message || "Failed to create group", variant: "destructive" });
+                                    }
                                   }}
                                   data-testid={`entity-link-org-${i}`}
                                 >
-                                  <Link2 className="w-3 h-3 mr-1" />
-                                  Link
+                                  <Building2 className="w-3 h-3 mr-1" />
+                                  Create group
                                 </Button>
                               )}
                               <Button
@@ -1995,6 +2005,29 @@ export function ReviewView({ id }: { id: number }) {
                                   <Link2 className="w-3 h-3 mr-1" />
                                   {bestMatch.group.name}
                                   <span className="ml-1 opacity-60">{bestMatch.confidence}%</span>
+                                </Button>
+                              )}
+                              {!isLinked && !bestMatch && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 px-2 text-xs text-muted-foreground"
+                                  onClick={async () => {
+                                    try {
+                                      const res = await apiRequest("POST", "/api/groups", { name: p.name });
+                                      const newGroup = await res.json();
+                                      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+                                      await apiRequest("POST", `/api/impact-logs/${id}/groups`, { groupId: newGroup.id });
+                                      refetchLinkedGroups();
+                                      toast({ title: "Created & linked", description: `Group "${p.name}" created and linked to debrief.` });
+                                    } catch (err: any) {
+                                      toast({ title: "Error", description: err.message || "Failed to create group", variant: "destructive" });
+                                    }
+                                  }}
+                                  data-testid={`entity-create-place-${i}`}
+                                >
+                                  <Building2 className="w-3 h-3 mr-1" />
+                                  Create group
                                 </Button>
                               )}
                               <Button
@@ -2412,6 +2445,7 @@ function LinkedGroupsSection({ impactLogId, linkedGroups, allGroups, placesIdent
 }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
 
   const linkedGroupIds = new Set(linkedGroups.map((lg: any) => lg.groupId));
   const availableGroups = allGroups.filter(g => !linkedGroupIds.has(g.id));
@@ -2516,7 +2550,44 @@ function LinkedGroupsSection({ impactLogId, linkedGroups, allGroups, placesIdent
               data-testid="input-search-group"
             />
             <CommandList>
-              <CommandEmpty>No groups found</CommandEmpty>
+              <CommandEmpty>
+                <div className="py-2 px-1">
+                  <p className="text-xs text-muted-foreground mb-2">No groups found</p>
+                  {searchValue.trim() && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full h-7 text-xs"
+                      onClick={async () => {
+                        if (!searchValue.trim()) return;
+                        setIsCreatingGroup(true);
+                        try {
+                          const res = await apiRequest("POST", "/api/groups", { name: searchValue.trim() });
+                          const newGroup = await res.json();
+                          queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+                          await apiRequest("POST", `/api/impact-logs/${impactLogId}/groups`, { groupId: newGroup.id });
+                          refetch();
+                          toast({ title: "Created & linked", description: `Group "${searchValue.trim()}" created and linked to debrief.` });
+                          setSearchValue("");
+                          setSearchOpen(false);
+                        } catch (err: any) {
+                          toast({ title: "Error", description: err.message || "Failed to create group", variant: "destructive" });
+                        }
+                        setIsCreatingGroup(false);
+                      }}
+                      disabled={isCreatingGroup}
+                      data-testid="button-quick-create-group"
+                    >
+                      {isCreatingGroup ? (
+                        <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      ) : (
+                        <Building2 className="w-3 h-3 mr-1" />
+                      )}
+                      Create group "{searchValue.trim()}"
+                    </Button>
+                  )}
+                </div>
+              </CommandEmpty>
               <CommandGroup>
                 {availableGroups
                   .filter(g => g.name?.toLowerCase().includes(searchValue.toLowerCase()))
@@ -2642,9 +2713,6 @@ function PeopleSection({ label, description, people, allPeople, setPeople, conta
     try {
       const res = await apiRequest("POST", "/api/contacts", {
         name: searchValue.trim(),
-        role: "Other",
-        isCommunityMember: true,
-        stage: "kakano",
       });
       const newContact = await res.json();
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
@@ -2734,9 +2802,9 @@ function PeopleSection({ label, description, people, allPeople, setPeople, conta
                       {isCreating ? (
                         <Loader2 className="w-3 h-3 animate-spin mr-1" />
                       ) : (
-                        <UserPlus className="w-3 h-3 mr-1" />
+                        <User className="w-3 h-3 mr-1" />
                       )}
-                      Create "{searchValue.trim()}"
+                      Create contact "{searchValue.trim()}"
                     </Button>
                   )}
                 </div>

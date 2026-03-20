@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui/beautiful-button";
+import { Button } from "@/components/ui/button";
 import {
   Command,
   CommandEmpty,
@@ -18,6 +18,7 @@ import { useState } from "react";
 import {
   Search,
   UserPlus,
+  User,
   Loader2,
   Trash2,
   Mic,
@@ -266,7 +267,6 @@ export function ContactSearchPicker({
     try {
       const res = await apiRequest("POST", "/api/contacts", {
         name: searchValue.trim(),
-        role: "Community Member",
       });
       const newContact = await res.json();
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
@@ -325,9 +325,9 @@ export function ContactSearchPicker({
                     {isCreating ? (
                       <Loader2 className="w-3 h-3 animate-spin mr-1" />
                     ) : (
-                      <UserPlus className="w-3 h-3 mr-1" />
+                      <User className="w-3 h-3 mr-1" />
                     )}
-                    Create "{searchValue.trim()}"
+                    Create contact "{searchValue.trim()}"
                   </Button>
                 )}
               </div>

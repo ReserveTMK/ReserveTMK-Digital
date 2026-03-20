@@ -4,7 +4,7 @@ import { useActionItems } from "@/hooks/use-action-items";
 import { useContactGroups, useGroups, useCreateGroup, useAddGroupMember, useRemoveGroupMember } from "@/hooks/use-groups";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Button } from "@/components/ui/beautiful-button";
+import { Button } from "@/components/ui/button";
 import { MetricCard } from "@/components/ui/metric-card";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";

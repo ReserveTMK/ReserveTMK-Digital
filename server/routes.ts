@@ -403,6 +403,7 @@ export async function registerRoutes(
       const input = api.contacts.create.input.parse({
         ...req.body,
         userId,
+        role: req.body.role || "",
       });
       if (input.role !== "Other") {
         input.roleOther = null;
