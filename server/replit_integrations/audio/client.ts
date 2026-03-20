@@ -112,22 +112,39 @@ export async function convertToWav(audioBuffer: Buffer): Promise<Buffer> {
 }
 
 /**
- * Auto-detect and convert audio to OpenAI-compatible format.
- * - WAV/MP3: Pass through (already compatible)
- * - WebM/MP4/OGG: Convert to WAV via ffmpeg
+ * Auto-detect and ensure audio is in an OpenAI-compatible format.
+ * - WAV/MP3/WebM: Pass through (already compatible)
+ * - MP4/OGG: Convert to WAV via ffmpeg if available, otherwise pass through directly
+ * - Unknown: Convert via ffmpeg if available, otherwise send as webm (best-guess fallback)
  */
 export async function ensureCompatibleFormat(
   audioBuffer: Buffer
-): Promise<{ buffer: Buffer; format: "wav" | "mp3" | "webm" }> {
+): Promise<{ buffer: Buffer; format: "wav" | "mp3" | "webm" | "mp4" | "ogg" }> {
   const detected = detectAudioFormat(audioBuffer);
   if (detected === "wav") return { buffer: audioBuffer, format: "wav" };
   if (detected === "mp3") return { buffer: audioBuffer, format: "mp3" };
   if (detected === "webm") return { buffer: audioBuffer, format: "webm" };
-  if (!isFfmpegAvailable()) {
-    throw new Error("ffmpeg is not installed or not available on PATH. Audio format conversion requires ffmpeg for this file type.");
+
+  if (detected === "unknown") {
+    if (isFfmpegAvailable()) {
+      const wavBuffer = await convertToWav(audioBuffer);
+      return { buffer: wavBuffer, format: "wav" };
+    }
+    console.warn(
+      "ffmpeg not available and audio format unrecognized; sending to OpenAI as webm (best-guess fallback)"
+    );
+    return { buffer: audioBuffer, format: "webm" };
   }
-  const wavBuffer = await convertToWav(audioBuffer);
-  return { buffer: wavBuffer, format: "wav" };
+
+  if (isFfmpegAvailable()) {
+    const wavBuffer = await convertToWav(audioBuffer);
+    return { buffer: wavBuffer, format: "wav" };
+  }
+
+  console.warn(
+    `ffmpeg not available; sending ${detected} audio directly to OpenAI without conversion`
+  );
+  return { buffer: audioBuffer, format: detected };
 }
 
 /**
@@ -276,13 +293,12 @@ export async function textToSpeechStream(
  */
 export async function speechToText(
   audioBuffer: Buffer,
-  format: "wav" | "mp3" | "webm" = "wav"
+  format: "wav" | "mp3" | "webm" | "mp4" | "ogg" = "wav"
 ): Promise<string> {
   if (!isOpenAIKeyConfigured()) {
     throw new Error("AI service unavailable: OpenAI API key is not configured");
   }
-  const ext = format === "webm" ? "webm" : format;
-  const file = await toFile(audioBuffer, `audio.${ext}`);
+  const file = await toFile(audioBuffer, `audio.${format}`);
   const response = await openai.audio.transcriptions.create({
     file,
     model: "gpt-4o-mini-transcribe",

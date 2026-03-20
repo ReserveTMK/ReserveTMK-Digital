@@ -195,14 +195,17 @@ function CreateProjectDialog({
         body: audioBlob,
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Transcription failed");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.message || "Transcription failed. Please try again.");
+      }
       const data = await res.json();
       const t = data.transcript || data.text || "";
       setTranscript(t);
       setTextInput(t);
       toast({ title: "Transcribed", description: "Audio transcription complete." });
     } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Transcription failed", variant: "destructive" });
+      toast({ title: "Transcription failed", description: err.message || "Something went wrong. Please try again.", variant: "destructive" });
     } finally {
       setIsTranscribing(false);
     }

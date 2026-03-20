@@ -3420,9 +3420,12 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         } catch (err: any) {
           console.error("Transcription error:", err);
           if (err.message?.includes("ffmpeg")) {
-            return res.status(503).json({ message: "Audio conversion unavailable: ffmpeg is not installed on this server" });
+            return res.status(503).json({ message: "Audio conversion is temporarily unavailable. Please try recording again using Chrome or Firefox, which use natively supported audio formats." });
           }
-          res.status(500).json({ message: "Failed to transcribe audio" });
+          if (err.message?.includes("API key")) {
+            return res.status(503).json({ message: "Transcription service is not configured. Please contact support." });
+          }
+          res.status(500).json({ message: "Transcription failed. Please try recording again. If the problem persists, try using Chrome or Firefox." });
         }
       });
     } catch (error) {

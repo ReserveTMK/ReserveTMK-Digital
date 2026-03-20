@@ -171,7 +171,10 @@ function WeeklyDebriefCard({ debrief }: { debrief: WeeklyDebrief }) {
         body: summaryAudioBlob,
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Transcription failed");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.message || "Transcription failed. Please try again.");
+      }
       const data = await res.json();
       const transcribed = data.transcript || data.text || "";
       setFinalSummary(prev => prev ? prev + "\n\n" + transcribed : transcribed);
@@ -180,7 +183,7 @@ function WeeklyDebriefCard({ debrief }: { debrief: WeeklyDebrief }) {
       setShowVoiceRecorder(false);
       toast({ title: "Transcribed", description: "Voice summary has been added." });
     } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Transcription failed", variant: "destructive" });
+      toast({ title: "Transcription failed", description: err.message || "Something went wrong. Please try again.", variant: "destructive" });
     } finally {
       setIsSummaryTranscribing(false);
     }

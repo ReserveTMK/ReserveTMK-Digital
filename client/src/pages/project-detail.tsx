@@ -424,12 +424,15 @@ function AddDebriefDialog({
         body: audioBlob,
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Transcription failed");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.message || "Transcription failed. Please try again.");
+      }
       const data = await res.json();
       setTranscript(data.transcript || data.text || "");
       toast({ title: "Transcribed", description: "Audio has been converted to text." });
     } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Transcription failed", variant: "destructive" });
+      toast({ title: "Transcription failed", description: err.message || "Something went wrong. Please try again.", variant: "destructive" });
     } finally {
       setIsTranscribing(false);
     }

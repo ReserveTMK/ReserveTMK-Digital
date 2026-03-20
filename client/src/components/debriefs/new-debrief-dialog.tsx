@@ -169,7 +169,10 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
         body: audioBlob,
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Transcription failed");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.message || "Transcription failed. Please try again.");
+      }
       const data = await res.json();
       const transcribedText = data.transcript || data.text || "";
       setTranscript(transcribedText);
@@ -179,7 +182,7 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
       toast({ title: "Transcribed", description: "Audio transcription complete." });
     } catch (err: any) {
       setTranscriptionFailed(true);
-      toast({ title: "Transcription failed", description: "You can save the audio recording and try again later, or type the transcript manually.", variant: "destructive" });
+      toast({ title: "Transcription failed", description: err.message || "You can save the audio recording and try again later, or type the transcript manually.", variant: "destructive" });
     } finally {
       setIsTranscribing(false);
     }
