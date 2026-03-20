@@ -74,6 +74,7 @@ import {
   MapPin,
   Pencil,
   Type,
+  Building2,
 } from "lucide-react";
 import type { ImpactLog, Contact } from "@shared/schema";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -261,7 +262,7 @@ export function ReviewView({ id }: { id: number }) {
   const [showFullTranscript, setShowFullTranscript] = useState(false);
   const [showSummaryEditor, setShowSummaryEditor] = useState(false);
   const [showEntityEditor, setShowEntityEditor] = useState(false);
-  const [entityEdits, setEntityEdits] = useState<{ original: string; corrected: string; type: "person" | "place" }[]>([]);
+  const [entityEdits, setEntityEdits] = useState<{ original: string; corrected: string; type: "person" | "place" | "organisation" }[]>([]);
   const [isApplyingEdits, setIsApplyingEdits] = useState(false);
   const [checkedCommunityActions, setCheckedCommunityActions] = useState<Record<string, boolean>>({});
   const [checkedOperationalActions, setCheckedOperationalActions] = useState<Record<string, boolean>>({});
@@ -472,7 +473,7 @@ export function ReviewView({ id }: { id: number }) {
   };
 
   const openEntityEditor = () => {
-    const entities: { original: string; corrected: string; type: "person" | "place" }[] = [];
+    const entities: { original: string; corrected: string; type: "person" | "place" | "organisation" }[] = [];
     const seen = new Set<string>();
     if (extraction?.peopleIdentified || extraction?.people) {
       for (const p of (extraction.peopleIdentified || extraction.people || [])) {
@@ -480,6 +481,15 @@ export function ReviewView({ id }: { id: number }) {
         if (name && !seen.has(name.toLowerCase())) {
           seen.add(name.toLowerCase());
           entities.push({ original: name, corrected: name, type: "person" });
+        }
+      }
+    }
+    if (extraction?.organisationsIdentified) {
+      for (const o of extraction.organisationsIdentified) {
+        const name = o.name?.trim();
+        if (name && !seen.has(name.toLowerCase())) {
+          seen.add(name.toLowerCase());
+          entities.push({ original: name, corrected: name, type: "organisation" });
         }
       }
     }
@@ -515,29 +525,80 @@ export function ReviewView({ id }: { id: number }) {
         const result = updatedTranscript.replace(pattern, edit.corrected);
         updatedTranscript = result !== updatedTranscript ? result : updatedTranscript.replace(fallback, edit.corrected);
       }
-      await apiRequest("PATCH", `/api/impact-logs/${id}`, { transcript: updatedTranscript });
-      queryClient.invalidateQueries({ queryKey: ["/api/impact-logs", id] });
-      setShowEntityEditor(false);
-      toast({ title: "Transcript updated", description: "Names and places corrected. Re-analysing..." });
-      setIsAnalyzing(true);
-      try {
-        const res = await fetch("/api/impact-extract", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ transcript: updatedTranscript, title: impactLog.title, existingLogId: id }),
-          credentials: "include",
-        });
-        if (!res.ok) throw new Error("Re-analysis failed");
-        queryClient.invalidateQueries({ queryKey: ["/api/impact-logs"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/impact-logs", id] });
-        queryClient.invalidateQueries({ queryKey: ["/api/impact-logs", id, "tags"] });
-        setInitialized(false);
-        toast({ title: "Re-analysis complete", description: "Mentions and insights now match your corrections." });
-      } catch (err: any) {
-        toast({ title: "Transcript saved", description: "Corrections saved but re-analysis failed. Try re-analysing manually.", variant: "destructive" });
-      } finally {
-        setIsAnalyzing(false);
+
+      const nameEdits = new Map(editsToApply.filter(e => e.type === "person").map(e => [e.original.toLowerCase(), e.corrected]));
+      const placeEdits = new Map(editsToApply.filter(e => e.type === "place").map(e => [e.original.toLowerCase(), e.corrected]));
+      const orgEdits = new Map(editsToApply.filter(e => e.type === "organisation").map(e => [e.original.toLowerCase(), e.corrected]));
+
+      const updatedPeopleIdentified = (extraction?.peopleIdentified || extraction?.people || []).map((p: any) => {
+        const corrected = nameEdits.get(p.name?.toLowerCase());
+        if (!corrected) return p;
+        const match = (contacts || []).find(c => c.name?.toLowerCase() === corrected.toLowerCase());
+        return { ...p, name: corrected, matchedContactId: match?.id || p.matchedContactId, confidence: match ? 95 : p.confidence };
+      });
+
+      const updatedPlaces = (extraction?.placesIdentified || []).map((p: any) => {
+        const corrected = placeEdits.get(p.name?.toLowerCase());
+        return corrected ? { ...p, name: corrected } : p;
+      });
+
+      const updatedOrgs = (extraction?.organisationsIdentified || []).map((o: any) => {
+        const corrected = orgEdits.get(o.name?.toLowerCase());
+        if (!corrected) return o;
+        const match = (allGroups || []).find((g: any) => g.name?.toLowerCase() === corrected.toLowerCase());
+        return { ...o, name: corrected, matchedGroupId: match?.id || o.matchedGroupId, confidence: match ? 95 : o.confidence };
+      });
+
+      const updatedPeople = people.map((p: any) => {
+        const corrected = nameEdits.get(p.name?.toLowerCase());
+        if (!corrected) return p;
+        const match = (contacts || []).find(c => c.name?.toLowerCase() === corrected.toLowerCase());
+        return { ...p, name: corrected, contactId: match?.id || p.contactId };
+      });
+
+      const updatedExtraction = {
+        ...(impactLog.rawExtraction as any || {}),
+        peopleIdentified: updatedPeopleIdentified,
+        placesIdentified: updatedPlaces,
+        organisationsIdentified: updatedOrgs,
+        people: updatedPeopleIdentified,
+      };
+
+      const matchedOrgIds = updatedOrgs.filter((o: any) => o.matchedGroupId).map((o: any) => o.matchedGroupId);
+
+      await apiRequest("PATCH", `/api/impact-logs/${id}`, {
+        transcript: updatedTranscript,
+        rawExtraction: updatedExtraction,
+      });
+
+      let groupsLinked = 0;
+      for (const gId of matchedOrgIds) {
+        try {
+          await apiRequest("POST", `/api/impact-logs/${id}/groups`, { groupId: gId });
+          groupsLinked++;
+        } catch { /* already linked or error — skip */ }
       }
+      if (groupsLinked > 0) {
+        refetchLinkedGroups();
+      }
+
+      setPeople(updatedPeople);
+      setShowEntityEditor(false);
+      setInitialized(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/impact-logs", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/impact-logs"] });
+
+      const editCount = editsToApply.length;
+      const personMatches = updatedPeople.filter((p: any, i: number) => p.contactId && nameEdits.has((people[i]?.name || "").toLowerCase())).length;
+      const parts: string[] = [];
+      if (personMatches > 0) parts.push(`${personMatches} name${personMatches > 1 ? "s" : ""} matched to contacts`);
+      if (groupsLinked > 0) parts.push(`${groupsLinked} group${groupsLinked > 1 ? "s" : ""} auto-linked`);
+      toast({
+        title: `${editCount} correction${editCount > 1 ? "s" : ""} applied`,
+        description: parts.length > 0
+          ? `Transcript updated. ${parts.join(", ")}.`
+          : "Transcript and mentions updated.",
+      });
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Failed to apply edits", variant: "destructive" });
     } finally {
@@ -632,7 +693,7 @@ export function ReviewView({ id }: { id: number }) {
           ...tag,
         })));
       }
-      setPeople((extraction.people || []).map((p: any) => ({
+      setPeople((extraction.peopleIdentified || extraction.people || []).map((p: any) => ({
         ...p,
         section: p.section || (["primary", "mentor", "mentee"].includes(p.role) ? "primary" : "secondary"),
       })));
@@ -722,6 +783,7 @@ export function ReviewView({ id }: { id: number }) {
       impactTags,
       people,
       peopleIdentified: extraction?.peopleIdentified || extraction?.people || [],
+      organisationsIdentified: extraction?.organisationsIdentified || [],
       placesIdentified: extraction?.placesIdentified || [],
       metrics,
       communityActions: communityActions.map((item: any) => ({
@@ -1609,7 +1671,7 @@ export function ReviewView({ id }: { id: number }) {
             {/* LINKED COMMUNITY - mobile:3 desktop:right */}
             <div className="order-3 lg:order-none">
               <CollapsibleSection title="Linked Community" count={people.length + (linkedGroups?.length || 0)} defaultOpen testId="linked-community">
-                {extraction && (extraction.peopleIdentified?.length > 0 || extraction.people?.length > 0 || extraction.placesIdentified?.length > 0) && (
+                {extraction && (extraction.peopleIdentified?.length > 0 || extraction.people?.length > 0 || extraction.placesIdentified?.length > 0 || extraction.organisationsIdentified?.length > 0) && (
                   <div className="mb-4">
                     <div className="flex items-center justify-between mb-2">
                       <div>
@@ -1617,7 +1679,7 @@ export function ReviewView({ id }: { id: number }) {
                           <Sparkles className="w-3.5 h-3.5 text-primary" />
                           Detected in Transcript
                         </h4>
-                        <p className="text-xs text-muted-foreground">Correct names or places, then re-analyse to match</p>
+                        <p className="text-xs text-muted-foreground">Correct names, orgs or places then confirm to update</p>
                       </div>
                       {!showEntityEditor && (
                         <Button
@@ -1635,66 +1697,51 @@ export function ReviewView({ id }: { id: number }) {
 
                     {showEntityEditor && (
                       <div className="space-y-2 p-3 bg-muted/20 rounded-lg border border-border mb-3" data-testid="entity-editor">
-                        {entityEdits.filter(e => e.type === "person").length > 0 && (
-                          <div>
-                            <Label className="text-xs text-muted-foreground mb-1 block">Names</Label>
-                            {entityEdits.map((entity, i) => entity.type === "person" ? (
-                              <div key={i} className="flex items-center gap-2 mb-1.5">
-                                <Users className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                                <Input
-                                  value={entity.corrected}
-                                  onChange={(e) => {
-                                    const updated = [...entityEdits];
-                                    updated[i] = { ...updated[i], corrected: e.target.value };
-                                    setEntityEdits(updated);
-                                  }}
-                                  className={`h-8 text-sm ${entity.corrected !== entity.original ? "border-primary bg-primary/5" : ""}`}
-                                  data-testid={`input-entity-name-${i}`}
-                                />
-                                {entity.corrected !== entity.original && (
-                                  <Badge variant="secondary" className="text-[10px] shrink-0">edited</Badge>
-                                )}
-                              </div>
-                            ) : null)}
-                          </div>
-                        )}
-                        {entityEdits.filter(e => e.type === "place").length > 0 && (
-                          <div className="mt-2">
-                            <Label className="text-xs text-muted-foreground mb-1 block">Places</Label>
-                            {entityEdits.map((entity, i) => entity.type === "place" ? (
-                              <div key={i} className="flex items-center gap-2 mb-1.5">
-                                <MapPin className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                                <Input
-                                  value={entity.corrected}
-                                  onChange={(e) => {
-                                    const updated = [...entityEdits];
-                                    updated[i] = { ...updated[i], corrected: e.target.value };
-                                    setEntityEdits(updated);
-                                  }}
-                                  className={`h-8 text-sm ${entity.corrected !== entity.original ? "border-primary bg-primary/5" : ""}`}
-                                  data-testid={`input-entity-place-${i}`}
-                                />
-                                {entity.corrected !== entity.original && (
-                                  <Badge variant="secondary" className="text-[10px] shrink-0">edited</Badge>
-                                )}
-                              </div>
-                            ) : null)}
-                          </div>
-                        )}
+                        {[
+                          { type: "person" as const, label: "People", icon: <Users className="w-3.5 h-3.5 text-muted-foreground shrink-0" /> },
+                          { type: "organisation" as const, label: "Organisations", icon: <Building2 className="w-3.5 h-3.5 text-muted-foreground shrink-0" /> },
+                          { type: "place" as const, label: "Places", icon: <MapPin className="w-3.5 h-3.5 text-muted-foreground shrink-0" /> },
+                        ].map(({ type, label, icon }) => {
+                          const items = entityEdits.filter(e => e.type === type);
+                          if (items.length === 0) return null;
+                          return (
+                            <div key={type} className={type !== "person" ? "mt-2" : ""}>
+                              <Label className="text-xs text-muted-foreground mb-1 block">{label}</Label>
+                              {entityEdits.map((entity, i) => entity.type === type ? (
+                                <div key={i} className="flex items-center gap-2 mb-1.5">
+                                  {icon}
+                                  <Input
+                                    value={entity.corrected}
+                                    onChange={(e) => {
+                                      const updated = [...entityEdits];
+                                      updated[i] = { ...updated[i], corrected: e.target.value };
+                                      setEntityEdits(updated);
+                                    }}
+                                    className={`h-8 text-sm ${entity.corrected !== entity.original ? "border-primary bg-primary/5" : ""}`}
+                                    data-testid={`input-entity-${type}-${i}`}
+                                  />
+                                  {entity.corrected !== entity.original && (
+                                    <Badge variant="secondary" className="text-[10px] shrink-0">edited</Badge>
+                                  )}
+                                </div>
+                              ) : null)}
+                            </div>
+                          );
+                        })}
                         <div className="flex gap-2 mt-3">
                           <Button
                             size="sm"
                             className="min-h-[36px]"
                             onClick={handleApplyEntityEdits}
-                            disabled={isApplyingEdits || isAnalyzing || entityEdits.every(e => e.corrected === e.original)}
+                            disabled={isApplyingEdits || entityEdits.every(e => e.corrected === e.original)}
                             data-testid="button-apply-entity-edits"
                           >
-                            {(isApplyingEdits || isAnalyzing) ? (
+                            {isApplyingEdits ? (
                               <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
                             ) : (
                               <Check className="w-3.5 h-3.5 mr-1.5" />
                             )}
-                            {isApplyingEdits ? "Updating..." : isAnalyzing ? "Re-analysing..." : "Confirm & Re-analyse"}
+                            {isApplyingEdits ? "Applying..." : "Confirm Corrections"}
                           </Button>
                           <Button
                             variant="ghost"
@@ -1715,6 +1762,12 @@ export function ReviewView({ id }: { id: number }) {
                           <Badge key={`p-${i}`} variant="secondary" className="text-xs gap-1">
                             <Users className="w-3 h-3" />
                             {p.name}
+                          </Badge>
+                        ))}
+                        {(extraction.organisationsIdentified || []).map((o: any, i: number) => (
+                          <Badge key={`o-${i}`} variant="secondary" className="text-xs gap-1 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">
+                            <Building2 className="w-3 h-3" />
+                            {o.name}
                           </Badge>
                         ))}
                         {(extraction.placesIdentified || []).map((p: any, i: number) => (

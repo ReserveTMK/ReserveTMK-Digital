@@ -3043,6 +3043,7 @@ export async function registerRoutes(
       const taxonomy = await storage.getTaxonomy(userId);
       const keywords = await storage.getKeywords(userId);
       const contacts = await storage.getContacts(userId);
+      const groups = await storage.getGroups(userId);
 
       const taxonomyContext = taxonomy.filter(t => t.active).map(t =>
         `- ${t.name}: ${t.description || 'No description'}`
@@ -3055,6 +3056,10 @@ export async function registerRoutes(
 
       const peopleContext = contacts.map(c =>
         `- ${c.name}${c.businessName ? ` (${c.businessName})` : ''} [ID: ${c.id}]`
+      ).join('\n');
+
+      const groupsContext = groups.map(g =>
+        `- ${g.name}${g.type ? ` (${g.type})` : ''} [ID: ${g.id}]`
       ).join('\n');
 
       const prompt = `You are an impact analysis system for ReserveTMK Digital, a Māori and Pasifika entrepreneurship hub in Aotearoa New Zealand. Analyze the following debrief transcript and extract structured data for both community impact tracking and operational management.
@@ -3088,11 +3093,20 @@ CLASSIFICATION LOGIC:
 5. Priority ordering: Return categories ranked by relevance strength in source text
 
 LANGUAGE NOTES:
-- Handle te reo Māori: whānau (family), rangatahi (youth), mahi (work), kaupapa (purpose), kōrero (talk/discussion), hui (meeting), wānanga (workshop/learning), aroha (care/compassion), manaaki (hospitality/support), tautoko (support)
+- Handle te reo Māori: whānau (family), rangatahi (youth), mahi (work), kaupapa (purpose), kōrero (talk/discussion), hui (meeting), wānanga (workshop/learning), aroha (care/compassion), manaaki (hospitality/support), tautoko (support), tangata whenua (people of the land), mana whenua (territorial authority), hapū (sub-tribe), iwi (tribe), marae (meeting ground), tikanga (customs), pōwhiri (welcome ceremony), mihi (greeting), koha (gift/donation), taonga (treasure), pūtea (money/funds), matua (parent/elder), tuakana (elder sibling/mentor), teina (younger sibling/mentee), kaiako (teacher), kaimahi (worker), kaitiaki (guardian), whakawhanaungatanga (relationship building), kotahitanga (unity), rangatiratanga (self-determination), oranga (wellbeing), tamariki (children), pēpi (baby), mokopuna (grandchild)
 - NZ slang: sorted (arranged), keen as (very interested), sweet (confirmed), stoked (very happy), hard out (enthusiastically), all good (fine/ok), buzzing (excited), choice (great)
+- TRANSCRIPTION CORRECTION: Audio transcription often misspells te reo Māori words and NZ place names. Common errors to watch for:
+  * Macrons dropped: "whanau" should be "whānau", "Tamaki" may mean "Tāmaki", "Maori" should be "Māori"
+  * Phonetic misspellings: "Whanganui" vs "Wanganui", "tino rangatiratanga" may appear as "teeno ranga tira tanga"
+  * Place names: Ōtāhuhu, Māngere, Manukau, Ōtara, Papatoetoe, Glen Innes/Glendowie, Panmure, Tāmaki Makaurau (Auckland)
+  * Organisation names may be phonetically transcribed incorrectly — cross-reference with KNOWN GROUPS below
+  * Personal names with macrons: match against KNOWN COMMUNITY MEMBERS list even if transcription drops macrons or splits names oddly
 
 KNOWN COMMUNITY MEMBERS:
 ${peopleContext || 'No members in system yet.'}
+
+KNOWN GROUPS/ORGANISATIONS:
+${groupsContext || 'No groups in system yet.'}
 
 TRANSCRIPT:
 """
@@ -3121,7 +3135,14 @@ Return a JSON object with EXACTLY this structure:
   "placesIdentified": [
     {
       "name": "place/location/venue name as mentioned in transcript",
-      "type": "suburb" | "city" | "venue" | "organisation" | "region" | "other"
+      "type": "suburb" | "city" | "venue" | "region" | "other"
+    }
+  ],
+  "organisationsIdentified": [
+    {
+      "name": "organisation/group/company name as mentioned in transcript",
+      "matchedGroupId": null or number (ID from KNOWN GROUPS/ORGANISATIONS if matched),
+      "confidence": 0-100
     }
   ],
   "communityActions": [
