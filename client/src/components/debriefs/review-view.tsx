@@ -852,9 +852,14 @@ export function ReviewView({ id }: { id: number }) {
       queryClient.invalidateQueries({ queryKey: ['/api/impact-logs', id] });
       queryClient.invalidateQueries({ queryKey: ['/api/impact-logs', id, 'tags'] });
 
+      const wasAlreadyConfirmed = impactLog.status === "confirmed";
       toast({
-        title: status === "confirmed" ? "Debrief Confirmed" : "Draft Saved",
-        description: status === "confirmed" ? "Impact data has been confirmed and saved." : "Your draft has been saved.",
+        title: status === "confirmed"
+          ? (wasAlreadyConfirmed ? "Changes Saved" : "Debrief Confirmed")
+          : "Draft Saved",
+        description: status === "confirmed"
+          ? (wasAlreadyConfirmed ? "Your updates have been saved." : "Impact data has been confirmed and saved.")
+          : "Your draft has been saved.",
       });
 
       if (status === "confirmed") {
@@ -2193,16 +2198,18 @@ export function ReviewView({ id }: { id: number }) {
 
         <div className="fixed bottom-[60px] md:bottom-0 left-0 right-0 bg-card border-t border-border p-4 z-40 safe-area-bottom">
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
-            <Button
-              variant="outline"
-              onClick={() => handleSave("draft")}
-              disabled={updateMutation.isPending}
-              className="min-h-[44px] w-full sm:w-auto"
-              data-testid="button-save-draft"
-            >
-              {updateMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-              Save as Draft
-            </Button>
+            {impactLog.status !== "confirmed" && (
+              <Button
+                variant="outline"
+                onClick={() => handleSave("draft")}
+                disabled={updateMutation.isPending}
+                className="min-h-[44px] w-full sm:w-auto"
+                data-testid="button-save-draft"
+              >
+                {updateMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                Save as Draft
+              </Button>
+            )}
             <Button
               onClick={() => handleSave("confirmed")}
               disabled={updateMutation.isPending}
@@ -2210,7 +2217,7 @@ export function ReviewView({ id }: { id: number }) {
               data-testid="button-confirm-save"
             >
               {updateMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-              Confirm & Save
+              {impactLog.status === "confirmed" ? "Save Changes" : "Confirm & Save"}
             </Button>
           </div>
         </div>

@@ -2579,7 +2579,7 @@ export async function registerRoutes(
         const validTransitions: Record<string, string[]> = {
           draft: ['pending_review', 'confirmed'],
           pending_review: ['draft', 'confirmed'],
-          confirmed: ['pending_review', 'draft'],
+          confirmed: ['confirmed', 'pending_review', 'draft'],
         };
         const currentStatus = existing.status || 'draft';
         const allowed = validTransitions[currentStatus] || [];
