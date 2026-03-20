@@ -1169,7 +1169,8 @@ export function ReviewView({ id }: { id: number }) {
 
                   {keyQuotes.length > 0 && (
                     <div className="space-y-2 mb-4" data-testid="pull-quotes-section">
-                      {keyQuotes.slice(0, 2).map((quote: string, i: number) => (
+                      <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Impact Highlights</p>
+                      {keyQuotes.slice(0, 3).map((quote: string, i: number) => (
                         <blockquote
                           key={i}
                           className="border-l-4 border-primary/40 pl-3 py-1 text-sm italic text-foreground/80 bg-primary/5 rounded-r-lg"

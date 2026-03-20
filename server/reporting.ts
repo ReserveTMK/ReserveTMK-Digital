@@ -1769,7 +1769,7 @@ export async function generateNarrative(
         if (s.participantNames.length > 0) standoutText += ` (${s.participantNames.join(", ")})`;
         standoutText += `\n`;
         if (s.summary) standoutText += `${s.summary.slice(0, 200)}\n`;
-        if (s.keyQuotes.length > 0) standoutText += `> "${s.keyQuotes[0]}"\n`;
+        if (s.keyQuotes.length > 0) standoutText += `> ${s.keyQuotes[0]}\n`;
         standoutText += `\n`;
       }
       sections.push(standoutText.trimEnd());

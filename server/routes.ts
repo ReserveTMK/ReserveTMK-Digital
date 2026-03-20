@@ -3165,7 +3165,7 @@ Return a JSON object with EXACTLY this structure:
     "learnings": ["insights about approach, methods, or community needs"]
   },
   "milestones": ["list of specific achievements or stage movements mentioned"],
-  "keyQuotes": ["notable direct quotes from the transcript"],
+  "keyQuotes": ["Reframe notable moments from the debrief as concise, third-person impact statements suitable for funder reports. Since the speaker is retelling events, do NOT use their exact words as direct quotes. Instead, paraphrase into clear outcome-focused statements. Examples: 'Mentee demonstrated increased confidence by presenting to potential investors for the first time', 'Programme participant secured their first paying customer after 3 months of mentoring', 'Youth entrepreneur identified a viable revenue model through guided business planning sessions'"],
   "actionItems": [
     {
       "title": "action description",

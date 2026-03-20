@@ -1238,7 +1238,7 @@ export default function Reports() {
                         {moment.keyQuotes.length > 0 && (
                           <div className="mt-2 space-y-1">
                             {moment.keyQuotes.slice(0, 2).map((q: string, i: number) => (
-                              <p key={i} className="text-sm italic text-muted-foreground border-l-2 border-primary/30 pl-3">"{q}"</p>
+                              <p key={i} className="text-sm italic text-muted-foreground border-l-2 border-primary/30 pl-3">{q}</p>
                             ))}
                           </div>
                         )}
@@ -1314,11 +1314,11 @@ export default function Reports() {
                     {reportData.operatorInsights.standoutQuotes.length > 0 && (
                       <div>
                         <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                          <MessageSquare className="w-4 h-4 text-purple-600" /> Standout Quotes
+                          <MessageSquare className="w-4 h-4 text-purple-600" /> Impact Highlights
                         </h4>
                         <div className="space-y-1.5">
                           {reportData.operatorInsights.standoutQuotes.map((quote: string, i: number) => (
-                            <p key={i} className="text-sm italic text-muted-foreground border-l-2 border-purple-300 dark:border-purple-700 pl-3">"{quote}"</p>
+                            <p key={i} className="text-sm italic text-muted-foreground border-l-2 border-purple-300 dark:border-purple-700 pl-3">{quote}</p>
                           ))}
                         </div>
                       </div>
