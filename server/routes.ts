@@ -3165,7 +3165,7 @@ Return a JSON object with EXACTLY this structure:
     "learnings": ["insights about approach, methods, or community needs"]
   },
   "milestones": ["list of specific achievements or stage movements mentioned"],
-  "keyQuotes": ["Reframe notable moments from the debrief as concise, third-person impact statements suitable for funder reports. Since the speaker is retelling events, do NOT use their exact words as direct quotes. Instead, paraphrase into clear outcome-focused statements. Examples: 'Mentee demonstrated increased confidence by presenting to potential investors for the first time', 'Programme participant secured their first paying customer after 3 months of mentoring', 'Youth entrepreneur identified a viable revenue model through guided business planning sessions'"],
+  "keyQuotes": ["Reframe notable moments as concise impact statements suitable for funder reports. Write from the POV of the primary person or organisation being discussed — use their name if identified. Since the speaker is retelling events, do NOT use their exact words. Paraphrase into outcome-focused statements centred on the subject. Examples: 'Aroha demonstrated increased confidence by presenting to potential investors for the first time', 'Te Oro hosted 45 rangatahi for a digital skills wānanga, their largest event to date', 'Wiremu secured his first paying customer after 3 months of mentoring support', 'Māngere Arts Collective launched their community gallery with 12 local artists'. If no specific person or org is the clear subject, write in general third-person."],
   "actionItems": [
     {
       "title": "action description",
