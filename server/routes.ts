@@ -2681,6 +2681,12 @@ export async function registerRoutes(
       if (contact && contact.consentStatus === 'withdrawn') {
         return res.status(400).json({ message: "Cannot link contact: consent has been withdrawn" });
       }
+      const existing = await db.select().from(impactLogContacts).where(
+        and(eq(impactLogContacts.impactLogId, impactLogId), eq(impactLogContacts.contactId, input.contactId))
+      );
+      if (existing.length > 0) {
+        return res.status(200).json(existing[0]);
+      }
       const record = await storage.addImpactLogContact(input);
       res.status(201).json(record);
     } catch (err) {

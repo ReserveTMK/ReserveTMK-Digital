@@ -86,6 +86,38 @@ import {
   ContactSearchPicker,
 } from "./shared";
 
+function fuzzyMatch(a: string, b: string): number {
+  const al = a.toLowerCase().trim();
+  const bl = b.toLowerCase().trim();
+  if (!al || !bl || al.length < 2 || bl.length < 2) return 0;
+  if (al === bl) return 100;
+  if (al.length >= 3 && bl.length >= 3 && (al.includes(bl) || bl.includes(al))) return 85;
+  const aWords = al.split(/\s+/);
+  const bWords = bl.split(/\s+/);
+  const commonWords = aWords.filter(w => w.length >= 2 && bWords.some(bw => bw === w || (w.length > 3 && bw.startsWith(w)) || (bw.length > 3 && w.startsWith(bw))));
+  if (commonWords.length > 0 && (commonWords.length / Math.max(aWords.length, bWords.length)) >= 0.5) {
+    return Math.round(60 + (commonWords.length / Math.max(aWords.length, bWords.length)) * 25);
+  }
+  let matches = 0;
+  const len = Math.min(al.length, bl.length);
+  for (let i = 0; i < len; i++) {
+    if (al[i] === bl[i]) matches++;
+  }
+  const similarity = (matches * 2) / (al.length + bl.length);
+  return similarity >= 0.6 ? Math.round(similarity * 70) : 0;
+}
+
+function findBestGroupMatch(name: string, groups: any[]): { group: any; confidence: number } | null {
+  let best: { group: any; confidence: number } | null = null;
+  for (const g of groups) {
+    const score = fuzzyMatch(name, g.name);
+    if (score >= 60 && (!best || score > best.confidence)) {
+      best = { group: g, confidence: score };
+    }
+  }
+  return best;
+}
+
 function CollapsibleSection({
   title,
   count,
@@ -201,6 +233,10 @@ export function ReviewView({ id }: { id: number }) {
   const { data: allGroups } = useQuery<any[]>({ queryKey: ['/api/groups'] });
   const { data: linkedGroups, refetch: refetchLinkedGroups } = useQuery<any[]>({
     queryKey: ['/api/impact-logs', id, 'groups'],
+    enabled: !!id,
+  });
+  const { data: linkedContacts, refetch: refetchLinkedContacts } = useQuery<any[]>({
+    queryKey: ['/api/impact-logs', id, 'contacts'],
     enabled: !!id,
   });
   const { data: taxonomyCategories } = useQuery<any[]>({ queryKey: ['/api/taxonomy'] });
@@ -470,6 +506,8 @@ export function ReviewView({ id }: { id: number }) {
       queryClient.invalidateQueries({ queryKey: ["/api/impact-logs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/impact-logs", id] });
       queryClient.invalidateQueries({ queryKey: ["/api/impact-logs", id, "tags"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/impact-logs", id, "contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/impact-logs", id, "groups"] });
       setInitialized(false);
       toast({ title: "Re-analysis complete", description: "Tags and insights updated from the full transcript." });
     } catch (err: any) {
@@ -682,7 +720,7 @@ export function ReviewView({ id }: { id: number }) {
   }, [impactLog, extraction, isManualUpdate, initialized, savedTags]);
 
   useEffect(() => {
-    if (impactLog && extraction && !initialized && savedTags !== undefined) {
+    if (impactLog && extraction && !initialized && savedTags !== undefined && linkedContacts !== undefined) {
       setSummary(extraction.summary || impactLog.summary || "");
       setSentiment(extraction.sentiment || impactLog.sentiment || "neutral");
       setMilestones(extraction.milestones || impactLog.milestones || []);
@@ -700,10 +738,47 @@ export function ReviewView({ id }: { id: number }) {
           ...tag,
         })));
       }
-      setPeople((extraction.peopleIdentified || extraction.people || []).map((p: any) => ({
+      const extractedPeople = (extraction.peopleIdentified || extraction.people || []).map((p: any) => ({
         ...p,
         section: p.section || (["primary", "mentor", "mentee"].includes(p.role) ? "primary" : "secondary"),
-      })));
+      }));
+      if (linkedContacts && linkedContacts.length > 0) {
+        const contactMap = new Map((contacts || []).map((c: any) => [c.id, c]));
+        const usedContactIds = new Set<number>();
+        const relinked = extractedPeople.map((p: any) => {
+          if (p.contactId && !usedContactIds.has(p.contactId)) {
+            usedContactIds.add(p.contactId);
+            return p;
+          }
+          let bestLink: any = null;
+          let bestScore = 0;
+          for (const lc of linkedContacts) {
+            if (usedContactIds.has(lc.contactId)) continue;
+            const c = contactMap.get(lc.contactId);
+            if (!c) continue;
+            const score = fuzzyMatch(p.name || "", c.name || "");
+            if (score >= 60 && score > bestScore) {
+              bestLink = lc;
+              bestScore = score;
+            }
+          }
+          if (bestLink) {
+            usedContactIds.add(bestLink.contactId);
+            return { ...p, contactId: bestLink.contactId };
+          }
+          return p;
+        });
+        const extraLinked = linkedContacts
+          .filter((lc: any) => !usedContactIds.has(lc.contactId))
+          .map((lc: any) => {
+            const c = contactMap.get(lc.contactId);
+            return c ? { name: c.name, contactId: lc.contactId, role: lc.role || "mentioned", section: lc.role === "primary" ? "primary" : "secondary" } : null;
+          })
+          .filter(Boolean);
+        setPeople([...relinked, ...extraLinked]);
+      } else {
+        setPeople(extractedPeople);
+      }
       setMetrics(extraction.metrics || {});
       setReflections(extraction.reflections || { wins: [], concerns: [], learnings: [] });
 
@@ -757,7 +832,7 @@ export function ReviewView({ id }: { id: number }) {
       setFunderTags(impactLog.funderTags || []);
       setInitialized(true);
     }
-  }, [impactLog, extraction, initialized, savedTags, taxonomyCategories]);
+  }, [impactLog, extraction, initialized, savedTags, taxonomyCategories, linkedContacts, contacts]);
 
   useEffect(() => {
     return () => {
@@ -1772,8 +1847,13 @@ export function ReviewView({ id }: { id: number }) {
                     {!showEntityEditor && (
                       <div className="space-y-1.5 mb-3" data-testid="entity-chips">
                         {(extraction.peopleIdentified || extraction.people || []).map((p: any, i: number) => {
-                          const isLinked = people.some((pp: any) => pp.contactId && pp.name?.toLowerCase() === p.name?.toLowerCase());
-                          const contact = isLinked ? (contacts || []).find((c: any) => c.name?.toLowerCase() === p.name?.toLowerCase()) : null;
+                          const matchedPerson = people.find((pp: any) => pp.contactId && (
+                            pp.contactId === p.matchedContactId ||
+                            pp.name?.toLowerCase() === p.name?.toLowerCase() ||
+                            fuzzyMatch(pp.name || "", p.name || "") >= 60
+                          ));
+                          const isLinked = !!matchedPerson;
+                          const contact = isLinked ? (contacts || []).find((c: any) => c.id === matchedPerson?.contactId) : null;
                           return (
                             <div key={`p-${i}`} className="flex items-center gap-1.5 group" data-testid={`entity-person-${i}`}>
                               <Users className="w-3 h-3 text-muted-foreground shrink-0" />
@@ -1784,16 +1864,27 @@ export function ReviewView({ id }: { id: number }) {
                               {!isLinked && (
                                 <ContactSearchPicker
                                   contacts={contacts || []}
-                                  onSelect={(contactId) => {
+                                  onSelect={async (contactId) => {
                                     const c = (contacts || []).find((ct: any) => ct.id === contactId);
-                                    const existing = people.find((pp: any) => pp.name?.toLowerCase() === p.name?.toLowerCase());
+                                    const existing = people.find((pp: any) =>
+                                      pp.name?.toLowerCase() === p.name?.toLowerCase() ||
+                                      fuzzyMatch(pp.name || "", p.name || "") >= 60
+                                    );
+                                    const derivedSection = existing?.section || p.section || (["primary", "mentor", "mentee"].includes(p.role || existing?.role) ? "primary" : "secondary");
+                                    const derivedRole = derivedSection === "primary" ? "primary" : "mentioned";
                                     if (existing) {
                                       const idx = people.indexOf(existing);
                                       const updated = [...people];
                                       updated[idx] = { ...updated[idx], contactId, name: c?.name || p.name };
                                       setPeople(updated);
                                     } else {
-                                      setPeople([...people, { name: c?.name || p.name, role: "mentioned", section: "secondary", contactId }]);
+                                      setPeople([...people, { name: c?.name || p.name, role: derivedRole, section: derivedSection, contactId }]);
+                                    }
+                                    try {
+                                      await apiRequest("POST", `/api/impact-logs/${id}/contacts`, { impactLogId: id, contactId, role: derivedRole });
+                                      refetchLinkedContacts();
+                                    } catch (err) {
+                                      toast({ title: "Warning", description: "Link saved locally but server sync failed. It will be saved when you confirm.", variant: "default" });
                                     }
                                     toast({ title: "Linked", description: `${p.name} linked to ${c?.name || "contact"}` });
                                   }}
@@ -1819,10 +1910,10 @@ export function ReviewView({ id }: { id: number }) {
                           );
                         })}
                         {(extraction.organisationsIdentified || []).map((o: any, i: number) => {
-                          const isLinked = (linkedGroups || []).some((lg: any) => {
-                            const g = (allGroups || []).find((gg: any) => gg.id === lg.groupId);
-                            return g?.name?.toLowerCase() === o.name?.toLowerCase();
-                          });
+                          const linkedGroupIds = new Set((linkedGroups || []).map((lg: any) => lg.groupId));
+                          const linkedGroupObjs = (linkedGroups || []).map((lg: any) => (allGroups || []).find((gg: any) => gg.id === lg.groupId)).filter(Boolean);
+                          const isLinked = o.matchedGroupId ? linkedGroupIds.has(o.matchedGroupId) : linkedGroupObjs.some((g: any) => fuzzyMatch(g.name || "", o.name || "") >= 60);
+                          const bestMatch = !isLinked ? findBestGroupMatch(o.name, (allGroups || []).filter((g: any) => !linkedGroupIds.has(g.id))) : null;
                           return (
                             <div key={`o-${i}`} className="flex items-center gap-1.5 group" data-testid={`entity-org-${i}`}>
                               <Building2 className="w-3 h-3 text-blue-600 shrink-0" />
@@ -1830,22 +1921,32 @@ export function ReviewView({ id }: { id: number }) {
                                 {o.name}
                                 {isLinked && <Check className="w-3 h-3 inline ml-1 text-green-600" />}
                               </span>
-                              {!isLinked && (
+                              {!isLinked && bestMatch && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 px-2 text-xs text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-950/30 hover:bg-green-100 dark:hover:bg-green-950/50"
+                                  onClick={async () => {
+                                    try {
+                                      await apiRequest("POST", `/api/impact-logs/${id}/groups`, { groupId: bestMatch.group.id });
+                                      refetchLinkedGroups();
+                                      toast({ title: "Linked", description: `${bestMatch.group.name} linked to debrief` });
+                                    } catch {}
+                                  }}
+                                  data-testid={`entity-link-org-${i}`}
+                                >
+                                  <Link2 className="w-3 h-3 mr-1" />
+                                  {bestMatch.group.name}
+                                  <span className="ml-1 opacity-60">{bestMatch.confidence}%</span>
+                                </Button>
+                              )}
+                              {!isLinked && !bestMatch && (
                                 <Button
                                   variant="ghost"
                                   size="sm"
                                   className="h-6 px-2 text-xs text-muted-foreground"
                                   onClick={async () => {
-                                    const match = (allGroups || []).find((g: any) => g.name?.toLowerCase() === o.name?.toLowerCase());
-                                    if (match) {
-                                      try {
-                                        await apiRequest("POST", `/api/impact-logs/${id}/groups`, { groupId: match.id });
-                                        refetchLinkedGroups();
-                                        toast({ title: "Linked", description: `${match.name} linked to debrief` });
-                                      } catch { }
-                                    } else {
-                                      toast({ title: "No match", description: `"${o.name}" doesn't match any group. Use Edit to correct the name, or link manually below.`, variant: "default" });
-                                    }
+                                    toast({ title: "No match", description: `"${o.name}" doesn't match any group. Use Edit to correct the name, or link manually below.`, variant: "default" });
                                   }}
                                   data-testid={`entity-link-org-${i}`}
                                 >
@@ -1865,21 +1966,49 @@ export function ReviewView({ id }: { id: number }) {
                             </div>
                           );
                         })}
-                        {(extraction.placesIdentified || []).map((p: any, i: number) => (
-                          <div key={`l-${i}`} className="flex items-center gap-1.5 group" data-testid={`entity-place-${i}`}>
-                            <MapPin className="w-3 h-3 text-muted-foreground shrink-0" />
-                            <span className="text-sm flex-1 min-w-0 truncate">{p.name}</span>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 opacity-0 group-hover:opacity-100 shrink-0"
-                              data-testid={`entity-dismiss-place-${i}`}
-                              onClick={() => {}}
-                            >
-                              <X className="w-3 h-3" />
-                            </Button>
-                          </div>
-                        ))}
+                        {(extraction.placesIdentified || []).map((p: any, i: number) => {
+                          const linkedGroupIds = new Set((linkedGroups || []).map((lg: any) => lg.groupId));
+                          const linkedGroupObjs = (linkedGroups || []).map((lg: any) => (allGroups || []).find((gg: any) => gg.id === lg.groupId)).filter(Boolean);
+                          const isLinked = p.matchedGroupId ? linkedGroupIds.has(p.matchedGroupId) : linkedGroupObjs.some((g: any) => fuzzyMatch(g.name || "", p.name || "") >= 60);
+                          const bestMatch = !isLinked ? findBestGroupMatch(p.name, (allGroups || []).filter((g: any) => !linkedGroupIds.has(g.id))) : null;
+                          return (
+                            <div key={`l-${i}`} className="flex items-center gap-1.5 group" data-testid={`entity-place-${i}`}>
+                              <MapPin className="w-3 h-3 text-muted-foreground shrink-0" />
+                              <span className={`text-sm flex-1 min-w-0 truncate ${isLinked ? "text-primary font-medium" : ""}`}>
+                                {p.name}
+                                {isLinked && <Check className="w-3 h-3 inline ml-1 text-green-600" />}
+                              </span>
+                              {!isLinked && bestMatch && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 px-2 text-xs text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-950/30 hover:bg-green-100 dark:hover:bg-green-950/50"
+                                  onClick={async () => {
+                                    try {
+                                      await apiRequest("POST", `/api/impact-logs/${id}/groups`, { groupId: bestMatch.group.id });
+                                      refetchLinkedGroups();
+                                      toast({ title: "Linked", description: `${bestMatch.group.name} linked to debrief` });
+                                    } catch {}
+                                  }}
+                                  data-testid={`entity-link-place-${i}`}
+                                >
+                                  <Link2 className="w-3 h-3 mr-1" />
+                                  {bestMatch.group.name}
+                                  <span className="ml-1 opacity-60">{bestMatch.confidence}%</span>
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 opacity-0 group-hover:opacity-100 shrink-0"
+                                data-testid={`entity-dismiss-place-${i}`}
+                                onClick={() => {}}
+                              >
+                                <X className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1895,6 +2024,14 @@ export function ReviewView({ id }: { id: number }) {
                   toast={toast}
                   section="primary"
                   testIdPrefix="primary"
+                  onPersistLink={async (contactId, role) => {
+                    try {
+                      await apiRequest("POST", `/api/impact-logs/${id}/contacts`, { impactLogId: id, contactId, role });
+                      refetchLinkedContacts();
+                    } catch {
+                      toast({ title: "Warning", description: "Link saved locally but server sync failed. It will be saved when you confirm.", variant: "default" });
+                    }
+                  }}
                 />
                 <div className="my-4 border-t border-border" />
                 <PeopleSection
@@ -1907,6 +2044,14 @@ export function ReviewView({ id }: { id: number }) {
                   toast={toast}
                   section="secondary"
                   testIdPrefix="secondary"
+                  onPersistLink={async (contactId, role) => {
+                    try {
+                      await apiRequest("POST", `/api/impact-logs/${id}/contacts`, { impactLogId: id, contactId, role });
+                      refetchLinkedContacts();
+                    } catch {
+                      toast({ title: "Warning", description: "Link saved locally but server sync failed. It will be saved when you confirm.", variant: "default" });
+                    }
+                  }}
                 />
                 <div className="my-4 border-t border-border" />
                 <LinkedGroupsSection
@@ -2462,7 +2607,7 @@ function PersonEntry({ person, onRemove, onUnlink, onLink, contacts, testIdPrefi
   );
 }
 
-function PeopleSection({ label, description, people, allPeople, setPeople, contacts, toast, section, testIdPrefix }: {
+function PeopleSection({ label, description, people, allPeople, setPeople, contacts, toast, section, testIdPrefix, onPersistLink }: {
   label: string;
   description: string;
   people: any[];
@@ -2472,6 +2617,7 @@ function PeopleSection({ label, description, people, allPeople, setPeople, conta
   toast: any;
   section: "primary" | "secondary";
   testIdPrefix: string;
+  onPersistLink?: (contactId: number, role: string) => void;
 }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
@@ -2482,7 +2628,9 @@ function PeopleSection({ label, description, people, allPeople, setPeople, conta
   const availableContacts = (contacts || []).filter(c => !linkedContactIds.has(c.id));
 
   const handleSelectContact = (contact: Contact) => {
-    setPeople([...allPeople, { name: contact.name, role: section === "primary" ? "primary" : "mentioned", section, contactId: contact.id }]);
+    const role = section === "primary" ? "primary" : "mentioned";
+    setPeople([...allPeople, { name: contact.name, role, section, contactId: contact.id }]);
+    if (onPersistLink) onPersistLink(contact.id, role);
     toast({ title: "Person linked", description: `${contact.name} linked as ${label.toLowerCase()}.` });
     setSearchValue("");
     setSearchOpen(false);
@@ -2500,7 +2648,9 @@ function PeopleSection({ label, description, people, allPeople, setPeople, conta
       });
       const newContact = await res.json();
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-      setPeople([...allPeople, { name: newContact.name, role: section === "primary" ? "primary" : "mentioned", section, contactId: newContact.id }]);
+      const role = section === "primary" ? "primary" : "mentioned";
+      setPeople([...allPeople, { name: newContact.name, role, section, contactId: newContact.id }]);
+      if (onPersistLink) onPersistLink(newContact.id, role);
       toast({ title: "Person added", description: `${newContact.name} created and linked as ${label.toLowerCase()}.` });
       setSearchValue("");
       setSearchOpen(false);
@@ -2537,8 +2687,11 @@ function PeopleSection({ label, description, people, allPeople, setPeople, conta
                 }}
                 onLink={(contactId, name) => {
                   const updated = [...allPeople];
-                  updated[globalIdx] = { ...updated[globalIdx], contactId, name };
+                  const person = updated[globalIdx];
+                  updated[globalIdx] = { ...person, contactId, name };
                   setPeople(updated);
+                  const role = person.section === "primary" || (!person.section && ["primary", "mentor", "mentee"].includes(person.role)) ? "primary" : "mentioned";
+                  if (onPersistLink) onPersistLink(contactId, role);
                   toast({ title: "Linked", description: `Linked to ${name}` });
                 }}
               />
