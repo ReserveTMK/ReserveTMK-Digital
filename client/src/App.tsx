@@ -71,7 +71,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   return <Component />;
 }
 
-const PUBLIC_ROUTE_PREFIXES = ['/book/', '/register/', '/survey/', '/booker/', '/casual-hire'];
+const PUBLIC_ROUTE_PREFIXES = ['/book/', '/register/', '/survey/', '/booker/', '/casual-hire', '/casual-booking'];
 
 function AppLayout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -274,6 +274,9 @@ function Router() {
         </Route>
 
         <Route path="/casual-hire">
+          <CasualHirePage />
+        </Route>
+        <Route path="/casual-booking">
           <CasualHirePage />
         </Route>
 

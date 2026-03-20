@@ -3230,11 +3230,12 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
           return res.status(404).json({ message: "Impact log not found" });
         }
         await autoApplyTags(existingLogId, extraction.impactTags);
+        const preserveStatus = existing.status === "confirmed" ? "confirmed" : "pending_review";
         const updated = await storage.updateImpactLog(existingLogId, {
           transcript,
           summary: extraction.summary || "",
           rawExtraction: extraction,
-          status: "pending_review",
+          status: preserveStatus,
           sentiment: extraction.sentiment || "neutral",
           milestones: extraction.milestones || [],
           keyQuotes: extraction.keyQuotes || [],

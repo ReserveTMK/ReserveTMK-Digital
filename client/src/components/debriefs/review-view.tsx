@@ -142,7 +142,9 @@ function MiniTrendDots({ current, history }: { current: number | undefined; hist
     );
   }
 
+  const previousValue = allValues[allValues.length - 2];
   const trend = current - allValues[0];
+  const regression = current < previousValue;
   const trendColor = trend > 0 ? "text-green-600 dark:text-green-400" : trend < 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground";
   const TrendIcon = trend > 0 ? TrendingUp : trend < 0 ? TrendingDown : Minus;
 
@@ -184,6 +186,11 @@ function MiniTrendDots({ current, history }: { current: number | undefined; hist
         })}
       </svg>
       <TrendIcon className={`w-3 h-3 ${trendColor}`} />
+      {regression && (
+        <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 rounded shrink-0" title={`Dropped from ${previousValue} → ${current}. Check if this is accurate.`}>
+          ↓{previousValue - current} check
+        </span>
+      )}
     </div>
   );
 }
