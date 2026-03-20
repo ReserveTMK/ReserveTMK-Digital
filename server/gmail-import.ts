@@ -473,10 +473,11 @@ async function buildPreview(
   const existingEmailSet = new Set(
     existingContacts.filter(c => c.email).flatMap(c => c.email!.split(/[,;]\s*/).map(e => e.trim().toLowerCase()).filter(e => e.includes('@')))
   );
-  const existingNameMap = new Map<string, { id: number; email: string }>();
+  const existingNameMap = new Map<string, { id: number; email: string; emails: string[] }>();
   for (const c of existingContacts) {
     if (c.name && c.email) {
-      existingNameMap.set(c.name.toLowerCase(), { id: c.id, email: c.email });
+      const emails = c.email.split(/[,;]\s*/).map(e => e.trim().toLowerCase()).filter(e => e.includes('@'));
+      existingNameMap.set(c.name.toLowerCase(), { id: c.id, email: c.email, emails });
     }
   }
   const existingGroupNameSet = new Map(
@@ -486,12 +487,17 @@ async function buildPreview(
   const existingContactsByDomain = new Map<string, Array<{ id: number; name: string; email: string }>>();
   for (const c of existingContacts) {
     if (!c.email) continue;
-    const domain = getDomain(c.email);
-    if (!domain || PUBLIC_DOMAINS.has(domain)) continue;
-    if (!existingContactsByDomain.has(domain)) {
-      existingContactsByDomain.set(domain, []);
+    const emails = c.email.split(/[,;]\s*/).map(e => e.trim().toLowerCase()).filter(e => e.includes('@'));
+    const domains = new Set(emails.map(e => getDomain(e)).filter(d => d && !PUBLIC_DOMAINS.has(d)));
+    for (const domain of domains) {
+      if (!existingContactsByDomain.has(domain)) {
+        existingContactsByDomain.set(domain, []);
+      }
+      const list = existingContactsByDomain.get(domain)!;
+      if (!list.some(item => item.id === c.id)) {
+        list.push({ id: c.id, name: c.name, email: c.email });
+      }
     }
-    existingContactsByDomain.get(domain)!.push({ id: c.id, name: c.name, email: c.email });
   }
 
   const previewPeople: Array<{
@@ -526,7 +532,7 @@ async function buildPreview(
 
     const cleanedName = cleanName(person.name);
     const existingByName = existingNameMap.get(cleanedName.toLowerCase());
-    const isDuplicate = !!existingByName && existingByName.email.toLowerCase() !== person.email.toLowerCase();
+    const isDuplicate = !!existingByName && !existingByName.emails.includes(person.email.toLowerCase());
 
     previewPeople.push({
       email: person.email,
