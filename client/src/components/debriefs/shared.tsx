@@ -23,6 +23,7 @@ import {
   Mic,
   HeartHandshake,
   RotateCcw,
+  Link2,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { ImpactLog, Contact } from "@shared/schema";
@@ -248,10 +249,12 @@ export function ContactSearchPicker({
   contacts,
   onSelect,
   testId,
+  compact = false,
 }: {
   contacts: Contact[];
   onSelect: (contactId: number) => void;
   testId: string;
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
@@ -277,14 +280,26 @@ export function ContactSearchPicker({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          className="w-full justify-start text-muted-foreground font-normal"
-          data-testid={testId}
-        >
-          <Search className="w-3.5 h-3.5 mr-2 shrink-0" />
-          Search and link a community member...
-        </Button>
+        {compact ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-xs text-muted-foreground"
+            data-testid={testId}
+          >
+            <Link2 className="w-3 h-3 mr-1" />
+            Link
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            className="w-full justify-start text-muted-foreground font-normal"
+            data-testid={testId}
+          >
+            <Search className="w-3.5 h-3.5 mr-2 shrink-0" />
+            Search and link a community member...
+          </Button>
+        )}
       </PopoverTrigger>
       <PopoverContent className="w-[min(300px,calc(100vw-2rem))] p-0" align="start">
         <Command>

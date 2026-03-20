@@ -1758,24 +1758,115 @@ export function ReviewView({ id }: { id: number }) {
                     )}
 
                     {!showEntityEditor && (
-                      <div className="flex flex-wrap gap-1.5 mb-3" data-testid="entity-chips">
-                        {(extraction.peopleIdentified || extraction.people || []).map((p: any, i: number) => (
-                          <Badge key={`p-${i}`} variant="secondary" className="text-xs gap-1">
-                            <Users className="w-3 h-3" />
-                            {p.name}
-                          </Badge>
-                        ))}
-                        {(extraction.organisationsIdentified || []).map((o: any, i: number) => (
-                          <Badge key={`o-${i}`} variant="secondary" className="text-xs gap-1 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">
-                            <Building2 className="w-3 h-3" />
-                            {o.name}
-                          </Badge>
-                        ))}
+                      <div className="space-y-1.5 mb-3" data-testid="entity-chips">
+                        {(extraction.peopleIdentified || extraction.people || []).map((p: any, i: number) => {
+                          const isLinked = people.some((pp: any) => pp.contactId && pp.name?.toLowerCase() === p.name?.toLowerCase());
+                          const contact = isLinked ? (contacts || []).find((c: any) => c.name?.toLowerCase() === p.name?.toLowerCase()) : null;
+                          return (
+                            <div key={`p-${i}`} className="flex items-center gap-1.5 group" data-testid={`entity-person-${i}`}>
+                              <Users className="w-3 h-3 text-muted-foreground shrink-0" />
+                              <span className={`text-sm flex-1 min-w-0 truncate ${isLinked ? "text-primary font-medium" : ""}`}>
+                                {p.name}
+                                {isLinked && contact && <Check className="w-3 h-3 inline ml-1 text-green-600" />}
+                              </span>
+                              {!isLinked && (
+                                <ContactSearchPicker
+                                  contacts={contacts || []}
+                                  onSelect={(contactId) => {
+                                    const c = (contacts || []).find((ct: any) => ct.id === contactId);
+                                    const existing = people.find((pp: any) => pp.name?.toLowerCase() === p.name?.toLowerCase());
+                                    if (existing) {
+                                      const idx = people.indexOf(existing);
+                                      const updated = [...people];
+                                      updated[idx] = { ...updated[idx], contactId, name: c?.name || p.name };
+                                      setPeople(updated);
+                                    } else {
+                                      setPeople([...people, { name: c?.name || p.name, role: "mentioned", section: "secondary", contactId }]);
+                                    }
+                                    toast({ title: "Linked", description: `${p.name} linked to ${c?.name || "contact"}` });
+                                  }}
+                                  testId={`entity-link-person-${i}`}
+                                  compact
+                                />
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 opacity-0 group-hover:opacity-100 shrink-0"
+                                onClick={() => {
+                                  const idx = people.findIndex((pp: any) => pp.name?.toLowerCase() === p.name?.toLowerCase());
+                                  if (idx >= 0) {
+                                    setPeople(people.filter((_: any, j: number) => j !== idx));
+                                  }
+                                }}
+                                data-testid={`entity-dismiss-person-${i}`}
+                              >
+                                <X className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          );
+                        })}
+                        {(extraction.organisationsIdentified || []).map((o: any, i: number) => {
+                          const isLinked = (linkedGroups || []).some((lg: any) => {
+                            const g = (allGroups || []).find((gg: any) => gg.id === lg.groupId);
+                            return g?.name?.toLowerCase() === o.name?.toLowerCase();
+                          });
+                          return (
+                            <div key={`o-${i}`} className="flex items-center gap-1.5 group" data-testid={`entity-org-${i}`}>
+                              <Building2 className="w-3 h-3 text-blue-600 shrink-0" />
+                              <span className={`text-sm flex-1 min-w-0 truncate ${isLinked ? "text-primary font-medium" : ""}`}>
+                                {o.name}
+                                {isLinked && <Check className="w-3 h-3 inline ml-1 text-green-600" />}
+                              </span>
+                              {!isLinked && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 px-2 text-xs text-muted-foreground"
+                                  onClick={async () => {
+                                    const match = (allGroups || []).find((g: any) => g.name?.toLowerCase() === o.name?.toLowerCase());
+                                    if (match) {
+                                      try {
+                                        await apiRequest("POST", `/api/impact-logs/${id}/groups`, { groupId: match.id });
+                                        refetchLinkedGroups();
+                                        toast({ title: "Linked", description: `${match.name} linked to debrief` });
+                                      } catch { }
+                                    } else {
+                                      toast({ title: "No match", description: `"${o.name}" doesn't match any group. Use Edit to correct the name, or link manually below.`, variant: "default" });
+                                    }
+                                  }}
+                                  data-testid={`entity-link-org-${i}`}
+                                >
+                                  <Link2 className="w-3 h-3 mr-1" />
+                                  Link
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 opacity-0 group-hover:opacity-100 shrink-0"
+                                data-testid={`entity-dismiss-org-${i}`}
+                                onClick={() => {}}
+                              >
+                                <X className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          );
+                        })}
                         {(extraction.placesIdentified || []).map((p: any, i: number) => (
-                          <Badge key={`l-${i}`} variant="outline" className="text-xs gap-1">
-                            <MapPin className="w-3 h-3" />
-                            {p.name}
-                          </Badge>
+                          <div key={`l-${i}`} className="flex items-center gap-1.5 group" data-testid={`entity-place-${i}`}>
+                            <MapPin className="w-3 h-3 text-muted-foreground shrink-0" />
+                            <span className="text-sm flex-1 min-w-0 truncate">{p.name}</span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 opacity-0 group-hover:opacity-100 shrink-0"
+                              data-testid={`entity-dismiss-place-${i}`}
+                              onClick={() => {}}
+                            >
+                              <X className="w-3 h-3" />
+                            </Button>
+                          </div>
                         ))}
                       </div>
                     )}
