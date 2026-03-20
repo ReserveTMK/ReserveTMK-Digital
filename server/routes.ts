@@ -3118,6 +3118,12 @@ Return a JSON object with EXACTLY this structure:
       "confidence": 0-100
     }
   ],
+  "placesIdentified": [
+    {
+      "name": "place/location/venue name as mentioned in transcript",
+      "type": "suburb" | "city" | "venue" | "organisation" | "region" | "other"
+    }
+  ],
   "communityActions": [
     {
       "task": "follow-up or community action needed (introductions, resources to send, workshop registrations, mentoring bookings)",
