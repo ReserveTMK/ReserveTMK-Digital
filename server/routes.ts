@@ -5196,6 +5196,64 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         console.error("Failed to send confirmation email:", emailErr.message);
       }
 
+      let calendarEventCreated = false;
+      try {
+        const { getUncachableGoogleCalendarClient } = await import("./replit_integrations/google-calendar/client");
+        const calendar = await getUncachableGoogleCalendarClient();
+
+        const venueNames: string[] = [];
+        const vIds = booking.venueIds || (booking.venueId ? [booking.venueId] : []);
+        for (const vid of vIds) {
+          const v = await storage.getVenue(vid);
+          if (v) venueNames.push(v.name);
+        }
+        const venueSummary = venueNames.join(" + ");
+
+        const bookerName = booking.bookerName || "";
+        const bookingDate = booking.startDate ? new Date(booking.startDate) : new Date();
+        const dateStr = bookingDate.toISOString().slice(0, 10);
+
+        const startDateTime = new Date(`${dateStr}T${booking.startTime || "09:00"}:00`);
+        const endDateTime = new Date(`${dateStr}T${booking.endTime || "17:00"}:00`);
+
+        const descParts = [
+          booking.classification ? `Type: ${booking.classification}` : null,
+          bookerName ? `Booker: ${bookerName}` : null,
+          booking.bookingSummary ? `Details: ${booking.bookingSummary}` : null,
+          booking.attendeeCount ? `Attendees: ${booking.attendeeCount}` : null,
+        ].filter(Boolean).join("\n");
+
+        const bookerContact = booking.bookerId ? await storage.getContact(booking.bookerId) : null;
+        const attendees: { email: string }[] = [];
+        if (bookerContact?.email) {
+          const primaryEmail = bookerContact.email.split(/[,;]\s*/)[0].trim();
+          if (primaryEmail) attendees.push({ email: primaryEmail });
+        }
+
+        const orgProfile = await storage.getOrganisationProfile(userId);
+        const locationStr = orgProfile?.location || undefined;
+
+        const event = await calendar.events.insert({
+          calendarId: "primary",
+          sendUpdates: attendees.length > 0 ? "all" : "none",
+          requestBody: {
+            summary: `Venue Hire: ${venueSummary}${bookerName ? ` — ${bookerName}` : ""}`,
+            description: descParts || undefined,
+            start: { dateTime: startDateTime.toISOString(), timeZone: "Pacific/Auckland" },
+            end: { dateTime: endDateTime.toISOString(), timeZone: "Pacific/Auckland" },
+            location: locationStr,
+            attendees: attendees.length > 0 ? attendees : undefined,
+          },
+        });
+
+        if (event.data.id) {
+          await storage.updateBooking(bookingId, { googleCalendarEventId: event.data.id } as any);
+          calendarEventCreated = true;
+        }
+      } catch (calErr: any) {
+        console.warn("Google Calendar event creation skipped for booking:", calErr.message);
+      }
+
       let invoiceGenerated = false;
       let invoiceNumber = "";
       try {
@@ -5212,7 +5270,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         console.error("Auto-invoice generation failed:", invoiceErr.message);
       }
 
-      res.json({ success: true, booking: updated, emailSent, isAfterHours: afterHoursFlag, invoiceGenerated, invoiceNumber });
+      res.json({ success: true, booking: updated, emailSent, isAfterHours: afterHoursFlag, invoiceGenerated, invoiceNumber, calendarEventCreated });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

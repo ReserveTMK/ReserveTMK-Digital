@@ -532,11 +532,12 @@ export const bookings = pgTable("bookings", {
   xeroInvoiceId: text("xero_invoice_id"),
   xeroInvoiceNumber: text("xero_invoice_number"),
   xeroInvoiceStatus: text("xero_invoice_status"),
+  googleCalendarEventId: text("google_calendar_event_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const BOOKING_SOURCES = ["manual", "regular_booker_calendar", "public_inquiry"] as const;
+export const BOOKING_SOURCES = ["manual", "regular_booker_calendar", "public_inquiry", "casual"] as const;
 export type BookingSource = typeof BOOKING_SOURCES[number];
 
 export const REGULAR_BOOKER_STATUSES = ["active", "inactive", "suspended"] as const;
