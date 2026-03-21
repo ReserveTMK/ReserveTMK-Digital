@@ -6,3 +6,9 @@ id = "HLe7nWItGiinykkE2mKf8"
 uri = "file://.local/legacy-data-extraction-prompt.txt"
 type = "text"
 title = "Legacy Data Extraction Prompt for Claude"
+
+[[outputs]]
+id = "60N0_cYqDoLOdSuaNxkYP"
+uri = "file://.local/tasks/ReserveTMK-Platform-Brief.md"
+type = "text"
+title = "ReserveTMK Platform Brief"
