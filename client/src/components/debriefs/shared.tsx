@@ -102,6 +102,8 @@ export type WeeklyDebrief = {
     upcomingEventsNextWeek?: number | null;
     actionsCreated?: number | null;
     actionsCompleted?: number | null;
+    averagedDevelopmentMetrics?: Record<string, number> | null;
+    keyQuotes?: string[] | null;
   } | null;
   themesJson: string[] | null;
   sentimentJson: {

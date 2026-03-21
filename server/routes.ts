@@ -8527,10 +8527,22 @@ Return a JSON object with this exact structure:
       if (existing) return res.status(409).json({ message: "A debrief for this week already exists", existing });
 
       const allDebriefs = await storage.getImpactLogs(userId);
+      const allEvents = await storage.getEvents(userId);
+      const eventsById = new Map(allEvents.map(e => [e.id, e]));
+
+      const getDebriefWeekDate = (d: any): Date => {
+        if (d.eventId) {
+          const event = eventsById.get(d.eventId);
+          if (event?.startTime) return new Date(event.startTime);
+        }
+        if (d.confirmedAt) return new Date(d.confirmedAt);
+        return new Date(d.createdAt);
+      };
+
       const confirmedDebriefs = (allDebriefs as any[]).filter((d: any) => {
         if (d.status !== "confirmed") return false;
-        const created = new Date(d.createdAt);
-        return created >= weekStart && created <= weekEnd;
+        const weekDate = getDebriefWeekDate(d);
+        return weekDate >= weekStart && weekDate <= weekEnd;
       });
 
       const allProgrammes = await storage.getProgrammes(userId);
@@ -8579,12 +8591,11 @@ Return a JSON object with this exact structure:
 
       const outstandingDebriefs = (allDebriefs as any[]).filter((d: any) => {
         if (d.status !== "pending_review" && d.status !== "draft") return false;
-        const created = new Date(d.createdAt);
-        return created >= weekStart && created <= weekEnd;
+        const weekDate = getDebriefWeekDate(d);
+        return weekDate >= weekStart && weekDate <= weekEnd;
       }).length;
       const backlogDebriefs = (allDebriefs as any[]).filter((d: any) => d.status === "pending_review" || d.status === "draft").length;
 
-      const allEvents = await storage.getEvents(userId);
       const nextWeekDate = new Date(weekEnd);
       nextWeekDate.setDate(nextWeekDate.getDate() + 1);
       const nextWeekStart = getNZWeekStart(nextWeekDate);
@@ -8602,6 +8613,36 @@ Return a JSON object with this exact structure:
       const actionsCreated = weekActions.length;
       const actionsCompleted = weekActions.filter(a => a.status === "completed").length;
 
+      const metricKeys = ["mindset", "skill", "confidence", "businessConfidence", "systems", "fundingReadiness", "network"];
+      const metricSums: Record<string, number> = {};
+      const metricCounts: Record<string, number> = {};
+      const allKeyQuotes: string[] = [];
+
+      for (const d of confirmedDebriefs) {
+        const reviewed = (d as any).reviewedData || (d as any).rawExtraction;
+        const m = reviewed?.metrics;
+        if (m) {
+          for (const key of metricKeys) {
+            if (m[key] !== undefined && m[key] !== null && typeof m[key] === "number") {
+              metricSums[key] = (metricSums[key] || 0) + m[key];
+              metricCounts[key] = (metricCounts[key] || 0) + 1;
+            }
+          }
+        }
+        if (d.keyQuotes && Array.isArray(d.keyQuotes)) {
+          allKeyQuotes.push(...d.keyQuotes);
+        }
+      }
+
+      const averagedDevelopmentMetrics: Record<string, number> = {};
+      for (const key of metricKeys) {
+        if (metricCounts[key] > 0) {
+          averagedDevelopmentMetrics[key] = Math.round((metricSums[key] / metricCounts[key]) * 10) / 10;
+        }
+      }
+
+      const keyQuotes = allKeyQuotes.slice(0, 5);
+
       const metrics: Record<string, any> = {
         confirmedDebriefs: confirmedDebriefs.length,
         completedProgrammes: completedProgrammes.length,
@@ -8612,6 +8653,8 @@ Return a JSON object with this exact structure:
         upcomingEventsNextWeek: upcomingEvents.length,
         actionsCreated,
         actionsCompleted,
+        averagedDevelopmentMetrics: Object.keys(averagedDevelopmentMetrics).length > 0 ? averagedDevelopmentMetrics : null,
+        keyQuotes: keyQuotes.length > 0 ? keyQuotes : null,
       };
 
       const summaryParts: string[] = [];
@@ -8667,10 +8710,22 @@ Return a JSON object with this exact structure:
       const weekEnd = new Date(existing.weekEndDate);
 
       const allDebriefs = await storage.getImpactLogs(userId);
+      const allEvents = await storage.getEvents(userId);
+      const eventsById = new Map(allEvents.map(e => [e.id, e]));
+
+      const getDebriefWeekDate = (d: any): Date => {
+        if (d.eventId) {
+          const event = eventsById.get(d.eventId);
+          if (event?.startTime) return new Date(event.startTime);
+        }
+        if (d.confirmedAt) return new Date(d.confirmedAt);
+        return new Date(d.createdAt);
+      };
+
       const confirmedDebriefs = (allDebriefs as any[]).filter((d: any) => {
         if (d.status !== "confirmed") return false;
-        const created = new Date(d.createdAt);
-        return created >= weekStart && created <= weekEnd;
+        const weekDate = getDebriefWeekDate(d);
+        return weekDate >= weekStart && weekDate <= weekEnd;
       });
 
       const allProgrammes = await storage.getProgrammes(userId);
@@ -8719,12 +8774,11 @@ Return a JSON object with this exact structure:
 
       const outstandingDebriefs = (allDebriefs as any[]).filter((d: any) => {
         if (d.status !== "pending_review" && d.status !== "draft") return false;
-        const created = new Date(d.createdAt);
-        return created >= weekStart && created <= weekEnd;
+        const weekDate = getDebriefWeekDate(d);
+        return weekDate >= weekStart && weekDate <= weekEnd;
       }).length;
       const backlogDebriefs = (allDebriefs as any[]).filter((d: any) => d.status === "pending_review" || d.status === "draft").length;
 
-      const allEvents = await storage.getEvents(userId);
       const nextWeekDate = new Date(weekEnd);
       nextWeekDate.setDate(nextWeekDate.getDate() + 1);
       const nextWeekStart = getNZWeekStart(nextWeekDate);
@@ -8742,6 +8796,36 @@ Return a JSON object with this exact structure:
       const actionsCreated = weekActions.length;
       const actionsCompleted = weekActions.filter(a => a.status === "completed").length;
 
+      const metricKeys = ["mindset", "skill", "confidence", "businessConfidence", "systems", "fundingReadiness", "network"];
+      const metricSums: Record<string, number> = {};
+      const metricCounts: Record<string, number> = {};
+      const allKeyQuotes: string[] = [];
+
+      for (const d of confirmedDebriefs) {
+        const reviewed = (d as any).reviewedData || (d as any).rawExtraction;
+        const m = reviewed?.metrics;
+        if (m) {
+          for (const key of metricKeys) {
+            if (m[key] !== undefined && m[key] !== null && typeof m[key] === "number") {
+              metricSums[key] = (metricSums[key] || 0) + m[key];
+              metricCounts[key] = (metricCounts[key] || 0) + 1;
+            }
+          }
+        }
+        if (d.keyQuotes && Array.isArray(d.keyQuotes)) {
+          allKeyQuotes.push(...d.keyQuotes);
+        }
+      }
+
+      const averagedDevelopmentMetrics: Record<string, number> = {};
+      for (const key of metricKeys) {
+        if (metricCounts[key] > 0) {
+          averagedDevelopmentMetrics[key] = Math.round((metricSums[key] / metricCounts[key]) * 10) / 10;
+        }
+      }
+
+      const keyQuotes = allKeyQuotes.slice(0, 5);
+
       const metrics: Record<string, any> = {
         confirmedDebriefs: confirmedDebriefs.length,
         completedProgrammes: completedProgrammes.length,
@@ -8752,6 +8836,8 @@ Return a JSON object with this exact structure:
         upcomingEventsNextWeek: upcomingEvents.length,
         actionsCreated,
         actionsCompleted,
+        averagedDevelopmentMetrics: Object.keys(averagedDevelopmentMetrics).length > 0 ? averagedDevelopmentMetrics : null,
+        keyQuotes: keyQuotes.length > 0 ? keyQuotes : null,
       };
 
       const summaryParts: string[] = [];

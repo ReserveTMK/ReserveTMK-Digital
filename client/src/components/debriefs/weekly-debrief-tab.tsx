@@ -15,6 +15,8 @@ import {
   CheckCircle,
   RotateCcw,
   RefreshCw,
+  Quote,
+  TrendingUp,
 } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
@@ -323,6 +325,45 @@ function WeeklyDebriefCard({ debrief }: { debrief: WeeklyDebrief }) {
           </div>
         )}
 
+        {metrics?.averagedDevelopmentMetrics && Object.keys(metrics.averagedDevelopmentMetrics).length > 0 && (
+          <div data-testid={`section-dev-metrics-${debrief.id}`}>
+            <h3 className="text-sm font-semibold text-primary mb-2 flex items-center gap-1.5">
+              <TrendingUp className="w-4 h-4" />
+              Development Metrics (Averaged)
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {Object.entries(metrics.averagedDevelopmentMetrics).map(([key, value]) => (
+                <WeeklyMetricItem
+                  key={key}
+                  label={DEVELOPMENT_METRIC_LABELS[key] || key}
+                  value={`${value}/10`}
+                  id={`metric-dev-${key}-${debrief.id}`}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {metrics?.keyQuotes && metrics.keyQuotes.length > 0 && (
+          <div data-testid={`section-key-quotes-${debrief.id}`}>
+            <h3 className="text-sm font-semibold text-primary mb-2 flex items-center gap-1.5">
+              <Quote className="w-4 h-4" />
+              Impact Highlights
+            </h3>
+            <div className="space-y-2">
+              {metrics.keyQuotes.map((quote, i) => (
+                <div
+                  key={i}
+                  className="text-sm text-muted-foreground italic border-l-2 border-primary/30 pl-3 py-1"
+                  data-testid={`text-key-quote-${debrief.id}-${i}`}
+                >
+                  "{quote}"
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {debrief.generatedSummaryText && (
           <div data-testid={`section-generated-summary-${debrief.id}`}>
             <h3 className="text-sm font-semibold text-primary mb-2">Generated Summary</h3>
@@ -492,6 +533,16 @@ function WeeklyDebriefCard({ debrief }: { debrief: WeeklyDebrief }) {
     </Card>
   );
 }
+
+const DEVELOPMENT_METRIC_LABELS: Record<string, string> = {
+  mindset: "Mindset",
+  skill: "Skill",
+  confidence: "Confidence",
+  businessConfidence: "Business Confidence",
+  systems: "Systems",
+  fundingReadiness: "Funding Readiness",
+  network: "Network",
+};
 
 function WeeklyMetricItem({ label, value, id }: { label: string; value: string; id: string }) {
   return (
