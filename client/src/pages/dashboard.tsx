@@ -4,7 +4,7 @@ import { useEvents } from "@/hooks/use-events";
 import { useAuth } from "@/hooks/use-auth";
 import { useProgrammes } from "@/hooks/use-programmes";
 import { useBookings, useVenues } from "@/hooks/use-bookings";
-import { Calendar as CalendarIcon, ArrowRight, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, PartyPopper, Mic, Building2, Layers, Rocket, Loader2, Users, DollarSign, TrendingUp, TrendingDown, ListChecks } from "lucide-react";
+import { Calendar as CalendarIcon, ArrowRight, Clock, MapPin, Trash2, ChevronLeft, ChevronRight, PartyPopper, Mic, Building2, Layers, Rocket, Loader2, Users, DollarSign, TrendingUp, TrendingDown, ListChecks, ExternalLink } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { format, startOfMonth, endOfMonth, startOfDay, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, addDays, isToday, isBefore, isAfter } from "date-fns";
 import { formatTimeSlot } from "@/lib/utils";
@@ -24,6 +24,18 @@ import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { BarChart, Bar, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import type { Meeting, Contact, Event, Programme, Booking, Project, ProjectTask } from "@shared/schema";
+
+interface GoogleCalendarEvent {
+  id: string;
+  summary: string;
+  description: string;
+  location: string;
+  start: string;
+  end: string;
+  attendees: { email: string; displayName: string; responseStatus: string; organizer?: boolean }[];
+  htmlLink: string;
+  status: string;
+}
 
 const MEETING_STATUS_COLORS: Record<string, string> = {
   scheduled: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
@@ -52,6 +64,11 @@ export default function Dashboard() {
 
   const { data: allTasks } = useQuery<ProjectTask[]>({
     queryKey: ["/api/projects", "all-tasks"],
+  });
+
+  const { data: gcalEvents } = useQuery<GoogleCalendarEvent[]>({
+    queryKey: ["/api/google-calendar/events"],
+    retry: false,
   });
 
   const communityGrowth = useMemo(() => {
@@ -184,6 +201,21 @@ export default function Dashboard() {
       }
     });
 
+    gcalEvents?.forEach((gcal) => {
+      if (!gcal.start) return;
+      const d = new Date(gcal.start);
+      if (isAfter(d, now) && isBefore(d, weekEnd)) {
+        items.push({
+          date: format(d, "yyyy-MM-dd"),
+          name: gcal.summary,
+          time: format(d, "h:mm a"),
+          type: "Google Cal",
+          typeColor: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+          id: `gcal-${gcal.id}`,
+        });
+      }
+    });
+
     items.sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
     const grouped = new Map<string, typeof items>();
     items.forEach((item) => {
@@ -191,7 +223,7 @@ export default function Dashboard() {
       grouped.get(item.date)!.push(item);
     });
     return grouped;
-  }, [meetings, events, programmes, bookings]);
+  }, [meetings, events, programmes, bookings, gcalEvents]);
 
 
   const calendarDays = useMemo(() => {
@@ -258,6 +290,17 @@ export default function Dashboard() {
     return map;
   }, [bookings]);
 
+  const gcalEventsByDate = useMemo(() => {
+    const map = new Map<string, GoogleCalendarEvent[]>();
+    gcalEvents?.forEach((ev) => {
+      if (!ev.start) return;
+      const key = format(new Date(ev.start), "yyyy-MM-dd");
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(ev);
+    });
+    return map;
+  }, [gcalEvents]);
+
   const selectedDayMeetings = useMemo(() => {
     const key = format(selectedDate, "yyyy-MM-dd");
     return meetingsByDate.get(key) || [];
@@ -277,6 +320,11 @@ export default function Dashboard() {
     const key = format(selectedDate, "yyyy-MM-dd");
     return bookingsByDate.get(key) || [];
   }, [selectedDate, bookingsByDate]);
+
+  const selectedDayGcalEvents = useMemo(() => {
+    const key = format(selectedDate, "yyyy-MM-dd");
+    return gcalEventsByDate.get(key) || [];
+  }, [selectedDate, gcalEventsByDate]);
 
   if (!user) return null;
 
@@ -323,10 +371,11 @@ export default function Dashboard() {
                     const dayEvents = eventsByDate.get(key) || [];
                     const dayProgrammes = programmesByDate.get(key) || [];
                     const dayBookings = bookingsByDate.get(key) || [];
+                    const dayGcal = gcalEventsByDate.get(key) || [];
                     const isCurrentMonth = isSameMonth(day, currentMonth);
                     const isSelected = isSameDay(day, selectedDate);
                     const today = isToday(day);
-                    const hasItems = dayMeetings.length + dayEvents.length + dayProgrammes.length + dayBookings.length > 0;
+                    const hasItems = dayMeetings.length + dayEvents.length + dayProgrammes.length + dayBookings.length + dayGcal.length > 0;
 
                     return (
                       <button
@@ -375,6 +424,12 @@ export default function Dashboard() {
                                 className="w-full h-1 rounded-full bg-orange-400"
                               />
                             ))}
+                            {dayGcal.slice(0, 1).map((_, i) => (
+                              <div
+                                key={`g-${i}`}
+                                className="w-full h-1 rounded-full bg-emerald-400"
+                              />
+                            ))}
                           </div>
                         )}
                       </button>
@@ -388,6 +443,9 @@ export default function Dashboard() {
                 <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-violet-400" /> Events</span>
                 <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-indigo-400" /> Programmes</span>
                 <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-orange-400" /> Venue Hire</span>
+                {gcalEvents && gcalEvents.length > 0 && (
+                  <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-400" /> Google Calendar</span>
+                )}
               </div>
 
               <Card className="p-4 md:p-6">
@@ -397,7 +455,7 @@ export default function Dashboard() {
                   </h3>
                 </div>
 
-                {(selectedDayMeetings.length > 0 || selectedDayEvents.length > 0 || selectedDayProgrammes.length > 0 || selectedDayBookings.length > 0) ? (
+                {(selectedDayMeetings.length > 0 || selectedDayEvents.length > 0 || selectedDayProgrammes.length > 0 || selectedDayBookings.length > 0 || selectedDayGcalEvents.length > 0) ? (
                   <div className="space-y-3">
                     {selectedDayMeetings.map((meeting) => {
                       const contact = contacts?.find((c: Contact) => c.id === meeting.contactId);
@@ -552,6 +610,53 @@ export default function Dashboard() {
                         </div>
                       );
                     })}
+                    {selectedDayGcalEvents.map((gcal) => (
+                      <a
+                        key={`gcal-${gcal.id}`}
+                        href={gcal.htmlLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block w-full text-left p-3 rounded-lg border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors"
+                        data-testid={`card-dashboard-gcal-${gcal.id}`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="w-8 h-8 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 flex items-center justify-center shrink-0 mt-0.5">
+                            <CalendarIcon className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium text-sm truncate">{gcal.summary}</span>
+                              <Badge variant="secondary" className="text-xs bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+                                Google Cal
+                              </Badge>
+                              <ExternalLink className="w-3 h-3 text-muted-foreground shrink-0" />
+                            </div>
+                            <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                              {gcal.start && (
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  {format(new Date(gcal.start), "h:mm a")}
+                                  {gcal.end ? ` - ${format(new Date(gcal.end), "h:mm a")}` : ""}
+                                </span>
+                              )}
+                              {gcal.attendees && gcal.attendees.length > 0 && (
+                                <span className="flex items-center gap-1">
+                                  <Users className="w-3 h-3" />
+                                  {gcal.attendees.slice(0, 3).map(a => a.displayName || a.email.split("@")[0]).join(", ")}
+                                  {gcal.attendees.length > 3 ? ` +${gcal.attendees.length - 3}` : ""}
+                                </span>
+                              )}
+                            </div>
+                            {gcal.location && (
+                              <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+                                <MapPin className="w-3 h-3" />
+                                {gcal.location}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </a>
+                    ))}
                   </div>
                 ) : (
                   <div className="text-center py-8 text-muted-foreground text-sm">
