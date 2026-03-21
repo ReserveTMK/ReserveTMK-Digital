@@ -22,9 +22,11 @@ import {
   HeartHandshake,
   Search,
   Pencil,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
-import type { ImpactLog } from "@shared/schema";
-import { useMutation } from "@tanstack/react-query";
+import type { ImpactLog, Event } from "@shared/schema";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { ReviewView } from "@/components/debriefs/review-view";
 import { CalendarDebriefTab } from "@/components/debriefs/calendar-debrief-tab";
 import { WeeklyDebriefTab } from "@/components/debriefs/weekly-debrief-tab";
@@ -180,6 +182,27 @@ function ListView() {
   );
 }
 
+function getGroupingDate(log: ImpactLog, eventsMap: Map<number, Event>): Date {
+  if (log.eventId) {
+    const event = eventsMap.get(log.eventId);
+    if (event?.startTime) {
+      return new Date(event.startTime);
+    }
+  }
+  if (log.confirmedAt) return new Date(log.confirmedAt);
+  return new Date(log.createdAt || Date.now());
+}
+
+function getMonthKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function formatMonthHeading(key: string): string {
+  const [year, month] = key.split("-");
+  const date = new Date(parseInt(year), parseInt(month) - 1, 1);
+  return date.toLocaleDateString("en-NZ", { month: "long", year: "numeric" });
+}
+
 function ArchiveView({ logs, isLoading, onSelect, onDelete }: {
   logs: ImpactLog[];
   isLoading: boolean;
@@ -188,7 +211,20 @@ function ArchiveView({ logs, isLoading, onSelect, onDelete }: {
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [reanalysingId, setReanalysingId] = useState<number | null>(null);
+  const [collapsedMonths, setCollapsedMonths] = useState<Set<string>>(new Set());
   const { toast } = useToast();
+
+  const { data: eventsData } = useQuery<Event[]>({ queryKey: ["/api/events"] });
+
+  const eventsMap = useMemo(() => {
+    const map = new Map<number, Event>();
+    if (eventsData) {
+      for (const event of eventsData) {
+        map.set(event.id, event);
+      }
+    }
+    return map;
+  }, [eventsData]);
 
   const reanalyseMutation = useMutation({
     mutationFn: async (log: ImpactLog) => {
@@ -216,6 +252,39 @@ function ArchiveView({ logs, isLoading, onSelect, onDelete }: {
     );
   }, [logs, searchQuery]);
 
+  const groupedByMonth = useMemo(() => {
+    const groups = new Map<string, ImpactLog[]>();
+    for (const log of filteredLogs) {
+      const date = getGroupingDate(log, eventsMap);
+      const key = getMonthKey(date);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(log);
+    }
+    const sortedKeys = Array.from(groups.keys()).sort((a, b) => b.localeCompare(a));
+    return sortedKeys.map(key => ({
+      key,
+      label: formatMonthHeading(key),
+      logs: groups.get(key)!,
+    }));
+  }, [filteredLogs, eventsMap]);
+
+  const toggleMonth = (key: string) => {
+    setCollapsedMonths(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -231,17 +300,55 @@ function ArchiveView({ logs, isLoading, onSelect, onDelete }: {
         </div>
       </div>
 
-      <DebriefCardList
-        logs={filteredLogs}
-        isLoading={isLoading}
-        onSelect={onSelect}
-        onDelete={onDelete}
-        onCreateNew={() => {}}
-        onReanalyse={(log) => reanalyseMutation.mutate(log)}
-        reanalysingId={reanalysingId}
-        emptyTitle={searchQuery ? "No matching debriefs" : "No completed debriefs yet"}
-        emptyDescription={searchQuery ? "Try a different search term." : "Complete debriefs from the Queue to see them here."}
-      />
+      {filteredLogs.length === 0 ? (
+        <DebriefCardList
+          logs={[]}
+          isLoading={false}
+          onSelect={onSelect}
+          onDelete={onDelete}
+          onCreateNew={() => {}}
+          emptyTitle={searchQuery ? "No matching debriefs" : "No completed debriefs yet"}
+          emptyDescription={searchQuery ? "Try a different search term." : "Complete debriefs from the Queue to see them here."}
+        />
+      ) : (
+        <div className="space-y-6">
+          {groupedByMonth.map(({ key, label, logs: monthLogs }) => {
+            const isCollapsed = collapsedMonths.has(key);
+            return (
+              <div key={key} data-testid={`section-month-${key}`}>
+                <button
+                  onClick={() => toggleMonth(key)}
+                  className="flex items-center gap-2 w-full text-left mb-3 group"
+                  data-testid={`button-toggle-month-${key}`}
+                >
+                  {isCollapsed ? (
+                    <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 text-muted-foreground" />
+                  )}
+                  <h2 className="text-lg font-semibold font-display" data-testid={`text-month-heading-${key}`}>
+                    {label}
+                  </h2>
+                  <span className="text-sm text-muted-foreground" data-testid={`text-month-count-${key}`}>
+                    ({monthLogs.length})
+                  </span>
+                </button>
+                {!isCollapsed && (
+                  <DebriefCardList
+                    logs={monthLogs}
+                    isLoading={false}
+                    onSelect={onSelect}
+                    onDelete={onDelete}
+                    onCreateNew={() => {}}
+                    onReanalyse={(log) => reanalyseMutation.mutate(log)}
+                    reanalysingId={reanalysingId}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
