@@ -2557,6 +2557,51 @@ export async function registerRoutes(
         userId,
       });
       const log = await storage.createImpactLog(input);
+
+      if (input.eventId) {
+        try {
+          const event = await storage.getEvent(input.eventId);
+          if (event && event.calendarAttendees && Array.isArray(event.calendarAttendees)) {
+            const userContacts = await storage.getContacts(userId);
+            const emailToContact = new Map<string, { id: number; name: string }>();
+            for (const c of userContacts) {
+              if (c.email) {
+                const emails = c.email.split(/[,;]\s*/).map((e: string) => e.trim().toLowerCase()).filter((e: string) => e.includes("@"));
+                for (const em of emails) {
+                  emailToContact.set(em, { id: c.id, name: c.name });
+                }
+              }
+            }
+
+            for (const attendee of event.calendarAttendees as Array<{ email: string; displayName?: string; responseStatus?: string; organizer?: boolean }>) {
+              if (!attendee.email || typeof attendee.email !== "string") continue;
+              const normalizedEmail = attendee.email.trim().toLowerCase();
+              if (!normalizedEmail.includes("@")) continue;
+              const matchedContact = emailToContact.get(normalizedEmail);
+              if (matchedContact) {
+                const role = (attendee.organizer === true || attendee.responseStatus === "accepted") ? "primary" : "mentioned";
+                try {
+                  const existingLink = await db.select().from(impactLogContacts).where(
+                    and(eq(impactLogContacts.impactLogId, log.id), eq(impactLogContacts.contactId, matchedContact.id))
+                  );
+                  if (existingLink.length === 0) {
+                    await storage.addImpactLogContact({
+                      impactLogId: log.id,
+                      contactId: matchedContact.id,
+                      role,
+                    });
+                  }
+                } catch (linkErr) {
+                  console.warn(`Failed to auto-link contact ${matchedContact.id} to debrief ${log.id}:`, linkErr);
+                }
+              }
+            }
+          }
+        } catch (autoLinkErr) {
+          console.warn("Auto-link calendar attendees failed:", autoLinkErr);
+        }
+      }
+
       res.status(201).json(log);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -3596,6 +3641,18 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
           });
 
           for (const e of (response.data.items || [])) {
+            if (e.status === "cancelled") continue;
+
+            const isOrganizer = e.organizer?.self === true;
+            const userAttendee = (e.attendees || []).find((a: any) => a.self === true);
+
+            if (userAttendee) {
+              const rs = userAttendee.responseStatus;
+              if (rs === "declined" || rs === "needsAction") continue;
+            } else if (e.attendees && e.attendees.length > 0 && !isOrganizer) {
+              continue;
+            }
+
             const dedupeKey = `${(e.summary || "").trim().toLowerCase()}|${e.start?.dateTime || e.start?.date || ""}|${e.end?.dateTime || e.end?.date || ""}`;
             if (seenKeys.has(dedupeKey)) continue;
             seenKeys.add(dedupeKey);
@@ -3611,6 +3668,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
                 email: a.email,
                 displayName: a.displayName || a.email,
                 responseStatus: a.responseStatus,
+                organizer: a.organizer === true,
               })),
               htmlLink: e.htmlLink,
               status: e.status,
@@ -3742,7 +3800,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.post("/api/google-calendar/reconcile", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { googleCalendarEventId, summary, description, location, start, end, type } = req.body;
+      const { googleCalendarEventId, summary, description, location, start, end, type, attendees } = req.body;
 
       if (!googleCalendarEventId || !summary || !start || !end) {
         return res.status(400).json({ message: "Missing required fields" });
@@ -3752,6 +3810,12 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       if (existing) {
         return res.status(409).json({ message: "This calendar event is already linked to an app event", event: existing });
       }
+
+      const calendarAttendees = Array.isArray(attendees)
+        ? attendees
+            .filter((a: any) => a && typeof a.email === "string" && a.email.includes("@"))
+            .map((a: any) => ({ email: a.email, displayName: a.displayName || a.email, responseStatus: a.responseStatus, organizer: a.organizer === true }))
+        : null;
 
       const event = await storage.createEvent({
         userId,
@@ -3763,7 +3827,8 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         description: description || null,
         googleCalendarEventId,
         tags: [],
-        attendeeCount: null,
+        attendeeCount: calendarAttendees ? calendarAttendees.length : null,
+        calendarAttendees,
       });
 
       res.status(201).json(event);

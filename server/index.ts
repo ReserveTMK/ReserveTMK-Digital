@@ -247,6 +247,15 @@ app.use((req, res, next) => {
     console.warn("[migration] Location instructions structure migration skipped:", migrationErr.message);
   }
 
+  try {
+    const { db: migDb } = await import("./db");
+    const { sql: migSql } = await import("drizzle-orm");
+    await migDb.execute(migSql`ALTER TABLE events ADD COLUMN IF NOT EXISTS calendar_attendees jsonb`);
+    console.log("[migration] events.calendar_attendees column ensured");
+  } catch (migrationErr: any) {
+    console.warn("[migration] calendar_attendees migration skipped:", migrationErr.message);
+  }
+
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     if (res.headersSent) {
       return next(err);

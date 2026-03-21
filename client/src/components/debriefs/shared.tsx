@@ -61,6 +61,7 @@ export type QueueItem = {
   attendeeCount: number | null;
   description: string | null;
   linkedProgrammeId: number | null;
+  calendarAttendees: Array<{ email: string; displayName?: string; responseStatus?: string; organizer?: boolean }> | null;
   queueStatus: "overdue" | "due" | "in_progress";
   existingDebriefId: number | null;
   existingDebriefStatus: string | null;
@@ -76,6 +77,7 @@ export type DismissedQueueItem = {
   attendeeCount: number | null;
   description: string | null;
   linkedProgrammeId: number | null;
+  calendarAttendees: Array<{ email: string; displayName?: string; responseStatus?: string; organizer?: boolean }> | null;
   queueStatus: "dismissed";
   existingDebriefId: null;
   existingDebriefStatus: null;

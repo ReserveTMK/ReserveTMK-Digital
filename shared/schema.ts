@@ -229,6 +229,7 @@ export const events = pgTable("events", {
   requiresDebrief: boolean("requires_debrief").default(false),
   eventStatus: text("event_status").default("active"), // 'active', 'cancelled'
   debriefSkippedReason: text("debrief_skipped_reason"),
+  calendarAttendees: jsonb("calendar_attendees").$type<Array<{ email: string; displayName?: string; responseStatus?: string; organizer?: boolean }>>(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

@@ -88,7 +88,7 @@ interface GoogleCalendarEvent {
   location: string;
   start: string;
   end: string;
-  attendees: { email: string; displayName: string; responseStatus: string }[];
+  attendees: { email: string; displayName: string; responseStatus: string; organizer?: boolean }[];
   htmlLink: string;
   status: string;
 }
@@ -559,7 +559,7 @@ function EventCard({
   const removeAttendance = useRemoveAttendance(appEventId);
 
   const importGcalMutation = useMutation({
-    mutationFn: async (data: { gcalId: string; name: string; type: string; start: string; end: string; location?: string; description?: string }) => {
+    mutationFn: async (data: { gcalId: string; name: string; type: string; start: string; end: string; location?: string; description?: string; attendees?: Array<{ email: string; displayName?: string; responseStatus?: string; organizer?: boolean }> }) => {
       const res = await apiRequest("POST", "/api/events", {
         name: data.name,
         type: data.type,
@@ -568,6 +568,8 @@ function EventCard({
         location: data.location || null,
         description: data.description || null,
         googleCalendarEventId: data.gcalId,
+        calendarAttendees: data.attendees || null,
+        attendeeCount: data.attendees?.length || null,
       });
       return res.json();
     },
@@ -603,6 +605,7 @@ function EventCard({
         end: entry.gcal.end,
         location: entry.gcal.location,
         description: entry.gcal.description,
+        attendees: entry.gcal.attendees,
       });
       return result.id;
     } catch {

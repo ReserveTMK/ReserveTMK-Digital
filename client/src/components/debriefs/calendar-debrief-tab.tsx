@@ -252,6 +252,7 @@ export function CalendarDebriefTab({ reconcileId }: { reconcileId: string | null
                         <span className="flex items-center gap-1">
                           <Calendar className="w-3.5 h-3.5" />
                           {format(new Date(item.startTime), "d MMM yyyy, h:mm a")}
+                          {item.endTime && ` – ${format(new Date(item.endTime), "h:mm a")}`}
                         </span>
                         {item.location && (
                           <span className="flex items-center gap-1">
@@ -259,12 +260,18 @@ export function CalendarDebriefTab({ reconcileId }: { reconcileId: string | null
                             {item.location}
                           </span>
                         )}
-                        {item.attendeeCount && (
+                        {(item.calendarAttendees && item.calendarAttendees.length > 0) ? (
+                          <span className="flex items-center gap-1" data-testid={`queue-attendees-${item.id}`}>
+                            <Users className="w-3.5 h-3.5" />
+                            {item.calendarAttendees.slice(0, 3).map(a => a.displayName || a.email.split("@")[0]).join(", ")}
+                            {item.calendarAttendees.length > 3 && ` +${item.calendarAttendees.length - 3} more`}
+                          </span>
+                        ) : item.attendeeCount ? (
                           <span className="flex items-center gap-1">
                             <Users className="w-3.5 h-3.5" />
                             {item.attendeeCount} attendees
                           </span>
-                        )}
+                        ) : null}
                         {item.linkedProgrammeId && (
                           <span className="flex items-center gap-1 text-indigo-600 dark:text-indigo-400">
                             <Link2 className="w-3.5 h-3.5" />
@@ -275,6 +282,11 @@ export function CalendarDebriefTab({ reconcileId }: { reconcileId: string | null
                           {formatDistanceToNow(new Date(item.endTime || item.startTime), { addSuffix: true })}
                         </span>
                       </div>
+                      {item.description && (
+                        <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2" data-testid={`queue-description-${item.id}`}>
+                          {item.description}
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
                       <Button
@@ -583,11 +595,27 @@ function ReconcileDialog({ event, open, onClose }: { event: QueueItem | null; op
 
         {step === "input" && (
           <div className="space-y-4">
-            <div className="p-3 rounded-lg bg-muted/50">
+            <div className="p-3 rounded-lg bg-muted/50 space-y-1.5">
               <p className="font-medium text-sm">{event.name}</p>
               <p className="text-xs text-muted-foreground">
-                {format(new Date(event.startTime), "d MMM yyyy, h:mm a")} · {event.type}
+                {format(new Date(event.startTime), "d MMM yyyy, h:mm a")}
+                {event.endTime && ` – ${format(new Date(event.endTime), "h:mm a")}`}
+                {" · "}{event.type}
               </p>
+              {event.location && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <MapPin className="w-3 h-3" /> {event.location}
+                </p>
+              )}
+              {event.calendarAttendees && event.calendarAttendees.length > 0 && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Users className="w-3 h-3" />
+                  {event.calendarAttendees.map(a => a.displayName || a.email.split("@")[0]).join(", ")}
+                </p>
+              )}
+              {event.description && (
+                <p className="text-xs text-muted-foreground line-clamp-3 mt-1">{event.description}</p>
+              )}
             </div>
 
             <div className="space-y-2">

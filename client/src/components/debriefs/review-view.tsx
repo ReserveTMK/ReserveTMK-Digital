@@ -747,7 +747,7 @@ export function ReviewView({ id }: { id: number }) {
       }
       const extractedPeople = (extraction.peopleIdentified || extraction.people || []).map((p: any) => ({
         ...p,
-        section: p.section || (["primary", "mentor", "mentee"].includes(p.role) ? "primary" : "secondary"),
+        section: p.section || (["primary", "mentor", "mentee", "subject"].includes(p.role) ? "primary" : "secondary"),
       }));
       if (linkedContacts && linkedContacts.length > 0) {
         const contactMap = new Map((contacts || []).map((c: any) => [c.id, c]));
@@ -901,7 +901,7 @@ export function ReviewView({ id }: { id: number }) {
         const linkErrors: string[] = [];
         for (const person of people) {
           if (person.contactId) {
-            const role = person.section === "primary" || (!person.section && ["primary", "mentor", "mentee"].includes(person.role)) ? "primary" : "mentioned";
+            const role = person.section === "primary" || (!person.section && ["primary", "mentor", "mentee", "subject"].includes(person.role)) ? "primary" : "mentioned";
             try {
               await apiRequest('POST', `/api/impact-logs/${id}/contacts`, {
                 impactLogId: id,
@@ -1877,7 +1877,7 @@ export function ReviewView({ id }: { id: number }) {
                                       pp.name?.toLowerCase() === p.name?.toLowerCase() ||
                                       fuzzyMatch(pp.name || "", p.name || "") >= 60
                                     );
-                                    const derivedSection = existing?.section || p.section || (["primary", "mentor", "mentee"].includes(p.role || existing?.role) ? "primary" : "secondary");
+                                    const derivedSection = existing?.section || p.section || (["primary", "mentor", "mentee", "subject"].includes(p.role || existing?.role) ? "primary" : "secondary");
                                     const derivedRole = derivedSection === "primary" ? "primary" : "mentioned";
                                     if (existing) {
                                       const idx = people.indexOf(existing);
@@ -2056,7 +2056,7 @@ export function ReviewView({ id }: { id: number }) {
                 <PeopleSection
                   label="Primary"
                   description="Main people involved"
-                  people={people.filter((p: any) => p.section === "primary" || (!p.section && ["primary", "mentor", "mentee"].includes(p.role)))}
+                  people={people.filter((p: any) => p.section === "primary" || (!p.section && ["primary", "mentor", "mentee", "subject"].includes(p.role)))}
                   allPeople={people}
                   setPeople={setPeople}
                   contacts={contacts || []}
@@ -2076,7 +2076,7 @@ export function ReviewView({ id }: { id: number }) {
                 <PeopleSection
                   label="Mentioned"
                   description="Others referenced in the debrief"
-                  people={people.filter((p: any) => p.section === "secondary" || (!p.section && !["primary", "mentor", "mentee"].includes(p.role)))}
+                  people={people.filter((p: any) => p.section === "secondary" || (!p.section && !["primary", "mentor", "mentee", "subject"].includes(p.role)))}
                   allPeople={people}
                   setPeople={setPeople}
                   contacts={contacts || []}
@@ -2764,7 +2764,7 @@ function PeopleSection({ label, description, people, allPeople, setPeople, conta
                   const person = updated[globalIdx];
                   updated[globalIdx] = { ...person, contactId, name };
                   setPeople(updated);
-                  const role = person.section === "primary" || (!person.section && ["primary", "mentor", "mentee"].includes(person.role)) ? "primary" : "mentioned";
+                  const role = person.section === "primary" || (!person.section && ["primary", "mentor", "mentee", "subject"].includes(person.role)) ? "primary" : "mentioned";
                   if (onPersistLink) onPersistLink(contactId, role);
                   toast({ title: "Linked", description: `Linked to ${name}` });
                 }}
