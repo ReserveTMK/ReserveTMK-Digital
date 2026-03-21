@@ -779,3 +779,112 @@ export async function sendSessionNotesEmail(
 
   await sendEmail(menteeEmail, `Session Notes \u2014 ${dateStr}`, htmlBody);
 }
+
+export async function sendVenueEnquiryAlert(booking: {
+  userId: string;
+  bookerName?: string | null;
+  bookerEmail?: string | null;
+  bookerPhone?: string | null;
+  title?: string | null;
+  classification?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  notes?: string | null;
+  venueId?: number | null;
+  venueIds?: number[] | null;
+  source?: string | null;
+}): Promise<void> {
+  try {
+    const allVenues = await storage.getVenues(booking.userId);
+    const idsToResolve = booking.venueIds && booking.venueIds.length > 0
+      ? booking.venueIds
+      : booking.venueId ? [booking.venueId] : [];
+    const venueNames = idsToResolve
+      .map((id) => allVenues.find((v) => v.id === id)?.name)
+      .filter(Boolean) as string[];
+    const venueName = venueNames.length > 0 ? venueNames.join(", ") : "Unknown Venue";
+
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+    const baseUrl = getBaseUrl();
+    const sourceLabel = booking.source === "booker_portal" ? "Booker Portal" : "Casual Hire Form";
+    const dateStr = booking.startDate ? esc(formatDate(booking.startDate)) : "Not specified";
+    const timeStr = [booking.startTime, booking.endTime].filter(Boolean).map(esc).join(" – ") || "Not specified";
+    const safeBookerName = booking.bookerName ? esc(booking.bookerName) : "Not provided";
+    const safeBookerEmail = booking.bookerEmail ? esc(booking.bookerEmail) : "Not provided";
+    const safeBookerPhone = booking.bookerPhone ? esc(booking.bookerPhone) : null;
+    const safeVenueName = esc(venueName);
+    const safeClassification = booking.classification ? esc(booking.classification) : null;
+    const safeTitle = booking.title ? esc(booking.title) : null;
+    const safeNotes = booking.notes ? esc(booking.notes) : null;
+
+    const htmlBody = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0; padding:0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f4f4f5;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f4f5; padding: 20px 0;">
+  <tr><td align="center">
+    <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden;">
+      <tr><td style="background-color: #f59e0b; padding: 20px 30px;">
+        <h1 style="margin: 0; color: #ffffff; font-size: 20px;">New Venue Booking Enquiry</h1>
+        <p style="margin: 5px 0 0; color: #fef3c7; font-size: 14px;">Submitted via ${sourceLabel}</p>
+      </td></tr>
+      <tr><td style="padding: 25px 30px;">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr><td style="padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
+            <strong style="color: #666; font-size: 13px;">Booker Name</strong><br>
+            <span style="font-size: 15px;">${safeBookerName}</span>
+          </td></tr>
+          <tr><td style="padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
+            <strong style="color: #666; font-size: 13px;">Email</strong><br>
+            <span style="font-size: 15px;">${safeBookerEmail}</span>
+          </td></tr>
+          ${safeBookerPhone ? `<tr><td style="padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
+            <strong style="color: #666; font-size: 13px;">Phone</strong><br>
+            <span style="font-size: 15px;">${safeBookerPhone}</span>
+          </td></tr>` : ""}
+          <tr><td style="padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
+            <strong style="color: #666; font-size: 13px;">Venue${venueNames.length > 1 ? "s" : ""}</strong><br>
+            <span style="font-size: 15px;">${safeVenueName}</span>
+          </td></tr>
+          ${safeClassification ? `<tr><td style="padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
+            <strong style="color: #666; font-size: 13px;">Classification</strong><br>
+            <span style="font-size: 15px;">${safeClassification}</span>
+          </td></tr>` : ""}
+          ${safeTitle ? `<tr><td style="padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
+            <strong style="color: #666; font-size: 13px;">Event / Purpose</strong><br>
+            <span style="font-size: 15px;">${safeTitle}</span>
+          </td></tr>` : ""}
+          <tr><td style="padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
+            <strong style="color: #666; font-size: 13px;">Date</strong><br>
+            <span style="font-size: 15px;">${dateStr}</span>
+          </td></tr>
+          <tr><td style="padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
+            <strong style="color: #666; font-size: 13px;">Time</strong><br>
+            <span style="font-size: 15px;">${timeStr}</span>
+          </td></tr>
+          ${safeNotes ? `<tr><td style="padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
+            <strong style="color: #666; font-size: 13px;">Notes</strong><br>
+            <span style="font-size: 15px;">${safeNotes}</span>
+          </td></tr>` : ""}
+        </table>
+        <div style="margin-top: 20px; text-align: center;">
+          <a href="${baseUrl}/spaces?tab=venue-hire" style="display: inline-block; padding: 12px 24px; background-color: #f59e0b; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">Review in Dashboard</a>
+        </div>
+      </td></tr>
+      <tr><td style="padding: 15px 30px; border-top: 1px solid #eee;">
+        <p style="margin: 0; color: #999; font-size: 12px;">Reserve Tāmaki — Venue Bookings</p>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>`;
+
+    await sendEmail("kiaora@reservetmk.co.nz", `New Venue Enquiry — ${safeBookerName} — ${safeVenueName}`, htmlBody);
+  } catch (error) {
+    console.error("[Email] Failed to send venue enquiry alert:", error);
+  }
+}

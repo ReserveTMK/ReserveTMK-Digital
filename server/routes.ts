@@ -6027,6 +6027,27 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         attendeeCount: attendeeCount || null,
       } as any);
 
+      try {
+        const { sendVenueEnquiryAlert } = await import("./email");
+        await sendVenueEnquiryAlert({
+          userId: ownerUserId,
+          bookerName: name.trim(),
+          bookerEmail: email,
+          bookerPhone: phone || null,
+          title: `${classification} - Casual Enquiry`,
+          classification,
+          startDate,
+          startTime,
+          endTime,
+          notes: String(bookingSummary).trim() || null,
+          venueId: resolvedVenueIds[0],
+          venueIds: resolvedVenueIds,
+          source: "casual_hire",
+        });
+      } catch (emailErr) {
+        console.error("[Email] Venue enquiry alert failed (casual hire):", emailErr);
+      }
+
       res.json({ success: true, bookingId: booking.id });
     } catch (err: any) {
       console.error("Casual hire booking error:", err);
@@ -12686,6 +12707,36 @@ Rules:
         usePackageCredit: shouldUsePackageCredit,
         discountPercentage,
       } as any);
+
+      try {
+        const { sendVenueEnquiryAlert } = await import("./email");
+        let bookerContactEmail: string | null = null;
+        let bookerContactPhone: string | null = null;
+        if (booker.contactId) {
+          const contact = await storage.getContact(booker.contactId);
+          if (contact) {
+            bookerContactEmail = contact.email || null;
+            bookerContactPhone = contact.phone || null;
+          }
+        }
+        await sendVenueEnquiryAlert({
+          userId: booker.userId,
+          bookerName: bookerName || booker.name || null,
+          bookerEmail: bookerContactEmail,
+          bookerPhone: bookerContactPhone,
+          title: `${classification} - Portal Booking${titleSuffix}`,
+          classification,
+          startDate,
+          startTime,
+          endTime,
+          notes: String(bookingSummary).trim() || null,
+          venueId: resolvedVenueIds[0],
+          venueIds: resolvedVenueIds,
+          source: "booker_portal",
+        });
+      } catch (emailErr) {
+        console.error("[Email] Venue enquiry alert failed (booker portal):", emailErr);
+      }
 
       res.json({ ...booking, allowanceWarning });
     } catch (err: any) {
