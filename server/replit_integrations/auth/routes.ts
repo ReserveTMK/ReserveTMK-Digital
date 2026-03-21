@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { authStorage } from "./storage";
-import { isAuthenticated, isAdmin } from "./replitAuth";
+import { isAuthenticated, isAdmin } from "./googleAuth";
 import { z } from "zod";
 
 export function registerAuthRoutes(app: Express): void {
