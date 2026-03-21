@@ -3,6 +3,7 @@ import { db } from "../../db";
 import { eq, sql } from "drizzle-orm";
 
 const ADMIN_USER_ID = "54568936";
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL?.toLowerCase().trim() || "";
 
 export interface IAuthStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -24,7 +25,8 @@ class AuthStorage implements IAuthStorage {
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
-    const isAdminUser = userData.id === ADMIN_USER_ID;
+    const isAdminUser = userData.id === ADMIN_USER_ID ||
+      (ADMIN_EMAIL && userData.email?.toLowerCase().trim() === ADMIN_EMAIL);
     try {
       const [user] = await db
         .insert(users)

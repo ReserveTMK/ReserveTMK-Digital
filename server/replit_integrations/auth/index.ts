@@ -1,5 +1,5 @@
-export { setupAuth, isAuthenticated, isAdmin, getSession } from "./clerkAuth";
+export { setupAuth, isAuthenticated, isAdmin, getSession } from "./googleAuth";
 export { authStorage, type IAuthStorage } from "./storage";
 
-// Stub for compatibility — Clerk handles auth routes inside setupAuth
+// Stub for compatibility
 export function registerAuthRoutes() {}
