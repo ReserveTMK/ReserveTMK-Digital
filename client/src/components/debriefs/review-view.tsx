@@ -250,7 +250,11 @@ export function ReviewView({ id }: { id: number }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  const fromQueue = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("from") === "queue";
+  const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const fromSource = searchParams.get("from");
+  const fromQueue = fromSource === "queue";
+  const fromCalendar = fromSource === "calendar";
+  const calendarDate = searchParams.get("date");
   const [autoAnalyzeTriggered, setAutoAnalyzeTriggered] = useState(false);
 
   const impactLog = log as ImpactLog | undefined;
@@ -940,6 +944,8 @@ export function ReviewView({ id }: { id: number }) {
       queryClient.invalidateQueries({ queryKey: ['/api/impact-logs'] });
       queryClient.invalidateQueries({ queryKey: ['/api/impact-logs', id] });
       queryClient.invalidateQueries({ queryKey: ['/api/impact-logs', id, 'tags'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/events'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/events/needs-debrief'] });
 
       const wasAlreadyConfirmed = impactLog.status === "confirmed";
       toast({
@@ -952,9 +958,17 @@ export function ReviewView({ id }: { id: number }) {
       });
 
       if (status === "confirmed") {
-        setLocation(fromQueue ? "/debriefs?tab=queue" : "/debriefs?tab=archive");
-      } else if (status === "draft" && fromQueue) {
-        setLocation("/debriefs?tab=queue");
+        if (fromCalendar) {
+          setLocation(calendarDate ? `/calendar?date=${calendarDate}` : "/calendar");
+        } else {
+          setLocation(fromQueue ? "/debriefs?tab=queue" : "/debriefs?tab=archive");
+        }
+      } else if (status === "draft" && (fromQueue || fromCalendar)) {
+        if (fromCalendar) {
+          setLocation(calendarDate ? `/calendar?date=${calendarDate}` : "/calendar");
+        } else {
+          setLocation("/debriefs?tab=queue");
+        }
       }
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Failed to save", variant: "destructive" });
@@ -975,9 +989,9 @@ export function ReviewView({ id }: { id: number }) {
           <div className="max-w-6xl mx-auto">
             <Card className="p-12 text-center">
               <h3 className="text-lg font-semibold mb-2">Debrief not found</h3>
-              <Button variant="outline" onClick={() => setLocation("/debriefs")} data-testid="button-back-to-list">
+              <Button variant="outline" onClick={() => setLocation(fromCalendar ? (calendarDate ? `/calendar?date=${calendarDate}` : "/calendar") : "/debriefs")} data-testid="button-back-to-list">
                 <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to Debriefs
+                {fromCalendar ? "Back to Calendar" : "Back to Debriefs"}
               </Button>
             </Card>
           </div>
@@ -1032,7 +1046,7 @@ export function ReviewView({ id }: { id: number }) {
     <main className="flex-1 p-4 md:p-8 pb-36 md:pb-24 overflow-y-auto">
         <div className="max-w-7xl mx-auto space-y-6">
           <div className="flex items-center gap-4 flex-wrap">
-            <Button variant="ghost" size="icon" onClick={() => setLocation("/debriefs")} data-testid="button-back">
+            <Button variant="ghost" size="icon" onClick={() => setLocation(fromCalendar ? (calendarDate ? `/calendar?date=${calendarDate}` : "/calendar") : "/debriefs")} data-testid="button-back">
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <div className="flex-1 min-w-0">

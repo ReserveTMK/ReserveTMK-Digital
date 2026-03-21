@@ -1193,8 +1193,19 @@ function EventCard({
 export default function CalendarPage() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const initialDate = useMemo(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const dateParam = params.get("date");
+      if (dateParam) {
+        const parsed = new Date(dateParam + "T00:00:00");
+        if (!isNaN(parsed.getTime())) return parsed;
+      }
+    }
+    return new Date();
+  }, []);
+  const [currentMonth, setCurrentMonth] = useState(initialDate);
+  const [selectedDate, setSelectedDate] = useState<Date>(initialDate);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ type: "gcal" | "app"; event: GoogleCalendarEvent | AppEvent } | null>(null);
   const [deleteReason, setDeleteReason] = useState("");
@@ -1539,8 +1550,11 @@ export default function CalendarPage() {
     },
     onSuccess: (log: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/impact-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/events/needs-debrief"] });
       toast({ title: "Debrief created", description: "You can now record or type your notes." });
-      navigate(`/debriefs/${log.id}`);
+      const dateParam = format(selectedDate, "yyyy-MM-dd");
+      navigate(`/debriefs/${log.id}?from=calendar&date=${dateParam}`);
     },
     onError: (err: any) => {
       toast({ title: "Failed to create debrief", description: err.message, variant: "destructive" });
@@ -2427,7 +2441,10 @@ export default function CalendarPage() {
                       isDebriefPending={createDebriefMutation.isPending}
                       isMarkedNotPersonal={entry.gcal ? notPersonalIds.has(entry.gcal.id) : false}
                       debriefInfo={getDebriefInfo(entry)}
-                      onViewDebrief={(debriefId) => navigate(`/debriefs/${debriefId}`)}
+                      onViewDebrief={(debriefId) => {
+                        const dateParam = format(selectedDate, "yyyy-MM-dd");
+                        navigate(`/debriefs/${debriefId}?from=calendar&date=${dateParam}`);
+                      }}
                     />
                   </div>
                   )
