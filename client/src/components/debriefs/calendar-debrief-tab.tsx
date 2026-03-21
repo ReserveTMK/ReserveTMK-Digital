@@ -14,13 +14,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { DismissPopover } from "@/components/dismiss-popover";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation, Link } from "wouter";
@@ -73,9 +67,6 @@ const QUEUE_STATUS_CONFIG = {
 export function CalendarDebriefTab({ reconcileId }: { reconcileId: string | null }) {
   const { toast } = useToast();
   const [, navigate] = useLocation();
-  const [dismissDialogEventId, setDismissDialogEventId] = useState<number | null>(null);
-  const [dismissReason, setDismissReason] = useState("");
-  const [dismissCustomReason, setDismissCustomReason] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [showDismissed, setShowDismissed] = useState(false);
   const [reconcileEventId, setReconcileEventId] = useState<number | null>(null);
@@ -107,8 +98,6 @@ export function CalendarDebriefTab({ reconcileId }: { reconcileId: string | null
       queryClient.invalidateQueries({ queryKey: ["/api/events/needs-debrief"] });
       queryClient.invalidateQueries({ queryKey: ["/api/events/dismissed-debriefs"] });
       toast({ title: "Event dismissed", description: "Event removed from queue." });
-      setDismissDialogEventId(null);
-      setDismissReason("");
     },
     onError: (err: any) => {
       toast({ title: "Failed", description: err.message, variant: "destructive" });
@@ -289,15 +278,21 @@ export function CalendarDebriefTab({ reconcileId }: { reconcileId: string | null
                       )}
                     </div>
                     <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => { setDismissDialogEventId(item.id); setDismissReason(""); }}
-                        className="text-muted-foreground min-h-[44px] min-w-[44px]"
-                        data-testid={`button-dismiss-${item.id}`}
+                      <DismissPopover
+                        reasons={["Not relevant", "Duplicate event", "Event didn't happen", "Debrief not required"]}
+                        onDismiss={(reason) => dismissMutation.mutate({ eventId: item.id, reason })}
+                        isPending={dismissMutation.isPending}
+                        testIdPrefix={`dismiss-${item.id}`}
                       >
-                        <X className="w-5 h-5" />
-                      </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-muted-foreground min-h-[44px] min-w-[44px]"
+                          data-testid={`button-dismiss-${item.id}`}
+                        >
+                          <X className="w-5 h-5" />
+                        </Button>
+                      </DismissPopover>
                       {item.existingDebriefId ? (
                         <Link href={`/debriefs/${item.existingDebriefId}`} className="flex-1 sm:flex-none" data-testid={`button-continue-${item.id}`}>
                           <Button variant="outline" className="gap-1 w-full sm:w-auto min-h-[44px]">
@@ -387,54 +382,6 @@ export function CalendarDebriefTab({ reconcileId }: { reconcileId: string | null
         )}
       </div>
 
-      <Dialog open={dismissDialogEventId !== null} onOpenChange={(open) => { if (!open) { setDismissDialogEventId(null); setDismissReason(""); } }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Dismiss Event</DialogTitle>
-            <DialogDescription className="sr-only">Confirm event dismissal</DialogDescription>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground mb-2">
-            Provide a reason for dismissing this event. It will be removed from the queue but can be restored later.
-          </p>
-          <Select value={dismissReason} onValueChange={(val) => { setDismissReason(val); if (val !== "Other") setDismissCustomReason(""); }}>
-            <SelectTrigger data-testid="select-dismiss-reason">
-              <SelectValue placeholder="Select a reason..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Not relevant">Not relevant</SelectItem>
-              <SelectItem value="Duplicate event">Duplicate event</SelectItem>
-              <SelectItem value="Event didn't happen">Event didn't happen</SelectItem>
-              <SelectItem value="Debrief not required">Debrief not required</SelectItem>
-              <SelectItem value="Other">Other</SelectItem>
-            </SelectContent>
-          </Select>
-          {dismissReason === "Other" && (
-            <Input
-              value={dismissCustomReason}
-              onChange={(e) => setDismissCustomReason(e.target.value)}
-              placeholder="Please specify a reason..."
-              data-testid="input-dismiss-custom-reason"
-            />
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setDismissDialogEventId(null); setDismissReason(""); setDismissCustomReason(""); }} data-testid="button-cancel-dismiss">
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={!dismissReason || (dismissReason === "Other" && !dismissCustomReason.trim()) || dismissMutation.isPending}
-              onClick={() => dismissDialogEventId && dismissMutation.mutate({
-                eventId: dismissDialogEventId,
-                reason: dismissReason === "Other" ? dismissCustomReason.trim() : dismissReason,
-              })}
-              data-testid="button-confirm-dismiss"
-            >
-              {dismissMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <X className="w-4 h-4 mr-1" />}
-              Dismiss
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <ReconcileDialog
         event={reconcileEvent || null}

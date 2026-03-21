@@ -74,6 +74,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DismissPopover } from "@/components/dismiss-popover";
 import { useContacts } from "@/hooks/use-contacts";
 import { useEventAttendance, useAddAttendance, useRemoveAttendance } from "@/hooks/use-event-attendance";
 import { useGroups } from "@/hooks/use-groups";
@@ -485,6 +486,7 @@ function EventCard({
   onDeleteEvent,
   onDismissEvent,
   onMarkNotPersonal,
+  isDismissPending,
   isDebriefPending,
   isMarkedNotPersonal,
   debriefInfo,
@@ -496,8 +498,9 @@ function EventCard({
   onLogDebrief: (gcal: GoogleCalendarEvent) => void;
   onLogDebriefFromApp: (app: AppEvent) => void;
   onDeleteEvent: (app: AppEvent) => void;
-  onDismissEvent: (gcalId: string, eventName: string, suggestedReason?: string) => void;
+  onDismissEvent: (gcalId: string, reason: string) => void;
   onMarkNotPersonal: (gcalId: string) => void;
+  isDismissPending: boolean;
   isDebriefPending: boolean;
   isMarkedNotPersonal: boolean;
   debriefInfo: DebriefInfo;
@@ -766,19 +769,23 @@ function EventCard({
                 <X className="w-3 h-3 mr-1" />
                 Not personal
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-6 text-xs px-2"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDismissEvent(entry.gcal!.id, entry.gcal!.summary, "Personal event");
-                }}
-                data-testid={`button-quick-dismiss-${entry.gcal!.id}`}
+              <DismissPopover
+                reasons={["Didn't happen", "Personal event", "Duplicate", "Not relevant"]}
+                onDismiss={(reason) => onDismissEvent(entry.gcal!.id, reason)}
+                isPending={isDismissPending}
+                testIdPrefix={`quick-dismiss-${entry.gcal!.id}`}
               >
-                <EyeOff className="w-3 h-3 mr-1" />
-                Dismiss
-              </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 text-xs px-2"
+                  onClick={(e) => e.stopPropagation()}
+                  data-testid={`button-quick-dismiss-${entry.gcal!.id}`}
+                >
+                  <EyeOff className="w-3 h-3 mr-1" />
+                  Dismiss
+                </Button>
+              </DismissPopover>
             </div>
           </div>
         )}
@@ -1151,14 +1158,20 @@ function EventCard({
                 </Button>
               ) : null}
               {isGcal && !personalEvent && (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => onDismissEvent(entry.gcal!.id, entry.gcal!.summary)}
-                  data-testid={`button-dismiss-event-${entry.gcal!.id}`}
+                <DismissPopover
+                  reasons={["Didn't happen", "Personal event", "Duplicate", "Not relevant"]}
+                  onDismiss={(reason) => onDismissEvent(entry.gcal!.id, reason)}
+                  isPending={isDismissPending}
+                  testIdPrefix={`dismiss-event-${entry.gcal!.id}`}
                 >
-                  <EyeOff className="w-4 h-4 text-muted-foreground" />
-                </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    data-testid={`button-dismiss-event-${entry.gcal!.id}`}
+                  >
+                    <EyeOff className="w-4 h-4 text-muted-foreground" />
+                  </Button>
+                </DismissPopover>
               )}
               {isApp && (
                 <Button
@@ -1210,9 +1223,6 @@ export default function CalendarPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ type: "gcal" | "app"; event: GoogleCalendarEvent | AppEvent } | null>(null);
   const [deleteReason, setDeleteReason] = useState("");
   const [activeTypeFilters, setActiveTypeFilters] = useState<Set<string>>(new Set());
-  const [dismissDialogOpen, setDismissDialogOpen] = useState(false);
-  const [dismissTarget, setDismissTarget] = useState<{ gcalEventId: string; eventName: string } | null>(null);
-  const [dismissReason, setDismissReason] = useState("");
   const [showDismissed, setShowDismissed] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showSchedule, setShowSchedule] = useState(true);
@@ -1378,9 +1388,6 @@ export default function CalendarPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dismissed-calendar-events"] });
       toast({ title: "Event dismissed" });
-      setDismissDialogOpen(false);
-      setDismissTarget(null);
-      setDismissReason("");
     },
     onError: (err: any) => {
       toast({ title: "Failed to dismiss event", description: err.message, variant: "destructive" });
@@ -1527,15 +1534,8 @@ export default function CalendarPage() {
       .slice(0, 5);
   }, [allGroups, activityGroupSearch, activitySelectedGroups]);
 
-  function handleDismissEvent(gcalEventId: string, eventName: string, suggestedReason?: string) {
-    setDismissTarget({ gcalEventId, eventName });
-    setDismissReason(suggestedReason || "");
-    setDismissDialogOpen(true);
-  }
-
-  function confirmDismiss() {
-    if (!dismissTarget || !dismissReason.trim()) return;
-    dismissMutation.mutate({ gcalEventId: dismissTarget.gcalEventId, reason: dismissReason.trim() });
+  function handleDismissEvent(gcalEventId: string, reason: string) {
+    dismissMutation.mutate({ gcalEventId, reason });
   }
 
   const createDebriefMutation = useMutation({
@@ -2438,6 +2438,7 @@ export default function CalendarPage() {
                       onDeleteEvent={handleDeleteEvent}
                       onDismissEvent={handleDismissEvent}
                       onMarkNotPersonal={(gcalId) => markNotPersonalMutation.mutate(gcalId)}
+                      isDismissPending={dismissMutation.isPending}
                       isDebriefPending={createDebriefMutation.isPending}
                       isMarkedNotPersonal={entry.gcal ? notPersonalIds.has(entry.gcal.id) : false}
                       debriefInfo={getDebriefInfo(entry)}
@@ -2723,58 +2724,6 @@ export default function CalendarPage() {
             >
               {deleteEventMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
               Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={dismissDialogOpen} onOpenChange={setDismissDialogOpen}>
-        <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Dismiss Event</DialogTitle>
-            <DialogDescription>This event will be hidden from your calendar view. You can restore it later.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            {dismissTarget && (
-              <div className="bg-muted/30 p-3 rounded-lg">
-                <p className="text-sm font-medium">{dismissTarget.eventName}</p>
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label>Reason for dismissing</Label>
-              <div className="flex flex-col gap-2">
-                {["Didn't happen", "Personal event", "Duplicate", "Not relevant"].map(reason => (
-                  <Button
-                    key={reason}
-                    variant="outline"
-                    size="sm"
-                    className={`justify-start toggle-elevate ${dismissReason === reason ? "toggle-elevated" : ""}`}
-                    onClick={() => setDismissReason(reason)}
-                    data-testid={`button-dismiss-reason-${reason.toLowerCase().replace(/\s+/g, "-")}`}
-                  >
-                    {reason}
-                  </Button>
-                ))}
-              </div>
-              <Input
-                value={!["Didn't happen", "Personal event", "Duplicate", "Not relevant"].includes(dismissReason) ? dismissReason : ""}
-                onChange={(e) => setDismissReason(e.target.value)}
-                placeholder="Or type a custom reason..."
-                className="text-sm"
-                data-testid="input-dismiss-reason-custom"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDismissDialogOpen(false)} data-testid="button-cancel-dismiss">
-              Cancel
-            </Button>
-            <Button
-              onClick={confirmDismiss}
-              disabled={!dismissReason.trim() || dismissMutation.isPending}
-              data-testid="button-confirm-dismiss"
-            >
-              {dismissMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <EyeOff className="w-4 h-4 mr-1" />}
-              Dismiss
             </Button>
           </DialogFooter>
         </DialogContent>
