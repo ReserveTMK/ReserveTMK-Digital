@@ -2217,7 +2217,7 @@ export async function registerRoutes(
         if (priority[a.queueStatus] !== priority[b.queueStatus]) {
           return priority[a.queueStatus] - priority[b.queueStatus];
         }
-        return new Date(b.startTime).getTime() - new Date(a.startTime).getTime();
+        return new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
       });
 
       res.json(enriched);
