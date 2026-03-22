@@ -1,10 +1,10 @@
-import { getUncachableGmailClient } from "./replit_integrations/gmail/client";
+import { getGmailClientForSending } from "./gmail-send";
 import { storage } from "./storage";
 import { getBaseUrl } from "./url";
 import type { Booking, VenueInstruction, RegularBooker } from "@shared/schema";
 
 async function sendEmail(to: string, subject: string, htmlBody: string): Promise<void> {
-  const gmail = await getUncachableGmailClient();
+  const gmail = await getGmailClientForSending();
 
   const rawMessage = [
     `To: ${to}`,
