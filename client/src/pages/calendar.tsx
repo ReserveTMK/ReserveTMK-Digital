@@ -768,7 +768,9 @@ function EventCard({
     : "";
 
   return (
-    <Card className={`p-4 ${personalEvent ? "border-amber-500/30 bg-amber-500/5" : cardTint} ${debriefBorder} ${debriefOpacity}`} data-testid={`card-event-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}>
+    <Card
+      className={`p-4 cursor-pointer ${personalEvent ? "border-amber-500/30 bg-amber-500/5" : cardTint} ${debriefBorder} ${debriefOpacity}`}
+      onClick={() => setExpanded(!expanded)} data-testid={`card-event-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}>
       <div className="space-y-2">
         {personalEvent && (
           <div className="flex items-center justify-between gap-2 pb-1">
@@ -810,9 +812,8 @@ function EventCard({
             </div>
           </div>
         )}
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="w-full text-left cursor-pointer"
+        <div
+          className="w-full text-left"
           data-testid={`button-expand-event-${isGcal ? entry.gcal!.id : entry.app!.id}`}
         >
           <div className="flex items-start justify-between gap-2">
@@ -830,7 +831,7 @@ function EventCard({
               {expanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
             </div>
           </div>
-        </button>
+        </div>
 
         {(!isManualLog || location || (attendance && attendance.length > 0)) && (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -1121,7 +1122,7 @@ function EventCard({
               </div>
             )}
 
-            {entry.isPast && !isManualLog && debriefInfo && (
+            {entry.isPast && debriefInfo && (
               <div className="flex items-center gap-2 pt-1 mb-1">
                 <Badge
                   variant="secondary"
@@ -1139,23 +1140,23 @@ function EventCard({
             )}
 
             <div className="flex gap-2 pt-1">
-              {!isManualLog && entry.isPast && debriefInfo ? (
+              {entry.isPast && debriefInfo ? (
                 <Button
                   size="sm"
                   variant="outline"
                   className="flex-1"
-                  onClick={() => onViewDebrief(debriefInfo.debriefId)}
+                  onClick={(e) => { e.stopPropagation(); onViewDebrief(debriefInfo.debriefId); }}
                   data-testid={`button-view-debrief-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}
                 >
                   <Eye className="w-3.5 h-3.5 mr-1" />
                   View Debrief
                 </Button>
-              ) : !isManualLog && entry.isPast ? (
+              ) : entry.isPast ? (
                 <Button
                   size="sm"
                   variant="default"
                   className="flex-1"
-                  onClick={() => isGcal ? onLogDebrief(entry.gcal!) : onLogDebriefFromApp(entry.app!)}
+                  onClick={(e) => { e.stopPropagation(); isGcal ? onLogDebrief(entry.gcal!) : onLogDebriefFromApp(entry.app!); }}
                   disabled={isDebriefPending}
                   data-testid={`button-debrief-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}
                 >
@@ -1198,14 +1199,8 @@ function EventCard({
         )}
 
         {!expanded && (
-          <p className="text-xs text-muted-foreground italic">
-            {isManualLog
-              ? "Tap to tag members"
-              : entry.isPast
-                ? debriefInfo
-                  ? "Tap to edit type, tag members, or view debrief"
-                  : "Tap to edit type, tag members, or log debrief"
-                : "Tap to edit type or tag members"}
+          <p className="text-xs text-muted-foreground italic line-clamp-2">
+            {(isGcal ? entry.gcal?.description : entry.app?.description) || (isGcal ? entry.gcal?.summary : entry.app?.name) || (entry.isPast ? "Tap to debrief" : "Tap to expand")}
           </p>
         )}
       </div>
@@ -2034,24 +2029,7 @@ export default function CalendarPage() {
             <h1 className="text-2xl font-display font-bold text-foreground" data-testid="text-calendar-title">
               Calendar
             </h1>
-            <div className="flex items-center gap-1.5 mt-2">
-              <button
-                onClick={() => setShowSchedule(!showSchedule)}
-                data-testid="button-toggle-schedule"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors dark:text-emerald-300 font-medium border border-emerald-500/30 bg-[#ffffff] text-[#000000]"
-              >
-                <CalendarDays className="w-3.5 h-3.5" />
-                Schedule
-              </button>
-              <button
-                onClick={() => setShowSpace(!showSpace)}
-                data-testid="button-toggle-space"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors dark:text-orange-300 font-medium border border-orange-500/30 bg-[#ffffff26] text-[#000000]"
-              >
-                <Building2 className="w-3.5 h-3.5" />
-                Space
-              </button>
-            </div>
+
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {showSchedule && needsAttentionEvents.length > 0 && (
