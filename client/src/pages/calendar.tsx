@@ -746,17 +746,29 @@ function EventCard({
   const cardTint = EVENT_TYPE_CARD_TINTS[eventType] || "border-gray-500/20 bg-gray-500/5 dark:bg-gray-500/5";
   const personalEvent = isGcal && !isMarkedNotPersonal ? isPersonalEvent(entry.gcal!.summary, entry.gcal!.description) : false;
 
-  // Debrief status left border
+  // Debrief status — fade confirmed/in-progress, highlight needs-debrief
+  const isConfirmed = debriefInfo?.status === "confirmed";
+  const isInProgress = debriefInfo && debriefInfo.status !== "confirmed";
+  const needsDebrief = entry.isPast && !personalEvent && !debriefInfo;
+
+  const debriefOpacity = entry.isPast
+    ? isConfirmed
+      ? "opacity-40 hover:opacity-80 transition-opacity"
+      : isInProgress
+        ? "opacity-60 hover:opacity-90 transition-opacity"
+        : ""
+    : "";
+
   const debriefBorder = entry.isPast && !personalEvent
-    ? debriefInfo?.status === "confirmed"
+    ? isConfirmed
       ? "border-l-4 border-l-emerald-500"
-      : debriefInfo
+      : isInProgress
         ? "border-l-4 border-l-blue-400"
         : "border-l-4 border-l-amber-400"
     : "";
 
   return (
-    <Card className={`p-4 ${personalEvent ? "border-amber-500/30 bg-amber-500/5" : cardTint} ${debriefBorder}`} data-testid={`card-event-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}>
+    <Card className={`p-4 ${personalEvent ? "border-amber-500/30 bg-amber-500/5" : cardTint} ${debriefBorder} ${debriefOpacity}`} data-testid={`card-event-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}>
       <div className="space-y-2">
         {personalEvent && (
           <div className="flex items-center justify-between gap-2 pb-1">
@@ -1109,31 +1121,20 @@ function EventCard({
               </div>
             )}
 
-            {entry.isPast && !isManualLog && (
+            {entry.isPast && !isManualLog && debriefInfo && (
               <div className="flex items-center gap-2 pt-1 mb-1">
-                {debriefInfo ? (
-                  <Badge
-                    variant="secondary"
-                    className={`text-[10px] no-default-hover-elevate no-default-active-elevate ${
-                      debriefInfo.status === "confirmed"
-                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400"
-                        : "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
-                    }`}
-                    data-testid={`badge-debrief-status-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}
-                  >
-                    <CheckCircle2 className="w-3 h-3 mr-0.5" />
-                    {debriefInfo.status === "confirmed" ? "Debriefed" : "Debrief in progress"}
-                  </Badge>
-                ) : (
-                  <Badge
-                    variant="secondary"
-                    className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 no-default-hover-elevate no-default-active-elevate"
-                    data-testid={`badge-needs-reconciliation-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}
-                  >
-                    <CircleDashed className="w-3 h-3 mr-0.5" />
-                    Needs reconciliation
-                  </Badge>
-                )}
+                <Badge
+                  variant="secondary"
+                  className={`text-[10px] no-default-hover-elevate no-default-active-elevate ${
+                    debriefInfo.status === "confirmed"
+                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400"
+                      : "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
+                  }`}
+                  data-testid={`badge-debrief-status-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}
+                >
+                  <CheckCircle2 className="w-3 h-3 mr-0.5" />
+                  {debriefInfo.status === "confirmed" ? "Debriefed" : "In progress"}
+                </Badge>
               </div>
             )}
 
