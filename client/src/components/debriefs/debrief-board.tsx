@@ -93,6 +93,15 @@ export function DebriefBoard() {
     [dismissedEvents]
   );
 
+  // Confirmed debrief titles (for fuzzy matching when no eventId/gcalId)
+  const confirmedTitles = useMemo(() =>
+    new Set((allLogs || [])
+      .filter(l => l.status === "confirmed")
+      .map(l => l.title.toLowerCase().trim())
+    ),
+    [allLogs]
+  );
+
   const isRealDebrief = (log: ImpactLog) =>
     log.status === "pending_review" ||
     (log.transcript && log.transcript.trim().length > 0) ||
@@ -159,6 +168,8 @@ export function DebriefBoard() {
 
       const log = debriefByGcalId.get(e.id);
       if (log?.status === "confirmed") continue; // already done, skip column 1
+      // Also skip if a confirmed debrief has matching title
+      if (confirmedTitles.has((e.summary || "").toLowerCase().trim())) continue;
 
       events.push({
         id: `gcal-${e.id}`,
