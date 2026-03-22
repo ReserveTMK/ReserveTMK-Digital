@@ -2850,6 +2850,16 @@ function PeopleSection({ label, description, people, allPeople, setPeople, conta
                     )}
                   </CommandItem>
                 ))}
+                {searchValue.trim() && availableContacts.length > 0 && (
+                  <CommandItem
+                    value={`__create__${searchValue.trim()}`}
+                    onSelect={handleQuickCreate}
+                    data-testid={`${testIdPrefix}-quick-create-inline`}
+                  >
+                    <User className="w-3 h-3 mr-1 shrink-0" />
+                    <span className="text-muted-foreground">Create new: "{searchValue.trim()}"</span>
+                  </CommandItem>
+                )}
               </CommandGroup>
             </CommandList>
           </Command>
