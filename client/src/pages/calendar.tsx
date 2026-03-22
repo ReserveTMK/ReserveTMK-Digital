@@ -2399,11 +2399,7 @@ export default function CalendarPage() {
                           <AlertTriangle className="w-3 h-3 text-red-500" />
                         </div>
                       )}
-                      {dayNeedsAttention > 0 && !hasConflict && (
-                        <div className="absolute top-0.5 right-0.5" data-testid={`indicator-needs-attention-${key}`}>
-                          <CircleAlert className="w-3 h-3 text-amber-500" />
-                        </div>
-                      )}
+
                     </button>
                   );
                 })}
