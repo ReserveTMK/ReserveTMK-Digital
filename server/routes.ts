@@ -870,7 +870,7 @@ export async function registerRoutes(
   async function createCalendarEventForMeeting(meeting: any, options?: { mentorEmail?: string; coMentorEmail?: string; menteeEmail?: string; calendarId?: string; sendInvites?: boolean; additionalAttendees?: string[] }) {
     try {
       const { getUncachableGoogleCalendarClient } = await import("./replit_integrations/google-calendar/client");
-      const calendar = await getUncachableGoogleCalendarClient();
+      const calendar = await getUncachableGoogleCalendarClient(userId);
 
       const attendees: { email: string }[] = [];
       if (options?.mentorEmail) attendees.push({ email: options.mentorEmail });
@@ -914,7 +914,7 @@ export async function registerRoutes(
   async function updateCalendarEventAttendees(googleCalendarEventId: string, attendees: { email: string }[], calendarId?: string, sendInvites?: boolean) {
     try {
       const { getUncachableGoogleCalendarClient } = await import("./replit_integrations/google-calendar/client");
-      const calendar = await getUncachableGoogleCalendarClient();
+      const calendar = await getUncachableGoogleCalendarClient(userId);
       const calId = calendarId || "primary";
       
       const existing = await calendar.events.get({ calendarId: calId, eventId: googleCalendarEventId });
@@ -1790,7 +1790,7 @@ export async function registerRoutes(
 
       try {
         const { getUncachableGoogleCalendarClient } = await import("./replit_integrations/google-calendar/client");
-        const calendar = await getUncachableGoogleCalendarClient();
+        const calendar = await getUncachableGoogleCalendarClient(userId);
 
         const queryStart = toNzDate(date, '00:00:00');
         const queryEnd = toNzDate(date, '23:59:59');
@@ -3601,7 +3601,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     try {
       const userId = (req.user as any).claims.sub;
       const { getUncachableGoogleCalendarClient } = await import("./replit_integrations/google-calendar/client");
-      const calendar = await getUncachableGoogleCalendarClient();
+      const calendar = await getUncachableGoogleCalendarClient(userId);
 
       const timeMin = (parseStr(req.query.timeMin)) || new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
       const timeMax = (parseStr(req.query.timeMax)) || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -3690,9 +3690,9 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
   app.get("/api/google-calendar/status", isAuthenticated, async (req, res) => {
     try {
-      const { getUncachableGoogleCalendarClient } = await import("./replit_integrations/google-calendar/client");
-      await getUncachableGoogleCalendarClient();
-      res.json({ connected: true });
+      const { isCalendarConnected } = await import("./replit_integrations/google-calendar/client");
+      const userId = (req as any).user?.claims?.sub;
+      res.json({ connected: isCalendarConnected(userId) });
     } catch {
       res.json({ connected: false });
     }
@@ -3774,7 +3774,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   app.get("/api/google-calendar/list", isAuthenticated, async (req, res) => {
     try {
       const { getUncachableGoogleCalendarClient } = await import("./replit_integrations/google-calendar/client");
-      const calendar = await getUncachableGoogleCalendarClient();
+      const calendar = await getUncachableGoogleCalendarClient(userId);
 
       const response = await calendar.calendarList.list({
         minAccessRole: "reader",
@@ -5302,7 +5302,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       let calendarEventCreated = false;
       try {
         const { getUncachableGoogleCalendarClient } = await import("./replit_integrations/google-calendar/client");
-        const calendar = await getUncachableGoogleCalendarClient();
+        const calendar = await getUncachableGoogleCalendarClient(userId);
 
         const venueNames: string[] = [];
         const vIds = booking.venueIds || (booking.venueId ? [booking.venueId] : []);
@@ -14301,6 +14301,78 @@ Rules:
       console.error("Booker link migration error:", err);
     }
   })();
+
+  // === GOOGLE CALENDAR OAUTH ===
+
+  app.get("/api/google-calendar/oauth/authorize", isAuthenticated, async (req, res) => {
+    const { getGoogleCalendarOAuth2Client } = await import("./replit_integrations/google-calendar/client");
+    const oauth2Client = getGoogleCalendarOAuth2Client();
+    if (!oauth2Client) {
+      return res.status(400).json({ message: "Google OAuth not configured." });
+    }
+
+    const cryptoMod = await import('crypto');
+    const userId = (req.user as any).claims.sub;
+    const nonce = cryptoMod.randomBytes(16).toString('hex');
+    const secret = process.env.SESSION_SECRET || 'gcal-oauth-state';
+    const payload = JSON.stringify({ userId, nonce, ts: Date.now() });
+    const hmac = cryptoMod.createHmac('sha256', secret).update(payload).digest('hex');
+    const state = Buffer.from(JSON.stringify({ payload, hmac })).toString('base64');
+
+    const url = oauth2Client.generateAuthUrl({
+      access_type: 'offline',
+      prompt: 'consent',
+      scope: [
+        'https://www.googleapis.com/auth/calendar.readonly',
+        'https://www.googleapis.com/auth/calendar.events',
+      ],
+      state,
+    });
+
+    res.json({ url });
+  });
+
+  app.get("/api/google-calendar/oauth/callback", async (req, res) => {
+    const { code, state, error: oauthError } = req.query;
+    if (!code || !state) {
+      return res.redirect(`/calendar?error=${oauthError || 'missing_params'}`);
+    }
+
+    let userId: string;
+    try {
+      const cryptoMod = await import('crypto');
+      const decoded = JSON.parse(Buffer.from(state as string, 'base64').toString());
+      const { payload, hmac } = decoded;
+      const secret = process.env.SESSION_SECRET || 'gcal-oauth-state';
+      const expectedHmac = cryptoMod.createHmac('sha256', secret).update(payload).digest('hex');
+      if (hmac !== expectedHmac) return res.redirect('/calendar?error=invalid_state');
+      const parsed = JSON.parse(payload);
+      if (Date.now() - parsed.ts > 10 * 60 * 1000) return res.redirect('/calendar?error=state_expired');
+      userId = parsed.userId;
+    } catch {
+      return res.redirect('/calendar?error=invalid_state');
+    }
+
+    const { getGoogleCalendarOAuth2Client, storeCalendarTokens } = await import("./replit_integrations/google-calendar/client");
+    const oauth2Client = getGoogleCalendarOAuth2Client();
+    if (!oauth2Client) return res.redirect('/calendar?error=not_configured');
+
+    try {
+      const { tokens } = await oauth2Client.getToken(code as string);
+      storeCalendarTokens(userId, tokens);
+      console.log(`[GCal OAuth] Connected for userId=${userId}`);
+      res.redirect('/calendar?success=calendar_connected');
+    } catch (err: any) {
+      console.error('[GCal OAuth] Callback error:', err);
+      res.redirect('/calendar?error=auth_failed');
+    }
+  });
+
+  app.get("/api/google-calendar/oauth/status", isAuthenticated, async (req, res) => {
+    const { isCalendarConnected } = await import("./replit_integrations/google-calendar/client");
+    const userId = (req.user as any).claims.sub;
+    res.json({ connected: isCalendarConnected(userId) });
+  });
 
   return httpServer;
 }

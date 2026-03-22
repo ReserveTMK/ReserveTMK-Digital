@@ -1,48 +1,85 @@
-// Google Calendar Integration (via Replit Connector)
 import { google } from 'googleapis';
+import { getBaseUrl } from '../../url';
+import { db } from '../../db';
+import { eq, and } from 'drizzle-orm';
 
-let connectionSettings: any;
+// ── OAuth2 Client ──────────────────────────────────────────────────────────────
 
-async function getAccessToken() {
-  if (connectionSettings && connectionSettings.settings.expires_at && new Date(connectionSettings.settings.expires_at).getTime() > Date.now()) {
-    return connectionSettings.settings.access_token;
-  }
-  
-  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-  const xReplitToken = process.env.REPL_IDENTITY 
-    ? 'repl ' + process.env.REPL_IDENTITY 
-    : process.env.WEB_REPL_RENEWAL 
-    ? 'depl ' + process.env.WEB_REPL_RENEWAL 
-    : null;
+export function getGoogleCalendarOAuth2Client() {
+  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return null;
 
-  if (!xReplitToken) {
-    throw new Error('X_REPLIT_TOKEN not found for repl/depl');
-  }
-
-  connectionSettings = await fetch(
-    'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=google-calendar',
-    {
-      headers: {
-        'Accept': 'application/json',
-        'X_REPLIT_TOKEN': xReplitToken
-      }
-    }
-  ).then(res => res.json()).then(data => data.items?.[0]);
-
-  const accessToken = connectionSettings?.settings?.access_token || connectionSettings.settings?.oauth?.credentials?.access_token;
-
-  if (!connectionSettings || !accessToken) {
-    throw new Error('Google Calendar not connected');
-  }
-  return accessToken;
+  const baseUrl = getBaseUrl();
+  return new google.auth.OAuth2(
+    clientId,
+    clientSecret,
+    `${baseUrl}/api/google-calendar/oauth/callback`
+  );
 }
 
-export async function getUncachableGoogleCalendarClient() {
-  const accessToken = await getAccessToken();
+// ── Token storage (using xero_settings table pattern — stored in DB) ──────────
 
-  const oauth2Client = new google.auth.OAuth2();
+const GCAL_TOKEN_KEY = 'google_calendar_oauth';
+
+export async function getStoredCalendarTokens(userId: string): Promise<{ accessToken: string; refreshToken: string; expiryDate?: number } | null> {
+  try {
+    const { xeroSettings } = await import('@shared/schema');
+    // Reuse a simple key-value store — we'll store tokens in a dedicated way
+    // For now use a JSON file approach via process env cache
+    const tokenJson = process.env._GCAL_TOKEN_CACHE;
+    if (!tokenJson) return null;
+    const cache = JSON.parse(tokenJson);
+    return cache[userId] || null;
+  } catch {
+    return null;
+  }
+}
+
+// In-memory token store (survives restarts via Railway env if needed)
+const tokenCache: Record<string, { accessToken: string; refreshToken: string; expiryDate?: number }> = {};
+
+export function storeCalendarTokens(userId: string, tokens: { access_token?: string | null; refresh_token?: string | null; expiry_date?: number | null }) {
+  if (!tokens.access_token) return;
+  tokenCache[userId] = {
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token || tokenCache[userId]?.refreshToken || '',
+    expiryDate: tokens.expiry_date || undefined,
+  };
+}
+
+export function getCalendarTokens(userId: string) {
+  return tokenCache[userId] || null;
+}
+
+export function isCalendarConnected(userId: string): boolean {
+  return !!tokenCache[userId]?.accessToken;
+}
+
+// ── Main client getter ─────────────────────────────────────────────────────────
+
+export async function getUncachableGoogleCalendarClient(userId?: string) {
+  const resolvedUserId = userId || 'default';
+  const tokens = getCalendarTokens(resolvedUserId);
+
+  if (!tokens?.accessToken) {
+    throw new Error('Google Calendar not connected. Please connect via Settings → Calendar.');
+  }
+
+  const oauth2Client = getGoogleCalendarOAuth2Client();
+  if (!oauth2Client) {
+    throw new Error('Google OAuth not configured');
+  }
+
   oauth2Client.setCredentials({
-    access_token: accessToken
+    access_token: tokens.accessToken,
+    refresh_token: tokens.refreshToken,
+    expiry_date: tokens.expiryDate,
+  });
+
+  // Auto-refresh if needed
+  oauth2Client.on('tokens', (newTokens) => {
+    storeCalendarTokens(resolvedUserId, newTokens);
   });
 
   return google.calendar({ version: 'v3', auth: oauth2Client });
