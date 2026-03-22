@@ -2371,8 +2371,7 @@ export default function CalendarPage() {
                         ${!isCurrentMonth ? "text-muted-foreground/40" : "text-foreground"}
                         ${isSelected ? "bg-primary/10 border-primary/50" : "hover:bg-muted/50"}
                         ${today && !isSelected ? "bg-accent/30" : ""}
-                        ${hasConflict ? "ring-1 ring-red-400/50 bg-red-50/20 dark:bg-red-900/10" : ""}
-                        ${dayNeedsAttention > 0 && !hasConflict ? "ring-1 ring-amber-400/50 bg-amber-50/30 dark:bg-amber-900/10" : ""}
+
                       `}
                     >
                       <span className={`
@@ -2394,11 +2393,7 @@ export default function CalendarPage() {
                           )}
                         </div>
                       )}
-                      {hasConflict && (
-                        <div className="absolute top-0.5 right-0.5">
-                          <AlertTriangle className="w-3 h-3 text-red-500" />
-                        </div>
-                      )}
+
 
                     </button>
                   );
