@@ -142,8 +142,20 @@ export function DebriefBoard() {
     }
   };
 
-  const handleStartDebrief = (eventId: number) => {
-    setLocation(`/debriefs?tab=queue&reconcile=${eventId}`);
+  const handleStartDebrief = async (eventId: number, eventName: string) => {
+    try {
+      const res = await apiRequest("POST", "/api/impact-logs", {
+        title: eventName,
+        status: "draft",
+        eventId,
+      });
+      const log = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/impact-logs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/events/needs-debrief"] });
+      setLocation(`/debriefs/${log.id}`);
+    } catch (err: any) {
+      console.error("Failed to create debrief:", err);
+    }
   };
 
   const handleOpenDebrief = (debriefId: number) => {
@@ -194,7 +206,7 @@ export function DebriefBoard() {
                 <EventCard
                   key={item.id}
                   item={item}
-                  onStart={() => handleStartDebrief(item.id)}
+                  onStart={() => handleStartDebrief(item.id, item.name)}
                   onSkip={(reason) => handleSkip(item.id, reason)}
                 />
               ))}
@@ -228,7 +240,7 @@ export function DebriefBoard() {
 
 function EventCard({ item, onStart, onSkip }: {
   item: QueueItem;
-  onStart: () => void;
+  onStart: (name: string) => void;
   onSkip: (reason: string) => void;
 }) {
   const isOverdue = item.queueStatus === "overdue";
@@ -258,7 +270,7 @@ function EventCard({ item, onStart, onSkip }: {
         </div>
       )}
       <div className="flex gap-2 pt-1">
-        <Button size="sm" className="flex-1 h-7 text-xs" onClick={onStart}>
+        <Button size="sm" className="flex-1 h-7 text-xs" onClick={() => onStart(item.name)}>
           <Mic className="w-3 h-3 mr-1" />
           Debrief
         </Button>
