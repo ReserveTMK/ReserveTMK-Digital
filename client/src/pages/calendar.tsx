@@ -485,6 +485,7 @@ function EventCard({
   onLogDebriefFromApp,
   onDeleteEvent,
   onDismissEvent,
+  onSkipDebrief,
   onMarkNotPersonal,
   isDismissPending,
   isDebriefPending,
@@ -499,6 +500,7 @@ function EventCard({
   onLogDebriefFromApp: (app: AppEvent) => void;
   onDeleteEvent: (app: AppEvent) => void;
   onDismissEvent: (gcalId: string, reason: string) => void;
+  onSkipDebrief?: (eventId: number, reason: string) => void;
   onMarkNotPersonal: (gcalId: string) => void;
   isDismissPending: boolean;
   isDebriefPending: boolean;
@@ -1158,15 +1160,33 @@ function EventCard({
               ) : null}
               {isGcal && !personalEvent && (
                 <DismissPopover
-                  reasons={["Didn't happen", "Personal event", "Duplicate", "Not relevant"]}
-                  onDismiss={(reason) => onDismissEvent(entry.gcal!.id, reason)}
+                  reasons={["Duplicate", "Ignore", "Personal"]}
+                  onDismiss={(reason) => { onDismissEvent(entry.gcal!.id, reason); }}
                   isPending={isDismissPending}
                   testIdPrefix={`dismiss-event-${entry.gcal!.id}`}
                 >
                   <Button
                     size="icon"
                     variant="ghost"
+                    onClick={(e) => e.stopPropagation()}
                     data-testid={`button-dismiss-event-${entry.gcal!.id}`}
+                  >
+                    <EyeOff className="w-4 h-4 text-muted-foreground" />
+                  </Button>
+                </DismissPopover>
+              )}
+              {isApp && entry.isPast && (
+                <DismissPopover
+                  reasons={["Duplicate", "Ignore", "Personal"]}
+                  onDismiss={(reason) => { onSkipDebrief && onSkipDebrief(entry.app!.id, reason); }}
+                  isPending={false}
+                  testIdPrefix={`skip-debrief-${entry.app!.id}`}
+                >
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={(e) => e.stopPropagation()}
+                    data-testid={`button-skip-debrief-${entry.app!.id}`}
                   >
                     <EyeOff className="w-4 h-4 text-muted-foreground" />
                   </Button>
@@ -2442,6 +2462,11 @@ export default function CalendarPage() {
                       onLogDebriefFromApp={handleLogDebriefFromApp}
                       onDeleteEvent={handleDeleteEvent}
                       onDismissEvent={handleDismissEvent}
+                      onSkipDebrief={async (eventId, reason) => {
+                        await apiRequest("POST", `/api/events/${eventId}/skip-debrief`, { reason });
+                        queryClient.invalidateQueries({ queryKey: ["/api/events/needs-debrief"] });
+                        queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+                      }}
                       onMarkNotPersonal={(gcalId) => markNotPersonalMutation.mutate(gcalId)}
                       isDismissPending={dismissMutation.isPending}
                       isDebriefPending={createDebriefMutation.isPending}

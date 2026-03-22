@@ -17,7 +17,9 @@ import {
   Users,
   Calendar,
   ChevronRight,
+  EyeOff,
 } from "lucide-react";
+import { DismissPopover } from "@/components/dismiss-popover";
 import type { QueueItem } from "./shared";
 import type { ImpactLog } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -130,9 +132,9 @@ export function DebriefBoard() {
     .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime())
     .slice(0, 20);
 
-  const handleSkip = async (eventId: number) => {
+  const handleSkip = async (eventId: number, reason: string) => {
     try {
-      await apiRequest("POST", `/api/events/${eventId}/skip-debrief`, { reason: "Completed/not required" });
+      await apiRequest("POST", `/api/events/${eventId}/skip-debrief`, { reason });
       queryClient.invalidateQueries({ queryKey: ["/api/events/needs-debrief"] });
       toast({ title: "Dismissed", description: "Event removed from queue." });
     } catch {
@@ -193,7 +195,7 @@ export function DebriefBoard() {
                   key={item.id}
                   item={item}
                   onStart={() => handleStartDebrief(item.id)}
-                  onSkip={() => handleSkip(item.id)}
+                  onSkip={(reason) => handleSkip(item.id, reason)}
                 />
               ))}
 
@@ -227,7 +229,7 @@ export function DebriefBoard() {
 function EventCard({ item, onStart, onSkip }: {
   item: QueueItem;
   onStart: () => void;
-  onSkip: () => void;
+  onSkip: (reason: string) => void;
 }) {
   const isOverdue = item.queueStatus === "overdue";
   const dateStr = format(new Date(item.startTime), "EEE d MMM");
@@ -260,9 +262,14 @@ function EventCard({ item, onStart, onSkip }: {
           <Mic className="w-3 h-3 mr-1" />
           Debrief
         </Button>
-        <Button size="sm" variant="ghost" className="h-7 text-xs px-2" onClick={onSkip}>
-          Skip
-        </Button>
+        <DismissPopover
+          reasons={["Duplicate", "Ignore", "Personal"]}
+          onDismiss={onSkip}
+        >
+          <Button size="sm" variant="ghost" className="h-7 px-2">
+            <EyeOff className="w-3.5 h-3.5 text-muted-foreground" />
+          </Button>
+        </DismissPopover>
       </div>
     </Card>
   );
