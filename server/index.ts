@@ -298,4 +298,8 @@ app.use((req, res, next) => {
       log(`serving on port ${port}`);
     },
   );
+
+  // Extend timeout for audio transcription (120s)
+  httpServer.timeout = 120000;
+  httpServer.keepAliveTimeout = 120000;
 })();
