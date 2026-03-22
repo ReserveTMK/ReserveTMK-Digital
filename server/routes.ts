@@ -14517,11 +14517,11 @@ Rules:
       const { claudeJSON } = await import("./replit_integrations/anthropic/client");
 
       const audienceGuidance: Record<string, string> = {
-        auckland_council_maori: "Auckland Council Māori Outcomes team. Focus on place-based Māori and Pasifika impact, economic participation, rangatahi development, and community leadership. Avoid bureaucratic language.",
+        auckland_council_maori: "Auckland Council Māori Outcomes team. All reporting is framed for this audience. Focus on Māori and Pasifika economic participation, rangatahi capability development, community leadership emerging from within, and place-based impact in Tāmaki. Avoid bureaucratic language. Show outcomes, not just activity.",
         tpk: "Te Puni Kōkiri. Emphasise Māori economic development, capability building, and cultural outcomes.",
         foundation_north: "Foundation North. Focus on community outcomes, sustainability, and measurable impact.",
         internal: "Internal team use. Be direct, honest, include learnings and challenges.",
-        general: "General funder or partner audience. Balanced tone, outcome-focused.",
+        general: "Auckland Council Māori Outcomes team. Focus on Māori and Pasifika economic participation, rangatahi development, and community leadership. Show outcomes, not just activity.",
       };
 
       const audienceNote = audienceGuidance[audience] || audienceGuidance.general;
@@ -14547,26 +14547,32 @@ DEBRIEF SUMMARIES (these are real activities — use the names and stories as wr
 ${logsWithContacts.map(l => `Title: ${l.title}\nPeople: ${l.contacts || "not recorded"}\nSummary: ${l.summary}`).join("\n\n---\n\n")}
 
 WRITING STYLE:
-- Confident, direct, community-voice
+- Confident, direct, collective voice — "we" means Ra and Kim together, not one person
 - "We supported X to do Y" framing — take credit without overclaiming
-- Balance narrative with outcomes — 2-3 sentences per story max
-- Positive but not corporate — real talk
+- Balance narrative with outcomes — 2-3 sentences per story max, sometimes just one strong sentence
+- Positive but real — not corporate, not overly polished
 - Short paragraphs
-- Use people's real names (linked contacts, not transcription names)
-- Do NOT mention "activations" as a concept — describe what happened instead
+- Use people's real names (linked contact names, not transcription names)
+- Do NOT use the word "activations" — describe what happened instead
+- Do NOT use the tagline "Built in Tāmaki. Built for Tāmaki" — do not include it
+- Only attribute Māori or Pasifika identity to people who are tagged as Community Member or Innovator with ethnicity recorded — do not guess or assume
+- Frame everything through Auckland Council Māori Outcomes lens — economic participation, capability building, rangatahi development, community leadership, Māori and Pasifika thriving
+- Section names stay exactly as written below — do not rename them
+- "What's Next" should be 2-3 brief lines only, not a full list — just a light signal of what's coming
 
 OUTPUT FORMAT (JSON):
 {
-  "lede": "One bold summary sentence of the quarter (e.g. '17 activations. 20 active mentees...')",
+  "lede": "One bold summary line of the period — numbers + headline outcomes (e.g. '17 activations. 20 active mentees. Rangatahi creating content, mentees hitting milestones.')",
   "sections": {
-    "Overview": "2-3 sentence overview of the quarter",
-    "Creative Economy": "Section on creative work, content creators, studio, rangatahi",
-    "Growing Our People": "Mentoring outcomes and individual stories",
-    "Ecosystem & Whanaungatanga": "Partnerships, connections, ecosystem moves"
+    "Overview": "2-3 sentences. What did the quarter deliver overall.",
+    "Creative Economy": "Stories about creative work, content creators, studio, rangatahi — only if real debrief content exists",
+    "Growing Our People": "Mentoring outcomes and individual stories — only real people from debriefs",
+    "Ecosystem & Whanaungatanga": "Partnerships, referrals, connections — only real relationships from debriefs",
+    "What's Next": "2-3 sentences only. Brief forward signal."
   }
 }
 
-Only include sections that have real content from the debrief data. Keep each section to 2-4 paragraphs maximum. Be genuine — if something isn't there, don't fabricate it.`;
+Rules: Only include sections that have real content from the debrief data. Keep each section to 2-4 paragraphs. Be genuine — if something isn't there, don't fabricate it. Drop any section with no real content.`;
 
       const result = await claudeJSON(prompt, {
         lede: "",
