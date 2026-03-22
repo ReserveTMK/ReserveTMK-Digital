@@ -3773,6 +3773,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
   app.get("/api/google-calendar/list", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req as any).user?.claims?.sub;
       const { getUncachableGoogleCalendarClient } = await import("./replit_integrations/google-calendar/client");
       const calendar = await getUncachableGoogleCalendarClient(userId);
 
