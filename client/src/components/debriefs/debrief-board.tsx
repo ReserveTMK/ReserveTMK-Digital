@@ -1,23 +1,20 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/beautiful-button";
 import { Skeleton } from "@/components/ui/skeleton";
-
 import { useImpactLogs } from "@/hooks/use-impact-logs";
-import { format, formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow, isPast, isFuture } from "date-fns";
 import {
   Mic,
   CheckCircle2,
   Clock,
-  AlertTriangle,
-  ArrowRight,
-  Users,
-  Calendar,
   ChevronRight,
   EyeOff,
+  Calendar,
+  Users,
 } from "lucide-react";
 import { DismissPopover } from "@/components/dismiss-popover";
 import type { QueueItem } from "./shared";
@@ -33,26 +30,34 @@ const COLUMNS = [
     label: "To Debrief",
     icon: Mic,
     color: "border-t-orange-500",
-    badgeColor: "bg-orange-500/15 text-orange-700",
-    description: "Events waiting to be debriefed",
   },
   {
     id: "in_progress",
     label: "Recorded & Reviewing",
     icon: Clock,
     color: "border-t-blue-500",
-    badgeColor: "bg-blue-500/15 text-blue-700",
-    description: "Audio recorded, awaiting review",
   },
   {
     id: "completed",
     label: "Completed",
     icon: CheckCircle2,
     color: "border-t-green-500",
-    badgeColor: "bg-green-500/15 text-green-700",
-    description: "Reviewed, linked, confirmed",
   },
 ];
+
+// ── Unified event type ────────────────────────────────────────────────────────
+
+type BoardEvent = {
+  id: string; // "app-123" or "gcal-abc123"
+  name: string;
+  type: string;
+  startTime: string;
+  isPast: boolean;
+  internalId?: number; // internal event DB id
+  gcalId?: string;
+  existingDebriefId?: number;
+  existingDebriefStatus?: string;
+};
 
 // ── Board ────────────────────────────────────────────────────────────────────
 
@@ -60,106 +65,169 @@ export function DebriefBoard() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
+  // Internal queue events
   const { data: queueItems, isLoading: queueLoading } = useQuery<QueueItem[]>({
     queryKey: ["/api/events/needs-debrief"],
+    staleTime: 0,
   });
 
+  // GCal events (last 90 days + next 30 days)
+  const { data: gcalEvents, isLoading: gcalLoading } = useQuery<any[]>({
+    queryKey: ["/api/google-calendar/events"],
+    staleTime: 0,
+  });
+
+  // Dismissed GCal events
+  const { data: dismissedEvents } = useQuery<{ id: number; gcalEventId: string; reason: string }[]>({
+    queryKey: ["/api/dismissed-calendar-events"],
+  });
+
+  // All debriefs
   const { data: allLogs, isLoading: logsLoading } = useImpactLogs() as { data: ImpactLog[] | undefined; isLoading: boolean };
 
-  const isLoading = queueLoading || logsLoading;
+  const isLoading = queueLoading || gcalLoading || logsLoading;
 
-  // A debrief is "real" only if it has a transcript, audio, or is pending_review
+  // Build lookup sets
+  const dismissedGcalIds = useMemo(() =>
+    new Set((dismissedEvents || []).map(d => d.gcalEventId)),
+    [dismissedEvents]
+  );
+
   const isRealDebrief = (log: ImpactLog) =>
     log.status === "pending_review" ||
     (log.transcript && log.transcript.trim().length > 0) ||
     (log.audioUrl && log.audioUrl.trim().length > 0);
 
-  // Build a map of eventId -> log for quick lookup
-  const logByEventId = new Map((allLogs || []).map(l => [l.eventId, l]));
+  // Maps for debrief lookup
+  const debriefByEventId = useMemo(() => {
+    const map = new Map<number, ImpactLog>();
+    for (const log of (allLogs || [])) {
+      if (!log.eventId) continue;
+      const existing = map.get(log.eventId);
+      if (!existing || log.status === "confirmed" || (isRealDebrief(log) && existing.status === "draft" && !isRealDebrief(existing))) {
+        map.set(log.eventId, log);
+      }
+    }
+    return map;
+  }, [allLogs]);
 
-  // Column 1: Events with no debrief OR debrief started but not really recorded yet
-  const toDebrief = (queueItems || []).filter((q) => {
-    if (!q.existingDebriefId) return true; // no debrief at all
-    const log = (allLogs || []).find(l => l.id === q.existingDebriefId);
-    if (!log) return true;
-    return !isRealDebrief(log); // draft with no content → back to column 1
-  });
+  const debriefByGcalId = useMemo(() => {
+    const map = new Map<string, ImpactLog>();
+    for (const log of (allLogs || [])) {
+      const gcalId = (log as any).gcalEventId;
+      if (!gcalId) continue;
+      const existing = map.get(gcalId);
+      if (!existing || log.status === "confirmed") {
+        map.set(gcalId, log);
+      }
+    }
+    return map;
+  }, [allLogs]);
 
-  // Column 2: Events with a real debrief (has transcript/audio/pending_review) but not confirmed
-  const inProgress = (queueItems || []).filter((q) => {
-    if (!q.existingDebriefId) return false;
-    const log = (allLogs || []).find(l => l.id === q.existingDebriefId);
-    if (!log) return false;
-    return isRealDebrief(log) && log.status !== "confirmed";
-  }).map(q => ({
-    id: q.id,
-    name: q.name,
-    type: q.type,
-    startTime: q.startTime,
-    endTime: q.endTime,
-    location: q.location,
-    attendeeCount: q.attendeeCount,
-    description: q.description,
-    linkedProgrammeId: q.linkedProgrammeId,
-    calendarAttendees: q.calendarAttendees,
-    queueStatus: "in_progress" as const,
-    existingDebriefId: q.existingDebriefId,
-    existingDebriefStatus: q.existingDebriefStatus,
-  })).concat(
-    // Standalone logs (not linked to events) that are real
-    (allLogs || [])
-      .filter(l => !l.eventId && isRealDebrief(l) && l.status !== "confirmed")
-      .map(l => ({
-        id: l.id,
-        name: l.title,
-        type: "manual",
-        startTime: l.createdAt?.toString() || "",
-        endTime: l.createdAt?.toString() || "",
-        location: null,
-        attendeeCount: null,
-        description: null,
-        linkedProgrammeId: null,
-        calendarAttendees: null,
-        queueStatus: "in_progress" as const,
-        existingDebriefId: l.id,
-        existingDebriefStatus: l.status,
-      }))
-  );
+  // Build unified event list from internal + GCal
+  const allBoardEvents = useMemo(() => {
+    const events: BoardEvent[] = [];
+    const seenKeys = new Set<string>();
 
-  // Column 3: Confirmed debriefs (recent 20)
-  const completed = (allLogs || [])
+    // Internal queue events
+    for (const q of (queueItems || [])) {
+      const key = `app-${q.id}`;
+      seenKeys.add(key);
+      const log = debriefByEventId.get(q.id);
+      events.push({
+        id: key,
+        name: q.name,
+        type: q.type,
+        startTime: q.startTime,
+        isPast: new Date(q.endTime) < new Date(),
+        internalId: q.id,
+        existingDebriefId: log?.id,
+        existingDebriefStatus: log?.status,
+      });
+    }
+
+    // GCal events not already covered
+    for (const e of (gcalEvents || [])) {
+      if (dismissedGcalIds.has(e.id)) continue;
+      const nameKey = `${(e.summary || "").trim().toLowerCase()}|${new Date(e.start).toDateString()}`;
+      // Skip if an internal event covers this (by name+date)
+      const alreadyCovered = [...seenKeys].some(k => {
+        const q = (queueItems || []).find(q => `app-${q.id}` === k);
+        return q && `${q.name.toLowerCase()}|${new Date(q.startTime).toDateString()}` === nameKey;
+      });
+      if (alreadyCovered) continue;
+
+      const log = debriefByGcalId.get(e.id);
+      if (log?.status === "confirmed") continue; // already done, skip column 1
+
+      events.push({
+        id: `gcal-${e.id}`,
+        name: e.summary || "Untitled Event",
+        type: e.calendarId?.includes("@") ? "Meeting" : "Event",
+        startTime: e.start,
+        isPast: new Date(e.end || e.start) < new Date(),
+        gcalId: e.id,
+        existingDebriefId: log?.id,
+        existingDebriefStatus: log?.status,
+      });
+    }
+
+    return events;
+  }, [queueItems, gcalEvents, dismissedGcalIds, debriefByEventId, debriefByGcalId]);
+
+  // Column 1: No debrief or empty draft
+  const toDebrief = useMemo(() => allBoardEvents.filter(e => {
+    if (!e.existingDebriefId) return true;
+    const log = allLogs?.find(l => l.id === e.existingDebriefId);
+    return log ? !isRealDebrief(log) : true;
+  }).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()), [allBoardEvents, allLogs]);
+
+  // Column 2: Real debrief in progress
+  const inProgress = useMemo(() => allBoardEvents.filter(e => {
+    if (!e.existingDebriefId) return false;
+    const log = allLogs?.find(l => l.id === e.existingDebriefId);
+    return log ? isRealDebrief(log) && log.status !== "confirmed" : false;
+  }), [allBoardEvents, allLogs]);
+
+  // Column 3: Confirmed
+  const completed = useMemo(() => (allLogs || [])
     .filter(l => l.status === "confirmed")
     .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime())
-    .slice(0, 20);
+    .slice(0, 30),
+    [allLogs]);
 
-  const handleSkip = async (eventId: number, reason: string) => {
-    try {
-      await apiRequest("POST", `/api/events/${eventId}/skip-debrief`, { reason });
-      queryClient.invalidateQueries({ queryKey: ["/api/events/needs-debrief"] });
-      toast({ title: "Dismissed", description: "Event removed from queue." });
-    } catch {
-      toast({ title: "Error", description: "Failed to dismiss", variant: "destructive" });
-    }
-  };
-
-  const handleStartDebrief = async (eventId: number, eventName: string) => {
+  // Actions
+  const handleDebrief = async (event: BoardEvent) => {
     try {
       const res = await apiRequest("POST", "/api/impact-logs", {
-        title: eventName,
+        title: event.name,
         status: "draft",
-        eventId,
+        eventId: event.internalId || null,
+        gcalEventId: event.gcalId || null,
       });
       const log = await res.json();
       queryClient.invalidateQueries({ queryKey: ["/api/impact-logs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/events/needs-debrief"] });
       setLocation(`/debriefs/${log.id}`);
     } catch (err: any) {
-      console.error("Failed to create debrief:", err);
+      toast({ title: "Error", description: "Failed to create debrief", variant: "destructive" });
     }
   };
 
-  const handleOpenDebrief = (debriefId: number) => {
-    setLocation(`/debriefs/${debriefId}`);
+  const handleDismiss = async (event: BoardEvent, reason: string) => {
+    try {
+      if (event.internalId) {
+        await apiRequest("POST", `/api/events/${event.internalId}/skip-debrief`, { reason });
+        queryClient.invalidateQueries({ queryKey: ["/api/events/needs-debrief"] });
+      } else if (event.gcalId) {
+        await apiRequest("POST", "/api/dismissed-calendar-events", { gcalEventId: event.gcalId, reason });
+        queryClient.invalidateQueries({ queryKey: ["/api/dismissed-calendar-events"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/google-calendar/events"] });
+      }
+      toast({ title: "Dismissed", description: "Event removed from queue." });
+    } catch {
+      toast({ title: "Error", description: "Failed to dismiss", variant: "destructive" });
+    }
   };
 
   if (isLoading) {
@@ -180,52 +248,46 @@ export function DebriefBoard() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       {COLUMNS.map((col, idx) => {
-        const items = columnData[idx];
         const Icon = col.icon;
         return (
           <div key={col.id} className="flex flex-col gap-3">
-            {/* Column header */}
             <div className="flex items-center gap-2 pb-1">
               <Icon className="w-4 h-4 text-muted-foreground" />
               <span className="font-semibold text-sm">{col.label}</span>
               <Badge variant="secondary" className="ml-auto text-xs">
-                {items.length}
+                {columnData[idx].length}
               </Badge>
             </div>
 
-            {/* Cards */}
             <div className={`rounded-lg border-t-2 ${col.color} bg-muted/30 p-3 space-y-2 min-h-[200px]`}>
-              {items.length === 0 && (
+              {columnData[idx].length === 0 && (
                 <p className="text-xs text-muted-foreground text-center py-8">
                   {idx === 0 ? "All caught up 🎉" : idx === 1 ? "Nothing in review" : "No completed debriefs yet"}
                 </p>
               )}
 
-              {/* Column 1 — To Debrief */}
-              {idx === 0 && (toDebrief as QueueItem[]).map(item => (
+              {idx === 0 && (toDebrief as BoardEvent[]).map(event => (
                 <EventCard
-                  key={item.id}
-                  item={item}
-                  onStart={() => handleStartDebrief(item.id, item.name)}
-                  onSkip={(reason) => handleSkip(item.id, reason)}
+                  key={event.id}
+                  event={event}
+                  onDebrief={() => handleDebrief(event)}
+                  onDismiss={(reason) => handleDismiss(event, reason)}
                 />
               ))}
 
-              {/* Column 2 — In Progress */}
-              {idx === 1 && inProgress.map(item => (
+              {idx === 1 && (inProgress as BoardEvent[]).map(event => (
                 <InProgressCard
-                  key={`${item.id}-${item.existingDebriefId}`}
-                  item={item}
-                  onOpen={() => item.existingDebriefId && handleOpenDebrief(item.existingDebriefId)}
+                  key={event.id}
+                  event={event}
+                  onOpen={() => event.existingDebriefId && setLocation(`/debriefs/${event.existingDebriefId}`)}
                 />
               ))}
 
-              {/* Column 3 — Completed */}
-              {idx === 2 && completed.map(log => (
+              {idx === 2 && (completed as ImpactLog[]).map(log => (
                 <CompletedCard
                   key={log.id}
                   log={log}
-                  onOpen={() => handleOpenDebrief(log.id)}
+                  onOpen={() => setLocation(`/debriefs/${log.id}`)}
                 />
               ))}
             </div>
@@ -236,47 +298,39 @@ export function DebriefBoard() {
   );
 }
 
-// ── Event card (column 1) ────────────────────────────────────────────────────
+// ── Event card (column 1) ─────────────────────────────────────────────────────
 
-function EventCard({ item, onStart, onSkip }: {
-  item: QueueItem;
-  onStart: (name: string) => void;
-  onSkip: (reason: string) => void;
+function EventCard({ event, onDebrief, onDismiss }: {
+  event: BoardEvent;
+  onDebrief: () => void;
+  onDismiss: (reason: string) => void;
 }) {
-  const isOverdue = item.queueStatus === "overdue";
-  const dateStr = format(new Date(item.startTime), "EEE d MMM");
-  const daysAgo = formatDistanceToNow(new Date(item.startTime), { addSuffix: true });
+  const dateStr = format(new Date(event.startTime), "EEE d MMM");
+  const isFutureEvent = isFuture(new Date(event.startTime));
 
   return (
-    <Card className={`p-3 space-y-2 border-l-2 ${isOverdue ? "border-l-red-500" : "border-l-orange-400"}`}>
+    <Card className={`p-3 space-y-2 border-l-2 ${isFutureEvent ? "border-l-gray-300 opacity-60" : "border-l-orange-400"}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-medium truncate">{item.name}</p>
+          <p className="text-sm font-medium truncate">{event.name}</p>
           <div className="flex items-center gap-1 mt-0.5">
             <Calendar className="w-3 h-3 text-muted-foreground" />
             <span className="text-xs text-muted-foreground">{dateStr}</span>
-            {isOverdue && (
-              <Badge variant="destructive" className="text-[10px] px-1 py-0 ml-1">
-                Overdue
-              </Badge>
+            {isFutureEvent && <Badge variant="secondary" className="text-[10px] px-1 py-0 ml-1">Upcoming</Badge>}
+            {!isFutureEvent && new Date(event.startTime) < new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) && (
+              <Badge variant="destructive" className="text-[10px] px-1 py-0 ml-1">Overdue</Badge>
             )}
           </div>
         </div>
       </div>
-      {item.attendeeCount && item.attendeeCount > 0 && (
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Users className="w-3 h-3" />
-          <span>{item.attendeeCount} attendees</span>
-        </div>
-      )}
       <div className="flex gap-2 pt-1">
-        <Button size="sm" className="flex-1 h-7 text-xs" onClick={() => onStart(item.name)}>
+        <Button size="sm" className="flex-1 h-7 text-xs" onClick={onDebrief} disabled={isFutureEvent}>
           <Mic className="w-3 h-3 mr-1" />
           Debrief
         </Button>
         <DismissPopover
           reasons={["Duplicate", "Ignore", "Personal"]}
-          onDismiss={onSkip}
+          onDismiss={onDismiss}
         >
           <Button size="sm" variant="ghost" className="h-7 px-2">
             <EyeOff className="w-3.5 h-3.5 text-muted-foreground" />
@@ -287,14 +341,14 @@ function EventCard({ item, onStart, onSkip }: {
   );
 }
 
-// ── In progress card (column 2) ──────────────────────────────────────────────
+// ── In progress card (column 2) ───────────────────────────────────────────────
 
-function InProgressCard({ item, onOpen }: {
-  item: any;
+function InProgressCard({ event, onOpen }: {
+  event: BoardEvent;
   onOpen: () => void;
 }) {
-  const statusLabel = item.existingDebriefStatus === "pending_review" ? "Pending Review" : "Draft";
-  const statusColor = item.existingDebriefStatus === "pending_review"
+  const statusLabel = event.existingDebriefStatus === "pending_review" ? "Pending Review" : "Draft";
+  const statusColor = event.existingDebriefStatus === "pending_review"
     ? "bg-blue-500/15 text-blue-700"
     : "bg-gray-500/15 text-gray-700";
 
@@ -302,11 +356,9 @@ function InProgressCard({ item, onOpen }: {
     <Card className="p-3 space-y-2 border-l-2 border-l-blue-400 cursor-pointer hover:bg-muted/50" onClick={onOpen}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium truncate">{item.name}</p>
+          <p className="text-sm font-medium truncate">{event.name}</p>
           <div className="flex items-center gap-2 mt-1">
-            <Badge className={`text-[10px] px-1.5 py-0 ${statusColor}`}>
-              {statusLabel}
-            </Badge>
+            <Badge className={`text-[10px] px-1.5 py-0 ${statusColor}`}>{statusLabel}</Badge>
           </div>
         </div>
         <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
@@ -316,14 +368,13 @@ function InProgressCard({ item, onOpen }: {
   );
 }
 
-// ── Completed card (column 3) ────────────────────────────────────────────────
+// ── Completed card (column 3) ─────────────────────────────────────────────────
 
 function CompletedCard({ log, onOpen }: {
   log: ImpactLog;
   onOpen: () => void;
 }) {
   const dateStr = log.createdAt ? format(new Date(log.createdAt), "d MMM") : "";
-
   return (
     <Card className="p-3 space-y-1 border-l-2 border-l-green-500 cursor-pointer hover:bg-muted/50" onClick={onOpen}>
       <div className="flex items-start justify-between gap-2">
