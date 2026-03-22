@@ -320,7 +320,7 @@ export async function speechToTextAssemblyAI(audioBuffer: Buffer): Promise<strin
       "Authorization": apiKey,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ audio_url: upload_url, speech_model: "universal-2" }),
+    body: JSON.stringify({ audio_url: upload_url, speech_models: ["universal-2"] }),
   });
   if (!transcriptRes.ok) {
     const body = await transcriptRes.text();
