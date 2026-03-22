@@ -1097,6 +1097,41 @@ export function ReviewView({ id }: { id: number }) {
                         <Play className="w-5 h-5 text-muted-foreground shrink-0" />
                         <audio controls src={impactLog.audioUrl} className="flex-1 h-10" data-testid="audio-saved-playback" />
                       </div>
+                      {!debriefTranscript && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full text-xs"
+                          disabled={isTranscribing}
+                          onClick={async () => {
+                            setIsTranscribing(true);
+                            try {
+                              const audioRes = await fetch(impactLog.audioUrl!);
+                              const audioBuffer = await audioRes.arrayBuffer();
+                              const res = await fetch("/api/impact-transcribe", {
+                                method: "POST",
+                                headers: { "Content-Type": "audio/webm" },
+                                body: audioBuffer,
+                                credentials: "include",
+                              });
+                              if (!res.ok) {
+                                const err = await res.json();
+                                throw new Error(err.message);
+                              }
+                              const data = await res.json();
+                              setDebriefTranscript(data.transcript);
+                              toast({ title: "Transcribed", description: "Saved audio transcribed successfully." });
+                            } catch (err: any) {
+                              toast({ title: "Transcription failed", description: err.message, variant: "destructive" });
+                            }
+                            setIsTranscribing(false);
+                          }}
+                          data-testid="button-transcribe-saved-audio"
+                        >
+                          {isTranscribing ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Mic className="w-3 h-3 mr-1" />}
+                          Transcribe saved recording
+                        </Button>
+                      )}
                     </div>
                   )}
 
