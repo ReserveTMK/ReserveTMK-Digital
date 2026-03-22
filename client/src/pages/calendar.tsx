@@ -746,8 +746,17 @@ function EventCard({
   const cardTint = EVENT_TYPE_CARD_TINTS[eventType] || "border-gray-500/20 bg-gray-500/5 dark:bg-gray-500/5";
   const personalEvent = isGcal && !isMarkedNotPersonal ? isPersonalEvent(entry.gcal!.summary, entry.gcal!.description) : false;
 
+  // Debrief status left border
+  const debriefBorder = entry.isPast && !personalEvent
+    ? debriefInfo?.status === "confirmed"
+      ? "border-l-4 border-l-emerald-500"
+      : debriefInfo
+        ? "border-l-4 border-l-blue-400"
+        : "border-l-4 border-l-amber-400"
+    : "";
+
   return (
-    <Card className={`p-4 ${personalEvent ? "border-amber-500/30 bg-amber-500/5" : cardTint}`} data-testid={`card-event-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}>
+    <Card className={`p-4 ${personalEvent ? "border-amber-500/30 bg-amber-500/5" : cardTint} ${debriefBorder}`} data-testid={`card-event-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}>
       <div className="space-y-2">
         {personalEvent && (
           <div className="flex items-center justify-between gap-2 pb-1">
