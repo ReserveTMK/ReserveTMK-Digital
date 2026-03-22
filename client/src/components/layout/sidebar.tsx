@@ -24,6 +24,7 @@ import {
   Rocket,
   PhoneCall,
   Wrench,
+  BarChart3,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "../ui/beautiful-button";
@@ -70,9 +71,10 @@ const navigation: NavItem[] = [
     ],
   },
   {
-    name: "Reporting", href: "/reports", icon: FileText,
+    name: "Reporting", href: "/report-generator", icon: FileText,
     children: [
-      { name: "Reports", href: "/reports", icon: FileText },
+      { name: "Report Generator", href: "/report-generator", icon: FileText },
+      { name: "Dashboard", href: "/reports", icon: BarChart3 },
       { name: "Cohorts", href: "/cohort-analysis", icon: Users },
       { name: "Legacy Reports", href: "/legacy-reports", icon: BookOpen },
       { name: "Taxonomy", href: "/taxonomy", icon: Tags },

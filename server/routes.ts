@@ -14395,5 +14395,205 @@ Rules:
     res.json({ connected: await isCalendarConnected(userId) });
   });
 
+  // === NARRATIVE REPORT GENERATOR ===
+
+  app.post("/api/reports/generate-narrative", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { startDate, endDate, audience, periodLabel } = req.body;
+
+      if (!startDate || !endDate) {
+        return res.status(400).json({ message: "startDate and endDate required" });
+      }
+
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+
+      // ── Pull data ──────────────────────────────────────────────────────────
+
+      const EVENT_TYPES_ACTIVATION = ["Hub Activity", "Drop-in", "Programme Session", "Programme", "External Event", "Booking"];
+      const EVENT_TYPES_MENTORING = ["Mentoring Session"];
+      const EVENT_TYPES_ECOSYSTEM = ["Meeting", "Catch Up", "Planning"];
+
+      const allEvents = await storage.getEvents(userId);
+      const periodEvents = allEvents.filter(e =>
+        new Date(e.startTime) >= start &&
+        new Date(e.startTime) <= end &&
+        e.eventStatus !== "cancelled"
+      );
+
+      const activations = periodEvents.filter(e => EVENT_TYPES_ACTIVATION.includes(e.type)).length;
+      const mentoringSessions = periodEvents.filter(e => EVENT_TYPES_MENTORING.includes(e.type)).length;
+      const ecosystemMeetings = periodEvents.filter(e => EVENT_TYPES_ECOSYSTEM.includes(e.type)).length;
+
+      // Programmes
+      const allProgrammes = await storage.getProgrammes(userId);
+      const programmes = allProgrammes.filter(p =>
+        p.startDate && new Date(p.startDate) >= start && new Date(p.startDate) <= end
+      ).length;
+
+      // Community reach (unique contacts at events)
+      const allAttendance = await db.execute(sql`
+        SELECT COUNT(DISTINCT ea.contact_id) as count
+        FROM event_attendance ea
+        JOIN events e ON ea.event_id = e.id
+        WHERE e.user_id = ${userId}
+          AND e.start_time >= ${start}
+          AND e.start_time <= ${end}
+          AND e.event_status != 'cancelled'
+      `);
+      const communityReached = Number((allAttendance as any).rows?.[0]?.count || 0);
+
+      // Active mentees
+      const mentoringRels = await db.execute(sql`
+        SELECT COUNT(*) as count FROM mentoring_relationships WHERE status = 'active'
+      `);
+      const activeMentees = Number((mentoringRels as any).rows?.[0]?.count || 0);
+
+      // Māori & Pasifika breakdown
+      const maoriCount = await db.execute(sql`
+        SELECT COUNT(*) as count FROM contacts
+        WHERE user_id = ${userId}
+          AND active = true
+          AND is_archived = false
+          AND (is_innovator = true OR is_community_member = true)
+          AND ethnicity @> ARRAY['Māori']::text[]
+      `);
+      const pasifikaCount = await db.execute(sql`
+        SELECT COUNT(*) as count FROM contacts
+        WHERE user_id = ${userId}
+          AND active = true
+          AND is_archived = false
+          AND (is_innovator = true OR is_community_member = true)
+          AND ethnicity && ARRAY['Samoan','Tongan','Niuean','Cook Islands Māori','Cook Island','Fijian','Tahitian','Melanesian']::text[]
+          AND NOT (ethnicity @> ARRAY['Māori']::text[])
+      `);
+      const totalMPCount = await db.execute(sql`
+        SELECT COUNT(*) as count FROM contacts
+        WHERE user_id = ${userId}
+          AND active = true
+          AND is_archived = false
+          AND (is_innovator = true OR is_community_member = true)
+          AND ethnicity IS NOT NULL
+          AND array_length(ethnicity, 1) > 0
+      `);
+
+      const maori = Number((maoriCount as any).rows?.[0]?.count || 0);
+      const pasifika = Number((pasifikaCount as any).rows?.[0]?.count || 0);
+      const totalWithEthnicity = Number((totalMPCount as any).rows?.[0]?.count || 0);
+      const maoriPasifikaPercent = totalWithEthnicity > 0
+        ? Math.round(((maori + pasifika) / totalWithEthnicity) * 100)
+        : 0;
+
+      // ── Pull confirmed debriefs with summaries ─────────────────────────────
+
+      const allLogs = await storage.getImpactLogs(userId);
+      const periodLogs = allLogs.filter(l =>
+        l.status === "confirmed" &&
+        l.createdAt && new Date(l.createdAt) >= start &&
+        new Date(l.createdAt) <= end &&
+        l.summary
+      );
+
+      // Get linked contacts for each log
+      const logsWithContacts = await Promise.all(
+        periodLogs.slice(0, 30).map(async (log) => {
+          const contacts = await db.execute(sql`
+            SELECT c.name, c.ethnicity FROM impact_log_contacts ilc
+            JOIN contacts c ON c.id = ilc.contact_id
+            WHERE ilc.impact_log_id = ${log.id}
+          `);
+          const contactNames = ((contacts as any).rows || []).map((r: any) => r.name).join(", ");
+          return {
+            title: log.title,
+            summary: log.summary,
+            contacts: contactNames,
+          };
+        })
+      );
+
+      // ── AI narrative generation ────────────────────────────────────────────
+
+      const { claudeJSON } = await import("./replit_integrations/anthropic/client");
+
+      const audienceGuidance: Record<string, string> = {
+        auckland_council_maori: "Auckland Council Māori Outcomes team. Focus on place-based Māori and Pasifika impact, economic participation, rangatahi development, and community leadership. Avoid bureaucratic language.",
+        tpk: "Te Puni Kōkiri. Emphasise Māori economic development, capability building, and cultural outcomes.",
+        foundation_north: "Foundation North. Focus on community outcomes, sustainability, and measurable impact.",
+        internal: "Internal team use. Be direct, honest, include learnings and challenges.",
+        general: "General funder or partner audience. Balanced tone, outcome-focused.",
+      };
+
+      const audienceNote = audienceGuidance[audience] || audienceGuidance.general;
+
+      const prompt = `You are writing a quarterly narrative report for Reserve Tāmaki — a community innovation hub in Tāmaki, Auckland, serving urban Māori and Pasifika entrepreneurs, creatives, and community leaders.
+
+AUDIENCE: ${audienceNote}
+
+PERIOD: ${periodLabel}
+
+ACTIVITY DATA:
+- Activations this quarter: ${activations}
+- Programmes delivered: ${programmes}
+- Mentoring sessions: ${mentoringSessions}
+- Ecosystem/relationship meetings: ${ecosystemMeetings}
+- Target community directly reached: ${communityReached}
+- Active mentees currently: ${activeMentees}
+- Māori community members: ${maori}
+- Pasifika community members: ${pasifika}
+- % Māori & Pasifika: ${maoriPasifikaPercent}%
+
+DEBRIEF SUMMARIES (these are real activities — use the names and stories as written, do not invent):
+${logsWithContacts.map(l => `Title: ${l.title}\nPeople: ${l.contacts || "not recorded"}\nSummary: ${l.summary}`).join("\n\n---\n\n")}
+
+WRITING STYLE:
+- Confident, direct, community-voice
+- "We supported X to do Y" framing — take credit without overclaiming
+- Balance narrative with outcomes — 2-3 sentences per story max
+- Positive but not corporate — real talk
+- Short paragraphs
+- Use people's real names (linked contacts, not transcription names)
+- Do NOT mention "activations" as a concept — describe what happened instead
+
+OUTPUT FORMAT (JSON):
+{
+  "lede": "One bold summary sentence of the quarter (e.g. '17 activations. 20 active mentees...')",
+  "sections": {
+    "Overview": "2-3 sentence overview of the quarter",
+    "Creative Economy": "Section on creative work, content creators, studio, rangatahi",
+    "Growing Our People": "Mentoring outcomes and individual stories",
+    "Ecosystem & Whanaungatanga": "Partnerships, connections, ecosystem moves"
+  }
+}
+
+Only include sections that have real content from the debrief data. Keep each section to 2-4 paragraphs maximum. Be genuine — if something isn't there, don't fabricate it.`;
+
+      const result = await claudeJSON(prompt, {
+        lede: "",
+        sections: {} as Record<string, string>,
+      });
+
+      res.json({
+        numbers: {
+          activations,
+          programmes,
+          mentoringSessions,
+          communityReached,
+          activeMentees,
+          ecosystemMeetings,
+          maori,
+          pasifika,
+          maoriPasifikaPercent,
+        },
+        lede: result.lede,
+        sections: result.sections,
+      });
+
+    } catch (err: any) {
+      console.error("[report-generator] Error:", err.message);
+      res.status(500).json({ message: "Failed to generate report: " + err.message });
+    }
+  });
+
   return httpServer;
 }
