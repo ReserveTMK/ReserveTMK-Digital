@@ -219,7 +219,7 @@ export function DebriefBoard() {
       const log = await res.json();
       queryClient.invalidateQueries({ queryKey: ["/api/impact-logs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/events/needs-debrief"] });
-      setLocation(`/debriefs/${log.id}`);
+      setLocation(`/debriefs/${log.id}?from=board`);
     } catch (err: any) {
       toast({ title: "Error", description: "Failed to create debrief", variant: "destructive" });
     }
@@ -290,7 +290,7 @@ export function DebriefBoard() {
                 <InProgressCard
                   key={event.id}
                   event={event}
-                  onOpen={() => event.existingDebriefId && setLocation(`/debriefs/${event.existingDebriefId}`)}
+                  onOpen={() => event.existingDebriefId && setLocation(`/debriefs/${event.existingDebriefId}?from=board`)}
                 />
               ))}
 
