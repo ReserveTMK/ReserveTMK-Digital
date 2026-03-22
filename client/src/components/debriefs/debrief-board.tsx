@@ -66,19 +66,47 @@ export function DebriefBoard() {
 
   const isLoading = queueLoading || logsLoading;
 
-  // Column 1: Events with no debrief or skipped
-  const toDebrief = (queueItems || []).filter(
-    (q) => !q.existingDebriefId && q.queueStatus !== "in_progress"
-  );
+  // A debrief is "real" only if it has a transcript, audio, or is pending_review
+  const isRealDebrief = (log: ImpactLog) =>
+    log.status === "pending_review" ||
+    (log.transcript && log.transcript.trim().length > 0) ||
+    (log.audioUrl && log.audioUrl.trim().length > 0);
 
-  // Column 2: Events with draft/pending_review debrief
-  const inProgress = (queueItems || []).filter(
-    (q) => q.existingDebriefId &&
-      (q.existingDebriefStatus === "draft" || q.existingDebriefStatus === "pending_review")
-  ).concat(
-    // Also include logs not linked to events that are draft/pending
+  // Build a map of eventId -> log for quick lookup
+  const logByEventId = new Map((allLogs || []).map(l => [l.eventId, l]));
+
+  // Column 1: Events with no debrief OR debrief started but not really recorded yet
+  const toDebrief = (queueItems || []).filter((q) => {
+    if (!q.existingDebriefId) return true; // no debrief at all
+    const log = (allLogs || []).find(l => l.id === q.existingDebriefId);
+    if (!log) return true;
+    return !isRealDebrief(log); // draft with no content → back to column 1
+  });
+
+  // Column 2: Events with a real debrief (has transcript/audio/pending_review) but not confirmed
+  const inProgress = (queueItems || []).filter((q) => {
+    if (!q.existingDebriefId) return false;
+    const log = (allLogs || []).find(l => l.id === q.existingDebriefId);
+    if (!log) return false;
+    return isRealDebrief(log) && log.status !== "confirmed";
+  }).map(q => ({
+    id: q.id,
+    name: q.name,
+    type: q.type,
+    startTime: q.startTime,
+    endTime: q.endTime,
+    location: q.location,
+    attendeeCount: q.attendeeCount,
+    description: q.description,
+    linkedProgrammeId: q.linkedProgrammeId,
+    calendarAttendees: q.calendarAttendees,
+    queueStatus: "in_progress" as const,
+    existingDebriefId: q.existingDebriefId,
+    existingDebriefStatus: q.existingDebriefStatus,
+  })).concat(
+    // Standalone logs (not linked to events) that are real
     (allLogs || [])
-      .filter(l => !l.eventId && (l.status === "draft" || l.status === "pending_review"))
+      .filter(l => !l.eventId && isRealDebrief(l) && l.status !== "confirmed")
       .map(l => ({
         id: l.id,
         name: l.title,
