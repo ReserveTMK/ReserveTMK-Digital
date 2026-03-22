@@ -3792,8 +3792,8 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
       res.json(calendars);
     } catch (err: any) {
-      console.error("Google Calendar list error:", err.message);
-      res.status(500).json({ message: "Failed to list calendars: " + err.message });
+      console.error("Google Calendar list error:", err.message, err.response?.data);
+      res.status(500).json({ message: "Failed to list calendars: " + err.message, detail: err.response?.data });
     }
   });
 
