@@ -1327,10 +1327,20 @@ export default function CalendarPage() {
 
   const debriefByGcalId = useMemo(() => {
     const map = new Map<string, DebriefInfo>();
-    if (!appEvents || !debriefByEventId.size) return map;
-    for (const event of appEvents) {
-      if (event.googleCalendarEventId && debriefByEventId.has(event.id)) {
-        map.set(event.googleCalendarEventId, debriefByEventId.get(event.id)!);
+    // Match via internal event's googleCalendarEventId
+    if (appEvents && debriefByEventId.size) {
+      for (const event of appEvents) {
+        if (event.googleCalendarEventId && debriefByEventId.has(event.id)) {
+          map.set(event.googleCalendarEventId, debriefByEventId.get(event.id)!);
+        }
+      }
+    }
+    // Also match directly via gcalEventId stored on the debrief
+    if (impactLogs) {
+      for (const log of impactLogs) {
+        if ((log as any).gcalEventId && !map.has((log as any).gcalEventId)) {
+          map.set((log as any).gcalEventId, { debriefId: log.id, status: log.status });
+        }
       }
     }
     return map;
@@ -1554,11 +1564,12 @@ export default function CalendarPage() {
   }
 
   const createDebriefMutation = useMutation({
-    mutationFn: async (data: { title: string; eventId?: number; summary?: string }) => {
+    mutationFn: async (data: { title: string; eventId?: number; gcalEventId?: string; summary?: string }) => {
       const res = await apiRequest("POST", "/api/impact-logs", {
         title: data.title,
         status: "draft",
         eventId: data.eventId || null,
+        gcalEventId: data.gcalEventId || null,
         summary: data.summary || null,
       });
       return res.json();
@@ -1605,6 +1616,7 @@ export default function CalendarPage() {
     createDebriefMutation.mutate({
       title: gcalEvent.summary || "Untitled Event",
       eventId: linkedAppEvent?.id,
+      gcalEventId: gcalEvent.id,
       summary: details.length > 0 ? details.join("\n") : undefined,
     });
   }

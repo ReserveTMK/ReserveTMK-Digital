@@ -2538,7 +2538,15 @@ export async function registerRoutes(
   app.get(api.impactLogs.list.path, isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
     const logs = await storage.getImpactLogs(userId);
-    res.json(logs);
+    // Enrich with gcalEventId
+    try {
+      const gcalIds = await db.execute(sql`SELECT id, gcal_event_id FROM impact_logs WHERE user_id = ${userId} AND gcal_event_id IS NOT NULL`);
+      const gcalMap = new Map((gcalIds as any).rows?.map((r: any) => [r.id, r.gcal_event_id]) || []);
+      const enriched = logs.map(l => gcalMap.has(l.id) ? { ...l, gcalEventId: gcalMap.get(l.id) } : l);
+      res.json(enriched);
+    } catch {
+      res.json(logs);
+    }
   });
 
   app.get(api.impactLogs.get.path, isAuthenticated, async (req, res) => {
@@ -2552,11 +2560,21 @@ export async function registerRoutes(
   app.post(api.impactLogs.create.path, isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
+      const gcalEventId = req.body.gcalEventId || null;
       const input = api.impactLogs.create.input.parse({
         ...req.body,
         userId,
       });
       const log = await storage.createImpactLog(input);
+      // Store gcalEventId if provided
+      if (gcalEventId && log.id) {
+        try {
+          await db.execute(sql`UPDATE impact_logs SET gcal_event_id = ${gcalEventId} WHERE id = ${log.id}`);
+          (log as any).gcalEventId = gcalEventId;
+        } catch (e) {
+          console.warn("[impact-log] Failed to store gcalEventId:", e);
+        }
+      }
 
       if (input.eventId) {
         try {
