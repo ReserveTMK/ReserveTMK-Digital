@@ -59,7 +59,7 @@ export function DebriefBoard() {
   const { toast } = useToast();
 
   const { data: queueItems, isLoading: queueLoading } = useQuery<QueueItem[]>({
-    queryKey: ["/api/debrief-queue"],
+    queryKey: ["/api/events/needs-debrief"],
   });
 
   const { data: allLogs, isLoading: logsLoading } = useImpactLogs() as { data: ImpactLog[] | undefined; isLoading: boolean };
@@ -133,7 +133,7 @@ export function DebriefBoard() {
   const handleSkip = async (eventId: number) => {
     try {
       await apiRequest("POST", `/api/events/${eventId}/skip-debrief`, { reason: "Completed/not required" });
-      queryClient.invalidateQueries({ queryKey: ["/api/debrief-queue"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/events/needs-debrief"] });
       toast({ title: "Dismissed", description: "Event removed from queue." });
     } catch {
       toast({ title: "Error", description: "Failed to dismiss", variant: "destructive" });
