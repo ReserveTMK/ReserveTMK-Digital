@@ -299,11 +299,17 @@ export async function speechToText(
     throw new Error("AI service unavailable: OpenAI API key is not configured");
   }
   const file = await toFile(audioBuffer, `audio.${format}`);
-  const response = await openai.audio.transcriptions.create({
-    file,
-    model: "whisper-1",
-  });
-  return response.text;
+  console.log(`[speechToText] format=${format} size=${audioBuffer.length} model=whisper-1`);
+  try {
+    const response = await openai.audio.transcriptions.create({
+      file,
+      model: "whisper-1",
+    });
+    return response.text;
+  } catch (err: any) {
+    console.error(`[speechToText] OpenAI error:`, err?.status, err?.message, JSON.stringify(err?.error));
+    throw err;
+  }
 }
 
 /**
