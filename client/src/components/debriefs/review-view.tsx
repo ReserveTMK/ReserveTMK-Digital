@@ -1097,7 +1097,7 @@ export function ReviewView({ id }: { id: number }) {
                         <Play className="w-5 h-5 text-muted-foreground shrink-0" />
                         <audio controls src={impactLog.audioUrl} className="flex-1 h-10" data-testid="audio-saved-playback" />
                       </div>
-                      {!debriefTranscript && (
+                      {!recordingTranscript && (
                         <Button
                           size="sm"
                           variant="outline"
@@ -1119,7 +1119,7 @@ export function ReviewView({ id }: { id: number }) {
                                 throw new Error(err.message);
                               }
                               const data = await res.json();
-                              setDebriefTranscript(data.transcript);
+                              setRecordingTranscript(data.transcript);
                               toast({ title: "Transcribed", description: "Saved audio transcribed successfully." });
                             } catch (err: any) {
                               toast({ title: "Transcription failed", description: err.message, variant: "destructive" });
