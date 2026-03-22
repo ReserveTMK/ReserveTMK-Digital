@@ -1627,8 +1627,21 @@ export default function CalendarPage() {
         .map(e => e.googleCalendarEventId)
     );
 
+    // Build a set of internal event name+date keys to detect duplicates with GCal
+    const internalEventKeys = new Set(
+      (appEvents || [])
+        .filter(e => !e.googleCalendarEventId || e.linkedProgrammeId || e.linkedBookingId)
+        .map(e => {
+          const d = new Date(e.startTime);
+          return `${(e.name || "").trim().toLowerCase()}|${d.toDateString()}`;
+        })
+    );
+
     (gcalEvents || []).forEach(e => {
       if (linkedGcalIds.has(e.id)) return;
+      // Suppress GCal event if a matching internal event exists (same name + date)
+      const gcalKey = `${(e.summary || "").trim().toLowerCase()}|${new Date(e.start).toDateString()}`;
+      if (internalEventKeys.has(gcalKey)) return;
       const d = new Date(e.start);
       const isDismissed = dismissedIds.has(e.id);
       combined.push({ date: d, type: "gcal", gcal: e, isPast: new Date(e.end) < new Date(), isDismissed });
