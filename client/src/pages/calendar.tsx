@@ -2150,9 +2150,25 @@ export default function CalendarPage() {
                 })}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground py-4 text-center">
-                No calendars found. Make sure your Google Calendar is connected.
-              </p>
+              <div className="py-4 text-center space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Google Calendar not connected.
+                </p>
+                <Button
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      const res = await fetch("/api/google-calendar/oauth/authorize", { credentials: "include" });
+                      const data = await res.json();
+                      if (data.url) window.location.href = data.url;
+                    } catch (e) {
+                      console.error("Failed to get auth URL", e);
+                    }
+                  }}
+                >
+                  Connect Google Calendar
+                </Button>
+              </div>
             )}
           </Card>
         )}
