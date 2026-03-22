@@ -3692,7 +3692,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     try {
       const { isCalendarConnected } = await import("./replit_integrations/google-calendar/client");
       const userId = (req as any).user?.claims?.sub;
-      res.json({ connected: isCalendarConnected(userId) });
+      res.json({ connected: await isCalendarConnected(userId) });
     } catch {
       res.json({ connected: false });
     }
@@ -14371,7 +14371,7 @@ Rules:
   app.get("/api/google-calendar/oauth/status", isAuthenticated, async (req, res) => {
     const { isCalendarConnected } = await import("./replit_integrations/google-calendar/client");
     const userId = (req.user as any).claims.sub;
-    res.json({ connected: isCalendarConnected(userId) });
+    res.json({ connected: await isCalendarConnected(userId) });
   });
 
   return httpServer;

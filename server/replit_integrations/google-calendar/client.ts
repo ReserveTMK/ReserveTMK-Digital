@@ -1,7 +1,7 @@
 import { google } from 'googleapis';
 import { getBaseUrl } from '../../url';
 import { db } from '../../db';
-import { eq, and } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 
 // ── OAuth2 Client ──────────────────────────────────────────────────────────────
 
@@ -18,52 +18,55 @@ export function getGoogleCalendarOAuth2Client() {
   );
 }
 
-// ── Token storage (using xero_settings table pattern — stored in DB) ──────────
+// ── Token storage (persisted to DB) ───────────────────────────────────────────
 
-const GCAL_TOKEN_KEY = 'google_calendar_oauth';
-
-export async function getStoredCalendarTokens(userId: string): Promise<{ accessToken: string; refreshToken: string; expiryDate?: number } | null> {
-  try {
-    const { xeroSettings } = await import('@shared/schema');
-    // Reuse a simple key-value store — we'll store tokens in a dedicated way
-    // For now use a JSON file approach via process env cache
-    const tokenJson = process.env._GCAL_TOKEN_CACHE;
-    if (!tokenJson) return null;
-    const cache = JSON.parse(tokenJson);
-    return cache[userId] || null;
-  } catch {
-    return null;
-  }
+export async function storeCalendarTokens(userId: string, tokens: {
+  access_token?: string | null;
+  refresh_token?: string | null;
+  expiry_date?: number | null;
+}) {
+  if (!tokens.access_token) return;
+  await db.execute(sql`
+    INSERT INTO google_calendar_tokens (user_id, access_token, refresh_token, expiry_date, updated_at)
+    VALUES (${userId}, ${tokens.access_token}, ${tokens.refresh_token || null}, ${tokens.expiry_date || null}, now())
+    ON CONFLICT (user_id) DO UPDATE SET
+      access_token = EXCLUDED.access_token,
+      refresh_token = COALESCE(EXCLUDED.refresh_token, google_calendar_tokens.refresh_token),
+      expiry_date = EXCLUDED.expiry_date,
+      updated_at = now()
+  `);
 }
 
-// In-memory token store (survives restarts via Railway env if needed)
-const tokenCache: Record<string, { accessToken: string; refreshToken: string; expiryDate?: number }> = {};
-
-export function storeCalendarTokens(userId: string, tokens: { access_token?: string | null; refresh_token?: string | null; expiry_date?: number | null }) {
-  if (!tokens.access_token) return;
-  tokenCache[userId] = {
-    accessToken: tokens.access_token,
-    refreshToken: tokens.refresh_token || tokenCache[userId]?.refreshToken || '',
-    expiryDate: tokens.expiry_date || undefined,
+export async function getCalendarTokens(userId: string): Promise<{
+  accessToken: string;
+  refreshToken: string | null;
+  expiryDate: number | null;
+} | null> {
+  const rows = await db.execute(sql`
+    SELECT access_token, refresh_token, expiry_date FROM google_calendar_tokens WHERE user_id = ${userId}
+  `);
+  const row = (rows as any).rows?.[0] || rows[0];
+  if (!row?.access_token) return null;
+  return {
+    accessToken: row.access_token,
+    refreshToken: row.refresh_token || null,
+    expiryDate: row.expiry_date ? Number(row.expiry_date) : null,
   };
 }
 
-export function getCalendarTokens(userId: string) {
-  return tokenCache[userId] || null;
-}
-
-export function isCalendarConnected(userId: string): boolean {
-  return !!tokenCache[userId]?.accessToken;
+export async function isCalendarConnected(userId: string): Promise<boolean> {
+  const tokens = await getCalendarTokens(userId);
+  return !!tokens?.accessToken;
 }
 
 // ── Main client getter ─────────────────────────────────────────────────────────
 
 export async function getUncachableGoogleCalendarClient(userId?: string) {
   const resolvedUserId = userId || 'default';
-  const tokens = getCalendarTokens(resolvedUserId);
+  const tokens = await getCalendarTokens(resolvedUserId);
 
   if (!tokens?.accessToken) {
-    throw new Error('Google Calendar not connected. Please connect via Settings → Calendar.');
+    throw new Error('Google Calendar not connected. Please connect via Calendar → Settings.');
   }
 
   const oauth2Client = getGoogleCalendarOAuth2Client();
@@ -77,9 +80,9 @@ export async function getUncachableGoogleCalendarClient(userId?: string) {
     expiry_date: tokens.expiryDate,
   });
 
-  // Auto-refresh if needed
-  oauth2Client.on('tokens', (newTokens) => {
-    storeCalendarTokens(resolvedUserId, newTokens);
+  // Persist refreshed tokens automatically
+  oauth2Client.on('tokens', async (newTokens) => {
+    await storeCalendarTokens(resolvedUserId, newTokens);
   });
 
   return google.calendar({ version: 'v3', auth: oauth2Client });
