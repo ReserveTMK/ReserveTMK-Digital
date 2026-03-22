@@ -85,7 +85,7 @@ function ListView() {
   const params = new URLSearchParams(searchString);
   const tabParam = params.get("tab");
   const reconcileId = params.get("reconcile");
-  const [activeTab, setActiveTab] = useState(tabParam || "queue");
+  const [activeTab, setActiveTab] = useState(tabParam || "calendar");
 
   useEffect(() => {
     if (tabParam && tabParam !== activeTab) {
@@ -139,13 +139,18 @@ function ListView() {
           </div>
 
           <Tabs value={activeTab} onValueChange={handleTabChange}>
-            <TabsList className="w-full grid grid-cols-5" data-testid="tabs-debriefs">
+            <TabsList className="w-full grid grid-cols-6" data-testid="tabs-debriefs">
+              <TabsTrigger value="calendar" className="min-h-[44px] text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-calendar">Calendar</TabsTrigger>
               <TabsTrigger value="queue" className="min-h-[44px] text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-queue">Board</TabsTrigger>
-              <TabsTrigger value="operations" className="min-h-[44px] text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-operations">Operations</TabsTrigger>
+              <TabsTrigger value="operations" className="min-h-[44px] text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-operations">Ops</TabsTrigger>
               <TabsTrigger value="archive" className="min-h-[44px] text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-archive">Archive</TabsTrigger>
               <TabsTrigger value="weekly" className="min-h-[44px] text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-weekly">Weekly</TabsTrigger>
               <TabsTrigger value="updates" className="min-h-[44px] text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-updates">Updates</TabsTrigger>
             </TabsList>
+
+            <TabsContent value="calendar" className="mt-4">
+              <CalendarDebriefTab reconcileId={reconcileId} />
+            </TabsContent>
 
             <TabsContent value="queue" className="mt-4">
               <DebriefBoard />
