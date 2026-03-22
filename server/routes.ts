@@ -3459,18 +3459,19 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
           const { ensureCompatibleFormat, speechToText } = await import("./replit_integrations/audio/client");
           const { buffer, format } = await ensureCompatibleFormat(audioBuffer);
+          console.log(`[transcribe] format=${format} size=${buffer.length}`);
           const transcript = await speechToText(buffer, format);
 
           res.json({ transcript });
         } catch (err: any) {
-          console.error("Transcription error:", err);
+          console.error("Transcription error:", err?.message, err?.status, err?.error);
           if (err.message?.includes("ffmpeg")) {
             return res.status(503).json({ message: "Audio conversion is temporarily unavailable. Please try recording again using Chrome or Firefox, which use natively supported audio formats." });
           }
           if (err.message?.includes("API key")) {
             return res.status(503).json({ message: "Transcription service is not configured. Please contact support." });
           }
-          res.status(500).json({ message: "Transcription failed. Please try recording again. If the problem persists, try using Chrome or Firefox." });
+          res.status(500).json({ message: `Transcription failed: ${err?.message || "unknown error"}` });
         }
       });
     } catch (error) {
