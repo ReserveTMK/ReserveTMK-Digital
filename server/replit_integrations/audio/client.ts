@@ -301,7 +301,7 @@ export async function speechToText(
   const file = await toFile(audioBuffer, `audio.${format}`);
   const response = await openai.audio.transcriptions.create({
     file,
-    model: "gpt-4o-mini-transcribe",
+    model: "whisper-1",
   });
   return response.text;
 }
@@ -320,7 +320,7 @@ export async function speechToTextStream(
   const file = await toFile(audioBuffer, `audio.${format}`);
   const stream = await openai.audio.transcriptions.create({
     file,
-    model: "gpt-4o-mini-transcribe",
+    model: "whisper-1",
     stream: true,
   });
 
