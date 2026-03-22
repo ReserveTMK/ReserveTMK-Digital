@@ -48,7 +48,9 @@ import {
 } from "lucide-react";
 import type { ImpactLog, Event, Contact } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { lazy, Suspense } from "react";
 import { ReviewView } from "@/components/debriefs/review-view";
+const CalendarPage = lazy(() => import("@/pages/calendar"));
 import { CalendarDebriefTab } from "@/components/debriefs/calendar-debrief-tab";
 import { WeeklyDebriefTab } from "@/components/debriefs/weekly-debrief-tab";
 import { NewDebriefDialog } from "@/components/debriefs/new-debrief-dialog";
@@ -148,8 +150,14 @@ function ListView() {
               <TabsTrigger value="updates" className="min-h-[44px] text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-updates">Updates</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="calendar" className="mt-4">
-              <CalendarDebriefTab reconcileId={reconcileId} />
+            <TabsContent value="calendar" className="mt-0 -mx-4 md:-mx-8">
+              <Suspense fallback={
+                <div className="flex items-center justify-center py-20">
+                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                </div>
+              }>
+                <CalendarPage />
+              </Suspense>
             </TabsContent>
 
             <TabsContent value="queue" className="mt-4">
