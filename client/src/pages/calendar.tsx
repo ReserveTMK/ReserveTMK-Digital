@@ -1304,6 +1304,8 @@ export default function CalendarPage() {
 
   const { data: impactLogs } = useQuery<{ id: number; eventId: number | null; status: string }[]>({
     queryKey: ["/api/impact-logs"],
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 
   const { data: monthlySnapshots } = useQuery<any[]>({
