@@ -288,15 +288,84 @@ export async function textToSpeechStream(
 }
 
 /**
+ * Speech-to-Text via AssemblyAI REST API.
+ * Uploads audio, starts transcription, polls until complete.
+ * Auth header uses plain API key (not Bearer).
+ */
+export async function speechToTextAssemblyAI(audioBuffer: Buffer): Promise<string> {
+  const apiKey = process.env.ASSEMBLYAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("ASSEMBLYAI_API_KEY is not configured");
+  }
+
+  // Step 1: Upload audio file
+  const uploadRes = await fetch("https://api.assemblyai.com/v2/upload", {
+    method: "POST",
+    headers: {
+      "Authorization": apiKey,
+      "Content-Type": "application/octet-stream",
+    },
+    body: audioBuffer,
+  });
+  if (!uploadRes.ok) {
+    const body = await uploadRes.text();
+    throw new Error(`[AssemblyAI] Upload failed (${uploadRes.status}): ${body}`);
+  }
+  const { upload_url } = await uploadRes.json() as { upload_url: string };
+
+  // Step 2: Start transcription
+  const transcriptRes = await fetch("https://api.assemblyai.com/v2/transcript", {
+    method: "POST",
+    headers: {
+      "Authorization": apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ audio_url: upload_url }),
+  });
+  if (!transcriptRes.ok) {
+    const body = await transcriptRes.text();
+    throw new Error(`[AssemblyAI] Transcript request failed (${transcriptRes.status}): ${body}`);
+  }
+  const { id } = await transcriptRes.json() as { id: string };
+
+  // Step 3: Poll until completed
+  const pollUrl = `https://api.assemblyai.com/v2/transcript/${id}`;
+  while (true) {
+    await new Promise((r) => setTimeout(r, 1500));
+    const pollRes = await fetch(pollUrl, {
+      headers: { "Authorization": apiKey },
+    });
+    if (!pollRes.ok) {
+      const body = await pollRes.text();
+      throw new Error(`[AssemblyAI] Poll failed (${pollRes.status}): ${body}`);
+    }
+    const result = await pollRes.json() as { status: string; text?: string; error?: string };
+    if (result.status === "completed") {
+      return result.text ?? "";
+    }
+    if (result.status === "error") {
+      throw new Error(`[AssemblyAI] Transcription error: ${result.error}`);
+    }
+    // status is "queued" or "processing" — keep polling
+  }
+}
+
+/**
  * Speech-to-Text: Transcribes audio using dedicated transcription model.
- * Uses gpt-4o-mini-transcribe for accurate transcription.
+ * Uses AssemblyAI if ASSEMBLYAI_API_KEY is set, otherwise falls back to OpenAI whisper-1.
  */
 export async function speechToText(
   audioBuffer: Buffer,
   format: "wav" | "mp3" | "webm" | "mp4" | "ogg" = "wav"
 ): Promise<string> {
+  // Prefer AssemblyAI if key is configured
+  if (process.env.ASSEMBLYAI_API_KEY) {
+    console.log(`[speechToText] provider=assemblyai size=${audioBuffer.length}`);
+    return speechToTextAssemblyAI(audioBuffer);
+  }
+
   if (!isOpenAIKeyConfigured()) {
-    throw new Error("AI service unavailable: OpenAI API key is not configured");
+    throw new Error("AI service unavailable: neither ASSEMBLYAI_API_KEY nor OpenAI API key is configured");
   }
   const file = await toFile(audioBuffer, `audio.${format}`);
   console.log(`[speechToText] format=${format} size=${audioBuffer.length} model=whisper-1`);
