@@ -2155,6 +2155,31 @@ export function ReviewView({ id }: { id: number }) {
                   refetch={refetchLinkedGroups}
                   toast={toast}
                 />
+
+                {/* Quick save buttons after linked communities */}
+                <div className="flex gap-2 mt-4 pt-4 border-t border-border">
+                  {impactLog.status !== "confirmed" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleSave("draft")}
+                      disabled={updateMutation.isPending}
+                      className="flex-1"
+                    >
+                      {updateMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
+                      Save Draft
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    onClick={() => handleSave("confirmed")}
+                    disabled={updateMutation.isPending}
+                    className="flex-1"
+                  >
+                    {updateMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
+                    {impactLog.status === "confirmed" ? "Save Changes" : "Confirm & Save"}
+                  </Button>
+                </div>
               </CollapsibleSection>
             </div>
 
