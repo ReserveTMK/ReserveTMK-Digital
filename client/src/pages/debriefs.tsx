@@ -54,6 +54,7 @@ import { WeeklyDebriefTab } from "@/components/debriefs/weekly-debrief-tab";
 import { NewDebriefDialog } from "@/components/debriefs/new-debrief-dialog";
 import { ManualUpdateDialog } from "@/components/debriefs/manual-update-dialog";
 import { DebriefCardList } from "@/components/debriefs/shared";
+import { DebriefBoard } from "@/components/debriefs/debrief-board";
 import {
   useEnrichedRelationships,
   useMentoringApplications,
@@ -139,7 +140,7 @@ function ListView() {
 
           <Tabs value={activeTab} onValueChange={handleTabChange}>
             <TabsList className="w-full grid grid-cols-5" data-testid="tabs-debriefs">
-              <TabsTrigger value="queue" className="min-h-[44px] text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-queue">Queue</TabsTrigger>
+              <TabsTrigger value="queue" className="min-h-[44px] text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-queue">Board</TabsTrigger>
               <TabsTrigger value="operations" className="min-h-[44px] text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-operations">Operations</TabsTrigger>
               <TabsTrigger value="archive" className="min-h-[44px] text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-archive">Archive</TabsTrigger>
               <TabsTrigger value="weekly" className="min-h-[44px] text-xs sm:text-sm px-2 sm:px-3" data-testid="tab-weekly">Weekly</TabsTrigger>
@@ -147,7 +148,7 @@ function ListView() {
             </TabsList>
 
             <TabsContent value="queue" className="mt-4">
-              <CalendarDebriefTab reconcileId={reconcileId} />
+              <DebriefBoard />
             </TabsContent>
 
             <TabsContent value="operations" className="mt-4">
