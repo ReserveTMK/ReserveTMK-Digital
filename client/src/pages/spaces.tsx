@@ -123,9 +123,9 @@ function TimeHeader({ hours = HOURS }: { hours?: number[] }) {
         {hours.map((hour) => (
           <div
             key={hour}
-            className="flex-1 text-[10px] text-muted-foreground text-center border-r border-border/40 last:border-r-0"
+            className="flex-1 text-[10px] text-muted-foreground text-center border-r border-border/40 last:border-r-0 overflow-hidden"
           >
-            {hour}:00
+            {hour % 2 === 0 ? `${hour}:00` : ""}
           </div>
         ))}
       </div>
