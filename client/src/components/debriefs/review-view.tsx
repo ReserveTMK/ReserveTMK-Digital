@@ -2759,24 +2759,31 @@ function PeopleSection({ label, description, people, allPeople, setPeople, conta
       {people.length > 0 && (
         <div className="space-y-2 mb-3">
           {people.map((person: any, localIdx: number) => {
-            const globalIdx = allPeople.indexOf(person);
+            // Find global index by matching section + name + contactId reliably
+            const globalIdx = allPeople.findIndex((p, i) => p === person || (p.name === person.name && p.section === person.section && p.contactId === person.contactId && allPeople.indexOf(p) === i));
+            const safeGlobalIdx = globalIdx >= 0 ? globalIdx : allPeople.findIndex(p => p.name === person.name && p.section === person.section);
             return (
               <PersonEntry
-                key={globalIdx}
+                key={`${person.name}-${person.contactId}-${localIdx}`}
                 person={person}
                 index={localIdx}
                 contacts={contacts}
                 testIdPrefix={testIdPrefix}
-                onRemove={() => setPeople(allPeople.filter((_: any, j: number) => j !== globalIdx))}
+                onRemove={() => {
+                  const idx = allPeople.findIndex(p => p === person);
+                  if (idx >= 0) setPeople(allPeople.filter((_: any, j: number) => j !== idx));
+                  else setPeople(allPeople.filter((_: any, j: number) => j !== safeGlobalIdx));
+                }}
                 onUnlink={() => {
+                  const idx = allPeople.findIndex(p => p === person);
                   const updated = [...allPeople];
-                  updated[globalIdx] = { ...updated[globalIdx], contactId: null };
+                  updated[idx >= 0 ? idx : safeGlobalIdx] = { ...person, contactId: null };
                   setPeople(updated);
                 }}
                 onLink={(contactId, name) => {
+                  const idx = allPeople.findIndex(p => p === person);
                   const updated = [...allPeople];
-                  const person = updated[globalIdx];
-                  updated[globalIdx] = { ...person, contactId, name };
+                  updated[idx >= 0 ? idx : safeGlobalIdx] = { ...person, contactId, name };
                   setPeople(updated);
                   const role = person.section === "primary" || (!person.section && ["primary", "mentor", "mentee", "subject"].includes(person.role)) ? "primary" : "mentioned";
                   if (onPersistLink) onPersistLink(contactId, role);
