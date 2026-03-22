@@ -746,30 +746,18 @@ function EventCard({
   const cardTint = EVENT_TYPE_CARD_TINTS[eventType] || "border-gray-500/20 bg-gray-500/5 dark:bg-gray-500/5";
   const personalEvent = isGcal && !isMarkedNotPersonal ? isPersonalEvent(entry.gcal!.summary, entry.gcal!.description) : false;
 
-  // Debrief status — fade confirmed/in-progress, highlight needs-debrief
+  // Debrief status
   const isConfirmed = debriefInfo?.status === "confirmed";
   const isInProgress = debriefInfo && debriefInfo.status !== "confirmed";
-  const needsDebrief = entry.isPast && !personalEvent && !debriefInfo;
 
-  const debriefOpacity = entry.isPast
-    ? isConfirmed
-      ? "opacity-40 hover:opacity-80 transition-opacity"
-      : isInProgress
-        ? "opacity-60 hover:opacity-90 transition-opacity"
-        : ""
-    : "";
-
-  const debriefBorder = entry.isPast && !personalEvent
-    ? isConfirmed
-      ? "border-l-4 border-l-emerald-500"
-      : isInProgress
-        ? "border-l-4 border-l-blue-400"
-        : "border-l-4 border-l-amber-400"
+  // All cards same grey — fade if debriefed or in progress
+  const debriefOpacity = entry.isPast && (isConfirmed || isInProgress)
+    ? "opacity-40 hover:opacity-75 transition-opacity"
     : "";
 
   return (
     <Card
-      className={`p-4 cursor-pointer ${personalEvent ? "border-amber-500/30 bg-amber-500/5" : cardTint} ${debriefBorder} ${debriefOpacity}`}
+      className={`p-4 cursor-pointer bg-muted/40 border-border ${debriefOpacity}`}
       onClick={() => setExpanded(!expanded)} data-testid={`card-event-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}>
       <div className="space-y-2">
         {personalEvent && (
