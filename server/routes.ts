@@ -1912,7 +1912,7 @@ export async function registerRoutes(
       const resolved = await resolveMentorUserId(rawId);
       const meetingUserId = resolved.availabilityUserId;
       const contactOwnerUserId = resolved.ownerUserId || resolved.availabilityUserId;
-      const { name, email, phone, date, time, duration, notes, meetingTypeId, pathway, onboardingAnswers, discoveryGoals, extras } = req.body;
+      const { name, email, phone, date, time, duration, notes, meetingTypeId, pathway, onboardingAnswers, discoveryGoals, extras, relationship_stage, ethnicity, consentGiven } = req.body;
 
       if (!name || !date || !time) {
         return res.status(400).json({ message: "name, date, and time are required" });
@@ -1930,14 +1930,29 @@ export async function registerRoutes(
       }
       if (!contact) {
         isNewContact = true;
-        contact = await storage.createContact({
+        const newContactData: any = {
           userId: contactOwnerUserId,
           name,
           email: email || null,
           phone: phone || null,
           role: 'Entrepreneur',
           active: true,
-        });
+        };
+        // Set relationship_stage from onboarding flow (kakano/tipu/ora) — never shown to user
+        if (relationship_stage && ['kakano', 'tipu', 'ora'].includes(relationship_stage)) {
+          newContactData.relationshipStage = relationship_stage;
+        }
+        if (ethnicity && Array.isArray(ethnicity) && ethnicity.length > 0) {
+          newContactData.ethnicity = ethnicity;
+        }
+        contact = await storage.createContact(newContactData);
+      } else if (relationship_stage && ['kakano', 'tipu', 'ora'].includes(relationship_stage)) {
+        // Update existing contact's relationship stage if provided
+        try {
+          await storage.updateContact(contact.id, { relationshipStage: relationship_stage });
+        } catch (e) {
+          console.warn('Failed to update relationship_stage on existing contact:', e);
+        }
       }
 
       const meetingType = (pathway === 'meeting') ? 'catchup' : 'mentoring';
@@ -1970,6 +1985,10 @@ export async function registerRoutes(
             appData.ventureDescription = discoveryGoals.ventureDescription || null;
             appData.currentStage = discoveryGoals.currentStage || null;
             appData.whatNeedHelpWith = discoveryGoals.whatNeedHelpWith || null;
+          }
+          // Store relationship_stage from new onboarding flow
+          if (relationship_stage && ['kakano', 'tipu', 'ora'].includes(relationship_stage)) {
+            appData.currentStage = appData.currentStage || relationship_stage;
           }
           await storage.createMentoringApplication(appData);
         } catch (appErr) {
