@@ -11232,6 +11232,22 @@ Return a JSON array:
     }
   });
 
+  app.post("/api/contacts/:id/toggle-rangatahi", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const contactId = parseId(req.params.id);
+      const contact = await storage.getContact(contactId);
+      if (!contact || contact.userId !== userId) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+      const nowRangatahi = !contact.isRangatahi;
+      const updated = await storage.updateContact(contactId, { isRangatahi: nowRangatahi });
+      res.json({ contact: updated, isRangatahi: nowRangatahi });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to toggle rangatahi status" });
+    }
+  });
+
   app.post("/api/contacts/community/ai-score", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;

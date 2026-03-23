@@ -291,6 +291,21 @@ export default function ContactDetail() {
     },
   });
 
+  const toggleRangatahiMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/contacts/${id}/toggle-rangatahi`);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts', id] });
+      toast({ title: data.isRangatahi ? "Marked as Rangatahi" : "Rangatahi flag removed" });
+    },
+    onError: () => {
+      toast({ title: "Failed to toggle Rangatahi", variant: "destructive" });
+    },
+  });
+
   const snapshotChartData = useMemo(() => {
     const points: Array<{ date: string; timestamp: number; source: string; mindset?: number; skill?: number; confidence?: number; bizConfidence?: number; systems?: number; funding?: number; network?: number; community?: number }> = [];
 
@@ -495,6 +510,17 @@ export default function ContactDetail() {
                       data-testid="button-toggle-vip-detail"
                     >
                       <Star className={`w-4 h-4 ${contact.isVip ? "text-yellow-500 fill-yellow-500" : "text-muted-foreground"}`} />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-1.5"
+                      onClick={() => toggleRangatahiMutation.mutate()}
+                      disabled={toggleRangatahiMutation.isPending}
+                      title={contact.isRangatahi ? "Remove Rangatahi flag" : "Mark as Rangatahi"}
+                      data-testid="button-toggle-rangatahi-detail"
+                    >
+                      <span className={`text-xs font-bold ${contact.isRangatahi ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>R</span>
                     </Button>
                     {contact.ventureType && (
                       <Badge variant="outline" className="text-xs capitalize" data-testid="badge-venture-type">

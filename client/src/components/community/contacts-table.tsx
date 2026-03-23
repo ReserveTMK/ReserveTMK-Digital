@@ -290,6 +290,15 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
                       >
                         <Star className={`w-3.5 h-3.5 ${contact.isVip ? "text-yellow-500 fill-yellow-500" : "text-muted-foreground/40"}`} />
                       </button>
+                      {contact.isRangatahi && (
+                        <span
+                          className="shrink-0 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 border border-emerald-500/40 rounded px-0.5 leading-tight"
+                          title="Rangatahi"
+                          data-testid={`badge-rangatahi-${contact.id}`}
+                        >
+                          R
+                        </span>
+                      )}
                     </div>
                   </td>
                   {drilldownTier !== "innovators" && drilldownTier !== "vip" && (

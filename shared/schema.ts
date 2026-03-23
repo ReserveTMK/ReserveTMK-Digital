@@ -109,6 +109,7 @@ export const contacts = pgTable("contacts", {
   isInnovator: boolean("is_innovator").default(false),
   isVip: boolean("is_vip").default(false),
   vipReason: text("vip_reason"),
+  isRangatahi: boolean("is_rangatahi").default(false),
   supportType: text("support_type").array(),
   connectionStrength: text("connection_strength"),
   relationshipCircle: text("relationship_circle"),
@@ -227,6 +228,7 @@ export const events = pgTable("events", {
   eventStatus: text("event_status").default("active"), // 'active', 'cancelled'
   debriefSkippedReason: text("debrief_skipped_reason"),
   calendarAttendees: jsonb("calendar_attendees").$type<Array<{ email: string; displayName?: string; responseStatus?: string; organizer?: boolean }>>(),
+  spaceUseType: text("space_use_type"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

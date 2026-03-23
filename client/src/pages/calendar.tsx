@@ -121,6 +121,7 @@ interface AppEvent {
   requiresDebrief: boolean | null;
   eventStatus: string | null;
   debriefSkippedReason: string | null;
+  spaceUseType: string | null;
 }
 
 function formatDate(dateStr: string) {
@@ -518,7 +519,18 @@ function EventCard({
   const [newPersonName, setNewPersonName] = useState("");
   const [newPersonEmail, setNewPersonEmail] = useState("");
   const [newPersonPhone, setNewPersonPhone] = useState("");
+  const [localSpaceUseType, setLocalSpaceUseType] = useState<string>("");
   const { data: contacts } = useContacts();
+
+  const updateSpaceUseTypeMutation = useMutation({
+    mutationFn: async ({ eventId, spaceUseType }: { eventId: number; spaceUseType: string | null }) => {
+      const res = await apiRequest("PATCH", `/api/events/${eventId}`, { spaceUseType });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+    },
+  });
 
   const createContactMutation = useMutation({
     mutationFn: async (data: { name: string; email?: string; phone?: string }) => {
@@ -877,6 +889,29 @@ function EventCard({
                         {t}
                       </span>
                     </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            )}
+
+            {entry.isPast && appEventId && (
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Space Use</Label>
+              <Select
+                value={localSpaceUseType || (linkedAppEvent?.spaceUseType ?? "")}
+                onValueChange={(val) => {
+                  setLocalSpaceUseType(val);
+                  updateSpaceUseTypeMutation.mutate({ eventId: appEventId, spaceUseType: val || null });
+                }}
+                data-testid={`select-space-use-${appEventId}`}
+              >
+                <SelectTrigger className="h-8 text-xs" data-testid={`trigger-space-use-${appEventId}`}>
+                  <SelectValue placeholder="Select space use..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {["Venue Hire", "Space Use", "Studio", "Drop-in"].map(opt => (
+                    <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1253,6 +1288,13 @@ export default function CalendarPage() {
   const [dailyFootTrafficValue, setDailyFootTrafficValue] = useState("");
   const [showNeedsAttention, setShowNeedsAttention] = useState(false);
   const [dailyFTSaving, setDailyFTSaving] = useState(false);
+  const [attendeeNudgeEventId, setAttendeeNudgeEventId] = useState<number | null>(null);
+  const [attendeeNudgeEventName, setAttendeeNudgeEventName] = useState<string>("");
+  const [attendeeNudgeValue, setAttendeeNudgeValue] = useState<string>("");
+  const [orgLinkEventId, setOrgLinkEventId] = useState<number | null>(null);
+  const [orgLinkEventName, setOrgLinkEventName] = useState<string>("");
+  const [orgLinkSearch, setOrgLinkSearch] = useState<string>("");
+  const [orgLinkDismissed, setOrgLinkDismissed] = useState(false);
   const isMobile = useIsMobile();
   const dayPanelRef = useRef<HTMLDivElement>(null);
 
@@ -1564,7 +1606,7 @@ export default function CalendarPage() {
   }
 
   const createDebriefMutation = useMutation({
-    mutationFn: async (data: { title: string; eventId?: number; gcalEventId?: string; summary?: string }) => {
+    mutationFn: async (data: { title: string; eventId?: number; gcalEventId?: string; summary?: string; _linkedAppEvent?: AppEvent | null; _linkedTags?: string[] }) => {
       const res = await apiRequest("POST", "/api/impact-logs", {
         title: data.title,
         status: "draft",
@@ -1574,10 +1616,25 @@ export default function CalendarPage() {
       });
       return res.json();
     },
-    onSuccess: (log: any) => {
+    onSuccess: (log: any, variables: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/impact-logs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
       queryClient.invalidateQueries({ queryKey: ["/api/events/needs-debrief"] });
+      // Check if linked app event is missing attendee count
+      const linkedEv: AppEvent | null | undefined = variables._linkedAppEvent;
+      if (linkedEv && linkedEv.attendeeCount === null) {
+        setAttendeeNudgeEventId(linkedEv.id);
+        setAttendeeNudgeEventName(linkedEv.name);
+        setAttendeeNudgeValue("");
+      }
+      // Check if linked app event has no group tags
+      const tags: string[] = variables._linkedTags || [];
+      if (linkedEv && tags.length === 0) {
+        setOrgLinkEventId(linkedEv.id);
+        setOrgLinkEventName(linkedEv.name);
+        setOrgLinkSearch("");
+        setOrgLinkDismissed(false);
+      }
       toast({ title: "Debrief created", description: "You can now record or type your notes." });
       const dateParam = format(selectedDate, "yyyy-MM-dd");
       navigate(`/debriefs/${log.id}?from=calendar&date=${dateParam}`);
@@ -1618,6 +1675,8 @@ export default function CalendarPage() {
       eventId: linkedAppEvent?.id,
       gcalEventId: gcalEvent.id,
       summary: details.length > 0 ? details.join("\n") : undefined,
+      _linkedAppEvent: linkedAppEvent || null,
+      _linkedTags: linkedAppEvent?.tags || [],
     });
   }
 
@@ -1631,6 +1690,8 @@ export default function CalendarPage() {
       title: appEvent.name,
       eventId: appEvent.id,
       summary: details.length > 0 ? details.join("\n") : undefined,
+      _linkedAppEvent: appEvent,
+      _linkedTags: appEvent.tags || [],
     });
   }
 
@@ -2938,6 +2999,77 @@ export default function CalendarPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Attendee count nudge toast */}
+      {attendeeNudgeEventId && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-card border border-border rounded-lg shadow-lg p-3 flex items-center gap-2 max-w-sm w-full mx-2">
+          <span className="text-xs text-muted-foreground flex-1">Add attendee count for <span className="font-medium text-foreground">{attendeeNudgeEventName}</span>?</span>
+          <Input
+            type="number"
+            min="0"
+            value={attendeeNudgeValue}
+            onChange={(e) => setAttendeeNudgeValue(e.target.value)}
+            placeholder="0"
+            className="h-7 w-16 text-xs"
+          />
+          <Button
+            size="sm"
+            className="h-7 text-xs px-2"
+            disabled={!attendeeNudgeValue}
+            onClick={async () => {
+              try {
+                await apiRequest("PATCH", `/api/events/${attendeeNudgeEventId}`, { attendeeCount: parseInt(attendeeNudgeValue, 10) });
+                queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+                setAttendeeNudgeEventId(null);
+              } catch {}
+            }}
+          >Save</Button>
+          <button className="text-muted-foreground hover:text-foreground ml-1" onClick={() => setAttendeeNudgeEventId(null)}><X className="w-3.5 h-3.5" /></button>
+        </div>
+      )}
+
+      {/* Org linking prompt */}
+      {orgLinkEventId && !orgLinkDismissed && (
+        <div className="fixed bottom-4 right-4 z-50 bg-card border border-border rounded-lg shadow-lg p-3 space-y-2 w-64">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium">Link an organisation to this event?</span>
+            <button className="text-muted-foreground hover:text-foreground" onClick={() => setOrgLinkDismissed(true)}><X className="w-3.5 h-3.5" /></button>
+          </div>
+          <p className="text-[10px] text-muted-foreground">{orgLinkEventName}</p>
+          <Input
+            value={orgLinkSearch}
+            onChange={(e) => setOrgLinkSearch(e.target.value)}
+            placeholder="Search organisations..."
+            className="h-7 text-xs"
+          />
+          {orgLinkSearch.trim() && (
+            <div className="border border-border rounded-md divide-y divide-border/50 max-h-[120px] overflow-y-auto">
+              {(allGroups as { id: number; name: string }[] || [])
+                .filter(g => g.name.toLowerCase().includes(orgLinkSearch.toLowerCase()))
+                .slice(0, 6)
+                .map(g => (
+                  <button
+                    key={g.id}
+                    onClick={async () => {
+                      try {
+                        // Get current event to preserve existing tags
+                        const evRes = await apiRequest("GET", `/api/events/${orgLinkEventId}`);
+                        const ev = await evRes.json();
+                        const existingTags: string[] = ev.tags || [];
+                        if (!existingTags.includes(g.name)) {
+                          await apiRequest("PATCH", `/api/events/${orgLinkEventId}`, { tags: [...existingTags, g.name] });
+                        }
+                        queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+                        setOrgLinkDismissed(true);
+                      } catch {}
+                    }}
+                    className="w-full text-left px-2 py-1.5 text-xs hover:bg-muted/50 transition-colors"
+                  >{g.name}</button>
+                ))}
+            </div>
+          )}
+        </div>
+      )}
     </main>
   );
 }

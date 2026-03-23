@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Building2,
   Monitor,
+  Calendar,
   Calendar as CalendarIcon,
   CalendarDays,
   Package,
@@ -19,6 +20,7 @@ import { useBookings, useVenues, useBookableResources, useDeskAvailability, useD
 import { useQuery } from "@tanstack/react-query";
 import Bookings from "./bookings";
 import ResourcesTab from "@/components/spaces/resources-tab";
+import { SpaceUseTab } from "@/components/spaces/space-use-tab";
 import RegularBookersPage from "./regular-bookers";
 import type { Meeting } from "@shared/schema";
 
@@ -644,12 +646,12 @@ function HotDeskingTab() {
   );
 }
 
-const VALID_TABS = ["calendar", "venue-hire", "hot-desking", "resources", "bookers"] as const;
+const VALID_TABS = ["space-use", "venue-hire", "hot-desking", "resources", "bookers"] as const;
 
 function getTabFromUrl(): string {
   const params = new URLSearchParams(window.location.search);
-  const tab = params.get("tab") || "calendar";
-  return (VALID_TABS as readonly string[]).includes(tab) ? tab : "calendar";
+  const tab = params.get("tab") || "space-use";
+  return (VALID_TABS as readonly string[]).includes(tab) ? tab : "space-use";
 }
 
 function getCalendarParamsFromUrl(): { date?: string; view?: "day" | "week" } {
@@ -669,7 +671,7 @@ export default function SpacesPage() {
     const params = getCalendarParamsFromUrl();
     const tab = getTabFromUrl();
     if (params.date) {
-      setActiveTab("calendar");
+      setActiveTab("space-use");
       setCalendarParams(params);
       setCalendarKey(k => k + 1);
     } else {
@@ -679,7 +681,7 @@ export default function SpacesPage() {
 
   const handleTabChange = useCallback((tab: string) => {
     setActiveTab(tab);
-    const url = tab === "calendar" ? "/spaces" : `/spaces?tab=${tab}`;
+    const url = tab === "space-use" ? "/spaces" : `/spaces?tab=${tab}`;
     window.history.replaceState(null, "", url);
   }, []);
 
@@ -687,12 +689,15 @@ export default function SpacesPage() {
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-4">
       <div>
         <h1 className="text-2xl font-bold" data-testid="text-page-title">Spaces</h1>
-        <p className="text-sm text-muted-foreground">Manage your spaces, venue hire, hot desking, resources, and regular bookers</p>
+        <p className="text-sm text-muted-foreground">All space use, venue hire, hot desking, and booker management</p>
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList data-testid="tabs-spaces" className="h-auto flex-wrap gap-y-1">
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium px-2 select-none">Bookings</span>
+          <TabsTrigger value="space-use" data-testid="tab-space-use">
+            <Calendar className="w-4 h-4 mr-1.5" />
+            Space Use
+          </TabsTrigger>
           <TabsTrigger value="venue-hire" data-testid="tab-venue-hire">
             <Building2 className="w-4 h-4 mr-1.5" />
             Venue Hire
@@ -701,24 +706,18 @@ export default function SpacesPage() {
             <Monitor className="w-4 h-4 mr-1.5" />
             Hot Desking
           </TabsTrigger>
-          <TabsTrigger value="calendar" data-testid="tab-calendar">
-            <CalendarIcon className="w-4 h-4 mr-1.5" />
-            Calendar
-          </TabsTrigger>
-          <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium px-2 select-none">Manage</span>
-          <TabsTrigger value="resources" data-testid="tab-resources">
-            <Package className="w-4 h-4 mr-1.5" />
-            Resources
-          </TabsTrigger>
           <TabsTrigger value="bookers" data-testid="tab-bookers">
             <UserCheck className="w-4 h-4 mr-1.5" />
             Bookers
           </TabsTrigger>
+          <TabsTrigger value="resources" data-testid="tab-resources">
+            <Package className="w-4 h-4 mr-1.5" />
+            Settings
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="calendar">
-          <SpacesCalendarTab key={calendarKey} initialDate={calendarParams.date} initialView={calendarParams.view} />
+        <TabsContent value="space-use">
+          <SpaceUseTab />
         </TabsContent>
 
         <TabsContent value="venue-hire">
@@ -729,12 +728,12 @@ export default function SpacesPage() {
           <HotDeskingTab />
         </TabsContent>
 
-        <TabsContent value="resources">
-          <ResourcesTab />
-        </TabsContent>
-
         <TabsContent value="bookers">
           <RegularBookersPage embedded categoryScope={["venue_hire", "hot_desking"]} />
+        </TabsContent>
+
+        <TabsContent value="resources">
+          <ResourcesTab />
         </TabsContent>
       </Tabs>
     </div>
