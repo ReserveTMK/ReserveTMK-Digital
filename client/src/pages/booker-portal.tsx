@@ -263,6 +263,45 @@ function DashboardView({
   const [changeRequestEndTime, setChangeRequestEndTime] = useState("");
   const [changeRequestVenueIds, setChangeRequestVenueIds] = useState<number[]>([]);
 
+  // Notification settings state — always blank, booker must type
+  const [notifEmail, setNotifEmail] = useState<string>("");
+  const [notifEmailSaved, setNotifEmailSaved] = useState(false);
+  const [invoiceEmail, setInvoiceEmail] = useState<string>("");
+  const [invoiceEmailSaved, setInvoiceEmailSaved] = useState(false);
+
+  const updateNotifEmailMutation = useMutation({
+    mutationFn: async (email: string) => {
+      const res = await apiRequest("PATCH", `/api/booker/${token}/notifications-email`, { notificationsEmail: email });
+      return res.json();
+    },
+    onSuccess: () => {
+      setNotifEmailSaved(true);
+      setTimeout(() => setNotifEmailSaved(false), 3000);
+      toast({ title: "Saved", description: "Confirmation email address updated" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to save email address", variant: "destructive" });
+    },
+  });
+
+  const updateInvoiceEmailMutation = useMutation({
+    mutationFn: async (email: string) => {
+      const res = await apiRequest("PATCH", `/api/booker/${token}/invoice-email`, { invoiceEmail: email });
+      return res.json();
+    },
+    onSuccess: () => {
+      setInvoiceEmailSaved(true);
+      setTimeout(() => setInvoiceEmailSaved(false), 3000);
+      toast({ title: "Saved", description: "Invoice email address updated" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to save invoice email", variant: "destructive" });
+    },
+  });
+
+  // Determine if this booker is a paid booker (not free/koha agreement)
+  const isPaidBooker = booker.pricingTier !== "free_koha" && !authData.membership && !authData.mou;
+
   const { data: venuesList } = useQuery<any[]>({
     queryKey: ["/api/booker/venues", token],
     queryFn: async () => {
@@ -572,6 +611,85 @@ function DashboardView({
             </div>
           )}
         </div>
+
+        {/* Notification Settings */}
+        {!isGroupLink && (
+          <Card className="p-5 space-y-4" data-testid="card-notification-settings">
+            <div className="flex items-center gap-2">
+              <Mail className="w-4 h-4 text-muted-foreground" />
+              <h3 className="font-semibold text-sm">Notification Settings</h3>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="notif-email" className="text-sm">
+                Booking confirmations &amp; calendar invites
+              </Label>
+              {booker.notificationsEmail && (
+                <p className="text-xs text-muted-foreground" data-testid="text-notif-email-current">
+                  Current: <span className="font-medium text-foreground">{booker.notificationsEmail}</span>
+                </p>
+              )}
+              <div className="flex gap-2">
+                <Input
+                  id="notif-email"
+                  type="email"
+                  placeholder={booker.notificationsEmail ? "Enter new email to update" : "your@email.com"}
+                  value={notifEmail}
+                  onChange={(e) => setNotifEmail(e.target.value)}
+                  className="flex-1"
+                  data-testid="input-notif-email"
+                />
+                <Button
+                  size="sm"
+                  disabled={!notifEmail.trim() || !notifEmail.includes("@") || updateNotifEmailMutation.isPending}
+                  onClick={() => updateNotifEmailMutation.mutate(notifEmail.trim())}
+                  data-testid="button-save-notif-email"
+                >
+                  {updateNotifEmailMutation.isPending ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : notifEmailSaved ? (
+                    <Check className="w-3 h-3" />
+                  ) : (
+                    "Save"
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            {isPaidBooker && (
+              <div className="space-y-2 pt-2 border-t">
+                <Label htmlFor="invoice-email" className="text-sm">
+                  Invoice email
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="invoice-email"
+                    type="email"
+                    placeholder="invoices@yourorg.com"
+                    value={invoiceEmail}
+                    onChange={(e) => setInvoiceEmail(e.target.value)}
+                    className="flex-1"
+                    data-testid="input-invoice-email"
+                  />
+                  <Button
+                    size="sm"
+                    disabled={!invoiceEmail.trim() || !invoiceEmail.includes("@") || updateInvoiceEmailMutation.isPending}
+                    onClick={() => updateInvoiceEmailMutation.mutate(invoiceEmail.trim())}
+                    data-testid="button-save-invoice-email"
+                  >
+                    {updateInvoiceEmailMutation.isPending ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : invoiceEmailSaved ? (
+                      <Check className="w-3 h-3" />
+                    ) : (
+                      "Save"
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </Card>
+        )}
       </div>
 
       <Dialog open={!!cancelDialogBooking} onOpenChange={(open) => !open && setCancelDialogBooking(null)}>
@@ -582,7 +700,7 @@ function DashboardView({
               Are you sure you want to cancel this booking?
               {cancelDialogBooking && (
                 <span className="block mt-2 font-medium text-foreground">
-                  {cancelDialogBooking.title || cancelDialogBooking.classification} —{" "}
+                  {cancelDialogBooking.title || cancelDialogBooking.classification} -{" "}
                   {cancelDialogBooking.startDate
                     ? new Date(cancelDialogBooking.startDate).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric", timeZone: "Pacific/Auckland" })
                     : "TBC"}
@@ -1058,7 +1176,7 @@ function DeskBookingView({
           <div className="flex items-center gap-2">
             <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
             <p className="text-sm text-blue-700 dark:text-blue-300" data-testid="text-desk-info">
-              Hot desking is available Monday–Friday, 9am–3pm. First-come-first-served.
+              Hot desking is available Monday-Friday, 9am-3pm. First-come-first-served.
             </p>
           </div>
         </Card>
@@ -1101,7 +1219,7 @@ function DeskBookingView({
               <Skeleton className="h-16 w-full" />
             </div>
           ) : availabilityData?.availability?.[0]?.closedToday ? (
-            <p className="text-sm text-muted-foreground" data-testid="text-desks-closed-portal">Desks are closed on this day. Available Monday–Friday, 9am–3pm.</p>
+            <p className="text-sm text-muted-foreground" data-testid="text-desks-closed-portal">Desks are closed on this day. Available Monday-Friday, 9am-3pm.</p>
           ) : !availabilityData?.availability?.length ? (
             <p className="text-sm text-muted-foreground" data-testid="text-no-desks">No desks available for this date</p>
           ) : (
@@ -1641,7 +1759,7 @@ function CalendarView({
               <h2 className="text-xl font-bold mb-2" data-testid="heading-booking-confirmed">Booking Confirmed!</h2>
               {isOverAllowance ? (
                 <p className="text-sm text-muted-foreground mb-4" data-testid="text-booking-confirmed">
-                  Your booking has been confirmed. This booking exceeds your agreement allowance — a community rate (20% discount) has been applied.
+                  Your booking has been confirmed. This booking exceeds your agreement allowance - a community rate (20% discount) has been applied.
                 </p>
               ) : (
                 <p className="text-sm text-muted-foreground mb-4" data-testid="text-booking-confirmed">
@@ -1664,7 +1782,7 @@ function CalendarView({
           )}
           {isOverAllowance && (
             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3 mb-4 text-sm text-amber-800 dark:text-amber-200" data-testid="badge-community-rate">
-              Community rate applied — 20% discount
+              Community rate applied - 20% discount
             </div>
           )}
           {allowanceWarning && !isOverAllowance && (
@@ -2088,7 +2206,7 @@ function CalendarView({
               <h3 className="font-semibold text-base" data-testid="heading-over-allowance">This booking exceeds your agreement allowance</h3>
             </div>
             <p className="text-sm text-muted-foreground" data-testid="text-over-allowance-info">
-              Confirm to proceed — community rate (20% discount) applies to this booking.
+              Confirm to proceed - community rate (20% discount) applies to this booking.
             </p>
             <div className="flex gap-2 pt-2">
               <Button

@@ -533,6 +533,7 @@ export const bookings = pgTable("bookings", {
   xeroInvoiceNumber: text("xero_invoice_number"),
   xeroInvoiceStatus: text("xero_invoice_status"),
   googleCalendarEventId: text("google_calendar_event_id"),
+  invoiceEmail: text("invoice_email"),
   paymentStatus: text("payment_status").default("unpaid"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -579,6 +580,7 @@ export const regularBookers = pgTable("regular_bookers", {
   accountStatus: text("account_status").notNull().default("active"),
   notes: text("notes"),
   usualBookingNeeds: text("usual_booking_needs"),
+  notificationsEmail: text("notifications_email"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

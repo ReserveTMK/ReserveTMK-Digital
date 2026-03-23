@@ -88,6 +88,8 @@ export default function CasualHirePage() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [organisation, setOrganisation] = useState("");
+  const [invoiceEmail, setInvoiceEmail] = useState("");
+  const [showInvoiceEmail, setShowInvoiceEmail] = useState(false);
 
   const now = new Date();
   const [currentYear, setCurrentYear] = useState(now.getFullYear());
@@ -254,6 +256,7 @@ export default function CasualHirePage() {
       classification,
       bookingSummary: bookingSummary.trim(),
       attendeeCount: attendeeCount ? parseInt(attendeeCount) : undefined,
+      invoiceEmail: showInvoiceEmail && invoiceEmail.trim() ? invoiceEmail.trim() : undefined,
     });
   };
 
@@ -360,6 +363,36 @@ export default function CasualHirePage() {
                 placeholder="your@email.com"
                 data-testid="input-casual-email"
               />
+            </div>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => { setShowInvoiceEmail(!showInvoiceEmail); if (!showInvoiceEmail) setInvoiceEmail(""); }}
+                data-testid="button-toggle-invoice-email"
+              >
+                <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${showInvoiceEmail ? "bg-primary border-primary" : "border-border"}`}>
+                  {showInvoiceEmail && <span className="text-primary-foreground text-[9px] font-bold">✓</span>}
+                </span>
+                Send invoice to a different email?
+              </button>
+              {showInvoiceEmail && (
+                <div className="space-y-1">
+                  <Label htmlFor="casual-invoice-email" className="text-sm flex items-center gap-2">
+                    <Mail className="w-4 h-4 text-muted-foreground" />
+                    Invoice email
+                  </Label>
+                  <Input
+                    id="casual-invoice-email"
+                    type="email"
+                    value={invoiceEmail}
+                    onChange={(e) => setInvoiceEmail(e.target.value)}
+                    placeholder="invoices@yourorg.com"
+                    data-testid="input-casual-invoice-email"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="space-y-1">

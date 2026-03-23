@@ -6033,7 +6033,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
   app.post("/api/public/casual-hire/book", async (req, res) => {
     try {
-      const { name, email, phone, organisation, venueId, venueIds: rawVenueIds, startDate, startTime, endTime, classification, bookingSummary, attendeeCount } = req.body;
+      const { name, email, phone, organisation, venueId, venueIds: rawVenueIds, startDate, startTime, endTime, classification, bookingSummary, attendeeCount, invoiceEmail } = req.body;
       if (!name || !email || !phone || !venueId || !startDate || !startTime || !endTime || !classification) {
         return res.status(400).json({ message: "Missing required fields" });
       }
@@ -6155,6 +6155,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         bookerName: name.trim(),
         bookingSource: "casual",
         attendeeCount: attendeeCount || null,
+        invoiceEmail: invoiceEmail ? String(invoiceEmail).trim() : null,
       } as any);
 
       try {
@@ -12993,6 +12994,92 @@ Rules:
         } catch (emailErr) {
           console.error("[Email] Auto-confirm confirmation email failed (booker portal):", emailErr);
         }
+
+        // Admin alert for auto-confirmed booking
+        try {
+          const { getGmailClientForSending } = await import("./gmail-send");
+          const gmail = await getGmailClientForSending(booker.userId);
+          const allVenues = await storage.getVenues(booker.userId);
+          const venueNames = resolvedVenueIds.map(vid => allVenues.find(v => v.id === vid)?.name).filter(Boolean).join(", ") || "Unknown Venue";
+          const bookingDateStr = startDate ? new Date(startDate + "T00:00").toLocaleDateString("en-NZ", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "TBC";
+          const timeStr = [startTime, endTime].filter(Boolean).join(" – ");
+          const orgName = booker.organizationName || bookerName || "Unknown";
+          const subjectAdmin = `Booking confirmed: ${orgName} — ${bookingDateStr}`;
+          const htmlAdmin = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:sans-serif;color:#1e293b;max-width:600px;margin:0 auto;padding:20px">
+            <h2 style="color:#10b981;">✅ Booking Auto-Confirmed</h2>
+            <table style="width:100%;border-collapse:collapse;">
+              <tr><td style="padding:6px 0;border-bottom:1px solid #e2e8f0;"><strong>Organisation:</strong></td><td style="padding:6px 0;border-bottom:1px solid #e2e8f0;">${orgName}</td></tr>
+              <tr><td style="padding:6px 0;border-bottom:1px solid #e2e8f0;"><strong>Date:</strong></td><td style="padding:6px 0;border-bottom:1px solid #e2e8f0;">${bookingDateStr}</td></tr>
+              <tr><td style="padding:6px 0;border-bottom:1px solid #e2e8f0;"><strong>Time:</strong></td><td style="padding:6px 0;border-bottom:1px solid #e2e8f0;">${timeStr || "TBC"}</td></tr>
+              <tr><td style="padding:6px 0;border-bottom:1px solid #e2e8f0;"><strong>Venue:</strong></td><td style="padding:6px 0;border-bottom:1px solid #e2e8f0;">${venueNames}</td></tr>
+              <tr><td style="padding:6px 0;border-bottom:1px solid #e2e8f0;"><strong>Classification:</strong></td><td style="padding:6px 0;border-bottom:1px solid #e2e8f0;">${classification || "—"}</td></tr>
+              ${bookingSummary ? `<tr><td style="padding:6px 0;border-bottom:1px solid #e2e8f0;"><strong>Summary:</strong></td><td style="padding:6px 0;border-bottom:1px solid #e2e8f0;">${String(bookingSummary).trim()}</td></tr>` : ""}
+              ${isOverAllowance ? `<tr><td colspan="2" style="padding:6px 0;color:#f59e0b;font-size:13px;">⚠️ Over allowance — 20% community discount applied</td></tr>` : ""}
+            </table>
+            <p style="color:#64748b;font-size:12px;margin-top:16px;">This booking was auto-confirmed via the Booker Portal.</p>
+          </body></html>`;
+          const rawAdmin = [`To: kiaora@reservetmk.co.nz`, `Subject: ${subjectAdmin}`, `MIME-Version: 1.0`, `Content-Type: text/html; charset="UTF-8"`, ``, htmlAdmin].join("\r\n");
+          const encodedAdmin = Buffer.from(rawAdmin).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+          await gmail.users.messages.send({ userId: "me", requestBody: { raw: encodedAdmin } });
+        } catch (adminEmailErr: any) {
+          console.error("[Email] Admin alert for auto-confirm failed:", adminEmailErr.message);
+        }
+
+        // Google Calendar invite for auto-confirmed booking
+        try {
+          const { getUncachableGoogleCalendarClient } = await import("./replit_integrations/google-calendar/client");
+          const calendar = await getUncachableGoogleCalendarClient(booker.userId);
+
+          const allVenuesForCal = await storage.getVenues(booker.userId);
+          const venueNamesForCal = resolvedVenueIds.map(vid => allVenuesForCal.find(v => v.id === vid)?.name).filter(Boolean).join(" + ");
+
+          const calBookingDate = startDate ? new Date(startDate + "T00:00") : new Date();
+          const calDateStr = calBookingDate.toISOString().slice(0, 10);
+          const startDateTime = new Date(`${calDateStr}T${startTime || "09:00"}:00`);
+          const endDateTime = new Date(`${calDateStr}T${endTime || "17:00"}:00`);
+
+          const calDescParts = [
+            classification ? `Type: ${classification}` : null,
+            bookerName ? `Booker: ${bookerName}` : null,
+            booker.organizationName ? `Organisation: ${booker.organizationName}` : null,
+            bookingSummary ? `Details: ${String(bookingSummary).trim()}` : null,
+            isOverAllowance ? "⚠️ Over allowance — 20% community discount applied" : null,
+          ].filter(Boolean).join("\n");
+
+          const calAttendees: { email: string }[] = [];
+          const bookerNotificationsEmail = (booker as any).notificationsEmail;
+          if (bookerNotificationsEmail) {
+            calAttendees.push({ email: bookerNotificationsEmail });
+          } else if (booker.contactId) {
+            const calContact = await storage.getContact(booker.contactId);
+            if (calContact?.email) {
+              const primaryEmail = calContact.email.split(/[,;]\s*/)[0].trim();
+              if (primaryEmail) calAttendees.push({ email: primaryEmail });
+            }
+          }
+
+          const orgProfile = await storage.getOrganisationProfile(booker.userId);
+          const calLocationStr = orgProfile?.location || undefined;
+
+          const calEvent = await calendar.events.insert({
+            calendarId: "primary",
+            sendUpdates: calAttendees.length > 0 ? "all" : "none",
+            requestBody: {
+              summary: `Venue Hire: ${venueNamesForCal}${bookerName ? ` — ${bookerName}` : ""}`,
+              description: calDescParts || undefined,
+              start: { dateTime: startDateTime.toISOString(), timeZone: "Pacific/Auckland" },
+              end: { dateTime: endDateTime.toISOString(), timeZone: "Pacific/Auckland" },
+              location: calLocationStr,
+              attendees: calAttendees.length > 0 ? calAttendees : undefined,
+            },
+          });
+
+          if (calEvent.data.id) {
+            await storage.updateBooking(booking.id, { googleCalendarEventId: calEvent.data.id } as any);
+          }
+        } catch (calErr: any) {
+          console.warn("[Calendar] Auto-confirm calendar event creation skipped:", calErr.message);
+        }
       } else {
         // Enquiry: send venue enquiry alert to admin
         try {
@@ -13715,6 +13802,48 @@ Rules:
     } catch (err: any) {
       console.error("Booker change request error:", err);
       res.status(500).json({ message: "Failed to submit change request" });
+    }
+  });
+
+  // PATCH /api/booker/:token/notifications-email — update regular_booker.notifications_email
+  app.patch("/api/booker/:token/notifications-email", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const { notificationsEmail } = req.body;
+      const linkResult = await storage.getBookerByLinkToken(token);
+      if (!linkResult || (linkResult.link.tokenExpiry && new Date(linkResult.link.tokenExpiry) < new Date()) || !linkResult.link.enabled) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+      }
+      const booker = linkResult.booker;
+      const updated = await storage.updateRegularBooker(booker.id, { notificationsEmail: notificationsEmail || null } as any);
+      res.json({ success: true, notificationsEmail: (updated as any).notificationsEmail });
+    } catch (err: any) {
+      console.error("Update notifications email error:", err);
+      res.status(500).json({ message: "Failed to update notifications email" });
+    }
+  });
+
+  // PATCH /api/booker/:token/invoice-email — update booker invoice_email preference
+  app.patch("/api/booker/:token/invoice-email", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const { invoiceEmail } = req.body;
+      const linkResult = await storage.getBookerByLinkToken(token);
+      if (!linkResult || (linkResult.link.tokenExpiry && new Date(linkResult.link.tokenExpiry) < new Date()) || !linkResult.link.enabled) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+      }
+      const booker = linkResult.booker;
+      // Store on booker record as a preference (notificationsEmail field re-used for invoice preference here via a separate update)
+      // We update any unpaid bookings for this booker with the new invoice email
+      const allBookings = await storage.getBookings(booker.userId);
+      const bookerBookings = allBookings.filter(b => b.bookerId === booker.contactId && b.status !== "cancelled");
+      for (const b of bookerBookings) {
+        await storage.updateBooking(b.id, { invoiceEmail: invoiceEmail || null } as any);
+      }
+      res.json({ success: true, invoiceEmail: invoiceEmail || null });
+    } catch (err: any) {
+      console.error("Update invoice email error:", err);
+      res.status(500).json({ message: "Failed to update invoice email" });
     }
   });
 
