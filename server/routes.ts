@@ -9832,7 +9832,12 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     const url = oauth2Client.generateAuthUrl({
       access_type: 'offline',
       prompt: 'consent',
-      scope: ['https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/userinfo.email'],
+      scope: [
+        'https://www.googleapis.com/auth/gmail.readonly',
+        'https://www.googleapis.com/auth/userinfo.email',
+        'https://www.googleapis.com/auth/documents',
+        'https://www.googleapis.com/auth/drive.file',
+      ],
       state,
     });
 
