@@ -584,8 +584,7 @@ export function InlineRoleCell({ role, roleOther, contactId }: { role: string; r
       </button>
       <Badge
         variant="outline"
-        className="text-[10px] h-5 px-2 cursor-pointer hover:bg-muted/60 transition-colors min-w-[60px] justify-center"
-        onClick={() => { setEditing(true); setLocalRole(role); setOtherText(roleOther || ""); setShowOtherInput(role === "Other"); }}
+        className="text-[10px] h-5 px-2 min-w-[60px] justify-center select-none"
       >
         {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : displayRole}
       </Badge>
