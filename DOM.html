@@ -254,7 +254,7 @@
 <div class="grid-4">
 
   <div class="card blue" id="arch-mentoring">
-    <div class="card-title">🧑‍🤝‍🧑 Mentoring <a href="#gaps" class="section-nav-link purple">Gaps →</a></div>
+    <div class="card-title">🧑‍🤝‍🧑 Mentoring <a href="#gaps" class="section-nav-link purple">Gaps →</a> <a href="#build-mentoring" class="section-nav-link green">Build →</a></div>
     <div class="card-subtitle">/mentoring · /scheduling · /debriefs</div>
     <div class="path-block">
       <div class="path-label">Self-serve</div>
@@ -737,6 +737,44 @@
       <div>
         <div class="build-item-text">Usage history per item</div>
         <div class="build-item-sub">Who borrowed what, when. Feeds asset management + reporting.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="build-mentoring" class="section-label part-anchor" style="margin-top:24px;">Mentoring — Pipeline &amp; Admin <a href="#flow-mentoring" class="section-nav-link blue">← Flow</a> <a href="#gaps" class="section-nav-link purple">← Gaps</a></div>
+<div class="grid-2">
+  <div class="build-group">
+    <div class="build-group-title">🔄 Re-activation Flow</div>
+    <div class="build-item">
+      <span class="build-badge feat">FEATURE</span>
+      <div>
+        <div class="build-item-text">Returning mentee detection — include graduated/ended</div>
+        <div class="build-item-sub">Update <code>check-mentee</code> API to also flag contacts with <code>graduated</code> or <code>ended</code> relationships. Return <code>isReturning: true</code> with a <code>reactivation: true</code> flag so the booking UI can show a tailored re-engagement message instead of full onboarding.</div>
+      </div>
+    </div>
+    <div class="build-item">
+      <span class="build-badge feat">FEATURE</span>
+      <div>
+        <div class="build-item-text">Re-activation booking path</div>
+        <div class="build-item-sub">When <code>reactivation: true</code>, show a brief re-check-in question (what's changed, new goals) before session booking. Creates a new mentoring relationship in <code>active</code> status linked to existing contact.</div>
+      </div>
+    </div>
+  </div>
+  <div class="build-group">
+    <div class="build-group-title">🛠 Admin Shortcuts</div>
+    <div class="build-item">
+      <span class="build-badge feat">FEATURE</span>
+      <div>
+        <div class="build-item-text">Kanban quick-add button</div>
+        <div class="build-item-sub">Add "+ Add Mentee" button directly on the Kanban board. Opens a modal: search existing contacts or create new. Sets journey stage, creates mentoring relationship, drops card into Discovery or Active column.</div>
+      </div>
+    </div>
+    <div class="build-item">
+      <span class="build-badge feat">FEATURE</span>
+      <div>
+        <div class="build-item-text">Admin-side booking on behalf of mentee</div>
+        <div class="build-item-sub">From mentee's Kanban card or contact record, admin can select a slot and book a session on their behalf. Uses same slot/availability system, bypasses self-serve flow. Useful for walk-ins and phone bookings.</div>
       </div>
     </div>
   </div>
