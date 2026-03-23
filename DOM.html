@@ -278,17 +278,44 @@
       <li class="dot-item ok"><div class="d"></div><span>AI-assisted debrief</span></li>
     </ul>
     <details class="flow-expand" id="flow-mentoring">
-      <summary>User Flows</summary>
+      <summary>User Flows (3)</summary>
       <div class="flow-inner">
-        <div style="font-size:11px;font-weight:600;color:#64748b;margin-bottom:8px;">🧑‍🤝‍🧑 Mentoring Pipeline</div>
+
+        <div class="flow-sub-title green">🌱 Flow 1 — New Mentee (Self-Serve)</div>
         <div class="flow-steps">
-          <div class="flow-step u"><div class="fl">Mentee</div><div class="ft"><strong>Applies for mentoring</strong> — application created</div></div>
-          <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Reviews + moves through Kanban</strong> — Applications → Active</div></div>
-          <div class="flow-step u"><div class="fl">Mentee</div><div class="ft"><strong>Books session</strong> via /scheduling</div></div>
+          <div class="flow-step u"><div class="fl">Mentee</div><div class="ft"><strong>Visits /scheduling</strong> → selects "Mentoring" pathway</div></div>
+          <div class="flow-step u"><div class="fl">Mentee</div><div class="ft"><strong>Enters email</strong> → system checks via <code>check-mentee</code> API</div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>No match found</strong> → proceeds as new<div><span class="ftag ok">✓ works</span></div></div></div>
+          <div class="flow-step u"><div class="fl">Mentee</div><div class="ft"><strong>Enters name + journey stage</strong> (kakano / tipu / ora)</div></div>
+          <div class="flow-step u"><div class="fl">Mentee</div><div class="ft"><strong>Answers onboarding questions</strong> (why mentoring, what stuck on, already tried, time commitment)</div></div>
+          <div class="flow-step u"><div class="fl">Mentee</div><div class="ft"><strong>Books Discovery Session</strong> — injected as only meeting type for new mentees</div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Contact created + application saved</strong> — lands in Kanban: Discovery column<div><span class="ftag ok">✓ works</span></div></div></div>
+          <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Discovery session → debrief → move to Active</strong> on Kanban</div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Growth survey sent post-session</strong><div><span class="ftag ok">✓ works</span></div></div></div>
+        </div>
+
+        <div class="flow-sub-title blue">🔄 Flow 2 — Returning Mentee (Self-Serve)</div>
+        <div class="flow-steps">
+          <div class="flow-step u"><div class="fl">Mentee</div><div class="ft"><strong>Visits /scheduling</strong> → selects "Mentoring" pathway</div></div>
+          <div class="flow-step u"><div class="fl">Mentee</div><div class="ft"><strong>Enters email</strong> → system checks via <code>check-mentee</code> API</div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Email matches contact with active/on_hold relationship</strong> → flagged as returning<div><span class="ftag ok">✓ works</span></div></div></div>
+          <div class="flow-step u"><div class="fl">Mentee</div><div class="ft"><strong>Skips onboarding</strong> — goes straight to session type (Quick Check-in or Standard Session)</div></div>
+          <div class="flow-step u"><div class="fl">Mentee</div><div class="ft"><strong>Books session</strong> — no discovery re-run needed</div></div>
           <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Session complete → debrief → confirm</strong></div></div>
           <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Growth survey sent</strong><div><span class="ftag ok">✓ works</span></div></div></div>
-          <div class="flow-step w"><div class="fl">Check</div><div class="ft"><strong>Sessions → report wired correctly?</strong><div><span class="ftag w">? verify</span></div></div></div>
+          <div class="flow-step w"><div class="fl">Gap</div><div class="ft"><strong>No re-activation prompt</strong> — graduated/ended mentees not surfaced to re-book<div><span class="ftag no">✗ missing</span></div></div></div>
         </div>
+
+        <div class="flow-sub-title purple">🛠 Flow 3 — Admin Manual Add</div>
+        <div class="flow-steps">
+          <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Walk-in / referral / phone call</strong> — mentee not self-serving</div></div>
+          <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Creates or finds contact</strong> in /community</div></div>
+          <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Manually creates mentoring relationship</strong> on contact record</div></div>
+          <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Sets stage + places in Kanban</strong> (Discovery or Active)</div></div>
+          <div class="flow-step w"><div class="fl">Gap</div><div class="ft"><strong>No quick-add shortcut on Kanban</strong> — must navigate through contact record<div><span class="ftag no">✗ missing</span></div></div></div>
+          <div class="flow-step w"><div class="fl">Gap</div><div class="ft"><strong>No admin-side booking on behalf of mentee</strong> — admin can't book a slot for them<div><span class="ftag no">✗ missing</span></div></div></div>
+        </div>
+
       </div>
     </details>
   </div>
@@ -547,6 +574,9 @@
     <ul class="dot-list">
       <li class="dot-item warn"><div class="d"></div><span>Attendance → report wire-up (verify)</span></li>
       <li class="dot-item no"><div class="d"></div><span>Group / cohort mentoring model</span></li>
+      <li class="dot-item no"><div class="d"></div><span>Re-activation flow — graduated/ended mentees can't self-re-book</span></li>
+      <li class="dot-item no"><div class="d"></div><span>Kanban quick-add — admin must go through contact record to manually add mentee</span></li>
+      <li class="dot-item no"><div class="d"></div><span>Admin-side booking — can't book a slot on behalf of a mentee</span></li>
     </ul>
   </div>
 
