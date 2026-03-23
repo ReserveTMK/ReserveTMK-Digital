@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useMutation } from "@tanstack/react-query";
-import { Pencil, Check, Loader2, ArrowUp, ArrowDown, ArrowUpDown, Sprout, TreePine, Sun, Pause, Plus, X, Building2, ChevronUp, ChevronDown } from "lucide-react";
+import { Pencil, Check, Loader2, ArrowUp, ArrowDown, ArrowUpDown, Sprout, TreePine, Sun, Pause, Plus, X, Building2, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { CONTACT_ROLES } from "@shared/schema";
 
 export const TABLE_ETHNICITY_OPTIONS = [
@@ -574,21 +574,29 @@ export function InlineRoleCell({ role, roleOther, contactId }: { role: string; r
   }
 
   return (
-    <button
-      className="text-left px-2 py-1 rounded hover:bg-muted/60 transition-colors cursor-pointer group flex items-center gap-1"
-      onClick={() => {
-        setEditing(true);
-        setLocalRole(role);
-        setOtherText(roleOther || "");
-        setShowOtherInput(role === "Other");
-      }}
-      data-testid={`table-cell-role-${contactId}`}
-    >
-      <Badge variant="outline" className="text-[10px] h-5 px-2">
-        {displayRole}
+    <div className="flex items-center gap-0.5 group" data-testid={`table-cell-role-${contactId}`}>
+      <button
+        className="w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 hover:bg-muted transition-all"
+        onClick={(e) => { e.stopPropagation(); cycleRole(-1); }}
+        title="Previous role"
+      >
+        <ChevronLeft className="w-3 h-3 text-muted-foreground" />
+      </button>
+      <Badge
+        variant="outline"
+        className="text-[10px] h-5 px-2 cursor-pointer hover:bg-muted/60 transition-colors min-w-[60px] justify-center"
+        onClick={() => { setEditing(true); setLocalRole(role); setOtherText(roleOther || ""); setShowOtherInput(role === "Other"); }}
+      >
+        {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : displayRole}
       </Badge>
-      <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-    </button>
+      <button
+        className="w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 hover:bg-muted transition-all"
+        onClick={(e) => { e.stopPropagation(); cycleRole(1); }}
+        title="Next role"
+      >
+        <ChevronRight className="w-3 h-3 text-muted-foreground" />
+      </button>
+    </div>
   );
 }
 
