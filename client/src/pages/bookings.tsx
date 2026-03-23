@@ -1909,6 +1909,7 @@ function BookingFormDialog({
   const [bookerSearch, setBookerSearch] = useState("");
   const [showQuickAddBooker, setShowQuickAddBooker] = useState(false);
   const [quickBookerName, setQuickBookerName] = useState("");
+  const [quickBookerEmail, setQuickBookerEmail] = useState("");
   const [groupId, setGroupId] = useState<number | null>(booking?.bookerGroupId || null);
   const [groupSearch, setGroupSearch] = useState("");
   const [showQuickAddGroup, setShowQuickAddGroup] = useState(false);
@@ -2040,9 +2041,13 @@ function BookingFormDialog({
   const handleQuickAddBooker = async () => {
     if (!quickBookerName.trim()) return;
     try {
-      const newContact = await createContact.mutateAsync({ name: quickBookerName.trim() });
+      const newContact = await createContact.mutateAsync({
+        name: quickBookerName.trim(),
+        ...(quickBookerEmail.trim() ? { email: quickBookerEmail.trim() } : {}),
+      });
       setBookerId(newContact.id);
       setQuickBookerName("");
+      setQuickBookerEmail("");
       setShowQuickAddBooker(false);
       setBookerSearch("");
     } catch (err: any) {}
@@ -2238,53 +2243,47 @@ function BookingFormDialog({
                     ))}
                   </div>
                 )}
-                {filteredBookerContacts.length === 0 && !showQuickAddBooker && (
-                  <div className="text-xs text-muted-foreground flex items-center justify-between p-2 bg-muted/30 rounded-md">
-                    <span>No contacts found for "{bookerSearch}"</span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-6 text-[10px]"
-                      onClick={() => {
-                        setQuickBookerName(bookerSearch);
-                        setShowQuickAddBooker(true);
-                      }}
-                      data-testid="button-quick-add-booker"
-                    >
-                      <Plus className="w-3 h-3 mr-1" />
-                      Quick Add
-                    </Button>
-                  </div>
-                )}
-              </>
-            )}
             {showQuickAddBooker && (
-              <div className="flex items-center gap-2 p-2 bg-primary/5 rounded-md border border-primary/20">
-                <Input
-                  value={quickBookerName}
-                  onChange={(e) => setQuickBookerName(e.target.value)}
-                  placeholder="Person's name"
-                  className="h-7 text-xs flex-1"
-                  data-testid="input-quick-add-booker-name"
-                />
-                <Button
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={handleQuickAddBooker}
-                  disabled={!quickBookerName.trim() || createContact.isPending}
-                  data-testid="button-save-quick-booker"
-                >
-                  {createContact.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add"}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() => setShowQuickAddBooker(false)}
-                >
-                  <X className="w-3 h-3" />
-                </Button>
+              <div className="flex flex-col gap-2 p-2 bg-primary/5 rounded-md border border-primary/20">
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={quickBookerName}
+                    onChange={(e) => setQuickBookerName(e.target.value)}
+                    placeholder="Name *"
+                    className="h-7 text-xs flex-1"
+                    data-testid="input-quick-add-booker-name"
+                  />
+                  <Input
+                    value={quickBookerEmail}
+                    onChange={(e) => setQuickBookerEmail(e.target.value)}
+                    placeholder="Email (optional)"
+                    type="email"
+                    className="h-7 text-xs flex-1"
+                    data-testid="input-quick-add-booker-email"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={handleQuickAddBooker}
+                    disabled={!quickBookerName.trim() || createContact.isPending}
+                    data-testid="button-save-quick-booker"
+                  >
+                    {createContact.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => { setShowQuickAddBooker(false); setQuickBookerName(""); setQuickBookerEmail(""); }}
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
+                </div>
               </div>
+            )}
+              </>
             )}
           </div>
 
