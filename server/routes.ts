@@ -12621,6 +12621,15 @@ Rules:
         });
       }
 
+      // Also filter by allowed_venue_ids if set on MOU
+      if (booker.mouId) {
+        const mou = await storage.getMou(booker.mouId);
+        const allowedIds = (mou as any)?.allowedVenueIds as number[] | null;
+        if (allowedIds && allowedIds.length > 0) {
+          activeVenues = activeVenues.filter(v => allowedIds.includes(v.id));
+        }
+      }
+
       res.json(activeVenues);
     } catch (err: any) {
       res.status(500).json({ message: "Failed to fetch venues" });
@@ -12763,6 +12772,22 @@ Rules:
             if (!portalAllowedLocations.includes(vLoc)) {
               return res.status(400).json({
                 message: `Venue "${v.name}" is not in an allowed location for your agreement`,
+              });
+            }
+          }
+        }
+      }
+
+      // Also enforce allowed_venue_ids from MOU if set
+      if (booker.mouId) {
+        const mouRecord2 = await storage.getMou(booker.mouId);
+        const allowedIds = (mouRecord2 as any)?.allowedVenueIds as number[] | null;
+        if (allowedIds && allowedIds.length > 0) {
+          for (const vid of resolvedVenueIds) {
+            if (!allowedIds.includes(vid)) {
+              const v = await storage.getVenue(vid);
+              return res.status(400).json({
+                message: `Venue "${v?.name || vid}" is not available under your agreement`,
               });
             }
           }
