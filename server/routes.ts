@@ -2129,7 +2129,7 @@ export async function registerRoutes(
           name: `${firstName} ${lastName}`,
           email,
           phone: phone || null,
-          role: "Other",
+          role: null,
           stage: "kakano",
           active: true,
           source: "programme_registration",

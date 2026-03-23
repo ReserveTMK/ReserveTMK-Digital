@@ -44,8 +44,8 @@ type CatchUpItemData = {
 };
 
 export function ContactsTableView({ contacts, allContacts, editMode, selectedContacts, toggleContactSelection, toggleSelectAll, onToggleCommunity, drilldownTier, onPromote, promotePending, onToggleVip, toggleVipPending }: ContactsTableViewProps) {
-  const [sortField, setSortField] = useState<SortField | null>(null);
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [sortField, setSortField] = useState<SortField | null>("lastActive");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [backfilling, setBackfilling] = useState(false);
   const { toast } = useToast();
 
