@@ -5279,6 +5279,96 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     res.json({ success: true });
   });
 
+  // Agreement summary endpoint for Spaces/Bookers tab
+  app.get("/api/regular-bookers/:id/agreement-summary", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const id = parseId(req.params.id);
+      const booker = await storage.getRegularBooker(id);
+      if (!booker || booker.userId !== userId) return res.status(404).json({ message: "Regular booker not found" });
+
+      let mou = null;
+      if (booker.mouId) mou = await storage.getMou(booker.mouId);
+
+      // Determine agreement type
+      let type: "trial" | "community" | "paid" | "none" = "none";
+      if (mou) {
+        if (mou.notes && mou.notes.toUpperCase().includes("TRIAL")) {
+          type = "trial";
+        } else if (booker.pricingTier === "free_koha") {
+          type = "community";
+        } else if (booker.pricingTier === "full_price" || booker.pricingTier === "discounted") {
+          type = "paid";
+        } else {
+          type = "community";
+        }
+      } else if (booker.membershipId) {
+        if (booker.pricingTier === "free_koha") type = "community";
+        else if (booker.pricingTier === "full_price" || booker.pricingTier === "discounted") type = "paid";
+        else type = "community";
+      }
+
+      const allowance = mou?.bookingAllowance ?? 0;
+      const allowancePeriod = mou?.allowancePeriod ?? "quarterly";
+
+      // Count confirmed/completed bookings for this booker in the current period
+      let usedThisPeriod = 0;
+      if (booker.mouId || booker.membershipId) {
+        const now = new Date();
+        let periodStart: Date;
+        if (allowancePeriod === "monthly") {
+          periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        } else {
+          // quarterly
+          const q = Math.floor(now.getMonth() / 3);
+          periodStart = new Date(now.getFullYear(), q * 3, 1);
+        }
+        const agreementFilter = booker.mouId
+          ? eq(bookings.mouId, booker.mouId)
+          : eq(bookings.membershipId, booker.membershipId!);
+        const allBookings = await db.select().from(bookings).where(
+          and(
+            eq(bookings.userId, userId),
+            agreementFilter,
+            gte(bookings.createdAt, periodStart),
+          )
+        );
+        usedThisPeriod = allBookings.filter(b => b.status === "confirmed" || b.status === "completed").length;
+      }
+
+      // Resolve allowed venues
+      const allVenues = await storage.getVenues(userId);
+      let allowedVenueIds: number[] = [];
+      let allowedVenueNames: string[] = [];
+
+      if (mou) {
+        const mouAny = mou as any;
+        if (mouAny.allowedVenueIds && Array.isArray(mouAny.allowedVenueIds) && mouAny.allowedVenueIds.length > 0) {
+          allowedVenueIds = mouAny.allowedVenueIds as number[];
+          allowedVenueNames = allVenues.filter(v => allowedVenueIds.includes(v.id)).map(v => v.name);
+        } else if (mou.allowedLocations && mou.allowedLocations.length > 0) {
+          const matched = allVenues.filter(v => mou.allowedLocations!.includes(v.spaceName || "Other"));
+          allowedVenueIds = matched.map(v => v.id);
+          allowedVenueNames = matched.map(v => v.name);
+        }
+      }
+
+      res.json({
+        type,
+        allowance,
+        allowancePeriod,
+        usedThisPeriod,
+        allowedVenueIds,
+        allowedVenueNames,
+        notes: mou?.notes ?? null,
+        mouId: booker.mouId ?? null,
+        membershipId: booker.membershipId ?? null,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/all-booker-links", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;

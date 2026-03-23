@@ -49,6 +49,7 @@ import {
   Wrench,
   Home,
 } from "lucide-react";
+import { BookerAgreementPanel } from "@/components/spaces/booker-agreement-panel";
 import {
   Table,
   TableBody,
@@ -486,6 +487,8 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
                 const categories = getBookerCategories(booker);
                 const categoryStatus = getCategoryStatusInfo(booker);
 
+                const activeLink = linkStatus.links.length > 0 ? linkStatus.links[0] : null;
+
                 return (
                   <TableRow key={booker.id} data-testid={`row-booker-${booker.id}`}>
                     <TableCell>
@@ -507,6 +510,12 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
                             {booker.billingEmail}
                           </p>
                         ) : null}
+                        {(booker.mouId || booker.membershipId) && (
+                          <BookerAgreementPanel
+                            bookerId={booker.id}
+                            portalUrl={activeLink?.portalUrl ?? null}
+                          />
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>
