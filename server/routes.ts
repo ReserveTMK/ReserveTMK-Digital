@@ -4125,6 +4125,25 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       if (status && ['registered', 'cancelled', 'waitlisted'].includes(status)) allowedUpdates.status = status;
       if (status === 'cancelled') allowedUpdates.cancelledAt = new Date();
       const updated = await storage.updateProgrammeRegistration(regId, allowedUpdates);
+
+      // Sync attended flag → programmes.attendees array
+      if (typeof attended === 'boolean' && reg.contactId) {
+        try {
+          const currentAttendees: number[] = Array.isArray(programme.attendees) ? (programme.attendees as number[]) : [];
+          let newAttendees: number[];
+          if (attended) {
+            newAttendees = currentAttendees.includes(reg.contactId)
+              ? currentAttendees
+              : [...currentAttendees, reg.contactId];
+          } else {
+            newAttendees = currentAttendees.filter(id => id !== reg.contactId);
+          }
+          await storage.updateProgramme(programmeId, { attendees: newAttendees } as any);
+        } catch (syncErr) {
+          console.warn("[programmes] Failed to sync attendees array:", syncErr);
+        }
+      }
+
       res.json(updated);
     } catch (err) {
       res.status(500).json({ message: "Failed to update registration" });
@@ -4149,8 +4168,20 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         const reg = await storage.getProgrammeRegistration(regId);
         if (!reg || reg.programmeId !== programmeId) continue;
         const updated = await storage.updateProgrammeRegistration(regId, { attended });
-        results.push(updated);
+        results.push({ updated, reg });
       }
+
+      // Sync all attended contacts → programmes.attendees array
+      try {
+        const allRegs = await storage.getProgrammeRegistrations(programmeId);
+        const attendedContactIds = allRegs
+          .filter(r => r.attended && r.contactId)
+          .map(r => r.contactId as number);
+        await storage.updateProgramme(programmeId, { attendees: attendedContactIds } as any);
+      } catch (syncErr) {
+        console.warn("[programmes] Failed to sync attendees array on bulk update:", syncErr);
+      }
+
       res.json({ updated: results.length });
     } catch (err) {
       res.status(500).json({ message: "Failed to update attendance" });
@@ -9427,6 +9458,84 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     } catch (err: any) {
       console.error("Save daily foot traffic error:", err);
       res.status(500).json({ message: "Failed to save daily foot traffic" });
+    }
+  });
+
+  // === RECURRING BOOKING TEMPLATES ===
+
+  app.get("/api/recurring-booking-templates", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const rows = await db.execute(
+        sql`SELECT * FROM recurring_booking_templates WHERE user_id = ${userId} ORDER BY created_at DESC`
+      );
+      res.json(rows.rows);
+    } catch (err: any) {
+      console.error("Get recurring booking templates error:", err);
+      res.status(500).json({ message: "Failed to fetch recurring booking templates" });
+    }
+  });
+
+  app.post("/api/recurring-booking-templates", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { name, venue_id, classification, day_of_week, start_time, end_time, start_date, end_date, booker_name, notes } = req.body;
+      if (!name || day_of_week === undefined || day_of_week === null) {
+        return res.status(400).json({ message: "name and day_of_week are required" });
+      }
+      const result = await db.execute(
+        sql`INSERT INTO recurring_booking_templates 
+          (user_id, name, venue_id, classification, day_of_week, start_time, end_time, start_date, end_date, booker_name, notes, active)
+          VALUES (${userId}, ${name}, ${venue_id || null}, ${classification || null}, ${day_of_week}, ${start_time || null}, ${end_time || null}, ${start_date || null}, ${end_date || null}, ${booker_name || null}, ${notes || null}, true)
+          RETURNING *`
+      );
+      res.status(201).json(result.rows[0]);
+    } catch (err: any) {
+      console.error("Create recurring booking template error:", err);
+      res.status(500).json({ message: "Failed to create recurring booking template" });
+    }
+  });
+
+  app.patch("/api/recurring-booking-templates/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const id = parseId(req.params.id);
+      const { name, venue_id, classification, day_of_week, start_time, end_time, start_date, end_date, booker_name, notes, active } = req.body;
+      const result = await db.execute(
+        sql`UPDATE recurring_booking_templates SET
+          name = COALESCE(${name ?? null}, name),
+          venue_id = COALESCE(${venue_id !== undefined ? venue_id : null}::integer, venue_id),
+          classification = COALESCE(${classification ?? null}, classification),
+          day_of_week = COALESCE(${day_of_week !== undefined ? day_of_week : null}::integer, day_of_week),
+          start_time = COALESCE(${start_time ?? null}, start_time),
+          end_time = COALESCE(${end_time ?? null}, end_time),
+          start_date = COALESCE(${start_date ?? null}::date, start_date),
+          end_date = COALESCE(${end_date ?? null}::date, end_date),
+          booker_name = COALESCE(${booker_name ?? null}, booker_name),
+          notes = COALESCE(${notes ?? null}, notes),
+          active = COALESCE(${active !== undefined ? active : null}::boolean, active)
+          WHERE id = ${id} AND user_id = ${userId}
+          RETURNING *`
+      );
+      if (result.rows.length === 0) return res.status(404).json({ message: "Template not found" });
+      res.json(result.rows[0]);
+    } catch (err: any) {
+      console.error("Update recurring booking template error:", err);
+      res.status(500).json({ message: "Failed to update recurring booking template" });
+    }
+  });
+
+  app.delete("/api/recurring-booking-templates/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const id = parseId(req.params.id);
+      await db.execute(
+        sql`DELETE FROM recurring_booking_templates WHERE id = ${id} AND user_id = ${userId}`
+      );
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Delete recurring booking template error:", err);
+      res.status(500).json({ message: "Failed to delete recurring booking template" });
     }
   });
 

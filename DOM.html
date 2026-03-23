@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ReserveTMK Digital — DOM</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; padding: 32px 24px; }
+
+  /* ── Typography ── */
+  h1 { font-size: 22px; font-weight: 700; color: #f8fafc; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: #64748b; margin-bottom: 8px; }
+  .page-section-title {
+    font-size: 18px; font-weight: 700; color: #f1f5f9;
+    padding: 12px 20px; border-radius: 10px; margin: 36px 0 20px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .page-section-title.arch  { background: #0f2240; border-left: 4px solid #3b82f6; }
+  .page-section-title.gaps  { background: #1a0f2e; border-left: 4px solid #8b5cf6; }
+  .page-section-title.build { background: #0f2018; border-left: 4px solid #10b981; }
+  .section-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.1em; color: #475569; margin-bottom: 12px; margin-top: 24px;
+  }
+
+  /* ── Grids ── */
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  @media (max-width: 900px) { .grid-4, .grid-3 { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { .grid-4, .grid-3, .grid-2 { grid-template-columns: 1fr; } }
+
+  /* ── Cards ── */
+  .card { background: #1e2433; border: 1px solid #2d3748; border-radius: 12px; padding: 18px; }
+  .card.blue   { border-top: 3px solid #3b82f6; }
+  .card.green  { border-top: 3px solid #10b981; }
+  .card.orange { border-top: 3px solid #f59e0b; }
+  .card.purple { border-top: 3px solid #8b5cf6; }
+  .card.pink   { border-top: 3px solid #ec4899; }
+  .card.cyan   { border-top: 3px solid #06b6d4; }
+  .card-title    { font-size: 14px; font-weight: 700; color: #f1f5f9; margin-bottom: 3px; }
+  .card-subtitle { font-size: 11px; color: #475569; margin-bottom: 12px; font-family: "SF Mono", monospace; }
+
+  /* ── Path blocks ── */
+  .path-block { margin-bottom: 10px; }
+  .path-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; margin-bottom: 4px; }
+  .path-items { display: flex; flex-direction: column; gap: 3px; }
+  .path-item { font-size: 11px; color: #94a3b8; padding: 3px 8px; background: #131720; border-radius: 5px; border-left: 2px solid #334155; font-family: "SF Mono", monospace; }
+  .path-item.pub  { border-left-color: #3b82f6; }
+  .path-item.adm  { border-left-color: #10b981; }
+
+  /* ── Status dots ── */
+  .dot-list { list-style: none; display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
+  .dot-item { font-size: 12px; display: flex; align-items: flex-start; gap: 6px; color: #94a3b8; }
+  .dot-item .d { width: 8px; height: 8px; border-radius: 50%; margin-top: 3px; flex-shrink: 0; }
+  .dot-item.ok   .d { background: #10b981; }
+  .dot-item.no   .d { background: #ef4444; }
+  .dot-item.warn .d { background: #f59e0b; }
+  .dot-item.new  .d { background: #8b5cf6; }
+  .dot-item.ok { color: #64748b; }
+  .dot-item span { line-height: 1.4; }
+
+  /* ── Chain ── */
+  .chain { display: flex; flex-direction: column; }
+  .chain-row {
+    display: flex; align-items: flex-start; gap: 0;
+    border-left: 2px solid #334155; margin-left: 10px; padding-left: 16px; padding-bottom: 14px;
+    position: relative;
+  }
+  .chain-row:last-child { padding-bottom: 0; border-left-color: transparent; }
+  .chain-row::before {
+    content: ""; position: absolute; left: -6px; top: 5px;
+    width: 10px; height: 10px; border-radius: 50%; background: #334155; border: 2px solid #0f1117;
+  }
+  .chain-row.hi::before { background: #3b82f6; }
+  .chain-row.hi2::before { background: #8b5cf6; }
+  .chain-label { font-size: 11px; font-weight: 600; color: #64748b; min-width: 150px; padding-top: 2px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .chain-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+  .ctag { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: #131720; border: 1px solid #2d3748; color: #94a3b8; }
+  .ctag.b { border-color: #1d4ed8; color: #93c5fd; background: #1e2a3a; }
+  .ctag.g { border-color: #065f46; color: #6ee7b7; background: #1a2e26; }
+  .ctag.o { border-color: #92400e; color: #fcd34d; background: #2a2210; }
+  .ctag.p { border-color: #5b21b6; color: #c4b5fd; background: #221a35; }
+
+  /* ── Build items ── */
+  .build-group { background: #131720; border: 1px solid #1e2d1e; border-radius: 10px; padding: 16px; }
+  .build-group-title { font-size: 12px; font-weight: 700; color: #6ee7b7; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .build-item {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 8px 10px; background: #1a2e26; border-radius: 7px;
+    border: 1px solid #1e3d2e; margin-bottom: 6px;
+  }
+  .build-item:last-child { margin-bottom: 0; }
+  .build-badge {
+    font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px;
+    white-space: nowrap; flex-shrink: 0; margin-top: 1px;
+  }
+  .build-badge.fix    { background: #7c2d12; color: #fed7aa; }
+  .build-badge.feat   { background: #1e3a5f; color: #93c5fd; }
+  .build-badge.new    { background: #3b0764; color: #e9d5ff; }
+  .build-badge.infra  { background: #1c2434; color: #94a3b8; }
+  .build-item-text { font-size: 12px; color: #a7f3d0; line-height: 1.4; }
+  .build-item-sub  { font-size: 11px; color: #4ade80; opacity: 0.6; margin-top: 2px; }
+
+  .divider { border: none; border-top: 1px solid #1e2433; margin: 8px 0; }
+  .note { font-size: 11px; color: #475569; padding: 8px 12px; background: #131720; border-radius: 6px; margin-top: 10px; }
+
+  /* ── Legend ── */
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; padding: 12px 16px; background: #131720; border-radius: 8px; border: 1px solid #1e2433; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #64748b; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  .updated { font-size: 11px; color: #2d3748; margin-top: 48px; }
+  code { font-family: "SF Mono", monospace; font-size: 11px; background: #131720; padding: 1px 5px; border-radius: 3px; color: #a78bfa; }
+
+  /* ── Sticky nav ── */
+  #topnav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    background: #0a0d14; border-bottom: 1px solid #1e2433;
+    height: 48px; display: flex; align-items: center;
+    padding: 0 24px; gap: 0;
+  }
+  #topnav .nav-brand { font-size: 13px; font-weight: 700; color: #f1f5f9; margin-right: 24px; white-space: nowrap; }
+  #topnav .nav-links { display: flex; gap: 4px; flex: 1; }
+  #topnav .nav-links a {
+    font-size: 12px; color: #64748b; text-decoration: none;
+    padding: 5px 12px; border-radius: 6px; transition: color 0.15s, background 0.15s;
+    white-space: nowrap;
+  }
+  #topnav .nav-links a:hover { color: #f1f5f9; background: #1e2433; }
+  #topnav .nav-links a.active { color: #3b82f6; background: #0f2240; }
+  #topnav .nav-updated { font-size: 11px; color: #334155; margin-left: auto; white-space: nowrap; }
+  body { padding-top: 68px !important; }
+
+  /* ── Section nav links ── */
+  .section-nav-link {
+    font-size: 11px; color: #475569; text-decoration: none;
+    padding: 2px 8px; border-radius: 4px; border: 1px solid #2d3748;
+    transition: color 0.15s, border-color 0.15s; margin-left: 6px;
+    white-space: nowrap;
+  }
+  .section-nav-link:hover { color: #94a3b8; border-color: #475569; }
+  .section-nav-link.blue   { border-color: #1d4ed8; color: #60a5fa; }
+  .section-nav-link.green  { border-color: #065f46; color: #34d399; }
+  .section-nav-link.purple { border-color: #5b21b6; color: #a78bfa; }
+
+  /* ── Clickable cards ── */
+  .card[data-href] { cursor: pointer; transition: border-color 0.15s, transform 0.1s; }
+  .card[data-href]:hover { border-color: #475569; transform: translateY(-1px); }
+  .flow-card[data-href] { cursor: pointer; transition: border-color 0.15s; }
+  .flow-card[data-href]:hover { border-color: #475569; }
+
+  /* ── Back to top ── */
+  #btt {
+    position: fixed; bottom: 24px; right: 24px; z-index: 100;
+    width: 36px; height: 36px; border-radius: 50%;
+    background: #1e2433; border: 1px solid #2d3748;
+    color: #64748b; font-size: 16px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: color 0.15s, border-color 0.15s;
+    text-decoration: none;
+  }
+  #btt:hover { color: #f1f5f9; border-color: #475569; }
+
+  /* ── Part section anchors ── */
+  .part-anchor { scroll-margin-top: 60px; }
+
+  /* ── Collapsible flows ── */
+  details.flow-expand { margin-top: 12px; border-top: 1px solid #2d3748; padding-top: 10px; }
+  details.flow-expand summary {
+    font-size: 11px; font-weight: 600; color: #475569; cursor: pointer;
+    list-style: none; display: flex; align-items: center; gap: 6px;
+    user-select: none; padding: 4px 0;
+  }
+  details.flow-expand summary::-webkit-details-marker { display: none; }
+  details.flow-expand summary::before { content: "▶"; font-size: 9px; transition: transform 0.15s; }
+  details.flow-expand[open] summary::before { transform: rotate(90deg); }
+  details.flow-expand summary:hover { color: #94a3b8; }
+  details.flow-expand .flow-inner {
+    padding-top: 14px;
+    margin: 0 -18px -18px;
+    padding: 14px 18px 18px;
+    background: #131720;
+    border-top: 1px solid #2d3748;
+    margin-top: 10px;
+  }
+  /* flow sub-headers */
+  .flow-sub-title {
+    font-size: 11px; font-weight: 700; color: #64748b;
+    text-transform: uppercase; letter-spacing: 0.07em;
+    margin: 12px 0 8px; padding: 4px 8px;
+    background: #1e2433; border-radius: 4px;
+    border-left: 2px solid #334155;
+  }
+  .flow-sub-title:first-child { margin-top: 0; }
+  .flow-sub-title.green  { border-left-color: #10b981; color: #34d399; }
+  .flow-sub-title.blue   { border-left-color: #3b82f6; color: #60a5fa; }
+  .flow-sub-title.purple { border-left-color: #8b5cf6; color: #a78bfa; }
+  /* tighten up flow steps inside cards */
+  details .flow-steps { gap: 0; }
+  details .flow-step {
+    padding-bottom: 8px; margin-left: 6px; padding-left: 10px;
+    border-left-width: 1px;
+  }
+  details .flow-step::before { width: 7px; height: 7px; left: -4px; top: 4px; }
+  details .fl { min-width: 38px; font-size: 9px; }
+  details .ft { font-size: 11px; }
+  details .ftag { font-size: 9px; padding: 1px 4px; }
+</style>
+</head>
+<body>
+
+<!-- Sticky nav -->
+<nav id="topnav">
+  <span class="nav-brand">🪨 ReserveTMK DOM</span>
+  <div class="nav-links">
+    <a href="#arch">🏗 Architecture</a>
+    <a href="#arch">🔀 Flows in cards ↓</a>
+    <a href="#gaps">🔍 Gaps</a>
+    <a href="#build">🔨 Build List</a>
+  </div>
+  <span class="nav-updated">Updated 2026-03-23</span>
+</nav>
+
+<!-- Back to top -->
+<a href="#" id="btt" title="Back to top">↑</a>
+
+<h1>ReserveTMK Digital — DOM</h1>
+<p class="subtitle">Digital Operations Manual — Architecture · Flows · Gaps · Build List</p>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#10b981"></div> Built &amp; working</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div> Partial / needs fix</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div> Gap — not built</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#8b5cf6"></div> New — added to roadmap</div>
+  <div style="margin-left:auto; display:flex; gap:10px; flex-wrap:wrap;">
+    <span style="font-size:11px;color:#334155;">Build badges:</span>
+    <span class="build-badge fix">FIX</span>
+    <span class="build-badge feat">FEATURE</span>
+    <span class="build-badge new">NEW MODULE</span>
+    <span class="build-badge infra">INFRA</span>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     PART 1: ARCHITECTURE — WHAT EXISTS
+════════════════════════════════════════════════════════════ -->
+<div id="arch" class="page-section-title arch part-anchor">🏗 Part 1 — Architecture (What Exists)</div>
+
+<!-- Delivery Features -->
+<div class="section-label">Delivery Features</div>
+<div class="grid-4">
+
+  <div class="card blue" id="arch-mentoring">
+    <div class="card-title">🧑‍🤝‍🧑 Mentoring <a href="#gaps" class="section-nav-link purple">Gaps →</a></div>
+    <div class="card-subtitle">/mentoring · /scheduling · /debriefs</div>
+    <div class="path-block">
+      <div class="path-label">Self-serve</div>
+      <div class="path-items">
+        <div class="path-item pub">/scheduling — book session</div>
+        <div class="path-item pub">/survey/:token — growth survey</div>
+      </div>
+    </div>
+    <div class="path-block">
+      <div class="path-label">Admin</div>
+      <div class="path-items">
+        <div class="path-item adm">/mentoring — Kanban pipeline</div>
+        <div class="path-item adm">/debriefs — AI debrief + confirm</div>
+        <div class="path-item adm">/scheduling — availability mgmt</div>
+      </div>
+    </div>
+    <hr class="divider">
+    <ul class="dot-list">
+      <li class="dot-item ok"><div class="d"></div><span>Applications, profiles, relationships</span></li>
+      <li class="dot-item ok"><div class="d"></div><span>Growth surveys post-session</span></li>
+      <li class="dot-item ok"><div class="d"></div><span>AI-assisted debrief</span></li>
+    </ul>
+    <details class="flow-expand" id="flow-mentoring">
+      <summary>User Flows</summary>
+      <div class="flow-inner">
+        <div style="font-size:11px;font-weight:600;color:#64748b;margin-bottom:8px;">🧑‍🤝‍🧑 Mentoring Pipeline</div>
+        <div class="flow-steps">
+          <div class="flow-step u"><div class="fl">Mentee</div><div class="ft"><strong>Applies for mentoring</strong> — application created</div></div>
+          <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Reviews + moves through Kanban</strong> — Applications → Active</div></div>
+          <div class="flow-step u"><div class="fl">Mentee</div><div class="ft"><strong>Books session</strong> via /scheduling</div></div>
+          <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Session complete → debrief → confirm</strong></div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Growth survey sent</strong><div><span class="ftag ok">✓ works</span></div></div></div>
+          <div class="flow-step w"><div class="fl">Check</div><div class="ft"><strong>Sessions → report wired correctly?</strong><div><span class="ftag w">? verify</span></div></div></div>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <div class="card green" id="arch-spaces">
+    <div class="card-title">🏢 Spaces (Venue Hire) <a href="#gaps" class="section-nav-link purple">Gaps →</a> <a href="#build-spaces" class="section-nav-link green">Build →</a></div>
+    <div class="card-subtitle">/spaces · /bookings · /agreements</div>
+    <div class="path-block">
+      <div class="path-label">Self-serve</div>
+      <div class="path-items">
+        <div class="path-item pub">/booker/login — magic link</div>
+        <div class="path-item pub">/booker/portal/:token — book, change, cancel</div>
+        <div class="path-item pub">/book/:userId — public casual hire</div>
+        <div class="path-item pub">/casual-hire — walk-in flow</div>
+      </div>
+    </div>
+    <div class="path-block">
+      <div class="path-label">Admin</div>
+      <div class="path-items">
+        <div class="path-item adm">/spaces — weekly calendar, desk view</div>
+        <div class="path-item adm">/bookings — list, confirm, invoice</div>
+        <div class="path-item adm">/bookings/:id — booking detail</div>
+        <div class="path-item adm">/agreements — memberships + MOUs</div>
+      </div>
+    </div>
+    <hr class="divider">
+    <ul class="dot-list">
+      <li class="dot-item ok"><div class="d"></div><span>Change requests (booker-initiated)</span></li>
+      <li class="dot-item ok"><div class="d"></div><span>Pricing tiers, packages, agreements</span></li>
+      <li class="dot-item ok"><div class="d"></div><span>Xero invoicing</span></li>
+      <li class="dot-item ok"><div class="d"></div><span>Confirmation + reminder emails</span></li>
+    </ul>
+    <details class="flow-expand" id="flow-spaces">
+      <summary>User Flows (3)</summary>
+      <div class="flow-inner">
+        <div class="flow-sub-title green">🤝 Agreement Booker</div>
+        <div class="flow-steps">
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Receives magic link</strong> → /booker/portal/:token<div class="fs">Booker link tied to agreement</div></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Views dashboard</strong> — agreement, allowance, history</div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects date + venue</strong> — sees "Covered by agreement"</div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Submits booking request</strong></div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Alert email → kiaora@reservetmk.co.nz</strong><div><span class="ftag ok">✓ works</span></div></div></div>
+          <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Reviews + confirms</strong> in /bookings</div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Confirmation email + calendar invite → booker</strong><div><span class="ftag ok">✓ works</span></div></div></div>
+          <div class="flow-step w"><div class="fl">Check</div><div class="ft"><strong>Confirmation shows $0 / covered?</strong><div><span class="ftag w">? verify</span></div></div></div>
+          <div class="flow-step w"><div class="fl">Check</div><div class="ft"><strong>Over allowance → what happens?</strong><div><span class="ftag w">? verify</span></div></div></div>
+        </div>
+        <div class="flow-sub-title blue">💳 General Paid Booker</div>
+        <div class="flow-steps">
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Accesses portal</strong> via magic link or /book/:userId</div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects date + venue</strong> — sees full pricing</div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Submits booking request</strong></div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Alert email → admin</strong><div><span class="ftag ok">✓ works</span></div></div></div>
+          <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Reviews + confirms</strong></div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Confirmation email + Xero invoice + calendar invite</strong><div><span class="ftag ok">✓ works</span></div></div></div>
+          <div class="flow-step g"><div class="fl">Gap</div><div class="ft"><strong>Payment instructions not clear</strong><div><span class="ftag gap">✗ gap</span></div></div></div>
+          <div class="flow-step g"><div class="fl">Gap</div><div class="ft"><strong>No payment status in booking view</strong><div><span class="ftag gap">✗ gap</span></div></div></div>
+        </div>
+        <div class="flow-sub-title purple">🛠 Admin Booking</div>
+        <div class="flow-steps">
+          <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Creates booking</strong> in /bookings — date, venue, time, contact, classification</div></div>
+          <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Confirms immediately</strong> or saves as pending</div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Confirmation email + calendar invite → contact</strong><div><span class="ftag ok">✓ works (if contact has email)</span></div></div></div>
+          <div class="flow-step w"><div class="fl">Check</div><div class="ft"><strong>Book without a contact in system?</strong><div><span class="ftag w">? verify</span></div></div></div>
+          <div class="flow-step g"><div class="fl">Gap</div><div class="ft"><strong>No quick-add unplanned activation</strong><div><span class="ftag gap">✗ gap</span></div></div></div>
+          <div class="flow-step g"><div class="fl">Gap</div><div class="ft"><strong>No recurring booking setup</strong><div><span class="ftag gap">✗ gap</span></div></div></div>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <div class="card orange" id="arch-gear">
+    <div class="card-title">⚙️ Gear <a href="#gaps" class="section-nav-link purple">Gaps →</a> <a href="#build-gear" class="section-nav-link">Build →</a></div>
+    <div class="card-subtitle">/gear · /spaces (resources tab)</div>
+    <div class="path-block">
+      <div class="path-label">Self-serve</div>
+      <div class="path-items">
+        <div class="path-item pub">/booker/portal/:token → Gear view</div>
+      </div>
+    </div>
+    <div class="path-block">
+      <div class="path-label">Admin</div>
+      <div class="path-items">
+        <div class="path-item adm">/gear — inventory, bookings, availability</div>
+        <div class="path-item adm">/spaces → Resources tab</div>
+      </div>
+    </div>
+    <hr class="divider">
+    <ul class="dot-list">
+      <li class="dot-item ok"><div class="d"></div><span>Gear booking via booker portal</span></li>
+      <li class="dot-item ok"><div class="d"></div><span>requiresApproval flag per item</span></li>
+      <li class="dot-item ok"><div class="d"></div><span>Date-based availability</span></li>
+    </ul>
+    <details class="flow-expand">
+      <summary>User Flows</summary>
+      <div class="flow-inner">
+        <div class="flow-steps">
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Accesses gear booking</strong> via booker portal → Gear tab</div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects date + items</strong> — sees availability, approval warning if needed</div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Confirms booking</strong></div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Gear booked</strong> — or queued for approval if requiresApproval<div><span class="ftag ok">✓ works</span></div></div></div>
+          <div class="flow-step g"><div class="fl">Gap</div><div class="ft"><strong>No admin approve/deny UI</strong> for flagged items<div><span class="ftag gap">✗ gap</span></div></div></div>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <div class="card purple" id="arch-programmes">
+    <div class="card-title">📚 Programmes <a href="#gaps" class="section-nav-link purple">Gaps →</a></div>
+    <div class="card-subtitle">/programmes · /register/:slug</div>
+    <div class="path-block">
+      <div class="path-label">Self-serve</div>
+      <div class="path-items">
+        <div class="path-item pub">/register/:slug — public registration</div>
+        <div class="path-item pub">QR code → registration form</div>
+      </div>
+    </div>
+    <div class="path-block">
+      <div class="path-label">Admin</div>
+      <div class="path-items">
+        <div class="path-item adm">/programmes — list, create, edit</div>
+        <div class="path-item adm">Registrations dialog — roll call, CSV, QR</div>
+        <div class="path-item adm">/programme-effectiveness</div>
+        <div class="path-item adm">/cohort-analysis</div>
+      </div>
+    </div>
+    <hr class="divider">
+    <ul class="dot-list">
+      <li class="dot-item ok"><div class="d"></div><span>Registration + attended toggle</span></li>
+      <li class="dot-item ok"><div class="d"></div><span>Growth surveys, CSV export</span></li>
+      <li class="dot-item ok"><div class="d"></div><span>Cohort + effectiveness reporting</span></li>
+    </ul>
+    <details class="flow-expand" id="flow-programmes">
+      <summary>User Flows (3)</summary>
+      <div class="flow-inner">
+        <div class="flow-sub-title purple">📋 Registration</div>
+        <div class="flow-steps">
+          <div class="flow-step u"><div class="fl">Person</div><div class="ft"><strong>Receives link or scans QR</strong> → /register/:slug</div></div>
+          <div class="flow-step u"><div class="fl">Person</div><div class="ft"><strong>Fills registration form</strong> — name, email, consent, dietary etc</div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Registration created</strong> status: registered<div><span class="ftag ok">✓ works</span></div></div></div>
+          <div class="flow-step w"><div class="fl">Check</div><div class="ft"><strong>Confirmation email to participant?</strong><div><span class="ftag w">? verify</span></div></div></div>
+          <div class="flow-step w"><div class="fl">Check</div><div class="ft"><strong>Admin notified of new registration?</strong><div><span class="ftag w">? verify</span></div></div></div>
+          <div class="flow-step g"><div class="fl">Gap</div><div class="ft"><strong>Waitlist not wired</strong><div><span class="ftag gap">✗ gap</span></div></div></div>
+        </div>
+        <div class="flow-sub-title purple">✅ Roll Call</div>
+        <div class="flow-steps">
+          <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Opens registrations dialog</strong> on programme card</div></div>
+          <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Toggles attended</strong> for each person<div><span class="ftag ok">✓ UI exists</span></div></div></div>
+          <div class="flow-step g"><div class="fl">Gap</div><div class="ft"><strong>attended ≠ programmes.attendees</strong> — doesn't feed report<div><span class="ftag gap">✗ broken</span></div></div></div>
+          <div class="flow-step g"><div class="fl">Gap</div><div class="ft"><strong>Walk-ins can't be added</strong><div><span class="ftag gap">✗ gap</span></div></div></div>
+        </div>
+        <div class="flow-sub-title purple">📈 Post-Programme</div>
+        <div class="flow-steps">
+          <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Marks programme complete</strong></div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Growth survey sent</strong> to attendees<div><span class="ftag ok">✓ works (manual)</span></div></div></div>
+          <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Creates debrief → links to programme → confirms</strong></div></div>
+          <div class="flow-step g"><div class="fl">Gap</div><div class="ft"><strong>No lifecycle automation</strong><div><span class="ftag gap">✗ gap</span></div></div></div>
+        </div>
+      </div>
+    </details>
+  </div>
+
+</div>
+
+<!-- Data Chain -->
+<div class="section-label" style="margin-top:32px;">Data → Reporting Chain</div>
+<div class="card" style="max-width:800px;">
+  <div class="chain">
+    <div class="chain-row hi">
+      <div class="chain-label">Day-to-day</div>
+      <div class="chain-tags">
+        <span class="ctag b">Bookings</span>
+        <span class="ctag b">Meetings</span>
+        <span class="ctag b">Events + attendance</span>
+        <span class="ctag b">Interactions</span>
+        <span class="ctag b">Programmes</span>
+        <span class="ctag b">Contact stage moves</span>
+      </div>
+    </div>
+    <div class="chain-row">
+      <div class="chain-label">Post-activity</div>
+      <div class="chain-tags">
+        <span class="ctag g">Debriefs (confirmed only ⚠)</span>
+        <span class="ctag g">Journey updates</span>
+        <span class="ctag g">Community spend</span>
+      </div>
+    </div>
+    <div class="chain-row">
+      <div class="chain-label">Monthly Reconciling</div>
+      <div class="chain-tags">
+        <span class="ctag o">Daily foot traffic</span>
+        <span class="ctag o">Unplanned activations</span>
+        <span class="ctag o">Month confirmed</span>
+      </div>
+    </div>
+    <div class="chain-row hi2">
+      <div class="chain-label">Quarterly Report</div>
+      <div class="chain-tags">
+        <span class="ctag p">People reached</span>
+        <span class="ctag p">Community hours</span>
+        <span class="ctag p">Delivery breakdown</span>
+        <span class="ctag p">Impact taxonomy</span>
+        <span class="ctag p">Demographics</span>
+        <span class="ctag p">Foot traffic</span>
+      </div>
+    </div>
+  </div>
+  <div class="note">⚠ Drafts are invisible to reporting — only confirmed debriefs count. · Contact stage movements must happen in real-time, cannot be backfilled.</div>
+</div>
+
+<!-- Nav structure -->
+<div class="section-label" style="margin-top:32px;">Nav Structure</div>
+<div class="card" style="max-width:800px;">
+  <div style="display:flex; flex-wrap:wrap; gap:8px;">
+    <div style="background:#131720;border:1px solid #334155;border-radius:7px;padding:10px 14px;">
+      <div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:6px;">COMMUNITY</div>
+      <div style="font-size:11px;color:#64748b;line-height:1.8;">People<br>Groups<br>Ecosystems</div>
+    </div>
+    <div style="background:#131720;border:1px solid #334155;border-radius:7px;padding:10px 14px;">
+      <div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:6px;">DELIVERY</div>
+      <div style="font-size:11px;color:#64748b;line-height:1.8;">Mentoring<br>Spaces<br>Gear<br>Programmes</div>
+    </div>
+    <div style="background:#131720;border:1px solid #334155;border-radius:7px;padding:10px 14px;">
+      <div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:6px;">TRACKING</div>
+      <div style="font-size:11px;color:#64748b;line-height:1.8;">Calendar<br>Debriefs<br>Catch Up<br>Community Spend</div>
+    </div>
+    <div style="background:#131720;border:1px solid #334155;border-radius:7px;padding:10px 14px;">
+      <div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:6px;">REPORTING</div>
+      <div style="font-size:11px;color:#64748b;line-height:1.8;">Report Generator<br>Dashboard<br>Cohorts<br>Taxonomy</div>
+    </div>
+    <div style="background:#131720;border:1px solid #334155;border-radius:7px;padding:10px 14px;">
+      <div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:6px;">OPS</div>
+      <div style="font-size:11px;color:#64748b;line-height:1.8;">Projects<br>Agreements<br>Funders</div>
+    </div>
+    <div style="background:#131720;border:1px solid #334155;border-radius:7px;padding:10px 14px;">
+      <div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:6px;">SETTINGS</div>
+      <div style="font-size:11px;color:#64748b;line-height:1.8;">Availability<br>About Us<br>Team</div>
+    </div>
+    <div style="background:#131720;border:1px dashed #3b2d5e;border-radius:7px;padding:10px 14px;opacity:0.7;">
+      <div style="font-size:11px;font-weight:700;color:#a78bfa;margin-bottom:6px;">COMMS ✦ new</div>
+      <div style="font-size:11px;color:#64748b;line-height:1.8;">Stories<br>Newsletters<br>Announcements</div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     PART 2: GAPS — KNOWN ISSUES & MISSING PIECES
+════════════════════════════════════════════════════════════ -->
+<div id="gaps" class="page-section-title gaps part-anchor">🔍 Part 2 — Gaps (Known Issues &amp; Missing Pieces)</div>
+
+<div class="grid-4">
+
+  <div class="card blue">
+    <div class="card-title">🧑‍🤝‍🧑 Mentoring</div>
+    <ul class="dot-list">
+      <li class="dot-item warn"><div class="d"></div><span>Attendance → report wire-up (verify)</span></li>
+      <li class="dot-item no"><div class="d"></div><span>Group / cohort mentoring model</span></li>
+    </ul>
+  </div>
+
+  <div class="card green">
+    <div class="card-title">🏢 Spaces</div>
+    <ul class="dot-list">
+      <li class="dot-item no"><div class="d"></div><span>Quick-add unplanned activation</span></li>
+      <li class="dot-item no"><div class="d"></div><span>Recurring bookings (admin-managed)</span></li>
+      <li class="dot-item no"><div class="d"></div><span>Monthly reconciling UI</span></li>
+    </ul>
+  </div>
+
+  <div class="card orange">
+    <div class="card-title">⚙️ Gear</div>
+    <ul class="dot-list">
+      <li class="dot-item no"><div class="d"></div><span>Approval workflow UI (approve/deny)</span></li>
+      <li class="dot-item no"><div class="d"></div><span>Maintenance / condition tracking</span></li>
+      <li class="dot-item no"><div class="d"></div><span>Usage history per item</span></li>
+    </ul>
+  </div>
+
+  <div class="card purple">
+    <div class="card-title">📚 Programmes</div>
+    <ul class="dot-list">
+      <li class="dot-item warn"><div class="d"></div><span><code>attended</code> → <code>programmes.attendees</code> not wired (report blind spot)</span></li>
+      <li class="dot-item no"><div class="d"></div><span>Walk-in attendance (unregistered)</span></li>
+      <li class="dot-item no"><div class="d"></div><span>Session-by-session roll call (multi-session)</span></li>
+      <li class="dot-item warn"><div class="d"></div><span>Debrief ↔ programme linkage consistency</span></li>
+    </ul>
+  </div>
+
+</div>
+
+<div class="section-label" style="margin-top:24px;">Platform Gaps</div>
+<div class="grid-2">
+
+  <div class="card" style="border-top:3px solid #ec4899;">
+    <div class="card-title" style="color:#f9a8d4;">📬 Comms / Notifications</div>
+    <ul class="dot-list">
+      <li class="dot-item ok"><div class="d"></div><span>Booking confirmation + reminder emails</span></li>
+      <li class="dot-item ok"><div class="d"></div><span>Survey emails</span></li>
+      <li class="dot-item ok"><div class="d"></div><span><code>newsletter_optin</code> consent flag on contacts</span></li>
+      <li class="dot-item no"><div class="d"></div><span>Outbound comms centre (broadcasts)</span></li>
+      <li class="dot-item no"><div class="d"></div><span>Post-activity lifecycle automation</span></li>
+      <li class="dot-item no"><div class="d"></div><span>Notification preferences per contact</span></li>
+    </ul>
+  </div>
+
+  <div class="card" style="border-top:3px solid #ec4899;">
+    <div class="card-title" style="color:#f9a8d4;">⏳ Waitlist</div>
+    <ul class="dot-list">
+      <li class="dot-item ok"><div class="d"></div><span><code>waitlisted</code> status exists on registrations</span></li>
+      <li class="dot-item no"><div class="d"></div><span>Auto-promote when capacity opens</span></li>
+      <li class="dot-item no"><div class="d"></div><span>Notify waitlisted person</span></li>
+      <li class="dot-item no"><div class="d"></div><span>Waitlist management UI</span></li>
+    </ul>
+  </div>
+
+  <div class="card" style="border-top:3px solid #ec4899;">
+    <div class="card-title" style="color:#f9a8d4;">✅ Consent Management</div>
+    <ul class="dot-list">
+      <li class="dot-item ok"><div class="d"></div><span>Consent records table exists</span></li>
+      <li class="dot-item ok"><div class="d"></div><span>Captured at public registration</span></li>
+      <li class="dot-item no"><div class="d"></div><span>Consent audit view (given/pending/withdrawn)</span></li>
+      <li class="dot-item no"><div class="d"></div><span>Bulk status view + funder export</span></li>
+    </ul>
+  </div>
+
+  <div class="card" style="border-top:3px solid #ec4899;">
+    <div class="card-title" style="color:#f9a8d4;">🔄 Lifecycle Comms</div>
+    <ul class="dot-list">
+      <li class="dot-item ok"><div class="d"></div><span>Booking confirmation + reminder</span></li>
+      <li class="dot-item no"><div class="d"></div><span>Post-booking check-in / survey prompt</span></li>
+      <li class="dot-item no"><div class="d"></div><span>Post-programme growth check-in auto-send</span></li>
+      <li class="dot-item no"><div class="d"></div><span>Post-mentoring → debrief prompt to admin</span></li>
+      <li class="dot-item no"><div class="d"></div><span>Configurable trigger delays</span></li>
+    </ul>
+  </div>
+
+</div>
+
+<div class="section-label" style="margin-top:24px;">Lower Priority Gaps</div>
+<div class="grid-3">
+  <div class="card cyan" style="border-top-width:2px;">
+    <div class="card-title">📅 Recurring Programmes</div>
+    <ul class="dot-list" style="margin-top:8px;">
+      <li class="dot-item no"><div class="d"></div><span>Series / cohort model</span></li>
+      <li class="dot-item no"><div class="d"></div><span>Carry participant list between sessions</span></li>
+    </ul>
+  </div>
+  <div class="card cyan" style="border-top-width:2px;">
+    <div class="card-title">👤 Contact Engagement Timeline</div>
+    <ul class="dot-list" style="margin-top:8px;">
+      <li class="dot-item no"><div class="d"></div><span>Unified journey view per contact</span></li>
+      <li class="dot-item no"><div class="d"></div><span>All features in one timeline</span></li>
+    </ul>
+  </div>
+  <div class="card cyan" style="border-top-width:2px;">
+    <div class="card-title">🔗 Misc</div>
+    <ul class="dot-list" style="margin-top:8px;">
+      <li class="dot-item no"><div class="d"></div><span>Unified activity feed (all features)</span></li>
+      <li class="dot-item warn"><div class="d"></div><span>Xero scope — covers gear/programme fees?</span></li>
+      <li class="dot-item warn"><div class="d"></div><span>Milestones disconnected from Delivery nav</span></li>
+    </ul>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     PART 3: BUILD LIST
+════════════════════════════════════════════════════════════ -->
+<div id="build" class="page-section-title build part-anchor">🔨 Part 3 — Build List</div>
+
+<div class="section-label">Data Integrity — Fix First <a href="#flows" class="section-nav-link blue">← Flows</a> <a href="#gaps" class="section-nav-link purple">← Gaps</a></div>
+<div class="grid-2">
+  <div class="build-group">
+    <div id="build-programmes" class="build-group-title part-anchor">📚 Programmes</div>
+    <div class="build-item">
+      <span class="build-badge fix">FIX</span>
+      <div>
+        <div class="build-item-text">Wire <code>attended</code> → <code>programmes.attendees</code></div>
+        <div class="build-item-sub">When attended=true, add contactId to programmes.attendees array. Backend route change only.</div>
+      </div>
+    </div>
+    <div class="build-item">
+      <span class="build-badge feat">FEATURE</span>
+      <div>
+        <div class="build-item-text">Walk-in attendance on roll call</div>
+        <div class="build-item-sub">Add unregistered person to roll on the day. Creates registration + marks attended.</div>
+      </div>
+    </div>
+    <div class="build-item">
+      <span class="build-badge feat">FEATURE</span>
+      <div>
+        <div class="build-item-text">Session-by-session roll call</div>
+        <div class="build-item-sub">Multi-session programmes: per-session attended record, not one overall flag.</div>
+      </div>
+    </div>
+  </div>
+  <div class="build-group">
+    <div id="build-gear" class="build-group-title part-anchor">⚙️ Gear</div>
+    <div class="build-item">
+      <span class="build-badge feat">FEATURE</span>
+      <div>
+        <div class="build-item-text">Approval workflow UI</div>
+        <div class="build-item-sub">Admin approve/deny screen for requiresApproval items. Flag already exists.</div>
+      </div>
+    </div>
+    <div class="build-item">
+      <span class="build-badge feat">FEATURE</span>
+      <div>
+        <div class="build-item-text">Maintenance / condition tracking</div>
+        <div class="build-item-sub">Log condition, service history, flag out-of-service per item.</div>
+      </div>
+    </div>
+    <div class="build-item">
+      <span class="build-badge feat">FEATURE</span>
+      <div>
+        <div class="build-item-text">Usage history per item</div>
+        <div class="build-item-sub">Who borrowed what, when. Feeds asset management + reporting.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="build-spaces" class="section-label part-anchor" style="margin-top:24px;">Spaces — Operations <a href="#flow-spaces" class="section-nav-link green">← Flow</a></div>
+<div class="build-group" style="max-width:800px;">
+  <div class="build-group-title">🏢 Spaces</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+    <div class="build-item">
+      <span class="build-badge feat">FEATURE</span>
+      <div>
+        <div class="build-item-text">Quick-add unplanned activation</div>
+        <div class="build-item-sub">Always-accessible admin shortcut. Date · space · classification · headcount · duration. booking_source = "admin_catch_up".</div>
+      </div>
+    </div>
+    <div class="build-item">
+      <span class="build-badge feat">FEATURE</span>
+      <div>
+        <div class="build-item-text">Recurring bookings (admin-managed)</div>
+        <div class="build-item-sub">Set once, auto-generates on schedule. No booker involvement. e.g. "Board meeting, 2nd Tuesday, Main Room."</div>
+      </div>
+    </div>
+    <div class="build-item" style="grid-column:1/-1;">
+      <span class="build-badge feat">FEATURE</span>
+      <div>
+        <div class="build-item-text">Monthly Reconciling UI</div>
+        <div class="build-item-sub">Structured monthly health check: foot traffic grid (Kim's camera review) · backfill unplanned use · check unconfirmed debriefs · confirm month complete → feeds quarterly report.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section-label" style="margin-top:24px;">Platform — New Modules</div>
+<div class="grid-2">
+
+  <div class="build-group" style="border-color:#1e3d5e;">
+    <div class="build-group-title" style="color:#93c5fd;">📬 Comms / Notifications</div>
+    <div class="build-item" style="background:#1a2a3e;border-color:#1e3d5e;">
+      <span class="build-badge new">NEW MODULE</span>
+      <div>
+        <div class="build-item-text" style="color:#93c5fd;">Triggered notifications</div>
+        <div class="build-item-sub" style="color:#3b82f6;">Auto-fire on: booking confirmed, programme registered, session completed.</div>
+      </div>
+    </div>
+    <div class="build-item" style="background:#1a2a3e;border-color:#1e3d5e;">
+      <span class="build-badge new">NEW MODULE</span>
+      <div>
+        <div class="build-item-text" style="color:#93c5fd;">Lifecycle comms automation</div>
+        <div class="build-item-sub" style="color:#3b82f6;">Post-booking · post-programme · post-mentoring. Configurable delays.</div>
+      </div>
+    </div>
+    <div class="build-item" style="background:#1a2a3e;border-color:#1e3d5e;">
+      <span class="build-badge new">NEW MODULE</span>
+      <div>
+        <div class="build-item-text" style="color:#93c5fd;">Notification preferences per contact</div>
+        <div class="build-item-sub" style="color:#3b82f6;">Opt-in / opt-out per notification type.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="build-group" style="border-color:#1e3d5e;">
+    <div class="build-group-title" style="color:#93c5fd;">⏳ Waitlist + ✅ Consent</div>
+    <div class="build-item" style="background:#1a2a3e;border-color:#1e3d5e;">
+      <span class="build-badge new">NEW MODULE</span>
+      <div>
+        <div class="build-item-text" style="color:#93c5fd;">Waitlist workflow</div>
+        <div class="build-item-sub" style="color:#3b82f6;">Auto-promote on cancellation · notify · confirm. Status already exists.</div>
+      </div>
+    </div>
+    <div class="build-item" style="background:#1a2a3e;border-color:#1e3d5e;">
+      <span class="build-badge new">NEW MODULE</span>
+      <div>
+        <div class="build-item-text" style="color:#93c5fd;">Consent audit view</div>
+        <div class="build-item-sub" style="color:#3b82f6;">Given / pending / withdrawn across community. Bulk view + funder export.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Comms & Storytelling -->
+<div class="section-label" style="margin-top:24px;">Comms &amp; Storytelling — Full New Module</div>
+<div class="card pink" style="max-width:800px;">
+  <div class="card-title" style="color:#f9a8d4; font-size:15px;">💬 /comms — Community Comms Centre</div>
+  <div class="card-subtitle">Internal build · Resend infrastructure · Consent-gated · Data-integrated · Not Mailchimp</div>
+
+  <div class="grid-3" style="margin-top:14px;">
+    <div style="background:#131720;border-radius:8px;padding:14px;border:1px solid #2d3748;">
+      <div style="font-size:12px;font-weight:700;color:#f9a8d4;margin-bottom:8px;">✍️ Stories tab</div>
+      <ul class="dot-list">
+        <li class="dot-item new"><div class="d"></div><span>Pull from debriefs, quotes, milestones</span></li>
+        <li class="dot-item new"><div class="d"></div><span>Create / edit spotlight article</span></li>
+        <li class="dot-item new"><div class="d"></div><span>Draft / published status</span></li>
+        <li class="dot-item new"><div class="d"></div><span>Link to contact record</span></li>
+        <li class="dot-item new"><div class="d"></div><span>Reuse in newsletters</span></li>
+      </ul>
+    </div>
+    <div style="background:#131720;border-radius:8px;padding:14px;border:1px solid #2d3748;">
+      <div style="font-size:12px;font-weight:700;color:#f9a8d4;margin-bottom:8px;">📰 Newsletters tab</div>
+      <ul class="dot-list">
+        <li class="dot-item new"><div class="d"></div><span>Rich text compose</span></li>
+        <li class="dot-item new"><div class="d"></div><span>Embed stories from Stories tab</span></li>
+        <li class="dot-item new"><div class="d"></div><span>Audience segment picker</span></li>
+        <li class="dot-item new"><div class="d"></div><span>Schedule or send immediately</span></li>
+        <li class="dot-item new"><div class="d"></div><span>Send history</span></li>
+        <li class="dot-item new"><div class="d"></div><span>2–3 pre-built branded templates</span></li>
+      </ul>
+    </div>
+    <div style="background:#131720;border-radius:8px;padding:14px;border:1px solid #2d3748;">
+      <div style="font-size:12px;font-weight:700;color:#f9a8d4;margin-bottom:8px;">📣 Announcements tab</div>
+      <ul class="dot-list">
+        <li class="dot-item new"><div class="d"></div><span>Fast compose (subject + body)</span></li>
+        <li class="dot-item new"><div class="d"></div><span>Target: all / group / programme cohort</span></li>
+        <li class="dot-item new"><div class="d"></div><span>Preview before send</span></li>
+        <li class="dot-item new"><div class="d"></div><span>Send history</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="grid-2" style="margin-top:12px;">
+    <div style="background:#131720;border-radius:8px;padding:12px;border:1px solid #2d3748;">
+      <div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:8px;">AUDIENCE LAYER</div>
+      <ul class="dot-list">
+        <li class="dot-item ok"><div class="d"></div><span><code>newsletter_optin</code> flag on contacts</span></li>
+        <li class="dot-item ok"><div class="d"></div><span>Consent captured at registration</span></li>
+        <li class="dot-item new"><div class="d"></div><span>Segment by stage / group / programme</span></li>
+        <li class="dot-item new"><div class="d"></div><span>Saved segments for reuse</span></li>
+        <li class="dot-item new"><div class="d"></div><span>Unsubscribe → updates contact record</span></li>
+        <li class="dot-item new"><div class="d"></div><span>Bounce handling → flags contact</span></li>
+      </ul>
+    </div>
+    <div style="background:#131720;border-radius:8px;padding:12px;border:1px solid #2d3748;">
+      <div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:8px;">SEND INFRASTRUCTURE</div>
+      <ul class="dot-list">
+        <li class="dot-item ok"><div class="d"></div><span>Resend transactional infra (exists)</span></li>
+        <li class="dot-item new"><div class="d"></div><span>Bulk send via Resend</span></li>
+        <li class="dot-item new"><div class="d"></div><span>Custom domain warming</span></li>
+        <li class="dot-item new"><div class="d"></div><span>One-click unsubscribe (NZ UEM Act)</span></li>
+        <li class="dot-item warn"><div class="d"></div><span>Scale check if list &gt; 2,000</span></li>
+      </ul>
+      <div class="note" style="margin-top:8px;">NOT building: drag-and-drop builder · A/B testing · click heatmaps<br>Mailchimp available as CSV escape valve if needed.</div>
+    </div>
+  </div>
+</div>
+
+<p class="updated">Generated by Korg · ReserveTMK Digital — DOM · Last updated: 2026-03-23</p>
+
+<script>
+  // Active nav highlight on scroll
+  const sections = ['arch','flows','gaps','build'];
+  const navLinks = {};
+  sections.forEach(id => {
+    navLinks[id] = document.querySelector(`#topnav a[href="#${id}"]`);
+  });
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        sections.forEach(id => navLinks[id] && navLinks[id].classList.remove('active'));
+        const active = navLinks[entry.target.id];
+        if (active) active.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-10% 0px -80% 0px' });
+
+  sections.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) observer.observe(el);
+  });
+
+  // Smooth scroll for all anchor links
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      const target = document.querySelector(a.getAttribute('href'));
+      if (target) {
+        e.preventDefault();
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  });
+</script>
+
+</body>
+</html>
