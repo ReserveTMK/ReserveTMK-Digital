@@ -215,7 +215,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [createOpen, setCreateOpen] = useState(false);
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
-  const [viewMode, setViewMode] = useState<"calendar" | "list" | "kanban">("calendar");
+  const [viewMode, setViewMode] = useState<"calendar" | "list" | "kanban">("kanban");
   const [calMonth, setCalMonth] = useState(new Date());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [hirerPreviewOpen, setHirerPreviewOpen] = useState(false);
@@ -292,6 +292,12 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
   const getBookerName = (bookerId: number | null) => {
     if (!bookerId || !contacts) return null;
     return contacts.find((c) => c.id === bookerId)?.name || null;
+  };
+
+  const getBookerOrgName = (bookerId: number | null | undefined) => {
+    if (!bookerId || !regularBookers) return null;
+    const rb = (regularBookers as any[]).find((r: any) => r.contactId === bookerId);
+    return rb?.organizationName || null;
   };
 
   const getBookingGroupName = (gId: number | null | undefined) => {
@@ -482,16 +488,6 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
             )}
             <div className={`flex items-center gap-2 flex-wrap ${embedded ? "w-full justify-between" : ""}`}>
               <div className="flex items-center border border-border rounded-lg overflow-hidden" data-testid="view-toggle">
-                <Button
-                  variant={viewMode === "calendar" ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setViewMode("calendar")}
-                  className="rounded-none gap-1.5 text-xs"
-                  data-testid="button-calendar-view"
-                >
-                  <Calendar className="w-3.5 h-3.5" />
-                  Calendar
-                </Button>
                 <Button
                   variant={viewMode === "kanban" ? "default" : "ghost"}
                   size="sm"
@@ -893,7 +889,17 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                     const dateTime = formatDateTime(booking);
                     const bookerName = getBookerName(booking.bookerId);
                     const bookingGroupName = getBookingGroupName(booking.bookerGroupId);
+                    const bookerOrgName = getBookerOrgName(booking.bookerId);
+                    const cardTitle = booking.bookerName || bookerOrgName || bookingGroupName || bookerName || getVenueNames(booking);
                     const isCancelled = booking.status === "cancelled";
+
+                    // Payment status dot
+                    const paymentStatus = (booking as any).paymentStatus;
+                    const paymentDot = paymentStatus === 'paid' ? '🟢'
+                      : paymentStatus === 'invoiced' ? '🟡'
+                      : paymentStatus === 'unpaid' ? '🔴'
+                      : paymentStatus === 'not_required' ? null
+                      : null;
 
                     return (
                       <Card
@@ -905,8 +911,11 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap mb-1">
                               <h3 className={`font-semibold text-base truncate ${isCancelled ? "line-through opacity-70" : ""}`} data-testid={`text-booking-title-${booking.id}`}>
-                                {bookingGroupName || bookerName || getVenueNames(booking)}
+                                {cardTitle}
                               </h3>
+                              {paymentDot && (
+                                <span className="text-sm shrink-0" title={paymentStatus}>{paymentDot}</span>
+                              )}
                               <Badge className={CLASSIFICATION_COLORS[booking.classification] || ""} data-testid={`badge-classification-${booking.id}`}>
                                 {booking.classification}
                               </Badge>

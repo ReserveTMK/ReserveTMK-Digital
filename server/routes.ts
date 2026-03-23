@@ -9988,6 +9988,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
         'https://www.googleapis.com/auth/drive.file',
         'https://www.googleapis.com/auth/drive.readonly',
         'https://www.googleapis.com/auth/spreadsheets.readonly',
+        'https://www.googleapis.com/auth/calendar',
       ],
       state,
     });
