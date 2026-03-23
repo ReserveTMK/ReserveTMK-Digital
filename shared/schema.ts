@@ -50,16 +50,13 @@ export const MILESTONE_TYPES = [
 export type MilestoneType = typeof MILESTONE_TYPES[number];
 
 export const CONTACT_ROLES = [
-  "Business Owner",
   "Entrepreneur",
-  "Creative / Artist",
-  "Freelancer",
+  "Creative",
   "Community Leader",
   "Professional",
-  "Rangatahi / Student",
+  "Rangatahi",
+  "Connector",
   "Partner",
-  "Supporter",
-  "Other",
 ] as const;
 export type ContactRole = typeof CONTACT_ROLES[number];
 
