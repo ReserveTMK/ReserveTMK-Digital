@@ -230,22 +230,18 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
                 )}
                 <SortHeader label="Role" field="role" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
                 <SortHeader label="Group" field="group" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[130px]" />
-                {(drilldownTier === "innovators" || drilldownTier === "vip") ? (
-                  <>
-                    <SortHeader label="Stage" field="stage" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
-                    <SortHeader label="Connection" field="connection" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[120px]" />
-                    {drilldownTier === "innovators" && (
-                      <SortHeader label="Support" field="support" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[120px]" />
-                    )}
-                  </>
-                ) : drilldownTier === "community" ? (
-                  <SortHeader label="Connection" field="connection" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[120px]" />
-                ) : null}
+                {(drilldownTier === "innovators" || drilldownTier === "vip") && (
+                  <SortHeader label="Stage" field="stage" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
+                )}
+                {drilldownTier === "innovators" && (
+                  <SortHeader label="Support" field="support" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[120px]" />
+                )}
                 <SortHeader label="Ethnicity" field="ethnicity" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[160px]" />
                 <SortHeader label="Suburb" field="suburb" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
                 {drilldownTier === "innovators" && (
                   <SortHeader label="Area" field="area" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-20" />
                 )}
+                <SortHeader label="Connection" field="connection" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[120px]" />
               </tr>
             </thead>
             <tbody>
@@ -335,25 +331,16 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
                       allGroups={(allGroups || []) as { id: number; name: string; type: string }[]}
                     />
                   </td>
-                  {(drilldownTier === "innovators" || drilldownTier === "vip") ? (
-                    <>
-                      <td className="px-3 py-2">
-                        <InlineStageCell stage={contact.stage} contactId={contact.id} />
-                      </td>
-                      <td className="px-1 py-2">
-                        <InlineConnectionCell contactId={contact.id} connectionStrength={contact.connectionStrength} />
-                      </td>
-                      {drilldownTier === "innovators" && (
-                        <td className="px-1 py-2">
-                          <InlineSupportCell contactId={contact.id} supportTypes={contact.supportType || []} />
-                        </td>
-                      )}
-                    </>
-                  ) : drilldownTier === "community" ? (
-                    <td className="px-1 py-2">
-                      <InlineConnectionCell contactId={contact.id} connectionStrength={contact.connectionStrength} />
+                  {(drilldownTier === "innovators" || drilldownTier === "vip") && (
+                    <td className="px-3 py-2">
+                      <InlineStageCell stage={contact.stage} contactId={contact.id} />
                     </td>
-                  ) : null}
+                  )}
+                  {drilldownTier === "innovators" && (
+                    <td className="px-1 py-2">
+                      <InlineSupportCell contactId={contact.id} supportTypes={contact.supportType || []} />
+                    </td>
+                  )}
                   <td className="px-1 py-2">
                     <InlineEthnicityCell contactId={contact.id} ethnicities={contact.ethnicity || []} ethnicityCounts={ethnicityCounts} />
                   </td>
@@ -365,7 +352,9 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
                       <InlineAreaCell contactId={contact.id} area={contact.area} />
                     </td>
                   )}
-
+                  <td className="px-1 py-2">
+                    <InlineConnectionCell contactId={contact.id} connectionStrength={contact.connectionStrength} />
+                  </td>
                 </tr>
               ))}
             </tbody>

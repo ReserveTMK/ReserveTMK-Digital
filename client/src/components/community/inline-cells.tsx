@@ -436,13 +436,7 @@ export function InlineRoleCell({ role, contactId }: { role: string | null; roleO
   const roles = CONTACT_ROLES.filter(r => r !== "Other");
 
   return (
-    <div className="flex items-center gap-0.5 group" data-testid={`table-cell-role-${contactId}`}>
-      <button
-        className="w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 hover:bg-muted transition-all"
-        onClick={(e) => { e.stopPropagation(); cycleRole(-1); }}
-      >
-        <ChevronLeft className="w-3 h-3 text-muted-foreground" />
-      </button>
+    <div data-testid={`table-cell-role-${contactId}`}>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Badge
@@ -471,12 +465,6 @@ export function InlineRoleCell({ role, contactId }: { role: string | null; roleO
           </button>
         </PopoverContent>
       </Popover>
-      <button
-        className="w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 hover:bg-muted transition-all"
-        onClick={(e) => { e.stopPropagation(); cycleRole(1); }}
-      >
-        <ChevronRight className="w-3 h-3 text-muted-foreground" />
-      </button>
     </div>
   );
 }
