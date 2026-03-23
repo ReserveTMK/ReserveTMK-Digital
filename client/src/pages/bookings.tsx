@@ -782,6 +782,14 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                                                     Change Request
                                                   </Badge>
                                                 )}
+                                                {/* Payment status badge */}
+                                                {(() => {
+                                                  const ps = (booking as any).paymentStatus || "unpaid";
+                                                  if (ps === "paid") return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">Paid</span>;
+                                                  if (ps === "invoiced") return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">Invoiced</span>;
+                                                  if (ps === "not_required") return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">N/A</span>;
+                                                  return null; // Don't clutter kanban with "Unpaid" by default
+                                                })()}
                                               </div>
                                             </div>
                                           </div>
@@ -980,6 +988,14 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                                   {allMous?.find(m => m.id === booking.mouId)?.title || "MOU"}
                                 </Badge>
                               )}
+                              {/* Payment status badge */}
+                              {(() => {
+                                const ps = (booking as any).paymentStatus || "unpaid";
+                                if (ps === "paid") return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" data-testid={`badge-payment-${booking.id}`}>Paid</span>;
+                                if (ps === "invoiced") return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" data-testid={`badge-payment-${booking.id}`}>Invoiced</span>;
+                                if (ps === "not_required") return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" data-testid={`badge-payment-${booking.id}`}>N/A</span>;
+                                return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" data-testid={`badge-payment-${booking.id}`}>Unpaid</span>;
+                              })()}
                             </div>
 
                             <div className="flex items-center gap-4 text-xs text-muted-foreground mt-2 flex-wrap">

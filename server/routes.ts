@@ -5021,6 +5021,26 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     res.status(204).send();
   });
 
+  // Payment status update endpoint
+  app.patch("/api/bookings/:id/payment-status", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = (req.user as any).claims.sub;
+      const { paymentStatus } = req.body;
+      const validStatuses = ["unpaid", "invoiced", "paid", "not_required"];
+      if (!validStatuses.includes(paymentStatus)) {
+        return res.status(400).json({ message: "Invalid payment status" });
+      }
+      const booking = await storage.getBooking(id);
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+      if (booking.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+      await db.update(bookings).set({ paymentStatus } as any).where(eq(bookings.id, id));
+      res.json({ success: true, paymentStatus });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update payment status" });
+    }
+  });
+
   app.get("/api/booking-pricing-defaults", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
     const defaults = await storage.getBookingPricingDefaults(userId);
@@ -12864,6 +12884,9 @@ Rules:
           agreementPeriod = mouRecord.allowancePeriod || "quarterly";
         }
       }
+      // Agreement booker allowance check — determines auto-confirm vs over-allowance flow
+      let isWithinAllowance = false;
+      let isOverAllowance = false;
       if (agreementAllowance > 0) {
         const linkedId = (membershipId || mouId)!;
         const linkedType = membershipId ? "membership" : "mou";
@@ -12878,18 +12901,60 @@ Rules:
           periodStart = new Date(now.getFullYear(), q, 1);
           periodEnd = new Date(now.getFullYear(), q + 3, 1);
         }
-        const usedCount = allBookings.filter(b => {
+        const confirmedCount = allBookings.filter(b => {
           const matchesAgreement = linkedType === "membership"
             ? b.membershipId === linkedId
             : b.mouId === linkedId;
           if (!matchesAgreement) return false;
           if (b.status === "cancelled") return false;
+          if (b.status !== "confirmed" && b.status !== "completed") return false;
           const bDate = b.startDate ? new Date(b.startDate) : b.createdAt ? new Date(b.createdAt) : null;
           return bDate && bDate >= periodStart && bDate < periodEnd;
         }).length;
-        if (usedCount >= agreementAllowance) {
+        if (confirmedCount < agreementAllowance) {
+          isWithinAllowance = true;
+        } else {
+          isOverAllowance = true;
           const periodLabel = agreementPeriod === "monthly" ? "month" : "quarter";
-          allowanceWarning = `This booking exceeds the ${periodLabel}ly allowance (${usedCount}/${agreementAllowance} used this ${periodLabel})`;
+          allowanceWarning = `This booking exceeds the ${periodLabel}ly allowance (${confirmedCount}/${agreementAllowance} used this ${periodLabel}) — community rate (20% discount) applied`;
+        }
+      } else if (membershipId || mouId) {
+        // Has agreement but no allowance limit — treat as within allowance (free)
+        isWithinAllowance = true;
+      }
+
+      // Determine booking status, pricing and payment_status based on allowance
+      let bookingStatus = "enquiry";
+      let bookingPaymentStatus = "unpaid";
+      let autoConfirmedAt: Date | null = null;
+
+      if (isWithinAllowance && (membershipId || mouId)) {
+        // Auto-confirm: within allowance, free
+        bookingStatus = "confirmed";
+        bookingPaymentStatus = "not_required";
+        autoConfirmedAt = new Date();
+        pricingTier = "free_koha";
+        amount = "0";
+      } else if (isOverAllowance) {
+        // Over allowance: auto-confirm but apply 20% community discount
+        bookingStatus = "confirmed";
+        bookingPaymentStatus = "unpaid";
+        autoConfirmedAt = new Date();
+        pricingTier = "discounted";
+        discountPercentage = "20";
+        // Recalculate amount at 20% discount
+        const defaults = await storage.getBookingPricingDefaults(booker.userId);
+        if (defaults) {
+          let baseAmount: number;
+          if (durationType === "full_day") {
+            baseAmount = parseFloat(defaults.fullDayRate || "0");
+          } else if (durationType === "half_day") {
+            baseAmount = parseFloat(defaults.halfDayRate || "0");
+          } else {
+            const hourlyRate = parseFloat(defaults.fullDayRate || "0") / 8;
+            baseAmount = hourlyRate * durationHours;
+          }
+          amount = String((baseAmount * 0.8).toFixed(2));
         }
       }
 
@@ -12899,7 +12964,7 @@ Rules:
         venueIds: resolvedVenueIds,
         title: `${classification} - Portal Booking${titleSuffix}`,
         classification,
-        status: "enquiry",
+        status: bookingStatus,
         startDate: new Date(startDate),
         startTime,
         endTime,
@@ -12915,39 +12980,53 @@ Rules:
         bookingSource: "regular_booker_portal",
         usePackageCredit: shouldUsePackageCredit,
         discountPercentage,
+        confirmedAt: autoConfirmedAt,
+        paymentStatus: bookingPaymentStatus,
       } as any);
 
-      try {
-        const { sendVenueEnquiryAlert } = await import("./email");
-        let bookerContactEmail: string | null = null;
-        let bookerContactPhone: string | null = null;
-        if (booker.contactId) {
-          const contact = await storage.getContact(booker.contactId);
-          if (contact) {
-            bookerContactEmail = contact.email || null;
-            bookerContactPhone = contact.phone || null;
-          }
+      // Send appropriate email notifications
+      if (bookingStatus === "confirmed" && autoConfirmedAt) {
+        // Auto-confirmed: send confirmation email (not enquiry alert)
+        try {
+          const { sendBookingConfirmationEmail } = await import("./email");
+          await sendBookingConfirmationEmail(booking, booker.userId);
+        } catch (emailErr) {
+          console.error("[Email] Auto-confirm confirmation email failed (booker portal):", emailErr);
         }
-        await sendVenueEnquiryAlert({
-          userId: booker.userId,
-          bookerName: bookerName || booker.name || null,
-          bookerEmail: bookerContactEmail,
-          bookerPhone: bookerContactPhone,
-          title: `${classification} - Portal Booking${titleSuffix}`,
-          classification,
-          startDate,
-          startTime,
-          endTime,
-          notes: String(bookingSummary).trim() || null,
-          venueId: resolvedVenueIds[0],
-          venueIds: resolvedVenueIds,
-          source: "booker_portal",
-        });
-      } catch (emailErr) {
-        console.error("[Email] Venue enquiry alert failed (booker portal):", emailErr);
+      } else {
+        // Enquiry: send venue enquiry alert to admin
+        try {
+          const { sendVenueEnquiryAlert } = await import("./email");
+          let bookerContactEmail: string | null = null;
+          let bookerContactPhone: string | null = null;
+          if (booker.contactId) {
+            const contact = await storage.getContact(booker.contactId);
+            if (contact) {
+              bookerContactEmail = contact.email || null;
+              bookerContactPhone = contact.phone || null;
+            }
+          }
+          await sendVenueEnquiryAlert({
+            userId: booker.userId,
+            bookerName: bookerName || booker.name || null,
+            bookerEmail: bookerContactEmail,
+            bookerPhone: bookerContactPhone,
+            title: `${classification} - Portal Booking${titleSuffix}`,
+            classification,
+            startDate,
+            startTime,
+            endTime,
+            notes: String(bookingSummary).trim() || null,
+            venueId: resolvedVenueIds[0],
+            venueIds: resolvedVenueIds,
+            source: "booker_portal",
+          });
+        } catch (emailErr) {
+          console.error("[Email] Venue enquiry alert failed (booker portal):", emailErr);
+        }
       }
 
-      res.json({ ...booking, allowanceWarning });
+      res.json({ ...booking, allowanceWarning, autoConfirmed: bookingStatus === "confirmed" && !!autoConfirmedAt, isOverAllowance });
     } catch (err: any) {
       console.error("Booker booking error:", err);
       res.status(500).json({ message: err.message || "Failed to create booking" });

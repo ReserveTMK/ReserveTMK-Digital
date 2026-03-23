@@ -90,6 +90,7 @@ export default function BookingDetail() {
   const [declineOpen, setDeclineOpen] = useState(false);
   const [declineReason, setDeclineReason] = useState("");
   const [surveyResponseOpen, setSurveyResponseOpen] = useState(false);
+  const [paymentStatusEdit, setPaymentStatusEdit] = useState<string | null>(null);
 
   const { data: booking, isLoading: bookingLoading } = useQuery<Booking>({
     queryKey: ['/api/bookings', bookingId],
@@ -180,6 +181,18 @@ export default function BookingDetail() {
       queryClient.invalidateQueries({ queryKey: ['/api/bookings', bookingId, 'survey'] });
       queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
       toast({ title: "Survey Sent", description: "Post-venue hire survey has been sent." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const updatePaymentStatusMutation = useMutation({
+    mutationFn: (paymentStatus: string) => apiRequest('PATCH', `/api/bookings/${bookingId}/payment-status`, { paymentStatus }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
+      setPaymentStatusEdit(null);
+      toast({ title: "Payment Status Updated" });
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -626,6 +639,17 @@ export default function BookingDetail() {
                     )}
                   </div>
                 </div>
+                {/* Agreement coverage badges */}
+                {booking.pricingTier === "free_koha" && (booking.membershipId || booking.mouId) && (
+                  <div className="flex items-center gap-2 px-2 py-1.5 bg-green-50 dark:bg-green-900/20 rounded-md border border-green-200 dark:border-green-800" data-testid="badge-covered-by-agreement">
+                    <span className="text-green-700 dark:text-green-300 text-xs font-medium">✓ Covered by agreement</span>
+                  </div>
+                )}
+                {booking.pricingTier === "discounted" && (booking.membershipId || booking.mouId) && parseFloat((booking as any).discountPercentage || "0") >= 20 && (
+                  <div className="flex items-center gap-2 px-2 py-1.5 bg-amber-50 dark:bg-amber-900/20 rounded-md border border-amber-200 dark:border-amber-800" data-testid="badge-over-allowance">
+                    <span className="text-amber-700 dark:text-amber-300 text-xs font-medium">Over allowance — 20% discount applied</span>
+                  </div>
+                )}
                 {booking.rateType && (
                   <div className="flex justify-between gap-2">
                     <span className="text-muted-foreground">Rate Type</span>
@@ -656,6 +680,49 @@ export default function BookingDetail() {
                     <span className="text-xs" data-testid="text-package-credit">Using package credit</span>
                   </div>
                 )}
+              </div>
+            </Card>
+
+            {/* Payment Status Card (admin) */}
+            <Card className="p-5 space-y-4" data-testid="card-payment-status">
+              <h2 className="font-semibold text-base flex items-center gap-2">
+                <Receipt className="w-4 h-4 text-muted-foreground" />
+                Payment Status
+              </h2>
+              <div className="space-y-3 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground">Current Status</span>
+                  {(() => {
+                    const ps = (booking as any).paymentStatus || "unpaid";
+                    if (ps === "paid") return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" data-testid="badge-payment-status">Paid</span>;
+                    if (ps === "invoiced") return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" data-testid="badge-payment-status">Invoiced</span>;
+                    if (ps === "not_required") return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" data-testid="badge-payment-status">N/A</span>;
+                    return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" data-testid="badge-payment-status">Unpaid</span>;
+                  })()}
+                </div>
+                <div className="space-y-2">
+                  <select
+                    className="w-full text-sm border border-border rounded-md px-3 py-1.5 bg-background"
+                    value={paymentStatusEdit ?? ((booking as any).paymentStatus || "unpaid")}
+                    onChange={(e) => setPaymentStatusEdit(e.target.value)}
+                    data-testid="select-payment-status"
+                  >
+                    <option value="unpaid">Unpaid</option>
+                    <option value="invoiced">Invoiced</option>
+                    <option value="paid">Paid</option>
+                    <option value="not_required">Not Required</option>
+                  </select>
+                  <Button
+                    size="sm"
+                    className="w-full"
+                    disabled={updatePaymentStatusMutation.isPending || paymentStatusEdit === null || paymentStatusEdit === ((booking as any).paymentStatus || "unpaid")}
+                    onClick={() => paymentStatusEdit && updatePaymentStatusMutation.mutate(paymentStatusEdit)}
+                    data-testid="button-save-payment-status"
+                  >
+                    {updatePaymentStatusMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                    Save
+                  </Button>
+                </div>
               </div>
             </Card>
 

@@ -533,9 +533,13 @@ export const bookings = pgTable("bookings", {
   xeroInvoiceNumber: text("xero_invoice_number"),
   xeroInvoiceStatus: text("xero_invoice_status"),
   googleCalendarEventId: text("google_calendar_event_id"),
+  paymentStatus: text("payment_status").default("unpaid"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+export const BOOKING_PAYMENT_STATUSES = ["unpaid", "invoiced", "paid", "not_required"] as const;
+export type BookingPaymentStatus = typeof BOOKING_PAYMENT_STATUSES[number];
 
 export const BOOKING_SOURCES = ["manual", "regular_booker_calendar", "public_inquiry", "casual"] as const;
 export type BookingSource = typeof BOOKING_SOURCES[number];

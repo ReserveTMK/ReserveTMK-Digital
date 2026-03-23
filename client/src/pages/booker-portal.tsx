@@ -1433,6 +1433,9 @@ function CalendarView({
   const [usePackageCredit, setUsePackageCredit] = useState(false);
   const [bookingConfirmed, setBookingConfirmed] = useState(false);
   const [allowanceWarning, setAllowanceWarning] = useState<string | null>(null);
+  const [autoConfirmed, setAutoConfirmed] = useState(false);
+  const [isOverAllowance, setIsOverAllowance] = useState(false);
+  const [showOverAllowanceDialog, setShowOverAllowanceDialog] = useState(false);
 
   const { data: venues, isLoading: venuesLoading } = useQuery<any[]>({
     queryKey: ["/api/booker/venues", token],
@@ -1451,6 +1454,17 @@ function CalendarView({
       return res.json();
     },
   });
+
+  const { data: calViewBookingsData } = useQuery<{ venue: any[]; desk: any[]; gear: any[] }>({
+    queryKey: ["/api/booker/all-bookings", token],
+    queryFn: async () => {
+      const res = await fetch(`/api/booker/all-bookings/${token}`);
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+  });
+
+  const calViewVenueBookings = calViewBookingsData?.venue || [];
 
   const monthStr = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}`;
 
@@ -1509,6 +1523,8 @@ function CalendarView({
     onSuccess: (data: any) => {
       setBookingConfirmed(true);
       setAllowanceWarning(data?.allowanceWarning ?? null);
+      setAutoConfirmed(data?.autoConfirmed ?? false);
+      setIsOverAllowance(data?.isOverAllowance ?? false);
     },
   });
 
@@ -1541,6 +1557,31 @@ function CalendarView({
 
   const [bookingSummaryError, setBookingSummaryError] = useState(false);
 
+  const pendingBookingPayload = {
+    venueId: selectedVenues[0],
+    venueIds: selectedVenues,
+    startDate: selectedDate,
+    startTime,
+    endTime,
+    classification,
+    bookingSummary: bookingSummary.trim() || undefined,
+    usePackageCredit,
+    bookerName: isGroupLink && bookerName.trim() ? bookerName.trim() : undefined,
+  };
+
+  const checkOverAllowance = (): boolean => {
+    const agreement = authData?.mou || authData?.membership;
+    if (!agreement || !agreement.bookingAllowance) return false;
+    const period = agreement.allowancePeriod || "quarterly";
+    const type = authData?.membership ? "membership" : "mou";
+    const used = getAgreementAllowanceUsage(calViewVenueBookings, type, agreement.id, period);
+    return used >= agreement.bookingAllowance;
+  };
+
+  const submitBooking = () => {
+    bookMutation.mutate(pendingBookingPayload);
+  };
+
   const handleBook = () => {
     if (!selectedDate || selectedVenues.length === 0 || !classification) return;
     if (!bookingSummary.trim()) {
@@ -1548,17 +1589,14 @@ function CalendarView({
       return;
     }
     setBookingSummaryError(false);
-    bookMutation.mutate({
-      venueId: selectedVenues[0],
-      venueIds: selectedVenues,
-      startDate: selectedDate,
-      startTime,
-      endTime,
-      classification,
-      bookingSummary: bookingSummary.trim() || undefined,
-      usePackageCredit,
-      bookerName: isGroupLink && bookerName.trim() ? bookerName.trim() : undefined,
-    });
+
+    // Check for over-allowance before submitting
+    if (pricingData?.coveredByAgreement && checkOverAllowance()) {
+      setShowOverAllowanceDialog(true);
+      return;
+    }
+
+    submitBooking();
   };
 
   const toggleVenue = (venueId: number) => {
@@ -1594,15 +1632,42 @@ function CalendarView({
       <div className="min-h-screen bg-gradient-to-b from-background to-muted/30 flex items-center justify-center p-4">
         <Card className="w-full max-w-md p-8 text-center">
           <div className="flex justify-center mb-4">
-            <div className="w-14 h-14 rounded-full bg-green-500/10 flex items-center justify-center">
-              <Check className="w-7 h-7 text-green-600" />
+            <div className={`w-14 h-14 rounded-full ${autoConfirmed ? "bg-green-500/10" : "bg-blue-500/10"} flex items-center justify-center`}>
+              <Check className={`w-7 h-7 ${autoConfirmed ? "text-green-600" : "text-blue-600"}`} />
             </div>
           </div>
-          <h2 className="text-xl font-bold mb-2" data-testid="heading-booking-confirmed">Venue Hire Request Submitted</h2>
-          <p className="text-sm text-muted-foreground mb-4" data-testid="text-booking-confirmed">
-            Your venue hire request has been submitted as an enquiry. The ReserveTMK Digital team will review and confirm it shortly.
-          </p>
-          {allowanceWarning && (
+          {autoConfirmed ? (
+            <>
+              <h2 className="text-xl font-bold mb-2" data-testid="heading-booking-confirmed">Booking Confirmed!</h2>
+              {isOverAllowance ? (
+                <p className="text-sm text-muted-foreground mb-4" data-testid="text-booking-confirmed">
+                  Your booking has been confirmed. This booking exceeds your agreement allowance — a community rate (20% discount) has been applied.
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground mb-4" data-testid="text-booking-confirmed">
+                  Your booking has been automatically confirmed and is covered by your agreement. No payment is required.
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <h2 className="text-xl font-bold mb-2" data-testid="heading-booking-confirmed">Venue Hire Request Submitted</h2>
+              <p className="text-sm text-muted-foreground mb-4" data-testid="text-booking-confirmed">
+                Your venue hire request has been submitted as an enquiry. The ReserveTMK Digital team will review and confirm it shortly.
+              </p>
+            </>
+          )}
+          {autoConfirmed && !isOverAllowance && (
+            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg p-3 mb-4 flex items-center gap-2" data-testid="badge-covered-by-agreement">
+              <span className="text-green-700 dark:text-green-300 text-sm font-medium">✓ Covered by agreement</span>
+            </div>
+          )}
+          {isOverAllowance && (
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3 mb-4 text-sm text-amber-800 dark:text-amber-200" data-testid="badge-community-rate">
+              Community rate applied — 20% discount
+            </div>
+          )}
+          {allowanceWarning && !isOverAllowance && (
             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3 mb-4 text-sm text-amber-800 dark:text-amber-200" data-testid="text-allowance-warning">
               {allowanceWarning}
             </div>
@@ -2011,6 +2076,40 @@ function CalendarView({
           </Card>
         </div>
       </div>
+
+      {/* Over-allowance confirmation dialog */}
+      {showOverAllowanceDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <Card className="w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center shrink-0">
+                <span className="text-red-600 text-lg">⚠</span>
+              </div>
+              <h3 className="font-semibold text-base" data-testid="heading-over-allowance">This booking exceeds your agreement allowance</h3>
+            </div>
+            <p className="text-sm text-muted-foreground" data-testid="text-over-allowance-info">
+              Confirm to proceed — community rate (20% discount) applies to this booking.
+            </p>
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setShowOverAllowanceDialog(false)}
+                data-testid="button-over-allowance-cancel"
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                onClick={() => { setShowOverAllowanceDialog(false); submitBooking(); }}
+                data-testid="button-over-allowance-confirm"
+              >
+                Confirm anyway
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
