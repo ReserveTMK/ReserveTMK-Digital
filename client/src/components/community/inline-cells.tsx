@@ -492,13 +492,13 @@ export function InlineRoleCell({ role, contactId }: { role: string | null; roleO
   return (
     <div data-testid={`table-cell-role-${contactId}`}>
       <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild onClick={(e) => e.stopPropagation()}>
-          <Badge
-            variant="outline"
-            className="text-[10px] h-5 px-2 min-w-[60px] justify-center cursor-pointer hover:bg-muted/60 transition-colors"
+        <PopoverTrigger asChild>
+          <button
+            className="text-[10px] h-5 px-2 rounded-full border border-border bg-transparent hover:bg-muted/60 transition-colors cursor-pointer min-w-[60px] text-center font-medium"
+            onClick={(e) => { e.stopPropagation(); setOpen(true); }}
           >
-            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : (localRole || "—")}
-          </Badge>
+            {saving ? <Loader2 className="w-3 h-3 animate-spin inline" /> : (localRole || "—")}
+          </button>
         </PopoverTrigger>
         <PopoverContent className="w-44 p-1" align="start">
           {roles.map(r => (
