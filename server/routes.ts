@@ -15406,5 +15406,22 @@ Rules: Only include sections that have real content from the debrief data. Keep 
     }
   });
 
+  // Serve DOM (Digital Operations Manual) — auth required
+  app.get("/dom", isAuthenticated, async (req, res) => {
+    try {
+      const fs = await import("fs");
+      const path = await import("path");
+      const domPath = path.join(process.cwd(), "DOM.html");
+      if (fs.existsSync(domPath)) {
+        res.setHeader("Content-Type", "text/html");
+        res.sendFile(domPath);
+      } else {
+        res.status(404).json({ message: "DOM not found" });
+      }
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to serve DOM" });
+    }
+  });
+
   return httpServer;
 }

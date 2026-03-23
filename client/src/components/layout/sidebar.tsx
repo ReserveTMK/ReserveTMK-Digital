@@ -77,6 +77,7 @@ const navigation: NavItem[] = [
       { name: "Dashboard", href: "/reports", icon: BarChart3 },
       { name: "Cohorts", href: "/cohort-analysis", icon: Users },
       { name: "Legacy Reports", href: "/legacy-reports", icon: BookOpen },
+      { name: "DOM", href: "/dom", icon: FileText },
       { name: "Taxonomy", href: "/taxonomy", icon: Tags },
     ],
   },
