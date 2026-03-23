@@ -11,6 +11,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   InlineTextCell,
+  InlineNameCell,
   InlineEthnicityCell,
   InlineStageCell,
   InlineSupportCell,
@@ -264,12 +265,8 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
                   )}
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-1">
-                      <Link href={`/contacts/${contact.id}`} className="flex items-center gap-2 transition-colors flex-1 min-w-0" data-testid={`table-link-${contact.id}`}>
-                        <div className="w-7 h-7 rounded-md bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
-                          {contact.name[0]}
-                        </div>
-                        <span className="font-medium truncate max-w-[180px]">{contact.name}</span>
-                      </Link>
+                      <InlineNameCell contactId={contact.id} name={contact.name} />
+                      <Link href={`/contacts/${contact.id}`} className="hidden" data-testid={`table-link-${contact.id}`} />
                       {!drilldownTier && engagementScores && (() => {
                         const score = engagementScores[contact.id];
                         const total = score?.total || 0;

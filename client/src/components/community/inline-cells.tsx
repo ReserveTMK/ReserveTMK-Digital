@@ -59,6 +59,60 @@ export const SUPPORT_COLOR_MAP: Record<string, string> = {
   networking: "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/20",
 };
 
+export function InlineNameCell({ contactId, name }: { contactId: number; name: string }) {
+  const { toast } = useToast();
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(name || "");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { if (!editing) setText(name || ""); }, [name, contactId, editing]);
+
+  const save = async () => {
+    setEditing(false);
+    const trimmed = text.trim();
+    if (!trimmed || trimmed === name) return;
+    try {
+      await apiRequest("PATCH", `/api/contacts/${contactId}`, { name: trimmed });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+    } catch {
+      toast({ title: "Failed to update name", variant: "destructive" });
+      setText(name);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        <div className="w-7 h-7 rounded-md bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
+          {text[0] || "?"}
+        </div>
+        <input
+          ref={inputRef}
+          value={text}
+          onChange={e => setText(e.target.value)}
+          onBlur={save}
+          onKeyDown={e => { if (e.key === "Enter") save(); if (e.key === "Escape") { setEditing(false); setText(name); } }}
+          className="font-medium text-sm bg-transparent border-b border-primary outline-none flex-1 min-w-0 max-w-[160px]"
+          autoFocus
+        />
+      </div>
+    );
+  }
+
+  return (
+    <button
+      className="flex items-center gap-2 transition-colors flex-1 min-w-0 group hover:opacity-80"
+      onClick={() => { setEditing(true); setTimeout(() => inputRef.current?.focus(), 0); }}
+      data-testid={`table-name-${contactId}`}
+    >
+      <div className="w-7 h-7 rounded-md bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
+        {name[0]}
+      </div>
+      <span className="font-medium truncate max-w-[180px] group-hover:underline decoration-dotted underline-offset-2">{name}</span>
+    </button>
+  );
+}
+
 export function InlineTextCell({ contactId, field, value, placeholder }: { contactId: number; field: string; value: string; placeholder: string }) {
   const { toast } = useToast();
   const [editing, setEditing] = useState(false);
