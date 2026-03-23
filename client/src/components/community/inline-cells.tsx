@@ -403,34 +403,19 @@ export function InlineConnectionCell({ contactId, connectionStrength }: { contac
   );
 }
 
-export function InlineRoleCell({ role, roleOther, contactId }: { role: string; roleOther?: string | null; contactId: number }) {
+export function InlineRoleCell({ role, contactId }: { role: string | null; roleOther?: string | null; contactId: number }) {
   const { toast } = useToast();
-  const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [localRole, setLocalRole] = useState<string>(role);
-  const [otherText, setOtherText] = useState(roleOther || "");
-  const [showOtherInput, setShowOtherInput] = useState(false);
-  const cellRef = useRef<HTMLDivElement>(null);
-  const otherInputRef = useRef<HTMLInputElement>(null);
+  const [open, setOpen] = useState(false);
+  const [localRole, setLocalRole] = useState<string>(role || "");
 
-  useEffect(() => {
-    if (!editing) {
-      setLocalRole(role);
-    }
-  }, [role, editing]);
+  useEffect(() => { setLocalRole(role || ""); }, [role]);
 
-  const saveRole = useCallback(async (newRole: string, newRoleOther?: string | null) => {
+  const saveRole = useCallback(async (newRole: string) => {
     setSaving(true);
     try {
-      const updates: { role: string; roleOther?: string | null } = { role: newRole };
-      if (newRole !== "Other") {
-        updates.roleOther = null;
-      } else if (newRoleOther !== undefined) {
-        updates.roleOther = newRoleOther;
-      }
-      await apiRequest("PATCH", `/api/contacts/${contactId}`, updates);
+      await apiRequest("PATCH", `/api/contacts/${contactId}`, { role: newRole, roleOther: null });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-      toast({ title: "Role updated" });
     } catch {
       toast({ title: "Failed to update role", variant: "destructive" });
     } finally {
@@ -438,166 +423,64 @@ export function InlineRoleCell({ role, roleOther, contactId }: { role: string; r
     }
   }, [contactId, toast]);
 
-  const saveVersionRef = useRef(0);
-
   const cycleRole = useCallback((direction: 1 | -1) => {
-    setLocalRole((prev) => {
-      const idx = (CONTACT_ROLES as readonly string[]).indexOf(prev);
-      const currentIdx = idx === -1 ? 0 : idx;
-      const nextIdx = (currentIdx + direction + CONTACT_ROLES.length) % CONTACT_ROLES.length;
-      const newRole = CONTACT_ROLES[nextIdx];
-      if (newRole === "Other") {
-        setShowOtherInput(true);
-        setOtherText(roleOther || "");
-      } else {
-        setShowOtherInput(false);
-      }
-      const version = ++saveVersionRef.current;
-      saveRole(newRole).then(() => {
-        if (saveVersionRef.current > version) return;
-      });
-      return newRole;
-    });
-  }, [saveRole, roleOther]);
+    const roles = CONTACT_ROLES.filter(r => r !== "Other");
+    const idx = roles.indexOf(localRole as any);
+    const currentIdx = idx === -1 ? 0 : idx;
+    const nextIdx = (currentIdx + direction + roles.length) % roles.length;
+    const newRole = roles[nextIdx];
+    setLocalRole(newRole);
+    saveRole(newRole);
+  }, [localRole, saveRole]);
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (!editing) return;
-    if (showOtherInput) return;
-
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      cycleRole(1);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      cycleRole(-1);
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      setEditing(false);
-      setShowOtherInput(false);
-    } else if (e.key === "Tab" || e.key === "Enter") {
-      e.preventDefault();
-      setEditing(false);
-      setShowOtherInput(false);
-      const row = cellRef.current?.closest("tr");
-      if (row) {
-        const groupTrigger = row.querySelector(`[data-testid="inline-group-${contactId}"]`) as HTMLElement;
-        if (groupTrigger) {
-          groupTrigger.click();
-        }
-      }
-    }
-  }, [editing, showOtherInput, cycleRole, contactId]);
-
-  const handleOtherKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === "Enter" || e.key === "Tab") {
-      e.preventDefault();
-      saveRole("Other", otherText.trim() || null);
-      setEditing(false);
-      setShowOtherInput(false);
-      const row = cellRef.current?.closest("tr");
-      if (row) {
-        const groupTrigger = row.querySelector(`[data-testid="inline-group-${contactId}"]`) as HTMLElement;
-        if (groupTrigger) {
-          groupTrigger.click();
-        }
-      }
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      setEditing(false);
-      setShowOtherInput(false);
-    } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-      e.preventDefault();
-      setShowOtherInput(false);
-      const direction = e.key === "ArrowDown" ? 1 : -1;
-      cycleRole(direction);
-    }
-  }, [otherText, saveRole, contactId, cycleRole]);
-
-  useEffect(() => {
-    if (showOtherInput && otherInputRef.current) {
-      otherInputRef.current.focus();
-    }
-  }, [showOtherInput]);
-
-  useEffect(() => {
-    if (editing && !showOtherInput && cellRef.current) {
-      cellRef.current.focus();
-    }
-  }, [editing, showOtherInput]);
-
-  const displayLocalRole = localRole === "Other" && otherText ? `Other - ${otherText}` : (localRole || "—");
-  const displayRole = role === "Other" && roleOther ? `Other - ${roleOther}` : (role || "—");
-
-  if (editing) {
-    return (
-      <div
-        ref={cellRef}
-        tabIndex={0}
-        className="relative px-2 py-1 rounded ring-2 ring-primary/50 outline-none"
-        onKeyDown={handleKeyDown}
-        onBlur={(e) => {
-          if (!cellRef.current?.contains(e.relatedTarget as Node)) {
-            setEditing(false);
-            setShowOtherInput(false);
-          }
-        }}
-        data-testid={`table-cell-role-${contactId}`}
-      >
-        <div className="flex items-center gap-1">
-          <Badge variant="outline" className="text-[10px] h-5 px-2">
-            {saving ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-            {displayLocalRole}
-          </Badge>
-          <div className="flex flex-col ml-1">
-            <ChevronUp className="w-3 h-3 text-muted-foreground" />
-            <ChevronDown className="w-3 h-3 text-muted-foreground" />
-          </div>
-        </div>
-        {showOtherInput && (
-          <div className="mt-1">
-            <Input
-              ref={otherInputRef}
-              value={otherText}
-              onChange={(e) => setOtherText(e.target.value)}
-              onKeyDown={handleOtherKeyDown}
-              placeholder="Describe role..."
-              className="h-7 text-sm"
-              data-testid={`input-role-other-${contactId}`}
-            />
-          </div>
-        )}
-        <div className="absolute -bottom-5 left-0 text-[9px] text-muted-foreground whitespace-nowrap">
-          ↑↓ cycle · {localRole === "Other" ? "Enter save" : "Tab next"} · Esc cancel
-        </div>
-      </div>
-    );
-  }
+  const roles = CONTACT_ROLES.filter(r => r !== "Other");
 
   return (
     <div className="flex items-center gap-0.5 group" data-testid={`table-cell-role-${contactId}`}>
       <button
         className="w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 hover:bg-muted transition-all"
         onClick={(e) => { e.stopPropagation(); cycleRole(-1); }}
-        title="Previous role"
       >
         <ChevronLeft className="w-3 h-3 text-muted-foreground" />
       </button>
-      <Badge
-        variant="outline"
-        className="text-[10px] h-5 px-2 min-w-[60px] justify-center select-none"
-      >
-        {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : displayRole}
-      </Badge>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Badge
+            variant="outline"
+            className="text-[10px] h-5 px-2 min-w-[60px] justify-center cursor-pointer hover:bg-muted/60 transition-colors"
+            onClick={(e) => { e.stopPropagation(); setOpen(true); }}
+          >
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : (localRole || "—")}
+          </Badge>
+        </PopoverTrigger>
+        <PopoverContent className="w-44 p-1" align="start">
+          {roles.map(r => (
+            <button
+              key={r}
+              className={`w-full text-left px-3 py-1.5 text-sm rounded hover:bg-muted transition-colors ${localRole === r ? "bg-primary/10 font-medium" : ""}`}
+              onClick={() => { setLocalRole(r); saveRole(r); setOpen(false); }}
+            >
+              {r}
+            </button>
+          ))}
+          <button
+            className="w-full text-left px-3 py-1.5 text-sm rounded hover:bg-muted transition-colors text-muted-foreground"
+            onClick={() => { setLocalRole(""); saveRole(""); setOpen(false); }}
+          >
+            — Clear
+          </button>
+        </PopoverContent>
+      </Popover>
       <button
         className="w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 hover:bg-muted transition-all"
         onClick={(e) => { e.stopPropagation(); cycleRole(1); }}
-        title="Next role"
       >
         <ChevronRight className="w-3 h-3 text-muted-foreground" />
       </button>
     </div>
   );
 }
+
 
 export function ConnectionStrengthDisplay({ connectionStrength }: { connectionStrength?: string | null }) {
   const config = CONNECTION_CONFIG[connectionStrength || ""] || null;
