@@ -220,7 +220,7 @@ export function useMarkGearReturned() {
 
 export function useApproveGearBooking() {
   return useMutation({
-    mutationFn: (id: number) => apiRequest('PATCH', `/api/gear-bookings/${id}`, { approved: true }),
+    mutationFn: (id: number) => apiRequest('POST', `/api/gear-bookings/${id}/approve`, {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/gear-bookings'] });
       queryClient.invalidateQueries({ queryKey: ['/api/gear-availability'] });
@@ -230,7 +230,8 @@ export function useApproveGearBooking() {
 
 export function useRejectGearBooking() {
   return useMutation({
-    mutationFn: (id: number) => apiRequest('PATCH', `/api/gear-bookings/${id}`, { status: 'cancelled', approved: false }),
+    mutationFn: ({ id, reason }: { id: number; reason?: string }) =>
+      apiRequest('POST', `/api/gear-bookings/${id}/deny`, { reason: reason || '' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/gear-bookings'] });
       queryClient.invalidateQueries({ queryKey: ['/api/gear-availability'] });

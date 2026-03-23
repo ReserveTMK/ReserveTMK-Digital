@@ -21,6 +21,9 @@ import {
   PhoneCall,
   Wrench,
   UserCog,
+  Mail,
+  Megaphone,
+  Newspaper,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useRef, useEffect } from "react";
@@ -91,6 +94,15 @@ const navGroups: NavGroup[] = [
       { name: "Projects", href: "/projects", icon: Rocket, description: "Initiatives & work streams" },
       { name: "Agreements", href: "/agreements", icon: Handshake, description: "Memberships & MOUs" },
       { name: "Funders", href: "/funders", icon: Handshake, description: "Manage funding relationships" },
+    ],
+  },
+  {
+    name: "Comms",
+    href: "/comms",
+    children: [
+      { name: "Stories", href: "/comms/stories", icon: BookOpen, description: "Impact stories from debriefs" },
+      { name: "Newsletters", href: "/comms/newsletters", icon: Newspaper, description: "Monthly newsletters to community" },
+      { name: "Announcements", href: "/comms/announcements", icon: Megaphone, description: "Fast broadcasts to contacts" },
     ],
   },
   {

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/beautiful-button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -82,6 +83,9 @@ function GearAvailabilityTab() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkoutResourceId, setCheckoutResourceId] = useState<string>("");
   const [checkoutBookerId, setCheckoutBookerId] = useState<string>("");
+  const [denyDialogOpen, setDenyDialogOpen] = useState(false);
+  const [denyBookingId, setDenyBookingId] = useState<number | null>(null);
+  const [denyReason, setDenyReason] = useState("");
 
   const { data: gearResources, isLoading: gearLoading } = useBookableResources("gear");
   const { data: gearAvailability, isLoading: gearAvailLoading } = useGearAvailability(dateStr);
@@ -123,18 +127,28 @@ function GearAvailabilityTab() {
   const handleApprove = async (bookingId: number) => {
     try {
       await approveMutation.mutateAsync(bookingId);
-      toast({ title: "Approved", description: "Gear booking approved" });
+      toast({ title: "Approved", description: "Gear booking approved — confirmation sent to booker" });
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Failed to approve", variant: "destructive" });
     }
   };
 
-  const handleReject = async (bookingId: number) => {
+  const handleReject = (bookingId: number) => {
+    setDenyBookingId(bookingId);
+    setDenyReason("");
+    setDenyDialogOpen(true);
+  };
+
+  const handleConfirmDeny = async () => {
+    if (!denyBookingId) return;
     try {
-      await rejectMutation.mutateAsync(bookingId);
-      toast({ title: "Rejected", description: "Gear booking rejected and cancelled" });
+      await rejectMutation.mutateAsync({ id: denyBookingId, reason: denyReason });
+      toast({ title: "Denied", description: "Gear booking denied — booker notified" });
+      setDenyDialogOpen(false);
+      setDenyBookingId(null);
+      setDenyReason("");
     } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to reject", variant: "destructive" });
+      toast({ title: "Error", description: err.message || "Failed to deny", variant: "destructive" });
     }
   };
 
@@ -376,6 +390,38 @@ function GearAvailabilityTab() {
             >
               {createGearBookingMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Check Out
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Deny Dialog */}
+      <Dialog open={denyDialogOpen} onOpenChange={setDenyDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Deny Gear Booking</DialogTitle>
+            <DialogDescription>Optionally provide a reason. The booker will be notified by email.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Reason (optional)</Label>
+              <Textarea
+                value={denyReason}
+                onChange={(e) => setDenyReason(e.target.value)}
+                placeholder="e.g. Item unavailable, training required first..."
+                className="min-h-[80px]"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDenyDialogOpen(false)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmDeny}
+              disabled={rejectMutation.isPending}
+            >
+              {rejectMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Deny Booking
             </Button>
           </DialogFooter>
         </DialogContent>
