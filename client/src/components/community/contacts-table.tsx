@@ -53,6 +53,12 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
     queryKey: ["/api/catch-up-list"],
   });
 
+  const { data: engagementScores } = useQuery<Record<number, { interactions: number; debriefs: number; events: number; total: number }>>({
+    queryKey: ["/api/contacts/engagement-scores"],
+    enabled: !drilldownTier, // only fetch for All Contacts view
+    staleTime: 60000,
+  });
+
   const { data: allGroupMemberships } = useQuery<{ id: number; groupId: number; contactId: number; name: string; type: string }[]>({
     queryKey: ["/api/group-memberships/all"],
   });
@@ -264,6 +270,20 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
                         </div>
                         <span className="font-medium truncate max-w-[180px]">{contact.name}</span>
                       </Link>
+                      {!drilldownTier && engagementScores && (() => {
+                        const score = engagementScores[contact.id];
+                        const total = score?.total || 0;
+                        const color = total >= 4 ? "bg-green-500" : total >= 1 ? "bg-yellow-400" : "bg-red-400";
+                        const label = `${score?.interactions || 0} interactions · ${score?.debriefs || 0} debrief mentions · ${score?.events || 0} events`;
+                        return (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className={`w-2 h-2 rounded-full shrink-0 ${color}`} />
+                            </TooltipTrigger>
+                            <TooltipContent side="right" className="text-xs">{label}</TooltipContent>
+                          </Tooltip>
+                        );
+                      })()}
                       <button
                         className="shrink-0 p-0.5 rounded hover:bg-muted transition-colors"
                         onClick={() => onToggleVip?.(contact.id)}

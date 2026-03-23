@@ -291,6 +291,46 @@ export async function registerRoutes(
     res.json(contacts);
   });
 
+  app.get("/api/contacts/engagement-scores", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const scores = await db.execute(sql`
+        SELECT
+          c.id as contact_id,
+          COALESCE(i.interaction_count, 0) as interactions,
+          COALESCE(d.debrief_count, 0) as debriefs,
+          COALESCE(e.event_count, 0) as events,
+          (COALESCE(i.interaction_count, 0) + COALESCE(d.debrief_count, 0) + COALESCE(e.event_count, 0)) as total
+        FROM contacts c
+        LEFT JOIN (
+          SELECT contact_id, COUNT(*) as interaction_count FROM interactions GROUP BY contact_id
+        ) i ON i.contact_id = c.id
+        LEFT JOIN (
+          SELECT contact_id, COUNT(*) as debrief_count FROM impact_log_contacts GROUP BY contact_id
+        ) d ON d.contact_id = c.id
+        LEFT JOIN (
+          SELECT contact_id, COUNT(*) as event_count FROM event_attendance GROUP BY contact_id
+        ) e ON e.contact_id = c.id
+        WHERE c.user_id = ${userId}
+          AND c.is_community_member = false
+          AND c.is_innovator = false
+          AND c.is_archived = false
+      `);
+      const result: Record<number, { interactions: number; debriefs: number; events: number; total: number }> = {};
+      for (const row of (scores as any).rows || []) {
+        result[row.contact_id] = {
+          interactions: Number(row.interactions),
+          debriefs: Number(row.debriefs),
+          events: Number(row.events),
+          total: Number(row.total),
+        };
+      }
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to get engagement scores" });
+    }
+  });
+
   app.get("/api/contacts/suggested-duplicates", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
