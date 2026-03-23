@@ -15,6 +15,8 @@ import {
   CalendarDays,
   Package,
   UserCheck,
+  ClipboardCheck,
+  RefreshCw,
 } from "lucide-react";
 import { useBookings, useVenues, useBookableResources, useDeskAvailability, useDeskBookings } from "@/hooks/use-bookings";
 import { useQuery } from "@tanstack/react-query";
@@ -22,6 +24,9 @@ import Bookings from "./bookings";
 import ResourcesTab from "@/components/spaces/resources-tab";
 import { SpaceUseTab } from "@/components/spaces/space-use-tab";
 import RegularBookersPage from "./regular-bookers";
+import { QuickAddActivationFAB } from "@/components/spaces/quick-add-activation-dialog";
+import { MonthlyReconcileDialog } from "@/components/spaces/monthly-reconcile-dialog";
+import { RecurringBookingsTab } from "@/components/spaces/recurring-bookings-tab";
 import type { Meeting } from "@shared/schema";
 
 const HOURS = Array.from({ length: 15 }, (_, i) => i + 7);
@@ -661,11 +666,39 @@ function getCalendarParamsFromUrl(): { date?: string; view?: "day" | "week" } {
   return { date, view: view === "week" ? "week" : view === "day" ? "day" : undefined };
 }
 
+function VenueHireSection() {
+  const [subTab, setSubTab] = useState<"bookings" | "recurring">("bookings");
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2 border-b pb-2">
+        <button
+          type="button"
+          onClick={() => setSubTab("bookings")}
+          className={`text-sm font-medium px-3 py-1.5 rounded-md transition-colors ${subTab === "bookings" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          Bookings
+        </button>
+        <button
+          type="button"
+          onClick={() => setSubTab("recurring")}
+          className={`text-sm font-medium px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5 ${subTab === "recurring" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+          Recurring
+        </button>
+      </div>
+      {subTab === "bookings" && <Bookings embedded />}
+      {subTab === "recurring" && <RecurringBookingsTab />}
+    </div>
+  );
+}
+
 export default function SpacesPage() {
   const searchString = useSearch();
   const [activeTab, setActiveTab] = useState(getTabFromUrl);
   const [calendarParams, setCalendarParams] = useState(getCalendarParamsFromUrl);
   const [calendarKey, setCalendarKey] = useState(0);
+  const [reconcileOpen, setReconcileOpen] = useState(false);
 
   useEffect(() => {
     const params = getCalendarParamsFromUrl();
@@ -687,9 +720,20 @@ export default function SpacesPage() {
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold" data-testid="text-page-title">Spaces</h1>
-        <p className="text-sm text-muted-foreground">All space use, venue hire, hot desking, and booker management</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold" data-testid="text-page-title">Spaces</h1>
+          <p className="text-sm text-muted-foreground">All space use, venue hire, hot desking, and booker management</p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setReconcileOpen(true)}
+          className="shrink-0 flex items-center gap-1.5"
+        >
+          <ClipboardCheck className="w-4 h-4" />
+          Reconcile
+        </Button>
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange}>
@@ -721,7 +765,7 @@ export default function SpacesPage() {
         </TabsContent>
 
         <TabsContent value="venue-hire">
-          <Bookings embedded />
+          <VenueHireSection />
         </TabsContent>
 
         <TabsContent value="hot-desking">
@@ -736,6 +780,12 @@ export default function SpacesPage() {
           <ResourcesTab />
         </TabsContent>
       </Tabs>
+
+      {/* Floating action button */}
+      <QuickAddActivationFAB />
+
+      {/* Monthly Reconcile dialog */}
+      <MonthlyReconcileDialog open={reconcileOpen} onOpenChange={setReconcileOpen} />
     </div>
   );
 }
