@@ -176,16 +176,29 @@ export function SpaceUseTab() {
             const date = format(item.date, "EEE d MMM");
             const attendees = item.source === "event" ? (item as SpaceEvent).attendeeCount : null;
 
+            // For events: use first tag as org name if available, else event name
+            const eventTags = item.source === "event" ? ((item as any).tags || []) : [];
+            const orgName = item.source === "booking"
+              ? ((item as SpaceBooking).bookerName || name)
+              : eventTags.length > 0 ? eventTags[0] : name;
+            const descriptor = item.source === "event" && eventTags.length > 0
+              ? (item as SpaceEvent).name
+              : item.source === "booking"
+                ? (item as SpaceBooking).classification || ""
+                : "";
+
             return (
               <Card key={`${item.source}-${item.id}-${idx}`} className="p-3 flex items-center gap-3">
                 <div className="w-16 text-center shrink-0">
                   <p className="text-[10px] text-muted-foreground leading-tight">{date}</p>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{name}</p>
-                  {item.source === "event" && (item as SpaceEvent).type !== typeLabel && (
-                    <p className="text-xs text-muted-foreground">{(item as SpaceEvent).type}</p>
-                  )}
+                  <div className="flex items-baseline gap-2 min-w-0">
+                    <p className="text-sm font-medium truncate">{orgName}</p>
+                    {descriptor && orgName !== descriptor && (
+                      <p className="text-[11px] text-muted-foreground/60 truncate shrink-0">{descriptor}</p>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   {attendees != null && attendees > 0 && (
