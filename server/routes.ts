@@ -13584,9 +13584,10 @@ Rules:
       if (isGroupLink && booker.groupId) {
         venueBookings = allVenueBookings.filter(b => b.bookerGroupId === booker.groupId);
       } else if (booker.contactId) {
-        venueBookings = allVenueBookings.filter(b => b.bookerId === booker.contactId || b.bookerGroupId === booker.groupId);
-      } else {
+        // Only show bookings explicitly linked to this contact — no group fallback
         venueBookings = allVenueBookings.filter(b => b.bookerId === booker.contactId);
+      } else {
+        venueBookings = [];
       }
 
       const deskBookingsList = await storage.getDeskBookingsByBooker(booker.id);
