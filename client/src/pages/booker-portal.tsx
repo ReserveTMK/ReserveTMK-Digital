@@ -254,7 +254,7 @@ function DashboardView({
   const isPaidBooker = booker.pricingTier !== "free_koha" && !authData.membership && !authData.mou;
 
   // Settings panel state
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(!booker.notificationsEmail || (isPaidBooker && !booker.invoiceEmail));
 
   // Notification settings state — start in saved mode if email already on record
   const [notifEmail, setNotifEmail] = useState<string>("");
@@ -403,6 +403,9 @@ function DashboardView({
               {settingsOpen && (
                 <div className="absolute right-0 top-full mt-1 z-20 w-72 bg-background border rounded-lg shadow-lg p-4 space-y-4" data-testid="settings-panel">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{isPaidBooker ? "Booking Settings" : "Notification Settings"}</p>
+                  {(!hasNotifEmail || (isPaidBooker && !hasInvoiceEmail)) && (
+                    <p className="text-xs font-medium text-red-500" data-testid="text-settings-required">Fill in required fields to enable booking</p>
+                  )}
 
                   {/* Notification email */}
                   <div className="space-y-1.5">
