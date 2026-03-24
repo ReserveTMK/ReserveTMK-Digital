@@ -2144,6 +2144,10 @@ function CalendarView({
                   </Button>
                 </div>
 
+                {!selectedDate && (
+                  <p className="text-sm text-muted-foreground text-center py-4">Select a date above to see available spaces</p>
+                )}
+                {selectedDate && (
                 <div className="space-y-2">
                   <Label className="text-xs">Select Venue{(venues?.length || 0) > 1 ? "s" : ""}</Label>
                   <div className="space-y-1">
@@ -2220,6 +2224,7 @@ function CalendarView({
                     })()}
                   </div>
                 </div>
+                )}
 
                 {selectedVenues.length > 0 && (
                   <>
