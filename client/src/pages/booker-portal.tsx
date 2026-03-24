@@ -49,11 +49,6 @@ type PortalView = "login" | "dashboard" | "calendar" | "desk-booking" | "gear-bo
 
 const CLASSIFICATIONS = ["Meeting", "Workshop", "Rangatahi / Youth Workshop"];
 
-const PRESET_SLOTS = [
-  { label: "Morning (8am-12pm)", start: "08:00", end: "12:00" },
-  { label: "Afternoon (1pm-5pm)", start: "13:00", end: "17:00" },
-  { label: "Full Day (8am-5pm)", start: "08:00", end: "17:00" },
-];
 
 function getMonthDays(year: number, month: number) {
   const firstDay = new Date(year, month, 1);
@@ -1597,7 +1592,6 @@ function CalendarView({
   const [currentMonth, setCurrentMonth] = useState(now.getMonth());
   const [selectedVenues, setSelectedVenues] = useState<number[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [presetSlot, setPresetSlot] = useState<string>("");
   const [customStart, setCustomStart] = useState("09:00");
   const [customEnd, setCustomEnd] = useState("12:00");
   const [classification, setClassification] = useState("");
@@ -1770,8 +1764,8 @@ function CalendarView({
     setSelectedLocation(null);
   };
 
-  const startTime = presetSlot ? PRESET_SLOTS.find(s => s.label === presetSlot)?.start || customStart : customStart;
-  const endTime = presetSlot ? PRESET_SLOTS.find(s => s.label === presetSlot)?.end || customEnd : customEnd;
+  const startTime = customStart;
+  const endTime = customEnd;
 
   const [bookingSummaryError, setBookingSummaryError] = useState(false);
 
@@ -2461,50 +2455,18 @@ function CalendarView({
 
                     {(!allSelectedAreStudio || studioStep === "done") && (<>
                     <div className="space-y-2">
-                      <Label className="text-xs">Quick Select</Label>
-                      <div className="space-y-1">
-                        {PRESET_SLOTS.map(slot => {
-                          const slotPrice = pricingData ? calculateBookingPrice(pricingData, slot.start, slot.end, false) : null;
-                          return (
-                            <button
-                              key={slot.label}
-                              onClick={() => setPresetSlot(presetSlot === slot.label ? "" : slot.label)}
-                              className={`w-full text-left text-sm px-3 py-2 rounded-md border transition-colors ${
-                                presetSlot === slot.label
-                                  ? "border-primary bg-primary/5"
-                                  : "border-border"
-                              }`}
-                              data-testid={`slot-${slot.start}-${slot.end}`}
-                            >
-                              <div className="flex items-center justify-between gap-2 flex-wrap">
-                                <div className="flex items-center gap-2">
-                                  <Clock className="w-3 h-3 text-muted-foreground" />
-                                  {slot.label}
-                                </div>
-                                {slotPrice && slotPrice.basePrice > 0 && (
-                                  <span className="text-xs text-muted-foreground" data-testid={`text-slot-price-${slot.start}`}>
-                                    {slotPrice.isCovered ? "Covered" : slotPrice.discount > 0 ? `$${slotPrice.finalPrice.toFixed(0)}` : `$${slotPrice.basePrice.toFixed(0)}`}
-                                  </span>
-                                )}
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {!presetSlot && (
+                      <Label className="text-xs">Time</Label>
                       <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
-                          <Label className="text-xs">Start Time</Label>
+                          <Label className="text-xs text-muted-foreground">Start</Label>
                           <Input type="time" value={customStart} onChange={(e) => setCustomStart(e.target.value)} data-testid="input-custom-start" />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">End Time</Label>
+                          <Label className="text-xs text-muted-foreground">End</Label>
                           <Input type="time" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} data-testid="input-custom-end" />
                         </div>
                       </div>
-                    )}
+                    </div>
 
                     {isGroupLink && (
                       <div className="space-y-1">
