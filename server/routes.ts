@@ -13254,9 +13254,10 @@ Rules:
       if (isGroupLink && booker.groupId) {
         myBookings = allBookings.filter(b => b.bookerGroupId === booker.groupId);
       } else if (booker.contactId) {
-        myBookings = allBookings.filter(b => b.bookerId === booker.contactId || b.bookerGroupId === booker.groupId);
-      } else {
+        // Only show bookings explicitly linked to this contact — no group fallback for individual bookers
         myBookings = allBookings.filter(b => b.bookerId === booker.contactId);
+      } else {
+        myBookings = [];
       }
       res.json(myBookings);
     } catch (err: any) {

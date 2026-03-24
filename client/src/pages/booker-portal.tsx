@@ -372,7 +372,7 @@ function DashboardView({
             ReserveTMK Digital
           </p>
           <h1 className="text-2xl font-bold mt-1" data-testid="heading-welcome">
-            Welcome{isGroupLink ? `, ${authData.linkedGroupName || booker.organizationName || "Team"}` : `, ${contact?.name || booker.organizationName || "there"}`}
+            Kia ora{isGroupLink ? `, ${authData.linkedGroupName || booker.organizationName || "Team"}` : `, ${contact?.name || booker.organizationName || "there"}`}
           </h1>
           {isGroupLink && (
             <div className="flex items-center gap-2 mt-1">
