@@ -375,11 +375,26 @@
       </div>
     </div>
     <hr class="divider">
+    <div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.06em;">Booker Types</div>
+    <ul class="dot-list">
+      <li class="dot-item ok"><div class="d"></div><span><strong>Agreement Booker</strong> — pre-created, linked to Membership or MOU. Has allowance, allowedLocations, bookingCategories. Access via magic link → /booker/portal/:token</span></li>
+      <li class="dot-item ok"><div class="d"></div><span><strong>General Public Booker</strong> — anyone. No agreement. Access via /book/:userId or /casual-hire. Sees full pricing.</span></li>
+    </ul>
+    <div style="font-size:11px;font-weight:700;color:#94a3b8;margin:10px 0 6px;text-transform:uppercase;letter-spacing:0.06em;">Location Rules</div>
+    <ul class="dot-list">
+      <li class="dot-item ok"><div class="d"></div><span><code>allowedLocations[]</code> on agreement — enforced server-side on booking create</span></li>
+      <li class="dot-item ok"><div class="d"></div><span><code>allowedVenueIds[]</code> on MOU — more granular than location names</span></li>
+      <li class="dot-item ok"><div class="d"></div><span><code>bookingCategories[]</code> on agreement — controls which space types booker can access (office / studio / etc)</span></li>
+      <li class="dot-item ok"><div class="d"></div><span><code>isFirstBooking</code> flag on booking record — exists in schema</span></li>
+      <li class="dot-item warn"><div class="d"></div><span>Locations cannot be mixed in a single booking session — enforced server-side, not surfaced clearly in portal UI</span></li>
+    </ul>
+    <div style="font-size:11px;font-weight:700;color:#94a3b8;margin:10px 0 6px;text-transform:uppercase;letter-spacing:0.06em;">What Works</div>
     <ul class="dot-list">
       <li class="dot-item ok"><div class="d"></div><span>Change requests (booker-initiated)</span></li>
       <li class="dot-item ok"><div class="d"></div><span>Pricing tiers, packages, agreements</span></li>
       <li class="dot-item ok"><div class="d"></div><span>Xero invoicing</span></li>
       <li class="dot-item ok"><div class="d"></div><span>Confirmation + reminder emails</span></li>
+      <li class="dot-item ok"><div class="d"></div><span>Location enforcement (server-side, returns 400 if venue not in allowedLocations)</span></li>
     </ul>
     <div class="gap-section">
       <div class="gap-section-label">Gaps &amp; Builds</div>
@@ -388,34 +403,39 @@
       <div class="feature-gap">Monthly reconciling UI</div>
       <div class="feature-gap">Payment instructions not clear in confirmation</div>
       <div class="feature-gap">No payment status visible in booking view</div>
-      <div class="feature-gap">Podcast Studio — no first-booker detection (onboarding flow)</div>
-      <div class="feature-gap">Podcast Studio — no returning-booker detection (rebooking check-in)</div>
-      <div class="feature-gap">No space-type-specific onboarding (Office vs Studio treated identically)</div>
+      <div class="feature-gap">Podcast Studio — no first-booker onboarding flow (isFirstBooking flag exists but unused in portal)</div>
+      <div class="feature-gap">Podcast Studio — no returning-booker check-in path</div>
+      <div class="feature-gap">Location mix enforcement not visually communicated in portal (silent 400 error only)</div>
+      <div class="feature-gap">bookingCategories not used to gate Office vs Studio selection in portal UI</div>
     </div>
     <details class="flow-expand" id="flow-spaces">
       <summary>User Flows (3)</summary>
       <div class="flow-inner">
-        <div class="flow-sub-title green">🤝 Agreement Booker</div>
+        <div class="flow-sub-title green">🤝 Flow 1 — Agreement Booker (Membership / MOU)</div>
         <div class="flow-steps">
-          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Receives magic link</strong> → /booker/portal/:token<div class="fs">Booker link tied to agreement</div></div></div>
-          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Views dashboard</strong> — agreement, allowance, history</div></div>
-          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects date + venue</strong> — sees "Covered by agreement"</div></div>
-          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Submits booking request</strong></div></div>
-          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Alert email → kiaora@reservetmk.co.nz</strong><div><span class="ftag ok">✓ works</span></div></div></div>
+          <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Creates booker record</strong> — linked to Membership or MOU, sets allowance, allowedLocations, bookingCategories</div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Magic link generated</strong> → sent to booker → /booker/portal/:token<div><span class="ftag ok">✓ works</span></div></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Views portal dashboard</strong> — sees agreement, allowance remaining, booking history</div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects space type</strong> — gated by bookingCategories (Office and/or Studio)<div><span class="ftag w">? UI enforcement verify</span></div></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects venue</strong> — filtered to allowedLocations only. Cannot mix locations in one session.<div><span class="ftag ok">✓ server-enforced</span></div></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects date + time</strong> — sees "Covered by agreement" pricing</div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Submits booking</strong></div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Alert → kiaora@reservetmk.co.nz</strong><div><span class="ftag ok">✓ works</span></div></div></div>
           <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Reviews + confirms</strong> in /bookings</div></div>
           <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Confirmation email + calendar invite → booker</strong><div><span class="ftag ok">✓ works</span></div></div></div>
           <div class="flow-step w"><div class="fl">Check</div><div class="ft"><strong>Confirmation shows $0 / covered?</strong><div><span class="ftag w">? verify</span></div></div></div>
           <div class="flow-step w"><div class="fl">Check</div><div class="ft"><strong>Over allowance → what happens?</strong><div><span class="ftag w">? verify</span></div></div></div>
         </div>
-        <div class="flow-sub-title blue">💳 General Paid Booker</div>
+        <div class="flow-sub-title blue">💳 Flow 2 — General Public Booker</div>
         <div class="flow-steps">
-          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Accesses portal</strong> via magic link or /book/:userId</div></div>
-          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects date + venue</strong> — sees full pricing</div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Accesses portal</strong> via /book/:userId or /casual-hire — no agreement, no magic link needed</div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects space type</strong> — Office or Studio (all options visible, no category gating)</div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects venue + date + time</strong> — sees full pricing. Locations cannot be mixed in one session.<div><span class="ftag ok">✓ server-enforced</span></div></div></div>
           <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Submits booking request</strong></div></div>
           <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Alert email → admin</strong><div><span class="ftag ok">✓ works</span></div></div></div>
           <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Reviews + confirms</strong></div></div>
           <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Confirmation email + Xero invoice + calendar invite</strong><div><span class="ftag ok">✓ works</span></div></div></div>
-          <div class="flow-step g"><div class="fl">Gap</div><div class="ft"><strong>Payment instructions not clear</strong><div><span class="ftag gap">✗ gap</span></div></div></div>
+          <div class="flow-step g"><div class="fl">Gap</div><div class="ft"><strong>Payment instructions not clear in confirmation</strong><div><span class="ftag gap">✗ gap</span></div></div></div>
           <div class="flow-step g"><div class="fl">Gap</div><div class="ft"><strong>No payment status in booking view</strong><div><span class="ftag gap">✗ gap</span></div></div></div>
         </div>
         <div class="flow-sub-title purple">🛠 Admin Booking</div>
