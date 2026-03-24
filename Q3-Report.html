@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Reserve Tāmaki — Q3 2025/26 Report</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    color: #1a1a1a;
+    background: #fff;
+    font-size: 14px;
+    line-height: 1.6;
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 60px 48px;
+  }
+
+  /* Header */
+  .header { border-bottom: 3px solid #003F2B; padding-bottom: 28px; margin-bottom: 40px; }
+  .header-tag { font-size: 10px; font-weight: 600; letter-spacing: 2.5px; text-transform: uppercase; color: #888; margin-bottom: 10px; }
+  h1 { font-size: 34px; font-weight: 700; line-height: 1.15; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: #888; margin-bottom: 18px; }
+  .lede { font-size: 13px; font-weight: 500; border-left: 3px solid #1a1a1a; padding-left: 14px; color: #444; line-height: 1.5; }
+
+  /* Section */
+  .section { margin-bottom: 44px; }
+  h2 { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #F58968; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #fde8e0; }
+  h3 { font-size: 13px; font-weight: 600; margin: 20px 0 8px; color: #003F2B; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px; }
+  th { text-align: left; padding: 8px 10px; font-size: 10px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: #888; border-bottom: 2px solid #e8e8e8; background: #fafafa; }
+  td { padding: 8px 10px; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  .num { font-size: 16px; font-weight: 700; text-align: right; }
+  .total-row td { font-weight: 600; background: #f7f7f7; }
+
+  /* Snapshot cards */
+  .snapshot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 4px; }
+  .snapshot-card { background: #f7f7f7; border-radius: 8px; padding: 18px 20px; }
+  .snapshot-card.dark { background: #003F2B; color: #fff; }
+  .snapshot-label { font-size: 10px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: #888; margin-bottom: 12px; }
+  .snapshot-card.dark .snapshot-label { color: #6aaa8a; }
+  .snapshot-row { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; border-bottom: 1px solid #ececec; }
+  .snapshot-card.dark .snapshot-row { border-bottom-color: #1a5c3a; }
+  .snapshot-row:last-child { border-bottom: none; }
+  .snapshot-key { font-size: 12px; color: #555; }
+  .snapshot-card.dark .snapshot-key { color: #a8d4bc; }
+  .snapshot-val { font-size: 18px; font-weight: 700; }
+
+  /* Bullets */
+  .bullets { list-style: none; padding: 0; }
+  .bullets li { padding: 5px 0 5px 16px; position: relative; font-size: 13px; color: #333; border-bottom: 1px solid #f5f5f5; line-height: 1.55; }
+  .bullets li:last-child { border-bottom: none; }
+  .bullets li::before { content: "•"; position: absolute; left: 0; color: #aaa; }
+
+  /* Quotes */
+  .quotes { display: flex; flex-direction: column; gap: 20px; }
+  .quote { border-left: 3px solid #1a1a1a; padding: 12px 18px; background: #f9f9f9; border-radius: 0 6px 6px 0; }
+  .quote p { font-size: 14px; font-style: italic; color: #222; margin-bottom: 6px; line-height: 1.5; }
+  .quote cite { font-size: 11px; font-weight: 600; color: #888; font-style: normal; letter-spacing: 0.3px; }
+
+  /* Next quarter */
+  .next-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .next-item { background: #f7f7f7; border-radius: 6px; padding: 12px 14px; font-size: 12px; color: #444; line-height: 1.4; }
+  .next-item strong { display: block; font-size: 11px; font-weight: 600; color: #1a1a1a; margin-bottom: 3px; }
+
+  /* Status */
+  .status { display: inline-flex; align-items: center; gap-6px; margin-top: 16px; background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; font-size: 11px; font-weight: 600; padding: 6px 12px; border-radius: 20px; }
+
+  /* Footer */
+  .footer { margin-top: 52px; padding-top: 20px; border-top: 2px solid #003F2B; display: flex; justify-content: space-between; align-items: center; }
+  .footer-org { font-size: 12px; font-weight: 600; }
+  .footer-date { font-size: 11px; color: #999; }
+
+  /* Hirer table specifics */
+  .check { color: #003F2B; font-weight: 700; font-size: 15px; }
+
+  @media print {
+    body { padding: 32px 40px; }
+    h2 { page-break-after: avoid; }
+    .section { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-tag">Quarterly Report · Q3 FY2025/26</div>
+  <h1>Reserve Tāmaki</h1>
+  <div class="subtitle">January – March 2026</div>
+</div>
+
+<!-- 1. DELIVERY NUMBERS -->
+<div class="section">
+  <h2>1. Delivery Numbers</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Metric</th>
+        <th style="text-align:right">Jan</th>
+        <th style="text-align:right">Feb</th>
+        <th style="text-align:right">Mar</th>
+        <th style="text-align:right">Q3 Total</th>
+        <th style="text-align:right">YTD FY26</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Activations</strong></td>
+        <td class="num">9</td><td class="num">15</td><td class="num">6</td>
+        <td class="num">30</td><td class="num">83</td>
+      </tr>
+
+      <tr>
+        <td><strong>Mentoring Sessions</strong></td>
+        <td class="num">1</td><td class="num">7</td><td class="num">1</td>
+        <td class="num">9</td><td class="num">9*</td>
+      </tr>
+      <tr>
+        <td><strong>Foot Traffic</strong></td>
+        <td class="num">46</td><td class="num">130</td><td class="num">118</td>
+        <td class="num">294</td><td class="num">1,225</td>
+      </tr>
+      <tr class="total-row">
+        <td><strong>Total</strong></td>
+        <td class="num"><strong>56</strong></td><td class="num"><strong>152</strong></td><td class="num"><strong>125</strong></td>
+        <td class="num"><strong>333</strong></td><td class="num"><strong>—</strong></td>
+      </tr>
+    </tbody>
+  </table>
+  <p style="font-size:11px; color:#aaa; margin-top:6px;">*Mentoring tracked from Q3 FY26</p>
+</div>
+
+<!-- 2. COMMUNITY SNAPSHOT -->
+<div class="section">
+  <h2>2. Community Snapshot</h2>
+  <p style="font-size:11px; color:#aaa; margin-bottom:14px;">As at March 2026</p>
+  <div class="snapshot-grid">
+    <div class="snapshot-card">
+      <div class="snapshot-label">Supported</div>
+      <div class="snapshot-row"><span class="snapshot-key">Māori</span><span class="snapshot-val">67</span></div>
+      <div class="snapshot-row"><span class="snapshot-key">Pasifika</span><span class="snapshot-val">85</span></div>
+      <div class="snapshot-row"><span class="snapshot-key">Rangatahi</span><span class="snapshot-val">20</span></div>
+      <div class="snapshot-row" style="border-top:2px solid #e0e0e0; margin-top:4px; padding-top:8px;"><span class="snapshot-key"><strong>Total</strong></span><span class="snapshot-val" style="font-size:20px;"><strong>172</strong></span></div>
+      <p style="font-size:11px; color:#888; margin-top:10px; font-style:italic;">Whānau we directly support</p>
+    </div>
+    <div class="snapshot-card dark">
+      <div class="snapshot-label">Our Innovators</div>
+      <div class="snapshot-row"><span class="snapshot-key">Kakano — Starting</span><span class="snapshot-val">91</span></div>
+      <div class="snapshot-row"><span class="snapshot-key">Tipu — Refining</span><span class="snapshot-val">8</span></div>
+      <div class="snapshot-row"><span class="snapshot-key">Ora — Thriving</span><span class="snapshot-val">7</span></div>
+      <div class="snapshot-row" style="border-top:2px solid #1a5c3a; margin-top:4px; padding-top:8px;"><span class="snapshot-key" style="color:#a8d4bc;"><strong>Total</strong></span><span class="snapshot-val"><strong>106</strong></span></div>
+      <p style="font-size:11px; color:#6aaa8a; margin-top:10px; font-style:italic;">People building ventures, creative practices, and community initiatives with our support</p>
+    </div>
+  </div>
+</div>
+
+<!-- 3. SPACE USE -->
+<div class="section">
+  <h2>3. Space Use</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Organisation</th>
+        <th>Type</th>
+        <th style="text-align:center">Bookings</th>
+        <th style="text-align:center">Māori</th>
+        <th style="text-align:center">Pasifika</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Tāmaki Regeneration Company</td><td>Venue Hire — Workshop</td><td style="text-align:center">1</td><td></td><td></td></tr>
+      <tr><td>NZ Labour (Tāmaki Electorate)</td><td>Venue Hire — Meeting</td><td style="text-align:center">2</td><td></td><td></td></tr>
+      <tr><td>WE Mana</td><td>Venue Hire — Workshop</td><td style="text-align:center">2</td><td style="text-align:center" class="check">✓</td><td style="text-align:center" class="check">✓</td></tr>
+      <tr><td>GIFC (Glen Innes Family Centre)</td><td>Space Use — Board Meeting</td><td style="text-align:center">1</td><td style="text-align:center" class="check">✓</td><td style="text-align:center" class="check">✓</td></tr>
+      <tr><td>Rehekorero</td><td>Space Use — Rangatahi</td><td style="text-align:center">1</td><td style="text-align:center" class="check">✓</td><td></td></tr>
+      <tr><td>Vaka</td><td>Space Use — Planning</td><td style="text-align:center">2</td><td style="text-align:center" class="check">✓</td><td style="text-align:center" class="check">✓</td></tr>
+      <tr><td>Roof Hub</td><td>Space Use — Planning</td><td style="text-align:center">4</td><td></td><td style="text-align:center" class="check">✓</td></tr>
+      <tr><td>Level Up x PMTB</td><td>Space Use — Rangatahi</td><td style="text-align:center">2</td><td style="text-align:center" class="check">✓</td><td></td></tr>
+      <tr><td>Pass Me The Ball (Kimani)</td><td>Space Use — Studio & Drop-in</td><td style="text-align:center">4</td><td></td><td style="text-align:center" class="check">✓</td></tr>
+      <tr><td>Hapai Te Hauora (Jessikah)</td><td>Venue Hire — Meeting & Studio</td><td style="text-align:center">1</td><td style="text-align:center" class="check">✓</td><td></td></tr>
+      <tr><td>Adhi</td><td>Drop-in</td><td style="text-align:center">2</td><td style="text-align:center" class="check">✓</td><td></td></tr>
+      <tr><td>GI Eagles</td><td>Space Use — Workshop</td><td style="text-align:center">1</td><td style="text-align:center" class="check">✓</td><td></td></tr>
+      <tr class="total-row"><td><strong>Total</strong></td><td></td><td style="text-align:center"><strong>23</strong></td><td></td><td></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- 4. UPDATES -->
+<div class="section">
+  <h2>4. Updates</h2>
+
+  <h3>Content & Media</h3>
+  <ul class="bullets">
+    <li>Kimani Ngaluafe (Pass Me The Ball) delivered his first ever workshop as a facilitator — a creator session for rangatahi focused on content and camera skills. He has since landed his first paying client and earns consistently through content monetisation.</li>
+    <li>Podcast studio generating organic collaboration — Zac Moran (Manaiakalani) now working with Thomas Morsby (Five Rings Media) on his podcast.</li>
+    <li>Te Rina Triponel (Tide Talks) developing a podcast series on authentic young urban Māori stories, supported through space access and mentorship.</li>
+    <li>Gear access growing — Benji, Kimani, and Adhi regularly using cameras and audio equipment. Eagles pressed their first merchandise run using the office space.</li>
+  </ul>
+
+  <h3>Rangatahi & Community Activation</h3>
+  <ul class="bullets">
+    <li>Level Up (rangatahi group) used the hub twice this quarter to workshop their campaign for a calisthenics park in Glen Innes — facilitated by Kimani, 9–10 young Māori rangatahi using the space as their base for community advocacy.</li>
+  </ul>
+
+  <h3>Mentoring & Pathways</h3>
+  <ul class="bullets">
+    <li>John Tanuvasa (OHN Clothing) reached a two-year milestone — arriving now self-directed, using the hub as a check-in rather than a guide.</li>
+    <li>Theresa (Wāhine entrepreneur) progressing towards her vision of a neurodivergent café-play space for East Auckland families, referred through Foundation North.</li>
+    <li>Cleona Parata (Relax & Reset Gifts) building her product business online, session by session.</li>
+  </ul>
+
+  <h3>Ecosystem & Partnerships</h3>
+  <ul class="bullets">
+    <li>Aysha Peters (Maia Collective) formalised a referral pathway for wāhine Māori entrepreneurs into our space.</li>
+    <li>New relationship with Tāmaki Primary's principal — STEM workshops in development for Q4.</li>
+    <li>Tyrone Tangata-Makiri (Second Half) confirmed for two AI workshops in April.</li>
+  </ul>
+
+  <h3>Whanaungatanga Highlights</h3>
+  <ul class="bullets">
+    <li>Tāmaki Primary connection opens a direct pipeline between Reserve Tāmaki and the local school community.</li>
+    <li>Maia Collective partnership reflects growing trust between aligned kaupapa Māori organisations.</li>
+    <li>Roof Hub has embedded a weekly Monday meeting rhythm — demonstrating the hub's value as a professional base for local organisations.</li>
+  </ul>
+</div>
+
+<!-- 5. IN THEIR WORDS -->
+<div class="section">
+  <h2>5. In Their Words</h2>
+  <div class="quotes">
+    <div class="quote">
+      <p>"We figured it all out together. Nobody had the answers — we just worked it out."</p>
+      <cite>Thomas Morsby — Podcast Studio opening session, January 2026</cite>
+    </div>
+    <div class="quote">
+      <p>"We were just grateful to be in the room. Getting the free game. You don't get that everywhere."</p>
+      <cite>Adhi — Rangatahi Creator Drop-in, February 2026</cite>
+    </div>
+    <div class="quote">
+      <p>"It makes me sad that he doesn't need me as much anymore. But I'm happy that I get to see him be so confident and sure."</p>
+      <cite>Kim Beazley — on John Tanuvasa, two years of mentoring</cite>
+    </div>
+  </div>
+</div>
+
+<!-- 6. PLANNED NEXT QUARTER -->
+<div class="section">
+  <h2>6. Planned Next Quarter</h2>
+  <div class="next-grid">
+    <div class="next-item"><strong>AI Workshops</strong>Tyrone Tangata-Makiri (Second Half) confirmed for April</div>
+    <div class="next-item"><strong>Tāmaki Primary STEM</strong>Workshops in development with the school's new principal</div>
+    <div class="next-item"><strong>Podcast Programme</strong>Te Rina Triponel (Tide Talks)'s series on young urban Māori stories beginning production</div>
+    <div class="next-item"><strong>Creative Pipeline</strong>More community groups coming in, $500/project goal in motion</div>
+  </div>
+  
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+  <span class="footer-org">Reserve Tāmaki</span>
+  <span class="footer-date">Q3 FY2025/26 · January – March 2026</span>
+</div>
+
+</body>
+</html>

@@ -15524,6 +15524,23 @@ Rules: Only include sections that have real content from the debrief data. Keep 
     }
   });
 
+  // Serve Q3 Report — auth required
+  app.get("/q3-report", isAuthenticated, async (req, res) => {
+    try {
+      const fs = await import("fs");
+      const path = await import("path");
+      const reportPath = path.join(process.cwd(), "Q3-Report.html");
+      if (fs.existsSync(reportPath)) {
+        res.setHeader("Content-Type", "text/html");
+        res.sendFile(reportPath);
+      } else {
+        res.status(404).json({ message: "Report not found" });
+      }
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to serve report" });
+    }
+  });
+
   // Serve DOM (Digital Operations Manual) — auth required
   app.get("/dom", isAuthenticated, async (req, res) => {
     try {
