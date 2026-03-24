@@ -410,6 +410,7 @@ function DashboardView({
                       Confirmation email{" "}
                       {!hasNotifEmail && <span className="text-amber-500">*</span>}
                     </Label>
+                    <p className="text-xs text-muted-foreground">The address you'll be sent booking info to</p>
                     {notifEmailSaved ? (
                       <div className="flex items-center gap-2">
                         <span className="text-sm flex-1 truncate text-foreground" data-testid="text-saved-notif-email">
