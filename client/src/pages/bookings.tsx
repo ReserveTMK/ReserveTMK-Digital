@@ -152,6 +152,23 @@ const STATUS_ICON_COLORS: Record<string, string> = {
   cancelled: "text-gray-400",
 };
 
+interface RecurringTemplate {
+  id: number;
+  name: string;
+  venue_id: number | null;
+  classification: string | null;
+  day_of_week: number;
+  start_time: string | null;
+  end_time: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  booker_name: string | null;
+  notes: string | null;
+  active: boolean;
+}
+
+const DAYS_OF_WEEK_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
 const PRICING_LABELS: Record<string, string> = {
   full_price: "Full Price",
   discounted: "Discounted",
@@ -200,6 +217,10 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
     queryKey: ['/api/booking-change-requests'],
   });
 
+  const { data: recurringTemplates } = useQuery<RecurringTemplate[]>({
+    queryKey: ['/api/recurring-booking-templates'],
+  });
+
   const pendingChangeRequestBookingIds = useMemo(() => {
     if (!allChangeRequests) return new Set<number>();
     return new Set(allChangeRequests.filter(cr => cr.status === "pending").map(cr => cr.bookingId));
@@ -227,6 +248,9 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
   const [completionServedDone, setCompletionServedDone] = useState(false);
   const [completionInvoiceLoading, setCompletionInvoiceLoading] = useState(false);
   const [completionServedLoading, setCompletionServedLoading] = useState(false);
+  const [swimlaneMode, setSwimlaneMode] = useState(false);
+  const [recurringTemplateDetail, setRecurringTemplateDetail] = useState<RecurringTemplate | null>(null);
+  const [showArchivedColumns, setShowArchivedColumns] = useState<Record<string, boolean>>({});
 
   const filtered = useMemo(() => {
     if (!bookings) return [];
@@ -446,7 +470,9 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
 
   const handleDragEnd = useCallback(async (result: DropResult) => {
     if (!result.destination) return;
-    const newStatus = result.destination.droppableId;
+    const rawId = result.destination.droppableId;
+    // Support swimlane droppableIds like "Podcast Studio|confirmed"
+    const newStatus = rawId.includes("|") ? rawId.split("|").pop()! : rawId;
     if (!BOOKING_STATUSES.includes(newStatus as any)) return;
     const bookingId = parseInt(result.draggableId);
     const booking = bookings?.find(b => b.id === bookingId);
@@ -475,8 +501,43 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
     filtered?.forEach(b => {
       if (columns[b.status]) columns[b.status].push(b);
     });
+    // Sort confirmed by startDate ascending (ITEM 4)
+    columns.confirmed.sort((a, b) => {
+      if (!a.startDate) return 1;
+      if (!b.startDate) return -1;
+      return new Date(a.startDate as unknown as string).getTime() - new Date(b.startDate as unknown as string).getTime();
+    });
     return columns;
   }, [filtered]);
+
+  const activeRecurringTemplates = useMemo(() => {
+    return (recurringTemplates || []).filter(t => t.active);
+  }, [recurringTemplates]);
+
+  // For swimlanes: group venues by spaceName
+  const locationGroups = useMemo(() => {
+    if (!venues) return [];
+    const groups = new Map<string, number[]>();
+    venues.forEach(v => {
+      const key = v.spaceName || "Unassigned";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(v.id);
+    });
+    // Add "Unassigned" for bookings with no venue
+    if (!groups.has("Unassigned")) groups.set("Unassigned", []);
+    return Array.from(groups.entries()).map(([name, venueIds]) => ({ name, venueIds }));
+  }, [venues]);
+
+  const thirtyDaysAgo = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d;
+  }, []);
+
+  const isOldBooking = (booking: Booking) => {
+    if (!booking.startDate) return false;
+    return new Date(booking.startDate as unknown as string) < thirtyDaysAgo;
+  };
 
   const content = (
         <div className={`${viewMode === "kanban" ? "max-w-[1600px]" : "max-w-6xl"} mx-auto space-y-6`}>
@@ -509,6 +570,18 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                   <LayoutList className="w-3.5 h-3.5" />
                   List
                 </Button>
+                {viewMode === "kanban" && (
+                  <Button
+                    variant={swimlaneMode ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => setSwimlaneMode(s => !s)}
+                    className="rounded-none gap-1.5 text-xs"
+                    data-testid="button-swimlane-view"
+                  >
+                    <Filter className="w-3.5 h-3.5" />
+                    Swimlanes
+                  </Button>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <Button
@@ -704,16 +777,119 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
               );
             })()
           ) : viewMode === "kanban" ? (
-            filtered?.length === 0 ? (
+            filtered?.length === 0 && activeRecurringTemplates.length === 0 ? (
               <Card className="p-8 text-center">
                 <p className="text-muted-foreground">No venue hires match your filters.</p>
               </Card>
+            ) : swimlaneMode ? (
+              // ── SWIMLANE MODE ──────────────────────────────────────────────
+              <DragDropContext onDragEnd={handleDragEnd}>
+                <div className="space-y-6" data-testid="kanban-swimlanes">
+                  {locationGroups.map(({ name: locationName, venueIds: locationVenueIds }) => {
+                    const getSwimlaneItems = (status: string) => {
+                      return (filtered || []).filter(b => {
+                        if (b.status !== status) return false;
+                        const bookingVenueIds: number[] = b.venueIds || (b.venueId ? [b.venueId] : []);
+                        if (bookingVenueIds.length === 0) return locationName === "Unassigned";
+                        return bookingVenueIds.some(id => locationVenueIds.includes(id));
+                      });
+                    };
+                    const totalCount = BOOKING_STATUSES.reduce((acc, s) => acc + getSwimlaneItems(s).length, 0);
+                    if (totalCount === 0) return null;
+                    return (
+                      <div key={locationName} className="border border-border rounded-xl overflow-hidden" data-testid={`swimlane-${locationName}`}>
+                        <div className="bg-muted/40 px-4 py-2 flex items-center gap-2 border-b border-border">
+                          <MapPin className="w-4 h-4 text-muted-foreground" />
+                          <span className="font-semibold text-sm">{locationName}</span>
+                          <Badge variant="secondary" className="text-[10px] ml-1">{totalCount}</Badge>
+                        </div>
+                        <div className="grid grid-cols-4 gap-0 p-3 gap-3">
+                          {BOOKING_STATUSES.map(status => {
+                            const items = getSwimlaneItems(status);
+                            const archivable = status === "completed" || status === "cancelled";
+                            const colKey = `${locationName}__${status}`;
+                            const showArchived = showArchivedColumns[colKey];
+                            const visibleItems = archivable && !showArchived ? items.filter(b => !isOldBooking(b)) : items;
+                            const archivedCount = items.length - visibleItems.length;
+                            const StatusIcon = STATUS_ICONS[status] || CircleDashed;
+                            return (
+                              <div key={status} className="flex flex-col">
+                                <div className="flex items-center gap-1.5 mb-2 px-1">
+                                  <StatusIcon className={`w-3.5 h-3.5 ${STATUS_ICON_COLORS[status]}`} />
+                                  <span className="text-xs font-semibold">{STATUS_LABELS[status]}</span>
+                                  <Badge variant="secondary" className="text-[9px] ml-auto">{items.length}</Badge>
+                                </div>
+                                <Droppable droppableId={`${locationName}|${status}`}>
+                                  {(provided, snapshot) => (
+                                    <div
+                                      ref={provided.innerRef}
+                                      {...provided.droppableProps}
+                                      className={`flex-1 min-h-[100px] rounded-lg p-1.5 space-y-1.5 transition-colors ${snapshot.isDraggingOver ? "bg-primary/5 ring-2 ring-primary/20" : "bg-muted/20"}`}
+                                    >
+                                      {visibleItems.map((booking, index) => {
+                                        const dateTime = formatDateTime(booking);
+                                        return (
+                                          <Draggable key={booking.id} draggableId={booking.id.toString()} index={index}>
+                                            {(provided, snapshot) => (
+                                              <div
+                                                ref={provided.innerRef}
+                                                {...provided.draggableProps}
+                                                className={`bg-card rounded-md border p-2 transition-shadow text-xs ${snapshot.isDragging ? "shadow-lg ring-2 ring-primary/30" : "shadow-sm"}`}
+                                                data-testid={`swimlane-card-${booking.id}`}
+                                              >
+                                                <div className="flex items-start gap-1">
+                                                  <div {...provided.dragHandleProps} className="cursor-grab mt-0.5">
+                                                    <GripVertical className="w-3 h-3 text-muted-foreground/50" />
+                                                  </div>
+                                                  <div className="min-w-0 flex-1">
+                                                    <p className="font-medium truncate leading-tight">
+                                                      {getBookingGroupName(booking.bookerGroupId) || getBookerName(booking.bookerId) || getVenueNames(booking)}
+                                                    </p>
+                                                    {dateTime && (
+                                                      <p className="text-[10px] text-muted-foreground truncate">{dateTime.date}{dateTime.time ? ` · ${dateTime.time}` : ""}</p>
+                                                    )}
+                                                  </div>
+                                                  <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={() => setEditBooking(booking)}>
+                                                    <Pencil className="w-3 h-3" />
+                                                  </Button>
+                                                </div>
+                                              </div>
+                                            )}
+                                          </Draggable>
+                                        );
+                                      })}
+                                      {provided.placeholder}
+                                    </div>
+                                  )}
+                                </Droppable>
+                                {archivable && archivedCount > 0 && !showArchived && (
+                                  <button
+                                    className="mt-1 text-[10px] text-muted-foreground hover:text-foreground text-left px-1"
+                                    onClick={() => setShowArchivedColumns(prev => ({ ...prev, [colKey]: true }))}
+                                  >
+                                    Show {archivedCount} archived
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </DragDropContext>
             ) : (
+              // ── STANDARD KANBAN ────────────────────────────────────────────
               <DragDropContext onDragEnd={handleDragEnd}>
                 <div className="grid grid-cols-4 gap-4" data-testid="kanban-board">
                   {BOOKING_STATUSES.map(status => {
                     const items = kanbanColumns[status] || [];
                     const StatusIcon = STATUS_ICONS[status] || CircleDashed;
+                    const archivable = status === "completed" || status === "cancelled";
+                    const showArchived = showArchivedColumns[status];
+                    const visibleItems = archivable && !showArchived ? items.filter(b => !isOldBooking(b)) : items;
+                    const archivedCount = items.length - visibleItems.length;
                     return (
                       <div key={status} className="flex flex-col" data-testid={`kanban-column-${status}`}>
                         <div className="flex items-center gap-2 mb-3 px-1">
@@ -732,7 +908,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                                 snapshot.isDraggingOver ? "bg-primary/5 ring-2 ring-primary/20" : "bg-muted/30"
                               }`}
                             >
-                              {items.map((booking, index) => {
+                              {visibleItems.map((booking, index) => {
                                 const dateTime = formatDateTime(booking);
                                 return (
                                   <Draggable key={booking.id} draggableId={booking.id.toString()} index={index}>
@@ -779,13 +955,12 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                                                     Change Request
                                                   </Badge>
                                                 )}
-                                                {/* Payment status badge */}
                                                 {(() => {
                                                   const ps = (booking as any).paymentStatus || "unpaid";
                                                   if (ps === "paid") return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">Paid</span>;
                                                   if (ps === "invoiced") return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">Invoiced</span>;
                                                   if (ps === "not_required") return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">N/A</span>;
-                                                  return null; // Don't clutter kanban with "Unpaid" by default
+                                                  return null;
                                                 })()}
                                               </div>
                                             </div>
@@ -869,9 +1044,68 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                                 );
                               })}
                               {provided.placeholder}
+                              {/* Recurring templates (non-draggable) shown only in confirmed column */}
+                              {status === "confirmed" && activeRecurringTemplates.length > 0 && (
+                                <div className="mt-2 space-y-2">
+                                  {archivedCount === 0 && visibleItems.length > 0 && (
+                                    <div className="border-t border-border/30 pt-2" />
+                                  )}
+                                  {activeRecurringTemplates.map(tmpl => {
+                                    const tmplVenue = venues?.find(v => v.id === tmpl.venue_id);
+                                    const dayLabel = DAYS_OF_WEEK_LABELS[tmpl.day_of_week] || "Unknown";
+                                    const timeLabel = tmpl.start_time && tmpl.end_time
+                                      ? `${formatTimeSlot(tmpl.start_time)} – ${formatTimeSlot(tmpl.end_time)}`
+                                      : tmpl.start_time ? formatTimeSlot(tmpl.start_time) : null;
+                                    return (
+                                      <div
+                                        key={`recurring-${tmpl.id}`}
+                                        className="bg-blue-50/60 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 cursor-pointer hover:shadow-sm transition-shadow"
+                                        onClick={() => setRecurringTemplateDetail(tmpl)}
+                                        data-testid={`kanban-recurring-${tmpl.id}`}
+                                      >
+                                        <div className="flex items-start justify-between gap-1">
+                                          <div className="min-w-0 flex-1">
+                                            <p className="text-sm font-medium truncate">{tmpl.name}</p>
+                                            {tmplVenue && (
+                                              <p className="text-[10px] text-muted-foreground truncate mt-0.5">{tmplVenue.name}</p>
+                                            )}
+                                            <div className="flex items-center gap-1 mt-1 flex-wrap">
+                                              <Badge variant="outline" className="text-[10px] bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700">
+                                                <RefreshCw className="w-2.5 h-2.5 mr-0.5" />
+                                                Recurring
+                                              </Badge>
+                                              {tmpl.classification && (
+                                                <Badge className={`${CLASSIFICATION_COLORS[tmpl.classification] || "bg-gray-500/15 text-gray-700"} text-[10px]`}>
+                                                  {tmpl.classification}
+                                                </Badge>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <div className="mt-2 text-[11px] text-muted-foreground space-y-0.5">
+                                          <div className="flex items-center gap-1">
+                                            <RefreshCw className="w-3 h-3" />
+                                            Every {dayLabel}
+                                            {timeLabel && ` · ${timeLabel}`}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
                           )}
                         </Droppable>
+                        {archivable && archivedCount > 0 && !showArchived && (
+                          <button
+                            className="mt-1 text-[11px] text-muted-foreground hover:text-foreground text-left px-1"
+                            onClick={() => setShowArchivedColumns(prev => ({ ...prev, [status]: true }))}
+                            data-testid={`button-show-archived-${status}`}
+                          >
+                            Show {archivedCount} archived
+                          </button>
+                        )}
                       </div>
                     );
                   })}
@@ -894,6 +1128,8 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                     const cardTitle = bookerOrgName || bookingGroupName || booking.bookerName || bookerName || getVenueNames(booking);
                     const cardSubName = (bookerOrgName || bookingGroupName) ? (booking.bookerName || bookerName) : null;
                     const isCancelled = booking.status === "cancelled";
+                    const venueSpaceName = venues?.find(v => (booking.venueIds as number[] | undefined)?.includes(v.id) || v.id === booking.venueId)?.spaceName;
+                    const hasVenueAssigned = !!(booking.venueIds?.length || booking.venueId);
 
                     // Payment status dot
                     const paymentStatus = (booking as any).paymentStatus;
@@ -945,10 +1181,15 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                                 </Badge>
                               )}
                             </div>
-                            {(bookerName || bookingGroupName) && (
-                              <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-                                <MapPin className="w-3 h-3" />
-                                {getVenueNames(booking)}
+                            {(bookerName || bookingGroupName || (isCancelled && !hasVenueAssigned && (bookerOrgName || booking.bookerName))) && (
+                              <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1 flex-wrap">
+                                <MapPin className="w-3 h-3 shrink-0" />
+                                {!hasVenueAssigned && isCancelled
+                                  ? <span className="italic text-muted-foreground/60">No venue</span>
+                                  : getVenueNames(booking)}
+                                {venueSpaceName && (
+                                  <Badge variant="secondary" className="text-[9px] py-0 px-1 font-normal ml-0.5">{venueSpaceName}</Badge>
+                                )}
                               </p>
                             )}
 
@@ -1186,6 +1427,74 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
         onOpenChange={setHirerPreviewOpen}
         venues={venues || []}
       />
+
+      {/* Recurring template detail dialog */}
+      <Dialog open={!!recurringTemplateDetail} onOpenChange={(open) => { if (!open) setRecurringTemplateDetail(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw className="w-4 h-4 text-blue-500" />
+              {recurringTemplateDetail?.name}
+            </DialogTitle>
+            <DialogDescription>Recurring booking template details</DialogDescription>
+          </DialogHeader>
+          {recurringTemplateDetail && (() => {
+            const tmplVenue = venues?.find(v => v.id === recurringTemplateDetail.venue_id);
+            const dayLabel = DAYS_OF_WEEK_LABELS[recurringTemplateDetail.day_of_week] || "Unknown";
+            const timeLabel = recurringTemplateDetail.start_time && recurringTemplateDetail.end_time
+              ? `${formatTimeSlot(recurringTemplateDetail.start_time)} – ${formatTimeSlot(recurringTemplateDetail.end_time)}`
+              : recurringTemplateDetail.start_time ? formatTimeSlot(recurringTemplateDetail.start_time) : null;
+            return (
+              <div className="space-y-3 text-sm">
+                <div className="rounded-lg border p-3 space-y-2">
+                  {tmplVenue && (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <MapPin className="w-4 h-4 shrink-0" />
+                      <span>{tmplVenue.name}{tmplVenue.spaceName ? ` · ${tmplVenue.spaceName}` : ""}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <RefreshCw className="w-4 h-4 shrink-0" />
+                    <span>Every {dayLabel}{timeLabel ? ` · ${timeLabel}` : ""}</span>
+                  </div>
+                  {recurringTemplateDetail.classification && (
+                    <div className="flex items-center gap-2">
+                      <Badge className={CLASSIFICATION_COLORS[recurringTemplateDetail.classification] || "bg-gray-500/15 text-gray-700"}>
+                        {recurringTemplateDetail.classification}
+                      </Badge>
+                    </div>
+                  )}
+                  {recurringTemplateDetail.booker_name && (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Users className="w-4 h-4 shrink-0" />
+                      <span>{recurringTemplateDetail.booker_name}</span>
+                    </div>
+                  )}
+                  {recurringTemplateDetail.start_date && (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Calendar className="w-4 h-4 shrink-0" />
+                      <span>
+                        From {format(new Date(recurringTemplateDetail.start_date), "d MMM yyyy")}
+                        {recurringTemplateDetail.end_date ? ` – ${format(new Date(recurringTemplateDetail.end_date), "d MMM yyyy")}` : ""}
+                      </span>
+                    </div>
+                  )}
+                  {recurringTemplateDetail.notes && (
+                    <div className="text-muted-foreground text-xs italic">{recurringTemplateDetail.notes}</div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" size="sm" onClick={() => { setRecurringTemplateDetail(null); setLocation("/spaces"); }}>
+              <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
+              Edit in Recurring tab
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setRecurringTemplateDetail(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={completionDialogOpen} onOpenChange={setCompletionDialogOpen}>
         <DialogContent className="sm:max-w-md" data-testid="dialog-booking-completed">
