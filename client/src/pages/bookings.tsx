@@ -1971,6 +1971,7 @@ function BookingFormDialog({
     setConflictOverride(false);
   }, [selectedVenueIds, startDate, startTime, endTime]);
 
+  const { data: regularBookers } = useRegularBookers();
   const { data: allMemberships } = useMemberships();
   const { data: allMous } = useMous();
   const { data: allBookings } = useBookings();
