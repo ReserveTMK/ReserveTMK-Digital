@@ -891,7 +891,8 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                     const bookerName = getBookerName(booking.bookerId);
                     const bookingGroupName = getBookingGroupName(booking.bookerGroupId);
                     const bookerOrgName = getBookerOrgName(booking.bookerId);
-                    const cardTitle = booking.bookerName || bookerOrgName || bookingGroupName || bookerName || getVenueNames(booking);
+                    const cardTitle = bookerOrgName || bookingGroupName || booking.bookerName || bookerName || getVenueNames(booking);
+                    const cardSubName = (bookerOrgName || bookingGroupName) ? (booking.bookerName || bookerName) : null;
                     const isCancelled = booking.status === "cancelled";
 
                     // Payment status dot
@@ -917,6 +918,11 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                               {paymentDot && (
                                 <span className="text-sm shrink-0" title={paymentStatus}>{paymentDot}</span>
                               )}
+                            </div>
+                            {cardSubName && (
+                              <p className="text-xs text-muted-foreground -mt-1 mb-1" data-testid={`text-booking-subname-${booking.id}`}>{cardSubName}</p>
+                            )}
+                            <div className="flex items-center gap-2 flex-wrap mb-1" style={{display:"contents"}}>
                               <Badge className={CLASSIFICATION_COLORS[booking.classification] || ""} data-testid={`badge-classification-${booking.id}`}>
                                 {booking.classification}
                               </Badge>
