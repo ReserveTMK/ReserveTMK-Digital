@@ -2042,17 +2042,37 @@ function CalendarView({
           </Card>
         )}
 
-        {pricingData && !pricingData.coveredByAgreement && (
-          <div className="mb-4 flex items-center gap-3 flex-wrap text-xs text-muted-foreground" data-testid="text-venue-rates">
-            <Info className="w-3 h-3 shrink-0" />
-            <span>Rates: Half day ${pricingData.halfDayRate.toFixed(0)} | Full day ${pricingData.fullDayRate.toFixed(0)}{pricingData.hourlyRate > 0 ? ` | Hourly $${pricingData.hourlyRate.toFixed(0)}/hr` : ""}</span>
-            {pricingData.discountPercentage > 0 && (
-              <Badge variant="secondary" className="text-xs" data-testid="badge-discount-tier">
-                {pricingData.discountPercentage}% discount
-              </Badge>
-            )}
-          </div>
-        )}
+        {pricingData && (() => {
+          const hasAgreement = !!(authData.membership || authData.mou);
+          if (hasAgreement) {
+            const agreement = authData.membership || authData.mou;
+            const total = agreement?.bookingAllowance ?? 0;
+            if (!total) return null;
+            const used = authData._agreementUsage ?? 0;
+            const remaining = Math.max(0, total - used);
+            const period = getPeriodLabel(agreement.allowancePeriod);
+            return (
+              <div className="mb-4 flex items-center gap-3 flex-wrap text-xs text-muted-foreground" data-testid="text-venue-rates">
+                <Info className="w-3 h-3 shrink-0" />
+                <span>{remaining} of {total} venue hires remaining this {period}</span>
+              </div>
+            );
+          }
+          if (!pricingData.coveredByAgreement) {
+            return (
+              <div className="mb-4 flex items-center gap-3 flex-wrap text-xs text-muted-foreground" data-testid="text-venue-rates">
+                <Info className="w-3 h-3 shrink-0" />
+                <span>Rates: Half day ${pricingData.halfDayRate.toFixed(0)} | Full day ${pricingData.fullDayRate.toFixed(0)}{pricingData.hourlyRate > 0 ? ` | Hourly $${pricingData.hourlyRate.toFixed(0)}/hr` : ""}</span>
+                {pricingData.discountPercentage > 0 && (
+                  <Badge variant="secondary" className="text-xs" data-testid="badge-discount-tier">
+                    {pricingData.discountPercentage}% discount
+                  </Badge>
+                )}
+              </div>
+            );
+          }
+          return null;
+        })()}
 
         <div className="flex flex-col lg:flex-row gap-4">
           <Card className="flex-1 p-4">
