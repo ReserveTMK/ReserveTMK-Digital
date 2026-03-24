@@ -692,6 +692,7 @@ export const mous = pgTable("mous", {
   allowancePeriod: text("allowance_period").default("quarterly"),
   bookingCategories: text("booking_categories").array().default([]),
   allowedLocations: text("allowed_locations").array(),
+  allowedVenueIds: integer("allowed_venue_ids").array(),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
   status: text("status").notNull().default("draft"),

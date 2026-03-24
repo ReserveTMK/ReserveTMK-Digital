@@ -106,6 +106,31 @@
   .divider { border: none; border-top: 1px solid #1e2433; margin: 8px 0; }
   .note { font-size: 11px; color: #475569; padding: 8px 12px; background: #131720; border-radius: 6px; margin-top: 10px; }
 
+  /* ── Inline gap indicators on feature cards ── */
+  .gap-section { margin-top: 10px; border-top: 1px solid #2d3748; padding-top: 8px; }
+  .gap-section-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; margin-bottom: 5px; }
+  .feature-gap {
+    color: #dc2626;
+    font-size: 12px;
+    padding: 2px 0;
+    line-height: 1.4;
+  }
+  .feature-gap::before {
+    content: "● ";
+    color: #dc2626;
+  }
+  .feature-warn {
+    color: #f59e0b;
+    font-size: 12px;
+    padding: 2px 0;
+    line-height: 1.4;
+  }
+  .feature-warn::before {
+    content: "◐ ";
+    color: #f59e0b;
+  }
+  .inline-note { font-size: 11px; color: #334155; font-style: italic; padding: 6px 10px; background: #131720; border-radius: 5px; margin-bottom: 10px; }
+
   /* ── Legend ── */
   .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; padding: 12px 16px; background: #131720; border-radius: 8px; border: 1px solid #1e2433; }
   .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #64748b; }
@@ -254,7 +279,7 @@
 <div class="grid-4">
 
   <div class="card blue" id="arch-mentoring">
-    <div class="card-title">🧑‍🤝‍🧑 Mentoring <a href="#gaps" class="section-nav-link purple">Gaps →</a> <a href="#build-mentoring" class="section-nav-link green">Build →</a></div>
+    <div class="card-title">🧑‍🤝‍🧑 Mentoring</div>
     <div class="card-subtitle">/mentoring · /scheduling · /debriefs</div>
     <div class="path-block">
       <div class="path-label">Self-serve</div>
@@ -277,6 +302,14 @@
       <li class="dot-item ok"><div class="d"></div><span>Growth surveys post-session</span></li>
       <li class="dot-item ok"><div class="d"></div><span>AI-assisted debrief</span></li>
     </ul>
+    <div class="gap-section">
+      <div class="gap-section-label">Gaps &amp; Builds</div>
+      <div class="feature-warn">Attendance → report wire-up (verify)</div>
+      <div class="feature-gap">Re-activation flow — graduated/ended mentees can't self-re-book</div>
+      <div class="feature-gap">Kanban quick-add — must go through contact record to add mentee</div>
+      <div class="feature-gap">Admin-side booking on behalf of mentee</div>
+      <div class="feature-gap">Group / cohort mentoring model</div>
+    </div>
     <details class="flow-expand" id="flow-mentoring">
       <summary>User Flows (3)</summary>
       <div class="flow-inner">
@@ -321,7 +354,7 @@
   </div>
 
   <div class="card green" id="arch-spaces">
-    <div class="card-title">🏢 Spaces (Venue Hire) <a href="#gaps" class="section-nav-link purple">Gaps →</a> <a href="#build-spaces" class="section-nav-link green">Build →</a></div>
+    <div class="card-title">🏢 Spaces (Venue Hire)</div>
     <div class="card-subtitle">/spaces · /bookings · /agreements</div>
     <div class="path-block">
       <div class="path-label">Self-serve</div>
@@ -348,6 +381,14 @@
       <li class="dot-item ok"><div class="d"></div><span>Xero invoicing</span></li>
       <li class="dot-item ok"><div class="d"></div><span>Confirmation + reminder emails</span></li>
     </ul>
+    <div class="gap-section">
+      <div class="gap-section-label">Gaps &amp; Builds</div>
+      <div class="feature-gap">Quick-add unplanned activation</div>
+      <div class="feature-gap">Recurring bookings (admin-managed)</div>
+      <div class="feature-gap">Monthly reconciling UI</div>
+      <div class="feature-gap">Payment instructions not clear in confirmation</div>
+      <div class="feature-gap">No payment status visible in booking view</div>
+    </div>
     <details class="flow-expand" id="flow-spaces">
       <summary>User Flows (3)</summary>
       <div class="flow-inner">
@@ -388,7 +429,7 @@
   </div>
 
   <div class="card orange" id="arch-gear">
-    <div class="card-title">⚙️ Gear <a href="#gaps" class="section-nav-link purple">Gaps →</a> <a href="#build-gear" class="section-nav-link">Build →</a></div>
+    <div class="card-title">⚙️ Gear</div>
     <div class="card-subtitle">/gear · /spaces (resources tab)</div>
     <div class="path-block">
       <div class="path-label">Self-serve</div>
@@ -409,6 +450,12 @@
       <li class="dot-item ok"><div class="d"></div><span>requiresApproval flag per item</span></li>
       <li class="dot-item ok"><div class="d"></div><span>Date-based availability</span></li>
     </ul>
+    <div class="gap-section">
+      <div class="gap-section-label">Gaps &amp; Builds</div>
+      <div class="feature-gap">Approval workflow UI (approve/deny) — flag exists, UI doesn't</div>
+      <div class="feature-gap">Maintenance / condition tracking</div>
+      <div class="feature-gap">Usage history per item</div>
+    </div>
     <details class="flow-expand">
       <summary>User Flows</summary>
       <div class="flow-inner">
@@ -424,7 +471,7 @@
   </div>
 
   <div class="card purple" id="arch-programmes">
-    <div class="card-title">📚 Programmes <a href="#gaps" class="section-nav-link purple">Gaps →</a></div>
+    <div class="card-title">📚 Programmes</div>
     <div class="card-subtitle">/programmes · /register/:slug</div>
     <div class="path-block">
       <div class="path-label">Self-serve</div>
@@ -448,6 +495,15 @@
       <li class="dot-item ok"><div class="d"></div><span>Growth surveys, CSV export</span></li>
       <li class="dot-item ok"><div class="d"></div><span>Cohort + effectiveness reporting</span></li>
     </ul>
+    <div class="gap-section">
+      <div class="gap-section-label">Gaps &amp; Builds</div>
+      <div class="feature-warn"><code>attended</code> → <code>programmes.attendees</code> not wired (report blind spot)</div>
+      <div class="feature-warn">Debrief ↔ programme linkage consistency (verify)</div>
+      <div class="feature-gap">Walk-in attendance (unregistered people on the day)</div>
+      <div class="feature-gap">Session-by-session roll call (multi-session programmes)</div>
+      <div class="feature-gap">Waitlist not wired — status exists but no auto-promote</div>
+      <div class="feature-gap">No lifecycle automation after programme completes</div>
+    </div>
     <details class="flow-expand" id="flow-programmes">
       <summary>User Flows (3)</summary>
       <div class="flow-inner">
@@ -566,6 +622,8 @@
      PART 2: GAPS — KNOWN ISSUES & MISSING PIECES
 ════════════════════════════════════════════════════════════ -->
 <div id="gaps" class="page-section-title gaps part-anchor">🔍 Part 2 — Gaps (Known Issues &amp; Missing Pieces)</div>
+
+<div class="inline-note">ℹ️ Gaps and builds are shown inline on each feature card above. This section is a reference summary.</div>
 
 <div class="grid-4">
 
@@ -689,6 +747,8 @@
      PART 3: BUILD LIST
 ════════════════════════════════════════════════════════════ -->
 <div id="build" class="page-section-title build part-anchor">🔨 Part 3 — Build List</div>
+
+<div class="inline-note">ℹ️ Gaps and builds are shown inline on each feature card above. This section contains detailed build specs.</div>
 
 <div class="section-label">Data Integrity — Fix First <a href="#flows" class="section-nav-link blue">← Flows</a> <a href="#gaps" class="section-nav-link purple">← Gaps</a></div>
 <div class="grid-2">
@@ -960,10 +1020,9 @@
 
 
   <!-- CREATOR JOURNEY MODULE -->
-  <div class="section" id="creator-journey">
-    <h2>🎙️ Creator Journey</h2>
-    <div class="status-badge status-new">NEW MODULE</div>
-    <p><strong>Concept:</strong> Podcast studio bookings as a development journey — same pipeline as mentoring (Kakano → Tipu → Ora). Access creates impact. Track development, not just output.</p>
+  <div id="creator-journey" class="page-section-title arch part-anchor" style="border-left-color:#ec4899;background:#1a0f1e;">🎙️ Creator Journey <span class="build-badge new" style="margin-left:8px;font-size:10px;">NEW MODULE</span></div>
+  <div class="card pink" style="max-width:960px;">
+    <p style="font-size:13px;color:#f0abfc;margin-bottom:12px;"><strong>Concept:</strong> Podcast studio bookings as a development journey — same pipeline as mentoring (Kakano → Tipu → Ora). Access creates impact. Track development, not just output.</p>
 
     <h3>Venue Config</h3>
     <ul>
