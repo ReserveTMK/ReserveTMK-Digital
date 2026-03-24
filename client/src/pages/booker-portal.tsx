@@ -28,6 +28,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   CalendarDays,
   Clock,
   Package,
@@ -41,6 +42,7 @@ import {
   Wrench,
   AlertTriangle,
   Pencil,
+  Settings,
 } from "lucide-react";
 
 type PortalView = "login" | "dashboard" | "calendar" | "desk-booking" | "gear-booking";
@@ -253,9 +255,15 @@ function DashboardView({
   const [changeRequestEndTime, setChangeRequestEndTime] = useState("");
   const [changeRequestVenueIds, setChangeRequestVenueIds] = useState<number[]>([]);
 
-  // Notification settings state — always blank, booker must type
+  // Determine if this booker is a paid booker (not free/koha agreement)
+  const isPaidBooker = booker.pricingTier !== "free_koha" && !authData.membership && !authData.mou;
+
+  // Settings panel state
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Notification settings state — start in saved mode if email already on record
   const [notifEmail, setNotifEmail] = useState<string>("");
-  const [notifEmailSaved, setNotifEmailSaved] = useState(false);
+  const [notifEmailSaved, setNotifEmailSaved] = useState(!!booker.notificationsEmail);
   const [invoiceEmail, setInvoiceEmail] = useState<string>("");
   const [invoiceEmailSaved, setInvoiceEmailSaved] = useState(false);
 
@@ -266,7 +274,6 @@ function DashboardView({
     },
     onSuccess: () => {
       setNotifEmailSaved(true);
-      setTimeout(() => setNotifEmailSaved(false), 3000);
       toast({ title: "Saved", description: "Confirmation email address updated" });
     },
     onError: () => {
@@ -281,16 +288,12 @@ function DashboardView({
     },
     onSuccess: () => {
       setInvoiceEmailSaved(true);
-      setTimeout(() => setInvoiceEmailSaved(false), 3000);
       toast({ title: "Saved", description: "Invoice email address updated" });
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to save invoice email", variant: "destructive" });
     },
   });
-
-  // Determine if this booker is a paid booker (not free/koha agreement)
-  const isPaidBooker = booker.pricingTier !== "free_koha" && !authData.membership && !authData.mou;
 
   const { data: venuesList } = useQuery<any[]>({
     queryKey: ["/api/booker/venues", token],
@@ -354,28 +357,155 @@ function DashboardView({
     ? new Date(agreement.endDate).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" })
     : null;
 
+  const hasNotifEmail = !!booker.notificationsEmail || notifEmailSaved;
+  const hasInvoiceEmail = !isPaidBooker || invoiceEmailSaved;
+  const canBook = hasNotifEmail && hasInvoiceEmail;
+  const settingsHasAlert = !hasNotifEmail || (isPaidBooker && !invoiceEmailSaved);
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/30">
       <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-6">
-        <div>
-          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase" data-testid="text-portal-brand">
-            ReserveTMK Digital
-          </p>
-          <h1 className="text-2xl font-bold mt-1" data-testid="heading-welcome">
-            Kia ora{isGroupLink ? `, ${authData.linkedGroupName || booker.organizationName || "Team"}` : `, ${contact?.name || booker.organizationName || "there"}`}
-          </h1>
-          {isGroupLink && (
-            <div className="flex items-center gap-2 mt-1">
-              <Users className="w-4 h-4 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground" data-testid="text-group-portal">
-                Group Portal
-              </p>
-            </div>
-          )}
-          {!isGroupLink && (booker.organizationName || authData.linkedGroupName) && (
-            <p className="text-sm text-muted-foreground" data-testid="text-org-name">
-              {booker.organizationName || authData.linkedGroupName}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase" data-testid="text-portal-brand">
+              ReserveTMK Digital
             </p>
+            <h1 className="text-2xl font-bold mt-1" data-testid="heading-welcome">
+              Kia ora{isGroupLink ? `, ${authData.linkedGroupName || booker.organizationName || "Team"}` : `, ${contact?.name || booker.organizationName || "there"}`}
+            </h1>
+            {isGroupLink && (
+              <div className="flex items-center gap-2 mt-1">
+                <Users className="w-4 h-4 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground" data-testid="text-group-portal">
+                  Group Portal
+                </p>
+              </div>
+            )}
+            {!isGroupLink && (booker.organizationName || authData.linkedGroupName) && (
+              <p className="text-sm text-muted-foreground" data-testid="text-org-name">
+                {booker.organizationName || authData.linkedGroupName}
+              </p>
+            )}
+          </div>
+
+          {!isGroupLink && (
+            <div className="relative shrink-0 mt-1" data-testid="settings-dropdown-container">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSettingsOpen((v) => !v)}
+                className="relative h-8 px-3 text-xs gap-1.5"
+                data-testid="button-settings"
+              >
+                {settingsHasAlert && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-500" aria-label="Settings required" />
+                )}
+                <Settings className="w-3.5 h-3.5" />
+                Settings
+                <ChevronDown className={`w-3 h-3 transition-transform ${settingsOpen ? "rotate-180" : ""}`} />
+              </Button>
+
+              {settingsOpen && (
+                <div className="absolute right-0 top-full mt-1 z-20 w-72 bg-background border rounded-lg shadow-lg p-4 space-y-4" data-testid="settings-panel">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Notification Settings</p>
+
+                  {/* Notification email */}
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">
+                      Confirmation email{" "}
+                      {!hasNotifEmail && <span className="text-amber-500">*</span>}
+                    </Label>
+                    {notifEmailSaved ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm flex-1 truncate text-foreground" data-testid="text-saved-notif-email">
+                          {notifEmail || booker.notificationsEmail}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 shrink-0 text-xs"
+                          onClick={() => {
+                            setNotifEmail(notifEmail || booker.notificationsEmail || "");
+                            setNotifEmailSaved(false);
+                          }}
+                          data-testid="button-edit-notif-email"
+                        >
+                          <Pencil className="w-3 h-3 mr-1" />Edit
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Input
+                          id="notif-email"
+                          type="email"
+                          placeholder="your@email.com"
+                          value={notifEmail}
+                          onChange={(e) => setNotifEmail(e.target.value)}
+                          className="flex-1 h-8 text-sm"
+                          data-testid="input-notif-email"
+                        />
+                        <Button
+                          size="sm"
+                          className="h-8 shrink-0"
+                          disabled={!notifEmail.trim() || !notifEmail.includes("@") || updateNotifEmailMutation.isPending}
+                          onClick={() => updateNotifEmailMutation.mutate(notifEmail.trim())}
+                          data-testid="button-save-notif-email"
+                        >
+                          {updateNotifEmailMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Invoice email (paid bookers only) */}
+                  {isPaidBooker && (
+                    <div className="space-y-1.5 pt-3 border-t">
+                      <Label className="text-sm">
+                        Invoice email{" "}
+                        {!hasInvoiceEmail && <span className="text-amber-500">*</span>}
+                      </Label>
+                      {invoiceEmailSaved ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm flex-1 truncate text-foreground" data-testid="text-saved-invoice-email">
+                            {invoiceEmail}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 shrink-0 text-xs"
+                            onClick={() => setInvoiceEmailSaved(false)}
+                            data-testid="button-edit-invoice-email"
+                          >
+                            <Pencil className="w-3 h-3 mr-1" />Edit
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex gap-2">
+                          <Input
+                            id="invoice-email"
+                            type="email"
+                            placeholder="invoices@yourorg.com"
+                            value={invoiceEmail}
+                            onChange={(e) => setInvoiceEmail(e.target.value)}
+                            className="flex-1 h-8 text-sm"
+                            data-testid="input-invoice-email"
+                          />
+                          <Button
+                            size="sm"
+                            className="h-8 shrink-0"
+                            disabled={!invoiceEmail.trim() || !invoiceEmail.includes("@") || updateInvoiceEmailMutation.isPending}
+                            onClick={() => updateInvoiceEmailMutation.mutate(invoiceEmail.trim())}
+                            data-testid="button-save-invoice-email"
+                          >
+                            {updateInvoiceEmailMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -426,15 +556,19 @@ function DashboardView({
                   </div>
                   <Button
                     size="sm"
-                    onClick={booker.notificationsEmail ? onBookSpace : undefined}
-                    disabled={!booker.notificationsEmail}
-                    title={!booker.notificationsEmail ? "Add a notification email below before booking" : undefined}
+                    onClick={canBook ? onBookSpace : undefined}
+                    disabled={!canBook}
+                    title={!canBook ? "Add required emails in Settings ⚙️ to book" : undefined}
                     data-testid="button-book-venue"
                   >
                     Book
                   </Button>
-                  {!booker.notificationsEmail && (
-                    <p className="text-[10px] text-amber-600 mt-1">Add notification email to book ↓</p>
+                  {!canBook && (
+                    <p className="text-[10px] text-amber-600 mt-1 w-full" data-testid="text-book-venue-gate">
+                      {!hasNotifEmail
+                        ? "Add your notification email in Settings ⚙️ to book"
+                        : "Add your invoice email in Settings ⚙️ to book"}
+                    </p>
                   )}
                 </div>
               </Card>
@@ -611,84 +745,6 @@ function DashboardView({
           )}
         </div>
 
-        {/* Notification Settings */}
-        {!isGroupLink && (
-          <Card className="p-5 space-y-4" data-testid="card-notification-settings">
-            <div className="flex items-center gap-2">
-              <Mail className="w-4 h-4 text-muted-foreground" />
-              <h3 className="font-semibold text-sm">Notification Settings</h3>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="notif-email" className="text-sm">
-                Booking confirmations &amp; calendar invites
-              </Label>
-              {booker.notificationsEmail && (
-                <p className="text-xs text-muted-foreground" data-testid="text-notif-email-current">
-                  Current: <span className="font-medium text-foreground">{booker.notificationsEmail}</span>
-                </p>
-              )}
-              <div className="flex gap-2">
-                <Input
-                  id="notif-email"
-                  type="email"
-                  placeholder={booker.notificationsEmail ? "Enter new email to update" : "your@email.com"}
-                  value={notifEmail}
-                  onChange={(e) => setNotifEmail(e.target.value)}
-                  className="flex-1"
-                  data-testid="input-notif-email"
-                />
-                <Button
-                  size="sm"
-                  disabled={!notifEmail.trim() || !notifEmail.includes("@") || updateNotifEmailMutation.isPending}
-                  onClick={() => updateNotifEmailMutation.mutate(notifEmail.trim())}
-                  data-testid="button-save-notif-email"
-                >
-                  {updateNotifEmailMutation.isPending ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : notifEmailSaved ? (
-                    <Check className="w-3 h-3" />
-                  ) : (
-                    "Save"
-                  )}
-                </Button>
-              </div>
-            </div>
-
-            {isPaidBooker && (
-              <div className="space-y-2 pt-2 border-t">
-                <Label htmlFor="invoice-email" className="text-sm">
-                  Invoice email
-                </Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="invoice-email"
-                    type="email"
-                    placeholder="invoices@yourorg.com"
-                    value={invoiceEmail}
-                    onChange={(e) => setInvoiceEmail(e.target.value)}
-                    className="flex-1"
-                    data-testid="input-invoice-email"
-                  />
-                  <Button
-                    size="sm"
-                    disabled={!invoiceEmail.trim() || !invoiceEmail.includes("@") || updateInvoiceEmailMutation.isPending}
-                    onClick={() => updateInvoiceEmailMutation.mutate(invoiceEmail.trim())}
-                    data-testid="button-save-invoice-email"
-                  >
-                    {updateInvoiceEmailMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : invoiceEmailSaved ? (
-                      <Check className="w-3 h-3" />
-                    ) : (
-                      "Save"
-                    )}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </Card>
-        )}
       </div>
 
       <Dialog open={!!cancelDialogBooking} onOpenChange={(open) => !open && setCancelDialogBooking(null)}>
