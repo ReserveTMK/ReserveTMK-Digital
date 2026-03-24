@@ -403,10 +403,14 @@
       <div class="feature-gap">Monthly reconciling UI</div>
       <div class="feature-gap">Payment instructions not clear in confirmation</div>
       <div class="feature-gap">No payment status visible in booking view</div>
-      <div class="feature-gap">Podcast Studio — no first-booker onboarding flow (isFirstBooking flag exists but unused in portal)</div>
-      <div class="feature-gap">Podcast Studio — no returning-booker check-in path</div>
-      <div class="feature-gap">Location mix enforcement not visually communicated in portal (silent 400 error only)</div>
-      <div class="feature-gap">bookingCategories not used to gate Office vs Studio selection in portal UI</div>
+      <div class="feature-gap">Venue grouping not built — Office vs Studio not visually separated in portal (flat venue list)</div>
+      <div class="feature-gap">Single-location-per-session not enforced in UI — only a silent server-side 400</div>
+      <div class="feature-gap">Classification list too broad (9 options) — needs tightening to: Meeting, Workshop, Rangatahi/Youth Workshop</div>
+      <div class="feature-gap">Podcast Studio — first-booker detection not built (isFirstBooking flag in schema, unused in portal)</div>
+      <div class="feature-gap">Podcast Studio — onboarding questions not built (new booker path)</div>
+      <div class="feature-gap">Podcast Studio — returning booker check-in not built</div>
+      <div class="feature-gap">Podcast Studio — induction tracking on booker profile not built</div>
+      <div class="feature-gap">bookingCategories on agreements not used to gate Office vs Studio in portal UI</div>
     </div>
     <details class="flow-expand" id="flow-spaces">
       <summary>User Flows (3)</summary>
@@ -448,33 +452,35 @@
           <div class="flow-step g"><div class="fl">Gap</div><div class="ft"><strong>No recurring booking setup</strong><div><span class="ftag gap">✗ gap</span></div></div></div>
         </div>
 
-        <div class="flow-sub-title green">🏢 Flow 4 — Office Space Booking (Workshop / Meeting / Youth Workshop)</div>
+        <div class="flow-sub-title green">🏢 Flow 4 — Office Space Booking (Agreement or Public)</div>
         <div class="flow-steps">
-          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Accesses booking portal</strong> — via magic link or /book/:userId</div></div>
-          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects space type</strong> — Workshop, Meeting Room, or Youth Workshop</div></div>
-          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Picks date + time</strong> — sees availability + pricing</div></div>
-          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Submits booking request</strong> — standard office hire flow</div></div>
-          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Alert → admin, confirmation → booker</strong> — same as general paid flow<div><span class="ftag ok">✓ works (via existing flow)</span></div></div></div>
-          <div class="flow-step w"><div class="fl">Gap</div><div class="ft"><strong>No space-type-specific onboarding</strong> — all spaces treated the same at booking<div><span class="ftag w">? verify needed</span></div></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Accesses portal</strong> — magic link (Agreement) or /casual-hire (Public)</div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects venue</strong> — grouped under Office (Workshop, Meeting Room, Youth Workshop). Cannot mix with Studio in same session.<div><span class="ftag no">✗ grouping not built — venues currently flat list</span></div></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects date + time</strong></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Classification</strong> — tighter list: Meeting, Workshop, Rangatahi/Youth Workshop<div><span class="ftag w">⚠ current list is too broad (9 options, legacy)</span></div></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>"Tell us about your booking"</strong> — free text, required<div><span class="ftag ok">✓ exists in booker-portal + casual-hire</span></div></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Submits</strong></div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Alert → admin, confirmation → booker</strong><div><span class="ftag ok">✓ works</span></div></div></div>
         </div>
 
-        <div class="flow-sub-title blue">🎙 Flow 5 — Podcast Studio First Booking (Onboarding)</div>
+        <div class="flow-sub-title blue">🎙 Flow 5 — Podcast Studio: First Booking (Onboarding)</div>
         <div class="flow-steps">
-          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects Podcast Studio</strong> in booking portal</div></div>
-          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Detects first-time studio booker</strong> — no prior studio bookings on record<div><span class="ftag no">✗ not built</span></div></div></div>
-          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Completes studio onboarding</strong> — gear orientation, usage rules, setup preferences<div><span class="ftag no">✗ not built</span></div></div></div>
-          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Books session</strong> — with induction noted on booking record</div></div>
-          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Confirmation includes studio-specific prep info</strong> — e.g. setup guide, what to bring<div><span class="ftag no">✗ not built</span></div></div></div>
-          <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Confirms + notes induction complete</strong> on booker profile</div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects Studio venue</strong> — grouped under Studio in portal<div><span class="ftag no">✗ grouping not built</span></div></div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Detects first-time studio booker</strong> — checks prior bookings with Studio spaceName<div><span class="ftag no">✗ not built — isFirstBooking flag exists in schema but unused in portal</span></div></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Studio onboarding questions</strong> — gear orientation, usage rules, setup preferences, what they plan to produce<div><span class="ftag no">✗ not built</span></div></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects date + time</strong></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Submits</strong> — induction flag saved on booking record</div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Confirmation includes studio prep info</strong> — setup guide, what to bring<div><span class="ftag no">✗ not built</span></div></div></div>
+          <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Confirms + marks induction complete</strong> on booker profile<div><span class="ftag no">✗ induction tracking not built</span></div></div></div>
         </div>
 
-        <div class="flow-sub-title purple">🔄 Flow 6 — Podcast Studio Returning (Rebooking Check-in)</div>
+        <div class="flow-sub-title purple">🔄 Flow 6 — Podcast Studio: Returning Booker (Check-in)</div>
         <div class="flow-steps">
-          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects Podcast Studio</strong> in booking portal</div></div>
-          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Detects returning studio booker</strong> — prior studio booking(s) on record<div><span class="ftag no">✗ not built</span></div></div></div>
-          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Brief check-in</strong> — what are you recording? Any changes to setup?<div><span class="ftag no">✗ not built</span></div></div></div>
-          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Books session</strong> — skips induction, uses saved preferences</div></div>
-          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Confirmation includes returning-specific info</strong> — streamlined, no onboarding repeat<div><span class="ftag no">✗ not built</span></div></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects Studio venue</strong></div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Detects returning studio booker</strong> — prior Studio booking on record<div><span class="ftag no">✗ not built</span></div></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Short check-in questions</strong> — what are you recording? Any setup changes? (skips full onboarding)<div><span class="ftag no">✗ not built</span></div></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects date + time → submits</strong></div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Streamlined confirmation</strong> — no induction repeat<div><span class="ftag no">✗ not built</span></div></div></div>
         </div>
 
       </div>
