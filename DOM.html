@@ -388,6 +388,9 @@
       <div class="feature-gap">Monthly reconciling UI</div>
       <div class="feature-gap">Payment instructions not clear in confirmation</div>
       <div class="feature-gap">No payment status visible in booking view</div>
+      <div class="feature-gap">Podcast Studio — no first-booker detection (onboarding flow)</div>
+      <div class="feature-gap">Podcast Studio — no returning-booker detection (rebooking check-in)</div>
+      <div class="feature-gap">No space-type-specific onboarding (Office vs Studio treated identically)</div>
     </div>
     <details class="flow-expand" id="flow-spaces">
       <summary>User Flows (3)</summary>
@@ -424,6 +427,36 @@
           <div class="flow-step g"><div class="fl">Gap</div><div class="ft"><strong>No quick-add unplanned activation</strong><div><span class="ftag gap">✗ gap</span></div></div></div>
           <div class="flow-step g"><div class="fl">Gap</div><div class="ft"><strong>No recurring booking setup</strong><div><span class="ftag gap">✗ gap</span></div></div></div>
         </div>
+
+        <div class="flow-sub-title green">🏢 Flow 4 — Office Space Booking (Workshop / Meeting / Youth Workshop)</div>
+        <div class="flow-steps">
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Accesses booking portal</strong> — via magic link or /book/:userId</div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects space type</strong> — Workshop, Meeting Room, or Youth Workshop</div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Picks date + time</strong> — sees availability + pricing</div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Submits booking request</strong> — standard office hire flow</div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Alert → admin, confirmation → booker</strong> — same as general paid flow<div><span class="ftag ok">✓ works (via existing flow)</span></div></div></div>
+          <div class="flow-step w"><div class="fl">Gap</div><div class="ft"><strong>No space-type-specific onboarding</strong> — all spaces treated the same at booking<div><span class="ftag w">? verify needed</span></div></div></div>
+        </div>
+
+        <div class="flow-sub-title blue">🎙 Flow 5 — Podcast Studio First Booking (Onboarding)</div>
+        <div class="flow-steps">
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects Podcast Studio</strong> in booking portal</div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Detects first-time studio booker</strong> — no prior studio bookings on record<div><span class="ftag no">✗ not built</span></div></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Completes studio onboarding</strong> — gear orientation, usage rules, setup preferences<div><span class="ftag no">✗ not built</span></div></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Books session</strong> — with induction noted on booking record</div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Confirmation includes studio-specific prep info</strong> — e.g. setup guide, what to bring<div><span class="ftag no">✗ not built</span></div></div></div>
+          <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Confirms + notes induction complete</strong> on booker profile</div></div>
+        </div>
+
+        <div class="flow-sub-title purple">🔄 Flow 6 — Podcast Studio Returning (Rebooking Check-in)</div>
+        <div class="flow-steps">
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects Podcast Studio</strong> in booking portal</div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Detects returning studio booker</strong> — prior studio booking(s) on record<div><span class="ftag no">✗ not built</span></div></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Brief check-in</strong> — what are you recording? Any changes to setup?<div><span class="ftag no">✗ not built</span></div></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Books session</strong> — skips induction, uses saved preferences</div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Confirmation includes returning-specific info</strong> — streamlined, no onboarding repeat<div><span class="ftag no">✗ not built</span></div></div></div>
+        </div>
+
       </div>
     </details>
   </div>
