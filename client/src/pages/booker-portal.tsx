@@ -1759,6 +1759,14 @@ function CalendarView({
   const monthName = new Date(currentYear, currentMonth).toLocaleDateString("en-NZ", { month: "long", year: "numeric" });
 
   const maxAdvanceMonths = pricingData?.maxAdvanceMonths ?? 3;
+
+  // Compute agreement usage locally for rates display
+  const calAgreementUsage = useMemo(() => {
+    const agreement = authData.membership || authData.mou;
+    if (!agreement) return 0;
+    const type = authData.membership ? "membership" : "mou";
+    return getAgreementAllowanceUsage(calViewVenueBookings, type, agreement.id, agreement.allowancePeriod);
+  }, [authData, calViewVenueBookings]);
   const maxBookingDate = useMemo(() => {
     const d = new Date();
     d.setMonth(d.getMonth() + maxAdvanceMonths);
@@ -2062,7 +2070,7 @@ function CalendarView({
             const agreement = authData.membership || authData.mou;
             const total = agreement?.bookingAllowance ?? 0;
             if (!total) return null;
-            const used = authData._agreementUsage ?? 0;
+            const used = calAgreementUsage;
             const remaining = Math.max(0, total - used);
             const period = getPeriodLabel(agreement.allowancePeriod);
             return (
