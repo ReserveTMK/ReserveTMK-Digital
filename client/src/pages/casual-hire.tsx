@@ -192,7 +192,7 @@ export default function CasualHirePage() {
   });
 
   const allSelectedAreStudio = useMemo(
-    () => selectedVenues.length > 0 && selectedVenues.every(id => venues?.find((v: any) => v.id === id)?.spaceName === "Studio"),
+    () => selectedVenues.length > 0 && selectedVenues.every(id => venues?.find((v: any) => v.id === id)?.spaceName === "Podcast Studio"),
     [selectedVenues, venues]
   );
 
@@ -637,9 +637,9 @@ export default function CasualHirePage() {
                   <Label className="text-xs">Select Venue{(venues?.length || 0) > 1 ? "s" : ""}</Label>
                   <div className="space-y-1">
                     {(() => {
-                      const officeVenues = (venues || []).filter((v: any) => v.spaceName === "Office");
-                      const studioVenues = (venues || []).filter((v: any) => v.spaceName === "Studio");
-                      const otherVenues = (venues || []).filter((v: any) => v.spaceName !== "Office" && v.spaceName !== "Studio");
+                      const officeVenues = (venues || []).filter((v: any) => v.spaceName === "ReserveTMK Office");
+                      const studioVenues = (venues || []).filter((v: any) => v.spaceName === "Podcast Studio");
+                      const otherVenues = (venues || []).filter((v: any) => v.spaceName !== "ReserveTMK Office" && v.spaceName !== "Podcast Studio");
 
                       const renderVenueBtn = (v: any) => {
                         const venueStatus = getVenueStatusForDate(v.id, selectedDate!);

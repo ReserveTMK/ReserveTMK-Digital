@@ -1716,7 +1716,7 @@ function CalendarView({
   const bookerUserId = (authData.userId || "") as string;
 
   const allSelectedAreStudio = useMemo(
-    () => selectedVenues.length > 0 && selectedVenues.every(id => venues?.find((v: any) => v.id === id)?.spaceName === "Studio"),
+    () => selectedVenues.length > 0 && selectedVenues.every(id => venues?.find((v: any) => v.id === id)?.spaceName === "Podcast Studio"),
     [selectedVenues, venues]
   );
 
@@ -2192,9 +2192,9 @@ function CalendarView({
                 {selectedDate && (
                 <div className="space-y-2">
                   {(() => {
-                    const officeVenues = (venues || []).filter((v: any) => v.spaceName === "Office");
-                    const studioVenues = (venues || []).filter((v: any) => v.spaceName === "Studio");
-                    const otherVenues = (venues || []).filter((v: any) => v.spaceName !== "Office" && v.spaceName !== "Studio");
+                    const officeVenues = (venues || []).filter((v: any) => v.spaceName === "ReserveTMK Office");
+                    const studioVenues = (venues || []).filter((v: any) => v.spaceName === "Podcast Studio");
+                    const otherVenues = (venues || []).filter((v: any) => v.spaceName !== "ReserveTMK Office" && v.spaceName !== "Podcast Studio");
 
                     const renderVenueBtn = (v: any) => {
                       const venueStatus = getVenueStatusForDate(v.id, selectedDate!);
@@ -2244,8 +2244,8 @@ function CalendarView({
                     // Step 1: Location picker
                     if (!selectedLocation) {
                       const locationOptions = [
-                        { key: "Office", icon: "🏢", label: "Office", venues: officeVenues },
-                        { key: "Studio", icon: "🎙", label: "Studio", venues: studioVenues },
+                        { key: "ReserveTMK Office", icon: "🏢", label: "ReserveTMK Office", venues: officeVenues },
+                        { key: "Podcast Studio", icon: "🎙", label: "Podcast Studio", venues: studioVenues },
                         { key: "Other", icon: "📍", label: "Other", venues: otherVenues },
                       ].filter(loc => loc.venues.length > 0);
 
@@ -2275,8 +2275,8 @@ function CalendarView({
 
                     // Step 2: Venue picker for selected location
                     const filteredVenues =
-                      selectedLocation === "Office" ? officeVenues :
-                      selectedLocation === "Studio" ? studioVenues :
+                      selectedLocation === "ReserveTMK Office" ? officeVenues :
+                      selectedLocation === "Podcast Studio" ? studioVenues :
                       otherVenues;
 
                     return (
