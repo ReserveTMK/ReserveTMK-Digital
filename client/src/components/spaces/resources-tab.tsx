@@ -21,6 +21,8 @@ import {
   ArrowUp,
   ArrowDown,
   Settings2,
+  MapPin,
+  AlertTriangle,
 } from "lucide-react";
 import {
   useVenues,
@@ -125,7 +127,10 @@ function VenuesSubSection({
   const { toast } = useToast();
 
   const [newName, setNewName] = useState("");
-  const [newSpaceName, setNewSpaceName] = useState("");
+  const [newSpaceNameSelection, setNewSpaceNameSelection] = useState("");
+  const [newSpaceNameCustom, setNewSpaceNameCustom] = useState("");
+  const [assigningVenueId, setAssigningVenueId] = useState<number | null>(null);
+  const [assignSpaceName, setAssignSpaceName] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newCapacity, setNewCapacity] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
@@ -142,14 +147,18 @@ function VenuesSubSection({
   const handleCreateVenue = async () => {
     if (!newName.trim()) return;
     try {
+      const resolvedSpaceName = newSpaceNameSelection === "__new__"
+        ? newSpaceNameCustom.trim() || undefined
+        : newSpaceNameSelection || undefined;
       await createVenue.mutateAsync({
         name: newName.trim(),
-        spaceName: newSpaceName.trim() || undefined,
+        spaceName: resolvedSpaceName,
         description: newDescription.trim() || undefined,
         capacity: newCapacity ? parseInt(newCapacity) : undefined,
       });
       setNewName("");
-      setNewSpaceName("");
+      setNewSpaceNameSelection("");
+      setNewSpaceNameCustom("");
       setNewDescription("");
       setNewCapacity("");
       setShowAddForm(false);
@@ -190,15 +199,25 @@ function VenuesSubSection({
     if (!venues) return {};
     const groups: Record<string, typeof venues> = {};
     for (const v of venues) {
-      const group = v.spaceName || "Other";
+      if (!v.spaceName) continue;
+      const group = v.spaceName;
       if (!groups[group]) groups[group] = [];
       groups[group].push(v);
     }
     return groups;
   }, [venues]);
 
+  const unassignedVenues = useMemo(() => {
+    if (!venues) return [];
+    return venues.filter(v => !v.spaceName);
+  }, [venues]);
+
   return (
     <div className="space-y-4">
+      <LocationsManagementSection
+        existingSpaceNames={existingSpaceNames}
+        groupedVenues={groupedVenues}
+      />
       {Object.entries(groupedVenues).map(([spaceName, spaceVenues]) => (
         <div key={spaceName} className="space-y-2">
           <h3 className="text-sm font-semibold text-muted-foreground px-1" data-testid={`text-space-name-${spaceName}`}>{spaceName}</h3>
@@ -213,6 +232,9 @@ function VenuesSubSection({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium text-sm" data-testid={`text-venue-name-${venue.id}`}>{venue.name}</span>
+                    {venue.spaceName && (
+                      <Badge variant="secondary" className="text-xs bg-muted/60 font-normal">{venue.spaceName}</Badge>
+                    )}
                     {venue.capacity && (
                       <Badge variant="secondary" className="text-xs">
                         Cap: {venue.capacity}
@@ -257,6 +279,105 @@ function VenuesSubSection({
         <p className="text-sm text-muted-foreground text-center py-4">No venues yet. Click "Add New Venue" to create one.</p>
       )}
 
+      {unassignedVenues.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-amber-600 dark:text-amber-400 px-1 flex items-center gap-1.5" data-testid="text-space-name-unassigned">
+            <AlertTriangle className="w-4 h-4" />
+            Unassigned Venues
+          </h3>
+          {unassignedVenues.map((venue) => (
+            <Card key={venue.id} className="overflow-hidden border-amber-200 dark:border-amber-800" data-testid={`card-venue-${venue.id}`}>
+              <div
+                className="p-3 cursor-pointer hover:bg-muted/50 transition-colors"
+                onClick={() => assigningVenueId !== venue.id && setExpandedVenueId(expandedVenueId === venue.id ? null : venue.id)}
+                data-testid={`button-expand-venue-${venue.id}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium text-sm" data-testid={`text-venue-name-${venue.id}`}>{venue.name}</span>
+                      {venue.capacity && (
+                        <Badge variant="secondary" className="text-xs">Cap: {venue.capacity}</Badge>
+                      )}
+                      {!venue.active && (
+                        <Badge variant="outline" className="text-xs opacity-60">Inactive</Badge>
+                      )}
+                    </div>
+                    {venue.description && (
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">{venue.description}</p>
+                    )}
+                    {assigningVenueId === venue.id ? (
+                      <div className="flex items-center gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
+                        <Select value={assignSpaceName} onValueChange={setAssignSpaceName}>
+                          <SelectTrigger className="h-7 text-xs flex-1" data-testid={`select-assign-location-${venue.id}`}>
+                            <SelectValue placeholder="Select location..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {existingSpaceNames.map(s => (
+                              <SelectItem key={s} value={s}>{s}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          size="sm"
+                          className="h-7 text-xs"
+                          disabled={!assignSpaceName || updateVenue.isPending}
+                          onClick={async () => {
+                            try {
+                              await updateVenue.mutateAsync({ id: venue.id, data: { spaceName: assignSpaceName } });
+                              setAssigningVenueId(null);
+                              setAssignSpaceName("");
+                              toast({ title: "Assigned", description: `${venue.name} moved to ${assignSpaceName}` });
+                            } catch (err: any) {
+                              toast({ title: "Error", description: err.message || "Failed to assign", variant: "destructive" });
+                            }
+                          }}
+                          data-testid={`button-save-assign-location-${venue.id}`}
+                        >
+                          {updateVenue.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setAssigningVenueId(null); setAssignSpaceName(""); }}>
+                          Cancel
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 text-xs mt-1.5 border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400"
+                        onClick={(e) => { e.stopPropagation(); setAssigningVenueId(venue.id); setAssignSpaceName(""); }}
+                        data-testid={`button-assign-location-${venue.id}`}
+                      >
+                        Assign Location →
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Switch
+                      checked={venue.active ?? true}
+                      onCheckedChange={() => handleToggleActive(venue)}
+                      onClick={(e) => e.stopPropagation()}
+                      data-testid={`switch-venue-active-${venue.id}`}
+                    />
+                    <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleDeleteVenue(venue.id); }} data-testid={`button-delete-venue-${venue.id}`}>
+                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                    </Button>
+                    {expandedVenueId === venue.id ? (
+                      <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                    )}
+                  </div>
+                </div>
+              </div>
+              {expandedVenueId === venue.id && (
+                <VenueManagementPanel venue={venue} />
+              )}
+            </Card>
+          ))}
+        </div>
+      )}
+
       <div className="border-t pt-4 space-y-2">
         {!showAddForm ? (
           <Button variant="outline" onClick={() => setShowAddForm(true)} data-testid="button-show-add-venue-form">
@@ -266,17 +387,40 @@ function VenuesSubSection({
         ) : (
           <div className="space-y-2">
             <Label className="text-sm font-semibold">Add New Venue</Label>
-            <Input
-              value={newSpaceName}
-              onChange={(e) => setNewSpaceName(e.target.value)}
-              placeholder="Space (e.g. ReserveTMK Digital Office, ReserveTMK Digital Studio)"
-              data-testid="input-new-venue-space"
-              list="space-name-options"
-            />
-            {existingSpaceNames.length > 0 && (
-              <datalist id="space-name-options">
-                {existingSpaceNames.map(s => <option key={s} value={s} />)}
-              </datalist>
+            {existingSpaceNames.length > 0 && newSpaceNameSelection !== "__new__" ? (
+              <Select value={newSpaceNameSelection} onValueChange={setNewSpaceNameSelection}>
+                <SelectTrigger data-testid="select-new-venue-space">
+                  <SelectValue placeholder="Select location (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">— No location —</SelectItem>
+                  {existingSpaceNames.map(s => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                  <SelectItem value="__new__">+ Add new location</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : newSpaceNameSelection === "__new__" ? (
+              <div className="flex items-center gap-2">
+                <Input
+                  value={newSpaceNameCustom}
+                  onChange={(e) => setNewSpaceNameCustom(e.target.value)}
+                  placeholder="New location name"
+                  data-testid="input-new-venue-space-custom"
+                  className="flex-1"
+                  autoFocus
+                />
+                <Button variant="outline" size="sm" onClick={() => { setNewSpaceNameSelection(""); setNewSpaceNameCustom(""); }}>
+                  ← Back
+                </Button>
+              </div>
+            ) : (
+              <Input
+                value={newSpaceNameCustom}
+                onChange={(e) => setNewSpaceNameCustom(e.target.value)}
+                placeholder="Location name (optional)"
+                data-testid="input-new-venue-space"
+              />
             )}
             <Input
               value={newName}
@@ -303,7 +447,7 @@ function VenuesSubSection({
                 <Plus className="w-4 h-4 mr-2" />
                 Add Venue
               </Button>
-              <Button variant="outline" onClick={() => { setShowAddForm(false); setNewName(""); setNewSpaceName(""); setNewDescription(""); setNewCapacity(""); }} data-testid="button-cancel-add-venue">
+              <Button variant="outline" onClick={() => { setShowAddForm(false); setNewName(""); setNewSpaceNameSelection(""); setNewSpaceNameCustom(""); setNewDescription(""); setNewCapacity(""); }} data-testid="button-cancel-add-venue">
                 Cancel
               </Button>
             </div>
@@ -415,28 +559,46 @@ function VenueManagementPanel({ venue }: { venue: Venue }) {
 
 function VenueDetailsSection({ venue }: { venue: Venue }) {
   const updateVenue = useUpdateVenue();
+  const { data: allVenues } = useVenues();
   const { toast } = useToast();
+
+  const existingSpaceNames = useMemo(() => {
+    if (!allVenues) return [];
+    const names = new Set<string>();
+    for (const v of allVenues) {
+      if (v.spaceName) names.add(v.spaceName);
+    }
+    return Array.from(names).sort();
+  }, [allVenues]);
 
   const [editName, setEditName] = useState(venue.name);
   const [editDescription, setEditDescription] = useState(venue.description || "");
   const [editCapacity, setEditCapacity] = useState(venue.capacity?.toString() || "");
+  const [editSpaceNameSelection, setEditSpaceNameSelection] = useState(venue.spaceName || "");
+  const [editSpaceNameCustom, setEditSpaceNameCustom] = useState("");
   const [isDirty, setIsDirty] = useState(false);
 
   useEffect(() => {
     setEditName(venue.name);
     setEditDescription(venue.description || "");
     setEditCapacity(venue.capacity?.toString() || "");
+    setEditSpaceNameSelection(venue.spaceName || "");
+    setEditSpaceNameCustom("");
     setIsDirty(false);
   }, [venue]);
 
   const handleSave = async () => {
     try {
+      const resolvedSpaceName = editSpaceNameSelection === "__new__"
+        ? editSpaceNameCustom.trim() || undefined
+        : editSpaceNameSelection || undefined;
       await updateVenue.mutateAsync({
         id: venue.id,
         data: {
           name: editName.trim(),
           description: editDescription.trim() || undefined,
           capacity: editCapacity ? parseInt(editCapacity) : undefined,
+          spaceName: resolvedSpaceName,
         },
       });
       setIsDirty(false);
@@ -476,6 +638,45 @@ function VenueDetailsSection({ venue }: { venue: Venue }) {
           data-testid={`input-edit-venue-capacity-${venue.id}`}
         />
       </div>
+      <div className="space-y-1">
+        <Label className="text-xs text-muted-foreground">Location</Label>
+        {existingSpaceNames.length > 0 && editSpaceNameSelection !== "__new__" ? (
+          <Select value={editSpaceNameSelection} onValueChange={(v) => { setEditSpaceNameSelection(v); setIsDirty(true); }}>
+            <SelectTrigger className="h-8 text-xs" data-testid={`select-edit-venue-space-${venue.id}`}>
+              <SelectValue placeholder="No location" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">— No location —</SelectItem>
+              {existingSpaceNames.map(s => (
+                <SelectItem key={s} value={s}>{s}</SelectItem>
+              ))}
+              <SelectItem value="__new__">+ Add new location</SelectItem>
+            </SelectContent>
+          </Select>
+        ) : editSpaceNameSelection === "__new__" ? (
+          <div className="flex items-center gap-2">
+            <Input
+              value={editSpaceNameCustom}
+              onChange={(e) => { setEditSpaceNameCustom(e.target.value); setIsDirty(true); }}
+              placeholder="New location name"
+              className="h-8 text-xs flex-1"
+              data-testid={`input-edit-venue-space-custom-${venue.id}`}
+              autoFocus
+            />
+            <Button variant="outline" size="sm" className="h-8" onClick={() => { setEditSpaceNameSelection(venue.spaceName || ""); setEditSpaceNameCustom(""); }}>
+              ← Back
+            </Button>
+          </div>
+        ) : (
+          <Input
+            value={editSpaceNameSelection}
+            onChange={(e) => { setEditSpaceNameSelection(e.target.value); setIsDirty(true); }}
+            placeholder="Location name (optional)"
+            className="h-8 text-xs"
+            data-testid={`input-edit-venue-space-${venue.id}`}
+          />
+        )}
+      </div>
       {isDirty && (
         <div className="flex items-center gap-2">
           <Button size="sm" onClick={handleSave} disabled={updateVenue.isPending} data-testid={`button-save-venue-${venue.id}`}>
@@ -486,6 +687,8 @@ function VenueDetailsSection({ venue }: { venue: Venue }) {
             setEditName(venue.name);
             setEditDescription(venue.description || "");
             setEditCapacity(venue.capacity?.toString() || "");
+            setEditSpaceNameSelection(venue.spaceName || "");
+            setEditSpaceNameCustom("");
             setIsDirty(false);
           }} data-testid={`button-cancel-edit-venue-${venue.id}`}>
             Cancel
@@ -585,6 +788,110 @@ function VenueAvailabilitySection({ venue }: { venue: Venue }) {
           }} data-testid={`button-cancel-availability-${venue.id}`}>
             Cancel
           </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LocationsManagementSection({
+  existingSpaceNames,
+  groupedVenues,
+}: {
+  existingSpaceNames: string[];
+  groupedVenues: Record<string, Venue[]>;
+}) {
+  const updateVenue = useUpdateVenue();
+  const { toast } = useToast();
+  const [expanded, setExpanded] = useState(false);
+  const [renamingLocation, setRenamingLocation] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+
+  const handleRename = async (oldName: string) => {
+    const trimmed = renameValue.trim();
+    if (!trimmed || trimmed === oldName) { setRenamingLocation(null); return; }
+    const venuesToUpdate = groupedVenues[oldName] || [];
+    try {
+      await Promise.all(venuesToUpdate.map(v => updateVenue.mutateAsync({ id: v.id, data: { spaceName: trimmed } })));
+      toast({ title: "Renamed", description: `"${oldName}" renamed to "${trimmed}" (${venuesToUpdate.length} venue${venuesToUpdate.length !== 1 ? "s" : ""} updated)` });
+      setRenamingLocation(null);
+      setRenameValue("");
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to rename location", variant: "destructive" });
+    }
+  };
+
+  if (existingSpaceNames.length === 0) {
+    return (
+      <div className="border rounded-lg p-3 bg-muted/20" data-testid="locations-management-empty">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <MapPin className="w-4 h-4" />
+          <span className="font-medium">Locations</span>
+        </div>
+        <p className="text-xs text-muted-foreground mt-1.5">No locations set — add a Space Name to your venues to create locations.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border rounded-lg overflow-hidden" data-testid="locations-management">
+      <div
+        className="p-3 cursor-pointer hover:bg-muted/50 transition-colors flex items-center justify-between"
+        onClick={() => setExpanded(!expanded)}
+        data-testid="button-expand-locations-management"
+      >
+        <div className="flex items-center gap-2">
+          <MapPin className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-medium">Locations</span>
+          <Badge variant="secondary" className="text-xs">{existingSpaceNames.length}</Badge>
+        </div>
+        {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+      </div>
+      {expanded && (
+        <div className="border-t divide-y">
+          {existingSpaceNames.map(name => {
+            const count = (groupedVenues[name] || []).length;
+            const isRenaming = renamingLocation === name;
+            return (
+              <div key={name} className="flex items-center justify-between gap-2 p-2.5 px-3" data-testid={`location-row-${name.replace(/\s+/g, '-')}`}>
+                {isRenaming ? (
+                  <div className="flex items-center gap-2 flex-1">
+                    <Input
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") handleRename(name); if (e.key === "Escape") setRenamingLocation(null); }}
+                      className="h-7 text-xs flex-1"
+                      autoFocus
+                      data-testid={`input-rename-location-${name.replace(/\s+/g, '-')}`}
+                    />
+                    <Button size="sm" className="h-7 text-xs" onClick={() => handleRename(name)} disabled={updateVenue.isPending} data-testid={`button-save-rename-location-${name.replace(/\s+/g, '-')}`}>
+                      {updateVenue.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setRenamingLocation(null)}>
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{name}</span>
+                      <span className="text-xs text-muted-foreground">({count} venue{count !== 1 ? "s" : ""})</span>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs"
+                      onClick={() => { setRenamingLocation(name); setRenameValue(name); }}
+                      data-testid={`button-rename-location-${name.replace(/\s+/g, '-')}`}
+                    >
+                      <Pencil className="w-3 h-3 mr-1" />
+                      Rename
+                    </Button>
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
