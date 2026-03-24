@@ -48,6 +48,10 @@ import {
   Monitor,
   Wrench,
   Home,
+  MapPin,
+  Mail,
+  Send,
+  ExternalLink,
 } from "lucide-react";
 import { BookerAgreementPanel } from "@/components/spaces/booker-agreement-panel";
 import {
@@ -64,7 +68,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { getAgreementAllowanceUsage, getPeriodLabel } from "@/lib/utils";
 import { PRICING_TIERS, REGULAR_BOOKER_STATUSES, PAYMENT_TERMS, type Contact, type RegularBooker, type Group } from "@shared/schema";
 
@@ -97,6 +101,12 @@ const PAYMENT_TERM_LABELS: Record<string, string> = {
   net_7: "Net 7 days",
   net_14: "Net 14 days",
   net_30: "Net 30 days",
+};
+
+const CATEGORY_LABELS: Record<string, string> = {
+  venue_hire: "Venue Hire",
+  hot_desking: "Hot Desking",
+  gear: "Gear",
 };
 
 export default function RegularBookersPage({ embedded, categoryScope, hideSuggestions }: { embedded?: boolean; categoryScope?: string[]; hideSuggestions?: boolean } = {}) {
@@ -152,6 +162,19 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
     },
   });
 
+  const resendLinkMutation = useMutation({
+    mutationFn: async (bookerId: number) => {
+      const res = await apiRequest("POST", `/api/regular-bookers/${bookerId}/resend-link`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Link sent", description: "Portal link emailed to booker" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to send link", description: err.message, variant: "destructive" });
+    },
+  });
+
   const getBookerDisplayName = (booker: RegularBooker) => {
     const contactName = booker.contactId ? (contacts || []).find(c => c.id === booker.contactId)?.name : null;
     const groupName = booker.groupId ? (groups || []).find((g: any) => g.id === booker.groupId)?.name : null;
@@ -192,7 +215,10 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
       if (!l.lastAccessedAt) return latest;
       return !latest || new Date(l.lastAccessedAt) > new Date(latest) ? l.lastAccessedAt : latest;
     }, null);
-    return { status: "active" as const, label: lastAccessed ? `Active` : "Active (unused)", links: activeLinks, lastAccessed };
+    const lastUsedLabel = lastAccessed
+      ? `Last used: ${formatDistanceToNow(new Date(lastAccessed), { addSuffix: true })}`
+      : "Never accessed";
+    return { status: "active" as const, label: lastUsedLabel, links: activeLinks, lastAccessed };
   };
 
   const getBookerCategories = (booker: RegularBooker): string[] => {
@@ -349,7 +375,7 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
   };
 
   const scopeLabel = categoryScope?.length === 1
-    ? categoryScope[0] === "gear" ? "Gear Bookers" : categoryScope[0] === "hot_desking" ? "Desk Bookers" : "Bookers"
+    ? `${CATEGORY_LABELS[categoryScope[0]] || categoryScope[0]} Bookers`
     : "Bookers";
 
   return (
@@ -510,6 +536,23 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
                             {booker.billingEmail}
                           </p>
                         ) : null}
+                        {(booker as any).notificationsEmail ? (
+                          <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5" data-testid={`text-booker-notif-email-${booker.id}`}>
+                            <Mail className="w-3 h-3 shrink-0" />
+                            {(booker as any).notificationsEmail}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1 mt-0.5" data-testid={`text-booker-notif-email-unset-${booker.id}`}>
+                            <Mail className="w-3 h-3 shrink-0" />
+                            <span>Notifications email not set</span>
+                          </p>
+                        )}
+                        {booker.pricingTier !== "free_koha" && !agreement && (booker as any).invoiceEmail && (
+                          <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5" data-testid={`text-booker-invoice-email-${booker.id}`}>
+                            <FileText className="w-3 h-3 shrink-0" />
+                            {(booker as any).invoiceEmail}
+                          </p>
+                        )}
                         {(booker.mouId || booker.membershipId) && (
                           <BookerAgreementPanel
                             bookerId={booker.id}
@@ -523,36 +566,58 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
                         {categories.includes("venue_hire") && (
                           <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800" data-testid={`badge-cat-venue-${booker.id}`}>
                             <Home className="w-3 h-3 mr-0.5" />
-                            Venue
+                            {CATEGORY_LABELS["venue_hire"]}
                           </Badge>
                         )}
                         {categories.includes("hot_desking") && (
                           <Badge variant="outline" className="text-[10px] bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800" data-testid={`badge-cat-desk-${booker.id}`}>
                             <Monitor className="w-3 h-3 mr-0.5" />
-                            Desk
+                            {CATEGORY_LABELS["hot_desking"]}
                           </Badge>
                         )}
                         {categories.includes("gear") && (
                           <Badge variant="outline" className="text-[10px] bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800" data-testid={`badge-cat-gear-${booker.id}`}>
                             <Wrench className="w-3 h-3 mr-0.5" />
-                            Gear
+                            {CATEGORY_LABELS["gear"]}
                           </Badge>
                         )}
                       </div>
                     </TableCell>
                     <TableCell>
                       {agreement ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Badge variant="outline" className="text-[10px] gap-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 cursor-default" data-testid={`badge-agreement-${booker.id}`}>
-                              <FileText className="w-3 h-3" />
-                              {agreement.type}
-                            </Badge>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>{agreement.type}: {agreement.name}</p>
-                          </TooltipContent>
-                        </Tooltip>
+                        <div className="space-y-1">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Badge variant="outline" className="text-[10px] gap-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 cursor-default" data-testid={`badge-agreement-${booker.id}`}>
+                                <FileText className="w-3 h-3" />
+                                {agreement.type}
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>{agreement.type}: {agreement.name}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                          {(() => {
+                            const ag = agreement.agreement as any;
+                            const locs: string[] = ag?.allowedLocations || [];
+                            if (locs.length === 0) return (
+                              <p className="text-[10px] text-muted-foreground flex items-center gap-0.5" data-testid={`text-locations-all-${booker.id}`}>
+                                <MapPin className="w-3 h-3 shrink-0" />
+                                All locations
+                              </p>
+                            );
+                            return (
+                              <div className="flex flex-wrap gap-0.5" data-testid={`locations-${booker.id}`}>
+                                {locs.map(loc => (
+                                  <Badge key={loc} variant="outline" className="text-[10px] gap-0.5 px-1 py-0" data-testid={`badge-location-${loc}-${booker.id}`}>
+                                    <MapPin className="w-2.5 h-2.5" />
+                                    {loc}
+                                  </Badge>
+                                ))}
+                              </div>
+                            );
+                          })()}
+                        </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">-</span>
                       )}
@@ -604,21 +669,16 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
                       )}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1.5">
+                      <div className="space-y-0.5">
                         <Badge className={`${LINK_STATUS_COLORS[linkStatus.status]} text-[10px]`} data-testid={`badge-link-${booker.id}`}>
-                          {linkStatus.label}
+                          {linkStatus.status === "active" ? "Active" : linkStatus.label}
                         </Badge>
-                        {linkStatus.status === "active" && linkStatus.lastAccessed && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="text-[10px] text-muted-foreground cursor-default">
-                                {format(new Date(linkStatus.lastAccessed), "d MMM")}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Last accessed {format(new Date(linkStatus.lastAccessed), "d MMM yyyy")}</p>
-                            </TooltipContent>
-                          </Tooltip>
+                        {linkStatus.status === "active" && (
+                          <p className="text-[10px] text-muted-foreground" data-testid={`text-link-accessed-${booker.id}`}>
+                            {linkStatus.lastAccessed
+                              ? `Last used: ${formatDistanceToNow(new Date(linkStatus.lastAccessed), { addSuffix: true })}`
+                              : "Never accessed"}
+                          </p>
                         )}
                       </div>
                     </TableCell>
@@ -629,7 +689,56 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-0.5">
-                        {linkStatus.links.length > 0 ? (
+                        {linkStatus.status === "active" && linkStatus.links.length > 0 ? (
+                          <>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => window.open(linkStatus.links[0].portalUrl, "_blank")}
+                                  data-testid={`button-view-portal-${booker.id}`}
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>View portal</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => {
+                                    if (!(booker as any).notificationsEmail) {
+                                      toast({ title: "No notification email set", description: "Ask the booker to set their email in the portal first.", variant: "destructive" });
+                                    } else {
+                                      resendLinkMutation.mutate(booker.id);
+                                    }
+                                  }}
+                                  disabled={resendLinkMutation.isPending}
+                                  data-testid={`button-resend-link-${booker.id}`}
+                                >
+                                  {resendLinkMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Resend link</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => copyLink(linkStatus.links[0].portalUrl)}
+                                  data-testid={`button-copy-link-${booker.id}`}
+                                >
+                                  <Copy className="w-3.5 h-3.5" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Copy portal link</TooltipContent>
+                            </Tooltip>
+                          </>
+                        ) : linkStatus.links.length > 0 ? (
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button

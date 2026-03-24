@@ -5431,6 +5431,37 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     }
   });
 
+  app.post("/api/regular-bookers/:id/resend-link", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const id = parseId(req.params.id);
+      const booker = await storage.getRegularBooker(id);
+      if (!booker || booker.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      const notificationsEmail = (booker as any).notificationsEmail;
+      if (!notificationsEmail) {
+        return res.status(400).json({ message: "No notification email set" });
+      }
+
+      const existingLinks = await storage.getBookerLinks(id);
+      const now = new Date();
+      const activeLink = existingLinks.find(l => l.enabled !== false && (!l.tokenExpiry || new Date(l.tokenExpiry) > now));
+      if (!activeLink) {
+        return res.status(400).json({ message: "No active portal link" });
+      }
+
+      const baseUrl = getBaseUrl();
+      const portalUrl = `${baseUrl}/booker/portal/${activeLink.token}`;
+
+      const { sendPortalLinkResendEmail } = await import("./email");
+      await sendPortalLinkResendEmail(notificationsEmail, portalUrl);
+
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.delete("/api/booker-links/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;

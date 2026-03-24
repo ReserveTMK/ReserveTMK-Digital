@@ -624,6 +624,42 @@ export async function sendBookerLoginEmail(
   await sendEmail(email, subject, htmlBody);
 }
 
+export async function sendPortalLinkResendEmail(
+  email: string,
+  portalUrl: string
+): Promise<void> {
+  const htmlBody = `
+<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:20px auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+  <tr><td style="padding:30px;background:#1e40af;text-align:center;">
+    <h1 style="margin:0;color:#ffffff;font-size:22px;">Your Booking Portal Link</h1>
+    <p style="margin:8px 0 0;color:#bfdbfe;font-size:14px;">Reserve T\u0101maki</p>
+  </td></tr>
+
+  <tr><td style="padding:25px 30px;">
+    <p style="margin:0;font-size:14px;color:#374151;">Here is your link to access the booking portal:</p>
+
+    <div style="text-align:center;margin:25px 0;">
+      <a href="${portalUrl}" style="display:inline-block;padding:14px 32px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:6px;font-size:16px;font-weight:600;">Open Booking Portal</a>
+    </div>
+
+    <p style="margin:10px 0;font-size:14px;color:#374151;">From the portal you can view venue availability, submit booking requests, and check your package status.</p>
+    <p style="margin:15px 0 0;font-size:14px;color:#374151;">Ng\u0101 mihi,<br><strong>Reserve T\u0101maki Team</strong></p>
+  </td></tr>
+
+  <tr><td style="padding:15px 30px;background:#f9fafb;text-align:center;">
+    <p style="margin:0;font-size:12px;color:#9ca3af;">Reserve T\u0101maki Hub &bull; 133a Line Road, Glen Innes, Auckland 1072</p>
+  </td></tr>
+</table>
+</body>
+</html>`;
+
+  const subject = "Your Reserve T\u0101maki Booking Portal Link";
+  await sendEmail(email, subject, htmlBody);
+}
+
 export async function sendProgrammeReminderEmail(
   email: string,
   name: string,
