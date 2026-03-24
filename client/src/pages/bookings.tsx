@@ -528,16 +528,14 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
     return Array.from(groups.entries()).map(([name, venueIds]) => ({ name, venueIds }));
   }, [venues]);
 
-  const thirtyDaysAgo = useMemo(() => {
+  const isOldBooking = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
-    return d;
+    return (booking: Booking) => {
+      if (!booking.startDate) return false;
+      return new Date(booking.startDate as unknown as string) < d;
+    };
   }, []);
-
-  const isOldBooking = (booking: Booking) => {
-    if (!booking.startDate) return false;
-    return new Date(booking.startDate as unknown as string) < thirtyDaysAgo;
-  };
 
   const content = (
         <div className={`${viewMode === "kanban" ? "max-w-[1600px]" : "max-w-6xl"} mx-auto space-y-6`}>
