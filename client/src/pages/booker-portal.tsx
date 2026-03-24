@@ -434,9 +434,18 @@ function DashboardView({
                       )}
                     </div>
                   </div>
-                  <Button size="sm" onClick={onBookSpace} data-testid="button-book-venue">
+                  <Button
+                    size="sm"
+                    onClick={booker.notificationsEmail ? onBookSpace : undefined}
+                    disabled={!booker.notificationsEmail}
+                    title={!booker.notificationsEmail ? "Add a notification email below before booking" : undefined}
+                    data-testid="button-book-venue"
+                  >
                     Book
                   </Button>
+                  {!booker.notificationsEmail && (
+                    <p className="text-[10px] text-amber-600 mt-1">Add notification email to book ↓</p>
+                  )}
                 </div>
               </Card>
             )}
