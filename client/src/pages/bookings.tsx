@@ -188,6 +188,7 @@ function formatTimeSlot(time: string) {
 export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
   const { data: bookings, isLoading } = useBookings();
   const { data: venues } = useVenues();
+  const { data: regularBookers } = useRegularBookers();
   const { data: contacts } = useContacts();
   const { data: allGroups } = useGroups();
   const { data: allAssociations } = useAllGroupAssociations();
@@ -1972,7 +1973,6 @@ function BookingFormDialog({
 
   const { data: allMemberships } = useMemberships();
   const { data: allMous } = useMous();
-  const { data: regularBookers } = useRegularBookers();
   const { data: allBookings } = useBookings();
   const activeMemberships = useMemo(() => (allMemberships || []).filter(m => m.status === "active"), [allMemberships]);
   const activeMous = useMemo(() => (allMous || []).filter(m => m.status === "active"), [allMous]);
