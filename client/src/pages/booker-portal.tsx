@@ -402,7 +402,7 @@ function DashboardView({
 
               {settingsOpen && (
                 <div className="absolute right-0 top-full mt-1 z-20 w-72 bg-background border rounded-lg shadow-lg p-4 space-y-4" data-testid="settings-panel">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Notification Settings</p>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{isPaidBooker ? "Booking Settings" : "Notification Settings"}</p>
 
                   {/* Notification email */}
                   <div className="space-y-1.5">
@@ -460,6 +460,7 @@ function DashboardView({
                         Invoice email{" "}
                         {!hasInvoiceEmail && <span className="text-amber-500">*</span>}
                       </Label>
+                      <p className="text-xs text-muted-foreground">The address your invoices will be sent to</p>
                       {invoiceEmailSaved ? (
                         <div className="flex items-center gap-2">
                           <span className="text-sm flex-1 truncate text-foreground" data-testid="text-saved-invoice-email">
