@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRoute } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -45,17 +45,7 @@ import {
 
 type PortalView = "login" | "dashboard" | "calendar" | "desk-booking" | "gear-booking";
 
-const CLASSIFICATIONS = [
-  "Community Group",
-  "Business Meeting",
-  "Workshop",
-  "Training",
-  "Private Event",
-  "Cultural Event",
-  "Youth Programme",
-  "Health & Wellbeing",
-  "Other",
-];
+const CLASSIFICATIONS = ["Meeting", "Workshop", "Rangatahi / Youth Workshop"];
 
 const PRESET_SLOTS = [
   { label: "Morning (8am-12pm)", start: "08:00", end: "12:00" },
@@ -1655,6 +1645,49 @@ function CalendarView({
     },
   });
 
+  const bookerEmail = (authData.contact?.email || (authData.booker as any)?.email || "") as string;
+  const bookerUserId = (authData.userId || "") as string;
+
+  const allSelectedAreStudio = useMemo(
+    () => selectedVenues.length > 0 && selectedVenues.every(id => venues?.find((v: any) => v.id === id)?.spaceName === "Studio"),
+    [selectedVenues, venues]
+  );
+
+  const { data: studioBookerCheck } = useQuery<{ isReturning: boolean; bookingCount: number }>({
+    queryKey: ["/api/public/spaces/check-studio-booker", bookerEmail, bookerUserId],
+    queryFn: async () => {
+      const params = new URLSearchParams({ email: bookerEmail, userId: bookerUserId });
+      const res = await fetch(`/api/public/spaces/check-studio-booker?${params}`);
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: allSelectedAreStudio && !!bookerEmail && !!bookerUserId && studioStep === "idle",
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    if (!allSelectedAreStudio) {
+      setStudioStep("idle");
+      setStudioNotes("");
+      setStudioIsFirstBooking(false);
+      setStudioProduce("");
+      setStudioUsedBefore(null);
+      setStudioNeedsHelp(null);
+      setStudioGear("");
+      setStudioOther("");
+      setStudioRecording("");
+      setStudioSetupChanges(null);
+      setStudioSetupDetails("");
+      return;
+    }
+    if (!studioBookerCheck || studioStep !== "idle") return;
+    if (studioBookerCheck.isReturning) {
+      setStudioStep("questions-returning");
+    } else {
+      setStudioStep("questions-new");
+    }
+  }, [allSelectedAreStudio, studioBookerCheck]);
+
   const days = useMemo(() => getMonthDays(currentYear, currentMonth), [currentYear, currentMonth]);
   const monthName = new Date(currentYear, currentMonth).toLocaleDateString("en-NZ", { month: "long", year: "numeric" });
 
@@ -1684,6 +1717,23 @@ function CalendarView({
 
   const [bookingSummaryError, setBookingSummaryError] = useState(false);
 
+  // Venue grouping
+  const [lockedSpaceType, setLockedSpaceType] = useState<string | null>(null);
+
+  // Studio step
+  type CalStudioStep = "idle" | "questions-new" | "questions-returning" | "done";
+  const [studioStep, setStudioStep] = useState<CalStudioStep>("idle");
+  const [studioProduce, setStudioProduce] = useState("");
+  const [studioUsedBefore, setStudioUsedBefore] = useState<boolean | null>(null);
+  const [studioNeedsHelp, setStudioNeedsHelp] = useState<boolean | null>(null);
+  const [studioGear, setStudioGear] = useState("");
+  const [studioOther, setStudioOther] = useState("");
+  const [studioRecording, setStudioRecording] = useState("");
+  const [studioSetupChanges, setStudioSetupChanges] = useState<boolean | null>(null);
+  const [studioSetupDetails, setStudioSetupDetails] = useState("");
+  const [studioNotes, setStudioNotes] = useState("");
+  const [studioIsFirstBooking, setStudioIsFirstBooking] = useState(false);
+
   const pendingBookingPayload = {
     venueId: selectedVenues[0],
     venueIds: selectedVenues,
@@ -1694,6 +1744,8 @@ function CalendarView({
     bookingSummary: bookingSummary.trim() || undefined,
     usePackageCredit,
     bookerName: isGroupLink && bookerName.trim() ? bookerName.trim() : undefined,
+    notes: studioNotes || undefined,
+    isFirstBooking: studioIsFirstBooking,
   };
 
   const checkOverAllowance = (): boolean => {
@@ -1727,11 +1779,24 @@ function CalendarView({
   };
 
   const toggleVenue = (venueId: number) => {
-    setSelectedVenues(prev =>
-      prev.includes(venueId)
-        ? prev.filter(id => id !== venueId)
-        : [...prev, venueId]
-    );
+    const venue = venues?.find((v: any) => v.id === venueId);
+    const venueSN = venue?.spaceName || null;
+    setSelectedVenues(prev => {
+      if (prev.includes(venueId)) {
+        const next = prev.filter(id => id !== venueId);
+        if (next.length === 0) setLockedSpaceType(null);
+        else {
+          const types = new Set(next.map(id => venues?.find((v: any) => v.id === id)?.spaceName).filter(Boolean));
+          setLockedSpaceType(types.size === 1 ? [...types][0] as string : null);
+        }
+        return next;
+      } else {
+        if (lockedSpaceType && venueSN && venueSN !== lockedSpaceType) return prev;
+        const next = [...prev, venueId];
+        if (!lockedSpaceType && venueSN) setLockedSpaceType(venueSN);
+        return next;
+      }
+    });
   };
 
   const getDateColorClass = (status: string) => {
@@ -1848,7 +1913,7 @@ function CalendarView({
             })()}
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={() => { setBookingConfirmed(false); setSelectedDate(null); setSelectedVenues([]); setPresetSlot(""); setClassification(""); setBookingSummary(""); setBookerName(""); }} data-testid="button-book-another">
+            <Button variant="outline" className="flex-1" onClick={() => { setBookingConfirmed(false); setSelectedDate(null); setSelectedVenues([]); setPresetSlot(""); setClassification(""); setBookingSummary(""); setBookerName(""); setStudioStep("idle"); setStudioNotes(""); setStudioIsFirstBooking(false); setLockedSpaceType(null); }} data-testid="button-book-another">
               Book Another
             </Button>
             <Button className="flex-1" onClick={onBack} data-testid="button-back-to-dashboard">
@@ -2026,54 +2091,259 @@ function CalendarView({
                 <div className="space-y-2">
                   <Label className="text-xs">Select Venue{(venues?.length || 0) > 1 ? "s" : ""}</Label>
                   <div className="space-y-1">
-                    {venues?.map((v: any) => {
-                      const venueStatus = getVenueStatusForDate(v.id, selectedDate);
-                      const isBooked = venueStatus === "booked";
-                      const isChecked = selectedVenues.includes(v.id);
-                      const venueBookings = getVenueBookingsForDate(v.id, selectedDate);
+                    {(() => {
+                      const officeVenues = (venues || []).filter((v: any) => v.spaceName === "Office");
+                      const studioVenues = (venues || []).filter((v: any) => v.spaceName === "Studio");
+                      const otherVenues = (venues || []).filter((v: any) => v.spaceName !== "Office" && v.spaceName !== "Studio");
+
+                      const renderVenueBtn = (v: any) => {
+                        const venueStatus = getVenueStatusForDate(v.id, selectedDate!);
+                        const isBooked = venueStatus === "booked";
+                        const isChecked = selectedVenues.includes(v.id);
+                        const isGroupLocked = !isChecked && !!lockedSpaceType && v.spaceName !== lockedSpaceType;
+                        const venueBookings = getVenueBookingsForDate(v.id, selectedDate!);
+                        return (
+                          <button
+                            key={v.id}
+                            disabled={isBooked || isGroupLocked}
+                            onClick={() => !isBooked && !isGroupLocked && toggleVenue(v.id)}
+                            className={`w-full text-left text-sm px-3 py-2 rounded-md border transition-colors ${
+                              isChecked
+                                ? "border-primary bg-primary/5"
+                                : isBooked || isGroupLocked
+                                  ? "border-border opacity-40 cursor-not-allowed"
+                                  : "border-border hover:border-primary/50"
+                            }`}
+                            data-testid={`venue-checkbox-${v.id}`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <Checkbox
+                                  checked={isChecked}
+                                  disabled={isBooked || isGroupLocked}
+                                  onCheckedChange={() => !isBooked && !isGroupLocked && toggleVenue(v.id)}
+                                  data-testid={`checkbox-venue-${v.id}`}
+                                />
+                                <span className={(isBooked || isGroupLocked) ? "text-muted-foreground" : ""}>{v.name}</span>
+                              </div>
+                              {getVenueStatusBadge(venueStatus)}
+                            </div>
+                            {venueBookings.length > 0 && (
+                              <div className="ml-6 mt-1 space-y-0.5">
+                                {venueBookings.map((b: any, idx: number) => (
+                                  <div key={idx} className="text-xs text-muted-foreground">
+                                    {b.startTime && b.endTime ? `${formatTimeSlot(b.startTime)} - ${formatTimeSlot(b.endTime)}` : "All day"}: {b.title || "Booked"}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </button>
+                        );
+                      };
+
                       return (
-                        <button
-                          key={v.id}
-                          disabled={isBooked}
-                          onClick={() => !isBooked && toggleVenue(v.id)}
-                          className={`w-full text-left text-sm px-3 py-2 rounded-md border transition-colors ${
-                            isChecked
-                              ? "border-primary bg-primary/5"
-                              : isBooked
-                                ? "border-border opacity-50 cursor-not-allowed"
-                                : "border-border hover:border-primary/50"
-                          }`}
-                          data-testid={`venue-checkbox-${v.id}`}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <Checkbox
-                                checked={isChecked}
-                                disabled={isBooked}
-                                onCheckedChange={() => !isBooked && toggleVenue(v.id)}
-                                data-testid={`checkbox-venue-${v.id}`}
-                              />
-                              <span className={isBooked ? "text-muted-foreground" : ""}>{v.name}</span>
-                            </div>
-                            {getVenueStatusBadge(venueStatus)}
-                          </div>
-                          {venueBookings.length > 0 && (
-                            <div className="ml-6 mt-1 space-y-0.5">
-                              {venueBookings.map((b: any, idx: number) => (
-                                <div key={idx} className="text-xs text-muted-foreground">
-                                  {b.startTime && b.endTime ? `${formatTimeSlot(b.startTime)} - ${formatTimeSlot(b.endTime)}` : "All day"}: {b.title || "Booked"}
-                                </div>
-                              ))}
-                            </div>
+                        <>
+                          {officeVenues.length > 0 && (
+                            <>
+                              <p className="text-xs font-medium text-muted-foreground px-1 pt-1">🏢 Office Spaces</p>
+                              {officeVenues.map(renderVenueBtn)}
+                            </>
                           )}
-                        </button>
+                          {studioVenues.length > 0 && (
+                            <>
+                              <p className="text-xs font-medium text-muted-foreground px-1 pt-2">🎙 Podcast Studio</p>
+                              {studioVenues.map(renderVenueBtn)}
+                            </>
+                          )}
+                          {otherVenues.length > 0 && otherVenues.map(renderVenueBtn)}
+                          {lockedSpaceType && selectedVenues.length > 0 && (
+                            <p className="text-xs text-muted-foreground px-1 pt-1 italic">Locations cannot be mixed in one booking</p>
+                          )}
+                        </>
                       );
-                    })}
+                    })()}
                   </div>
                 </div>
 
                 {selectedVenues.length > 0 && (
                   <>
+                    {/* Studio check-in step */}
+                    {allSelectedAreStudio && studioStep === "idle" && !!bookerUserId && (
+                      <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Checking studio history...
+                      </div>
+                    )}
+
+                    {allSelectedAreStudio && studioStep === "questions-new" && (
+                      <div className="space-y-3 border border-border rounded-lg p-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">🎙</span>
+                          <p className="text-sm font-medium">First time at the studio — tell us about your session</p>
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs">What do you plan to produce? <span className="text-red-500">*</span></Label>
+                          <Textarea
+                            value={studioProduce}
+                            onChange={(e) => setStudioProduce(e.target.value)}
+                            rows={2}
+                            placeholder="e.g. podcast, music, voiceover..."
+                            data-testid="portal-input-studio-produce"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs">Have you used a recording studio before? <span className="text-red-500">*</span></Label>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setStudioUsedBefore(true)}
+                              className={`flex-1 text-sm px-3 py-1.5 rounded-md border transition-colors ${studioUsedBefore === true ? "border-primary bg-primary/5" : "border-border"}`}
+                              data-testid="portal-button-studio-used-before-yes"
+                            >Yes</button>
+                            <button
+                              type="button"
+                              onClick={() => setStudioUsedBefore(false)}
+                              className={`flex-1 text-sm px-3 py-1.5 rounded-md border transition-colors ${studioUsedBefore === false ? "border-primary bg-primary/5" : "border-border"}`}
+                              data-testid="portal-button-studio-used-before-no"
+                            >No</button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs">Do you need help with setup on the day? <span className="text-red-500">*</span></Label>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setStudioNeedsHelp(true)}
+                              className={`flex-1 text-sm px-3 py-1.5 rounded-md border transition-colors ${studioNeedsHelp === true ? "border-primary bg-primary/5" : "border-border"}`}
+                              data-testid="portal-button-studio-needs-help-yes"
+                            >Yes</button>
+                            <button
+                              type="button"
+                              onClick={() => setStudioNeedsHelp(false)}
+                              className={`flex-1 text-sm px-3 py-1.5 rounded-md border transition-colors ${studioNeedsHelp === false ? "border-primary bg-primary/5" : "border-border"}`}
+                              data-testid="portal-button-studio-needs-help-no"
+                            >No</button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs">Any specific gear or software you need? <span className="text-muted-foreground">(optional)</span></Label>
+                          <Input
+                            value={studioGear}
+                            onChange={(e) => setStudioGear(e.target.value)}
+                            placeholder="Microphone type, DAW, etc."
+                            data-testid="portal-input-studio-gear"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs">Anything else we should know? <span className="text-muted-foreground">(optional)</span></Label>
+                          <Textarea
+                            value={studioOther}
+                            onChange={(e) => setStudioOther(e.target.value)}
+                            rows={2}
+                            placeholder="Any extra info for the team..."
+                            data-testid="portal-input-studio-other"
+                          />
+                        </div>
+
+                        <Button
+                          className="w-full"
+                          size="sm"
+                          disabled={!studioProduce.trim() || studioUsedBefore === null || studioNeedsHelp === null}
+                          onClick={() => {
+                            const lines = [
+                              "[Studio Session — New Booker]",
+                              `What to produce: ${studioProduce.trim()}`,
+                              `Used studio before: ${studioUsedBefore ? "Yes" : "No"}`,
+                              `Needs setup help: ${studioNeedsHelp ? "Yes" : "No"}`,
+                              studioGear.trim() ? `Gear/software: ${studioGear.trim()}` : null,
+                              studioOther.trim() ? `Other notes: ${studioOther.trim()}` : null,
+                            ].filter(Boolean).join("\n");
+                            setStudioNotes(lines);
+                            setStudioIsFirstBooking(true);
+                            setStudioStep("done");
+                          }}
+                          data-testid="portal-button-studio-new-continue"
+                        >
+                          Continue to Date &amp; Time
+                        </Button>
+                      </div>
+                    )}
+
+                    {allSelectedAreStudio && studioStep === "questions-returning" && (
+                      <div className="space-y-3 border border-border rounded-lg p-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">🎙</span>
+                          <p className="text-sm font-medium">Welcome back — quick check-in for this session</p>
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs">What are you recording this session? <span className="text-red-500">*</span></Label>
+                          <Textarea
+                            value={studioRecording}
+                            onChange={(e) => setStudioRecording(e.target.value)}
+                            rows={2}
+                            placeholder="Describe what you're working on..."
+                            data-testid="portal-input-studio-recording"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs">Any changes to your usual setup? <span className="text-red-500">*</span></Label>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setStudioSetupChanges(true)}
+                              className={`flex-1 text-sm px-3 py-1.5 rounded-md border transition-colors ${studioSetupChanges === true ? "border-primary bg-primary/5" : "border-border"}`}
+                              data-testid="portal-button-studio-changes-yes"
+                            >Yes</button>
+                            <button
+                              type="button"
+                              onClick={() => setStudioSetupChanges(false)}
+                              className={`flex-1 text-sm px-3 py-1.5 rounded-md border transition-colors ${studioSetupChanges === false ? "border-primary bg-primary/5" : "border-border"}`}
+                              data-testid="portal-button-studio-changes-no"
+                            >No</button>
+                          </div>
+                          {studioSetupChanges === true && (
+                            <Textarea
+                              value={studioSetupDetails}
+                              onChange={(e) => setStudioSetupDetails(e.target.value)}
+                              rows={2}
+                              placeholder="What's changing?"
+                              className="mt-1"
+                              data-testid="portal-input-studio-setup-details"
+                            />
+                          )}
+                        </div>
+
+                        <Button
+                          className="w-full"
+                          size="sm"
+                          disabled={!studioRecording.trim() || studioSetupChanges === null}
+                          onClick={() => {
+                            const lines = [
+                              "[Studio Session — Returning Booker]",
+                              `Recording: ${studioRecording.trim()}`,
+                              studioSetupChanges
+                                ? `Setup changes: ${studioSetupDetails.trim() || "Yes (details not provided)"}`
+                                : "No changes to setup",
+                            ].filter(Boolean).join("\n");
+                            setStudioNotes(lines);
+                            setStudioIsFirstBooking(false);
+                            setStudioStep("done");
+                          }}
+                          data-testid="portal-button-studio-returning-continue"
+                        >
+                          Continue to Date &amp; Time
+                        </Button>
+                      </div>
+                    )}
+
+                    {(!allSelectedAreStudio || studioStep === "done") && (<>
                     <div className="space-y-2">
                       <Label className="text-xs">Quick Select</Label>
                       <div className="space-y-1">
@@ -2196,6 +2466,7 @@ function CalendarView({
                         {(bookMutation.error as Error)?.message || "Failed to submit booking"}
                       </p>
                     )}
+                    </>)}
                   </>
                 )}
               </>

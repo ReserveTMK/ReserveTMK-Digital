@@ -6031,7 +6031,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
   // === Public Casual Hire Routes (no auth) ===
   app.get("/api/public/casual-hire/venues", async (_req, res) => {
     try {
-      const result = await db.execute(sql`SELECT id, name, space_name as "spaceName", capacity, description FROM venues WHERE active = true ORDER BY name`);
+      const result = await db.execute(sql`SELECT id, name, space_name as "spaceName", capacity, description, user_id as "userId" FROM venues WHERE active = true ORDER BY name`);
       const rows = (result as any).rows || result;
       res.json(rows);
     } catch (err: any) {
@@ -6273,6 +6273,48 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     } catch (err: any) {
       console.error("Casual hire booking error:", err);
       res.status(500).json({ message: err.message || "Failed to submit enquiry" });
+    }
+  });
+
+  // === Studio Booker History Check ===
+  app.get("/api/public/spaces/check-studio-booker", async (req, res) => {
+    try {
+      const email = parseStr(req.query.email);
+      const userIdRaw = parseStr(req.query.userId);
+      if (!email || !userIdRaw) {
+        return res.status(400).json({ message: "email and userId are required" });
+      }
+
+      const resolved = await resolveMentorUserId(userIdRaw);
+      const ownerUserId = resolved.ownerUserId || resolved.availabilityUserId;
+
+      const allContacts = await storage.getContacts(ownerUserId);
+      const normalizedEmail = email.trim().toLowerCase();
+      const contact = allContacts.find((c: any) => {
+        if (!c.email) return false;
+        const emails = (c.email as string).split(/[,;]\s*/).map((e: string) => e.trim().toLowerCase());
+        return emails.includes(normalizedEmail);
+      });
+
+      if (!contact) {
+        return res.json({ isReturning: false, bookingCount: 0 });
+      }
+
+      const allVenues = await storage.getVenues(ownerUserId);
+      const studioVenueIds = new Set(allVenues.filter((v: any) => v.spaceName === "Studio").map((v: any) => v.id));
+
+      const allBookings = await storage.getBookings(ownerUserId);
+      const studioBookings = allBookings.filter((b: any) => {
+        if (!["confirmed", "completed"].includes(b.status || "")) return false;
+        if (b.bookerId !== contact.id) return false;
+        const bVenueIds: number[] = b.venueIds || (b.venueId ? [b.venueId] : []);
+        return bVenueIds.some((vid: number) => studioVenueIds.has(vid));
+      });
+
+      return res.json({ isReturning: studioBookings.length > 0, bookingCount: studioBookings.length });
+    } catch (err: any) {
+      console.error("Studio booker check error:", err);
+      res.status(500).json({ message: "Failed to check studio booking history" });
     }
   });
 
