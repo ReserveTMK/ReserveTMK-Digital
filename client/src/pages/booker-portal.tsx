@@ -1760,12 +1760,14 @@ function CalendarView({
     else setCurrentMonth(currentMonth - 1);
     setSelectedDate(null);
     setSelectedVenues([]);
+    setSelectedLocation(null);
   };
   const nextMonth = () => {
     if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear(currentYear + 1); }
     else setCurrentMonth(currentMonth + 1);
     setSelectedDate(null);
     setSelectedVenues([]);
+    setSelectedLocation(null);
   };
 
   const startTime = presetSlot ? PRESET_SLOTS.find(s => s.label === presetSlot)?.start || customStart : customStart;
@@ -1775,6 +1777,7 @@ function CalendarView({
 
   // Venue grouping
   const [lockedSpaceType, setLockedSpaceType] = useState<string | null>(null);
+  const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
 
   // Studio step
   type CalStudioStep = "idle" | "questions-new" | "questions-returning" | "done";
@@ -1969,7 +1972,7 @@ function CalendarView({
             })()}
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={() => { setBookingConfirmed(false); setSelectedDate(null); setSelectedVenues([]); setPresetSlot(""); setClassification(""); setBookingSummary(""); setBookerName(""); setStudioStep("idle"); setStudioNotes(""); setStudioIsFirstBooking(false); setLockedSpaceType(null); }} data-testid="button-book-another">
+            <Button variant="outline" className="flex-1" onClick={() => { setBookingConfirmed(false); setSelectedDate(null); setSelectedVenues([]); setPresetSlot(""); setClassification(""); setBookingSummary(""); setBookerName(""); setStudioStep("idle"); setStudioNotes(""); setStudioIsFirstBooking(false); setLockedSpaceType(null); setSelectedLocation(null); }} data-testid="button-book-another">
               Book Another
             </Button>
             <Button className="flex-1" onClick={onBack} data-testid="button-back-to-dashboard">
@@ -2109,7 +2112,7 @@ function CalendarView({
                     <button
                       key={i}
                       disabled={!isClickable}
-                      onClick={() => isClickable ? (() => { setSelectedDate(cell.date); setSelectedVenues([]); })() : undefined}
+                      onClick={() => isClickable ? (() => { setSelectedDate(cell.date); setSelectedVenues([]); setSelectedLocation(null); })() : undefined}
                       className={`
                         aspect-square flex items-center justify-center text-sm rounded-md transition-colors
                         ${!cell.inMonth ? "text-muted-foreground/30" : ""}
@@ -2159,7 +2162,7 @@ function CalendarView({
                   <h3 className="font-semibold text-sm" data-testid="heading-selected-date">
                     {new Date(selectedDate + "T00:00").toLocaleDateString("en-NZ", { weekday: "long", day: "numeric", month: "long", timeZone: "Pacific/Auckland" })}
                   </h3>
-                  <Button variant="ghost" size="icon" onClick={() => { setSelectedDate(null); setSelectedVenues([]); }} data-testid="button-close-panel">
+                  <Button variant="ghost" size="icon" onClick={() => { setSelectedDate(null); setSelectedVenues([]); setSelectedLocation(null); }} data-testid="button-close-panel">
                     <X className="w-4 h-4" />
                   </Button>
                 </div>
@@ -2169,80 +2172,112 @@ function CalendarView({
                 )}
                 {selectedDate && (
                 <div className="space-y-2">
-                  <Label className="text-xs">Select Venue{(venues?.length || 0) > 1 ? "s" : ""}</Label>
-                  <div className="space-y-1">
-                    {(() => {
-                      const officeVenues = (venues || []).filter((v: any) => v.spaceName === "Office");
-                      const studioVenues = (venues || []).filter((v: any) => v.spaceName === "Studio");
-                      const otherVenues = (venues || []).filter((v: any) => v.spaceName !== "Office" && v.spaceName !== "Studio");
+                  {(() => {
+                    const officeVenues = (venues || []).filter((v: any) => v.spaceName === "Office");
+                    const studioVenues = (venues || []).filter((v: any) => v.spaceName === "Studio");
+                    const otherVenues = (venues || []).filter((v: any) => v.spaceName !== "Office" && v.spaceName !== "Studio");
 
-                      const renderVenueBtn = (v: any) => {
-                        const venueStatus = getVenueStatusForDate(v.id, selectedDate!);
-                        const isBooked = venueStatus === "booked";
-                        const isChecked = selectedVenues.includes(v.id);
-                        const isGroupLocked = !isChecked && !!lockedSpaceType && v.spaceName !== lockedSpaceType;
-                        const venueBookings = getVenueBookingsForDate(v.id, selectedDate!);
-                        return (
-                          <button
-                            key={v.id}
-                            disabled={isBooked || isGroupLocked}
-                            onClick={() => !isBooked && !isGroupLocked && toggleVenue(v.id)}
-                            className={`w-full text-left text-sm px-3 py-2 rounded-md border transition-colors ${
-                              isChecked
-                                ? "border-primary bg-primary/5"
-                                : isBooked || isGroupLocked
-                                  ? "border-border opacity-40 cursor-not-allowed"
-                                  : "border-border hover:border-primary/50"
-                            }`}
-                            data-testid={`venue-checkbox-${v.id}`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-2">
-                                <Checkbox
-                                  checked={isChecked}
-                                  disabled={isBooked || isGroupLocked}
-                                  onCheckedChange={() => !isBooked && !isGroupLocked && toggleVenue(v.id)}
-                                  data-testid={`checkbox-venue-${v.id}`}
-                                />
-                                <span className={(isBooked || isGroupLocked) ? "text-muted-foreground" : ""}>{v.name}</span>
-                              </div>
-                              {getVenueStatusBadge(venueStatus)}
+                    const renderVenueBtn = (v: any) => {
+                      const venueStatus = getVenueStatusForDate(v.id, selectedDate!);
+                      const isBooked = venueStatus === "booked";
+                      const isChecked = selectedVenues.includes(v.id);
+                      const isGroupLocked = !isChecked && !!lockedSpaceType && v.spaceName !== lockedSpaceType;
+                      const venueBookings = getVenueBookingsForDate(v.id, selectedDate!);
+                      return (
+                        <button
+                          key={v.id}
+                          disabled={isBooked || isGroupLocked}
+                          onClick={() => !isBooked && !isGroupLocked && toggleVenue(v.id)}
+                          className={`w-full text-left text-sm px-3 py-2 rounded-md border transition-colors ${
+                            isChecked
+                              ? "border-primary bg-primary/5"
+                              : isBooked || isGroupLocked
+                                ? "border-border opacity-40 cursor-not-allowed"
+                                : "border-border hover:border-primary/50"
+                          }`}
+                          data-testid={`venue-checkbox-${v.id}`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <Checkbox
+                                checked={isChecked}
+                                disabled={isBooked || isGroupLocked}
+                                onCheckedChange={() => !isBooked && !isGroupLocked && toggleVenue(v.id)}
+                                data-testid={`checkbox-venue-${v.id}`}
+                              />
+                              <span className={(isBooked || isGroupLocked) ? "text-muted-foreground" : ""}>{v.name}</span>
                             </div>
-                            {venueBookings.length > 0 && (
-                              <div className="ml-6 mt-1 space-y-0.5">
-                                {venueBookings.map((b: any, idx: number) => (
-                                  <div key={idx} className="text-xs text-muted-foreground">
-                                    {b.startTime && b.endTime ? `${formatTimeSlot(b.startTime)} - ${formatTimeSlot(b.endTime)}` : "All day"}: {b.title || "Booked"}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </button>
-                        );
-                      };
+                            {getVenueStatusBadge(venueStatus)}
+                          </div>
+                          {venueBookings.length > 0 && (
+                            <div className="ml-6 mt-1 space-y-0.5">
+                              {venueBookings.map((b: any, idx: number) => (
+                                <div key={idx} className="text-xs text-muted-foreground">
+                                  {b.startTime && b.endTime ? `${formatTimeSlot(b.startTime)} - ${formatTimeSlot(b.endTime)}` : "All day"}: {b.title || "Booked"}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </button>
+                      );
+                    };
+
+                    // Step 1: Location picker
+                    if (!selectedLocation) {
+                      const locationOptions = [
+                        { key: "Office", icon: "🏢", label: "Office", venues: officeVenues },
+                        { key: "Studio", icon: "🎙", label: "Studio", venues: studioVenues },
+                        { key: "Other", icon: "📍", label: "Other", venues: otherVenues },
+                      ].filter(loc => loc.venues.length > 0);
 
                       return (
                         <>
-                          {officeVenues.length > 0 && (
-                            <>
-                              <p className="text-xs font-medium text-muted-foreground px-1 pt-1">🏢 Office Spaces</p>
-                              {officeVenues.map(renderVenueBtn)}
-                            </>
-                          )}
-                          {studioVenues.length > 0 && (
-                            <>
-                              <p className="text-xs font-medium text-muted-foreground px-1 pt-2">🎙 Podcast Studio</p>
-                              {studioVenues.map(renderVenueBtn)}
-                            </>
-                          )}
-                          {otherVenues.length > 0 && otherVenues.map(renderVenueBtn)}
+                          <Label className="text-xs">Select Location</Label>
+                          <div className="space-y-2">
+                            {locationOptions.map(loc => (
+                              <button
+                                key={loc.key}
+                                onClick={() => setSelectedLocation(loc.key)}
+                                className="w-full text-left px-4 py-3 rounded-md border border-border hover:border-primary/50 transition-colors"
+                              >
+                                <div className="flex items-start gap-3">
+                                  <span className="text-lg leading-none mt-0.5">{loc.icon}</span>
+                                  <div>
+                                    <p className="text-sm font-medium">{loc.label}</p>
+                                    <p className="text-xs text-muted-foreground mt-0.5">{loc.venues.map((v: any) => v.name).join(" · ")}</p>
+                                  </div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      );
+                    }
+
+                    // Step 2: Venue picker for selected location
+                    const filteredVenues =
+                      selectedLocation === "Office" ? officeVenues :
+                      selectedLocation === "Studio" ? studioVenues :
+                      otherVenues;
+
+                    return (
+                      <>
+                        <button
+                          onClick={() => { setSelectedLocation(null); setSelectedVenues([]); }}
+                          className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+                        >
+                          ← Change location
+                        </button>
+                        <Label className="text-xs">Select Venue{filteredVenues.length > 1 ? "s" : ""}</Label>
+                        <div className="space-y-1">
+                          {filteredVenues.map(renderVenueBtn)}
                           {lockedSpaceType && selectedVenues.length > 0 && (
                             <p className="text-xs text-muted-foreground px-1 pt-1 italic">Locations cannot be mixed in one booking</p>
                           )}
-                        </>
-                      );
-                    })()}
-                  </div>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
                 )}
 
