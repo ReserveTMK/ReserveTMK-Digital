@@ -253,6 +253,12 @@ function DashboardView({
   // Determine if this booker is a paid booker (not free/koha agreement)
   const isPaidBooker = booker.pricingTier !== "free_koha" && !authData.membership && !authData.mou;
 
+  const isValidEmail = (email: string) => {
+    // Must have @, domain, and a recognised suffix
+    const re = /^[^\s@]+@[^\s@]+\.(com|co\.nz|nz|org|net|org\.nz|govt\.nz|ac\.nz|school\.nz|io|co|me|info|biz|au|com\.au|co\.au)$/i;
+    return re.test(email.trim());
+  };
+
   // Settings panel state
   const [settingsOpen, setSettingsOpen] = useState(!booker.notificationsEmail || (isPaidBooker && !booker.invoiceEmail));
 
@@ -443,10 +449,13 @@ function DashboardView({
                           className="flex-1 h-8 text-sm"
                           data-testid="input-notif-email"
                         />
+                        {notifEmail.trim() && !isValidEmail(notifEmail) && (
+                          <p className="text-xs text-red-500 col-span-2">Please enter a valid email address</p>
+                        )}
                         <Button
                           size="sm"
                           className="h-8 shrink-0"
-                          disabled={!notifEmail.trim() || !notifEmail.includes("@") || updateNotifEmailMutation.isPending}
+                          disabled={!notifEmail.trim() || !isValidEmail(notifEmail) || updateNotifEmailMutation.isPending}
                           onClick={() => updateNotifEmailMutation.mutate(notifEmail.trim())}
                           data-testid="button-save-notif-email"
                         >
@@ -490,10 +499,13 @@ function DashboardView({
                             className="flex-1 h-8 text-sm"
                             data-testid="input-invoice-email"
                           />
+                          {invoiceEmail.trim() && !isValidEmail(invoiceEmail) && (
+                            <p className="text-xs text-red-500 col-span-2">Please enter a valid email address</p>
+                          )}
                           <Button
                             size="sm"
                             className="h-8 shrink-0"
-                            disabled={!invoiceEmail.trim() || !invoiceEmail.includes("@") || updateInvoiceEmailMutation.isPending}
+                            disabled={!invoiceEmail.trim() || !isValidEmail(invoiceEmail) || updateInvoiceEmailMutation.isPending}
                             onClick={() => updateInvoiceEmailMutation.mutate(invoiceEmail.trim())}
                             data-testid="button-save-invoice-email"
                           >
