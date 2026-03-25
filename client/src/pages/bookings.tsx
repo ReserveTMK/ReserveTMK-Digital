@@ -240,7 +240,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [createOpen, setCreateOpen] = useState(false);
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
-  const [viewMode, setViewMode] = useState<"calendar" | "list" | "kanban">("kanban");
+  const [viewMode, setViewMode] = useState<"calendar" | "list" | "kanban">("calendar");
   const [calMonth, setCalMonth] = useState(new Date());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [hirerPreviewOpen, setHirerPreviewOpen] = useState(false);
@@ -575,16 +575,6 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
               <div className="flex items-center gap-2" data-testid="view-toggle">
                 <div className="flex items-center border border-border rounded-lg overflow-hidden">
                   <Button
-                    variant={viewMode === "kanban" ? "default" : "ghost"}
-                    size="sm"
-                    onClick={() => setViewMode("kanban")}
-                    className="rounded-none gap-1.5 text-xs"
-                    data-testid="button-kanban-view"
-                  >
-                    <Columns3 className="w-3.5 h-3.5" />
-                    Pipeline
-                  </Button>
-<Button
                     variant={viewMode === "calendar" ? "default" : "ghost"}
                     size="sm"
                     onClick={() => setViewMode("calendar")}
@@ -593,6 +583,16 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                   >
                     <CalendarDays className="w-3.5 h-3.5" />
                     Monthly
+                  </Button>
+                  <Button
+                    variant={viewMode === "kanban" ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => setViewMode("kanban")}
+                    className="rounded-none gap-1.5 text-xs"
+                    data-testid="button-kanban-view"
+                  >
+                    <Columns3 className="w-3.5 h-3.5" />
+                    Pipeline
                   </Button>
                 </div>
                 {viewMode === "kanban" && (
@@ -790,89 +790,72 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                       <p className="text-muted-foreground">No venue hires {calShowAll ? "" : `in ${format(calMonth, "MMMM yyyy")}`}</p>
                     </Card>
                   ) : (
-                    <div className={`grid gap-4 ${locationGroups.length > 1 ? `grid-cols-1 md:grid-cols-${Math.min(locationGroups.length + (calFiltered.some(b => getLocationForBooking(b) === "Unassigned") ? 1 : 0), 3)}` : "grid-cols-1"}`} style={{ gridTemplateColumns: `repeat(${Math.min(locationGroups.filter(lg => calFiltered.some(b => getLocationForBooking(b) === lg.name)).length + (calFiltered.some(b => getLocationForBooking(b) === "Unassigned") ? 1 : 0), 3)}, minmax(0, 1fr))` }}>
-                      {locationGroups.map(({ name: locationName }) => {
-                        const colBookings = calFiltered.filter(b => getLocationForBooking(b) === locationName);
-                        if (colBookings.length === 0) return null;
+                    (() => {
+                      const renderCard = (booking: Booking, faded?: boolean) => {
+                        const dateTime = formatDateTime(booking);
+                        const groupTitle = getBookerOrgName(booking.bookerId) || getBookingGroupName(booking.bookerGroupId) || getBookerGroupViaContact(booking.bookerId) || booking.bookerName || getBookerName(booking.bookerId) || "Unknown";
+                        const venueName = getVenueNames(booking);
+                        return (
+                          <Card
+                            key={booking.id}
+                            className={`p-2.5 hover:bg-muted/30 cursor-pointer transition-colors ${faded ? "opacity-50" : ""}`}
+                            onClick={() => setLocation(`/bookings/${booking.id}`)}
+                            data-testid={`cal-card-${booking.id}`}
+                          >
+                            <div className="flex items-start gap-2">
+                              <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${STATUS_DOT[booking.status] || "bg-gray-400"}`} />
+                              <div className="min-w-0 flex-1">
+                                <p className={`text-sm font-medium truncate ${faded ? "line-through" : ""}`}>{groupTitle}</p>
+                                <p className="text-[11px] text-muted-foreground truncate">{venueName}</p>
+                                {dateTime && (
+                                  <p className="text-[11px] text-muted-foreground">{dateTime.date}{dateTime.time ? ` · ${dateTime.time}` : ""}</p>
+                                )}
+                              </div>
+                            </div>
+                          </Card>
+                        );
+                      };
 
+                      const renderColumn = (locationName: string, allBookings: Booking[]) => {
+                        const active = allBookings.filter(b => b.status !== "cancelled");
+                        const cancelled = allBookings.filter(b => b.status === "cancelled");
                         return (
                           <div key={locationName} className="flex flex-col">
                             <div className="flex items-center gap-2 mb-2 px-1">
                               <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
                               <span className="text-sm font-semibold">{locationName}</span>
-                              <Badge variant="secondary" className="text-[10px] ml-1">{colBookings.length}</Badge>
+                              <Badge variant="secondary" className="text-[10px] ml-1">{active.length}</Badge>
                             </div>
                             <div className="space-y-2 flex-1">
-                              {colBookings.map(booking => {
-                                const dateTime = formatDateTime(booking);
-                                const groupTitle = getBookerOrgName(booking.bookerId) || getBookingGroupName(booking.bookerGroupId) || getBookerGroupViaContact(booking.bookerId) || booking.bookerName || getBookerName(booking.bookerId) || "Unknown";
-                                const venueName = getVenueNames(booking);
-
-                                return (
-                                  <Card
-                                    key={booking.id}
-                                    className="p-2.5 hover:bg-muted/30 cursor-pointer transition-colors"
-                                    onClick={() => setLocation(`/bookings/${booking.id}`)}
-                                    data-testid={`cal-card-${booking.id}`}
-                                  >
-                                    <div className="flex items-start gap-2">
-                                      <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${STATUS_DOT[booking.status] || "bg-gray-400"}`} />
-                                      <div className="min-w-0 flex-1">
-                                        <p className="text-sm font-medium truncate">{groupTitle}</p>
-                                        <p className="text-[11px] text-muted-foreground truncate">{venueName}</p>
-                                        {dateTime && (
-                                          <p className="text-[11px] text-muted-foreground">{dateTime.date}{dateTime.time ? ` · ${dateTime.time}` : ""}</p>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </Card>
-                                );
-                              })}
+                              {active.map(b => renderCard(b))}
                             </div>
+                            {cancelled.length > 0 && (
+                              <>
+                                <div className="border-t border-dashed border-border my-3" />
+                                <p className="text-[10px] text-muted-foreground mb-1.5 px-1">Cancelled ({cancelled.length})</p>
+                                <div className="space-y-2">
+                                  {cancelled.map(b => renderCard(b, true))}
+                                </div>
+                              </>
+                            )}
                           </div>
                         );
-                      })}
+                      };
 
-                      {/* Unassigned column */}
-                      {(() => {
-                        const unassigned = calFiltered.filter(b => getLocationForBooking(b) === "Unassigned");
-                        if (unassigned.length === 0) return null;
-                        return (
-                          <div className="flex flex-col">
-                            <div className="flex items-center gap-2 mb-2 px-1">
-                              <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
-                              <span className="text-sm font-semibold">Unassigned</span>
-                              <Badge variant="secondary" className="text-[10px] ml-1">{unassigned.length}</Badge>
-                            </div>
-                            <div className="space-y-2 flex-1">
-                              {unassigned.map(booking => {
-                                const dateTime = formatDateTime(booking);
-                                const groupTitle = getBookerOrgName(booking.bookerId) || getBookingGroupName(booking.bookerGroupId) || getBookerGroupViaContact(booking.bookerId) || booking.bookerName || getBookerName(booking.bookerId) || "Unknown";
+                      const visibleLocations = locationGroups.filter(lg => calFiltered.some(b => getLocationForBooking(b) === lg.name));
+                      const hasUnassigned = calFiltered.some(b => getLocationForBooking(b) === "Unassigned");
+                      const colCount = Math.min(visibleLocations.length + (hasUnassigned ? 1 : 0), 3);
 
-                                return (
-                                  <Card
-                                    key={booking.id}
-                                    className="p-2.5 hover:bg-muted/30 cursor-pointer transition-colors"
-                                    onClick={() => setLocation(`/bookings/${booking.id}`)}
-                                    data-testid={`cal-card-${booking.id}`}
-                                  >
-                                    <div className="flex items-start gap-2">
-                                      <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${STATUS_DOT[booking.status] || "bg-gray-400"}`} />
-                                      <div className="min-w-0 flex-1">
-                                        <p className="text-sm font-medium truncate">{groupTitle}</p>
-                                        {dateTime && (
-                                          <p className="text-[11px] text-muted-foreground">{dateTime.date}{dateTime.time ? ` · ${dateTime.time}` : ""}</p>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </Card>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
+                      return (
+                        <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))` }}>
+                          {visibleLocations.map(({ name: locationName }) => {
+                            const colBookings = calFiltered.filter(b => getLocationForBooking(b) === locationName);
+                            return renderColumn(locationName, colBookings);
+                          })}
+                          {hasUnassigned && renderColumn("Unassigned", calFiltered.filter(b => getLocationForBooking(b) === "Unassigned"))}
+                        </div>
+                      );
+                    })()
                   )}
                 </div>
               );
