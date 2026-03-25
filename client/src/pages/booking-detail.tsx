@@ -199,6 +199,28 @@ export default function BookingDetail() {
     },
   });
 
+  const bookingVenueIds = booking?.venueIds || (booking?.venueId ? [booking.venueId] : []);
+  const bookingVenues = venues?.filter((v: Venue) => bookingVenueIds.includes(v.id)) || [];
+  const venue = bookingVenues[0];
+
+  const allSpaceNames = useMemo(() => {
+    if (!venues) return [];
+    const names = new Set<string>();
+    for (const v of venues) {
+      if (v.spaceName) names.add(v.spaceName);
+    }
+    return Array.from(names).sort();
+  }, [venues]);
+
+  const venueSpaceNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const v of bookingVenues) {
+      if (v.spaceName) names.add(v.spaceName);
+    }
+    return Array.from(names);
+  }, [bookingVenues]);
+  const bookerContact = booking?.bookerId ? contacts?.find((c: Contact) => c.id === booking.bookerId) : null;
+
   if (bookingLoading) {
     return (
       <div className="flex justify-center items-center py-20">
@@ -224,28 +246,6 @@ export default function BookingDetail() {
       </div>
     );
   }
-
-  const bookingVenueIds = booking.venueIds || (booking.venueId ? [booking.venueId] : []);
-  const bookingVenues = venues?.filter((v: Venue) => bookingVenueIds.includes(v.id)) || [];
-  const venue = bookingVenues[0];
-
-  const allSpaceNames = useMemo(() => {
-    if (!venues) return [];
-    const names = new Set<string>();
-    for (const v of venues) {
-      if (v.spaceName) names.add(v.spaceName);
-    }
-    return Array.from(names).sort();
-  }, [venues]);
-
-  const venueSpaceNames = useMemo(() => {
-    const names = new Set<string>();
-    for (const v of bookingVenues) {
-      if (v.spaceName) names.add(v.spaceName);
-    }
-    return Array.from(names);
-  }, [bookingVenues]);
-  const bookerContact = booking.bookerId ? contacts?.find((c: Contact) => c.id === booking.bookerId) : null;
 
   const formatDate = (d: Date | string | null | undefined) => {
     if (!d) return null;
