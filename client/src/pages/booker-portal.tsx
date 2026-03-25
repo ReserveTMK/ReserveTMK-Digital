@@ -1631,14 +1631,20 @@ function CalendarView({
   // Studio step state — must be declared before useQuery/useEffect that reference them
   type CalStudioStep = "idle" | "questions-new" | "questions-returning" | "done";
   const [studioStep, setStudioStep] = useState<CalStudioStep>("idle");
-  const [studioProduce, setStudioProduce] = useState("");
-  const [studioUsedBefore, setStudioUsedBefore] = useState<boolean | null>(null);
-  const [studioNeedsHelp, setStudioNeedsHelp] = useState<boolean | null>(null);
-  const [studioGear, setStudioGear] = useState("");
-  const [studioOther, setStudioOther] = useState("");
-  const [studioRecording, setStudioRecording] = useState("");
-  const [studioSetupChanges, setStudioSetupChanges] = useState<boolean | null>(null);
-  const [studioSetupDetails, setStudioSetupDetails] = useState("");
+  const [studioPodName, setStudioPodName] = useState("");
+  const [studioIG, setStudioIG] = useState("");
+  const [studioYT, setStudioYT] = useState("");
+  const [studioNewHost, setStudioNewHost] = useState("");
+  const [studioAbout, setStudioAbout] = useState("");
+  const [studioWhy, setStudioWhy] = useState("");
+  const [studioGoals, setStudioGoals] = useState("");
+  const [studioLastRating, setStudioLastRating] = useState<number>(3);
+  const [studioEpisodeStatus, setStudioEpisodeStatus] = useState<string>("");
+  const [studioThisSession, setStudioThisSession] = useState("");
+  const [studioHost, setStudioHost] = useState("");
+  const [studioGuest1, setStudioGuest1] = useState("");
+  const [studioGuest2, setStudioGuest2] = useState("");
+  const [studioEditor, setStudioEditor] = useState("");
   const [studioNotes, setStudioNotes] = useState("");
   const [studioIsFirstBooking, setStudioIsFirstBooking] = useState(false);
 
@@ -2333,89 +2339,98 @@ function CalendarView({
                       <div className="space-y-3 border border-border rounded-lg p-3">
                         <div className="flex items-center gap-2">
                           <span className="text-base">🎙</span>
-                          <p className="text-sm font-medium">First time at the studio — tell us about your session</p>
+                          <p className="text-sm font-medium">Tell us about your podcast</p>
                         </div>
 
                         <div className="space-y-1">
-                          <Label className="text-xs">What do you plan to produce? <span className="text-red-500">*</span></Label>
-                          <Textarea
-                            value={studioProduce}
-                            onChange={(e) => setStudioProduce(e.target.value)}
-                            rows={2}
-                            placeholder="e.g. podcast, music, voiceover..."
-                            data-testid="portal-input-studio-produce"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label className="text-xs">Have you used a recording studio before? <span className="text-red-500">*</span></Label>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setStudioUsedBefore(true)}
-                              className={`flex-1 text-sm px-3 py-1.5 rounded-md border transition-colors ${studioUsedBefore === true ? "border-primary bg-primary/5" : "border-border"}`}
-                              data-testid="portal-button-studio-used-before-yes"
-                            >Yes</button>
-                            <button
-                              type="button"
-                              onClick={() => setStudioUsedBefore(false)}
-                              className={`flex-1 text-sm px-3 py-1.5 rounded-md border transition-colors ${studioUsedBefore === false ? "border-primary bg-primary/5" : "border-border"}`}
-                              data-testid="portal-button-studio-used-before-no"
-                            >No</button>
-                          </div>
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label className="text-xs">Do you need help with setup on the day? <span className="text-red-500">*</span></Label>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setStudioNeedsHelp(true)}
-                              className={`flex-1 text-sm px-3 py-1.5 rounded-md border transition-colors ${studioNeedsHelp === true ? "border-primary bg-primary/5" : "border-border"}`}
-                              data-testid="portal-button-studio-needs-help-yes"
-                            >Yes</button>
-                            <button
-                              type="button"
-                              onClick={() => setStudioNeedsHelp(false)}
-                              className={`flex-1 text-sm px-3 py-1.5 rounded-md border transition-colors ${studioNeedsHelp === false ? "border-primary bg-primary/5" : "border-border"}`}
-                              data-testid="portal-button-studio-needs-help-no"
-                            >No</button>
-                          </div>
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label className="text-xs">Any specific gear or software you need? <span className="text-muted-foreground">(optional)</span></Label>
+                          <Label className="text-xs">Does your podcast have a name? <span className="text-muted-foreground">(optional)</span></Label>
                           <Input
-                            value={studioGear}
-                            onChange={(e) => setStudioGear(e.target.value)}
-                            placeholder="Microphone type, DAW, etc."
-                            data-testid="portal-input-studio-gear"
+                            value={studioPodName}
+                            onChange={(e) => setStudioPodName(e.target.value)}
+                            placeholder="Podcast name"
+                            data-testid="portal-input-studio-pod-name"
                           />
                         </div>
 
                         <div className="space-y-1">
-                          <Label className="text-xs">Anything else we should know? <span className="text-muted-foreground">(optional)</span></Label>
+                          <Label className="text-xs">Socials <span className="text-muted-foreground">(optional)</span></Label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Input
+                              value={studioIG}
+                              onChange={(e) => setStudioIG(e.target.value)}
+                              placeholder="Instagram @handle"
+                              data-testid="portal-input-studio-ig"
+                            />
+                            <Input
+                              value={studioYT}
+                              onChange={(e) => setStudioYT(e.target.value)}
+                              placeholder="YouTube channel"
+                              data-testid="portal-input-studio-yt"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs">Name of host <span className="text-red-500">*</span></Label>
+                          <Input
+                            value={studioNewHost}
+                            onChange={(e) => setStudioNewHost(e.target.value)}
+                            placeholder="Your name"
+                            data-testid="portal-input-studio-new-host"
+                          />
+                        </div>
+
+                        <div className="border-t border-border pt-3 space-y-1">
+                          <Label className="text-xs font-medium">Your kaupapa</Label>
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs">What's your podcast about? <span className="text-red-500">*</span></Label>
                           <Textarea
-                            value={studioOther}
-                            onChange={(e) => setStudioOther(e.target.value)}
+                            value={studioAbout}
+                            onChange={(e) => setStudioAbout(e.target.value)}
                             rows={2}
-                            placeholder="Any extra info for the team..."
-                            data-testid="portal-input-studio-other"
+                            placeholder="Topic, theme, what you're exploring..."
+                            data-testid="portal-input-studio-about"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs">Why do you want to do this? <span className="text-red-500">*</span></Label>
+                          <Textarea
+                            value={studioWhy}
+                            onChange={(e) => setStudioWhy(e.target.value)}
+                            rows={2}
+                            placeholder="What's driving you to create this?"
+                            data-testid="portal-input-studio-why"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs">Where do you want to take it? <span className="text-red-500">*</span></Label>
+                          <Textarea
+                            value={studioGoals}
+                            onChange={(e) => setStudioGoals(e.target.value)}
+                            rows={2}
+                            placeholder="Goals, vision, who's the audience..."
+                            data-testid="portal-input-studio-goals"
                           />
                         </div>
 
                         <Button
                           className="w-full"
                           size="sm"
-                          disabled={!studioProduce.trim() || studioUsedBefore === null || studioNeedsHelp === null}
+                          disabled={!studioNewHost.trim() || !studioAbout.trim() || !studioWhy.trim() || !studioGoals.trim()}
                           onClick={() => {
                             const lines = [
-                              "[Studio Session — New Booker]",
-                              `What to produce: ${studioProduce.trim()}`,
-                              `Used studio before: ${studioUsedBefore ? "Yes" : "No"}`,
-                              `Needs setup help: ${studioNeedsHelp ? "Yes" : "No"}`,
-                              studioGear.trim() ? `Gear/software: ${studioGear.trim()}` : null,
-                              studioOther.trim() ? `Other notes: ${studioOther.trim()}` : null,
+                              "[Studio Session — New Booker Kaupapa]",
+                              studioPodName.trim() ? `Podcast name: ${studioPodName.trim()}` : null,
+                              studioIG.trim() ? `Instagram: ${studioIG.trim()}` : null,
+                              studioYT.trim() ? `YouTube: ${studioYT.trim()}` : null,
+                              `Host: ${studioNewHost.trim()}`,
+                              `What it's about: ${studioAbout.trim()}`,
+                              `Why: ${studioWhy.trim()}`,
+                              `Where they want to take it: ${studioGoals.trim()}`,
                             ].filter(Boolean).join("\n");
                             setStudioNotes(lines);
                             setStudioIsFirstBooking(true);
@@ -2432,60 +2447,116 @@ function CalendarView({
                       <div className="space-y-3 border border-border rounded-lg p-3">
                         <div className="flex items-center gap-2">
                           <span className="text-base">🎙</span>
-                          <p className="text-sm font-medium">Welcome back — quick check-in for this session</p>
+                          <p className="text-sm font-medium">Welcome back — quick check-in</p>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">How did your last booking go? <span className="text-red-500">*</span></Label>
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="range"
+                              min={1}
+                              max={5}
+                              value={studioLastRating}
+                              onChange={(e) => setStudioLastRating(parseInt(e.target.value))}
+                              className="flex-1 accent-primary"
+                              data-testid="portal-input-studio-last-rating"
+                            />
+                            <span className="text-sm font-medium w-16 text-center">
+                              {["", "Rough", "OK", "Good", "Great", "Amazing"][studioLastRating]}
+                            </span>
+                          </div>
                         </div>
 
                         <div className="space-y-1">
-                          <Label className="text-xs">What are you recording this session? <span className="text-red-500">*</span></Label>
+                          <Label className="text-xs">Where did you get with last episode? <span className="text-red-500">*</span></Label>
+                          <div className="flex gap-2 flex-wrap">
+                            {["N/A", "Recorded", "Editing", "Posted"].map(opt => (
+                              <button
+                                key={opt}
+                                type="button"
+                                onClick={() => setStudioEpisodeStatus(opt)}
+                                className={`text-sm px-3 py-1.5 rounded-md border transition-colors ${studioEpisodeStatus === opt ? "border-primary bg-primary/5" : "border-border"}`}
+                                data-testid={`portal-button-episode-status-${opt.toLowerCase()}`}
+                              >{opt}</button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="border-t border-border pt-3 space-y-1">
+                          <Label className="text-xs">What's the plan for this session? <span className="text-red-500">*</span></Label>
                           <Textarea
-                            value={studioRecording}
-                            onChange={(e) => setStudioRecording(e.target.value)}
+                            value={studioThisSession}
+                            onChange={(e) => setStudioThisSession(e.target.value)}
                             rows={2}
-                            placeholder="Describe what you're working on..."
-                            data-testid="portal-input-studio-recording"
+                            placeholder="What you're recording or working on today..."
+                            data-testid="portal-input-studio-this-session"
                           />
                         </div>
 
-                        <div className="space-y-1">
-                          <Label className="text-xs">Any changes to your usual setup? <span className="text-red-500">*</span></Label>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setStudioSetupChanges(true)}
-                              className={`flex-1 text-sm px-3 py-1.5 rounded-md border transition-colors ${studioSetupChanges === true ? "border-primary bg-primary/5" : "border-border"}`}
-                              data-testid="portal-button-studio-changes-yes"
-                            >Yes</button>
-                            <button
-                              type="button"
-                              onClick={() => setStudioSetupChanges(false)}
-                              className={`flex-1 text-sm px-3 py-1.5 rounded-md border transition-colors ${studioSetupChanges === false ? "border-primary bg-primary/5" : "border-border"}`}
-                              data-testid="portal-button-studio-changes-no"
-                            >No</button>
-                          </div>
-                          {studioSetupChanges === true && (
-                            <Textarea
-                              value={studioSetupDetails}
-                              onChange={(e) => setStudioSetupDetails(e.target.value)}
-                              rows={2}
-                              placeholder="What's changing?"
-                              className="mt-1"
-                              data-testid="portal-input-studio-setup-details"
+                        <div className="border-t border-border pt-3 space-y-2">
+                          <Label className="text-xs font-medium">Who's in the studio this session?</Label>
+
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Host <span className="text-red-500">*</span></Label>
+                            <Input
+                              value={studioHost}
+                              onChange={(e) => setStudioHost(e.target.value)}
+                              placeholder="Host name"
+                              data-testid="portal-input-studio-host"
                             />
-                          )}
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">Guest 1 <span className="text-muted-foreground">(optional)</span></Label>
+                              <Input
+                                value={studioGuest1}
+                                onChange={(e) => setStudioGuest1(e.target.value)}
+                                placeholder="Guest name"
+                                data-testid="portal-input-studio-guest1"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">Guest 2 <span className="text-muted-foreground">(optional)</span></Label>
+                              <Input
+                                value={studioGuest2}
+                                onChange={(e) => setStudioGuest2(e.target.value)}
+                                placeholder="Guest name"
+                                data-testid="portal-input-studio-guest2"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Live editor <span className="text-muted-foreground">(if applicable)</span></Label>
+                            <Input
+                              value={studioEditor}
+                              onChange={(e) => setStudioEditor(e.target.value)}
+                              placeholder="Editor name"
+                              data-testid="portal-input-studio-editor"
+                            />
+                          </div>
                         </div>
 
                         <Button
                           className="w-full"
                           size="sm"
-                          disabled={!studioRecording.trim() || studioSetupChanges === null}
+                          disabled={!studioEpisodeStatus || !studioThisSession.trim() || !studioHost.trim()}
                           onClick={() => {
+                            const people = [
+                              `Host: ${studioHost.trim()}`,
+                              studioGuest1.trim() ? `Guest 1: ${studioGuest1.trim()}` : null,
+                              studioGuest2.trim() ? `Guest 2: ${studioGuest2.trim()}` : null,
+                              studioEditor.trim() ? `Live editor: ${studioEditor.trim()}` : null,
+                            ].filter(Boolean).join(", ");
                             const lines = [
                               "[Studio Session — Returning Booker]",
-                              `Recording: ${studioRecording.trim()}`,
-                              studioSetupChanges
-                                ? `Setup changes: ${studioSetupDetails.trim() || "Yes (details not provided)"}`
-                                : "No changes to setup",
-                            ].filter(Boolean).join("\n");
+                              `Last booking: ${["", "Rough", "OK", "Good", "Great", "Amazing"][studioLastRating]} (${studioLastRating}/5)`,
+                              `Last episode: ${studioEpisodeStatus}`,
+                              `This session: ${studioThisSession.trim()}`,
+                              `People in studio: ${people}`,
+                            ].join("\n");
                             setStudioNotes(lines);
                             setStudioIsFirstBooking(false);
                             setStudioStep("done");

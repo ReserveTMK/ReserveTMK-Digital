@@ -6155,7 +6155,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
   app.post("/api/public/casual-hire/book", async (req, res) => {
     try {
-      const { name, email, phone, organisation, venueId, venueIds: rawVenueIds, startDate, startTime, endTime, classification, bookingSummary, attendeeCount, invoiceEmail } = req.body;
+      const { name, email, phone, organisation, venueId, venueIds: rawVenueIds, startDate, startTime, endTime, classification, bookingSummary, attendeeCount, invoiceEmail, notes, isFirstBooking } = req.body;
       if (!name || !email || !phone || !venueId || !startDate || !startTime || !endTime || !classification) {
         return res.status(400).json({ message: "Missing required fields" });
       }
@@ -6278,6 +6278,8 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         bookingSource: "casual",
         attendeeCount: attendeeCount || null,
         invoiceEmail: invoiceEmail ? String(invoiceEmail).trim() : null,
+        notes: notes || null,
+        isFirstBooking: isFirstBooking || false,
       } as any);
 
       try {
@@ -12896,7 +12898,7 @@ Rules:
       }
       const booker = linkResult.booker;
 
-      const { venueId, venueIds: rawVenueIds, startDate, startTime, endTime, classification, bookingSummary, usePackageCredit, bookerName } = req.body;
+      const { venueId, venueIds: rawVenueIds, startDate, startTime, endTime, classification, bookingSummary, usePackageCredit, bookerName, notes, isFirstBooking } = req.body;
       if (!venueId || !startDate || !startTime || !endTime || !classification) {
         return res.status(400).json({ message: "Missing required fields" });
       }
@@ -13176,6 +13178,8 @@ Rules:
         discountPercentage,
         confirmedAt: autoConfirmedAt,
         paymentStatus: bookingPaymentStatus,
+        notes: notes || null,
+        isFirstBooking: isFirstBooking || false,
       } as any);
 
       // Send appropriate email notifications
