@@ -252,6 +252,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
   const [completionInvoiceLoading, setCompletionInvoiceLoading] = useState(false);
   const [completionServedLoading, setCompletionServedLoading] = useState(false);
   const [swimlaneMode, setSwimlaneMode] = useState(false);
+  const [calShowAll, setCalShowAll] = useState(false);
   const [recurringTemplateDetail, setRecurringTemplateDetail] = useState<RecurringTemplate | null>(null);
   const [showArchivedColumns, setShowArchivedColumns] = useState<Record<string, boolean>>({});
 
@@ -707,22 +708,8 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
             </Card>
           ) : viewMode === "calendar" ? (
             (() => {
-              const monthStart = startOfMonth(calMonth);
-              const monthEnd = endOfMonth(calMonth);
-              const calStart = startOfWeek(monthStart, { weekStartsOn: 1 });
-              const calDays: Date[] = [];
-              let day = calStart;
-              while (calDays.length < 42) {
-                calDays.push(day);
-                day = addDays(day, 1);
-              }
-              const bookingsByDate = new Map<string, typeof filtered>();
-              for (const b of (filtered || [])) {
-                if (!b.startDate) continue;
-                const d = format(new Date(b.startDate), "yyyy-MM-dd");
-                if (!bookingsByDate.has(d)) bookingsByDate.set(d, []);
-                bookingsByDate.get(d)!.push(b);
-              }
+              const calMonthStart = startOfMonth(calMonth);
+              const calMonthEnd = endOfMonth(calMonth);
 
               const STATUS_DOT: Record<string, string> = {
                 enquiry: "bg-yellow-500",
@@ -731,70 +718,155 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                 cancelled: "bg-red-300",
               };
 
+              // Filter bookings by month (unless showing all)
+              const calFiltered = (filtered || []).filter(b => {
+                if (calShowAll) return true;
+                if (!b.startDate) return false;
+                const d = new Date(b.startDate);
+                return d >= calMonthStart && d <= calMonthEnd;
+              }).sort((a, b) => {
+                if (!a.startDate || !b.startDate) return 0;
+                return new Date(a.startDate as unknown as string).getTime() - new Date(b.startDate as unknown as string).getTime();
+              });
+
+              // Group by location (reusing locationGroups)
+              const getLocationForBooking = (booking: Booking) => {
+                const bVIds = booking.venueIds || (booking.venueId ? [booking.venueId] : []);
+                if (bVIds.length === 0) return "Unassigned";
+                for (const lg of locationGroups) {
+                  if (bVIds.some((id: number) => lg.venueIds.includes(id))) return lg.name;
+                }
+                return "Unassigned";
+              };
+
               return (
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <Button variant="ghost" size="icon" onClick={() => setCalMonth(subMonths(calMonth, 1))} data-testid="button-cal-prev">
-                      <ChevronLeft className="w-5 h-5" />
+                <div className="space-y-4">
+                  {/* Month nav */}
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => { setCalShowAll(false); setCalMonth(m => subMonths(m, 1)); }} data-testid="button-cal-prev">
+                      <ChevronLeft className="w-4 h-4" />
                     </Button>
-                    <h3 className="text-lg font-semibold" data-testid="text-cal-month">
-                      {format(calMonth, "MMMM yyyy")}
+                    <h3 className="text-lg font-semibold min-w-[160px] text-center" data-testid="text-cal-month">
+                      {calShowAll ? "All Months" : format(calMonth, "MMMM yyyy")}
                     </h3>
-                    <Button variant="ghost" size="icon" onClick={() => setCalMonth(addMonths(calMonth, 1))} data-testid="button-cal-next">
-                      <ChevronRight className="w-5 h-5" />
+                    <Button variant="outline" size="sm" onClick={() => { setCalShowAll(false); setCalMonth(m => addMonths(m, 1)); }} data-testid="button-cal-next">
+                      <ChevronRight className="w-4 h-4" />
                     </Button>
+                    <Button
+                      variant={calShowAll ? "secondary" : "ghost"}
+                      size="sm"
+                      className="text-xs ml-1"
+                      onClick={() => setCalShowAll(a => !a)}
+                    >
+                      All
+                    </Button>
+                    {!calShowAll && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs text-muted-foreground"
+                        onClick={() => setCalMonth(new Date())}
+                      >
+                        Today
+                      </Button>
+                    )}
                   </div>
 
-                  <div className="grid grid-cols-7 gap-px bg-border rounded-lg overflow-hidden">
-                    {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(d => (
-                      <div key={d} className="bg-muted px-2 py-1.5 text-center text-xs font-medium text-muted-foreground">{d}</div>
-                    ))}
-                    {calDays.map((d, i) => {
-                      const dateKey = format(d, "yyyy-MM-dd");
-                      const dayBookings = bookingsByDate.get(dateKey) || [];
-                      const inMonth = isSameMonth(d, calMonth);
-                      const today = isToday(d);
-
-                      return (
-                        <div
-                          key={i}
-                          className={`bg-background min-h-[90px] md:min-h-[110px] p-1 ${!inMonth ? "opacity-40" : ""} ${today ? "ring-2 ring-primary/30 ring-inset" : ""}`}
-                          data-testid={`cal-day-${dateKey}`}
-                        >
-                          <div className={`text-xs font-medium mb-0.5 ${today ? "text-primary font-bold" : "text-muted-foreground"}`}>
-                            {format(d, "d")}
-                          </div>
-                          <div className="space-y-0.5">
-                            {dayBookings.slice(0, 3).map(b => (
-                              <div
-                                key={b.id}
-                                className="text-[10px] leading-tight px-1 py-0.5 rounded cursor-pointer hover:opacity-80 truncate flex items-center gap-1"
-                                style={{ background: b.status === "enquiry" ? "rgba(234,179,8,0.15)" : b.status === "confirmed" ? "rgba(34,197,94,0.15)" : b.status === "completed" ? "rgba(59,130,246,0.15)" : "rgba(156,163,175,0.1)" }}
-                                onClick={() => setLocation(`/bookings/${b.id}`)}
-                                data-testid={`cal-booking-${b.id}`}
-                              >
-                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[b.status] || "bg-gray-400"}`} />
-                                <span className="truncate">
-                                  {b.startTime && <span className="font-medium">{b.startTime} </span>}
-                                  {getBookerOrgName(b.bookerId) || getBookingGroupName(b.bookerGroupId) || getBookerGroupViaContact(b.bookerId) || b.bookerName || getBookerName(b.bookerId) || getVenueNames(b)}
-                                </span>
-                              </div>
-                            ))}
-                            {dayBookings.length > 3 && (
-                              <div className="text-[9px] text-muted-foreground pl-1">+{dayBookings.length - 3} more</div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
+                  {/* Status legend */}
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500" /> Enquiry</span>
                     <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500" /> Confirmed</span>
                     <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500" /> Completed</span>
                     <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-300" /> Cancelled</span>
+                    <span className="ml-auto text-muted-foreground">{calFiltered.length} booking{calFiltered.length !== 1 ? "s" : ""}</span>
                   </div>
+
+                  {/* Location swimlanes */}
+                  {calFiltered.length === 0 ? (
+                    <Card className="p-8 text-center">
+                      <p className="text-muted-foreground">No venue hires {calShowAll ? "" : `in ${format(calMonth, "MMMM yyyy")}`}</p>
+                    </Card>
+                  ) : (
+                    <div className="space-y-4">
+                      {locationGroups.map(({ name: locationName }) => {
+                        const laneBookings = calFiltered.filter(b => getLocationForBooking(b) === locationName);
+                        if (laneBookings.length === 0) return null;
+
+                        return (
+                          <Card key={locationName} className="overflow-hidden">
+                            <div className="flex items-center gap-2 px-4 py-2.5 bg-muted/30 border-b">
+                              <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
+                              <span className="text-sm font-semibold">{locationName}</span>
+                              <Badge variant="secondary" className="text-[10px] ml-1">{laneBookings.length}</Badge>
+                            </div>
+                            <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                              {laneBookings.map(booking => {
+                                const dateTime = formatDateTime(booking);
+                                const groupTitle = getBookerOrgName(booking.bookerId) || getBookingGroupName(booking.bookerGroupId) || getBookerGroupViaContact(booking.bookerId) || booking.bookerName || getBookerName(booking.bookerId) || "Unknown";
+                                const venueName = getVenueNames(booking);
+
+                                return (
+                                  <div
+                                    key={booking.id}
+                                    className="flex items-start gap-2 p-2.5 rounded-lg border hover:bg-muted/30 cursor-pointer transition-colors"
+                                    onClick={() => setLocation(`/bookings/${booking.id}`)}
+                                    data-testid={`cal-card-${booking.id}`}
+                                  >
+                                    <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${STATUS_DOT[booking.status] || "bg-gray-400"}`} />
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-sm font-medium truncate">{groupTitle}</p>
+                                      <p className="text-[11px] text-muted-foreground truncate">{venueName}</p>
+                                      {dateTime && (
+                                        <p className="text-[11px] text-muted-foreground">{dateTime.date}{dateTime.time ? ` · ${dateTime.time}` : ""}</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </Card>
+                        );
+                      })}
+
+                      {/* Unassigned */}
+                      {(() => {
+                        const unassigned = calFiltered.filter(b => getLocationForBooking(b) === "Unassigned");
+                        if (unassigned.length === 0) return null;
+                        return (
+                          <Card className="overflow-hidden">
+                            <div className="flex items-center gap-2 px-4 py-2.5 bg-muted/30 border-b">
+                              <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
+                              <span className="text-sm font-semibold">Unassigned</span>
+                              <Badge variant="secondary" className="text-[10px] ml-1">{unassigned.length}</Badge>
+                            </div>
+                            <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                              {unassigned.map(booking => {
+                                const dateTime = formatDateTime(booking);
+                                const groupTitle = getBookerOrgName(booking.bookerId) || getBookingGroupName(booking.bookerGroupId) || getBookerGroupViaContact(booking.bookerId) || booking.bookerName || getBookerName(booking.bookerId) || "Unknown";
+
+                                return (
+                                  <div
+                                    key={booking.id}
+                                    className="flex items-start gap-2 p-2.5 rounded-lg border hover:bg-muted/30 cursor-pointer transition-colors"
+                                    onClick={() => setLocation(`/bookings/${booking.id}`)}
+                                    data-testid={`cal-card-${booking.id}`}
+                                  >
+                                    <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${STATUS_DOT[booking.status] || "bg-gray-400"}`} />
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-sm font-medium truncate">{groupTitle}</p>
+                                      {dateTime && (
+                                        <p className="text-[11px] text-muted-foreground">{dateTime.date}{dateTime.time ? ` · ${dateTime.time}` : ""}</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </Card>
+                        );
+                      })()}
+                    </div>
+                  )}
                 </div>
               );
             })()
