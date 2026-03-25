@@ -22,7 +22,7 @@ import { useBookings, useVenues, useBookableResources, useDeskAvailability, useD
 import { useQuery } from "@tanstack/react-query";
 import Bookings from "./bookings";
 import ResourcesTab from "@/components/spaces/resources-tab";
-import { SpaceUseTab } from "@/components/spaces/space-use-tab";
+import { ActivationsTab } from "@/components/spaces/space-use-tab";
 import RegularBookersPage from "./regular-bookers";
 import { QuickAddActivationFAB } from "@/components/spaces/quick-add-activation-dialog";
 import { MonthlyReconcileDialog } from "@/components/spaces/monthly-reconcile-dialog";
@@ -740,7 +740,7 @@ export default function SpacesPage() {
         <TabsList data-testid="tabs-spaces" className="h-auto flex-wrap gap-y-1">
           <TabsTrigger value="space-use" data-testid="tab-space-use">
             <Calendar className="w-4 h-4 mr-1.5" />
-            Space Use
+            Activations
           </TabsTrigger>
           <TabsTrigger value="venue-hire" data-testid="tab-venue-hire">
             <Building2 className="w-4 h-4 mr-1.5" />
@@ -761,7 +761,7 @@ export default function SpacesPage() {
         </TabsList>
 
         <TabsContent value="space-use">
-          <SpaceUseTab />
+          <ActivationsTab />
         </TabsContent>
 
         <TabsContent value="venue-hire">

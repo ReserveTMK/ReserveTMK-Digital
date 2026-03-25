@@ -300,11 +300,15 @@ export async function getEngagementMetrics(filters: ReportFilters) {
   return getReachMetrics(filters);
 }
 
+// Activation event types to exclude — tracked separately from activations
+const ACTIVATION_EXCLUDE_TYPES = ["Meeting", "Catch Up", "Planning", "Mentoring Session"];
+
 export async function getDeliveryMetrics(filters: ReportFilters) {
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
 
-  const evtRows = await db.select({
+  // All events in range (needed for both activations and separate metrics)
+  const allEvtRows = await db.select({
     id: events.id,
     type: events.type,
     attendeeCount: events.attendeeCount,
@@ -315,9 +319,12 @@ export async function getDeliveryMetrics(filters: ReportFilters) {
     lte(events.startTime, end),
   ));
 
+  // Activation events — same filter as Activations tab
+  const activationEvents = allEvtRows.filter(e => !ACTIVATION_EXCLUDE_TYPES.includes(e.type || ""));
+
   const eventsByType: Record<string, number> = {};
   let totalAttendees = 0;
-  for (const e of evtRows) {
+  for (const e of activationEvents) {
     const t = e.type || "Other";
     eventsByType[t] = (eventsByType[t] || 0) + 1;
     if (e.attendeeCount && e.attendeeCount > 0) totalAttendees += e.attendeeCount;
@@ -371,7 +378,7 @@ export async function getDeliveryMetrics(filters: ReportFilters) {
 
   const mentoringMeetings = allMtgRows.filter(m => m.type && MENTORING_TYPES.includes(m.type.toLowerCase()));
   const partnerMeetings = allMtgRows.filter(m => m.type && !MENTORING_TYPES.includes(m.type.toLowerCase()));
-  const workshopCount = evtRows.filter(e => e.type && e.type.toLowerCase().includes("workshop")).length;
+  const workshopCount = activationEvents.filter(e => e.type && e.type.toLowerCase().includes("workshop")).length;
 
   const delProgConds: any[] = [
     eq(programmes.userId, filters.userId),
@@ -397,11 +404,12 @@ export async function getDeliveryMetrics(filters: ReportFilters) {
     if (p.attendees) progAttendees += p.attendees.length;
   }
 
-  const totalActivations = evtRows.length + bkgRows.length + mentoringMeetings.length + progRows.length + partnerMeetings.length;
+  // Activations = activation events + bookings + programmes (NOT meetings/mentoring)
+  const totalActivations = activationEvents.length + bkgRows.length + progRows.length;
 
   return {
     totalActivations,
-    events: { total: evtRows.length, byType: eventsByType, totalAttendees },
+    events: { total: activationEvents.length, byType: eventsByType, totalAttendees },
     bookings: { total: bkgRows.length, byClassification: bookingsByClass, communityHours: Math.round(communityHours * 10) / 10 },
     mentoringSessions: mentoringMeetings.length,
     partnerMeetings: partnerMeetings.length,

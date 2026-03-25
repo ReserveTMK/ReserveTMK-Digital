@@ -52,6 +52,7 @@ const TYPE_COLORS: Record<string, string> = {
   "Drop-in": "bg-green-500/15 text-green-700",
   "Workshop": "bg-amber-500/15 text-amber-700",
   "Programme": "bg-indigo-500/15 text-indigo-700",
+  "External Event": "bg-rose-500/15 text-rose-700",
   "Other": "bg-gray-500/15 text-gray-700",
 };
 
@@ -62,6 +63,7 @@ const TYPE_DOT_COLORS: Record<string, string> = {
   "Drop-in": "bg-green-500",
   "Workshop": "bg-amber-500",
   "Programme": "bg-indigo-500",
+  "External Event": "bg-rose-500",
   "Other": "bg-gray-400",
 };
 
@@ -77,6 +79,7 @@ function classifyItem(item: SpaceEvent | SpaceBooking): string {
   }
   if (e.type === "Drop-in") return "Drop-in";
   if (e.type === "Programme" || e.type === "Programme Session") return "Programme";
+  if (e.type === "External Event") return "External Event";
   if (e.type === "Hub Activity") return "Space Use";
   return "Space Use";
 }
@@ -98,7 +101,7 @@ function getItemName(item: SpaceItem): { primary: string; secondary: string } {
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-export function SpaceUseTab() {
+export function ActivationsTab() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
@@ -118,7 +121,7 @@ export function SpaceUseTab() {
   // Filter and combine — scoped to current month
   const items = useMemo(() => {
     const result: SpaceItem[] = [];
-    const EXCLUDE_TYPES = ["Meeting", "Catch Up", "Planning", "Mentoring Session", "External Event"];
+    const EXCLUDE_TYPES = ["Meeting", "Catch Up", "Planning", "Mentoring Session"];
 
     for (const e of (events || [])) {
       const d = new Date(e.startTime);
