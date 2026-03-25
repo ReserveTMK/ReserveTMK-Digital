@@ -628,7 +628,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <MetricCard
-              title="Total Venue Hires"
+              title={viewMode === "calendar" && !calShowAll ? `Venue Hires — ${format(calMonth, "MMM yyyy")}` : "Total Venue Hires"}
               value={stats.total}
               icon={<Calendar className="w-4 h-4" />}
               color="primary"

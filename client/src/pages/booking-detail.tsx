@@ -209,7 +209,7 @@ export default function BookingDetail() {
 
   if (!booking) {
     return (
-      <main className="flex-1 p-4 md:p-8 overflow-y-auto">
+      <div className="flex-1 p-4 md:p-8 overflow-y-auto">
         <div className="max-w-4xl mx-auto">
           <Card className="p-12 text-center">
             <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
@@ -221,7 +221,7 @@ export default function BookingDetail() {
             </Button>
           </Card>
         </div>
-      </main>
+      </div>
     );
   }
 
@@ -263,7 +263,7 @@ export default function BookingDetail() {
 
   return (
     <>
-      <main className="flex-1 p-4 md:p-8 overflow-y-auto">
+      <div className="flex-1 p-4 md:p-8 overflow-y-auto">
         <div className="max-w-4xl mx-auto space-y-6">
           <div className="flex items-center gap-3 flex-wrap">
             <Button variant="ghost" size="icon" onClick={() => setLocation("/spaces?tab=venue-hire")} data-testid="button-back">
@@ -914,7 +914,7 @@ export default function BookingDetail() {
             </Card>
           )}
         </div>
-      </main>
+      </div>
 
       <Dialog open={declineOpen} onOpenChange={setDeclineOpen}>
         <DialogContent>

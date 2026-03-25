@@ -259,12 +259,15 @@ function DashboardView({
     return re.test(email.trim());
   };
 
-  // Settings panel state
-  const [settingsOpen, setSettingsOpen] = useState(!booker.notificationsEmail || (isPaidBooker && !booker.invoiceEmail));
+  // Auto-fill notificationsEmail from loginEmail if not set
+  const effectiveNotifEmail = booker.notificationsEmail || booker.loginEmail || contact?.email || "";
 
-  // Notification settings state — start in saved mode if email already on record
+  // Settings panel state — only force open if no email can be derived at all
+  const [settingsOpen, setSettingsOpen] = useState(!effectiveNotifEmail || (isPaidBooker && !booker.invoiceEmail));
+
+  // Notification settings state — start in saved mode if email already on record or auto-filled
   const [notifEmail, setNotifEmail] = useState<string>("");
-  const [notifEmailSaved, setNotifEmailSaved] = useState(!!booker.notificationsEmail);
+  const [notifEmailSaved, setNotifEmailSaved] = useState(!!effectiveNotifEmail);
   const [invoiceEmail, setInvoiceEmail] = useState<string>("");
   const [invoiceEmailSaved, setInvoiceEmailSaved] = useState(false);
 
@@ -358,7 +361,7 @@ function DashboardView({
     ? new Date(agreement.endDate).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" })
     : null;
 
-  const hasNotifEmail = !!booker.notificationsEmail || notifEmailSaved;
+  const hasNotifEmail = !!effectiveNotifEmail || notifEmailSaved;
   const hasInvoiceEmail = !isPaidBooker || invoiceEmailSaved;
   const canBook = hasNotifEmail && hasInvoiceEmail;
   const settingsHasAlert = !hasNotifEmail || (isPaidBooker && !invoiceEmailSaved);
@@ -1917,21 +1920,30 @@ function CalendarView({
           {autoConfirmed ? (
             <>
               <h2 className="text-xl font-bold mb-2" data-testid="heading-booking-confirmed">Booking Confirmed!</h2>
+              {bookMutation.data?.id && (
+                <p className="text-xs text-muted-foreground mb-1" data-testid="text-booking-ref">Reference: VH-{bookMutation.data.id}</p>
+              )}
               {isOverAllowance ? (
                 <p className="text-sm text-muted-foreground mb-4" data-testid="text-booking-confirmed">
-                  Your booking has been confirmed. This booking exceeds your agreement allowance - a community rate (20% discount) has been applied.
+                  Your booking has been confirmed. This booking exceeds your agreement allowance — a community rate (20% discount) has been applied.
+                  {effectiveNotifEmail && ` A confirmation email has been sent to ${effectiveNotifEmail}.`}
                 </p>
               ) : (
                 <p className="text-sm text-muted-foreground mb-4" data-testid="text-booking-confirmed">
                   Your booking has been automatically confirmed and is covered by your agreement. No payment is required.
+                  {effectiveNotifEmail && ` A confirmation email has been sent to ${effectiveNotifEmail}.`}
                 </p>
               )}
             </>
           ) : (
             <>
               <h2 className="text-xl font-bold mb-2" data-testid="heading-booking-confirmed">Venue Hire Request Submitted</h2>
+              {bookMutation.data?.id && (
+                <p className="text-xs text-muted-foreground mb-1" data-testid="text-booking-ref">Reference: VH-{bookMutation.data.id}</p>
+              )}
               <p className="text-sm text-muted-foreground mb-4" data-testid="text-booking-confirmed">
-                Your venue hire request has been submitted as an enquiry. The ReserveTMK Digital team will review and confirm it shortly.
+                Your venue hire request has been submitted. The Reserve Tāmaki team will review and confirm it within 1-2 business days.
+                {effectiveNotifEmail && ` You'll receive a confirmation email at ${effectiveNotifEmail} once approved.`}
               </p>
             </>
           )}
@@ -2089,10 +2101,11 @@ function CalendarView({
             );
           }
           if (!pricingData.coveredByAgreement) {
+            const allZero = pricingData.halfDayRate === 0 && pricingData.fullDayRate === 0 && pricingData.hourlyRate === 0;
             return (
               <div className="mb-4 flex items-center gap-3 flex-wrap text-xs text-muted-foreground" data-testid="text-venue-rates">
                 <Info className="w-3 h-3 shrink-0" />
-                <span>Rates: Half day ${pricingData.halfDayRate.toFixed(0)} | Full day ${pricingData.fullDayRate.toFixed(0)}{pricingData.hourlyRate > 0 ? ` | Hourly $${pricingData.hourlyRate.toFixed(0)}/hr` : ""}</span>
+                <span>{allZero ? "No charge — Free / Koha arrangement" : `Rates: Half day $${pricingData.halfDayRate.toFixed(0)} | Full day $${pricingData.fullDayRate.toFixed(0)}${pricingData.hourlyRate > 0 ? ` | Hourly $${pricingData.hourlyRate.toFixed(0)}/hr` : ""}`}</span>
                 {pricingData.discountPercentage > 0 && (
                   <Badge variant="secondary" className="text-xs" data-testid="badge-discount-tier">
                     {pricingData.discountPercentage}% discount
@@ -2299,7 +2312,7 @@ function CalendarView({
                         <div className="space-y-1">
                           {filteredVenues.map(renderVenueBtn)}
                           {lockedSpaceType && selectedVenues.length > 0 && (
-                            <p className="text-xs text-muted-foreground px-1 pt-1 italic">Locations cannot be mixed in one booking</p>
+                            <p className="text-xs text-muted-foreground px-1 pt-1 italic">Office and Studio spaces cannot be mixed in one booking</p>
                           )}
                         </div>
                       </>

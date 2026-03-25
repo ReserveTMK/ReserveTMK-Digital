@@ -12729,6 +12729,7 @@ Rules:
 
       const applyDiscount = (rate: number) => {
         if (hasMembership || hasMou) return 0;
+        if (pricingTier === "free_koha") return 0;
         if (pricingTier === "discounted" && discountPct > 0) {
           return Math.round(rate * (1 - discountPct / 100) * 100) / 100;
         }
