@@ -210,6 +210,9 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
   const { data: allGroups } = useGroups();
   const { data: allAssociations } = useAllGroupAssociations();
   const { data: allMemberships } = useMemberships();
+  const { data: allGroupMemberships } = useQuery<any[]>({
+    queryKey: ["/api/group-memberships/all"],
+  });
   const { data: allMous } = useMous();
   const { data: pricingDefaults } = useBookingPricingDefaults();
 
@@ -341,6 +344,14 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
       }
     }
     return groupName;
+  };
+
+  // Fallback: look up group name via contact's group membership when booking has no bookerGroupId
+  const getBookerGroupViaContact = (bookerId: number | null | undefined) => {
+    if (!bookerId || !allGroupMemberships || !allGroups) return null;
+    const membership = (allGroupMemberships as any[]).find((m: any) => m.contactId === bookerId);
+    if (!membership) return null;
+    return getBookingGroupName(membership.groupId);
   };
 
   const formatDateTime = (b: Booking) => {
@@ -841,7 +852,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                                                   </div>
                                                   <div className="min-w-0 flex-1">
                                                     <p className="font-medium truncate leading-tight">
-                                                      {getBookingGroupName(booking.bookerGroupId) || getBookerName(booking.bookerId) || getVenueNames(booking)}
+                                                      {getBookerOrgName(booking.bookerId) || getBookingGroupName(booking.bookerGroupId) || getBookerGroupViaContact(booking.bookerId) || booking.bookerName || getBookerName(booking.bookerId) || getVenueNames(booking)}
                                                     </p>
                                                     {dateTime && (
                                                       <p className="text-[10px] text-muted-foreground truncate">{dateTime.date}{dateTime.time ? ` · ${dateTime.time}` : ""}</p>
@@ -926,10 +937,10 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                                             </div>
                                             <div className="min-w-0 flex-1">
                                               <p className="text-sm font-medium truncate" data-testid={`kanban-name-${booking.id}`}>
-                                                {getBookingGroupName(booking.bookerGroupId) || getBookerName(booking.bookerId) || getVenueNames(booking)}
+                                                {getBookerOrgName(booking.bookerId) || getBookingGroupName(booking.bookerGroupId) || getBookerGroupViaContact(booking.bookerId) || booking.bookerName || getBookerName(booking.bookerId) || getVenueNames(booking)}
                                               </p>
                                               <p className="text-[10px] text-muted-foreground truncate mt-0.5">
-                                                {(getBookingGroupName(booking.bookerGroupId) || getBookerName(booking.bookerId)) ? getVenueNames(booking) : ""}
+                                                {(getBookerOrgName(booking.bookerId) || getBookingGroupName(booking.bookerGroupId) || getBookerGroupViaContact(booking.bookerId)) ? (booking.bookerName || getBookerName(booking.bookerId) || getVenueNames(booking)) : getVenueNames(booking)}
                                               </p>
                                               <div className="flex items-center gap-1 mt-1 flex-wrap">
                                                 <Badge className={`${CLASSIFICATION_COLORS[booking.classification] || ""} text-[10px]`}>
@@ -1123,8 +1134,10 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                     const bookerName = getBookerName(booking.bookerId);
                     const bookingGroupName = getBookingGroupName(booking.bookerGroupId);
                     const bookerOrgName = getBookerOrgName(booking.bookerId);
-                    const cardTitle = bookerOrgName || bookingGroupName || booking.bookerName || bookerName || getVenueNames(booking);
-                    const cardSubName = (bookerOrgName || bookingGroupName) ? (booking.bookerName || bookerName) : null;
+                    const contactGroupName = !bookingGroupName ? getBookerGroupViaContact(booking.bookerId) : null;
+                    const orgOrGroup = bookerOrgName || bookingGroupName || contactGroupName;
+                    const cardTitle = orgOrGroup || booking.bookerName || bookerName || getVenueNames(booking);
+                    const cardSubName = orgOrGroup ? (booking.bookerName || bookerName) : null;
                     const isCancelled = booking.status === "cancelled";
                     const venueSpaceName = venues?.find(v => (booking.venueIds as number[] | undefined)?.includes(v.id) || v.id === booking.venueId)?.spaceName;
                     const hasVenueAssigned = !!(booking.venueIds?.length || booking.venueId);
