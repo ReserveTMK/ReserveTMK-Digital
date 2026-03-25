@@ -126,11 +126,18 @@ function buildInstructionSection(title: string, instructions: VenueInstruction[]
   `;
 }
 
-export async function sendBookingConfirmationEmail(booking: Booking, userId: string): Promise<void> {
-  if (!booking.bookerId) throw new Error("Booking has no booker contact");
+export async function sendBookingConfirmationEmail(booking: Booking, userId: string, overrideEmail?: string): Promise<void> {
+  let contact: any = null;
+  let regularBooker: RegularBooker | undefined;
 
-  const contact = await storage.getContact(booking.bookerId);
-  if (!contact?.email) throw new Error("Contact has no email address");
+  if (booking.bookerId) {
+    contact = await storage.getContact(booking.bookerId);
+    regularBooker = await storage.getRegularBookerByContactId(booking.bookerId);
+  }
+
+  // Determine recipient email: override > notificationsEmail > contact email
+  const recipientEmail = overrideEmail || regularBooker?.notificationsEmail || contact?.email;
+  if (!recipientEmail) throw new Error("No email address found for booking confirmation");
 
   const venues = await storage.getVenues(userId);
   const bookingVenueIds = booking.venueIds || (booking.venueId ? [booking.venueId] : []);
@@ -139,12 +146,7 @@ export async function sendBookingConfirmationEmail(booking: Booking, userId: str
   const instructions = await getBookingLocationInstructions(booking, userId, bookingVenues);
   const grouped = groupInstructions(instructions);
 
-  let regularBooker: RegularBooker | undefined;
-  if (booking.bookerId) {
-    regularBooker = await storage.getRegularBookerByContactId(booking.bookerId);
-  }
-
-  const clientName = contact.name || contact.email;
+  const clientName = contact?.name || booking.bookerName || recipientEmail;
   const venueName = venue?.name || "Reserve T\u0101maki Space";
   const dateStr = formatDate(booking.startDate);
   const startStr = formatTime(booking.startTime);
@@ -265,7 +267,7 @@ export async function sendBookingConfirmationEmail(booking: Booking, userId: str
 </html>`;
 
   const subject = `Booking Confirmed - Reserve T\u0101maki ${venueName} on ${dateStr}`;
-  await sendEmail(contact.email, subject, htmlBody);
+  await sendEmail(recipientEmail, subject, htmlBody);
 }
 
 export async function sendAfterHoursReminderEmail(booking: Booking, userId: string): Promise<void> {

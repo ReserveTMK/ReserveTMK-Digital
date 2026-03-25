@@ -1992,7 +1992,7 @@ function CalendarView({
             })()}
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={() => { setBookingConfirmed(false); setSelectedDate(null); setSelectedVenues([]); setPresetSlot(""); setClassification(""); setBookingSummary(""); setBookerName(""); setStudioStep("idle"); setStudioNotes(""); setStudioIsFirstBooking(false); setLockedSpaceType(null); setSelectedLocation(null); }} data-testid="button-book-another">
+            <Button variant="outline" className="flex-1" onClick={() => { setBookingConfirmed(false); setSelectedDate(null); setSelectedVenues([]); setClassification(""); setBookingSummary(""); setBookerName(""); setStudioStep("idle"); setStudioNotes(""); setStudioIsFirstBooking(false); setLockedSpaceType(null); setSelectedLocation(null); }} data-testid="button-book-another">
               Book Another
             </Button>
             <Button className="flex-1" onClick={onBack} data-testid="button-back-to-dashboard">
@@ -2029,7 +2029,7 @@ function CalendarView({
                     {authData.membership?.bookingAllowance > 0 && (
                       <p className="text-xs text-muted-foreground mt-1" data-testid="text-agreement-allowance">
                         {(() => {
-                          const used = authData._agreementUsage ?? 0;
+                          const used = calAgreementUsage;
                           const total = authData.membership.bookingAllowance;
                           const remaining = Math.max(0, total - used);
                           const period = getPeriodLabel(authData.membership.allowancePeriod);
@@ -2040,7 +2040,7 @@ function CalendarView({
                     {authData.mou?.bookingAllowance > 0 && !authData.membership && (
                       <p className="text-xs text-muted-foreground mt-1" data-testid="text-mou-allowance">
                         {(() => {
-                          const used = authData._agreementUsage ?? 0;
+                          const used = calAgreementUsage;
                           const total = authData.mou.bookingAllowance;
                           const remaining = Math.max(0, total - used);
                           const period = getPeriodLabel(authData.mou.allowancePeriod);

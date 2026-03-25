@@ -13181,7 +13181,7 @@ Rules:
         // Auto-confirmed: send confirmation email (not enquiry alert)
         try {
           const { sendBookingConfirmationEmail } = await import("./email");
-          await sendBookingConfirmationEmail(booking, booker.userId);
+          await sendBookingConfirmationEmail(booking, booker.userId, booker.notificationsEmail || undefined);
         } catch (emailErr) {
           console.error("[Email] Auto-confirm confirmation email failed (booker portal):", emailErr);
         }
