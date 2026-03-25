@@ -781,88 +781,92 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                     <span className="ml-auto text-muted-foreground">{calFiltered.length} booking{calFiltered.length !== 1 ? "s" : ""}</span>
                   </div>
 
-                  {/* Location swimlanes */}
+                  {/* Location columns */}
                   {calFiltered.length === 0 ? (
                     <Card className="p-8 text-center">
                       <p className="text-muted-foreground">No venue hires {calShowAll ? "" : `in ${format(calMonth, "MMMM yyyy")}`}</p>
                     </Card>
                   ) : (
-                    <div className="space-y-4">
+                    <div className={`grid gap-4 ${locationGroups.length > 1 ? `grid-cols-1 md:grid-cols-${Math.min(locationGroups.length + (calFiltered.some(b => getLocationForBooking(b) === "Unassigned") ? 1 : 0), 3)}` : "grid-cols-1"}`} style={{ gridTemplateColumns: `repeat(${Math.min(locationGroups.filter(lg => calFiltered.some(b => getLocationForBooking(b) === lg.name)).length + (calFiltered.some(b => getLocationForBooking(b) === "Unassigned") ? 1 : 0), 3)}, minmax(0, 1fr))` }}>
                       {locationGroups.map(({ name: locationName }) => {
-                        const laneBookings = calFiltered.filter(b => getLocationForBooking(b) === locationName);
-                        if (laneBookings.length === 0) return null;
+                        const colBookings = calFiltered.filter(b => getLocationForBooking(b) === locationName);
+                        if (colBookings.length === 0) return null;
 
                         return (
-                          <Card key={locationName} className="overflow-hidden">
-                            <div className="flex items-center gap-2 px-4 py-2.5 bg-muted/30 border-b">
+                          <div key={locationName} className="flex flex-col">
+                            <div className="flex items-center gap-2 mb-2 px-1">
                               <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
                               <span className="text-sm font-semibold">{locationName}</span>
-                              <Badge variant="secondary" className="text-[10px] ml-1">{laneBookings.length}</Badge>
+                              <Badge variant="secondary" className="text-[10px] ml-1">{colBookings.length}</Badge>
                             </div>
-                            <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                              {laneBookings.map(booking => {
+                            <div className="space-y-2 flex-1">
+                              {colBookings.map(booking => {
                                 const dateTime = formatDateTime(booking);
                                 const groupTitle = getBookerOrgName(booking.bookerId) || getBookingGroupName(booking.bookerGroupId) || getBookerGroupViaContact(booking.bookerId) || booking.bookerName || getBookerName(booking.bookerId) || "Unknown";
                                 const venueName = getVenueNames(booking);
 
                                 return (
-                                  <div
+                                  <Card
                                     key={booking.id}
-                                    className="flex items-start gap-2 p-2.5 rounded-lg border hover:bg-muted/30 cursor-pointer transition-colors"
+                                    className="p-2.5 hover:bg-muted/30 cursor-pointer transition-colors"
                                     onClick={() => setLocation(`/bookings/${booking.id}`)}
                                     data-testid={`cal-card-${booking.id}`}
                                   >
-                                    <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${STATUS_DOT[booking.status] || "bg-gray-400"}`} />
-                                    <div className="min-w-0 flex-1">
-                                      <p className="text-sm font-medium truncate">{groupTitle}</p>
-                                      <p className="text-[11px] text-muted-foreground truncate">{venueName}</p>
-                                      {dateTime && (
-                                        <p className="text-[11px] text-muted-foreground">{dateTime.date}{dateTime.time ? ` · ${dateTime.time}` : ""}</p>
-                                      )}
+                                    <div className="flex items-start gap-2">
+                                      <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${STATUS_DOT[booking.status] || "bg-gray-400"}`} />
+                                      <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-medium truncate">{groupTitle}</p>
+                                        <p className="text-[11px] text-muted-foreground truncate">{venueName}</p>
+                                        {dateTime && (
+                                          <p className="text-[11px] text-muted-foreground">{dateTime.date}{dateTime.time ? ` · ${dateTime.time}` : ""}</p>
+                                        )}
+                                      </div>
                                     </div>
-                                  </div>
+                                  </Card>
                                 );
                               })}
                             </div>
-                          </Card>
+                          </div>
                         );
                       })}
 
-                      {/* Unassigned */}
+                      {/* Unassigned column */}
                       {(() => {
                         const unassigned = calFiltered.filter(b => getLocationForBooking(b) === "Unassigned");
                         if (unassigned.length === 0) return null;
                         return (
-                          <Card className="overflow-hidden">
-                            <div className="flex items-center gap-2 px-4 py-2.5 bg-muted/30 border-b">
+                          <div className="flex flex-col">
+                            <div className="flex items-center gap-2 mb-2 px-1">
                               <MapPin className="w-3.5 h-3.5 text-muted-foreground" />
                               <span className="text-sm font-semibold">Unassigned</span>
                               <Badge variant="secondary" className="text-[10px] ml-1">{unassigned.length}</Badge>
                             </div>
-                            <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                            <div className="space-y-2 flex-1">
                               {unassigned.map(booking => {
                                 const dateTime = formatDateTime(booking);
                                 const groupTitle = getBookerOrgName(booking.bookerId) || getBookingGroupName(booking.bookerGroupId) || getBookerGroupViaContact(booking.bookerId) || booking.bookerName || getBookerName(booking.bookerId) || "Unknown";
 
                                 return (
-                                  <div
+                                  <Card
                                     key={booking.id}
-                                    className="flex items-start gap-2 p-2.5 rounded-lg border hover:bg-muted/30 cursor-pointer transition-colors"
+                                    className="p-2.5 hover:bg-muted/30 cursor-pointer transition-colors"
                                     onClick={() => setLocation(`/bookings/${booking.id}`)}
                                     data-testid={`cal-card-${booking.id}`}
                                   >
-                                    <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${STATUS_DOT[booking.status] || "bg-gray-400"}`} />
-                                    <div className="min-w-0 flex-1">
-                                      <p className="text-sm font-medium truncate">{groupTitle}</p>
-                                      {dateTime && (
-                                        <p className="text-[11px] text-muted-foreground">{dateTime.date}{dateTime.time ? ` · ${dateTime.time}` : ""}</p>
-                                      )}
+                                    <div className="flex items-start gap-2">
+                                      <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${STATUS_DOT[booking.status] || "bg-gray-400"}`} />
+                                      <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-medium truncate">{groupTitle}</p>
+                                        {dateTime && (
+                                          <p className="text-[11px] text-muted-foreground">{dateTime.date}{dateTime.time ? ` · ${dateTime.time}` : ""}</p>
+                                        )}
+                                      </div>
                                     </div>
-                                  </div>
+                                  </Card>
                                 );
                               })}
                             </div>
-                          </Card>
+                          </div>
                         );
                       })()}
                     </div>
