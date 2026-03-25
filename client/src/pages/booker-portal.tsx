@@ -1624,6 +1624,23 @@ function CalendarView({
   const [autoConfirmed, setAutoConfirmed] = useState(false);
   const [isOverAllowance, setIsOverAllowance] = useState(false);
   const [showOverAllowanceDialog, setShowOverAllowanceDialog] = useState(false);
+  const [bookingSummaryError, setBookingSummaryError] = useState(false);
+  const [lockedSpaceType, setLockedSpaceType] = useState<string | null>(null);
+  const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
+
+  // Studio step state — must be declared before useQuery/useEffect that reference them
+  type CalStudioStep = "idle" | "questions-new" | "questions-returning" | "done";
+  const [studioStep, setStudioStep] = useState<CalStudioStep>("idle");
+  const [studioProduce, setStudioProduce] = useState("");
+  const [studioUsedBefore, setStudioUsedBefore] = useState<boolean | null>(null);
+  const [studioNeedsHelp, setStudioNeedsHelp] = useState<boolean | null>(null);
+  const [studioGear, setStudioGear] = useState("");
+  const [studioOther, setStudioOther] = useState("");
+  const [studioRecording, setStudioRecording] = useState("");
+  const [studioSetupChanges, setStudioSetupChanges] = useState<boolean | null>(null);
+  const [studioSetupDetails, setStudioSetupDetails] = useState("");
+  const [studioNotes, setStudioNotes] = useState("");
+  const [studioIsFirstBooking, setStudioIsFirstBooking] = useState(false);
 
   const { data: venues, isLoading: venuesLoading } = useQuery<any[]>({
     queryKey: ["/api/booker/venues", token],
@@ -1803,26 +1820,6 @@ function CalendarView({
 
   const startTime = customStart;
   const endTime = customEnd;
-
-  const [bookingSummaryError, setBookingSummaryError] = useState(false);
-
-  // Venue grouping
-  const [lockedSpaceType, setLockedSpaceType] = useState<string | null>(null);
-  const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
-
-  // Studio step
-  type CalStudioStep = "idle" | "questions-new" | "questions-returning" | "done";
-  const [studioStep, setStudioStep] = useState<CalStudioStep>("idle");
-  const [studioProduce, setStudioProduce] = useState("");
-  const [studioUsedBefore, setStudioUsedBefore] = useState<boolean | null>(null);
-  const [studioNeedsHelp, setStudioNeedsHelp] = useState<boolean | null>(null);
-  const [studioGear, setStudioGear] = useState("");
-  const [studioOther, setStudioOther] = useState("");
-  const [studioRecording, setStudioRecording] = useState("");
-  const [studioSetupChanges, setStudioSetupChanges] = useState<boolean | null>(null);
-  const [studioSetupDetails, setStudioSetupDetails] = useState("");
-  const [studioNotes, setStudioNotes] = useState("");
-  const [studioIsFirstBooking, setStudioIsFirstBooking] = useState(false);
 
   const pendingBookingPayload = {
     venueId: selectedVenues[0],
