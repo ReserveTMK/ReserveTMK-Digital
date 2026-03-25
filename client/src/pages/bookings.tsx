@@ -582,19 +582,9 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                     data-testid="button-kanban-view"
                   >
                     <Columns3 className="w-3.5 h-3.5" />
-                    Board
+                    Pipeline
                   </Button>
-                  <Button
-                    variant={viewMode === "list" ? "default" : "ghost"}
-                    size="sm"
-                    onClick={() => setViewMode("list")}
-                    className="rounded-none gap-1.5 text-xs"
-                    data-testid="button-list-view"
-                  >
-                    <LayoutList className="w-3.5 h-3.5" />
-                    List
-                  </Button>
-                  <Button
+<Button
                     variant={viewMode === "calendar" ? "default" : "ghost"}
                     size="sm"
                     onClick={() => setViewMode("calendar")}
@@ -602,7 +592,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                     data-testid="button-calendar-view"
                   >
                     <CalendarDays className="w-3.5 h-3.5" />
-                    Calendar
+                    Monthly
                   </Button>
                 </div>
                 {viewMode === "kanban" && (
