@@ -558,37 +558,50 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
               </div>
             )}
             <div className={`flex items-center gap-2 flex-wrap ${embedded ? "w-full justify-between" : ""}`}>
-              <div className="flex items-center border border-border rounded-lg overflow-hidden" data-testid="view-toggle">
-                <Button
-                  variant={viewMode === "kanban" ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setViewMode("kanban")}
-                  className="rounded-none gap-1.5 text-xs"
-                  data-testid="button-kanban-view"
-                >
-                  <Columns3 className="w-3.5 h-3.5" />
-                  Board
-                </Button>
-                <Button
-                  variant={viewMode === "list" ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setViewMode("list")}
-                  className="rounded-none gap-1.5 text-xs"
-                  data-testid="button-list-view"
-                >
-                  <LayoutList className="w-3.5 h-3.5" />
-                  List
-                </Button>
+              <div className="flex items-center gap-2" data-testid="view-toggle">
+                <div className="flex items-center border border-border rounded-lg overflow-hidden">
+                  <Button
+                    variant={viewMode === "kanban" ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => setViewMode("kanban")}
+                    className="rounded-none gap-1.5 text-xs"
+                    data-testid="button-kanban-view"
+                  >
+                    <Columns3 className="w-3.5 h-3.5" />
+                    Board
+                  </Button>
+                  <Button
+                    variant={viewMode === "list" ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => setViewMode("list")}
+                    className="rounded-none gap-1.5 text-xs"
+                    data-testid="button-list-view"
+                  >
+                    <LayoutList className="w-3.5 h-3.5" />
+                    List
+                  </Button>
+                  <Button
+                    variant={viewMode === "calendar" ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => setViewMode("calendar")}
+                    className="rounded-none gap-1.5 text-xs"
+                    data-testid="button-calendar-view"
+                  >
+                    <CalendarDays className="w-3.5 h-3.5" />
+                    Calendar
+                  </Button>
+                </div>
                 {viewMode === "kanban" && (
                   <Button
-                    variant={swimlaneMode ? "default" : "ghost"}
+                    variant={swimlaneMode ? "secondary" : "ghost"}
                     size="sm"
                     onClick={() => setSwimlaneMode(s => !s)}
-                    className="rounded-none gap-1.5 text-xs"
+                    className="gap-1.5 text-xs"
                     data-testid="button-swimlane-view"
+                    title="Group by location"
                   >
                     <Filter className="w-3.5 h-3.5" />
-                    Swimlanes
+                    {swimlaneMode ? "Swimlanes" : "Swimlanes"}
                   </Button>
                 )}
               </div>
@@ -763,7 +776,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[b.status] || "bg-gray-400"}`} />
                                 <span className="truncate">
                                   {b.startTime && <span className="font-medium">{b.startTime} </span>}
-                                  {getBookingGroupName(b.bookerGroupId) || getBookerName(b.bookerId) || getVenueNames(b)}
+                                  {getBookerOrgName(b.bookerId) || getBookingGroupName(b.bookerGroupId) || getBookerGroupViaContact(b.bookerId) || b.bookerName || getBookerName(b.bookerId) || getVenueNames(b)}
                                 </span>
                               </div>
                             ))}
