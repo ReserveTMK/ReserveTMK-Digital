@@ -1721,7 +1721,7 @@ function CalendarView({
     [selectedVenues, venues]
   );
 
-  const { data: studioBookerCheck } = useQuery<{ isReturning: boolean; bookingCount: number }>({
+  const { data: studioBookerCheck, isError: studioCheckError } = useQuery<{ isReturning: boolean; bookingCount: number }>({
     queryKey: ["/api/public/spaces/check-studio-booker", bookerEmail, bookerUserId],
     queryFn: async () => {
       const params = new URLSearchParams({ email: bookerEmail, userId: bookerUserId });
@@ -1731,6 +1731,7 @@ function CalendarView({
     },
     enabled: allSelectedAreStudio && !!bookerEmail && !!bookerUserId && studioStep === "idle",
     staleTime: 60_000,
+    retry: 1,
   });
 
   useEffect(() => {
@@ -1748,13 +1749,19 @@ function CalendarView({
       setStudioSetupDetails("");
       return;
     }
-    if (!studioBookerCheck || studioStep !== "idle") return;
+    if (studioStep !== "idle") return;
+    // If API errored, default to new-booker flow
+    if (studioCheckError) {
+      setStudioStep("questions-new");
+      return;
+    }
+    if (!studioBookerCheck) return;
     if (studioBookerCheck.isReturning) {
       setStudioStep("questions-returning");
     } else {
       setStudioStep("questions-new");
     }
-  }, [allSelectedAreStudio, studioBookerCheck]);
+  }, [allSelectedAreStudio, studioBookerCheck, studioCheckError]);
 
   const days = useMemo(() => getMonthDays(currentYear, currentMonth), [currentYear, currentMonth]);
   const monthName = new Date(currentYear, currentMonth).toLocaleDateString("en-NZ", { month: "long", year: "numeric" });

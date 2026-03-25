@@ -6332,7 +6332,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       }
 
       const allVenues = await storage.getVenues(ownerUserId);
-      const studioVenueIds = new Set(allVenues.filter((v: any) => v.spaceName === "Studio").map((v: any) => v.id));
+      const studioVenueIds = new Set(allVenues.filter((v: any) => v.spaceName === "Podcast Studio").map((v: any) => v.id));
 
       const allBookings = await storage.getBookings(ownerUserId);
       const studioBookings = allBookings.filter((b: any) => {
