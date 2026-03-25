@@ -5641,6 +5641,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
       const updated = await storage.updateBooking(bookingId, {
         status: "cancelled",
+        paymentStatus: "not_required",
         notes: booking.notes ? `${booking.notes}\n\nDeclined: ${reason || "No reason given"}` : `Declined: ${reason || "No reason given"}`,
       } as any);
 
@@ -13793,7 +13794,7 @@ Rules:
         return res.status(400).json({ message: "Cannot cancel a past booking" });
       }
 
-      await storage.updateBooking(bookingId, { status: "cancelled" });
+      await storage.updateBooking(bookingId, { status: "cancelled", paymentStatus: "not_required" });
       res.json({ success: true, message: "Venue hire booking cancelled" });
     } catch (err: any) {
       console.error("Booker venue cancel error:", err);

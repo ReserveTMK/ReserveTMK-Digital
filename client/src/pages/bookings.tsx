@@ -732,8 +732,8 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                 return new Date(a.startDate as unknown as string).getTime() - new Date(b.startDate as unknown as string).getTime();
               });
 
-              // Group by location (reusing locationGroups)
-              const getLocationForBooking = (booking: Booking) => {
+              // Group by location (space_name columns)
+              const getLocationForBooking = (booking: Booking): string => {
                 const bVIds = booking.venueIds || (booking.venueId ? [booking.venueId] : []);
                 if (bVIds.length === 0) return "Unassigned";
                 for (const lg of locationGroups) {
@@ -794,7 +794,6 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                       const renderCard = (booking: Booking, faded?: boolean) => {
                         const dateTime = formatDateTime(booking);
                         const groupTitle = getBookerOrgName(booking.bookerId) || getBookingGroupName(booking.bookerGroupId) || getBookerGroupViaContact(booking.bookerId) || booking.bookerName || getBookerName(booking.bookerId) || "Unknown";
-                        const venueName = getVenueNames(booking);
                         return (
                           <Card
                             key={booking.id}
@@ -806,7 +805,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                               <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${STATUS_DOT[booking.status] || "bg-gray-400"}`} />
                               <div className="min-w-0 flex-1">
                                 <p className={`text-sm font-medium truncate ${faded ? "line-through" : ""}`}>{groupTitle}</p>
-                                <p className="text-[11px] text-muted-foreground truncate">{venueName}</p>
+                                <p className="text-[11px] text-muted-foreground truncate">{getVenueNames(booking)}{booking.classification ? ` · ${booking.classification}` : ""}</p>
                                 {dateTime && (
                                   <p className="text-[11px] text-muted-foreground">{dateTime.date}{dateTime.time ? ` · ${dateTime.time}` : ""}</p>
                                 )}
@@ -816,7 +815,43 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                         );
                       };
 
-                      const renderColumn = (locationName: string, allBookings: Booking[]) => {
+                      const getLocationForTemplate = (tmpl: RecurringTemplate): string => {
+                        if (!tmpl.venue_id) return "Unassigned";
+                        for (const lg of locationGroups) {
+                          if (lg.venueIds.includes(tmpl.venue_id)) return lg.name;
+                        }
+                        return "Unassigned";
+                      };
+
+                      const renderRecurringCard = (tmpl: RecurringTemplate) => {
+                        const tmplVenue = venues?.find(v => v.id === tmpl.venue_id);
+                        const dayLabel = DAYS_OF_WEEK_LABELS[tmpl.day_of_week] || "Unknown";
+                        const timeLabel = tmpl.start_time && tmpl.end_time
+                          ? `${formatTimeSlot(tmpl.start_time)} – ${formatTimeSlot(tmpl.end_time)}`
+                          : tmpl.start_time ? formatTimeSlot(tmpl.start_time) : null;
+                        return (
+                          <div
+                            key={`recurring-${tmpl.id}`}
+                            className="bg-blue-50/60 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-2.5 cursor-pointer hover:shadow-sm transition-shadow"
+                            onClick={() => setRecurringTemplateDetail(tmpl)}
+                          >
+                            <div className="flex items-start gap-2">
+                              <RefreshCw className="w-3 h-3 text-blue-500 shrink-0 mt-1" />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium truncate">{tmpl.name}</p>
+                                <p className="text-[11px] text-muted-foreground truncate">
+                                  {tmplVenue?.name}{tmpl.classification ? ` · ${tmpl.classification}` : ""}
+                                </p>
+                                <p className="text-[11px] text-muted-foreground">
+                                  Every {dayLabel}{timeLabel ? ` · ${timeLabel}` : ""}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      };
+
+                      const renderColumn = (locationName: string, allBookings: Booking[], locationTemplates: RecurringTemplate[]) => {
                         const active = allBookings.filter(b => b.status !== "cancelled");
                         const cancelled = allBookings.filter(b => b.status === "cancelled");
                         return (
@@ -826,6 +861,11 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                               <span className="text-sm font-semibold">{locationName}</span>
                               <Badge variant="secondary" className="text-[10px] ml-1">{active.length}</Badge>
                             </div>
+                            {locationTemplates.length > 0 && (
+                              <div className="space-y-2 mb-2">
+                                {locationTemplates.map(t => renderRecurringCard(t))}
+                              </div>
+                            )}
                             <div className="space-y-2 flex-1">
                               {active.map(b => renderCard(b))}
                             </div>
@@ -842,17 +882,18 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                         );
                       };
 
-                      const visibleLocations = locationGroups.filter(lg => calFiltered.some(b => getLocationForBooking(b) === lg.name));
+                      const realLocations = locationGroups.filter(lg => lg.name !== "Unassigned");
                       const hasUnassigned = calFiltered.some(b => getLocationForBooking(b) === "Unassigned");
-                      const colCount = Math.min(visibleLocations.length + (hasUnassigned ? 1 : 0), 3);
+                      const colCount = Math.min(realLocations.length + (hasUnassigned ? 1 : 0), 4);
 
                       return (
                         <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))` }}>
-                          {visibleLocations.map(({ name: locationName }) => {
+                          {realLocations.map(({ name: locationName }) => {
                             const colBookings = calFiltered.filter(b => getLocationForBooking(b) === locationName);
-                            return renderColumn(locationName, colBookings);
+                            const colTemplates = activeRecurringTemplates.filter(t => getLocationForTemplate(t) === locationName);
+                            return renderColumn(locationName, colBookings, colTemplates);
                           })}
-                          {hasUnassigned && renderColumn("Unassigned", calFiltered.filter(b => getLocationForBooking(b) === "Unassigned"))}
+                          {hasUnassigned && renderColumn("Unassigned", calFiltered.filter(b => getLocationForBooking(b) === "Unassigned"), activeRecurringTemplates.filter(t => getLocationForTemplate(t) === "Unassigned"))}
                         </div>
                       );
                     })()
@@ -878,7 +919,11 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                         return bookingVenueIds.some(id => locationVenueIds.includes(id));
                       });
                     };
-                    const totalCount = BOOKING_STATUSES.reduce((acc, s) => acc + getSwimlaneItems(s).length, 0);
+                    const locationRecurring = activeRecurringTemplates.filter(t => {
+                      if (!t.venue_id) return locationName === "Unassigned";
+                      return locationVenueIds.includes(t.venue_id);
+                    });
+                    const totalCount = BOOKING_STATUSES.reduce((acc, s) => acc + getSwimlaneItems(s).length, 0) + locationRecurring.length;
                     if (totalCount === 0) return null;
                     return (
                       <div key={locationName} className="border border-border rounded-xl overflow-hidden" data-testid={`swimlane-${locationName}`}>
@@ -946,6 +991,35 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                                     </div>
                                   )}
                                 </Droppable>
+                                {status === "confirmed" && locationRecurring.length > 0 && (
+                                  <div className="mt-2 space-y-1.5">
+                                    {visibleItems.length > 0 && <div className="border-t border-border/30 pt-2" />}
+                                    {locationRecurring.map(tmpl => {
+                                      const tmplVenue = venues?.find(v => v.id === tmpl.venue_id);
+                                      const dayLabel = DAYS_OF_WEEK_LABELS[tmpl.day_of_week] || "Unknown";
+                                      const timeLabel = tmpl.start_time && tmpl.end_time
+                                        ? `${formatTimeSlot(tmpl.start_time)} – ${formatTimeSlot(tmpl.end_time)}`
+                                        : tmpl.start_time ? formatTimeSlot(tmpl.start_time) : null;
+                                      return (
+                                        <div
+                                          key={`swim-recurring-${tmpl.id}`}
+                                          className="bg-blue-50/60 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-2 cursor-pointer hover:shadow-sm transition-shadow text-xs"
+                                          onClick={() => setRecurringTemplateDetail(tmpl)}
+                                        >
+                                          <div className="flex items-start gap-1">
+                                            <RefreshCw className="w-3 h-3 text-blue-500 shrink-0 mt-0.5" />
+                                            <div className="min-w-0 flex-1">
+                                              <p className="font-medium truncate leading-tight">{tmpl.name}</p>
+                                              <p className="text-[10px] text-muted-foreground truncate">
+                                                Every {dayLabel}{timeLabel ? ` · ${timeLabel}` : ""}
+                                              </p>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                                 {archivable && archivedCount > 0 && !showArchived && (
                                   <button
                                     className="mt-1 text-[10px] text-muted-foreground hover:text-foreground text-left px-1"
