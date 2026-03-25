@@ -52,6 +52,7 @@ import {
   Mail,
   Send,
   ExternalLink,
+  Settings,
 } from "lucide-react";
 import { BookerAgreementPanel } from "@/components/spaces/booker-agreement-panel";
 import {
@@ -74,7 +75,7 @@ import { PRICING_TIERS, REGULAR_BOOKER_STATUSES, PAYMENT_TERMS, type Contact, ty
 
 const PRICING_LABELS: Record<string, string> = {
   full_price: "Full Price",
-  discounted: "Discounted",
+  discounted: "Community",
   free_koha: "Free / Koha",
 };
 
@@ -302,14 +303,6 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
     return result.length > 0 ? result : null;
   };
 
-  const copyLink = (portalUrl: string) => {
-    navigator.clipboard.writeText(portalUrl).then(() => {
-      toast({ title: "Link copied to clipboard", description: portalUrl });
-    }).catch(() => {
-      toast({ title: "Portal URL", description: portalUrl });
-    });
-  };
-
   const filtered = useMemo(() => {
     if (!regularBookers) return [];
     return regularBookers.filter(booker => {
@@ -421,7 +414,7 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
           <SelectContent>
             <SelectItem value="all">All Tiers</SelectItem>
             <SelectItem value="full_price">Full Price</SelectItem>
-            <SelectItem value="discounted">Discounted</SelectItem>
+            <SelectItem value="discounted">Community</SelectItem>
             <SelectItem value="free_koha">Free / Koha</SelectItem>
           </SelectContent>
         </Select>
@@ -491,6 +484,24 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
         </div>
       ) : (
         <div className="border rounded-md">
+          <div className="sticky top-0 z-10 bg-muted/60 backdrop-blur-sm border-b px-4 py-2 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Settings className="w-3.5 h-3.5" />
+              <span className="font-medium">Portal Settings</span>
+              <span className="text-muted-foreground/70">|</span>
+              <span>{filtered.length} booker{filtered.length !== 1 ? "s" : ""}</span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs h-7"
+              onClick={() => window.location.href = "/spaces?tab=venue-hire"}
+              data-testid="button-manage-portal"
+            >
+              <Settings className="w-3 h-3 mr-1" />
+              Manage Portal
+            </Button>
+          </div>
           <Table>
             <TableHeader>
               <TableRow>
@@ -724,19 +735,6 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
                               </TooltipTrigger>
                               <TooltipContent>Resend link</TooltipContent>
                             </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => copyLink(linkStatus.links[0].portalUrl)}
-                                  data-testid={`button-copy-link-${booker.id}`}
-                                >
-                                  <Copy className="w-3.5 h-3.5" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Copy portal link</TooltipContent>
-                            </Tooltip>
                           </>
                         ) : linkStatus.links.length > 0 ? (
                           <Tooltip>
@@ -744,13 +742,13 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                onClick={() => copyLink(linkStatus.links[0].portalUrl)}
-                                data-testid={`button-copy-link-${booker.id}`}
+                                onClick={() => window.open(linkStatus.links[0].portalUrl, "_blank")}
+                                data-testid={`button-view-portal-expired-${booker.id}`}
                               >
-                                <Copy className="w-3.5 h-3.5" />
+                                <ExternalLink className="w-3.5 h-3.5" />
                               </Button>
                             </TooltipTrigger>
-                            <TooltipContent>Copy portal link</TooltipContent>
+                            <TooltipContent>View portal</TooltipContent>
                           </Tooltip>
                         ) : (
                           <Tooltip>
@@ -992,6 +990,7 @@ function RegularBookerFormDialog({
   );
   const [accountStatus, setAccountStatus] = useState(booker?.accountStatus || "active");
   const [paymentTerms, setPaymentTerms] = useState(booker?.paymentTerms || "immediate");
+  const [notificationsEmail, setNotificationsEmail] = useState((booker as any)?.notificationsEmail || "");
   const [notes, setNotes] = useState(booker?.notes || "");
   const [usualBookingNeeds, setUsualBookingNeeds] = useState(booker?.usualBookingNeeds || "");
   const [linkedMembershipId, setLinkedMembershipId] = useState<number | null>(booker?.membershipId || null);
@@ -1039,6 +1038,7 @@ function RegularBookerFormDialog({
       setPackageExpiresAt(booker.packageExpiresAt ? format(new Date(booker.packageExpiresAt), "yyyy-MM-dd") : "");
       setAccountStatus(booker.accountStatus || "active");
       setPaymentTerms(booker.paymentTerms || "immediate");
+      setNotificationsEmail((booker as any).notificationsEmail || "");
       setNotes(booker.notes || "");
       setUsualBookingNeeds(booker.usualBookingNeeds || "");
       setLinkedMembershipId(booker.membershipId || null);
@@ -1129,6 +1129,7 @@ function RegularBookerFormDialog({
       loginEmail: null,
       accountStatus,
       paymentTerms,
+      notificationsEmail: notificationsEmail.trim() || null,
       notes: notes.trim() || null,
       usualBookingNeeds: usualBookingNeeds.trim() || null,
     });
@@ -1222,7 +1223,7 @@ function RegularBookerFormDialog({
                       value={linkedMembershipId?.toString() || "none"}
                       onValueChange={(v) => {
                         setLinkedMembershipId(v === "none" ? null : parseInt(v));
-                        if (v !== "none") setLinkedMouId(null);
+                        if (v !== "none") { setLinkedMouId(null); setPricingTier("discounted"); }
                       }}
                     >
                       <SelectTrigger data-testid="select-booker-membership">
@@ -1244,7 +1245,7 @@ function RegularBookerFormDialog({
                       value={linkedMouId?.toString() || "none"}
                       onValueChange={(v) => {
                         setLinkedMouId(v === "none" ? null : parseInt(v));
-                        if (v !== "none") setLinkedMembershipId(null);
+                        if (v !== "none") { setLinkedMembershipId(null); setPricingTier("free_koha"); }
                       }}
                     >
                       <SelectTrigger data-testid="select-booker-mou">
@@ -1446,6 +1447,18 @@ function RegularBookerFormDialog({
               </Select>
             </div>
           )}
+
+          <div>
+            <Label>Notifications Email</Label>
+            <Input
+              type="email"
+              value={notificationsEmail}
+              onChange={(e) => setNotificationsEmail(e.target.value)}
+              placeholder="Where booking confirmations are sent"
+              data-testid="input-booker-notifications-email"
+            />
+            <p className="text-[10px] text-muted-foreground mt-1">Booker can also set this in their portal</p>
+          </div>
 
           <div>
             <Label>Usual Venue Hire Needs</Label>

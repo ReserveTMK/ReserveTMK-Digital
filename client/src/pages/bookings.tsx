@@ -171,7 +171,7 @@ const DAYS_OF_WEEK_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Frid
 
 const PRICING_LABELS: Record<string, string> = {
   full_price: "Full Price",
-  discounted: "Discounted",
+  discounted: "Community",
   free_koha: "Free / Koha",
 };
 
