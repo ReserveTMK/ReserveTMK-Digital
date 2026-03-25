@@ -273,9 +273,22 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
 
   const stats = useMemo(() => {
     if (!bookings) return { total: 0, confirmed: 0, communityHours: 0, revenue: 0, inKind: 0, membershipBookings: 0, mouBookings: 0 };
-    const nonCancelled = bookings.filter((b) => b.status !== "cancelled");
-    const confirmed = bookings.filter((b) => b.status === "confirmed").length;
-    const completed = bookings.filter((b) => b.status === "completed");
+
+    // In calendar view, scope stats to selected month (unless showing all)
+    const useMonthFilter = viewMode === "calendar" && !calShowAll;
+    const mStart = startOfMonth(calMonth);
+    const mEnd = endOfMonth(calMonth);
+    const scoped = useMonthFilter
+      ? bookings.filter(b => {
+          if (!b.startDate) return false;
+          const d = new Date(b.startDate);
+          return d >= mStart && d <= mEnd;
+        })
+      : bookings;
+
+    const nonCancelled = scoped.filter((b) => b.status !== "cancelled");
+    const confirmed = scoped.filter((b) => b.status === "confirmed").length;
+    const completed = scoped.filter((b) => b.status === "completed");
 
     let communityHours = 0;
     completed.forEach((b) => {
@@ -291,7 +304,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
     let inKind = 0;
     let membershipBookings = 0;
     let mouBookings = 0;
-    const confirmedAndCompleted = bookings.filter((b) => b.status === "confirmed" || b.status === "completed");
+    const confirmedAndCompleted = scoped.filter((b) => b.status === "confirmed" || b.status === "completed");
     confirmedAndCompleted.forEach((b) => {
       const amt = parseFloat(b.amount || "0");
       if (b.pricingTier === "free_koha") {
@@ -306,7 +319,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
     });
 
     return { total: nonCancelled.length, confirmed, communityHours, revenue, inKind, membershipBookings, mouBookings };
-  }, [bookings]);
+  }, [bookings, viewMode, calMonth, calShowAll]);
 
   const getVenueName = (venueId: number) => {
     return venues?.find((v) => v.id === venueId)?.name || "Unknown Venue";
