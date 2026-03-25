@@ -173,13 +173,14 @@ export default function CasualHirePage() {
     return merged;
   }, [allVenueAvailability]);
 
-  const getVenueStatusForDate = (venueId: number, date: string) => {
-    return allVenueAvailability?.[venueId]?.dates?.[date]?.status || "available";
-  };
-
-  const getVenueBookingsForDate = (venueId: number, date: string) => {
-    return allVenueAvailability?.[venueId]?.dates?.[date]?.bookings || [];
-  };
+  const { getVenueStatusForDate, getVenueBookingsForDate } = useMemo(() => ({
+    getVenueStatusForDate: (venueId: number, date: string) => {
+      return allVenueAvailability?.[venueId]?.dates?.[date]?.status || "available";
+    },
+    getVenueBookingsForDate: (venueId: number, date: string) => {
+      return allVenueAvailability?.[venueId]?.dates?.[date]?.bookings || [];
+    },
+  }), [allVenueAvailability]);
 
   const bookMutation = useMutation({
     mutationFn: async (data: any) => {
