@@ -291,12 +291,12 @@ export function RecurringBookingsTab() {
 
             <div className="space-y-1.5">
               <Label>Venue</Label>
-              <Select value={form.venueId} onValueChange={(v) => setForm((f) => ({ ...f, venueId: v }))}>
+              <Select value={form.venueId || "none"} onValueChange={(v) => setForm((f) => ({ ...f, venueId: v === "none" ? "" : v }))}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select venue (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No specific venue</SelectItem>
+                  <SelectItem value="none">No specific venue</SelectItem>
                   {(venues || [])
                     .filter((v) => v.active !== false)
                     .map((v) => (
@@ -310,12 +310,12 @@ export function RecurringBookingsTab() {
 
             <div className="space-y-1.5">
               <Label>Classification</Label>
-              <Select value={form.classification} onValueChange={(v) => setForm((f) => ({ ...f, classification: v }))}>
+              <Select value={form.classification || "none"} onValueChange={(v) => setForm((f) => ({ ...f, classification: v === "none" ? "" : v }))}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select type (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
+                  <SelectItem value="none">None</SelectItem>
                   {CLASSIFICATIONS.map((c) => (
                     <SelectItem key={c} value={c}>
                       {c}

@@ -388,12 +388,12 @@ function VenuesSubSection({
           <div className="space-y-2">
             <Label className="text-sm font-semibold">Add New Venue</Label>
             {existingSpaceNames.length > 0 && newSpaceNameSelection !== "__new__" ? (
-              <Select value={newSpaceNameSelection} onValueChange={setNewSpaceNameSelection}>
+              <Select value={newSpaceNameSelection || "none"} onValueChange={(v) => setNewSpaceNameSelection(v === "none" ? "" : v)}>
                 <SelectTrigger data-testid="select-new-venue-space">
                   <SelectValue placeholder="Select location (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">— No location —</SelectItem>
+                  <SelectItem value="none">— No location —</SelectItem>
                   {existingSpaceNames.map(s => (
                     <SelectItem key={s} value={s}>{s}</SelectItem>
                   ))}
@@ -641,12 +641,12 @@ function VenueDetailsSection({ venue }: { venue: Venue }) {
       <div className="space-y-1">
         <Label className="text-xs text-muted-foreground">Location</Label>
         {existingSpaceNames.length > 0 && editSpaceNameSelection !== "__new__" ? (
-          <Select value={editSpaceNameSelection} onValueChange={(v) => { setEditSpaceNameSelection(v); setIsDirty(true); }}>
+          <Select value={editSpaceNameSelection || "none"} onValueChange={(v) => { setEditSpaceNameSelection(v === "none" ? "" : v); setIsDirty(true); }}>
             <SelectTrigger className="h-8 text-xs" data-testid={`select-edit-venue-space-${venue.id}`}>
               <SelectValue placeholder="No location" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">— No location —</SelectItem>
+              <SelectItem value="none">— No location —</SelectItem>
               {existingSpaceNames.map(s => (
                 <SelectItem key={s} value={s}>{s}</SelectItem>
               ))}

@@ -145,12 +145,12 @@ export function QuickAddActivationDialog({ open, onOpenChange }: QuickAddActivat
             {/* Venue */}
             <div className="space-y-1.5">
               <Label>Space / Venue</Label>
-              <Select value={form.venueId} onValueChange={(v) => setForm((f) => ({ ...f, venueId: v }))}>
+              <Select value={form.venueId || "none"} onValueChange={(v) => setForm((f) => ({ ...f, venueId: v === "none" ? "" : v }))}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select venue (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No specific venue</SelectItem>
+                  <SelectItem value="none">No specific venue</SelectItem>
                   {(venues || [])
                     .filter((v) => v.active !== false)
                     .map((v) => (
