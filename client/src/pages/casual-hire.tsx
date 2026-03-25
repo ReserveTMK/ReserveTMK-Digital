@@ -222,14 +222,20 @@ export default function CasualHirePage() {
       setStudioStep("idle");
       setStudioNotes("");
       setStudioIsFirstBooking(false);
-      setStudioProduce("");
-      setStudioUsedBefore(null);
-      setStudioNeedsHelp(null);
-      setStudioGear("");
-      setStudioOther("");
-      setStudioRecording("");
-      setStudioSetupChanges(null);
-      setStudioSetupDetails("");
+      setStudioPodName("");
+      setStudioIG("");
+      setStudioYT("");
+      setStudioNewHost("");
+      setStudioAbout("");
+      setStudioWhy("");
+      setStudioGoals("");
+      setStudioLastRating(3);
+      setStudioEpisodeStatus("");
+      setStudioThisSession("");
+      setStudioHost("");
+      setStudioGuest1("");
+      setStudioGuest2("");
+      setStudioEditor("");
       return;
     }
     if (!studioBookerCheck || studioStep !== "idle") return;
