@@ -1605,7 +1605,9 @@ function CalendarView({
   onBack: () => void;
 }) {
   const booker = authData.booker;
+  const contact = authData.contact;
   const isGroupLink = authData.isGroupLink === true;
+  const effectiveNotifEmail = booker.notificationsEmail || booker.loginEmail || contact?.email || "";
   const now = new Date();
   const [currentYear, setCurrentYear] = useState(now.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(now.getMonth());
