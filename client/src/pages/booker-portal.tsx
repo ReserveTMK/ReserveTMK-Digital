@@ -663,24 +663,23 @@ function DashboardView({
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="text-sm font-medium">
-                            {isVenue && (b.title || b.classification)}
+                            {isVenue && (b.venueNames?.length > 0 ? b.venueNames.join(", ") : b.title || "Venue Hire")}
                             {isDesk && (b.resourceName || "Desk Booking")}
                             {isGear && (b.resourceName || "Gear Booking")}
                           </p>
-                          <Badge variant="outline" className="text-xs shrink-0" data-testid={`badge-type-${b._type}-${b.id}`}>
-                            {isVenue && "Venue"}
-                            {isDesk && "Desk"}
-                            {isGear && "Gear"}
-                          </Badge>
+                          {isVenue && b.classification && (
+                            <Badge variant="outline" className="text-[10px] shrink-0" data-testid={`badge-type-${b._type}-${b.id}`}>
+                              {b.classification}
+                            </Badge>
+                          )}
+                          {isDesk && <Badge variant="outline" className="text-[10px] shrink-0">Desk</Badge>}
+                          {isGear && <Badge variant="outline" className="text-[10px] shrink-0">Gear</Badge>}
                         </div>
                         <p className="text-xs text-muted-foreground">
                           {bookingDate}
                           {isVenue && b.startTime && b.endTime ? ` | ${formatTimeSlot(b.startTime)} - ${formatTimeSlot(b.endTime)}` : ""}
                           {isDesk && b.startTime && b.endTime ? ` | ${formatTimeSlot(b.startTime)} - ${formatTimeSlot(b.endTime)}` : ""}
                         </p>
-                        {isVenue && b.venueNames && b.venueNames.length > 0 && (
-                          <p className="text-xs text-muted-foreground mt-0.5">{b.venueNames.join(", ")}</p>
-                        )}
                         {isGroupLink && b.bookerName && (
                           <p className="text-xs text-muted-foreground mt-0.5">
                             Booked by {b.bookerName}
