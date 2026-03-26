@@ -212,68 +212,24 @@ function VenuesSubSection({
     return venues.filter(v => !v.spaceName);
   }, [venues]);
 
+  const [expandedLocations, setExpandedLocations] = useState<Record<string, boolean>>({});
+  const toggleLocation = (name: string) => setExpandedLocations(prev => ({ ...prev, [name]: !prev[name] }));
+
   return (
     <div className="space-y-4">
-      <LocationsManagementSection
-        existingSpaceNames={existingSpaceNames}
-        groupedVenues={groupedVenues}
-      />
       {Object.entries(groupedVenues).map(([spaceName, spaceVenues]) => (
-        <div key={spaceName} className="space-y-2">
-          <h3 className="text-sm font-semibold text-muted-foreground px-1" data-testid={`text-space-name-${spaceName}`}>{spaceName}</h3>
-          {spaceVenues.map((venue) => (
-          <Card key={venue.id} className="overflow-hidden" data-testid={`card-venue-${venue.id}`}>
-            <div
-              className="p-3 cursor-pointer hover:bg-muted/50 transition-colors"
-              onClick={() => setExpandedVenueId(expandedVenueId === venue.id ? null : venue.id)}
-              data-testid={`button-expand-venue-${venue.id}`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-sm" data-testid={`text-venue-name-${venue.id}`}>{venue.name}</span>
-                    {venue.spaceName && (
-                      <Badge variant="secondary" className="text-xs bg-muted/60 font-normal">{venue.spaceName}</Badge>
-                    )}
-                    {venue.capacity && (
-                      <Badge variant="secondary" className="text-xs">
-                        Cap: {venue.capacity}
-                      </Badge>
-                    )}
-                    {!venue.active && (
-                      <Badge variant="outline" className="text-xs opacity-60">Inactive</Badge>
-                    )}
-                  </div>
-                  {venue.description && (
-                    <p className="text-xs text-muted-foreground mt-0.5 truncate">{venue.description}</p>
-                  )}
-                </div>
-                <div className="flex items-center gap-1">
-                  <Switch
-                    checked={venue.active ?? true}
-                    onCheckedChange={() => handleToggleActive(venue)}
-                    onClick={(e) => e.stopPropagation()}
-                    data-testid={`switch-venue-active-${venue.id}`}
-                  />
-                  <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleDeleteVenue(venue.id); }} data-testid={`button-delete-venue-${venue.id}`}>
-                    <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                  </Button>
-                  {expandedVenueId === venue.id ? (
-                    <ChevronUp className="w-4 h-4 text-muted-foreground" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {expandedVenueId === venue.id && (
-              <VenueManagementPanel venue={venue} />
-            )}
-          </Card>
-        ))}
-          <BookerAccessInfoSection spaceName={spaceName} />
-        </div>
+        <LocationCard
+          key={spaceName}
+          spaceName={spaceName}
+          venues={spaceVenues}
+          allVenues={venues || []}
+          expanded={expandedLocations[spaceName] ?? true}
+          onToggle={() => toggleLocation(spaceName)}
+          expandedVenueId={expandedVenueId}
+          setExpandedVenueId={setExpandedVenueId}
+          handleToggleActive={handleToggleActive}
+          handleDeleteVenue={handleDeleteVenue}
+        />
       ))}
       {(!venues || venues.length === 0) && (
         <p className="text-sm text-muted-foreground text-center py-4">No venues yet. Click "Add New Venue" to create one.</p>
@@ -791,6 +747,151 @@ function VenueAvailabilitySection({ venue }: { venue: Venue }) {
         </div>
       )}
     </div>
+  );
+}
+
+function LocationCard({
+  spaceName,
+  venues: spaceVenues,
+  allVenues,
+  expanded,
+  onToggle,
+  expandedVenueId,
+  setExpandedVenueId,
+  handleToggleActive,
+  handleDeleteVenue,
+}: {
+  spaceName: string;
+  venues: Venue[];
+  allVenues: Venue[];
+  expanded: boolean;
+  onToggle: () => void;
+  expandedVenueId: number | null;
+  setExpandedVenueId: (id: number | null) => void;
+  handleToggleActive: (venue: Venue) => void;
+  handleDeleteVenue: (id: number) => void;
+}) {
+  const updateVenue = useUpdateVenue();
+  const { toast } = useToast();
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+
+  const handleRename = async () => {
+    const trimmed = renameValue.trim();
+    if (!trimmed || trimmed === spaceName) { setRenaming(false); return; }
+    try {
+      await Promise.all(spaceVenues.map(v => updateVenue.mutateAsync({ id: v.id, data: { spaceName: trimmed } })));
+      toast({ title: "Renamed", description: `"${spaceName}" renamed to "${trimmed}"` });
+      setRenaming(false);
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to rename", variant: "destructive" });
+    }
+  };
+
+  const activeCount = spaceVenues.filter(v => v.active !== false).length;
+
+  return (
+    <Card className="overflow-hidden" data-testid={`location-card-${spaceName.replace(/\s+/g, '-')}`}>
+      {/* Location header */}
+      <div
+        className="p-3 cursor-pointer hover:bg-muted/50 transition-colors flex items-center justify-between"
+        onClick={onToggle}
+      >
+        <div className="flex items-center gap-2">
+          <MapPin className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-semibold">{spaceName}</span>
+          <Badge variant="secondary" className="text-xs">{activeCount} venue{activeCount !== 1 ? "s" : ""}</Badge>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={(e) => { e.stopPropagation(); setRenaming(true); setRenameValue(spaceName); }}
+          >
+            <Pencil className="w-3 h-3 mr-1" />
+            Rename
+          </Button>
+          {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+        </div>
+      </div>
+
+      {/* Rename inline */}
+      {renaming && (
+        <div className="flex items-center gap-2 px-3 pb-3 border-b">
+          <Input
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleRename(); if (e.key === "Escape") setRenaming(false); }}
+            className="h-7 text-xs flex-1"
+            autoFocus
+          />
+          <Button size="sm" className="h-7 text-xs" onClick={handleRename} disabled={updateVenue.isPending}>
+            {updateVenue.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
+          </Button>
+          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setRenaming(false)}>Cancel</Button>
+        </div>
+      )}
+
+      {expanded && (
+        <div className="border-t">
+          {/* Access & Instructions */}
+          <div className="p-3 border-b bg-muted/10">
+            <BookerAccessInfoSection spaceName={spaceName} />
+          </div>
+
+          {/* Venues */}
+          <div className="p-3 space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Venues</p>
+            {spaceVenues.map((venue) => (
+              <Card key={venue.id} className="overflow-hidden border-muted" data-testid={`card-venue-${venue.id}`}>
+                <div
+                  className="p-2.5 cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => setExpandedVenueId(expandedVenueId === venue.id ? null : venue.id)}
+                  data-testid={`button-expand-venue-${venue.id}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-sm" data-testid={`text-venue-name-${venue.id}`}>{venue.name}</span>
+                        {venue.capacity && (
+                          <Badge variant="secondary" className="text-[10px]">Cap: {venue.capacity}</Badge>
+                        )}
+                        {!venue.active && (
+                          <Badge variant="outline" className="text-[10px] opacity-60">Inactive</Badge>
+                        )}
+                      </div>
+                      {venue.description && (
+                        <p className="text-xs text-muted-foreground mt-0.5 truncate">{venue.description}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Switch
+                        checked={venue.active ?? true}
+                        onCheckedChange={() => handleToggleActive(venue)}
+                        onClick={(e) => e.stopPropagation()}
+                        data-testid={`switch-venue-active-${venue.id}`}
+                      />
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handleDeleteVenue(venue.id); }} data-testid={`button-delete-venue-${venue.id}`}>
+                        <Trash2 className="w-3 h-3 text-destructive" />
+                      </Button>
+                      {expandedVenueId === venue.id ? (
+                        <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {expandedVenueId === venue.id && (
+                  <VenueManagementPanel venue={venue} />
+                )}
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }
 
