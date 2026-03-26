@@ -1084,7 +1084,7 @@ function BookerAccessInfoSection({ spaceName }: { spaceName: string }) {
       >
         <div className="flex items-center gap-2">
           <FileText className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Booker Access Info</span>
+          <span className="text-sm font-medium">Location Access Info</span>
           {instructions && instructions.length > 0 && (
             <Badge variant="secondary" className="text-xs">{instructions.length}</Badge>
           )}
@@ -1094,18 +1094,7 @@ function BookerAccessInfoSection({ spaceName }: { spaceName: string }) {
 
       {expanded && (
         <div className="border-t p-3 space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">Access and operational info for bookers at {spaceName}.</p>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => { setEditingInstruction(null); setShowForm(true); }}
-              data-testid={`button-add-location-instruction-${safeId}`}
-            >
-              <Plus className="w-3.5 h-3.5 mr-1" />
-              Add
-            </Button>
-          </div>
+          <p className="text-xs text-muted-foreground">Access and operational instructions for bookers at {spaceName}.</p>
 
           {showForm && (
             <InlineInstructionForm
@@ -1121,24 +1110,36 @@ function BookerAccessInfoSection({ spaceName }: { spaceName: string }) {
             <div className="flex justify-center py-4">
               <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
             </div>
-          ) : !instructions?.length ? (
-            <div className="text-center py-4">
-              <FileText className="w-8 h-8 text-muted-foreground mx-auto mb-1" />
-              <p className="text-xs text-muted-foreground" data-testid={`text-no-location-instructions-${safeId}`}>No booker access info for this location yet.</p>
-            </div>
           ) : (
             <div className="space-y-3">
               {INSTRUCTION_TYPES.map(type => {
                 const typeInstructions = groupedInstructions[type] || [];
-                if (typeInstructions.length === 0) return null;
                 return (
-                  <div key={type} data-testid={`location-instruction-group-${type}-${safeId}`}>
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <Badge className={`text-[10px] ${INSTRUCTION_TYPE_COLORS[type] || ""}`}>
-                        {INSTRUCTION_TYPE_LABELS[type]}
-                      </Badge>
-                      <span className="text-[10px] text-muted-foreground">({typeInstructions.length})</span>
+                  <div key={type} className="rounded-lg border bg-background" data-testid={`location-instruction-group-${type}-${safeId}`}>
+                    <div className="flex items-center justify-between px-3 py-2 bg-muted/20 border-b">
+                      <div className="flex items-center gap-2">
+                        <Badge className={`text-[10px] ${INSTRUCTION_TYPE_COLORS[type] || ""}`}>
+                          {INSTRUCTION_TYPE_LABELS[type]}
+                        </Badge>
+                        {typeInstructions.length > 0 && (
+                          <span className="text-[10px] text-muted-foreground">{typeInstructions.length} item{typeInstructions.length !== 1 ? "s" : ""}</span>
+                        )}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-[10px]"
+                        onClick={() => { setEditingInstruction({ instructionType: type } as any); setShowForm(true); }}
+                      >
+                        <Plus className="w-3 h-3 mr-0.5" />
+                        Add
+                      </Button>
                     </div>
+                    {typeInstructions.length === 0 ? (
+                      <div className="px-3 py-2">
+                        <p className="text-[11px] text-muted-foreground italic">No {INSTRUCTION_TYPE_LABELS[type].toLowerCase()} info added yet</p>
+                      </div>
+                    ) : (
                     <div className="space-y-1">
                       {typeInstructions.map((inst, index) => (
                         <div
@@ -1202,6 +1203,7 @@ function BookerAccessInfoSection({ spaceName }: { spaceName: string }) {
                         </div>
                       ))}
                     </div>
+                    )}
                   </div>
                 );
               })}
