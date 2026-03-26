@@ -1627,6 +1627,7 @@ function CalendarView({
   const [bookingSummaryError, setBookingSummaryError] = useState(false);
   const [lockedSpaceType, setLockedSpaceType] = useState<string | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
+  const [attendeeCount, setAttendeeCount] = useState<string>("");
 
   // Studio step state — must be declared before useQuery/useEffect that reference them
   type CalStudioStep = "idle" | "questions-new" | "questions-returning" | "done";
@@ -1839,12 +1840,13 @@ function CalendarView({
     startDate: selectedDate,
     startTime,
     endTime,
-    classification,
-    bookingSummary: bookingSummary.trim() || undefined,
+    classification: allSelectedAreStudio ? "Studio Session" : classification,
+    bookingSummary: allSelectedAreStudio ? (studioNotes || "Studio session") : (bookingSummary.trim() || undefined),
     usePackageCredit,
     bookerName: isGroupLink && bookerName.trim() ? bookerName.trim() : undefined,
     notes: studioNotes || undefined,
     isFirstBooking: studioIsFirstBooking,
+    attendeeCount: attendeeCount ? parseInt(attendeeCount) : undefined,
   };
 
   const checkOverAllowance = (): boolean => {
@@ -1861,10 +1863,14 @@ function CalendarView({
   };
 
   const handleBook = () => {
-    if (!selectedDate || selectedVenues.length === 0 || !classification) return;
-    if (!bookingSummary.trim()) {
-      setBookingSummaryError(true);
-      return;
+    if (!selectedDate || selectedVenues.length === 0) return;
+    if (!allSelectedAreStudio) {
+      if (!classification) return;
+      if (!bookingSummary.trim()) {
+        setBookingSummaryError(true);
+        return;
+      }
+      if (!attendeeCount || parseInt(attendeeCount) < 1) return;
     }
     setBookingSummaryError(false);
 
@@ -2255,10 +2261,16 @@ function CalendarView({
                                 onCheckedChange={() => !isBooked && !isGroupLocked && toggleVenue(v.id)}
                                 data-testid={`checkbox-venue-${v.id}`}
                               />
-                              <span className={(isBooked || isGroupLocked) ? "text-muted-foreground" : ""}>{v.name}</span>
+                              <div>
+                                <span className={(isBooked || isGroupLocked) ? "text-muted-foreground" : ""}>{v.name}</span>
+                                {v.capacity && <span className="text-[10px] text-muted-foreground ml-1.5">Max {v.capacity} pax</span>}
+                              </div>
                             </div>
                             {getVenueStatusBadge(venueStatus)}
                           </div>
+                          {v.description && (
+                            <p className="text-[10px] text-muted-foreground ml-6 mt-0.5">{v.description}</p>
+                          )}
                           {venueBookings.length > 0 && (
                             <div className="ml-6 mt-1 space-y-0.5">
                               {venueBookings.map((b: any, idx: number) => (
@@ -2283,6 +2295,7 @@ function CalendarView({
                       return (
                         <>
                           <Label className="text-xs">Select Location</Label>
+                          <p className="text-[10px] text-muted-foreground -mt-1">One location per booking session</p>
                           <div className="space-y-2">
                             {locationOptions.map(loc => (
                               <button
@@ -2319,11 +2332,11 @@ function CalendarView({
                           ← Change location
                         </button>
                         <Label className="text-xs">Select Venue{filteredVenues.length > 1 ? "s" : ""}</Label>
+                        {filteredVenues.length > 1 && selectedLocation === "ReserveTMK Office" && (
+                          <p className="text-[10px] text-muted-foreground -mt-1">You can select both spaces if you need more room</p>
+                        )}
                         <div className="space-y-1">
                           {filteredVenues.map(renderVenueBtn)}
-                          {lockedSpaceType && selectedVenues.length > 0 && (
-                            <p className="text-xs text-muted-foreground px-1 pt-1 italic">Office and Studio spaces cannot be mixed in one booking</p>
-                          )}
                         </div>
                       </>
                     );
@@ -2601,34 +2614,58 @@ function CalendarView({
                       </div>
                     )}
 
-                    <div className="space-y-1">
-                      <Label className="text-xs">Classification</Label>
-                      <Select value={classification} onValueChange={setClassification}>
-                        <SelectTrigger data-testid="select-classification">
-                          <SelectValue placeholder="Select type..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CLASSIFICATIONS.map(c => (
-                            <SelectItem key={c} value={c}>{c}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    {!allSelectedAreStudio && (
+                      <>
+                        <div className="space-y-1">
+                          <Label className="text-xs">How many people expected? <span className="text-red-500">*</span></Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            value={attendeeCount}
+                            onChange={(e) => setAttendeeCount(e.target.value)}
+                            placeholder="Number of people"
+                            data-testid="input-attendee-count"
+                          />
+                          {(() => {
+                            const selectedVenueObjects = (venues || []).filter((v: any) => selectedVenues.includes(v.id));
+                            const maxCap = selectedVenueObjects.length > 0 ? Math.max(...selectedVenueObjects.map((v: any) => v.capacity || 0)) : 0;
+                            if (maxCap > 0 && parseInt(attendeeCount) > maxCap) {
+                              return <p className="text-[10px] text-amber-600">Exceeds venue capacity of {maxCap} people</p>;
+                            }
+                            return null;
+                          })()}
+                        </div>
 
-                    <div className="space-y-1">
-                      <Label className="text-xs">Tell us about your booking <span className="text-red-500">*</span></Label>
-                      <Textarea
-                        value={bookingSummary}
-                        onChange={(e) => setBookingSummary(e.target.value)}
-                        rows={2}
-                        placeholder="What's the event, how many people, any special needs..."
-                        data-testid="input-booking-summary"
-                        required
-                      />
-                      {bookingSummary.trim() === "" && bookingSummaryError && (
-                        <p className="text-xs text-red-500" data-testid="text-booking-summary-required">This field is required</p>
-                      )}
-                    </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Classification</Label>
+                          <Select value={classification} onValueChange={setClassification}>
+                            <SelectTrigger data-testid="select-classification">
+                              <SelectValue placeholder="Select type..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {CLASSIFICATIONS.map(c => (
+                                <SelectItem key={c} value={c}>{c}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs">What's the purpose of your booking? <span className="text-red-500">*</span></Label>
+                          <Textarea
+                            value={bookingSummary}
+                            onChange={(e) => setBookingSummary(e.target.value)}
+                            rows={2}
+                            placeholder="What are you using the space for..."
+                            data-testid="input-booking-summary"
+                            required
+                          />
+                          {bookingSummary.trim() === "" && bookingSummaryError && (
+                            <p className="text-xs text-red-500" data-testid="text-booking-summary-required">This field is required</p>
+                          )}
+                        </div>
+                      </>
+                    )}
 
                     {booker.hasBookingPackage && (booker.packageTotalBookings || 0) - (booker.packageUsedBookings || 0) > 0 && (
                       <div className="flex items-center justify-between gap-2">
@@ -2652,7 +2689,7 @@ function CalendarView({
 
                     <Button
                       className="w-full"
-                      disabled={!classification || bookMutation.isPending}
+                      disabled={bookMutation.isPending || (!allSelectedAreStudio && (!classification || !attendeeCount))}
                       onClick={handleBook}
                       data-testid="button-submit-booking"
                     >

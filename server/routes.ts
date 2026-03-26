@@ -12898,7 +12898,7 @@ Rules:
       }
       const booker = linkResult.booker;
 
-      const { venueId, venueIds: rawVenueIds, startDate, startTime, endTime, classification, bookingSummary, usePackageCredit, bookerName, notes, isFirstBooking } = req.body;
+      const { venueId, venueIds: rawVenueIds, startDate, startTime, endTime, classification, bookingSummary, usePackageCredit, bookerName, notes, isFirstBooking, attendeeCount } = req.body;
       if (!venueId || !startDate || !startTime || !endTime || !classification) {
         return res.status(400).json({ message: "Missing required fields" });
       }
@@ -13180,6 +13180,7 @@ Rules:
         paymentStatus: bookingPaymentStatus,
         notes: notes || null,
         isFirstBooking: isFirstBooking || false,
+        attendeeCount: attendeeCount ? parseInt(attendeeCount) : null,
       } as any);
 
       // Send appropriate email notifications
