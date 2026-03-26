@@ -1630,8 +1630,11 @@ function CalendarView({
   const [attendeeCount, setAttendeeCount] = useState<string>("");
 
   // Studio step state — must be declared before useQuery/useEffect that reference them
-  type CalStudioStep = "idle" | "questions-new" | "questions-returning" | "done";
+  type CalStudioStep = "idle" | "select-type" | "questions-new" | "questions-returning" | "done";
   const [studioStep, setStudioStep] = useState<CalStudioStep>("idle");
+  type StudioUseType = "podcast" | "general" | "";
+  const [studioUseType, setStudioUseType] = useState<StudioUseType>("");
+  const [studioIsReturning, setStudioIsReturning] = useState(false);
   const [studioPodName, setStudioPodName] = useState("");
   const [studioIG, setStudioIG] = useState("");
   const [studioYT, setStudioYT] = useState("");
@@ -1639,6 +1642,8 @@ function CalendarView({
   const [studioAbout, setStudioAbout] = useState("");
   const [studioWhy, setStudioWhy] = useState("");
   const [studioGoals, setStudioGoals] = useState("");
+  const [studioProjectName, setStudioProjectName] = useState("");
+  const [studioProjectAbout, setStudioProjectAbout] = useState("");
   const [studioLastRating, setStudioLastRating] = useState<number>(3);
   const [studioEpisodeStatus, setStudioEpisodeStatus] = useState<string>("");
   const [studioThisSession, setStudioThisSession] = useState("");
@@ -1646,6 +1651,9 @@ function CalendarView({
   const [studioGuest1, setStudioGuest1] = useState("");
   const [studioGuest2, setStudioGuest2] = useState("");
   const [studioEditor, setStudioEditor] = useState("");
+  const [hasGuest1, setHasGuest1] = useState(false);
+  const [hasGuest2, setHasGuest2] = useState(false);
+  const [hasEditor, setHasEditor] = useState(false);
   const [studioNotes, setStudioNotes] = useState("");
   const [studioIsFirstBooking, setStudioIsFirstBooking] = useState(false);
 
@@ -1767,6 +1775,8 @@ function CalendarView({
       setStudioStep("idle");
       setStudioNotes("");
       setStudioIsFirstBooking(false);
+      setStudioUseType("");
+      setStudioIsReturning(false);
       setStudioPodName("");
       setStudioIG("");
       setStudioYT("");
@@ -1774,6 +1784,8 @@ function CalendarView({
       setStudioAbout("");
       setStudioWhy("");
       setStudioGoals("");
+      setStudioProjectName("");
+      setStudioProjectAbout("");
       setStudioLastRating(3);
       setStudioEpisodeStatus("");
       setStudioThisSession("");
@@ -1781,20 +1793,21 @@ function CalendarView({
       setStudioGuest1("");
       setStudioGuest2("");
       setStudioEditor("");
+      setHasGuest1(false);
+      setHasGuest2(false);
+      setHasEditor(false);
       return;
     }
     if (studioStep !== "idle") return;
     // If API errored, default to new-booker flow
     if (studioCheckError) {
-      setStudioStep("questions-new");
+      setStudioIsReturning(false);
+      setStudioStep("select-type");
       return;
     }
     if (!studioBookerCheck) return;
-    if (studioBookerCheck.isReturning) {
-      setStudioStep("questions-returning");
-    } else {
-      setStudioStep("questions-new");
-    }
+    setStudioIsReturning(!!studioBookerCheck.isReturning);
+    setStudioStep("select-type");
   }, [allSelectedAreStudio, studioBookerCheck, studioCheckError]);
 
   const days = useMemo(() => getMonthDays(currentYear, currentMonth), [currentYear, currentMonth]);
@@ -2354,102 +2367,248 @@ function CalendarView({
                       </div>
                     )}
 
-                    {allSelectedAreStudio && studioStep === "questions-new" && (
+                    {/* Studio type selector */}
+                    {allSelectedAreStudio && studioStep === "select-type" && (
                       <div className="space-y-3 border border-border rounded-lg p-3">
                         <div className="flex items-center gap-2">
                           <span className="text-base">🎙</span>
-                          <p className="text-sm font-medium">Tell us about your podcast</p>
+                          <p className="text-sm font-medium">What are you using the studio for?</p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStudioUseType("podcast");
+                              setStudioStep(studioIsReturning ? "questions-returning" : "questions-new");
+                            }}
+                            className="text-sm px-3 py-3 rounded-md border border-border hover:border-primary hover:bg-primary/5 transition-colors text-left"
+                            data-testid="portal-button-studio-type-podcast"
+                          >
+                            <span className="font-medium">Podcast</span>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">Recording episodes, interviews</p>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStudioUseType("general");
+                              setStudioStep(studioIsReturning ? "questions-returning" : "questions-new");
+                            }}
+                            className="text-sm px-3 py-3 rounded-md border border-border hover:border-primary hover:bg-primary/5 transition-colors text-left"
+                            data-testid="portal-button-studio-type-general"
+                          >
+                            <span className="font-medium">Other content</span>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">Video, music, voiceover, etc.</p>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Studio questions — new booker */}
+                    {allSelectedAreStudio && studioStep === "questions-new" && (
+                      <div className="space-y-3 border border-border rounded-lg p-3">
+                        <div className="flex items-center gap-2 justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">🎙</span>
+                            <p className="text-sm font-medium">{studioUseType === "podcast" ? "Tell us about your podcast" : "Tell us about your project"}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setStudioStep("select-type")}
+                            className="text-[10px] text-muted-foreground hover:text-foreground"
+                          >← Back</button>
                         </div>
 
-                        <div className="space-y-1">
-                          <Label className="text-xs">Does your podcast have a name? <span className="text-muted-foreground">(optional)</span></Label>
-                          <Input
-                            value={studioPodName}
-                            onChange={(e) => setStudioPodName(e.target.value)}
-                            placeholder="Podcast name"
-                            data-testid="portal-input-studio-pod-name"
-                          />
-                        </div>
+                        {studioUseType === "podcast" && (
+                          <>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Does your podcast have a name? <span className="text-muted-foreground">(optional)</span></Label>
+                              <Input
+                                value={studioPodName}
+                                onChange={(e) => setStudioPodName(e.target.value)}
+                                placeholder="Podcast name"
+                                data-testid="portal-input-studio-pod-name"
+                              />
+                            </div>
 
-                        <div className="space-y-1">
-                          <Label className="text-xs">Socials <span className="text-muted-foreground">(optional)</span></Label>
-                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <Label className="text-xs">Socials <span className="text-muted-foreground">(optional)</span></Label>
+                              <div className="grid grid-cols-2 gap-2">
+                                <Input
+                                  value={studioIG}
+                                  onChange={(e) => setStudioIG(e.target.value)}
+                                  placeholder="Instagram @handle"
+                                  data-testid="portal-input-studio-ig"
+                                />
+                                <Input
+                                  value={studioYT}
+                                  onChange={(e) => setStudioYT(e.target.value)}
+                                  placeholder="YouTube channel"
+                                  data-testid="portal-input-studio-yt"
+                                />
+                              </div>
+                            </div>
+                          </>
+                        )}
+
+                        {studioUseType === "general" && (
+                          <div className="space-y-1">
+                            <Label className="text-xs">Project name <span className="text-muted-foreground">(optional)</span></Label>
                             <Input
-                              value={studioIG}
-                              onChange={(e) => setStudioIG(e.target.value)}
-                              placeholder="Instagram @handle"
-                              data-testid="portal-input-studio-ig"
+                              value={studioProjectName}
+                              onChange={(e) => setStudioProjectName(e.target.value)}
+                              placeholder="What's the project called?"
+                              data-testid="portal-input-studio-project-name"
                             />
+                          </div>
+                        )}
+
+                        {/* Shared participant section */}
+                        <div className="border-t border-border pt-3 space-y-2">
+                          <Label className="text-xs font-medium">Who will be in the studio? <span className="text-red-500">*</span></Label>
+                          <p className="text-[10px] text-muted-foreground -mt-1">We need to know everyone who'll be in the space</p>
+
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Host <span className="text-red-500">*</span></Label>
                             <Input
-                              value={studioYT}
-                              onChange={(e) => setStudioYT(e.target.value)}
-                              placeholder="YouTube channel"
-                              data-testid="portal-input-studio-yt"
+                              value={studioNewHost}
+                              onChange={(e) => setStudioNewHost(e.target.value)}
+                              placeholder="Host name"
+                              data-testid="portal-input-studio-new-host"
                             />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <Checkbox checked={hasGuest1} onCheckedChange={(v) => { setHasGuest1(!!v); if (!v) { setStudioGuest1(""); setHasGuest2(false); setStudioGuest2(""); } }} data-testid="portal-toggle-guest1" />
+                              <Label className="text-xs text-muted-foreground">Bringing a guest</Label>
+                            </div>
+                            {hasGuest1 && (
+                              <Input
+                                value={studioGuest1}
+                                onChange={(e) => setStudioGuest1(e.target.value)}
+                                placeholder="Guest name"
+                                data-testid="portal-input-studio-new-guest1"
+                              />
+                            )}
+                          </div>
+
+                          {hasGuest1 && (
+                            <div className="space-y-1.5">
+                              <div className="flex items-center gap-2">
+                                <Checkbox checked={hasGuest2} onCheckedChange={(v) => { setHasGuest2(!!v); if (!v) setStudioGuest2(""); }} data-testid="portal-toggle-guest2" />
+                                <Label className="text-xs text-muted-foreground">Second guest</Label>
+                              </div>
+                              {hasGuest2 && (
+                                <Input
+                                  value={studioGuest2}
+                                  onChange={(e) => setStudioGuest2(e.target.value)}
+                                  placeholder="Guest name"
+                                  data-testid="portal-input-studio-new-guest2"
+                                />
+                              )}
+                            </div>
+                          )}
+
+                          <div className="space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <Checkbox checked={hasEditor} onCheckedChange={(v) => { setHasEditor(!!v); if (!v) setStudioEditor(""); }} data-testid="portal-toggle-editor" />
+                              <Label className="text-xs text-muted-foreground">Live editor</Label>
+                            </div>
+                            {hasEditor && (
+                              <Input
+                                value={studioEditor}
+                                onChange={(e) => setStudioEditor(e.target.value)}
+                                placeholder="Editor name"
+                                data-testid="portal-input-studio-new-editor"
+                              />
+                            )}
                           </div>
                         </div>
 
-                        <div className="space-y-1">
-                          <Label className="text-xs">Name of host <span className="text-red-500">*</span></Label>
-                          <Input
-                            value={studioNewHost}
-                            onChange={(e) => setStudioNewHost(e.target.value)}
-                            placeholder="Your name"
-                            data-testid="portal-input-studio-new-host"
-                          />
-                        </div>
-
+                        {/* Kaupapa section */}
                         <div className="border-t border-border pt-3 space-y-1">
                           <Label className="text-xs font-medium">Your kaupapa</Label>
                         </div>
 
-                        <div className="space-y-1">
-                          <Label className="text-xs">What's your podcast about? <span className="text-red-500">*</span></Label>
-                          <Textarea
-                            value={studioAbout}
-                            onChange={(e) => setStudioAbout(e.target.value)}
-                            rows={2}
-                            placeholder="Topic, theme, what you're exploring..."
-                            data-testid="portal-input-studio-about"
-                          />
-                        </div>
+                        {studioUseType === "podcast" ? (
+                          <>
+                            <div className="space-y-1">
+                              <Label className="text-xs">What's your podcast about? <span className="text-red-500">*</span></Label>
+                              <Textarea
+                                value={studioAbout}
+                                onChange={(e) => setStudioAbout(e.target.value)}
+                                rows={2}
+                                placeholder="Topic, theme, what you're exploring..."
+                                data-testid="portal-input-studio-about"
+                              />
+                            </div>
 
-                        <div className="space-y-1">
-                          <Label className="text-xs">Why do you want to do this? <span className="text-red-500">*</span></Label>
-                          <Textarea
-                            value={studioWhy}
-                            onChange={(e) => setStudioWhy(e.target.value)}
-                            rows={2}
-                            placeholder="What's driving you to create this?"
-                            data-testid="portal-input-studio-why"
-                          />
-                        </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Why do you want to do this? <span className="text-red-500">*</span></Label>
+                              <Textarea
+                                value={studioWhy}
+                                onChange={(e) => setStudioWhy(e.target.value)}
+                                rows={2}
+                                placeholder="What's driving you to create this?"
+                                data-testid="portal-input-studio-why"
+                              />
+                            </div>
 
-                        <div className="space-y-1">
-                          <Label className="text-xs">Where do you want to take it? <span className="text-red-500">*</span></Label>
-                          <Textarea
-                            value={studioGoals}
-                            onChange={(e) => setStudioGoals(e.target.value)}
-                            rows={2}
-                            placeholder="Goals, vision, who's the audience..."
-                            data-testid="portal-input-studio-goals"
-                          />
-                        </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Where do you want to take it? <span className="text-red-500">*</span></Label>
+                              <Textarea
+                                value={studioGoals}
+                                onChange={(e) => setStudioGoals(e.target.value)}
+                                rows={2}
+                                placeholder="Goals, vision, who's the audience..."
+                                data-testid="portal-input-studio-goals"
+                              />
+                            </div>
+                          </>
+                        ) : (
+                          <div className="space-y-1">
+                            <Label className="text-xs">What are you creating? <span className="text-red-500">*</span></Label>
+                            <Textarea
+                              value={studioProjectAbout}
+                              onChange={(e) => setStudioProjectAbout(e.target.value)}
+                              rows={2}
+                              placeholder="What you're making, why, and what you need the studio for..."
+                              data-testid="portal-input-studio-project-about"
+                            />
+                          </div>
+                        )}
 
                         <Button
                           className="w-full"
                           size="sm"
-                          disabled={!studioNewHost.trim() || !studioAbout.trim() || !studioWhy.trim() || !studioGoals.trim()}
+                          disabled={
+                            !studioNewHost.trim() ||
+                            (hasGuest1 && !studioGuest1.trim()) ||
+                            (hasGuest2 && !studioGuest2.trim()) ||
+                            (hasEditor && !studioEditor.trim()) ||
+                            (studioUseType === "podcast" ? (!studioAbout.trim() || !studioWhy.trim() || !studioGoals.trim()) : !studioProjectAbout.trim())
+                          }
                           onClick={() => {
-                            const lines = [
-                              "[Studio Session — New Booker Kaupapa]",
+                            const people = [
+                              `Host: ${studioNewHost.trim()}`,
+                              hasGuest1 && studioGuest1.trim() ? `Guest 1: ${studioGuest1.trim()}` : null,
+                              hasGuest2 && studioGuest2.trim() ? `Guest 2: ${studioGuest2.trim()}` : null,
+                              hasEditor && studioEditor.trim() ? `Live editor: ${studioEditor.trim()}` : null,
+                            ].filter(Boolean).join(", ");
+                            const lines = studioUseType === "podcast" ? [
+                              "[Studio Session — New Booker Kaupapa — Podcast]",
                               studioPodName.trim() ? `Podcast name: ${studioPodName.trim()}` : null,
                               studioIG.trim() ? `Instagram: ${studioIG.trim()}` : null,
                               studioYT.trim() ? `YouTube: ${studioYT.trim()}` : null,
-                              `Host: ${studioNewHost.trim()}`,
+                              `People in studio: ${people}`,
                               `What it's about: ${studioAbout.trim()}`,
                               `Why: ${studioWhy.trim()}`,
                               `Where they want to take it: ${studioGoals.trim()}`,
+                            ].filter(Boolean).join("\n") : [
+                              "[Studio Session — New Booker — Other Content]",
+                              studioProjectName.trim() ? `Project: ${studioProjectName.trim()}` : null,
+                              `People in studio: ${people}`,
+                              `What they're creating: ${studioProjectAbout.trim()}`,
                             ].filter(Boolean).join("\n");
                             setStudioNotes(lines);
                             setStudioIsFirstBooking(true);
@@ -2462,11 +2621,19 @@ function CalendarView({
                       </div>
                     )}
 
+                    {/* Studio questions — returning booker */}
                     {allSelectedAreStudio && studioStep === "questions-returning" && (
                       <div className="space-y-3 border border-border rounded-lg p-3">
-                        <div className="flex items-center gap-2">
-                          <span className="text-base">🎙</span>
-                          <p className="text-sm font-medium">Welcome back — quick check-in</p>
+                        <div className="flex items-center gap-2 justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">🎙</span>
+                            <p className="text-sm font-medium">Welcome back — quick check-in</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setStudioStep("select-type")}
+                            className="text-[10px] text-muted-foreground hover:text-foreground"
+                          >← Back</button>
                         </div>
 
                         <div className="space-y-1.5">
@@ -2487,20 +2654,22 @@ function CalendarView({
                           </div>
                         </div>
 
-                        <div className="space-y-1">
-                          <Label className="text-xs">Where did you get with last episode? <span className="text-red-500">*</span></Label>
-                          <div className="flex gap-2 flex-wrap">
-                            {["N/A", "Recorded", "Editing", "Posted"].map(opt => (
-                              <button
-                                key={opt}
-                                type="button"
-                                onClick={() => setStudioEpisodeStatus(opt)}
-                                className={`text-sm px-3 py-1.5 rounded-md border transition-colors ${studioEpisodeStatus === opt ? "border-primary bg-primary/5" : "border-border"}`}
-                                data-testid={`portal-button-episode-status-${opt.toLowerCase()}`}
-                              >{opt}</button>
-                            ))}
+                        {studioUseType === "podcast" && (
+                          <div className="space-y-1">
+                            <Label className="text-xs">Where did you get with last episode? <span className="text-red-500">*</span></Label>
+                            <div className="flex gap-2 flex-wrap">
+                              {["N/A", "Recorded", "Editing", "Posted"].map(opt => (
+                                <button
+                                  key={opt}
+                                  type="button"
+                                  onClick={() => setStudioEpisodeStatus(opt)}
+                                  className={`text-sm px-3 py-1.5 rounded-md border transition-colors ${studioEpisodeStatus === opt ? "border-primary bg-primary/5" : "border-border"}`}
+                                  data-testid={`portal-button-episode-status-${opt.toLowerCase()}`}
+                                >{opt}</button>
+                              ))}
+                            </div>
                           </div>
-                        </div>
+                        )}
 
                         <div className="border-t border-border pt-3 space-y-1">
                           <Label className="text-xs">What's the plan for this session? <span className="text-red-500">*</span></Label>
@@ -2513,8 +2682,10 @@ function CalendarView({
                           />
                         </div>
 
+                        {/* Shared participant section */}
                         <div className="border-t border-border pt-3 space-y-2">
-                          <Label className="text-xs font-medium">Who's in the studio this session?</Label>
+                          <Label className="text-xs font-medium">Who's in the studio this session? <span className="text-red-500">*</span></Label>
+                          <p className="text-[10px] text-muted-foreground -mt-1">We need to know everyone who'll be in the space</p>
 
                           <div className="space-y-1">
                             <Label className="text-xs text-muted-foreground">Host <span className="text-red-500">*</span></Label>
@@ -2526,56 +2697,80 @@ function CalendarView({
                             />
                           </div>
 
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="space-y-1">
-                              <Label className="text-xs text-muted-foreground">Guest 1 <span className="text-muted-foreground">(optional)</span></Label>
+                          <div className="space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <Checkbox checked={hasGuest1} onCheckedChange={(v) => { setHasGuest1(!!v); if (!v) { setStudioGuest1(""); setHasGuest2(false); setStudioGuest2(""); } }} data-testid="portal-toggle-ret-guest1" />
+                              <Label className="text-xs text-muted-foreground">Bringing a guest</Label>
+                            </div>
+                            {hasGuest1 && (
                               <Input
                                 value={studioGuest1}
                                 onChange={(e) => setStudioGuest1(e.target.value)}
                                 placeholder="Guest name"
                                 data-testid="portal-input-studio-guest1"
                               />
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs text-muted-foreground">Guest 2 <span className="text-muted-foreground">(optional)</span></Label>
-                              <Input
-                                value={studioGuest2}
-                                onChange={(e) => setStudioGuest2(e.target.value)}
-                                placeholder="Guest name"
-                                data-testid="portal-input-studio-guest2"
-                              />
-                            </div>
+                            )}
                           </div>
 
-                          <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">Live editor <span className="text-muted-foreground">(if applicable)</span></Label>
-                            <Input
-                              value={studioEditor}
-                              onChange={(e) => setStudioEditor(e.target.value)}
-                              placeholder="Editor name"
-                              data-testid="portal-input-studio-editor"
-                            />
+                          {hasGuest1 && (
+                            <div className="space-y-1.5">
+                              <div className="flex items-center gap-2">
+                                <Checkbox checked={hasGuest2} onCheckedChange={(v) => { setHasGuest2(!!v); if (!v) setStudioGuest2(""); }} data-testid="portal-toggle-ret-guest2" />
+                                <Label className="text-xs text-muted-foreground">Second guest</Label>
+                              </div>
+                              {hasGuest2 && (
+                                <Input
+                                  value={studioGuest2}
+                                  onChange={(e) => setStudioGuest2(e.target.value)}
+                                  placeholder="Guest name"
+                                  data-testid="portal-input-studio-guest2"
+                                />
+                              )}
+                            </div>
+                          )}
+
+                          <div className="space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <Checkbox checked={hasEditor} onCheckedChange={(v) => { setHasEditor(!!v); if (!v) setStudioEditor(""); }} data-testid="portal-toggle-ret-editor" />
+                              <Label className="text-xs text-muted-foreground">Live editor</Label>
+                            </div>
+                            {hasEditor && (
+                              <Input
+                                value={studioEditor}
+                                onChange={(e) => setStudioEditor(e.target.value)}
+                                placeholder="Editor name"
+                                data-testid="portal-input-studio-editor"
+                              />
+                            )}
                           </div>
                         </div>
 
                         <Button
                           className="w-full"
                           size="sm"
-                          disabled={!studioEpisodeStatus || !studioThisSession.trim() || !studioHost.trim()}
+                          disabled={
+                            !studioThisSession.trim() ||
+                            !studioHost.trim() ||
+                            (hasGuest1 && !studioGuest1.trim()) ||
+                            (hasGuest2 && !studioGuest2.trim()) ||
+                            (hasEditor && !studioEditor.trim()) ||
+                            (studioUseType === "podcast" && !studioEpisodeStatus)
+                          }
                           onClick={() => {
                             const people = [
                               `Host: ${studioHost.trim()}`,
-                              studioGuest1.trim() ? `Guest 1: ${studioGuest1.trim()}` : null,
-                              studioGuest2.trim() ? `Guest 2: ${studioGuest2.trim()}` : null,
-                              studioEditor.trim() ? `Live editor: ${studioEditor.trim()}` : null,
+                              hasGuest1 && studioGuest1.trim() ? `Guest 1: ${studioGuest1.trim()}` : null,
+                              hasGuest2 && studioGuest2.trim() ? `Guest 2: ${studioGuest2.trim()}` : null,
+                              hasEditor && studioEditor.trim() ? `Live editor: ${studioEditor.trim()}` : null,
                             ].filter(Boolean).join(", ");
+                            const typeLabel = studioUseType === "podcast" ? "Podcast" : "Other Content";
                             const lines = [
-                              "[Studio Session — Returning Booker]",
+                              `[Studio Session — Returning Booker — ${typeLabel}]`,
                               `Last booking: ${["", "Rough", "OK", "Good", "Great", "Amazing"][studioLastRating]} (${studioLastRating}/5)`,
-                              `Last episode: ${studioEpisodeStatus}`,
+                              studioUseType === "podcast" ? `Last episode: ${studioEpisodeStatus}` : null,
                               `This session: ${studioThisSession.trim()}`,
                               `People in studio: ${people}`,
-                            ].join("\n");
+                            ].filter(Boolean).join("\n");
                             setStudioNotes(lines);
                             setStudioIsFirstBooking(false);
                             setStudioStep("done");
