@@ -12669,6 +12669,17 @@ Rules:
 
       const isGroupLink = link.isGroupLink === true;
       const contact = booker.contactId ? await storage.getContact(booker.contactId) : null;
+
+      // Auto-fill notificationsEmail if not set
+      if (!booker.notificationsEmail) {
+        const autoEmail = booker.loginEmail || contact?.email;
+        if (autoEmail) {
+          try {
+            await storage.updateRegularBooker(booker.id, { notificationsEmail: autoEmail });
+            booker.notificationsEmail = autoEmail;
+          } catch {}
+        }
+      }
       let linkedGroupId: number | null = booker.groupId || null;
       let linkedGroupName: string | null = null;
       if (booker.groupId) {
