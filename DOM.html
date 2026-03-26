@@ -245,7 +245,7 @@
     <a href="#gaps">🔍 Gaps</a>
     <a href="#build">🔨 Build List</a>
   </div>
-  <span class="nav-updated">Updated 2026-03-23</span>
+  <span class="nav-updated">Updated 2026-03-26</span>
 </nav>
 
 <!-- Back to top -->
@@ -398,11 +398,11 @@
     </ul>
     <div class="gap-section">
       <div class="gap-section-label">Gaps &amp; Builds</div>
-      <div class="feature-gap">Quick-add unplanned activation</div>
-      <div class="feature-gap">Recurring bookings (admin-managed)</div>
-      <div class="feature-gap">Monthly reconciling UI</div>
-      <div class="feature-gap">Payment instructions not clear in confirmation</div>
-      <div class="feature-gap">No payment status visible in booking view</div>
+      <div class="feature-ok">✓ Quick-add unplanned activation — FAB button on Spaces page</div>
+      <div class="feature-ok">✓ Recurring bookings — admin templates with auto-generate</div>
+      <div class="feature-ok">✓ Monthly reconciling UI — foot traffic grid, backfill, confirm</div>
+      <div class="feature-gap">Payment instructions not clear in confirmation emails</div>
+      <div class="feature-ok">✓ Payment status in booking view — unpaid/invoiced/paid dots on list + dropdown on detail</div>
       <div class="feature-ok">✓ Venue grouping built — Office Spaces vs Podcast Studio with headers, mixing locked</div>
       <div class="feature-ok">✓ Classification list tightened — Meeting, Workshop, Rangatahi / Youth Workshop</div>
       <div class="feature-ok">✓ Studio first-booker detection built — check-studio-booker API</div>
@@ -439,7 +439,7 @@
           <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Reviews + confirms</strong></div></div>
           <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Confirmation email + Xero invoice + calendar invite</strong><div><span class="ftag ok">✓ works</span></div></div></div>
           <div class="flow-step g"><div class="fl">Gap</div><div class="ft"><strong>Payment instructions not clear in confirmation</strong><div><span class="ftag gap">✗ gap</span></div></div></div>
-          <div class="flow-step g"><div class="fl">Gap</div><div class="ft"><strong>No payment status in booking view</strong><div><span class="ftag gap">✗ gap</span></div></div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Payment status visible</strong> — unpaid/invoiced/paid dropdown on booking detail<div><span class="ftag ok">✓ built</span></div></div></div>
         </div>
         <div class="flow-sub-title purple">🛠 Admin Booking</div>
         <div class="flow-steps">
@@ -447,14 +447,14 @@
           <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Confirms immediately</strong> or saves as pending</div></div>
           <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Confirmation email + calendar invite → contact</strong><div><span class="ftag ok">✓ works (if contact has email)</span></div></div></div>
           <div class="flow-step w"><div class="fl">Check</div><div class="ft"><strong>Book without a contact in system?</strong><div><span class="ftag w">? verify</span></div></div></div>
-          <div class="flow-step g"><div class="fl">Gap</div><div class="ft"><strong>No quick-add unplanned activation</strong><div><span class="ftag gap">✗ gap</span></div></div></div>
-          <div class="flow-step g"><div class="fl">Gap</div><div class="ft"><strong>No recurring booking setup</strong><div><span class="ftag gap">✗ gap</span></div></div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Quick-add activation</strong> — FAB button on Spaces, captures date/space/classification/headcount<div><span class="ftag ok">✓ built</span></div></div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Recurring bookings</strong> — admin templates with auto-generate, CRUD management<div><span class="ftag ok">✓ built</span></div></div></div>
         </div>
 
         <div class="flow-sub-title green">🏢 Flow 4 — Office Space Booking (Agreement or Public)</div>
         <div class="flow-steps">
           <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Accesses portal</strong> — magic link (Agreement) or /casual-hire (Public)</div></div>
-          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects venue</strong> — grouped under Office (Workshop, Meeting Room, Youth Workshop). Cannot mix with Studio in same session.<div><span class="ftag no">✗ grouping not built — venues currently flat list</span></div></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects venue</strong> — grouped under Office Spaces header. Cannot mix with Studio in same session (lockedSpaceType enforced).<div><span class="ftag ok">✓ built — venues split by Office/Studio with headers</span></div></div></div>
           <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects date + time</strong></div></div>
           <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Classification</strong> — tighter list: Meeting, Workshop, Rangatahi/Youth Workshop<div><span class="ftag w">⚠ current list is too broad (9 options, legacy)</span></div></div></div>
           <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>"Tell us about your booking"</strong> — free text, required<div><span class="ftag ok">✓ exists in booker-portal + casual-hire</span></div></div></div>
@@ -464,22 +464,23 @@
 
         <div class="flow-sub-title blue">🎙 Flow 5 — Podcast Studio: First Booking (Onboarding)</div>
         <div class="flow-steps">
-          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects Studio venue</strong> — grouped under Studio in portal<div><span class="ftag no">✗ grouping not built</span></div></div></div>
-          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Detects first-time studio booker</strong> — checks prior bookings with Studio spaceName<div><span class="ftag no">✗ not built — isFirstBooking flag exists in schema but unused in portal</span></div></div></div>
-          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Studio onboarding questions</strong> — gear orientation, usage rules, setup preferences, what they plan to produce<div><span class="ftag no">✗ not built</span></div></div></div>
-          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects date + time</strong></div></div>
-          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Submits</strong> — induction flag saved on booking record</div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects Studio venue</strong> — grouped under Podcast Studio header<div><span class="ftag ok">✓ built — venue grouping with headers</span></div></div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Detects first-time studio booker</strong> — check-studio-booker API checks prior bookings<div><span class="ftag ok">✓ built</span></div></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects studio use type</strong> — Podcast or General Content<div><span class="ftag ok">✓ built</span></div></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Studio onboarding questions</strong> — podcast name, kaupapa, goals, target audience (new) or project name + about (general content)<div><span class="ftag ok">✓ built</span></div></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Toggle participants</strong> — Host, Guest 1, Guest 2, Editor with names<div><span class="ftag ok">✓ built</span></div></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects date + time → submits</strong></div></div>
           <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Confirmation includes studio prep info</strong> — setup guide, what to bring<div><span class="ftag no">✗ not built</span></div></div></div>
-          <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Confirms + marks induction complete</strong> on booker profile<div><span class="ftag no">✗ induction tracking not built</span></div></div></div>
+          <div class="flow-step w"><div class="fl">Gap</div><div class="ft"><strong>Induction tracking on booker profile</strong> not built<div><span class="ftag no">✗ gap</span></div></div></div>
         </div>
 
         <div class="flow-sub-title purple">🔄 Flow 6 — Podcast Studio: Returning Booker (Check-in)</div>
         <div class="flow-steps">
           <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects Studio venue</strong></div></div>
-          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Detects returning studio booker</strong> — prior Studio booking on record<div><span class="ftag no">✗ not built</span></div></div></div>
-          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Short check-in questions</strong> — what are you recording? Any setup changes? (skips full onboarding)<div><span class="ftag no">✗ not built</span></div></div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Detects returning studio booker</strong> — check-studio-booker API finds prior bookings<div><span class="ftag ok">✓ built</span></div></div></div>
+          <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Short check-in questions</strong> — episode title, what's it about, participant toggles (skips full onboarding)<div><span class="ftag ok">✓ built</span></div></div></div>
           <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects date + time → submits</strong></div></div>
-          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Streamlined confirmation</strong> — no induction repeat<div><span class="ftag no">✗ not built</span></div></div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Streamlined confirmation</strong> — no induction repeat<div><span class="ftag ok">✓ built</span></div></div></div>
         </div>
 
       </div>
@@ -510,7 +511,7 @@
     </ul>
     <div class="gap-section">
       <div class="gap-section-label">Gaps &amp; Builds</div>
-      <div class="feature-gap">Approval workflow UI (approve/deny) — flag exists, UI doesn't</div>
+      <div class="feature-ok">✓ Approval workflow UI — approve/deny with reason field built</div>
       <div class="feature-gap">Maintenance / condition tracking</div>
       <div class="feature-gap">Usage history per item</div>
     </div>
@@ -522,7 +523,7 @@
           <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Selects date + items</strong> — sees availability, approval warning if needed</div></div>
           <div class="flow-step u"><div class="fl">Booker</div><div class="ft"><strong>Confirms booking</strong></div></div>
           <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Gear booked</strong> — or queued for approval if requiresApproval<div><span class="ftag ok">✓ works</span></div></div></div>
-          <div class="flow-step g"><div class="fl">Gap</div><div class="ft"><strong>No admin approve/deny UI</strong> for flagged items<div><span class="ftag gap">✗ gap</span></div></div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>Admin approve/deny UI</strong> — pending list, deny with reason<div><span class="ftag ok">✓ built</span></div></div></div>
         </div>
       </div>
     </details>
@@ -555,7 +556,7 @@
     </ul>
     <div class="gap-section">
       <div class="gap-section-label">Gaps &amp; Builds</div>
-      <div class="feature-warn"><code>attended</code> → <code>programmes.attendees</code> not wired (report blind spot)</div>
+      <div class="feature-ok">✓ <code>attended</code> → <code>programmes.attendees</code> wired — syncs contactId on toggle + bulk endpoint</div>
       <div class="feature-warn">Debrief ↔ programme linkage consistency (verify)</div>
       <div class="feature-gap">Walk-in attendance (unregistered people on the day)</div>
       <div class="feature-gap">Session-by-session roll call (multi-session programmes)</div>
@@ -578,7 +579,7 @@
         <div class="flow-steps">
           <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Opens registrations dialog</strong> on programme card</div></div>
           <div class="flow-step a"><div class="fl">Admin</div><div class="ft"><strong>Toggles attended</strong> for each person<div><span class="ftag ok">✓ UI exists</span></div></div></div>
-          <div class="flow-step g"><div class="fl">Gap</div><div class="ft"><strong>attended ≠ programmes.attendees</strong> — doesn't feed report<div><span class="ftag gap">✗ broken</span></div></div></div>
+          <div class="flow-step s"><div class="fl">System</div><div class="ft"><strong>attended syncs to programmes.attendees</strong> — adds/removes contactId on toggle<div><span class="ftag ok">✓ fixed</span></div></div></div>
           <div class="flow-step g"><div class="fl">Gap</div><div class="ft"><strong>Walk-ins can't be added</strong><div><span class="ftag gap">✗ gap</span></div></div></div>
         </div>
         <div class="flow-sub-title purple">📈 Post-Programme</div>
@@ -658,7 +659,7 @@
     </div>
     <div style="background:#131720;border:1px solid #334155;border-radius:7px;padding:10px 14px;">
       <div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:6px;">REPORTING</div>
-      <div style="font-size:11px;color:#64748b;line-height:1.8;">Report Generator<br>Dashboard<br>Cohorts<br>Taxonomy</div>
+      <div style="font-size:11px;color:#64748b;line-height:1.8;">Reports<br>Cohorts<br>Legacy Reports<br>Taxonomy</div>
     </div>
     <div style="background:#131720;border:1px solid #334155;border-radius:7px;padding:10px 14px;">
       <div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:6px;">OPS</div>
@@ -668,8 +669,8 @@
       <div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:6px;">SETTINGS</div>
       <div style="font-size:11px;color:#64748b;line-height:1.8;">Availability<br>About Us<br>Team</div>
     </div>
-    <div style="background:#131720;border:1px dashed #3b2d5e;border-radius:7px;padding:10px 14px;opacity:0.7;">
-      <div style="font-size:11px;font-weight:700;color:#a78bfa;margin-bottom:6px;">COMMS ✦ new</div>
+    <div style="background:#131720;border:1px solid #3b2d5e;border-radius:7px;padding:10px 14px;">
+      <div style="font-size:11px;font-weight:700;color:#a78bfa;margin-bottom:6px;">COMMS</div>
       <div style="font-size:11px;color:#64748b;line-height:1.8;">Stories<br>Newsletters<br>Announcements</div>
     </div>
   </div>
@@ -699,16 +700,19 @@
   <div class="card green">
     <div class="card-title">🏢 Spaces</div>
     <ul class="dot-list">
-      <li class="dot-item no"><div class="d"></div><span>Quick-add unplanned activation</span></li>
-      <li class="dot-item no"><div class="d"></div><span>Recurring bookings (admin-managed)</span></li>
-      <li class="dot-item no"><div class="d"></div><span>Monthly reconciling UI</span></li>
+      <li class="dot-item ok"><div class="d"></div><span>Quick-add unplanned activation ✓</span></li>
+      <li class="dot-item ok"><div class="d"></div><span>Recurring bookings (admin-managed) ✓</span></li>
+      <li class="dot-item ok"><div class="d"></div><span>Monthly reconciling UI ✓</span></li>
+      <li class="dot-item ok"><div class="d"></div><span>Payment status in booking view ✓</span></li>
+      <li class="dot-item no"><div class="d"></div><span>Payment instructions in confirmation emails</span></li>
+      <li class="dot-item no"><div class="d"></div><span>bookingCategories gating in portal UI</span></li>
     </ul>
   </div>
 
   <div class="card orange">
     <div class="card-title">⚙️ Gear</div>
     <ul class="dot-list">
-      <li class="dot-item no"><div class="d"></div><span>Approval workflow UI (approve/deny)</span></li>
+      <li class="dot-item ok"><div class="d"></div><span>Approval workflow UI (approve/deny) ✓</span></li>
       <li class="dot-item no"><div class="d"></div><span>Maintenance / condition tracking</span></li>
       <li class="dot-item no"><div class="d"></div><span>Usage history per item</span></li>
     </ul>
@@ -717,7 +721,7 @@
   <div class="card purple">
     <div class="card-title">📚 Programmes</div>
     <ul class="dot-list">
-      <li class="dot-item warn"><div class="d"></div><span><code>attended</code> → <code>programmes.attendees</code> not wired (report blind spot)</span></li>
+      <li class="dot-item ok"><div class="d"></div><span><code>attended</code> → <code>programmes.attendees</code> wired ✓</span></li>
       <li class="dot-item no"><div class="d"></div><span>Walk-in attendance (unregistered)</span></li>
       <li class="dot-item no"><div class="d"></div><span>Session-by-session roll call (multi-session)</span></li>
       <li class="dot-item warn"><div class="d"></div><span>Debrief ↔ programme linkage consistency</span></li>
@@ -812,11 +816,11 @@
 <div class="grid-2">
   <div class="build-group">
     <div id="build-programmes" class="build-group-title part-anchor">📚 Programmes</div>
-    <div class="build-item">
-      <span class="build-badge fix">FIX</span>
+    <div class="build-item" style="opacity:0.5;">
+      <span class="build-badge fix" style="background:#065f46;color:#6ee7b7;">DONE</span>
       <div>
-        <div class="build-item-text">Wire <code>attended</code> → <code>programmes.attendees</code></div>
-        <div class="build-item-sub">When attended=true, add contactId to programmes.attendees array. Backend route change only.</div>
+        <div class="build-item-text" style="text-decoration:line-through;">Wire <code>attended</code> → <code>programmes.attendees</code></div>
+        <div class="build-item-sub">✓ Syncs contactId on attended toggle + bulk endpoint. Server routes.ts lines 4148-4172.</div>
       </div>
     </div>
     <div class="build-item">
@@ -836,11 +840,11 @@
   </div>
   <div class="build-group">
     <div id="build-gear" class="build-group-title part-anchor">⚙️ Gear</div>
-    <div class="build-item">
-      <span class="build-badge feat">FEATURE</span>
+    <div class="build-item" style="opacity:0.5;">
+      <span class="build-badge fix" style="background:#065f46;color:#6ee7b7;">DONE</span>
       <div>
-        <div class="build-item-text">Approval workflow UI</div>
-        <div class="build-item-sub">Admin approve/deny screen for requiresApproval items. Flag already exists.</div>
+        <div class="build-item-text" style="text-decoration:line-through;">Approval workflow UI</div>
+        <div class="build-item-sub">✓ Approve/deny with reason field, pending list. gear.tsx lines 86-164.</div>
       </div>
     </div>
     <div class="build-item">
@@ -902,25 +906,25 @@
 <div class="build-group" style="max-width:800px;">
   <div class="build-group-title">🏢 Spaces</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-    <div class="build-item">
-      <span class="build-badge feat">FEATURE</span>
+    <div class="build-item" style="opacity:0.5;">
+      <span class="build-badge fix" style="background:#065f46;color:#6ee7b7;">DONE</span>
       <div>
-        <div class="build-item-text">Quick-add unplanned activation</div>
-        <div class="build-item-sub">Always-accessible admin shortcut. Date · space · classification · headcount · duration. booking_source = "admin_catch_up".</div>
+        <div class="build-item-text" style="text-decoration:line-through;">Quick-add unplanned activation</div>
+        <div class="build-item-sub">✓ FAB button on Spaces page. quick-add-activation-dialog.tsx.</div>
       </div>
     </div>
-    <div class="build-item">
-      <span class="build-badge feat">FEATURE</span>
+    <div class="build-item" style="opacity:0.5;">
+      <span class="build-badge fix" style="background:#065f46;color:#6ee7b7;">DONE</span>
       <div>
-        <div class="build-item-text">Recurring bookings (admin-managed)</div>
-        <div class="build-item-sub">Set once, auto-generates on schedule. No booker involvement. e.g. "Board meeting, 2nd Tuesday, Main Room."</div>
+        <div class="build-item-text" style="text-decoration:line-through;">Recurring bookings (admin-managed)</div>
+        <div class="build-item-sub">✓ Full CRUD templates with auto-generate. recurring-bookings-tab.tsx.</div>
       </div>
     </div>
-    <div class="build-item" style="grid-column:1/-1;">
-      <span class="build-badge feat">FEATURE</span>
+    <div class="build-item" style="grid-column:1/-1;opacity:0.5;">
+      <span class="build-badge fix" style="background:#065f46;color:#6ee7b7;">DONE</span>
       <div>
-        <div class="build-item-text">Monthly Reconciling UI</div>
-        <div class="build-item-sub">Structured monthly health check: foot traffic grid (Kim's camera review) · backfill unplanned use · check unconfirmed debriefs · confirm month complete → feeds quarterly report.</div>
+        <div class="build-item-text" style="text-decoration:line-through;">Monthly Reconciling UI</div>
+        <div class="build-item-sub">✓ Foot traffic grid, backfill, confirmation. monthly-reconcile-dialog.tsx.</div>
       </div>
     </div>
   </div>
@@ -1039,7 +1043,72 @@
   </div>
 </div>
 
-<p class="updated">Generated by Korg · ReserveTMK Digital — DOM · Last updated: 2026-03-23</p>
+<!-- Suggested Platform Features — Strategic Analysis Mar 2026 -->
+<div class="section-label" style="margin-top:24px;">Suggested Platform Features — Strategic Roadmap</div>
+<div class="grid-3">
+  <div class="build-group" style="border-color:#1e3d5e;">
+    <div class="build-group-title" style="color:#93c5fd;">📊 Funder Report PDF Export</div>
+    <div class="build-item" style="background:#1a2a3e;border-color:#1e3d5e;">
+      <span class="build-badge feat">FEATURE</span>
+      <div>
+        <div class="build-item-text" style="color:#93c5fd;">Generate formatted monthly report as branded PDF from RTMKD data</div>
+        <div class="build-item-sub" style="color:#3b82f6;">Tables auto-populated, narrative sections editable. ReserveTMK branded (Agrandir, Forest Green). Matches Nov 2025 report structure.</div>
+      </div>
+    </div>
+  </div>
+  <div class="build-group" style="border-color:#1e3d5e;">
+    <div class="build-group-title" style="color:#93c5fd;">📁 Community Directory</div>
+    <div class="build-item" style="background:#1a2a3e;border-color:#1e3d5e;">
+      <span class="build-badge feat">FEATURE</span>
+      <div>
+        <div class="build-item-text" style="color:#93c5fd;">Import spreadsheet orgs/businesses/schools into Groups + Contacts</div>
+        <div class="build-item-sub" style="color:#3b82f6;">Stop maintaining parallel spreadsheets. 19 orgs, 17 businesses, 7 schools, ~100 community members currently in Excel only.</div>
+      </div>
+    </div>
+  </div>
+  <div class="build-group" style="border-color:#1e3d5e;">
+    <div class="build-group-title" style="color:#93c5fd;">📅 Content Pipeline View</div>
+    <div class="build-item" style="background:#1a2a3e;border-color:#1e3d5e;">
+      <span class="build-badge feat">FEATURE</span>
+      <div>
+        <div class="build-item-text" style="color:#93c5fd;">Upcoming content/events calendar feeding photo-brief + newsletter</div>
+        <div class="build-item-sub" style="color:#3b82f6;">Not a full CMS. "What's coming up this week" view. 125-item content schedule currently in spreadsheet.</div>
+      </div>
+    </div>
+  </div>
+  <div class="build-group" style="border-color:#1e3d5e;">
+    <div class="build-group-title" style="color:#93c5fd;">📋 Agreement Tracker</div>
+    <div class="build-item" style="background:#1a2a3e;border-color:#1e3d5e;">
+      <span class="build-badge feat">FEATURE</span>
+      <div>
+        <div class="build-item-text" style="color:#93c5fd;">Funder, amount, period, KPIs, reporting dates, expiry — visual status</div>
+        <div class="build-item-sub" style="color:#3b82f6;">Currently tracked in memory/documents. Agreements page exists but needs funder-specific KPI tracking. Lease expiry 31 Jul 2026.</div>
+      </div>
+    </div>
+  </div>
+  <div class="build-group" style="border-color:#1e3d5e;">
+    <div class="build-group-title" style="color:#93c5fd;">🏷 Demographic Flags</div>
+    <div class="build-item" style="background:#1a2a3e;border-color:#1e3d5e;">
+      <span class="build-badge feat">FEATURE</span>
+      <div>
+        <div class="build-item-text" style="color:#93c5fd;">Māori / Pasifika tagging on contacts and groups → flows through to reporting</div>
+        <div class="build-item-sub" style="color:#3b82f6;">Required for Māori Outcomes quarterly reports. Monthly reports now include Māori/Pasifika columns on resident companies and hirers tables.</div>
+      </div>
+    </div>
+  </div>
+  <div class="build-group" style="border-color:#1e3d5e;">
+    <div class="build-group-title" style="color:#93c5fd;">🏠 Resident Companies Dashboard</div>
+    <div class="build-item" style="background:#1a2a3e;border-color:#1e3d5e;">
+      <span class="build-badge feat">FEATURE</span>
+      <div>
+        <div class="build-item-text" style="color:#93c5fd;">Current coworkers, desk type, membership status, billing overview</div>
+        <div class="build-item-sub" style="color:#3b82f6;">Regular bookers page exists. Group portal (isGroupLink) built. Needs consolidated resident view with demographics.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="updated">Generated by Korg · ReserveTMK Digital — DOM · Last updated: 2026-03-26</p>
 
 <script>
   // Active nav highlight on scroll
@@ -1138,11 +1207,13 @@
 
     <div class="gap-section" style="margin-top:14px;">
       <div class="gap-section-label">Build List — All New Module</div>
-      <div class="feature-gap">Studio booking extended form (session details, guest names, episode info)</div>
-      <div class="feature-gap">Creator onboarding — new vs existing podcast branching</div>
-      <div class="feature-gap">Rebooking check-in — tangible + development signals mix</div>
+      <div class="feature-ok">✓ Studio booking type selector — Podcast vs General Content</div>
+      <div class="feature-ok">✓ Creator onboarding — new booker path with kaupapa questions</div>
+      <div class="feature-ok">✓ Returning check-in — episode title, description, participant toggles</div>
+      <div class="feature-ok">✓ Toggle-based participants — Host, Guest 1, Guest 2, Editor</div>
       <div class="feature-gap">Creator profile in community — links to mentoring pipeline</div>
       <div class="feature-gap">Creator journey tracking in reporting (same as innovator journey)</div>
+      <div class="feature-gap">Rebooking check-in with development signals (5-star, did you publish, doors opening)</div>
     </div>
   </div>
 
@@ -1209,6 +1280,14 @@
         <div class="flow-sub-title" style="border-left-color:#f59e0b;color:#fcd34d;">Quarter Note ⚠</div>
         <p style="font-size:12px;color:#94a3b8;line-height:1.5;">Reserve Tāmaki = calendar year quarters (Q1 = Jan–Mar). Auckland Council = financial year (our Q1 = their Q3 FY25/26). Always clarify per audience.</p>
       </div>
+    </div>
+
+    <div style="margin-top:16px;background:#131720;border-radius:8px;padding:14px 18px;border:1px solid #2d3748;">
+      <div style="font-size:12px;font-weight:700;color:#f59e0b;margin-bottom:8px;">⚠ Demographic Data Collection Principle</div>
+      <p style="font-size:12px;color:#94a3b8;line-height:1.6;margin-bottom:8px;"><strong style="color:#e2e8f0;">Ask when someone is opting into something — not when they're just using the space.</strong></p>
+      <p style="font-size:12px;color:#94a3b8;line-height:1.6;margin-bottom:8px;">Ethnicity is captured in two contexts only: <strong style="color:#e2e8f0;">mentoring onboarding</strong> and <strong style="color:#e2e8f0;">programme/workshop registration</strong>. These are structured relationships where the data serves the person's journey and feeds Māori Outcomes reporting.</p>
+      <p style="font-size:12px;color:#94a3b8;line-height:1.6;margin-bottom:8px;">Do NOT add ethnicity to: casual booking, venue hire, booker portal, general contact creation. Community members should not feel surveyed when they're just using the space.</p>
+      <p style="font-size:12px;color:#64748b;line-height:1.6;font-style:italic;">Demographic data will be partial for casual users — that's a deliberate design choice, not a bug. Reporting works with what we have from opt-in contexts.</p>
     </div>
   </div>
 

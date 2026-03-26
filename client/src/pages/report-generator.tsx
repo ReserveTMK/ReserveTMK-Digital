@@ -15,7 +15,26 @@ import {
 } from "lucide-react";
 import type { Funder } from "@shared/schema";
 
-// ── Quarter options ──────────────────────────────────────────────────────────
+// ── Period options ───────────────────────────────────────────────────────────
+
+function getMonthOptions() {
+  const options = [];
+  const now = new Date();
+  for (let i = 0; i < 12; i++) {
+    const d = subMonths(now, i);
+    const monthStr = format(d, "yyyy-MM");
+    const start = format(new Date(d.getFullYear(), d.getMonth(), 1), "yyyy-MM-dd");
+    const end = format(new Date(d.getFullYear(), d.getMonth() + 1, 1), "yyyy-MM-dd");
+    options.push({
+      label: format(d, "MMMM yyyy"),
+      value: `month-${monthStr}`,
+      month: monthStr,
+      start,
+      end,
+    });
+  }
+  return options;
+}
 
 function getQuarterOptions() {
   const options = [];
@@ -83,7 +102,10 @@ function ReportSection({ title, content, onEdit }: {
 export default function ReportGenerator() {
   const { toast } = useToast();
   const quarterOptions = getQuarterOptions();
+  const monthOptions = getMonthOptions();
+  const [reportMode, setReportMode] = useState<"monthly" | "quarterly">("monthly");
   const [selectedQuarter, setSelectedQuarter] = useState(quarterOptions[0]?.value || "");
+  const [selectedMonth, setSelectedMonth] = useState(monthOptions[0]?.value || "");
   const [audience, setAudience] = useState("general");
   const [reportData, setReportData] = useState<any>(null);
   const [sections, setSections] = useState<Record<string, string>>({});
@@ -92,6 +114,30 @@ export default function ReportGenerator() {
   const { data: funders } = useQuery<Funder[]>({ queryKey: ["/api/funders"] });
 
   const quarter = quarterOptions.find(q => q.value === selectedQuarter);
+  const month = monthOptions.find(m => m.value === selectedMonth);
+
+  const previewMonthlyHTML = () => {
+    if (!month) return;
+    window.open(`/api/reports/html/monthly?month=${month.month}`, "_blank");
+  };
+
+  const downloadMonthlyHTML = async () => {
+    if (!month) return;
+    try {
+      const res = await fetch(`/api/reports/html/monthly?month=${month.month}`, { credentials: "include" });
+      const html = await res.text();
+      const blob = new Blob([html], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ReserveTMK-${month.month}-Report.html`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: "Downloaded", description: `${month.label} report saved as HTML.` });
+    } catch {
+      toast({ title: "Download failed", variant: "destructive" });
+    }
+  };
 
   const generateMutation = useMutation({
     mutationFn: async () => {
@@ -186,19 +232,48 @@ export default function ReportGenerator() {
 
         {/* Config card */}
         <Card className="p-5 space-y-4">
+          {/* Report type toggle */}
+          <div className="flex gap-1 bg-muted/50 rounded-lg p-1 w-fit">
+            <button
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${reportMode === "monthly" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              onClick={() => setReportMode("monthly")}
+            >
+              Monthly
+            </button>
+            <button
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${reportMode === "quarterly" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              onClick={() => setReportMode("quarterly")}
+            >
+              Quarterly
+            </button>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Quarter</Label>
-              <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {quarterOptions.map(q => (
-                    <SelectItem key={q.value} value={q.value}>{q.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label className="text-xs font-medium">{reportMode === "monthly" ? "Month" : "Quarter"}</Label>
+              {reportMode === "monthly" ? (
+                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {monthOptions.map(m => (
+                      <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Select value={selectedQuarter} onValueChange={setSelectedQuarter}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {quarterOptions.map(q => (
+                      <SelectItem key={q.value} value={q.value}>{q.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Audience</Label>
@@ -220,17 +295,30 @@ export default function ReportGenerator() {
             </div>
           </div>
 
-          <Button
-            onClick={() => generateMutation.mutate()}
-            disabled={generateMutation.isPending}
-            className="w-full sm:w-auto"
-          >
-            {generateMutation.isPending ? (
-              <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating...</>
+          <div className="flex gap-2 flex-wrap">
+            {reportMode === "monthly" ? (
+              <>
+                <Button onClick={previewMonthlyHTML} variant="default" className="sm:w-auto">
+                  <FileText className="w-4 h-4 mr-2" /> Preview HTML Report
+                </Button>
+                <Button onClick={downloadMonthlyHTML} variant="outline" className="sm:w-auto">
+                  <Download className="w-4 h-4 mr-2" /> Download HTML
+                </Button>
+              </>
             ) : (
-              <><Sparkles className="w-4 h-4 mr-2" /> {reportData ? "Regenerate" : "Generate Report"}</>
+              <Button
+                onClick={() => generateMutation.mutate()}
+                disabled={generateMutation.isPending}
+                className="sm:w-auto"
+              >
+                {generateMutation.isPending ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating...</>
+                ) : (
+                  <><Sparkles className="w-4 h-4 mr-2" /> {reportData ? "Regenerate" : "Generate Quarterly Report"}</>
+                )}
+              </Button>
             )}
-          </Button>
+          </div>
         </Card>
 
         {/* Loading state */}
