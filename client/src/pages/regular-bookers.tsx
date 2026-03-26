@@ -1276,62 +1276,79 @@ function RegularBookerFormDialog({
             </div>
           )}
 
-          {!hasLinkedAgreement && (
-            <>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Billing Email</Label>
-                  <Input
-                    type="email"
-                    value={billingEmail}
-                    onChange={(e) => setBillingEmail(e.target.value)}
-                    placeholder="billing@example.com"
-                    data-testid="input-booker-billing-email"
-                  />
-                </div>
-                <div>
-                  <Label>Billing Phone</Label>
-                  <Input
-                    value={billingPhone}
-                    onChange={(e) => setBillingPhone(e.target.value)}
-                    placeholder="Phone number"
-                    data-testid="input-booker-billing-phone"
-                  />
-                </div>
-              </div>
-
+          {/* Section 3: Billing and Account */}
+          <div className="space-y-3 border-t pt-4">
+            <Label className="text-sm font-semibold">Billing and Account</Label>
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Billing Address</Label>
-                <Textarea
-                  value={billingAddress}
-                  onChange={(e) => setBillingAddress(e.target.value)}
-                  placeholder="Full billing address"
-                  className="resize-none"
-                  data-testid="input-booker-billing-address"
+                <Label>Billing Email{!hasLinkedAgreement && " *"}</Label>
+                <Input
+                  type="email"
+                  value={billingEmail}
+                  onChange={(e) => setBillingEmail(e.target.value)}
+                  placeholder="billing@example.com"
+                  data-testid="input-booker-billing-email"
                 />
               </div>
-            </>
-          )}
+              <div>
+                <Label>Billing Phone</Label>
+                <Input
+                  value={billingPhone}
+                  onChange={(e) => setBillingPhone(e.target.value)}
+                  placeholder="Phone number"
+                  data-testid="input-booker-billing-phone"
+                />
+              </div>
+            </div>
 
-          <div>
-            <Label>Account Status</Label>
-            <Select value={accountStatus} onValueChange={setAccountStatus}>
-              <SelectTrigger data-testid="select-booker-account-status">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {REGULAR_BOOKER_STATUSES.map(s => (
-                  <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div>
+              <Label>Billing Address</Label>
+              <Textarea
+                value={billingAddress}
+                onChange={(e) => setBillingAddress(e.target.value)}
+                placeholder="Full billing address"
+                className="resize-none"
+                data-testid="input-booker-billing-address"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Account Status</Label>
+                <Select value={accountStatus} onValueChange={setAccountStatus}>
+                  <SelectTrigger data-testid="select-booker-account-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REGULAR_BOOKER_STATUSES.map(s => (
+                      <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Payment Terms</Label>
+                <Select value={paymentTerms} onValueChange={setPaymentTerms}>
+                  <SelectTrigger data-testid="select-booker-payment-terms">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAYMENT_TERMS.map(t => (
+                      <SelectItem key={t} value={t}>{PAYMENT_TERM_LABELS[t] || t}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </div>
 
-          {!hasLinkedAgreement && (
-            <div className="space-y-3 border-t pt-4">
-              <Label className="text-sm font-semibold">Pricing and Packages</Label>
-              <p className="text-xs text-muted-foreground">Set pricing manually when no agreement is linked.</p>
-              <div className="grid grid-cols-2 gap-3">
+          {/* Section 4: Pricing and Packages */}
+          <div className="space-y-3 border-t pt-4">
+            <Label className="text-sm font-semibold">Pricing and Packages</Label>
+            {hasLinkedAgreement ? (
+              <p className="text-xs text-muted-foreground italic">Pricing is managed by the linked agreement.</p>
+            ) : (
+              <>
                 <div>
                   <Label>Pricing Tier</Label>
                   <Select value={pricingTier} onValueChange={setPricingTier}>
@@ -1345,141 +1362,116 @@ function RegularBookerFormDialog({
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <Label>Payment Terms</Label>
-                  <Select value={paymentTerms} onValueChange={setPaymentTerms}>
-                    <SelectTrigger data-testid="select-booker-payment-terms">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PAYMENT_TERMS.map(t => (
-                        <SelectItem key={t} value={t}>{PAYMENT_TERM_LABELS[t] || t}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              {pricingTier === "discounted" && (
-                <div>
-                  <Label className="text-xs text-muted-foreground">Discount %</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={discountPercentage}
-                    onChange={(e) => setDiscountPercentage(e.target.value)}
-                    data-testid="input-booker-discount"
-                  />
-                </div>
-              )}
-              {pricingTier === "free_koha" && (
-                <div>
-                  <Label className="text-xs text-muted-foreground">Koha / MOU Notes</Label>
-                  <Textarea
-                    value={kohaMouNotes}
-                    onChange={(e) => setKohaMouNotes(e.target.value)}
-                    placeholder="Details about koha arrangement..."
-                    className="resize-none"
-                    data-testid="input-booker-koha-notes"
-                  />
-                </div>
-              )}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-semibold">Prepaid Venue Hire Package</Label>
-                  <Switch
-                    checked={hasBookingPackage}
-                    onCheckedChange={setHasBookingPackage}
-                    data-testid="switch-booker-package"
-                  />
-                </div>
-                {hasBookingPackage && (
-                  <div className="space-y-2">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label className="text-xs text-muted-foreground">Total Venue Hires</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          value={packageTotalBookings}
-                          onChange={(e) => setPackageTotalBookings(e.target.value)}
-                          data-testid="input-booker-package-total"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs text-muted-foreground">Used Venue Hires</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          value={packageUsedBookings}
-                          onChange={(e) => setPackageUsedBookings(e.target.value)}
-                          data-testid="input-booker-package-used"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Package Expires</Label>
-                      <Input
-                        type="date"
-                        value={packageExpiresAt}
-                        onChange={(e) => setPackageExpiresAt(e.target.value)}
-                        data-testid="input-booker-package-expires"
-                      />
-                    </div>
+                {pricingTier === "discounted" && (
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Discount %</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={discountPercentage}
+                      onChange={(e) => setDiscountPercentage(e.target.value)}
+                      data-testid="input-booker-discount"
+                    />
                   </div>
                 )}
-              </div>
-            </div>
-          )}
+                {pricingTier === "free_koha" && (
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Koha / MOU Notes</Label>
+                    <Textarea
+                      value={kohaMouNotes}
+                      onChange={(e) => setKohaMouNotes(e.target.value)}
+                      placeholder="Details about koha arrangement..."
+                      className="resize-none"
+                      data-testid="input-booker-koha-notes"
+                    />
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-semibold">Prepaid Venue Hire Package</Label>
+                    <Switch
+                      checked={hasBookingPackage}
+                      onCheckedChange={setHasBookingPackage}
+                      data-testid="switch-booker-package"
+                    />
+                  </div>
+                  {hasBookingPackage && (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Total Venue Hires</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            value={packageTotalBookings}
+                            onChange={(e) => setPackageTotalBookings(e.target.value)}
+                            data-testid="input-booker-package-total"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Used Venue Hires</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            value={packageUsedBookings}
+                            onChange={(e) => setPackageUsedBookings(e.target.value)}
+                            data-testid="input-booker-package-used"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Package Expires</Label>
+                        <Input
+                          type="date"
+                          value={packageExpiresAt}
+                          onChange={(e) => setPackageExpiresAt(e.target.value)}
+                          data-testid="input-booker-package-expires"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
 
-          {hasLinkedAgreement && (
+          {/* Section 5: Communication and Notes */}
+          <div className="space-y-3 border-t pt-4">
+            <Label className="text-sm font-semibold">Communication and Notes</Label>
             <div>
-              <Label>Payment Terms</Label>
-              <Select value={paymentTerms} onValueChange={setPaymentTerms}>
-                <SelectTrigger data-testid="select-booker-payment-terms">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PAYMENT_TERMS.map(t => (
-                    <SelectItem key={t} value={t}>{PAYMENT_TERM_LABELS[t] || t}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Notifications Email</Label>
+              <Input
+                type="email"
+                value={notificationsEmail}
+                onChange={(e) => setNotificationsEmail(e.target.value)}
+                placeholder="Where booking confirmations are sent"
+                data-testid="input-booker-notifications-email"
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">Booker can also set this in their portal</p>
             </div>
-          )}
 
-          <div>
-            <Label>Notifications Email</Label>
-            <Input
-              type="email"
-              value={notificationsEmail}
-              onChange={(e) => setNotificationsEmail(e.target.value)}
-              placeholder="Where booking confirmations are sent"
-              data-testid="input-booker-notifications-email"
-            />
-            <p className="text-[10px] text-muted-foreground mt-1">Booker can also set this in their portal</p>
-          </div>
+            <div>
+              <Label>Usual Venue Hire Needs</Label>
+              <Textarea
+                value={usualBookingNeeds}
+                onChange={(e) => setUsualBookingNeeds(e.target.value)}
+                placeholder="e.g. Weekly rehearsal space, monthly meetings..."
+                className="resize-none"
+                data-testid="input-booker-usual-needs"
+              />
+            </div>
 
-          <div>
-            <Label>Usual Venue Hire Needs</Label>
-            <Textarea
-              value={usualBookingNeeds}
-              onChange={(e) => setUsualBookingNeeds(e.target.value)}
-              placeholder="e.g. Weekly rehearsal space, monthly meetings..."
-              className="resize-none"
-              data-testid="input-booker-usual-needs"
-            />
-          </div>
-
-          <div>
-            <Label>Notes</Label>
-            <Textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Any additional notes..."
-              className="resize-none"
-              data-testid="input-booker-notes"
-            />
+            <div>
+              <Label>Notes</Label>
+              <Textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Any additional notes..."
+                className="resize-none"
+                data-testid="input-booker-notes"
+              />
+            </div>
           </div>
         </div>
 
