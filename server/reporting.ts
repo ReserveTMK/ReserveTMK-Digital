@@ -18,7 +18,6 @@ export interface ReportFilters {
   taxonomyIds?: number[];
   demographicSegments?: string[];
   funder?: string;
-  communityLens?: "all" | "maori" | "pasifika" | "maori_pasifika";
 }
 
 export const MAORI_ETHNICITIES = ["Māori"];
@@ -52,10 +51,7 @@ function confirmedDebriefWhere(filters: ReportFilters) {
   return and(...conds)!;
 }
 
-export async function getCommunityLensContactIds(filters: ReportFilters): Promise<Set<number> | null> {
-  const lens = filters.communityLens;
-  if (!lens || lens === "all") return null;
-
+async function getContactIdsByEthnicity(userId: string, lens: "maori" | "pasifika" | "maori_pasifika"): Promise<Set<number>> {
   let targetEthnicities: string[];
   if (lens === "maori") targetEthnicities = MAORI_ETHNICITIES;
   else if (lens === "pasifika") targetEthnicities = PASIFIKA_ETHNICITIES;
@@ -65,7 +61,7 @@ export async function getCommunityLensContactIds(filters: ReportFilters): Promis
     .select({ id: contacts.id })
     .from(contacts)
     .where(and(
-      eq(contacts.userId, filters.userId),
+      eq(contacts.userId, userId),
       sql`${contacts.ethnicity} && ${sql`ARRAY[${sql.join(targetEthnicities.map(e => sql`${e}`), sql`, `)}]::text[]`}`,
     ));
 
@@ -89,12 +85,9 @@ async function getMentoringTypeNames(userId: string): Promise<string[]> {
 export async function getReachMetrics(filters: ReportFilters) {
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
-  const lensIds = await getCommunityLensContactIds(filters);
-
   const touchpoints = new Map<number, number>();
   function addTouch(id: number | null | undefined) {
     if (id == null) return;
-    if (lensIds && !lensIds.has(id)) return;
     touchpoints.set(id, (touchpoints.get(id) || 0) + 1);
   }
 
@@ -236,7 +229,6 @@ export async function getReachMetrics(filters: ReportFilters) {
   }).from(contacts).where(eq(contacts.userId, filters.userId));
 
   for (const c of allCRows) {
-    if (lensIds && !lensIds.has(c.id)) continue;
     if (c.createdAt && c.createdAt >= start && c.createdAt <= end) newContactsCount++;
     if (c.movedToCommunityAt && c.movedToCommunityAt >= start && c.movedToCommunityAt <= end) promotedToCommunity++;
     if (c.movedToInnovatorsAt && c.movedToInnovatorsAt >= start && c.movedToInnovatorsAt <= end) promotedToInnovator++;
@@ -417,7 +409,6 @@ export async function getDeliveryMetrics(filters: ReportFilters) {
     programmes: { total: progRows.length, byClassification: progByClass, completed: progCompleted },
     communityHours: Math.round(communityHours * 10) / 10,
     totalAttendees: totalAttendees + progAttendees,
-    communityLensApplied: false,
   };
 }
 
@@ -425,7 +416,6 @@ const ALL_METRIC_KEYS = ["mindset", "skill", "confidence", "bizConfidence", "sys
 
 export async function getImpactMetrics(filters: ReportFilters) {
   const where = confirmedDebriefWhere(filters);
-  const lensIds = await getCommunityLensContactIds(filters);
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
 
@@ -466,7 +456,6 @@ export async function getImpactMetrics(filters: ReportFilters) {
 
     const contactsByLogMap = new Map<number, number[]>();
     for (const row of contactsByLog) {
-      if (lensIds && !lensIds.has(row.contactId)) continue;
       if (!contactsByLogMap.has(row.impactLogId)) contactsByLogMap.set(row.impactLogId, []);
       contactsByLogMap.get(row.impactLogId)!.push(row.contactId);
     }
@@ -516,7 +505,6 @@ export async function getImpactMetrics(filters: ReportFilters) {
     .from(impactLogContacts)
     .innerJoin(impactLogs, eq(impactLogContacts.impactLogId, impactLogs.id))
     .where(where);
-  if (lensIds) engagedRows = engagedRows.filter(r => lensIds.has(r.contactId));
   const cIds = engagedRows.map(r => r.contactId);
 
   const metricArrays: Record<string, number[]> = {};
@@ -621,9 +609,6 @@ export async function getImpactMetrics(filters: ReportFilters) {
     .from(milestones)
     .where(and(eq(milestones.userId, filters.userId), gte(milestones.createdAt, start), lte(milestones.createdAt, end)));
 
-  if (lensIds) {
-    milestonesFromTable = milestonesFromTable.filter(m => m.linkedContactId && lensIds.has(m.linkedContactId));
-  }
 
   let inlineMilestoneCount = 0;
   const tableMilestoneLogIds = new Set(milestonesFromTable.map(m => m.impactLogId).filter(Boolean));
@@ -660,7 +645,6 @@ export async function getImpactMetrics(filters: ReportFilters) {
   const contactFirstStage = new Map<number, number>();
   const contactLastStage = new Map<number, number>();
   for (const sh of stageHist) {
-    if (lensIds && !lensIds.has(sh.entityId)) continue;
     if (!contactFirstStage.has(sh.entityId)) {
       const prevIdx = sh.previousStage ? CONNECTION_ORDER.indexOf(sh.previousStage) : -1;
       contactFirstStage.set(sh.entityId, prevIdx);
@@ -842,7 +826,6 @@ export async function getValueContribution(filters: ReportFilters) {
       details: mouSummary,
     },
     programmeCosts,
-    communityLensApplied: false,
   };
 }
 
@@ -860,13 +843,11 @@ export interface FunderContext {
   outcomeFocus?: string | null;
   reportingGuidance?: string | null;
   narrativeStyle?: string | null;
-  communityLens?: string | null;
   partnershipStrategy?: string | null;
 }
 
 export async function getStandoutMoments(filters: ReportFilters, limit = 5) {
   const where = confirmedDebriefWhere(filters);
-  const lensIds = await getCommunityLensContactIds(filters);
   const logs = await db.select({
     id: impactLogs.id,
     title: impactLogs.title,
@@ -882,22 +863,8 @@ export async function getStandoutMoments(filters: ReportFilters, limit = 5) {
 
   const logIds = logs.map(l => l.id);
 
-  let filteredLogIds = logIds;
-  if (lensIds && logIds.length > 0) {
-    const logContactRows = await db.select({
-      impactLogId: impactLogContacts.impactLogId,
-      contactId: impactLogContacts.contactId,
-    }).from(impactLogContacts).where(inArray(impactLogContacts.impactLogId, logIds));
-    const logsWithLensContacts = new Set<number>();
-    for (const r of logContactRows) {
-      if (lensIds.has(r.contactId)) logsWithLensContacts.add(r.impactLogId);
-    }
-    filteredLogIds = logIds.filter(id => logsWithLensContacts.has(id));
-    if (filteredLogIds.length === 0) return [];
-  }
-
-  const filteredLogs = lensIds ? logs.filter(l => filteredLogIds.includes(l.id)) : logs;
-  if (filteredLogIds.length === 0) return [];
+  const filteredLogIds = logIds;
+  const filteredLogs = logs;
 
   const tagCounts = await db.select({
     impactLogId: impactTags.impactLogId,
@@ -958,8 +925,7 @@ export async function getStandoutMoments(filters: ReportFilters, limit = 5) {
 
 export async function getOperatorInsights(filters: ReportFilters) {
   const where = confirmedDebriefWhere(filters);
-  const lensIds = await getCommunityLensContactIds(filters);
-  let allLogs = await db.select({
+  const logs = await db.select({
     id: impactLogs.id,
     title: impactLogs.title,
     summary: impactLogs.summary,
@@ -967,19 +933,6 @@ export async function getOperatorInsights(filters: ReportFilters) {
     keyQuotes: impactLogs.keyQuotes,
     milestones: impactLogs.milestones,
   }).from(impactLogs).where(where);
-
-  if (lensIds && allLogs.length > 0) {
-    const logContactRows = await db.select({
-      impactLogId: impactLogContacts.impactLogId,
-      contactId: impactLogContacts.contactId,
-    }).from(impactLogContacts).where(inArray(impactLogContacts.impactLogId, allLogs.map(l => l.id)));
-    const logsWithLensContacts = new Set<number>();
-    for (const r of logContactRows) {
-      if (lensIds.has(r.contactId)) logsWithLensContacts.add(r.impactLogId);
-    }
-    allLogs = allLogs.filter(l => logsWithLensContacts.has(l.id));
-  }
-  const logs = allLogs;
 
   const wins: string[] = [];
   const concerns: string[] = [];
@@ -1025,7 +978,6 @@ export async function getOperatorInsights(filters: ReportFilters) {
 
 export async function getParticipantTransformationStories(filters: ReportFilters, limit = 3) {
   const where = confirmedDebriefWhere(filters);
-  const lensIds = await getCommunityLensContactIds(filters);
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
 
@@ -1040,7 +992,6 @@ export async function getParticipantTransformationStories(filters: ReportFilters
 
   const contactLogMap = new Map<number, number[]>();
   for (const cd of contactDebriefs) {
-    if (lensIds && !lensIds.has(cd.contactId)) continue;
     if (!contactLogMap.has(cd.contactId)) contactLogMap.set(cd.contactId, []);
     contactLogMap.get(cd.contactId)!.push(cd.impactLogId);
   }
@@ -1151,7 +1102,6 @@ export async function getParticipantTransformationStories(filters: ReportFilters
 }
 
 export async function getPeopleTierBreakdown(filters: ReportFilters) {
-  const lensIds = await getCommunityLensContactIds(filters);
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
   const where = confirmedDebriefWhere(filters);
@@ -1181,9 +1131,9 @@ export async function getPeopleTierBreakdown(filters: ReportFilters) {
   }
 
   const allEngagedIds = new Set<number>();
-  for (const r of debriefContacts) { if (!lensIds || lensIds.has(r.contactId)) allEngagedIds.add(r.contactId); }
-  for (const r of mtgRows) { if (r.contactId && (!lensIds || lensIds.has(r.contactId))) allEngagedIds.add(r.contactId); }
-  for (const id of evtContactIds) { if (!lensIds || lensIds.has(id)) allEngagedIds.add(id); }
+  for (const r of debriefContacts) { allEngagedIds.add(r.contactId); }
+  for (const r of mtgRows) { if (r.contactId) allEngagedIds.add(r.contactId); }
+  for (const id of evtContactIds) { allEngagedIds.add(id); }
 
   let footTraffic = 0;
   const dailyCheck = await db.select({ cnt: count() }).from(dailyFootTraffic)
@@ -1236,22 +1186,8 @@ export async function getPeopleTierBreakdown(filters: ReportFilters) {
 
 export async function getImpactTagHeatmap(filters: ReportFilters) {
   const where = confirmedDebriefWhere(filters);
-  const lensIds = await getCommunityLensContactIds(filters);
-  let logIds = (await db.select({ id: impactLogs.id }).from(impactLogs).where(where)).map(r => r.id);
+  const logIds = (await db.select({ id: impactLogs.id }).from(impactLogs).where(where)).map(r => r.id);
   if (logIds.length === 0) return [];
-
-  if (lensIds && logIds.length > 0) {
-    const logContactRows = await db.select({
-      impactLogId: impactLogContacts.impactLogId,
-      contactId: impactLogContacts.contactId,
-    }).from(impactLogContacts).where(inArray(impactLogContacts.impactLogId, logIds));
-    const logsWithLensContacts = new Set<number>();
-    for (const r of logContactRows) {
-      if (lensIds.has(r.contactId)) logsWithLensContacts.add(r.impactLogId);
-    }
-    logIds = logIds.filter(id => logsWithLensContacts.has(id));
-    if (logIds.length === 0) return [];
-  }
 
   const tagRows = await db.select({
     taxonomyId: impactTags.taxonomyId,
@@ -1486,7 +1422,6 @@ export async function getOutcomeChain(filters: ReportFilters, funderContext?: Fu
 export async function getQuarterlyMilestones(filters: ReportFilters) {
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
-  const lensIds = await getCommunityLensContactIds(filters);
 
   const allMilestones = await db.select({
     id: milestones.id,
@@ -1501,12 +1436,8 @@ export async function getQuarterlyMilestones(filters: ReportFilters) {
     lte(milestones.createdAt, end),
   ));
 
-  const filtered = lensIds
-    ? allMilestones.filter(m => m.linkedContactId && lensIds.has(m.linkedContactId))
-    : allMilestones;
-
   const byType = new Map<string, { count: number; totalValue: number; examples: string[] }>();
-  for (const m of filtered) {
+  for (const m of allMilestones) {
     const type = m.milestoneType || "other";
     if (!byType.has(type)) byType.set(type, { count: 0, totalValue: 0, examples: [] });
     const entry = byType.get(type)!;
@@ -1516,7 +1447,7 @@ export async function getQuarterlyMilestones(filters: ReportFilters) {
   }
 
   return {
-    total: filtered.length,
+    total: allMilestones.length,
     byType: Array.from(byType.entries()).map(([type, data]) => ({
       type,
       count: data.count,
@@ -1550,9 +1481,6 @@ export async function generateNarrative(
   const periodLabel = startLabel === endLabel ? startLabel : `${startLabel} - ${endLabel}`;
   const lm = legacyContext?.metrics;
   const hasLegacy = legacyContext && legacyContext.reportCount > 0 && lm;
-  const lens = filters.communityLens;
-  const lensLabel = lens === "maori" ? "Maori (matawaka)" : lens === "pasifika" ? "Pasifika" : lens === "maori_pasifika" ? "Maori and Pasifika" : null;
-
   const orgName = orgProfile?.name || "our organisation";
   const weLabel = orgProfile?.name || "We";
   const outcomeFocus = funderContext?.outcomeFocus as string | undefined;
@@ -1586,8 +1514,7 @@ export async function generateNarrative(
 
   if (narrativeStyle === "story") {
     let reachText = `## Our Reach\n\n`;
-    if (lensLabel) reachText += `Focusing on our ${lensLabel} community, `;
-    else reachText += `During ${periodLabel}, `;
+    reachText += `During ${periodLabel}, `;
     reachText += `${weLabel} reached ${reach.peopleReached.toLocaleString()} people`;
     if (reach.footTraffic > 0) reachText += ` (including ${reach.footTraffic.toLocaleString()} through foot traffic)`;
     reachText += `.`;
@@ -1668,7 +1595,6 @@ export async function generateNarrative(
     sections.push(`## [What's Next]\n\n*[Share what's coming up - upcoming programmes, community goals, or areas of focus for the next period.]*`);
   } else {
     let reachText = `## Reach\n\nDuring ${periodLabel}`;
-    if (lensLabel) reachText += ` (${lensLabel} community)`;
     if (hasLegacy) reachText += ` (combining ${legacyContext.reportCount} legacy report${legacyContext.reportCount > 1 ? "s" : ""})`;
     reachText += `, ${reach.peopleReached.toLocaleString()} people were reached (${reach.uniqueContacts} tracked contacts`;
     if (reach.footTraffic > 0) reachText += ` + ${reach.footTraffic.toLocaleString()} foot traffic`;
@@ -1835,8 +1761,8 @@ export async function getCommunityComparison(filters: ReportFilters) {
   const end = parseDate(filters.endDate);
   const where = confirmedDebriefWhere(filters);
 
-  const maoriIds = await getCommunityLensContactIds({ ...filters, communityLens: "maori" });
-  const pasifikaIds = await getCommunityLensContactIds({ ...filters, communityLens: "pasifika" });
+  const maoriIds = await getContactIdsByEthnicity(filters.userId, "maori");
+  const pasifikaIds = await getContactIdsByEthnicity(filters.userId, "pasifika");
 
   const allEngaged = await db
     .selectDistinct({ contactId: impactLogContacts.contactId })
@@ -1904,8 +1830,7 @@ export async function getCommunityComparison(filters: ReportFilters) {
 }
 
 export async function getTamakiOraAlignment(filters: ReportFilters) {
-  const maoriFilters = { ...filters, communityLens: "maori" as const };
-  const maoriIds = await getCommunityLensContactIds(maoriFilters);
+  const maoriIds = await getContactIdsByEthnicity(filters.userId, "maori");
   const empty = {
     whaiRawaOra: { contactsInBusinessProgrammes: 0, fundingMilestones: 0, stageProgressions: 0 },
     teHaporiOra: { contactsInCommunityEvents: 0, rangatahiCount: 0, repeatEngagementRate: 0, activeGroupsWithMaori: 0 },
@@ -2039,7 +1964,6 @@ export async function getTamakiOraAlignment(filters: ReportFilters) {
 export async function getMentoringMetrics(filters: ReportFilters) {
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
-  const lensIds = await getCommunityLensContactIds(filters);
   const MENTORING_TYPES = await getMentoringTypeNames(filters.userId);
 
   const allRows = await db.select({
@@ -2059,9 +1983,7 @@ export async function getMentoringMetrics(filters: ReportFilters) {
     lte(meetings.startTime, end),
   ));
 
-  const mentoringMeetings = lensIds
-    ? allRows.filter(m => m.contactId && lensIds.has(m.contactId))
-    : allRows;
+  const mentoringMeetings = allRows;
 
   const delivered = mentoringMeetings.filter(m => m.status === "completed");
   const totalSessions = mentoringMeetings.length;
@@ -2240,7 +2162,6 @@ export async function getOrganisationsEngaged(filters: ReportFilters) {
 export async function getPeopleFeatured(filters: ReportFilters) {
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
-  const lensIds = await getCommunityLensContactIds(filters);
 
   const debriefContactRows = await db
     .select({ contactId: impactLogContacts.contactId, impactLogId: impactLogContacts.impactLogId })
@@ -2250,7 +2171,6 @@ export async function getPeopleFeatured(filters: ReportFilters) {
 
   const contactDebriefCount = new Map<number, number>();
   for (const r of debriefContactRows) {
-    if (lensIds && !lensIds.has(r.contactId)) continue;
     contactDebriefCount.set(r.contactId, (contactDebriefCount.get(r.contactId) || 0) + 1);
   }
 
@@ -2261,7 +2181,6 @@ export async function getPeopleFeatured(filters: ReportFilters) {
   }).from(milestones).where(and(
     eq(milestones.userId, filters.userId), gte(milestones.createdAt, start), lte(milestones.createdAt, end),
   ));
-  if (lensIds) milestonesInRange = milestonesInRange.filter(m => m.linkedContactId && lensIds.has(m.linkedContactId));
 
   const contactMilestones = new Map<number, string[]>();
   for (const m of milestonesInRange) {
@@ -2286,7 +2205,6 @@ export async function getPeopleFeatured(filters: ReportFilters) {
   const JOURNEY_ORDER = ["kakano", "tipu", "ora"];
   const contactJourney = new Map<number, { from: string; to: string }>();
   for (const sh of stageHist) {
-    if (lensIds && !lensIds.has(sh.entityId)) continue;
     const normalizedPrev = normalizeStage(sh.previousStage);
     const normalizedNew = normalizeStage(sh.newStage);
     const prevIdx = JOURNEY_ORDER.indexOf(normalizedPrev);
@@ -2301,7 +2219,7 @@ export async function getPeopleFeatured(filters: ReportFilters) {
   const newInnovatorIds = new Set<number>();
   for (const c of allCList) {
     if (c.movedToInnovatorsAt && c.movedToInnovatorsAt >= start && c.movedToInnovatorsAt <= end) {
-      if (!lensIds || lensIds.has(c.id)) newInnovatorIds.add(c.id);
+      newInnovatorIds.add(c.id);
     }
   }
 
@@ -2315,7 +2233,6 @@ export async function getPeopleFeatured(filters: ReportFilters) {
       .from(footTrafficTouchpoints).where(inArray(footTrafficTouchpoints.snapshotId, snapIds));
     for (const t of ftRows) {
       if (!t.contactId) continue;
-      if (lensIds && !lensIds.has(t.contactId)) continue;
       if (!contactTouchpointReasons.has(t.contactId)) contactTouchpointReasons.set(t.contactId, []);
       contactTouchpointReasons.get(t.contactId)!.push(`Foot traffic note: ${t.description}`);
     }
@@ -2373,7 +2290,6 @@ export async function getPeopleFeatured(filters: ReportFilters) {
 export async function getJourneyStageProgression(filters: ReportFilters) {
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
-  const lensIds = await getCommunityLensContactIds(filters);
   const STAGE_ORDER = ["kakano", "tipu", "ora"];
 
   const allContacts = await db.select({
@@ -2382,7 +2298,7 @@ export async function getJourneyStageProgression(filters: ReportFilters) {
     stageProgression: contacts.stageProgression,
   }).from(contacts).where(eq(contacts.userId, filters.userId));
 
-  const filtered = lensIds ? allContacts.filter(c => lensIds.has(c.id)) : allContacts;
+  const filtered = allContacts;
 
   const transitionMap = new Map<string, number>();
   let totalProgressions = 0;
@@ -2454,7 +2370,6 @@ export async function getCommunityDiscounts(filters: ReportFilters) {
 }
 
 export async function getConnectionStrengthDistribution(filters: ReportFilters) {
-  const lensIds = await getCommunityLensContactIds(filters);
   const LEVELS = ["known", "connected", "engaged", "embedded", "partnering"];
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
@@ -2464,7 +2379,7 @@ export async function getConnectionStrengthDistribution(filters: ReportFilters) 
     connectionStrength: contacts.connectionStrength,
   }).from(contacts).where(eq(contacts.userId, filters.userId));
 
-  const filtered = lensIds ? allContacts.filter(c => lensIds.has(c.id)) : allContacts;
+  const filtered = allContacts;
 
   const distMap = new Map<string, number>();
   for (const l of LEVELS) distMap.set(l, 0);
@@ -2491,7 +2406,6 @@ export async function getConnectionStrengthDistribution(filters: ReportFilters) 
 
   for (const sh of stageHistory) {
     if (!userContactIds.has(sh.entityId)) continue;
-    if (lensIds && !lensIds.has(sh.entityId)) continue;
     const from = sh.previousStage;
     const to = sh.newStage;
     if (!from || !LEVELS.includes(from) || !LEVELS.includes(to)) continue;
@@ -2948,7 +2862,6 @@ export async function getFullMonthlyReport(filters: ReportFilters) {
       programmeIds: filters.programmeIds,
       taxonomyIds: filters.taxonomyIds,
       demographicSegments: filters.demographicSegments,
-      communityLens: filters.communityLens,
     },
     reach,
     delivery,

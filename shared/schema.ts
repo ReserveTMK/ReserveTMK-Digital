@@ -1833,8 +1833,6 @@ export type InsertGmailConnectedAccount = z.infer<typeof insertGmailConnectedAcc
 export const FUNDER_STATUSES = ["active_funder", "in_conversation", "pending_eoi", "completed"] as const;
 export type FunderStatus = typeof FUNDER_STATUSES[number];
 
-export const COMMUNITY_LENS_OPTIONS = ["all", "maori", "pasifika", "maori_pasifika"] as const;
-export type CommunityLens = typeof COMMUNITY_LENS_OPTIONS[number];
 
 export const REPORTING_CADENCES = ["monthly", "quarterly", "annual", "adhoc"] as const;
 export type ReportingCadence = typeof REPORTING_CADENCES[number];

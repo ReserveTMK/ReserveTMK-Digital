@@ -51,7 +51,6 @@ import {
 import { format, formatDistanceToNow, isPast } from "date-fns";
 import {
   FUNDER_STATUSES,
-  COMMUNITY_LENS_OPTIONS,
   REPORTING_CADENCES,
   NARRATIVE_STYLES,
   FUNDER_DOCUMENT_TYPES,
@@ -74,19 +73,6 @@ const STATUS_LABELS: Record<string, string> = {
   completed: "Completed",
 };
 
-const LENS_LABELS: Record<string, string> = {
-  all: "All Communities",
-  maori: "Māori",
-  pasifika: "Pasifika",
-  maori_pasifika: "Māori + Pasifika",
-};
-
-const LENS_COLORS: Record<string, string> = {
-  all: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
-  maori: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
-  pasifika: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-  maori_pasifika: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
-};
 
 const CADENCE_LABELS: Record<string, string> = {
   monthly: "Monthly",
@@ -341,9 +327,6 @@ function FunderCard({
             <Badge className={STATUS_COLORS[funder.status] || STATUS_COLORS.in_conversation} data-testid={`badge-status-${funder.id}`}>
               {STATUS_LABELS[funder.status] || funder.status}
             </Badge>
-            <Badge className={LENS_COLORS[funder.communityLens] || LENS_COLORS.all} data-testid={`badge-lens-${funder.id}`}>
-              {LENS_LABELS[funder.communityLens] || funder.communityLens}
-            </Badge>
             {funder.reportingCadence && (
               <span className="text-xs text-muted-foreground">
                 {CADENCE_LABELS[funder.reportingCadence] || funder.reportingCadence}
@@ -417,7 +400,6 @@ function FunderFormDialog({
     contactEmail: defaultValues?.contactEmail || "",
     contactPhone: defaultValues?.contactPhone || "",
     status: defaultValues?.status || "in_conversation",
-    communityLens: defaultValues?.communityLens || "all",
     outcomesFramework: defaultValues?.outcomesFramework || "",
     outcomeFocus: typeof defaultValues?.outcomeFocus === "string"
       ? defaultValues.outcomeFocus
@@ -449,7 +431,6 @@ function FunderFormDialog({
       contactEmail: form.contactEmail.trim() || null,
       contactPhone: form.contactPhone.trim() || null,
       status: form.status,
-      communityLens: form.communityLens,
       outcomesFramework: form.outcomesFramework.trim() || null,
       outcomeFocus: form.outcomeFocus.trim() || null,
       reportingGuidance: form.reportingGuidance.trim() || null,
@@ -547,19 +528,6 @@ function FunderFormDialog({
                 <SelectContent>
                   {FUNDER_STATUSES.map(s => (
                     <SelectItem key={s} value={s}>{STATUS_LABELS[s]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Community Lens</Label>
-              <Select value={form.communityLens} onValueChange={(v) => setForm(p => ({ ...p, communityLens: v }))}>
-                <SelectTrigger data-testid="select-community-lens">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {COMMUNITY_LENS_OPTIONS.map(l => (
-                    <SelectItem key={l} value={l}>{LENS_LABELS[l]}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -861,7 +829,6 @@ function FunderDetailDialog({
         <div className="space-y-6">
           <div className="flex gap-2 flex-wrap">
             <Badge className={STATUS_COLORS[funder.status]}>{STATUS_LABELS[funder.status]}</Badge>
-            <Badge className={LENS_COLORS[funder.communityLens]}>{LENS_LABELS[funder.communityLens]}</Badge>
             {funder.narrativeStyle && <Badge variant="outline">{STYLE_LABELS[funder.narrativeStyle] || funder.narrativeStyle}</Badge>}
             {funder.reportingCadence && <Badge variant="outline">{CADENCE_LABELS[funder.reportingCadence]}</Badge>}
           </div>

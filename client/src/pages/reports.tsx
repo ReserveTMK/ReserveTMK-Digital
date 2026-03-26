@@ -218,8 +218,7 @@ function getPoPChange(current: number, previous: number): { value: number; direc
   return { value: Math.abs(change), direction: change > 0 ? "up" : change < 0 ? "down" : "flat" };
 }
 
-function TrendsSection({ communityLens, funderFilter, programmeFilter, taxonomyFilter, activeFunder, reportEndDate }: {
-  communityLens: string;
+function TrendsSection({ funderFilter, programmeFilter, taxonomyFilter, activeFunder, reportEndDate }: {
   funderFilter: string;
   programmeFilter: string;
   taxonomyFilter: string;
@@ -240,7 +239,6 @@ function TrendsSection({ communityLens, funderFilter, programmeFilter, taxonomyF
         programmeIds?: number[];
         taxonomyIds?: number[];
         funder?: string;
-        communityLens?: string;
       } = {
         endDate: reportEndDate || format(new Date(), "yyyy-MM-dd"),
         granularity,
@@ -249,7 +247,6 @@ function TrendsSection({ communityLens, funderFilter, programmeFilter, taxonomyF
       if (taxonomyFilter !== "all") filters.taxonomyIds = [parseInt(taxonomyFilter)];
       const effectiveFunder = funderFilter !== "all" ? funderFilter : (activeFunder?.funderTag || null);
       if (effectiveFunder) filters.funder = effectiveFunder;
-      if (communityLens !== "all") filters.communityLens = communityLens;
 
       const res = await apiRequest("POST", "/api/reports/trends", filters);
       const data = await res.json();
@@ -411,7 +408,6 @@ export default function Reports() {
   const [narrativeData, setNarrativeData] = useState<string | null>(null);
   const [narrativeFiltersSnapshot, setNarrativeFiltersSnapshot] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [communityLens, setCommunityLens] = useState<"all" | "maori" | "pasifika" | "maori_pasifika">("all");
   const [communityComparisonData, setCommunityComparisonData] = useState<any>(null);
   const [tamakiOraData, setTamakiOraData] = useState<any>(null);
   const [activeFunder, setActiveFunder] = useState<Funder | null>(null);
@@ -489,25 +485,15 @@ export default function Reports() {
     return { startDate: adHocStart, endDate: adHocEnd };
   };
 
-  const COMMUNITY_LENS_LABELS: Record<string, string> = {
-    all: "All Communities",
-    maori: "Maori (matawaka)",
-    pasifika: "Pasifika",
-    maori_pasifika: "Maori + Pasifika",
-  };
-
   const handleSelectFunder = (funder: Funder) => {
     if (activeFunder?.id === funder.id) {
       setActiveFunder(null);
-      setCommunityLens("all");
       setNarrativeStyle("compliance");
       setFunderFilter("all");
       setGenerated(false);
       return;
     }
     setActiveFunder(funder);
-    const lens = (funder.communityLens || "all") as "all" | "maori" | "pasifika" | "maori_pasifika";
-    setCommunityLens(lens);
     const style = (funder.narrativeStyle || "compliance") as "compliance" | "story";
     setNarrativeStyle(style);
     if (funder.funderTag) {
@@ -539,7 +525,6 @@ export default function Reports() {
       if (programmeFilter !== "all") filters.programmeIds = [parseInt(programmeFilter)];
       if (taxonomyFilter !== "all") filters.taxonomyIds = [parseInt(taxonomyFilter)];
       if (funderFilter !== "all") filters.funder = funderFilter;
-      if (communityLens !== "all") filters.communityLens = communityLens;
 
       const effectiveReportType = activeTab === "quarterly" ? "quarterly" : "monthly";
       filters.reportType = effectiveReportType;
@@ -589,7 +574,7 @@ export default function Reports() {
 
   const getCurrentFiltersKey = () => {
     const { startDate, endDate } = getDateRange();
-    return JSON.stringify({ startDate, endDate, programmeFilter, taxonomyFilter, funderFilter, communityLens, narrativeStyle, reportType: activeTab });
+    return JSON.stringify({ startDate, endDate, programmeFilter, taxonomyFilter, funderFilter, narrativeStyle, reportType: activeTab });
   };
 
   const isNarrativeStale = narrativeData && narrativeFiltersSnapshot && narrativeFiltersSnapshot !== getCurrentFiltersKey();
@@ -601,7 +586,6 @@ export default function Reports() {
     if (programmeFilter !== "all") filters.programmeIds = [parseInt(programmeFilter)];
     if (taxonomyFilter !== "all") filters.taxonomyIds = [parseInt(taxonomyFilter)];
     if (funderFilter !== "all") filters.funder = funderFilter;
-    if (communityLens !== "all") filters.communityLens = communityLens;
 
     try {
       const res = await apiRequest("POST", "/api/reports/narrative", filters);
@@ -632,7 +616,6 @@ export default function Reports() {
           programmeIds: programmeFilter !== "all" ? [parseInt(programmeFilter)] : undefined,
           taxonomyIds: taxonomyFilter !== "all" ? [parseInt(taxonomyFilter)] : undefined,
           funder: funderFilter !== "all" ? funderFilter : undefined,
-          communityLens: communityLens !== "all" ? communityLens : undefined,
           narrativeStyle,
           activeFunderId: activeFunder?.id,
           participantStory: participantStory.trim() || undefined,
@@ -717,7 +700,6 @@ export default function Reports() {
     const d = reportData;
 
     rows.push(["Report Period", getPeriodLabel()]);
-    if (communityLens !== "all" && activeFunder) rows.push(["Community Lens", `${COMMUNITY_LENS_LABELS[communityLens] || communityLens} (via ${activeFunder.name})`]);
     if (activeFunder) rows.push(["Funder Profile", activeFunder.name]);
     rows.push([]);
 
@@ -952,23 +934,6 @@ export default function Reports() {
                 </div>
               )}
 
-              {communityLens !== "all" && activeFunder && (
-                <Badge
-                  variant="secondary"
-                  className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800"
-                  data-testid="banner-community-lens"
-                >
-                  <Users className="w-3 h-3 shrink-0" />
-                  <span className="text-xs">{COMMUNITY_LENS_LABELS[communityLens]} lens via {activeFunder.name}</span>
-                  <button
-                    onClick={() => { setCommunityLens("all"); setActiveFunder(null); setNarrativeStyle("compliance"); setFunderFilter("all"); setGenerated(false); }}
-                    className="ml-1 hover:bg-amber-200/50 rounded-full p-0.5"
-                    data-testid="button-reset-lens"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </Badge>
-              )}
             </div>
           </Card>
 
@@ -1139,7 +1104,7 @@ export default function Reports() {
               <div className="flex items-center justify-between gap-4 flex-wrap">
                 <div>
                   <h2 className="text-xl font-display font-bold" data-testid="text-report-header">
-                    {activeFunder ? `${activeFunder.name} - ${COMMUNITY_LENS_LABELS[activeFunder.communityLens || "all"]}` : "Report Results"}
+                    {activeFunder ? activeFunder.name : "Report Results"}
                   </h2>
                   <p className="text-sm text-muted-foreground" data-testid="text-report-period">{getPeriodLabel()}</p>
                 </div>
@@ -1196,7 +1161,6 @@ export default function Reports() {
 
               {/* Section 0: Trends */}
               <TrendsSection
-                communityLens={communityLens}
                 funderFilter={funderFilter}
                 programmeFilter={programmeFilter}
                 taxonomyFilter={taxonomyFilter}
@@ -1661,13 +1625,6 @@ export default function Reports() {
               {/* Section 2: Delivery */}
               <CollapsibleSection title="Delivery" icon={CalendarDays} testId="section-delivery" defaultOpen={isSectionDefaultOpen("delivery")} key={`delivery-${activeFunder?.id || 'none'}`}>
                 <div className="pt-4 space-y-4">
-                  {communityLens !== "all" && activeFunder && (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded-md px-3 py-2" data-testid="notice-delivery-unfiltered">
-                      <Info className="w-3.5 h-3.5 shrink-0" />
-                      <span>Events, venue hires, and programmes show organisation-level data (not filtered by {COMMUNITY_LENS_LABELS[communityLens]} lens). Mentoring metrics are filtered.</span>
-                    </div>
-                  )}
-
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     <HeadlineStatCard
                       icon={Zap}
@@ -2456,12 +2413,6 @@ export default function Reports() {
               {/* Section 5: Value & Contribution */}
               <CollapsibleSection title="Value & Contribution" icon={DollarSign} testId="section-value" defaultOpen={isSectionDefaultOpen("value")} key={`value-${activeFunder?.id || 'none'}`}>
                 <div className="pt-4 space-y-4">
-                  {communityLens !== "all" && activeFunder && (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded-md px-3 py-2" data-testid="notice-value-unfiltered">
-                      <Info className="w-3.5 h-3.5 shrink-0" />
-                      <span>Financial metrics show organisation-level data (not filtered by {COMMUNITY_LENS_LABELS[communityLens]} lens)</span>
-                    </div>
-                  )}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <StatCard icon={DollarSign} label="Total Revenue" value={`$${val?.revenue?.total?.toLocaleString() || 0}`} color="green" testId="stat-total-revenue" />
                     <StatCard icon={Handshake} label="In-Kind Value" value={`$${val?.inKindValue?.toLocaleString() || 0}`} color="blue" testId="stat-inkind-value" />

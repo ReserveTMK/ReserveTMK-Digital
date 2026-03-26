@@ -7236,14 +7236,13 @@ Important:
   app.post("/api/reports/generate", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder, communityLens, reportType: reqReportType } = req.body;
+      const { startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder, reportType: reqReportType } = req.body;
       const reportType: "monthly" | "quarterly" = reqReportType === "quarterly" ? "quarterly" : "monthly";
 
       if (!startDate || !endDate) {
         return res.status(400).json({ message: "startDate and endDate are required" });
       }
 
-      let resolvedLens = communityLens;
       let orgProfileCtx: OrgProfileContext | undefined;
       let funderProfileCtx: any = null;
 
@@ -7265,9 +7264,6 @@ Important:
           const funderProfile = await storage.getFunderByTag(userId, funder);
           if (funderProfile) {
             funderProfileCtx = funderProfile;
-            if (funderProfile.communityLens) {
-              resolvedLens = funderProfile.communityLens;
-            }
           }
         } catch {}
       }
@@ -7280,10 +7276,9 @@ Important:
         taxonomyIds,
         demographicSegments,
         funder,
-        communityLens: resolvedLens,
       };
 
-      const cacheKey = getReportCacheKey("generate", { userId, startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder, communityLens: resolvedLens });
+      const cacheKey = getReportCacheKey("generate", { userId, startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder });
 
       const result = await deduplicatedReportCall(cacheKey + `:${reportType}`, async () => {
         const report = await getFullMonthlyReport(filters);
@@ -7477,7 +7472,7 @@ Important:
   app.post("/api/reports/trends", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { endDate, granularity, periods, programmeIds, taxonomyIds, funder, communityLens } = req.body;
+      const { endDate, granularity, periods, programmeIds, taxonomyIds, funder } = req.body;
 
       if (!endDate) {
         return res.status(400).json({ message: "endDate is required" });
@@ -7493,7 +7488,6 @@ Important:
         programmeIds,
         taxonomyIds,
         funder,
-        communityLens,
       };
 
       const trendData = await getTrendMetrics(filters, gran, numPeriods);
@@ -7507,13 +7501,11 @@ Important:
   app.post("/api/reports/narrative", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder, communityLens, narrativeStyle, reportType: reqNarrReportType } = req.body;
+      const { startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder, narrativeStyle, reportType: reqNarrReportType } = req.body;
 
       if (!startDate || !endDate) {
         return res.status(400).json({ message: "startDate and endDate are required" });
       }
-
-      let resolvedNarrativeLens = communityLens;
 
       const style: "compliance" | "story" = narrativeStyle === "story" ? "story" : "compliance";
       const narrativeReportType: "monthly" | "quarterly" = reqNarrReportType === "quarterly" ? "quarterly" : "monthly";
@@ -7595,12 +7587,8 @@ Important:
               outcomeFocus: funderProfile.outcomeFocus,
               reportingGuidance: funderProfile.reportingGuidance,
               narrativeStyle: funderProfile.narrativeStyle,
-              communityLens: funderProfile.communityLens,
               partnershipStrategy: funderProfile.partnershipStrategy,
             };
-            if (funderProfile.communityLens) {
-              resolvedNarrativeLens = funderProfile.communityLens;
-            }
           }
         } catch {}
       }
@@ -7613,7 +7601,6 @@ Important:
         taxonomyIds,
         demographicSegments,
         funder,
-        communityLens: resolvedNarrativeLens,
       };
 
       const result = await generateNarrative(filters, legacyContext, style, orgProfileCtx, funderCtx, narrativeReportType);
@@ -7669,7 +7656,6 @@ Important:
         taxonomyIds,
         demographicSegments,
         funder,
-        communityLens: "maori",
       };
 
       const cacheKey = getReportCacheKey("tamaki-ora", { userId, startDate, endDate, programmeIds, taxonomyIds, demographicSegments, funder });
@@ -12258,7 +12244,6 @@ Location: ${orgProfile.location || ""}` : "";
 Funder Name: ${funder.name}
 Organisation: ${funder.organisation || ""}
 Status: ${funder.status}
-Community Lens: ${funder.communityLens}
 Outcomes Framework: ${funder.outcomesFramework || ""}
 Outcome Focus: ${funder.outcomeFocus || ""}
 Reporting Guidance: ${funder.reportingGuidance || ""}
