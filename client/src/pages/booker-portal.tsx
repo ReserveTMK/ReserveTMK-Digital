@@ -2797,6 +2797,27 @@ function CalendarView({
                       </div>
                     </div>
 
+                    {/* Pricing — shown after time selection so booker sees cost while deciding */}
+                    {booker.hasBookingPackage && (booker.packageTotalBookings || 0) - (booker.packageUsedBookings || 0) > 0 && (
+                      <div className="flex items-center justify-between gap-2">
+                        <Label className="text-xs">Use package credit</Label>
+                        <button
+                          onClick={() => setUsePackageCredit(!usePackageCredit)}
+                          className={`w-10 h-5 rounded-full transition-colors relative ${usePackageCredit ? "bg-primary" : "bg-muted"}`}
+                          data-testid="toggle-package-credit"
+                        >
+                          <div className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform ${usePackageCredit ? "translate-x-5" : "translate-x-0.5"}`} />
+                        </button>
+                      </div>
+                    )}
+
+                    <PricingBreakdown
+                      pricing={pricingData}
+                      startTime={startTime}
+                      endTime={endTime}
+                      usePackageCredit={usePackageCredit}
+                    />
+
                     {isGroupLink && (
                       <div className="space-y-1">
                         <Label className="text-xs">Your Name (optional)</Label>
@@ -2861,26 +2882,6 @@ function CalendarView({
                         </div>
                       </>
                     )}
-
-                    {booker.hasBookingPackage && (booker.packageTotalBookings || 0) - (booker.packageUsedBookings || 0) > 0 && (
-                      <div className="flex items-center justify-between gap-2">
-                        <Label className="text-xs">Use package credit</Label>
-                        <button
-                          onClick={() => setUsePackageCredit(!usePackageCredit)}
-                          className={`w-10 h-5 rounded-full transition-colors relative ${usePackageCredit ? "bg-primary" : "bg-muted"}`}
-                          data-testid="toggle-package-credit"
-                        >
-                          <div className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform ${usePackageCredit ? "translate-x-5" : "translate-x-0.5"}`} />
-                        </button>
-                      </div>
-                    )}
-
-                    <PricingBreakdown
-                      pricing={pricingData}
-                      startTime={startTime}
-                      endTime={endTime}
-                      usePackageCredit={usePackageCredit}
-                    />
 
                     <Button
                       className="w-full"
