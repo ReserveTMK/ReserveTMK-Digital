@@ -24,6 +24,7 @@ import {
   Mail,
   Megaphone,
   Newspaper,
+  BarChart3,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useRef, useEffect } from "react";
@@ -81,9 +82,8 @@ const navGroups: NavGroup[] = [
     name: "Reporting",
     href: "/reports",
     children: [
-      { name: "Reports", href: "/reports", icon: FileText, description: "Monthly & quarterly reports" },
-      { name: "Cohorts", href: "/cohort-analysis", icon: Users, description: "Track cohort retention & growth" },
-      { name: "Legacy Reports", href: "/legacy-reports", icon: BookOpen, description: "Historical PDF uploads" },
+      { name: "Reports", href: "/reports", icon: FileText, description: "Branded funder reports" },
+      { name: "Tracking", href: "/tracking", icon: BarChart3, description: "Operational dashboard" },
       { name: "Taxonomy", href: "/taxonomy", icon: Tags, description: "Impact categories & tags" },
     ],
   },

@@ -14,7 +14,7 @@ import Dashboard from "@/pages/dashboard";
 import Contacts from "@/pages/contacts";
 import ContactDetail from "@/pages/contact-detail";
 import Reports from "@/pages/reports";
-import ReportGenerator from "@/pages/report-generator";
+import TrackingDashboard from "@/pages/tracking";
 import Debriefs from "@/pages/debriefs";
 import Actions from "@/pages/actions";
 import Taxonomy from "@/pages/taxonomy";
@@ -151,8 +151,8 @@ function Router() {
           <ProtectedRoute component={Reports} />
         </Route>
 
-        <Route path="/report-generator">
-          <ProtectedRoute component={ReportGenerator} />
+        <Route path="/tracking">
+          <ProtectedRoute component={TrackingDashboard} />
         </Route>
 
         <Route path="/taxonomy">

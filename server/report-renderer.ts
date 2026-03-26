@@ -8,27 +8,12 @@
 
 export interface MonthlyReportData {
   period: { month: string; year: number; label: string; fyLabel: string };
-  activations: { count: number; attendees: number; byType: Record<string, number> };
-  monthlyTracking: Array<{ month: string; activations: number; attendees: number; newResidents: number }>;
-  quarterlyTotals: Record<string, { activations: number; attendees: number }>;
-  ytd: { activations: number; attendees: number; newResidents: number };
-  residentCompanies: Array<{
-    membershipType: string; type: string; company: string;
-    desks: number; individuals: number; maori: boolean; pasifika: boolean;
-  }>;
-  hirers: Array<{
-    organisation: string; lead: string; typeOfUsage: string;
-    maori: boolean; pasifika: boolean;
-  }>;
-  mentoring: {
-    sessions: number; relationships: number;
-    perMentee: Array<{ name: string; sessions: Array<{ date: string; notes: string; type: string }> }>;
-  };
-  debriefs: Array<{ title: string; notes: string; eventName: string; type: string; attendeeCount: number }>;
-  events: Array<{ name: string; type: string; spaceUseType: string; attendeeCount: number; date: string }>;
-  footTraffic: { total: number; daysRecorded: number; dailyAvg: number; peakDay: number; missingDays: string[] };
-  community: { total: number; kakano: number; tipu: number; ora: number; maori: number; pasifika: number };
-  dataQuality: { eventsWithoutAttendees: number; missingFootTrafficDays: number; draftDebriefs: number; groupsWithoutDemographics: string[] };
+  deliveryNumbers: { activations: number; capabilityBuilding: number; footTraffic: number; ytdActivations: number; ytdCapability: number; ytdFootTraffic: number };
+  communitySnapshot: { maori: number; pasifika: number; rangatahi: number; total: number; kakano: number; tipu: number; ora: number; innovatorTotal: number };
+  spaceUse: Array<{ organisation: string; type: string; bookings: number; maori: boolean; pasifika: boolean }>;
+  updates: Record<string, string[]>;
+  quotes: Array<{ text: string; attribution: string }>;
+  plannedNextMonth: Array<{ title: string; description: string }>;
 }
 
 export interface QuarterlyReportData {
@@ -133,73 +118,40 @@ function monthLabel(monthStr: string): string {
 // ── Monthly Report Renderer ─────────────────────────────────────
 
 export function renderMonthlyReport(data: MonthlyReportData): string {
-  const { period, activations, residentCompanies, hirers, mentoring, debriefs, events, footTraffic, community, dataQuality } = data;
+  const { period, deliveryNumbers, communitySnapshot, spaceUse, updates, quotes, plannedNextMonth } = data;
 
-  // Number of users table
-  const trackingMonths = data.monthlyTracking;
-  const monthHeaders = trackingMonths.map(m => `<th style="text-align:right">${monthLabel(m.month)}</th>`).join("");
+  const mLabel = monthLabel(period.month);
+  const monthTotal = deliveryNumbers.activations + deliveryNumbers.capabilityBuilding + deliveryNumbers.footTraffic;
 
-  const activationRow = trackingMonths.map(m => `<td class="num">${m.activations}</td>`).join("");
-  const attendeeRow = trackingMonths.map(m => `<td class="num">${m.attendees}</td>`).join("");
-  const residentRow = trackingMonths.map(m => `<td class="num">${m.newResidents}</td>`).join("");
-
-  // Resident companies table
-  const residentRows = residentCompanies.map(r => `
+  // Space Use rows
+  const spaceRows = spaceUse.map(s => `
     <tr>
-      <td>${esc(r.membershipType)}</td>
-      <td>${esc(r.type)}</td>
-      <td>${esc(r.company)}</td>
-      <td style="text-align:center">${r.desks}</td>
-      <td style="text-align:center">${r.individuals}</td>
-      <td style="text-align:center">${checkMark(r.maori)}</td>
-      <td style="text-align:center">${checkMark(r.pasifika)}</td>
+      <td>${esc(s.organisation)}</td>
+      <td>${esc(s.type)}</td>
+      <td style="text-align:center">${s.bookings}</td>
+      <td style="text-align:center">${checkMark(s.maori)}</td>
+      <td style="text-align:center">${checkMark(s.pasifika)}</td>
     </tr>
   `).join("");
 
-  const totalDesks = residentCompanies.reduce((s, r) => s + r.desks, 0);
-  const totalIndividuals = residentCompanies.reduce((s, r) => s + r.individuals, 0);
-
-  // Hirers table
-  const hirerRows = hirers.map(h => `
-    <tr>
-      <td>${esc(h.organisation)}</td>
-      <td>${esc(h.lead)}</td>
-      <td>${esc(h.typeOfUsage)}</td>
-      <td style="text-align:center">${checkMark(h.maori)}</td>
-      <td style="text-align:center">${checkMark(h.pasifika)}</td>
-    </tr>
+  // Updates sections
+  const updateSections = Object.entries(updates).map(([heading, items]) => `
+    <h3>${esc(heading)}</h3>
+    <ul class="bullets">${items.map(i => `<li>${esc(i)}</li>`).join("")}</ul>
   `).join("");
 
-  // Business Support per mentee
-  const menteeNarratives = mentoring.perMentee.map(m => {
-    const sessionBullets = m.sessions.map(s =>
-      `<li>${esc(s.notes || `${s.type} session on ${s.date}`)}</li>`
-    ).join("");
-    return `
-      <h3>${esc(m.name)}</h3>
-      <ul class="bullets">${sessionBullets}</ul>
-    `;
-  }).join("");
+  // Quote blocks
+  const quoteBlocks = quotes.map(q => `
+    <div class="quote">
+      <p>"${esc(q.text)}"</p>
+      <cite>${esc(q.attribution)}</cite>
+    </div>
+  `).join("");
 
-  // Events lists
-  const internalEvents = events.filter(e => !["Venue Hire", "Community Hire", "External Event"].includes(e.type));
-  const externalEvents = events.filter(e => ["Venue Hire", "Community Hire", "External Event"].includes(e.type));
-  const studioEvents = events.filter(e => e.spaceUseType?.toLowerCase().includes("studio") || e.type?.toLowerCase().includes("podcast"));
-
-  const eventBullets = (evts: typeof events) => evts.map(e =>
-    `<li><strong>${esc(e.name)}</strong> — ${esc(e.type)}${e.attendeeCount ? ` (${e.attendeeCount} attendees)` : ""} · ${esc(e.date)}</li>`
+  // Planned next month items
+  const nextItems = plannedNextMonth.map(n =>
+    `<div class="next-item"><strong>${esc(n.title)}</strong>${esc(n.description)}</div>`
   ).join("");
-
-  // Data quality warnings
-  const warnings: string[] = [];
-  if (dataQuality.eventsWithoutAttendees > 0) warnings.push(`${dataQuality.eventsWithoutAttendees} events missing attendee count`);
-  if (dataQuality.missingFootTrafficDays > 0) warnings.push(`Foot traffic missing for ${dataQuality.missingFootTrafficDays} business days: ${footTraffic.missingDays.join(", ")}`);
-  if (dataQuality.draftDebriefs > 0) warnings.push(`${dataQuality.draftDebriefs} debriefs still in draft (not counted in reporting)`);
-  if (dataQuality.groupsWithoutDemographics.length > 0) warnings.push(`Demographics not set for: ${dataQuality.groupsWithoutDemographics.join(", ")}`);
-
-  const warningHtml = warnings.length > 0
-    ? `<div class="warning"><strong>⚠ Data Quality Notes</strong><ul style="margin-top:6px;padding-left:16px;">${warnings.map(w => `<li>${esc(w)}</li>`).join("")}</ul></div>`
-    : "";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -212,161 +164,86 @@ export function renderMonthlyReport(data: MonthlyReportData): string {
 
 <div class="header">
   <div class="header-tag">Monthly Report · ${esc(period.fyLabel)}</div>
-  <h1>ReserveTMK Reporting</h1>
+  <h1>Reserve Tāmaki</h1>
   <div class="subtitle">${esc(period.label)}</div>
 </div>
 
-<!-- NUMBER OF USERS -->
 <div class="section">
-  <h2>Number of Users</h2>
+  <h2>1. Delivery Numbers</h2>
   <table>
-    <thead>
-      <tr>
-        <th>Metric</th>
-        ${monthHeaders}
-        <th style="text-align:right">YTD ${esc(period.fyLabel)}</th>
-      </tr>
-    </thead>
+    <thead><tr><th>Metric</th><th style="text-align:right">${esc(mLabel)}</th><th style="text-align:right">YTD ${esc(period.fyLabel)}</th></tr></thead>
     <tbody>
-      <tr>
-        <td><strong>Events / activations</strong></td>
-        ${activationRow}
-        <td class="num">${data.ytd.activations}</td>
-      </tr>
-      <tr>
-        <td><strong>Attendees (est)</strong></td>
-        ${attendeeRow}
-        <td class="num">${data.ytd.attendees}</td>
-      </tr>
-      <tr>
-        <td><strong>New resident companies</strong></td>
-        ${residentRow}
-        <td class="num">${data.ytd.newResidents}</td>
-      </tr>
+      <tr><td><strong>Activations*</strong></td><td class="num">${deliveryNumbers.activations}</td><td class="num">${deliveryNumbers.ytdActivations}</td></tr>
+      <tr><td><strong>Capability Building†</strong></td><td class="num">${deliveryNumbers.capabilityBuilding}</td><td class="num">${deliveryNumbers.ytdCapability}</td></tr>
+      <tr><td><strong>Foot Traffic</strong></td><td class="num">${deliveryNumbers.footTraffic}</td><td class="num">${deliveryNumbers.ytdFootTraffic}</td></tr>
+      <tr class="total-row"><td><strong>Total</strong></td><td class="num">${monthTotal}</td><td class="num">&mdash;</td></tr>
     </tbody>
   </table>
+  <p style="font-size:11px;color:#888;margin-top:6px;">*Activations = all activity in the space. †Capability Building = Mentoring (1:1) and Programmes (1:Few).</p>
 </div>
 
-<!-- RESIDENT COMPANIES -->
 <div class="section">
-  <h2>Resident Companies</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Membership</th>
-        <th>Type</th>
-        <th>Company</th>
-        <th style="text-align:center">Desks</th>
-        <th style="text-align:center">Individuals</th>
-        <th style="text-align:center">Māori</th>
-        <th style="text-align:center">Pasifika</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${residentRows}
-      <tr class="total-row">
-        <td colspan="3"><strong>Total</strong></td>
-        <td style="text-align:center"><strong>${totalDesks}</strong></td>
-        <td style="text-align:center"><strong>${totalIndividuals}</strong></td>
-        <td></td><td></td>
-      </tr>
-    </tbody>
-  </table>
-</div>
-
-<!-- HIRERS -->
-<div class="section">
-  <h2>Hirers</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Organisation</th>
-        <th>Lead</th>
-        <th>Type of Usage</th>
-        <th style="text-align:center">Māori</th>
-        <th style="text-align:center">Pasifika</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${hirerRows}
-    </tbody>
-  </table>
-</div>
-
-<!-- COMMUNITY SNAPSHOT -->
-<div class="section">
-  <h2>Community Snapshot</h2>
+  <h2>2. Community Snapshot</h2>
+  <p style="font-size:12px;color:#888;margin-bottom:10px;">As at ${esc(mLabel)} ${period.year}</p>
   <div class="snapshot-grid">
     <div class="snapshot-card">
       <div class="snapshot-label">Supported</div>
-      <div class="snapshot-row"><span class="snapshot-key">Māori</span><span class="snapshot-val">${community.maori}</span></div>
-      <div class="snapshot-row"><span class="snapshot-key">Pasifika</span><span class="snapshot-val">${community.pasifika}</span></div>
+      <div class="snapshot-row"><span class="snapshot-key">Māori</span><span class="snapshot-val">${communitySnapshot.maori}</span></div>
+      <div class="snapshot-row"><span class="snapshot-key">Pasifika</span><span class="snapshot-val">${communitySnapshot.pasifika}</span></div>
+      <div class="snapshot-row"><span class="snapshot-key">Rangatahi</span><span class="snapshot-val">${communitySnapshot.rangatahi}</span></div>
       <div class="snapshot-row" style="border-top:2px solid #e0e0e0;margin-top:4px;padding-top:8px;">
-        <span class="snapshot-key"><strong>Total Community</strong></span>
-        <span class="snapshot-val" style="font-size:20px;"><strong>${community.total}</strong></span>
+        <span class="snapshot-key"><strong>Total</strong></span>
+        <span class="snapshot-val" style="font-size:20px;"><strong>${communitySnapshot.total}</strong></span>
       </div>
+      <p style="font-size:11px;color:#888;margin-top:8px;">Whānau we directly support</p>
     </div>
     <div class="snapshot-card dark">
-      <div class="snapshot-label">Journey Stages</div>
-      <div class="snapshot-row"><span class="snapshot-key">Kakano — Starting</span><span class="snapshot-val">${community.kakano}</span></div>
-      <div class="snapshot-row"><span class="snapshot-key">Tipu — Refining</span><span class="snapshot-val">${community.tipu}</span></div>
-      <div class="snapshot-row"><span class="snapshot-key">Ora — Thriving</span><span class="snapshot-val">${community.ora}</span></div>
+      <div class="snapshot-label">Our Innovators</div>
+      <div class="snapshot-row"><span class="snapshot-key">Kakano — Starting</span><span class="snapshot-val">${communitySnapshot.kakano}</span></div>
+      <div class="snapshot-row"><span class="snapshot-key">Tipu — Refining</span><span class="snapshot-val">${communitySnapshot.tipu}</span></div>
+      <div class="snapshot-row"><span class="snapshot-key">Ora — Thriving</span><span class="snapshot-val">${communitySnapshot.ora}</span></div>
+      <div class="snapshot-row" style="border-top:2px solid #1a5c3a;margin-top:4px;padding-top:8px;">
+        <span class="snapshot-key" style="color:#a8d4bc;"><strong>Total</strong></span>
+        <span class="snapshot-val"><strong>${communitySnapshot.innovatorTotal}</strong></span>
+      </div>
+      <p style="font-size:11px;color:#6aaa8a;margin-top:8px;">People building ventures and creative projects</p>
     </div>
   </div>
 </div>
 
-<!-- FOOT TRAFFIC -->
 <div class="section">
-  <h2>Foot Traffic</h2>
-  <div class="snapshot-grid">
-    <div class="snapshot-card">
-      <div class="snapshot-row"><span class="snapshot-key">Total</span><span class="snapshot-val">${footTraffic.total}</span></div>
-      <div class="snapshot-row"><span class="snapshot-key">Days recorded</span><span class="snapshot-val">${footTraffic.daysRecorded}</span></div>
-    </div>
-    <div class="snapshot-card">
-      <div class="snapshot-row"><span class="snapshot-key">Daily average</span><span class="snapshot-val">${footTraffic.dailyAvg}</span></div>
-      <div class="snapshot-row"><span class="snapshot-key">Peak day</span><span class="snapshot-val">${footTraffic.peakDay}</span></div>
-    </div>
-  </div>
+  <h2>3. Space Use</h2>
+  <table>
+    <thead><tr><th>Organisation</th><th>Type</th><th style="text-align:center">Bookings</th><th style="text-align:center">Māori</th><th style="text-align:center">Pasifika</th></tr></thead>
+    <tbody>
+      ${spaceRows}
+      <tr class="total-row"><td><strong>Total</strong></td><td></td><td style="text-align:center"><strong>${spaceUse.reduce((s, r) => s + r.bookings, 0)}</strong></td><td></td><td></td></tr>
+    </tbody>
+  </table>
 </div>
 
-<!-- BUSINESS SUPPORT & DEVELOPMENT -->
-${mentoring.perMentee.length > 0 ? `
 <div class="section">
-  <h2>Business Support &amp; Development</h2>
-  ${menteeNarratives}
+  <h2>4. Updates</h2>
+  ${updateSections}
 </div>
-` : ""}
 
-<!-- EVENTS & COMMUNITY ENGAGEMENT -->
-${internalEvents.length > 0 ? `
+${quotes.length > 0 ? `
 <div class="section">
-  <h2>Events &amp; Community Engagement</h2>
-  <ul class="bullets">${eventBullets(internalEvents)}</ul>
+  <h2>5. In Their Words</h2>
+  <div class="quotes">${quoteBlocks}</div>
 </div>
 ` : ""}
 
-<!-- EXTERNAL EVENTS & HIRES -->
-${externalEvents.length > 0 ? `
+${plannedNextMonth.length > 0 ? `
 <div class="section">
-  <h2>External Events &amp; Hires</h2>
-  <ul class="bullets">${eventBullets(externalEvents)}</ul>
+  <h2>6. Planned Next Month</h2>
+  <div class="next-grid">${nextItems}</div>
 </div>
 ` : ""}
-
-<!-- CONTENT & MEDIA -->
-${studioEvents.length > 0 ? `
-<div class="section">
-  <h2>Content &amp; Media Use of Space</h2>
-  <ul class="bullets">${eventBullets(studioEvents)}</ul>
-</div>
-` : ""}
-
-${warningHtml}
 
 <div class="footer">
   <span class="footer-org">Reserve Tāmaki</span>
-  <span class="footer-date">${esc(period.label)} · Generated ${new Date().toISOString().split("T")[0]}</span>
+  <span class="footer-date">${esc(period.label)}</span>
 </div>
 
 </body>

@@ -6,7 +6,7 @@ import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON, isAnthropicKeyConfigured, AIKeyMissingError } from "./replit_integrations/anthropic/client";
-import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getReachMetrics, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, getStandoutMoments, getOperatorInsights, getParticipantTransformationStories, getPeopleTierBreakdown, getImpactTagHeatmap, getTheoryOfChangeAlignment, getGrowthStory, getOutcomeChain, getQuarterlyMilestones, getMentoringMetrics, type ReportFilters, type CohortDefinition, type OrgProfileContext, type FunderContext } from "./reporting";
+import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, getStandoutMoments, getOperatorInsights, getParticipantTransformationStories, getPeopleTierBreakdown, getImpactTagHeatmap, getTheoryOfChangeAlignment, getGrowthStory, getOutcomeChain, getQuarterlyMilestones, type ReportFilters, type CohortDefinition, type OrgProfileContext, type FunderContext } from "./reporting";
 import { renderMonthlyReport, type MonthlyReportData } from "./report-renderer";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
 import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings, normalizeStage, DEFAULT_AVAILABILITY_SCHEDULE, DEFAULT_VENUE_AVAILABILITY_SCHEDULE, type AvailabilitySchedule, bookingChangeRequests, } from "@shared/schema";
@@ -6913,281 +6913,119 @@ Important:
       const fyStartDate = `${fyStart}-07-01`;
 
       const filters: ReportFilters = { userId, startDate, endDate };
+      const ytdFilters: ReportFilters = { userId, startDate: fyStartDate, endDate };
 
-      // Pull data in parallel
-      const [delivery, reach, mentoringData] = await Promise.all([
+      // Pull all data in parallel
+      const [delivery, ytdDelivery, ftRows, ytdFtRows, communityRows, spaceUseRows, debriefRows] = await Promise.all([
         getDeliveryMetrics(filters),
-        getReachMetrics(filters),
-        getMentoringMetrics(filters),
+        getDeliveryMetrics(ytdFilters),
+        db.execute(sql`
+          SELECT SUM(count) as total
+          FROM daily_foot_traffic
+          WHERE user_id = ${userId}
+          AND date >= ${new Date(startDate)} AND date < ${new Date(endDate)}
+        `),
+        db.execute(sql`
+          SELECT SUM(count) as total
+          FROM daily_foot_traffic
+          WHERE user_id = ${userId}
+          AND date >= ${new Date(fyStartDate)} AND date < ${new Date(endDate)}
+        `),
+        db.execute(sql`
+          SELECT
+            COUNT(*) as total,
+            COUNT(CASE WHEN relationship_stage = 'kakano' OR (relationship_stage IS NULL AND stage IS NULL) THEN 1 END) as kakano,
+            COUNT(CASE WHEN relationship_stage = 'tipu' THEN 1 END) as tipu,
+            COUNT(CASE WHEN relationship_stage = 'ora' THEN 1 END) as ora,
+            COUNT(CASE WHEN ethnicity @> ARRAY['Māori']::text[] THEN 1 END) as maori,
+            COUNT(CASE WHEN ethnicity && ARRAY['Samoan','Tongan','Niuean','Cook Islands Māori','Fijian']::text[] THEN 1 END) as pasifika,
+            COUNT(CASE WHEN is_rangatahi = true THEN 1 END) as rangatahi
+          FROM contacts
+          WHERE user_id = ${userId}
+          AND active = true AND is_archived = false
+          AND (is_innovator = true OR is_community_member = true)
+        `),
+        db.execute(sql`
+          SELECT
+            COALESCE(g.name, b.booker_name) as organisation,
+            b.classification as type,
+            COUNT(*) as bookings,
+            g.metadata->>'maori' as maori,
+            g.metadata->>'pasifika' as pasifika
+          FROM bookings b
+          LEFT JOIN groups g ON g.id = b.booker_group_id
+          WHERE b.user_id = ${userId}
+            AND b.start_date >= ${new Date(startDate)}
+            AND b.start_date < ${new Date(endDate)}
+            AND b.status IN ('confirmed', 'completed')
+            AND b.classification NOT IN ('Meeting', 'Internal')
+          GROUP BY COALESCE(g.name, b.booker_name), b.classification, g.metadata->>'maori', g.metadata->>'pasifika'
+          ORDER BY organisation
+        `),
+        db.execute(sql`
+          SELECT il.title, il.notes
+          FROM impact_logs il
+          WHERE il.user_id = ${userId}
+          AND il.status = 'confirmed'
+          AND il.confirmed_at >= ${new Date(startDate)}
+          AND il.confirmed_at < ${new Date(endDate)}
+          AND LENGTH(COALESCE(il.notes, '')) > 50
+          ORDER BY il.confirmed_at
+        `),
       ]);
 
-      // Activations
-      const activationCount = delivery.totalActivations || 0;
-      const attendeeCount = delivery.totalAttendees || 0;
-
-      // Monthly tracking — get each month from FY start to current month
-      const trackingMonths: MonthlyReportData["monthlyTracking"] = [];
-      let ytdActivations = 0, ytdAttendees = 0, ytdNewResidents = 0;
-      const fyStartMonth = 7; // July
-      const fyStartYear = fyStart;
-      for (let m = fyStartMonth, y = fyStartYear; ; ) {
-        const mStr = `${y}-${String(m).padStart(2, "0")}`;
-        const mStart = `${mStr}-01`;
-        const mEndMonth = m === 12 ? 1 : m + 1;
-        const mEndYear = m === 12 ? y + 1 : y;
-        const mEnd = `${mEndYear}-${String(mEndMonth).padStart(2, "0")}-01`;
-
-        if (new Date(mStart) >= new Date(endDate)) break;
-
-        const mFilters: ReportFilters = { userId, startDate: mStart, endDate: mEnd };
-        const mDelivery = await getDeliveryMetrics(mFilters);
-        const mActivations = mDelivery.totalActivations || 0;
-        const mAttendees = mDelivery.totalAttendees || 0;
-
-        // New residents this month
-        const newResRows = await db.execute(sql`
-          SELECT COUNT(*) as count FROM memberships
-          WHERE user_id = ${userId}
-          AND created_at >= ${new Date(mStart)}
-          AND created_at < ${new Date(mEnd)}
-        `);
-        const mNewResidents = Number((newResRows as any).rows?.[0]?.count || 0);
-
-        trackingMonths.push({ month: mStr, activations: mActivations, attendees: mAttendees, newResidents: mNewResidents });
-        ytdActivations += mActivations;
-        ytdAttendees += mAttendees;
-        ytdNewResidents += mNewResidents;
-
-        m = m === 12 ? 1 : m + 1;
-        if (m === 1) y++;
-        if (y > year || (y === year && m > monthNum)) break;
-      }
-
-      // Resident companies
-      const residentRows = await db.execute(sql`
-        SELECT
-          CASE WHEN m.booking_categories @> ARRAY['Pod']::text[] THEN 'Drop In' ELSE 'Permanent' END as membership_type,
-          CASE WHEN m.booking_categories @> ARRAY['Pod']::text[] THEN 'Pod Desk' ELSE 'Standard' END as type,
-          g.name as company,
-          COALESCE(m.booking_allowance, 0) as desks,
-          (SELECT COUNT(DISTINCT gm.contact_id) FROM group_members gm WHERE gm.group_id = g.id) as individuals,
-          g.metadata->>'maori' as maori,
-          g.metadata->>'pasifika' as pasifika
-        FROM memberships m
-        JOIN groups g ON g.id = m.group_id
-        WHERE m.user_id = ${userId}
-        AND (m.end_date IS NULL OR m.end_date >= ${new Date(startDate)})
-        ORDER BY membership_type, g.name
-      `);
-
-      const residentCompanies = ((residentRows as any).rows || []).map((r: any) => ({
-        membershipType: r.membership_type,
-        type: r.type,
-        company: r.company,
-        desks: Number(r.desks),
-        individuals: Number(r.individuals),
-        maori: r.maori === "true",
-        pasifika: r.pasifika === "true",
-      }));
-
-      // Hirers
-      const hirerRows = await db.execute(sql`
-        SELECT DISTINCT
-          COALESCE(g.name, b.booker_name) as organisation,
-          c.name as lead,
-          b.classification as type_of_usage,
-          g.metadata->>'maori' as maori,
-          g.metadata->>'pasifika' as pasifika
-        FROM bookings b
-        LEFT JOIN groups g ON g.id = b.booker_group_id
-        LEFT JOIN contacts c ON c.id = b.contact_id
-        WHERE b.user_id = ${userId}
-        AND b.start_date >= ${new Date(startDate)}
-        AND b.start_date < ${new Date(endDate)}
-        AND b.status IN ('confirmed', 'completed')
-        AND b.classification NOT IN ('Meeting', 'Internal')
-        ORDER BY organisation
-      `);
-
-      const hirers = ((hirerRows as any).rows || []).map((r: any) => ({
-        organisation: r.organisation || "Unknown",
-        lead: r.lead || "",
-        typeOfUsage: r.type_of_usage || "",
-        maori: r.maori === "true",
-        pasifika: r.pasifika === "true",
-      }));
-
-      // Mentoring per-mentee sessions
-      const sessionRows = await db.execute(sql`
-        SELECT c.name as mentee_name, s.date, s.notes, s.session_type
-        FROM sessions s
-        JOIN mentoring_relationships mr ON mr.id = s.relationship_id
-        JOIN contacts c ON c.id = mr.mentee_id
-        WHERE mr.user_id = ${userId}
-        AND s.date >= ${new Date(startDate)}
-        AND s.date < ${new Date(endDate)}
-        AND s.status = 'completed'
-        ORDER BY c.name, s.date
-      `);
-
-      const perMentee: MonthlyReportData["mentoring"]["perMentee"] = [];
-      const menteeMap = new Map<string, { name: string; sessions: Array<{ date: string; notes: string; type: string }> }>();
-      for (const r of (sessionRows as any).rows || []) {
-        if (!menteeMap.has(r.mentee_name)) {
-          menteeMap.set(r.mentee_name, { name: r.mentee_name, sessions: [] });
-        }
-        menteeMap.get(r.mentee_name)!.sessions.push({
-          date: r.date ? new Date(r.date).toISOString().split("T")[0] : "",
-          notes: r.notes || "",
-          type: r.session_type || "Standard",
-        });
-      }
-      perMentee.push(...menteeMap.values());
-
-      // Debriefs
-      const debriefRows = await db.execute(sql`
-        SELECT il.title, il.notes, e.name as event_name, e.type, e.attendee_count
-        FROM impact_logs il
-        LEFT JOIN events e ON e.id = il.event_id
-        WHERE il.user_id = ${userId}
-        AND il.status = 'confirmed'
-        AND il.confirmed_at >= ${new Date(startDate)}
-        AND il.confirmed_at < ${new Date(endDate)}
-        AND LENGTH(COALESCE(il.notes, '')) > 50
-        ORDER BY il.confirmed_at
-      `);
-
-      const debriefs = ((debriefRows as any).rows || []).map((r: any) => ({
-        title: r.title || "",
-        notes: r.notes || "",
-        eventName: r.event_name || "",
-        type: r.type || "",
-        attendeeCount: Number(r.attendee_count || 0),
-      }));
-
-      // Events
-      const eventRows = await db.execute(sql`
-        SELECT name, type, space_use_type, attendee_count,
-          TO_CHAR(start_time, 'DD Mon') as date
-        FROM events
-        WHERE user_id = ${userId}
-        AND start_time >= ${new Date(startDate)}
-        AND start_time < ${new Date(endDate)}
-        AND event_status != 'cancelled'
-        ORDER BY start_time
-      `);
-
-      const eventsList = ((eventRows as any).rows || []).map((r: any) => ({
-        name: r.name || "",
-        type: r.type || "",
-        spaceUseType: r.space_use_type || "",
-        attendeeCount: Number(r.attendee_count || 0),
-        date: r.date || "",
-      }));
-
-      // Foot traffic
-      const ftRows = await db.execute(sql`
-        SELECT SUM(count) as total, COUNT(*) as days_recorded,
-          ROUND(AVG(count)) as daily_avg, MAX(count) as peak_day
-        FROM daily_foot_traffic
-        WHERE user_id = ${userId}
-        AND date >= ${new Date(startDate)} AND date < ${new Date(endDate)}
-      `);
-      const ft = (ftRows as any).rows?.[0] || {};
-
-      // Foot traffic gap detection (weekdays only)
-      const ftDatesRows = await db.execute(sql`
-        SELECT date FROM daily_foot_traffic
-        WHERE user_id = ${userId}
-        AND date >= ${new Date(startDate)} AND date < ${new Date(endDate)}
-      `);
-      const recordedDates = new Set(((ftDatesRows as any).rows || []).map((r: any) => new Date(r.date).toISOString().split("T")[0]));
-      const missingDays: string[] = [];
-      const checkEnd = new Date() < new Date(endDate) ? new Date() : new Date(endDate);
-      for (let d = new Date(startDate); d < checkEnd; d.setDate(d.getDate() + 1)) {
-        const day = d.getDay();
-        if (day === 0 || day === 6) continue; // skip weekends
-        const ds = d.toISOString().split("T")[0];
-        if (!recordedDates.has(ds)) missingDays.push(ds);
-      }
+      // Delivery numbers
+      const footTraffic = Number((ftRows as any).rows?.[0]?.total || 0);
+      const capabilityBuilding = (delivery.mentoringSessions || 0) + (delivery.programmes?.total || 0);
+      const ytdFootTraffic = Number((ytdFtRows as any).rows?.[0]?.total || 0);
+      const ytdCapability = (ytdDelivery.mentoringSessions || 0) + (ytdDelivery.programmes?.total || 0);
 
       // Community snapshot
-      const communityRows = await db.execute(sql`
-        SELECT
-          COUNT(*) as total,
-          COUNT(CASE WHEN relationship_stage = 'kakano' OR (relationship_stage IS NULL AND stage IS NULL) THEN 1 END) as kakano,
-          COUNT(CASE WHEN relationship_stage = 'tipu' THEN 1 END) as tipu,
-          COUNT(CASE WHEN relationship_stage = 'ora' THEN 1 END) as ora,
-          COUNT(CASE WHEN ethnicity @> ARRAY['Māori']::text[] THEN 1 END) as maori,
-          COUNT(CASE WHEN ethnicity && ARRAY['Samoan','Tongan','Niuean','Cook Islands Māori','Fijian']::text[] THEN 1 END) as pasifika
-        FROM contacts
-        WHERE user_id = ${userId}
-        AND active = true AND is_archived = false
-        AND (is_innovator = true OR is_community_member = true)
-      `);
       const comm = (communityRows as any).rows?.[0] || {};
+      const kakano = Number(comm.kakano || 0);
+      const tipu = Number(comm.tipu || 0);
+      const ora = Number(comm.ora || 0);
 
-      // Data quality checks
-      const eventsNoAttendees = await db.execute(sql`
-        SELECT COUNT(*) as count FROM events
-        WHERE user_id = ${userId}
-        AND start_time >= ${new Date(startDate)} AND start_time < ${new Date(endDate)}
-        AND event_status != 'cancelled'
-        AND type NOT IN ('Meeting', 'Catch Up', 'Planning')
-        AND (attendee_count IS NULL OR attendee_count = 0)
-      `);
-      const draftDebriefs = await db.execute(sql`
-        SELECT COUNT(*) as count FROM impact_logs
-        WHERE user_id = ${userId} AND status = 'draft'
-      `);
+      // Space use
+      const spaceUse = ((spaceUseRows as any).rows || []).map((r: any) => ({
+        organisation: r.organisation || "Unknown",
+        type: r.type || "",
+        bookings: Number(r.bookings || 0),
+        maori: r.maori === "true",
+        pasifika: r.pasifika === "true",
+      }));
 
-      // Groups without demographics
-      const groupsNoDemoRows = await db.execute(sql`
-        SELECT g.name FROM groups g
-        JOIN bookings b ON b.booker_group_id = g.id
-        WHERE b.user_id = ${userId}
-        AND b.start_date >= ${new Date(startDate)} AND b.start_date < ${new Date(endDate)}
-        AND b.status IN ('confirmed', 'completed')
-        AND (g.metadata IS NULL OR (g.metadata->>'maori' IS NULL AND g.metadata->>'pasifika' IS NULL))
-        GROUP BY g.name
-      `);
+      // Updates from debriefs
+      const updateItems = ((debriefRows as any).rows || []).map((r: any) => {
+        const title = r.title || "Update";
+        const notes = (r.notes || "").slice(0, 200);
+        return `${title} — ${notes}`;
+      });
 
       const reportData: MonthlyReportData = {
         period: { month: month, year, label: `${monthName} ${year}`, fyLabel },
-        activations: { count: activationCount, attendees: attendeeCount, byType: delivery.events?.byType || {} },
-        monthlyTracking: trackingMonths,
-        quarterlyTotals: {},
-        ytd: { activations: ytdActivations, attendees: ytdAttendees, newResidents: ytdNewResidents },
-        residentCompanies,
-        hirers,
-        mentoring: {
-          sessions: mentoringData.totalSessions || 0,
-          relationships: mentoringData.uniqueMentees || 0,
-          perMentee,
+        deliveryNumbers: {
+          activations: delivery.totalActivations || 0,
+          capabilityBuilding,
+          footTraffic,
+          ytdActivations: ytdDelivery.totalActivations || 0,
+          ytdCapability,
+          ytdFootTraffic,
         },
-        debriefs,
-        events: eventsList,
-        footTraffic: {
-          total: Number(ft.total || 0),
-          daysRecorded: Number(ft.days_recorded || 0),
-          dailyAvg: Number(ft.daily_avg || 0),
-          peakDay: Number(ft.peak_day || 0),
-          missingDays,
-        },
-        community: {
-          total: Number(comm.total || 0),
-          kakano: Number(comm.kakano || 0),
-          tipu: Number(comm.tipu || 0),
-          ora: Number(comm.ora || 0),
+        communitySnapshot: {
           maori: Number(comm.maori || 0),
           pasifika: Number(comm.pasifika || 0),
+          rangatahi: Number(comm.rangatahi || 0),
+          total: Number(comm.total || 0),
+          kakano,
+          tipu,
+          ora,
+          innovatorTotal: kakano + tipu + ora,
         },
-        dataQuality: {
-          eventsWithoutAttendees: Number((eventsNoAttendees as any).rows?.[0]?.count || 0),
-          missingFootTrafficDays: missingDays.length,
-          draftDebriefs: Number((draftDebriefs as any).rows?.[0]?.count || 0),
-          groupsWithoutDemographics: ((groupsNoDemoRows as any).rows || []).map((r: any) => r.name),
-        },
+        spaceUse,
+        updates: { "Updates": updateItems },
+        quotes: [],
+        plannedNextMonth: [],
       };
 
       const html = renderMonthlyReport(reportData);

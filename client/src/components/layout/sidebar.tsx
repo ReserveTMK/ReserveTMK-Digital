@@ -71,12 +71,10 @@ const navigation: NavItem[] = [
     ],
   },
   {
-    name: "Reporting", href: "/report-generator", icon: FileText,
+    name: "Reporting", href: "/reports", icon: FileText,
     children: [
-      { name: "Report Generator", href: "/report-generator", icon: FileText },
-      { name: "Dashboard", href: "/reports", icon: BarChart3 },
-      { name: "Cohorts", href: "/cohort-analysis", icon: Users },
-      { name: "Legacy Reports", href: "/legacy-reports", icon: BookOpen },
+      { name: "Reports", href: "/reports", icon: FileText },
+      { name: "Tracking", href: "/tracking", icon: BarChart3 },
       { name: "DOM", href: "/dom", icon: FileText },
       { name: "Taxonomy", href: "/taxonomy", icon: Tags },
     ],
