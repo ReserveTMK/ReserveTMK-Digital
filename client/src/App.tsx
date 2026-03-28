@@ -48,6 +48,7 @@ import AboutUsPage from "@/pages/about-us";
 import TeamSettingsPage from "@/pages/team-settings";
 import CasualHirePage from "@/pages/casual-hire";
 import CommsPage from "@/pages/comms";
+import XeroSettingsPage from "@/pages/xero-settings";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -253,6 +254,10 @@ function Router() {
 
         <Route path="/settings/team">
           <ProtectedRoute component={TeamSettingsPage} />
+        </Route>
+
+        <Route path="/settings/xero">
+          <ProtectedRoute component={XeroSettingsPage} />
         </Route>
 
         <Route path="/comms">

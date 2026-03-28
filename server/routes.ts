@@ -14474,10 +14474,10 @@ Rules:
         return res.redirect("/bookings?xero=error&message=" + encodeURIComponent("Invalid or expired OAuth state"));
       }
       await exchangeCodeForTokens(userId, code as string);
-      res.redirect("/bookings?xero=connected");
+      res.redirect("/settings/xero?xero=connected");
     } catch (err: any) {
       console.error("Xero callback error:", err);
-      res.redirect("/bookings?xero=error&message=" + encodeURIComponent(err.message));
+      res.redirect("/settings/xero?xero=error&message=" + encodeURIComponent(err.message));
     }
   });
 

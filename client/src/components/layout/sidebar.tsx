@@ -25,6 +25,7 @@ import {
   PhoneCall,
   Wrench,
   BarChart3,
+  Receipt,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "../ui/beautiful-button";
@@ -92,6 +93,7 @@ const navigation: NavItem[] = [
     children: [
       { name: "Availability", href: "/scheduling", icon: CalendarClock },
       { name: "About Us", href: "/settings/about-us", icon: Building2 },
+      { name: "Xero", href: "/settings/xero", icon: Receipt },
     ],
   },
 ];
