@@ -210,12 +210,13 @@ SESSION PROTOCOL
 Start of every session:
 
 Read this file
-Check TASKS.md for what's in progress
+Run /session-start (reads handoff, checks staleness, shows recent activity)
 Confirm with Ra what we're working on today
 
 End of every session:
 
-Update TASKS.md with progress
+Run /handoff to save session state for next session
+Run /session-summary for Ra
 Note any new decisions or patterns Ra wants remembered
 Flag anything unresolved before closing
 
