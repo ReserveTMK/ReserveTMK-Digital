@@ -2233,6 +2233,12 @@ export type InsertProgrammeRegistration = z.infer<typeof insertProgrammeRegistra
 export const RESOURCE_CATEGORIES = ["venue_hire", "hot_desking", "gear"] as const;
 export type ResourceCategory = typeof RESOURCE_CATEGORIES[number];
 
+export const GEAR_COLLECTIONS = ["creators", "personal"] as const;
+export type GearCollection = typeof GEAR_COLLECTIONS[number];
+
+export const GEAR_TIERS = ["beginner", "pro"] as const;
+export type GearTier = typeof GEAR_TIERS[number];
+
 export const GEAR_SUBCATEGORIES = [
   "Computers",
   "Lenses",
@@ -2253,6 +2259,8 @@ export const bookableResources = pgTable("bookable_resources", {
   category: text("category").notNull(),
   description: text("description"),
   subcategory: text("subcategory"),
+  collection: text("collection"),
+  tier: text("tier"),
   capacity: integer("capacity"),
   requiresApproval: boolean("requires_approval").default(false),
   active: boolean("active").default(true),

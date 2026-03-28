@@ -41,7 +41,7 @@ import {
   UserCheck,
   XCircle,
 } from "lucide-react";
-import { GEAR_SUBCATEGORIES, type BookableResource } from "@shared/schema";
+import { GEAR_SUBCATEGORIES, GEAR_COLLECTIONS, GEAR_TIERS, type BookableResource } from "@shared/schema";
 import {
   useBookableResources,
   useCreateBookableResource,
@@ -507,6 +507,8 @@ function GearInventoryTab() {
   const [gearName, setGearName] = useState("");
   const [gearDescription, setGearDescription] = useState("");
   const [gearSubcategory, setGearSubcategory] = useState("");
+  const [gearCollection, setGearCollection] = useState("");
+  const [gearTier, setGearTier] = useState("");
   const [gearRequiresApproval, setGearRequiresApproval] = useState(false);
 
   const { data: gearResources, isLoading: gearLoading } = useBookableResources("gear");
@@ -515,10 +517,15 @@ function GearInventoryTab() {
   const deleteMutation = useDeleteBookableResource();
   const { toast } = useToast();
 
+  const [collectionFilter, setCollectionFilter] = useState<string>("all");
+
   const groupedGear = useMemo(() => {
     if (!gearResources || gearResources.length === 0) return [];
+    const filtered = collectionFilter === "all"
+      ? gearResources
+      : gearResources.filter(item => item.collection === collectionFilter);
     const groups: Record<string, BookableResource[]> = {};
-    for (const item of gearResources) {
+    for (const item of filtered) {
       const key = item.subcategory || "Uncategorized";
       if (!groups[key]) groups[key] = [];
       groups[key].push(item);
@@ -527,7 +534,7 @@ function GearInventoryTab() {
     const unknownKeys = Object.keys(groups).filter(k => !knownSet.has(k)).sort();
     const orderedKeys = [...GEAR_SUBCATEGORIES.filter(c => groups[c]), ...unknownKeys, ...(groups["Uncategorized"] ? ["Uncategorized"] : [])];
     return orderedKeys.map(key => ({ category: key, items: groups[key] }));
-  }, [gearResources]);
+  }, [gearResources, collectionFilter]);
 
   const openGearForm = (gear?: BookableResource) => {
     if (gear) {
@@ -535,12 +542,16 @@ function GearInventoryTab() {
       setGearName(gear.name);
       setGearDescription(gear.description || "");
       setGearSubcategory(gear.subcategory || "");
+      setGearCollection(gear.collection || "");
+      setGearTier(gear.tier || "");
       setGearRequiresApproval(gear.requiresApproval || false);
     } else {
       setEditingGear(null);
       setGearName("");
       setGearDescription("");
       setGearSubcategory("");
+      setGearCollection("");
+      setGearTier("");
       setGearRequiresApproval(false);
     }
     setGearFormOpen(true);
@@ -552,7 +563,7 @@ function GearInventoryTab() {
       if (editingGear) {
         await updateMutation.mutateAsync({
           id: editingGear.id,
-          data: { name: gearName, description: gearDescription || null, subcategory: gearSubcategory || null, requiresApproval: gearRequiresApproval },
+          data: { name: gearName, description: gearDescription || null, subcategory: gearSubcategory || null, collection: gearCollection || null, tier: gearTier || null, requiresApproval: gearRequiresApproval },
         });
         toast({ title: "Updated", description: "Gear item updated" });
       } else {
@@ -561,6 +572,8 @@ function GearInventoryTab() {
           category: "gear",
           description: gearDescription || null,
           subcategory: gearSubcategory || null,
+          collection: gearCollection || null,
+          tier: gearTier || null,
           requiresApproval: gearRequiresApproval,
           active: true,
         });
@@ -589,6 +602,23 @@ function GearInventoryTab() {
           <Plus className="w-4 h-4 mr-1.5" />
           Add Item
         </Button>
+      </div>
+
+      <div className="flex gap-2 mb-4">
+        {[
+          { value: "all", label: "All" },
+          { value: "creators", label: "Creators" },
+          { value: "personal", label: "Personal" },
+        ].map((opt) => (
+          <Button
+            key={opt.value}
+            size="sm"
+            variant={collectionFilter === opt.value ? "default" : "outline"}
+            onClick={() => setCollectionFilter(opt.value)}
+          >
+            {opt.label}
+          </Button>
+        ))}
       </div>
 
       {gearLoading ? (
@@ -621,7 +651,13 @@ function GearInventoryTab() {
                           <Wrench className="w-4 h-4 text-muted-foreground shrink-0" />
                           <div className="min-w-0">
                             <span className="text-sm font-medium">{item.name}</span>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {item.collection && (
+                                <Badge variant="secondary" className="text-[10px] capitalize">{item.collection}</Badge>
+                              )}
+                              {item.tier && (
+                                <Badge variant={item.tier === "pro" ? "default" : "outline"} className="text-[10px] capitalize">{item.tier}</Badge>
+                              )}
                               {item.subcategory && (
                                 <Badge variant="secondary" className="text-[10px]" data-testid={`badge-subcategory-${item.id}`}>{item.subcategory}</Badge>
                               )}
@@ -681,6 +717,36 @@ function GearInventoryTab() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Collection</Label>
+                <Select value={gearCollection || "__none__"} onValueChange={(v) => setGearCollection(v === "__none__" ? "" : v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select collection" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">None</SelectItem>
+                    {GEAR_COLLECTIONS.map((c) => (
+                      <SelectItem key={c} value={c} className="capitalize">{c === "creators" ? "Creators" : "Personal"}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Tier</Label>
+                <Select value={gearTier || "__none__"} onValueChange={(v) => setGearTier(v === "__none__" ? "" : v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select tier" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">None</SelectItem>
+                    {GEAR_TIERS.map((t) => (
+                      <SelectItem key={t} value={t} className="capitalize">{t === "beginner" ? "Beginner" : "Pro"}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div>
               <Label>Description</Label>
