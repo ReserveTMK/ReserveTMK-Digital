@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { useContacts, useArchiveContact, useRestoreContact } from "@/hooks/use-contacts";
-import { Plus, Search, Filter, Loader2, X, Check, MessageSquare, FileText, Users, UserCheck, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, Lightbulb, ChevronRight, Upload, Star, BookUser, Sprout, Leaf, Sun, Ban, Mail, Archive, ArchiveRestore } from "lucide-react";
+import { Plus, Search, Filter, Loader2, X, Check, MessageSquare, FileText, Users, UserCheck, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, Lightbulb, ChevronRight, Upload, Star, BookUser, Sprout, Leaf, Sun, Ban, Mail, Archive, ArchiveRestore, AlertCircle, Coffee } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useState, useMemo, useEffect } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -34,6 +34,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { ContactsTableView } from "@/components/community/contacts-table";
 import { CreateContactDialogContent, BulkUploadDialog, CleanUpDialog } from "@/components/community/contact-dialogs";
+import { ContactFilterBar, type ContactFilters, EMPTY_FILTERS, hasActiveFilters } from "@/components/community/filter-bar";
+import { ContactCardsView } from "@/components/community/contact-cards";
 import { CONTACT_ROLES } from "@shared/schema";
 
 function getCircleBadge(circle: string | null | undefined) {
@@ -79,6 +81,12 @@ export default function Contacts() {
   const [vipReasonDialogOpen, setVipReasonDialogOpen] = useState(false);
   const [vipReasonContactId, setVipReasonContactId] = useState<number | null>(null);
   const [vipReasonText, setVipReasonText] = useState("");
+  const [advFilters, setAdvFilters] = useState<ContactFilters>(EMPTY_FILTERS);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const { data: catchUpItems } = useQuery<{ id: number; contactId: number }[]>({ queryKey: ["/api/catch-up-list"] });
+  const { data: catchUpSuggestions } = useQuery<{ id: number; name: string; role: string; daysSinceLastInteraction: number | null; urgency: string }[]>({
+    queryKey: ["/api/contacts/catch-up-suggestions"],
+  });
 
   useEffect(() => {
     if (isMobile) {
@@ -270,7 +278,7 @@ export default function Contacts() {
       queryClient.invalidateQueries({ queryKey: ["/api/ecosystem/vip"] });
       const tierLabel = data.newTier === "vip" ? "VIP" : data.newTier === "our_innovators" ? "Our Innovators" : "Our Community";
       const groupMsg = data.groupsUpdated ? ` (${data.groupsUpdated} group${data.groupsUpdated !== 1 ? 's' : ''} updated)` : '';
-      toast({ title: "Promoted", description: `Moved to ${tierLabel}${groupMsg}` });
+      toast({ title: "Done", description: `Added to ${tierLabel}${groupMsg}` });
       setVipReasonDialogOpen(false);
       setVipReasonContactId(null);
       setVipReasonText("");
@@ -301,7 +309,7 @@ export default function Contacts() {
       queryClient.invalidateQueries({ queryKey: ["/api/ecosystem/vip"] });
       const tierLabel = data.newTier === "our_innovators" ? "Our Innovators" : data.newTier === "our_community" ? "Our Community" : "All Contacts";
       const groupMsg = data.groupsUpdated ? ` (${data.groupsUpdated} group${data.groupsUpdated !== 1 ? 's' : ''} updated)` : '';
-      toast({ title: "Demoted", description: `Moved to ${tierLabel}${groupMsg}` });
+      toast({ title: "Done", description: `Moved to ${tierLabel}${groupMsg}` });
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -394,14 +402,38 @@ export default function Contacts() {
     },
   });
 
+  const catchUpContactIds = useMemo(() => new Set((catchUpItems || []).map(i => i.contactId)), [catchUpItems]);
+
+  const availableSuburbs = useMemo(() => {
+    if (!contacts) return [];
+    const set = new Set<string>();
+    for (const c of contacts as any[]) {
+      if (c.suburb) set.add(c.suburb);
+    }
+    return Array.from(set).sort();
+  }, [contacts]);
+
   const filteredContacts = contacts?.filter(contact => {
-    const matchesSearch = contact.name.toLowerCase().includes(search.toLowerCase()) || 
+    const c = contact as any;
+    const matchesSearch = contact.name.toLowerCase().includes(search.toLowerCase()) ||
                           contact.businessName?.toLowerCase().includes(search.toLowerCase()) ||
                           contact.email?.toLowerCase().includes(search.toLowerCase());
     const matchesRole = roleFilter === "all" || contact.role === roleFilter;
-    const matchesView = viewMode === "all" || (viewMode === "community" && (contact as any).isCommunityMember === true) || (viewMode === "innovators" && (contact as any).isInnovator === true);
-    const matchesVip = !vipOnly || (contact as any).isVip === true;
-    return matchesSearch && matchesRole && matchesView && matchesVip;
+    const matchesView = viewMode === "all" || (viewMode === "community" && c.isCommunityMember === true) || (viewMode === "innovators" && c.isInnovator === true);
+    const matchesVip = !vipOnly || c.isVip === true;
+
+    const f = advFilters;
+    const matchesEthnicity = f.ethnicities.length === 0 || (c.ethnicity && f.ethnicities.some((e: string) => c.ethnicity.includes(e)));
+    const matchesSuburb = f.suburbs.length === 0 || f.suburbs.includes(c.suburb);
+    const matchesSupport = f.supportTypes.length === 0 || (c.supportType && f.supportTypes.some((s: string) => c.supportType.includes(s)));
+    const matchesConnection = f.connectionStrengths.length === 0 || f.connectionStrengths.includes(c.connectionStrength);
+    const matchesVenture = f.ventureTypes.length === 0 || f.ventureTypes.includes(c.ventureType);
+    const matchesStage = f.stages.length === 0 || f.stages.includes(c.relationshipStage || c.stage);
+    const matchesCatchUp = !f.onCatchUpList || catchUpContactIds.has(contact.id);
+
+    return matchesSearch && matchesRole && matchesView && matchesVip &&
+      matchesEthnicity && matchesSuburb && matchesSupport && matchesConnection &&
+      matchesVenture && matchesStage && matchesCatchUp;
   });
 
   const roleCounts = useMemo(() => {
@@ -451,7 +483,7 @@ export default function Contacts() {
                         setSelectedContacts(new Set());
                       }} disabled={promoteMutation.isPending} data-testid="menu-bulk-promote">
                         <ArrowUp className="w-4 h-4 mr-2" />
-                        Promote ({selectedContacts.size})
+                        {viewMode === "all" ? "Add to Community" : viewMode === "community" ? "Add to Innovators" : "Mark as VIP"} ({selectedContacts.size})
                       </DropdownMenuItem>
                     )}
                     {(viewMode === "community" || viewMode === "innovators") && (
@@ -947,6 +979,41 @@ export default function Contacts() {
             </div>
           </div>
 
+          <ContactFilterBar
+            filters={advFilters}
+            onChange={setAdvFilters}
+            availableSuburbs={availableSuburbs}
+            catchUpCount={catchUpContactIds.size}
+          />
+
+          {catchUpSuggestions && catchUpSuggestions.length > 0 && (
+            <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-3">
+              <button
+                className="flex items-center gap-2 w-full text-left text-sm font-medium text-amber-700 dark:text-amber-300"
+                onClick={() => setShowSuggestions(!showSuggestions)}
+              >
+                <AlertCircle className="w-4 h-4" />
+                {catchUpSuggestions.length} contact{catchUpSuggestions.length !== 1 ? "s" : ""} need{catchUpSuggestions.length === 1 ? "s" : ""} attention
+                <ChevronRight className={`w-3.5 h-3.5 ml-auto transition-transform ${showSuggestions ? "rotate-90" : ""}`} />
+              </button>
+              {showSuggestions && (
+                <div className="mt-2 space-y-1">
+                  {catchUpSuggestions.slice(0, 10).map(s => (
+                    <div key={s.id} className="flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-amber-100/50 dark:hover:bg-amber-900/20">
+                      <Link href={`/contacts/${s.id}`} className="flex-1 min-w-0">
+                        <span className="text-sm font-medium">{s.name}</span>
+                        {s.role && <span className="text-xs text-muted-foreground ml-2">{s.role}</span>}
+                      </Link>
+                      <span className="text-[11px] text-amber-600 dark:text-amber-400 shrink-0">
+                        {s.daysSinceLastInteraction === null ? "Never contacted" : `${s.daysSinceLastInteraction}d ago`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
               {/* Contacts List / Table */}
               {isLoading ? (
                 <div className="flex justify-center items-center h-64">
@@ -960,10 +1027,10 @@ export default function Contacts() {
                   <h3 className="text-lg font-semibold mb-2">No community members found</h3>
                   <p className="text-muted-foreground mb-6">Try adjusting your filters or add a new member.</p>
                   <div className="flex items-center justify-center gap-3">
-                    {(search || roleFilter !== "all") && (
+                    {(search || roleFilter !== "all" || hasActiveFilters(advFilters)) && (
                       <Button
                         variant="outline"
-                        onClick={() => { setSearch(""); setRoleFilter("all"); }}
+                        onClick={() => { setSearch(""); setRoleFilter("all"); setAdvFilters(EMPTY_FILTERS); }}
                         data-testid="button-clear-filters"
                       >
                         <X className="w-4 h-4 mr-1.5" />
@@ -973,6 +1040,8 @@ export default function Contacts() {
                     <Button onClick={() => setOpen(true)} variant="outline" data-testid="button-add-member-empty">Add Member</Button>
                   </div>
                 </div>
+              ) : isMobile ? (
+                <ContactCardsView contacts={filteredContacts || []} catchUpContactIds={catchUpContactIds} />
               ) : layoutView === "table" ? (
                 <ContactsTableView contacts={filteredContacts || []} allContacts={(contacts as any[]) || []} editMode={editMode} selectedContacts={selectedContacts} toggleContactSelection={toggleContactSelection} toggleSelectAll={toggleSelectAll} onToggleCommunity={(id, isCommunityMember) => communityStatusMutation.mutate({ id, isCommunityMember })} drilldownTier={viewMode} onPromote={(id) => handlePromote(id)} promotePending={promoteMutation.isPending} onToggleVip={(id) => handleToggleVip(id)} toggleVipPending={toggleVipMutation.isPending} />
               ) : (
@@ -1052,7 +1121,7 @@ export default function Contacts() {
                       className="shrink-0"
                       onClick={() => handlePromote(contact.id)}
                       disabled={promoteMutation.isPending}
-                      title="Promote to Our Innovators"
+                      title="Add to Our Innovators"
                       data-testid={`button-promote-innovator-${contact.id}`}
                     >
                       <Lightbulb className="w-4 h-4 text-amber-500" />
@@ -1163,9 +1232,9 @@ export default function Contacts() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Star className="w-5 h-5 text-yellow-500" />
-              Promote to VIP
+              Mark as VIP
             </DialogTitle>
-            <DialogDescription className="sr-only">Promote contact to VIP status</DialogDescription>
+            <DialogDescription className="sr-only">Mark contact as VIP</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">

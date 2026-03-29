@@ -2,7 +2,8 @@ import { useState, useRef, useCallback } from "react";
 import { Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertContactSchema, CONTACT_ROLES } from "@shared/schema";
+import { insertContactSchema, CONTACT_ROLES, JOURNEY_STAGES } from "@shared/schema";
+import { CONNECTION_LEVELS, SUPPORT_OPTIONS, SUPPORT_LABEL_MAP } from "./inline-cells";
 import { z } from "zod";
 import { Button } from "@/components/ui/beautiful-button";
 import { Badge } from "@/components/ui/badge";
@@ -183,6 +184,60 @@ export function CreateContactDialogContent({ onSuccess }: { onSuccess: () => voi
               data-testid="input-role-other"
             />
           )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Stage</Label>
+            <Select value={form.watch("relationshipStage") || "kakano"} onValueChange={(v) => form.setValue("relationshipStage", v)}>
+              <SelectTrigger data-testid="select-stage">
+                <SelectValue placeholder="Kakano" />
+              </SelectTrigger>
+              <SelectContent>
+                {JOURNEY_STAGES.map(s => (
+                  <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Connection</Label>
+            <Select value={form.watch("connectionStrength") || ""} onValueChange={(v) => form.setValue("connectionStrength", v === "__none__" ? "" : v)}>
+              <SelectTrigger data-testid="select-connection">
+                <SelectValue placeholder="Not set" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">Not set</SelectItem>
+                {CONNECTION_LEVELS.map(l => (
+                  <SelectItem key={l} value={l}>{l.charAt(0).toUpperCase() + l.slice(1)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Support Needed</Label>
+          <div className="grid grid-cols-2 gap-2 bg-muted/30 p-3 rounded-lg border border-border">
+            {(SUPPORT_OPTIONS as readonly string[]).map(s => (
+              <label key={s} className="flex items-center space-x-2 text-sm cursor-pointer hover:bg-muted/50 p-1 rounded transition-colors">
+                <input
+                  type="checkbox"
+                  value={s}
+                  className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  onChange={(e) => {
+                    const current = form.getValues("supportType") || [];
+                    if (e.target.checked) {
+                      form.setValue("supportType", [...current, s]);
+                    } else {
+                      form.setValue("supportType", current.filter((v: string) => v !== s));
+                    }
+                  }}
+                />
+                <span>{SUPPORT_LABEL_MAP[s] || s}</span>
+              </label>
+            ))}
+          </div>
         </div>
 
         <div className="space-y-2">

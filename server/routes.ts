@@ -10775,6 +10775,44 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     }
   });
 
+  // === Catch-up suggestions — contacts with no recent interaction ===
+  app.get("/api/contacts/catch-up-suggestions", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const result = await db.execute(sql`
+        SELECT c.id, c.name, c.role, c.relationship_stage as stage,
+          c.is_community_member, c.is_innovator,
+          (SELECT MAX(i.created_at) FROM interactions i WHERE i.contact_id = c.id) as last_interaction
+        FROM contacts c
+        WHERE c.user_id = ${userId} AND c.active = true AND c.is_archived = false
+          AND (c.is_community_member = true OR c.is_innovator = true)
+          AND c.id NOT IN (SELECT contact_id FROM catch_up_list WHERE user_id = ${userId} AND dismissed_at IS NULL)
+        ORDER BY last_interaction ASC NULLS FIRST
+      `);
+
+      const now = Date.now();
+      const suggestions = (result.rows || []).map((r: any) => {
+        const lastDate = r.last_interaction ? new Date(r.last_interaction).getTime() : null;
+        const daysSince = lastDate ? Math.floor((now - lastDate) / (1000 * 60 * 60 * 24)) : null;
+        const urgency = daysSince === null ? "overdue" : daysSince > 90 ? "overdue" : daysSince > 60 ? "soon" : daysSince > 30 ? "upcoming" : null;
+        if (!urgency) return null;
+        return {
+          id: r.id,
+          name: r.name,
+          role: r.role,
+          stage: r.stage,
+          daysSinceLastInteraction: daysSince,
+          urgency,
+        };
+      }).filter(Boolean);
+
+      res.json(suggestions);
+    } catch (err: any) {
+      console.error("Catch-up suggestions error:", err);
+      res.status(500).json({ message: "Failed to get suggestions" });
+    }
+  });
+
   // === REPORT HIGHLIGHTS ===
 
   app.get("/api/report-highlights", isAuthenticated, async (req, res) => {
@@ -11339,6 +11377,54 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     } catch (err: any) {
       console.error("Ecosystem health error:", err);
       res.status(500).json({ message: "Failed to get ecosystem health" });
+    }
+  });
+
+  // === Engagement Decay — preview and apply dormancy ===
+  app.post("/api/groups/check-engagement-decay", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const apply = req.body?.apply === true;
+
+      const result = await db.execute(sql`
+        WITH last_engagement AS (
+          SELECT g.id as group_id, g.name, g.engagement_level,
+            GREATEST(
+              (SELECT MAX(e.start_time) FROM events e
+               JOIN event_attendance ea ON ea.event_id = e.id
+               JOIN group_members gm ON gm.contact_id = ea.contact_id AND gm.group_id = g.id
+               WHERE e.user_id = ${userId}),
+              (SELECT MAX(COALESCE(b.start_date, b.created_at)) FROM bookings b WHERE b.booker_group_id = g.id AND b.user_id = ${userId}),
+              (SELECT MAX(cs.date) FROM community_spend cs WHERE cs.group_id = g.id AND cs.user_id = ${userId}),
+              (SELECT MAX(ilg.created_at) FROM impact_log_groups ilg WHERE ilg.group_id = g.id)
+            ) as last_date
+          FROM groups g
+          WHERE g.user_id = ${userId} AND g.engagement_level != 'Dormant'
+        )
+        SELECT group_id, name, engagement_level, last_date
+        FROM last_engagement
+        WHERE last_date < NOW() - INTERVAL '180 days' OR last_date IS NULL
+      `);
+
+      const candidates = (result.rows || []).map((r: any) => ({
+        id: Number(r.group_id),
+        name: r.name,
+        currentLevel: r.engagement_level,
+        lastActivity: r.last_date,
+      }));
+
+      if (apply && candidates.length > 0) {
+        const ids = candidates.map((c: any) => c.id);
+        await db.execute(sql`
+          UPDATE groups SET engagement_level = 'Dormant', updated_at = NOW()
+          WHERE id = ANY(${ids}) AND user_id = ${userId}
+        `);
+      }
+
+      res.json({ candidates, applied: apply, count: candidates.length });
+    } catch (err: any) {
+      console.error("Engagement decay error:", err);
+      res.status(500).json({ message: "Failed to check engagement decay" });
     }
   });
 

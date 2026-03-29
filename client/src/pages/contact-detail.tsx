@@ -509,6 +509,13 @@ export default function ContactDetail() {
                       onStageChange={(stage) => stageMutation.mutate(stage)}
                       disabled={stageMutation.isPending}
                     />
+                    <StagePrompt
+                      stage={normalizeStage(contact.relationshipStage)}
+                      interactionCount={interactions?.length || 0}
+                      connectionStrength={contact.connectionStrength}
+                      contactId={contact.id}
+                      onPromote={(stage) => stageMutation.mutate(stage)}
+                    />
                     <Button variant="ghost" size="sm" className="text-xs h-6 px-2 text-muted-foreground" onClick={() => setShowDetails(!showDetails)} data-testid="button-toggle-details">
                       {showDetails ? "Less" : "More"}
                       <ChevronDown className={`w-3 h-3 ml-1 transition-transform ${showDetails ? "rotate-180" : ""}`} />
@@ -550,6 +557,7 @@ export default function ContactDetail() {
                           ))}
                         </div>
                       )}
+                      <InlineNotes contactId={contact.id} notes={contact.notes} />
                     </div>
                   )}
                 </div>
@@ -1271,6 +1279,100 @@ export default function ContactDetail() {
         contact={contact}
       />
     </>
+  );
+}
+
+function StagePrompt({ stage, interactionCount, connectionStrength, contactId, onPromote }: {
+  stage: string;
+  interactionCount: number;
+  connectionStrength?: string | null;
+  contactId: number;
+  onPromote: (stage: string) => void;
+}) {
+  const dismissKey = `stage-prompt-dismissed-${contactId}-${stage}`;
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem(dismissKey) === "true");
+
+  if (dismissed) return null;
+
+  const connLevel = ["known", "connected", "engaged", "embedded", "partnering"].indexOf(connectionStrength || "");
+  let suggestion: { nextStage: string; label: string } | null = null;
+
+  if (stage === "kakano" && interactionCount >= 3 && connLevel >= 2) {
+    suggestion = { nextStage: "tipu", label: "Tipu" };
+  } else if (stage === "tipu" && interactionCount >= 10 && connLevel >= 3) {
+    suggestion = { nextStage: "ora", label: "Ora" };
+  }
+
+  if (!suggestion) return null;
+
+  return (
+    <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20">
+      <span className="text-[11px] text-amber-700 dark:text-amber-300">Ready for {suggestion.label}?</span>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-5 text-[11px] px-1.5 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20"
+        onClick={() => onPromote(suggestion!.nextStage)}
+      >
+        Move
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-5 text-[11px] px-1 text-muted-foreground"
+        onClick={() => { localStorage.setItem(dismissKey, "true"); setDismissed(true); }}
+      >
+        Dismiss
+      </Button>
+    </div>
+  );
+}
+
+function InlineNotes({ contactId, notes }: { contactId: number; notes?: string | null }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(notes || "");
+  const { toast } = useToast();
+  const updateMutation = useMutation({
+    mutationFn: async (newNotes: string) => {
+      await apiRequest("PATCH", `/api/contacts/${contactId}`, { notes: newNotes || null });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      setEditing(false);
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  if (editing) {
+    return (
+      <div className="space-y-1.5">
+        <Textarea
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className="text-xs min-h-[60px] resize-none"
+          placeholder="Add notes..."
+          autoFocus
+        />
+        <div className="flex gap-1.5">
+          <Button size="sm" variant="default" className="h-6 text-xs px-2" onClick={() => updateMutation.mutate(value)} disabled={updateMutation.isPending}>
+            Save
+          </Button>
+          <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={() => { setEditing(false); setValue(notes || ""); }}>
+            Cancel
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      className="text-left text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+      onClick={() => setEditing(true)}
+      data-testid="inline-notes"
+    >
+      {notes ? notes : <span className="italic text-muted-foreground/60">+ Add notes</span>}
+    </button>
   );
 }
 

@@ -124,7 +124,7 @@ function Router() {
         </Route>
 
         <Route path="/community/ecosystems">
-          <ProtectedRoute component={EcosystemPage} />
+          <Redirect to="/community/groups" />
         </Route>
 
         <Route path="/community">
@@ -206,7 +206,7 @@ function Router() {
         </Route>
 
         <Route path="/ecosystem">
-          <Redirect to="/community/ecosystems" />
+          <Redirect to="/community/groups" />
         </Route>
 
         <Route path="/community-spend">

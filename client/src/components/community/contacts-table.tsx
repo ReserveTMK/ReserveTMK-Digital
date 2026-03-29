@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { format } from "date-fns";
+import { formatRelativeDate } from "./ecosystem-views";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Lightbulb, UserCheck, Loader2, Coffee, Star } from "lucide-react";
@@ -249,6 +250,7 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
                   <SortHeader label="Area" field="area" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-20" />
                 )}
                 <SortHeader label="Connection" field="connection" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[120px]" />
+                <SortHeader label="Last Seen" field="lastActive" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-24" />
               </tr>
             </thead>
             <tbody>
@@ -298,6 +300,14 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
                         >
                           R
                         </span>
+                      )}
+                      {catchUpContactIds.has(contact.id) && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Coffee className="w-3.5 h-3.5 shrink-0 text-orange-500" />
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="text-xs">On catch-up list</TooltipContent>
+                        </Tooltip>
                       )}
                     </div>
                   </td>
@@ -380,6 +390,11 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
                   )}
                   <td className="px-1 py-2">
                     <InlineConnectionCell contactId={contact.id} connectionStrength={contact.connectionStrength} />
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {formatRelativeDate(contact.lastActiveDate || contact.lastInteractionDate || null)}
+                    </span>
                   </td>
                 </tr>
               ))}

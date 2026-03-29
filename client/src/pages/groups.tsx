@@ -1,8 +1,12 @@
 import { Button } from "@/components/ui/beautiful-button";
-import { useGroups, useCreateGroup, useUpdateGroup, useDeleteGroup, useGroupMembers, useAddGroupMember, useRemoveGroupMember, useEnrichGroup, useGroupTaxonomyLinks, useSaveGroupTaxonomyLinks, useGroupAssociations, useAddGroupAssociation, useRemoveGroupAssociation } from "@/hooks/use-groups";
+import { useGroups, useCreateGroup, useUpdateGroup, useDeleteGroup, useGroupMembers, useAddGroupMember, useRemoveGroupMember, useEnrichGroup, useGroupTaxonomyLinks, useSaveGroupTaxonomyLinks, useGroupAssociations, useAddGroupAssociation, useRemoveGroupAssociation, useAllGroupAssociations } from "@/hooks/use-groups";
 import { useContacts } from "@/hooks/use-contacts";
 import { useTaxonomy } from "@/hooks/use-taxonomy";
-import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe, Target, Pencil, Edit3, CheckSquare, UserCheck, Merge, List, Table, ArrowUp, ArrowDown, ArrowUpDown, Lightbulb, MoreVertical, Star, Link2 } from "lucide-react";
+import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe, Target, Pencil, Edit3, CheckSquare, UserCheck, Merge, List, Table, ArrowUp, ArrowDown, ArrowUpDown, Lightbulb, MoreVertical, Star, Link2, Network } from "lucide-react";
+import {
+  HealthSummaryCards, VipSection, CategoriesView, ConnectionsView, ConnectionManagementPanel,
+  type EngagementMetrics, type HealthSummary, type VipItem,
+} from "@/components/community/ecosystem-views";
 import { Link } from "wouter";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -88,7 +92,7 @@ export default function Groups() {
   const [selectedGroups, setSelectedGroups] = useState<Set<number>>(new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"community" | "innovators" | "all" | "vip">("all");
-  const [layoutView, setLayoutView] = useState<"list" | "table">("list");
+  const [layoutView, setLayoutView] = useState<"list" | "table" | "ecosystem">("list");
 
 
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
@@ -108,6 +112,19 @@ export default function Groups() {
   const { data: communityDensity } = useQuery<Record<number, { communityCount: number; totalMembers: number }>>({
     queryKey: ['/api/groups/community-density'],
   });
+  const { data: engagementData } = useQuery<Record<number, EngagementMetrics>>({
+    queryKey: ['/api/groups/engagement-metrics'],
+    enabled: layoutView === "ecosystem",
+  });
+  const { data: healthData } = useQuery<HealthSummary>({
+    queryKey: ['/api/groups/ecosystem-health'],
+    enabled: layoutView === "ecosystem",
+  });
+  const { data: vipItems } = useQuery<VipItem[]>({
+    queryKey: ['/api/ecosystem/vip'],
+    enabled: layoutView === "ecosystem",
+  });
+  const { data: allAssociations } = useAllGroupAssociations();
 
   const { data: suggestedDuplicates } = useQuery<{ reason: string; groups: any[] }[]>({
     queryKey: ['/api/groups/suggested-duplicates'],
@@ -236,8 +253,8 @@ export default function Groups() {
       queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
       queryClient.invalidateQueries({ queryKey: ['/api/groups/community-density'] });
       queryClient.invalidateQueries({ queryKey: ['/api/ecosystem/vip'] });
-      const label = viewMode === "all" ? "Promoted to Our Community" : viewMode === "community" ? "Promoted to Our Innovators" : "Promoted to VIP";
-      toast({ title: "Group promoted", description: label });
+      const label = viewMode === "all" ? "Added to Our Community" : viewMode === "community" ? "Added to Our Innovators" : "Marked as VIP";
+      toast({ title: "Done", description: label });
       setVipReasonDialogOpen(false);
       setVipReasonGroupId(null);
       setVipReasonText("");
@@ -313,7 +330,7 @@ export default function Groups() {
       queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
       queryClient.invalidateQueries({ queryKey: ['/api/groups/community-density'] });
       queryClient.invalidateQueries({ queryKey: ['/api/ecosystem/vip'] });
-      toast({ title: "Groups promoted", description: `${selectedGroups.size} group(s) promoted` });
+      toast({ title: "Done", description: `${selectedGroups.size} group(s) updated` });
       setSelectedGroups(new Set());
     },
     onError: (error) => {
@@ -415,6 +432,47 @@ export default function Groups() {
     return result;
   }, [filteredGroups, communityDensity, viewMode]);
 
+  const parentMap = useMemo(() => {
+    const map: Record<number, { parentId: number; parentName: string }> = {};
+    if (!allAssociations || !groups) return map;
+    const assocs = allAssociations as any[];
+    const groupList = groups as Group[];
+    for (const a of assocs) {
+      if (a.relationshipType === "parent") {
+        const parentGroup = groupList.find(g => g.id === a.groupId);
+        if (parentGroup) {
+          map[a.associatedGroupId] = { parentId: a.groupId, parentName: parentGroup.name };
+        }
+      }
+    }
+    return map;
+  }, [allAssociations, groups]);
+
+  const ecoGroupedByType = useMemo(() => {
+    const result: Record<string, Group[]> = {};
+    for (const t of GROUP_TYPES) result[t] = [];
+    for (const g of filteredGroups) {
+      const key = g.type || "Uncategorised";
+      if (!result[key]) result[key] = [];
+      result[key].push(g);
+    }
+    if (communityDensity) {
+      for (const key of Object.keys(result)) {
+        result[key].sort((a, b) => {
+          const aDensity = communityDensity[a.id]?.communityCount || 0;
+          const bDensity = communityDensity[b.id]?.communityCount || 0;
+          return bDensity - aDensity;
+        });
+      }
+    }
+    return result;
+  }, [filteredGroups, communityDensity]);
+
+  const [ecoSubView, setEcoSubView] = useState<"categories" | "connections">("categories");
+  const [connectionPanelGroupId, setConnectionPanelGroupId] = useState<number | null>(null);
+  const [ecoEditMode, setEcoEditMode] = useState(false);
+  const [ecoSelectedIds, setEcoSelectedIds] = useState<number[]>([]);
+
   const openCreateDialog = () => {
     setEditingGroup(null);
     setDialogOpen(true);
@@ -492,7 +550,7 @@ export default function Groups() {
                     data-testid="button-bulk-promote-groups"
                   >
                     {bulkPromoteMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowUp className="w-4 h-4 mr-2" />}
-                    Promote ({selectedGroups.size})
+                    {viewMode === "all" ? "Add to Community" : viewMode === "community" ? "Add to Innovators" : "Mark as VIP"} ({selectedGroups.size})
                   </Button>
                 )}
                 {(viewMode === "community" || viewMode === "innovators") && (
@@ -651,6 +709,14 @@ export default function Groups() {
                 >
                   <Table className="w-4 h-4" />
                 </Button>
+                <Button
+                  variant={layoutView === "ecosystem" ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setLayoutView("ecosystem")}
+                  data-testid="button-layout-ecosystem"
+                >
+                  <Network className="w-4 h-4" />
+                </Button>
               </div>
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
@@ -720,6 +786,46 @@ export default function Groups() {
                 )}
               </div>
             </Card>
+          ) : layoutView === "ecosystem" ? (
+            <div className="space-y-6">
+              <HealthSummaryCards healthData={healthData} totalGroups={groups?.length || 0} />
+              {vipItems && vipItems.length > 0 && <VipSection vipItems={vipItems} />}
+              <div className="flex items-center gap-1 border rounded-lg p-0.5 w-fit">
+                <Button size="sm" variant={ecoSubView === "categories" ? "default" : "ghost"} className="h-8 text-xs" onClick={() => setEcoSubView("categories")}>
+                  <Building2 className="w-3.5 h-3.5 mr-1" />Categories
+                </Button>
+                <Button size="sm" variant={ecoSubView === "connections" ? "default" : "ghost"} className="h-8 text-xs" onClick={() => setEcoSubView("connections")}>
+                  <Network className="w-3.5 h-3.5 mr-1" />Connections
+                </Button>
+              </div>
+              {ecoSubView === "categories" ? (
+                <CategoriesView
+                  groupedByType={ecoGroupedByType}
+                  densityData={communityDensity || undefined}
+                  engagementData={engagementData}
+                  editMode={ecoEditMode}
+                  selectedIds={ecoSelectedIds}
+                  onToggleSelect={(id) => setEcoSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])}
+                  onDelete={(id) => setDeleteConfirmId(id)}
+                  onManageConnections={(id) => setConnectionPanelGroupId(id)}
+                  parentMap={parentMap}
+                />
+              ) : (
+                <ConnectionsView
+                  groups={filteredGroups}
+                  allGroups={(groups as Group[]) || []}
+                  associations={(allAssociations as any[]) || []}
+                  densityData={communityDensity || undefined}
+                  engagementData={engagementData}
+                  editMode={ecoEditMode}
+                  selectedIds={ecoSelectedIds}
+                  onToggleSelect={(id) => setEcoSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])}
+                  onDelete={(id) => setDeleteConfirmId(id)}
+                  onManageConnections={(id) => setConnectionPanelGroupId(id)}
+                  parentMap={parentMap}
+                />
+              )}
+            </div>
           ) : layoutView === "table" ? (
             <GroupsTableView
               groups={displayGroups}
@@ -755,6 +861,15 @@ export default function Groups() {
           onCreate={createGroup}
           onUpdate={updateGroup}
         />
+
+        {connectionPanelGroupId && (
+          <ConnectionManagementPanel
+            groupId={connectionPanelGroupId}
+            allGroups={(groups as Group[]) || []}
+            associations={(allAssociations as any[]) || []}
+            onClose={() => setConnectionPanelGroupId(null)}
+          />
+        )}
 
         {selectedGroup && (
           <GroupDetailDialog
@@ -828,11 +943,14 @@ export default function Groups() {
               <DialogTitle data-testid="text-merge-groups-title">Merge {selectedGroups.size} Groups</DialogTitle>
               <DialogDescription className="sr-only">Merge selected groups into one</DialogDescription>
             </DialogHeader>
-            <p className="text-sm text-muted-foreground">Choose the primary group to keep. Members, taxonomy links, and all related data from the other groups will be merged into it, and the duplicates will be removed.</p>
+            <p className="text-sm text-muted-foreground">Choose the primary group to keep. Members, taxonomy links, and associations from the other groups will transfer to it.</p>
             <div className="space-y-2 max-h-60 overflow-y-auto py-2">
               {Array.from(selectedGroups).map(id => {
                 const g = groups?.find((gr: any) => gr.id === id);
                 if (!g) return null;
+                const density = communityDensity?.[id];
+                const memberCount = density?.totalMembers || 0;
+                const commCount = density?.communityCount || 0;
                 return (
                   <div
                     key={id}
@@ -844,13 +962,24 @@ export default function Groups() {
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm truncate">{g.name}</p>
                       <p className="text-xs text-muted-foreground truncate">
-                        {g.type}
+                        {g.type}{memberCount > 0 ? ` · ${memberCount} member${memberCount !== 1 ? "s" : ""}` : ""}{commCount > 0 ? ` (${commCount} community)` : ""}
                       </p>
                     </div>
                     {primaryMergeId === id && <Badge variant="secondary" className="text-xs">Primary</Badge>}
                   </div>
                 );
               })}
+              {primaryMergeId && (
+                <div className="mt-2 p-2.5 rounded-lg bg-muted/50 text-xs text-muted-foreground">
+                  {(() => {
+                    const otherIds = Array.from(selectedGroups).filter(id => id !== primaryMergeId);
+                    const totalTransfer = otherIds.reduce((sum, id) => sum + (communityDensity?.[id]?.totalMembers || 0), 0);
+                    return totalTransfer > 0
+                      ? `${totalTransfer} member${totalTransfer !== 1 ? "s" : ""} will transfer to the primary group.`
+                      : "No members to transfer.";
+                  })()}
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setMergeDialogOpen(false)} data-testid="button-cancel-merge-groups">
@@ -973,9 +1102,9 @@ export default function Groups() {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Star className="w-5 h-5 text-yellow-500" />
-                Promote to VIP
+                Mark as VIP
               </DialogTitle>
-              <DialogDescription className="sr-only">Promote group to VIP status</DialogDescription>
+              <DialogDescription className="sr-only">Mark group as VIP</DialogDescription>
             </DialogHeader>
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
@@ -996,7 +1125,7 @@ export default function Groups() {
               </Button>
               <Button onClick={confirmGroupVipPromotion} disabled={promoteMutation.isPending} data-testid="button-confirm-vip-promote-group">
                 {promoteMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                Promote to VIP
+                Mark as VIP
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1325,7 +1454,7 @@ function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, t
                           variant="ghost"
                           onClick={() => onPromote(group.id)}
                           disabled={isPromoting}
-                          title={viewMode === "all" ? "Promote to Our Community" : "Promote to Our Innovators"}
+                          title={viewMode === "all" ? "Add to Our Community" : "Add to Our Innovators"}
                           data-testid={`table-promote-group-${group.id}`}
                         >
                           <ArrowUp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -1378,8 +1507,8 @@ function GroupCard({ group, onSelect, onEdit, onDelete, editMode, isSelected, on
     viewMode === "innovators" ? <Star className="w-3.5 h-3.5 text-yellow-600 dark:text-yellow-400" /> : null;
 
   const promoteTitle = viewMode === "all" ? "Add to Our Community" :
-    viewMode === "community" ? "Promote to Our Innovators" :
-    viewMode === "innovators" ? "Promote to VIP" : "";
+    viewMode === "community" ? "Add to Our Innovators" :
+    viewMode === "innovators" ? "Mark as VIP" : "";
 
   const showPromote = viewMode === "all" ? !group.isCommunity :
     viewMode === "community" ? !group.isInnovator :
@@ -1477,6 +1606,8 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
   const [address, setAddress] = useState("");
   const [website, setWebsite] = useState("");
   const [notes, setNotes] = useState("");
+  const [isMaori, setIsMaori] = useState(false);
+  const [isPasifika, setIsPasifika] = useState(false);
 
   const resetForm = () => {
     setName(group?.name || "");
@@ -1488,6 +1619,8 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
     setAddress(group?.address || "");
     setWebsite(group?.website || "");
     setNotes(group?.notes || "");
+    setIsMaori(group?.isMaori ?? false);
+    setIsPasifika(group?.isPasifika ?? false);
   };
 
   const handleOpenChange = (isOpen: boolean) => {
@@ -1507,6 +1640,8 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
       address: address.trim() || undefined,
       website: website.trim() || undefined,
       notes: notes.trim() || undefined,
+      isMaori,
+      isPasifika,
     };
 
     if (group) {
@@ -1589,6 +1724,16 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
           <div className="space-y-2">
             <Label>Notes</Label>
             <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Additional notes..." data-testid="input-group-notes" />
+          </div>
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <Checkbox id="isMaori" checked={isMaori} onCheckedChange={(v) => setIsMaori(v === true)} data-testid="checkbox-is-maori" />
+              <Label htmlFor="isMaori" className="text-sm font-normal cursor-pointer">Maori-led</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox id="isPasifika" checked={isPasifika} onCheckedChange={(v) => setIsPasifika(v === true)} data-testid="checkbox-is-pasifika" />
+              <Label htmlFor="isPasifika" className="text-sm font-normal cursor-pointer">Pasifika-led</Label>
+            </div>
           </div>
         </div>
         <DialogFooter>
@@ -1776,6 +1921,8 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit, allGro
                   {group.engagementLevel}
                 </Badge>
               )}
+              {group.isMaori && <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300">Maori-led</Badge>}
+              {group.isPasifika && <Badge className="bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300">Pasifika-led</Badge>}
               <Button
                 size="sm"
                 variant="outline"
