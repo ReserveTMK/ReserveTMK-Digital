@@ -539,8 +539,7 @@ export interface IStorage {
   updateMentoringOnboardingQuestion(id: number, updates: Partial<InsertMentoringOnboardingQuestion>): Promise<MentoringOnboardingQuestion>;
   deleteMentoringOnboardingQuestion(id: number): Promise<void>;
 
-  // Stage Progression
-  appendStageProgression(contactId: number, stage: string, notes?: string): Promise<Contact>;
+
 
   // Projects
   getProjects(userId: string): Promise<Project[]>;
@@ -2489,21 +2488,6 @@ export class DatabaseStorage implements IStorage {
     await db.delete(catchUpList).where(eq(catchUpList.id, id));
   }
 
-  // Stage Progression
-  async appendStageProgression(contactId: number, stage: string, notes?: string): Promise<Contact> {
-    const contact = await this.getContact(contactId);
-    if (!contact) {
-      throw new Error(`Contact ${contactId} not found`);
-    }
-    const existing: Array<{ stage: string; date: string; notes?: string }> = (contact.stageProgression as any) || [];
-    const entry = { stage, date: new Date().toISOString(), ...(notes ? { notes } : {}) };
-    const updated = [...existing, entry];
-    const [result] = await db.update(contacts)
-      .set({ stage, stageProgression: updated, updatedAt: new Date() })
-      .where(eq(contacts.id, contactId))
-      .returning();
-    return result;
-  }
   // Programme Registrations
   async createProgrammeRegistration(data: InsertProgrammeRegistration): Promise<ProgrammeRegistration> {
     const [registration] = await db.insert(programmeRegistrations).values(data).returning();

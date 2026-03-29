@@ -89,6 +89,7 @@ export default function Contacts() {
 
   const { data: allGroups } = useQuery<any[]>({ queryKey: ["/api/groups"] });
   const { data: suggestedDuplicates } = useQuery<{ reason: string; contacts: any[] }[]>({ queryKey: ["/api/contacts/suggested-duplicates"] });
+  const { data: lastEngaged } = useQuery<Record<number, string>>({ queryKey: ["/api/contacts/last-engaged"] });
 
   const dismissDuplicateMutation = useMutation({
     mutationFn: async ({ id1, id2 }: { id1: number; id2: number }) => {
@@ -1121,12 +1122,20 @@ export default function Contacts() {
                         {contact.name}
                         {contact.isArchived && <Badge variant="outline" className="ml-2 text-[10px] h-4 px-1.5 bg-muted text-muted-foreground" data-testid={`badge-archived-${contact.id}`}>Archived</Badge>}
                       </h3>
-                      {(contact.linkedGroupName || contact.businessName) && (
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground truncate" data-testid={`text-group-link-${contact.id}`}>
-                          <Building2 className="w-3 h-3 shrink-0" />
-                          {contact.linkedGroupName || contact.businessName}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground truncate">
+                        {(contact.linkedGroupName || contact.businessName) && (
+                          <span className="flex items-center gap-1 truncate" data-testid={`text-group-link-${contact.id}`}>
+                            <Building2 className="w-3 h-3 shrink-0" />
+                            {contact.linkedGroupName || contact.businessName}
+                          </span>
+                        )}
+                        {lastEngaged?.[contact.id] && (() => {
+                          const days = Math.floor((Date.now() - new Date(lastEngaged[contact.id]).getTime()) / 86400000);
+                          if (days > 60) return <span className="text-red-500 text-[10px]">{days}d ago</span>;
+                          if (days > 30) return <span className="text-amber-500 text-[10px]">{days}d ago</span>;
+                          return null;
+                        })()}
+                      </div>
                     </div>
 
                     {viewMode === "innovators" && (

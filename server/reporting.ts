@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { sql, eq, ne, and, gte, lte, inArray, count, sum, asc } from "drizzle-orm";
+import { sql, eq, ne, and, or, gte, lte, inArray, count, sum, asc } from "drizzle-orm";
 import {
   impactLogs, impactLogContacts, impactLogGroups, impactTags, impactTaxonomy,
   contacts, groups, groupMembers, events, eventAttendance,
@@ -2288,42 +2288,41 @@ export async function getJourneyStageProgression(filters: ReportFilters) {
   const end = parseDate(filters.endDate);
   const STAGE_ORDER = ["kakano", "tipu", "ora"];
 
-  const allContacts = await db.select({
-    id: contacts.id,
-    stage: contacts.stage,
-    stageProgression: contacts.stageProgression,
-  }).from(contacts).where(eq(contacts.userId, filters.userId));
+  // Get transitions from authoritative table
+  const historyRows = await db.execute(sql`
+    SELECT rsh.previous_stage, rsh.new_stage, COUNT(*) as cnt
+    FROM relationship_stage_history rsh
+    JOIN contacts c ON c.id = rsh.entity_id AND rsh.entity_type = 'contact'
+    WHERE c.user_id = ${filters.userId}
+      AND rsh.changed_at >= ${start} AND rsh.changed_at <= ${end}
+      AND (rsh.change_type = 'stage' OR rsh.change_type IS NULL)
+    GROUP BY rsh.previous_stage, rsh.new_stage
+  `);
 
-  const filtered = allContacts;
-
-  const transitionMap = new Map<string, number>();
+  const transitions: { from: string; to: string; count: number }[] = [];
   let totalProgressions = 0;
 
-  for (const c of filtered) {
-    const prog = c.stageProgression as Array<{ stage: string; date: string; notes?: string }> | null;
-    if (!prog || !Array.isArray(prog)) continue;
-    const sorted = [...prog].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    for (let i = 1; i < sorted.length; i++) {
-      const d = new Date(sorted[i].date);
-      if (d >= start && d <= end) {
-        const fromIdx = STAGE_ORDER.indexOf(sorted[i - 1].stage);
-        const toIdx = STAGE_ORDER.indexOf(sorted[i].stage);
-        if (toIdx > fromIdx) {
-          const key = `${sorted[i - 1].stage}\u2192${sorted[i].stage}`;
-          transitionMap.set(key, (transitionMap.get(key) || 0) + 1);
-          totalProgressions++;
-        }
-      }
+  for (const row of (historyRows as any).rows || []) {
+    const fromIdx = STAGE_ORDER.indexOf(row.previous_stage);
+    const toIdx = STAGE_ORDER.indexOf(row.new_stage);
+    if (toIdx > fromIdx && toIdx >= 0) {
+      const count = Number(row.cnt);
+      transitions.push({ from: row.previous_stage, to: row.new_stage, count });
+      totalProgressions += count;
     }
   }
 
-  const transitions = Array.from(transitionMap.entries()).map(([key, cnt]) => {
-    const [from, to] = key.split("\u2192");
-    return { from, to, count: cnt };
-  });
+  // Current distribution from live contact data
+  const distRows = await db.select({ stage: contacts.stage }).from(contacts)
+    .where(and(
+      eq(contacts.userId, filters.userId),
+      eq(contacts.active, true),
+      eq(contacts.isArchived, false),
+      or(eq(contacts.isInnovator, true), eq(contacts.isCommunityMember, true)),
+    ));
 
   const currentDistribution: Record<string, number> = { kakano: 0, tipu: 0, ora: 0 };
-  for (const c of filtered) {
+  for (const c of distRows) {
     const stage = c.stage || "kakano";
     if (stage in currentDistribution) currentDistribution[stage]++;
   }

@@ -100,10 +100,18 @@ async function autoPromoteToInnovator(contactId: number) {
   try {
     const contact = await storage.getContact(contactId);
     if (contact && (!contact.isCommunityMember || !contact.isInnovator)) {
-      await storage.updateContact(contactId, {
+      const now = new Date();
+      const updates: any = {
         isCommunityMember: true,
         isInnovator: true,
-      } as any);
+      };
+      if (!contact.isCommunityMember && !contact.movedToCommunityAt) {
+        updates.movedToCommunityAt = now;
+      }
+      if (!contact.isInnovator && !contact.movedToInnovatorsAt) {
+        updates.movedToInnovatorsAt = now;
+      }
+      await storage.updateContact(contactId, updates);
     }
   } catch (err) {
     console.warn(`Failed to auto-promote contact ${contactId} to innovator:`, err);
@@ -332,6 +340,33 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/contacts/last-engaged", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const rows = await db.execute(sql`
+        SELECT c.id as contact_id, GREATEST(
+          (SELECT MAX(m.start_time) FROM meetings m WHERE m.contact_id = c.id AND m.status IN ('completed', 'confirmed')),
+          (SELECT MAX(e.start_time) FROM events e JOIN event_attendance ea ON ea.event_id = e.id WHERE ea.contact_id = c.id),
+          (SELECT MAX(il.created_at) FROM impact_logs il JOIN impact_log_contacts ilc ON ilc.impact_log_id = il.id WHERE ilc.contact_id = c.id AND il.status = 'confirmed'),
+          (SELECT MAX(b.start_date) FROM bookings b WHERE b.booker_contact_id = c.id AND b.status IN ('confirmed', 'completed'))
+        ) as last_engaged
+        FROM contacts c
+        WHERE c.user_id = ${userId} AND c.active = true AND c.is_archived = false
+          AND (c.is_innovator = true OR c.is_community_member = true)
+      `);
+      const result: Record<number, string | null> = {};
+      for (const row of (rows as any).rows || []) {
+        if (row.last_engaged) {
+          result[row.contact_id] = new Date(row.last_engaged).toISOString();
+        }
+      }
+      res.json(result);
+    } catch (err: any) {
+      console.error("Last engaged error:", err);
+      res.status(500).json({ message: "Failed to get last engaged dates" });
+    }
+  });
+
   app.get("/api/contacts/suggested-duplicates", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
@@ -491,9 +526,6 @@ export async function registerRoutes(
       const input = api.contacts.update.input.parse(filteredBody);
       if (input.role && input.role !== "Other") {
         input.roleOther = null;
-      }
-      if (input.stage && input.stage !== existing.stage) {
-        await storage.appendStageProgression(id, input.stage);
       }
       if ((input as any).metrics && existing.metrics && typeof existing.metrics === "object" && Object.keys(existing.metrics).length > 0) {
         try {
@@ -1455,14 +1487,17 @@ export async function registerRoutes(
         baselineMetrics: reqBaseline,
       });
 
+      const existingContact = await storage.getContact(application.contactId);
+      const now = new Date();
       const contactUpdate: any = {
         isCommunityMember: true,
         isInnovator: true,
         stage: reqStage,
         relationshipStage: reqStage,
       };
+      if (!existingContact?.movedToCommunityAt) contactUpdate.movedToCommunityAt = now;
+      if (!existingContact?.movedToInnovatorsAt) contactUpdate.movedToInnovatorsAt = now;
       if (reqBaseline) {
-        const existingContact = await storage.getContact(application.contactId);
         const existingMetrics = existingContact?.metrics as Record<string, any> | null;
         if (!existingMetrics || Object.keys(existingMetrics).length === 0) {
           contactUpdate.metrics = reqBaseline;
@@ -2190,6 +2225,7 @@ export async function registerRoutes(
         await storage.updateContact(existingContact.id, { updatedAt: new Date() } as any);
         await autoPromoteToInnovator(existingContact.id);
       } else {
+        const now = new Date();
         const newContact = await storage.createContact({
           userId: programme.userId,
           name: `${firstName} ${lastName}`,
@@ -2201,6 +2237,8 @@ export async function registerRoutes(
           source: "programme_registration",
           isCommunityMember: true,
           isInnovator: true,
+          movedToCommunityAt: now,
+          movedToInnovatorsAt: now,
         } as any);
         contactId = newContact.id;
       }
@@ -6953,7 +6991,9 @@ Important:
           SELECT
             COALESCE(g.name, b.booker_name) as organisation,
             b.classification as type,
-            COUNT(*) as bookings
+            COUNT(*) as bookings,
+            BOOL_OR(g.is_maori) as is_maori,
+            BOOL_OR(g.is_pasifika) as is_pasifika
           FROM bookings b
           LEFT JOIN groups g ON g.id = b.booker_group_id
           WHERE b.user_id = ${userId}
@@ -6993,8 +7033,8 @@ Important:
         organisation: r.organisation || "Unknown",
         type: r.type || "",
         bookings: Number(r.bookings || 0),
-        maori: false,
-        pasifika: false,
+        maori: r.is_maori === true,
+        pasifika: r.is_pasifika === true,
       }));
 
       // Updates from debriefs
@@ -7138,7 +7178,9 @@ Important:
         SELECT
           COALESCE(g.name, b.booker_name) as organisation,
           b.classification as type,
-          COUNT(*) as bookings
+          COUNT(*) as bookings,
+          BOOL_OR(g.is_maori) as is_maori,
+          BOOL_OR(g.is_pasifika) as is_pasifika
         FROM bookings b
         LEFT JOIN groups g ON g.id = b.booker_group_id
         WHERE b.user_id = ${userId}
@@ -7153,8 +7195,8 @@ Important:
         organisation: r.organisation || "Unknown",
         type: r.type || "",
         bookings: Number(r.bookings || 0),
-        maori: false,
-        pasifika: false,
+        maori: r.is_maori === true,
+        pasifika: r.is_pasifika === true,
       }));
 
       // Debrief updates
@@ -11821,6 +11863,17 @@ Return a JSON array:
 
       const updated = await storage.updateContact(contactId, updates);
 
+      // Record tier promotion in history
+      const previousTier = contact.isInnovator ? "our_innovators" : contact.isCommunityMember ? "our_community" : "all_contacts";
+      await storage.createRelationshipStageHistory({
+        entityType: "contact",
+        entityId: contactId,
+        changeType: "tier",
+        previousStage: previousTier,
+        newStage: newTier,
+        changedBy: userId,
+      });
+
       let groupsUpdated = 0;
       const updatedGroupIds = new Set<number>();
       const contactGroupLinks = await storage.getContactGroups(contactId);
@@ -11871,18 +11924,29 @@ Return a JSON array:
       let newTier = "";
       if (contact.isInnovator) {
         updates.isInnovator = false;
-        updates.movedToInnovatorsAt = null;
+        // Keep movedToInnovatorsAt as historical record of first promotion
         newTier = "our_community";
       } else if (contact.isCommunityMember) {
         updates.isCommunityMember = false;
         updates.communityMemberOverride = true;
-        updates.movedToCommunityAt = null;
+        // Keep movedToCommunityAt as historical record of first promotion
         newTier = "all_contacts";
       } else {
         return res.json({ contact, newTier: "all_contacts", groupsUpdated: 0, message: "Already at lowest tier" });
       }
 
       const updated = await storage.updateContact(contactId, updates);
+
+      // Record tier demotion in history
+      const previousTier = contact.isInnovator ? "our_innovators" : contact.isCommunityMember ? "our_community" : "all_contacts";
+      await storage.createRelationshipStageHistory({
+        entityType: "contact",
+        entityId: contactId,
+        changeType: "tier",
+        previousStage: previousTier,
+        newStage: newTier,
+        changedBy: userId,
+      });
 
       let groupsUpdated = 0;
       const updatedGroupIds = new Set<number>();
@@ -12763,27 +12827,6 @@ Be specific, practical, and grounded in the actual documents and context provide
   });
 
   // === STAGE PROGRESSION ===
-
-  const VALID_STAGES = ["kakano", "tipu", "ora", "inactive"];
-
-  app.post("/api/contacts/:id/stage-progression", isAuthenticated, async (req, res) => {
-    try {
-      const id = parseId(req.params.id);
-      const existing = await storage.getContact(id);
-      if (!existing) return res.status(404).json({ message: "Contact not found" });
-      if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
-
-      const { stage, notes } = req.body;
-      if (!stage || !VALID_STAGES.includes(stage)) {
-        return res.status(400).json({ message: "Stage must be one of: kakano, tipu, ora, inactive" });
-      }
-
-      const updated = await storage.appendStageProgression(id, stage, notes);
-      res.json(updated);
-    } catch (err: any) {
-      res.status(500).json({ message: "Failed to update stage progression" });
-    }
-  });
 
   // === PROJECTS ===
 
