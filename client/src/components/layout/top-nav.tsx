@@ -25,6 +25,7 @@ import {
   Megaphone,
   Newspaper,
   BarChart3,
+  Receipt,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useRef, useEffect } from "react";
@@ -111,6 +112,7 @@ const navGroups: NavGroup[] = [
     children: [
       { name: "Availability", href: "/scheduling", icon: CalendarClock, description: "Manage staff & mentor availability" },
       { name: "About Us", href: "/settings/about-us", icon: Building2, description: "Organisation profile & identity" },
+      { name: "Xero", href: "/settings/xero", icon: Receipt, description: "Xero integration & invoicing" },
       { name: "Team", href: "/settings/team", icon: UserCog, description: "Manage platform access", adminOnly: true },
     ],
   },
