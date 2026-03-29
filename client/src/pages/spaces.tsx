@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useSearch } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,7 +24,7 @@ import Bookings from "./bookings";
 import ResourcesTab from "@/components/spaces/resources-tab";
 import { ActivationsTab } from "@/components/spaces/space-use-tab";
 import RegularBookersPage from "./regular-bookers";
-import { QuickAddActivationFAB } from "@/components/spaces/quick-add-activation-dialog";
+import { SpacesFAB } from "@/components/spaces/quick-add-activation-dialog";
 import { MonthlyReconcileDialog } from "@/components/spaces/monthly-reconcile-dialog";
 import { RecurringBookingsTab } from "@/components/spaces/recurring-bookings-tab";
 import type { Meeting } from "@shared/schema";
@@ -666,7 +666,7 @@ function getCalendarParamsFromUrl(): { date?: string; view?: "day" | "week" } {
   return { date, view: view === "week" ? "week" : view === "day" ? "day" : undefined };
 }
 
-function VenueHireSection() {
+function VenueHireSection({ onCreateReady }: { onCreateReady?: (open: () => void) => void }) {
   const [subTab, setSubTab] = useState<"bookings" | "recurring">("bookings");
   return (
     <div className="space-y-4">
@@ -687,7 +687,7 @@ function VenueHireSection() {
           Recurring
         </button>
       </div>
-      {subTab === "bookings" && <Bookings embedded />}
+      {subTab === "bookings" && <Bookings embedded onCreateReady={onCreateReady} />}
       {subTab === "recurring" && <RecurringBookingsTab />}
     </div>
   );
@@ -699,6 +699,8 @@ export default function SpacesPage() {
   const [calendarParams, setCalendarParams] = useState(getCalendarParamsFromUrl);
   const [calendarKey, setCalendarKey] = useState(0);
   const [reconcileOpen, setReconcileOpen] = useState(false);
+  const venueHireCreateRef = useRef<(() => void) | null>(null);
+  const bookerAddRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     const params = getCalendarParamsFromUrl();
@@ -711,6 +713,9 @@ export default function SpacesPage() {
       setActiveTab(tab);
     }
   }, [searchString]);
+
+  const handleVenueHireReady = useCallback((fn: () => void) => { venueHireCreateRef.current = fn; }, []);
+  const handleBookerAddReady = useCallback((fn: () => void) => { bookerAddRef.current = fn; }, []);
 
   const handleTabChange = useCallback((tab: string) => {
     setActiveTab(tab);
@@ -765,7 +770,7 @@ export default function SpacesPage() {
         </TabsContent>
 
         <TabsContent value="venue-hire">
-          <VenueHireSection />
+          <VenueHireSection onCreateReady={handleVenueHireReady} />
         </TabsContent>
 
         <TabsContent value="hot-desking">
@@ -773,7 +778,7 @@ export default function SpacesPage() {
         </TabsContent>
 
         <TabsContent value="bookers">
-          <RegularBookersPage embedded categoryScope={["venue_hire", "hot_desking"]} />
+          <RegularBookersPage embedded categoryScope={["venue_hire", "hot_desking"]} onAddReady={handleBookerAddReady} />
         </TabsContent>
 
         <TabsContent value="resources">
@@ -782,7 +787,11 @@ export default function SpacesPage() {
       </Tabs>
 
       {/* Floating action button — contextual per tab */}
-      <QuickAddActivationFAB activeTab={activeTab} />
+      <SpacesFAB
+        activeTab={activeTab}
+        onVenueHireCreate={() => venueHireCreateRef.current?.()}
+        onBookerAdd={() => bookerAddRef.current?.()}
+      />
 
       {/* Monthly Reconcile dialog */}
       <MonthlyReconcileDialog open={reconcileOpen} onOpenChange={setReconcileOpen} />

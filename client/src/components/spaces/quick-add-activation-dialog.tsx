@@ -288,3 +288,53 @@ export function QuickAddActivationFAB({ activeTab }: { activeTab?: string }) {
     </>
   );
 }
+
+const FAB_CONFIG: Record<string, { label: string; icon: typeof Plus }> = {
+  "space-use": { label: "Log Activation", icon: Plus },
+  "venue-hire": { label: "Create Booking", icon: Plus },
+  "hot-desking": { label: "Log Activation", icon: Plus },
+  "bookers": { label: "Add Booker", icon: Plus },
+};
+
+interface SpacesFABProps {
+  activeTab: string;
+  onVenueHireCreate?: () => void;
+  onBookerAdd?: () => void;
+}
+
+export function SpacesFAB({ activeTab, onVenueHireCreate, onBookerAdd }: SpacesFABProps) {
+  const [activationOpen, setActivationOpen] = useState(false);
+
+  const config = FAB_CONFIG[activeTab];
+  if (!config) return null;
+
+  const handleClick = () => {
+    switch (activeTab) {
+      case "space-use":
+      case "hot-desking":
+        setActivationOpen(true);
+        break;
+      case "venue-hire":
+        onVenueHireCreate?.();
+        break;
+      case "bookers":
+        onBookerAdd?.();
+        break;
+    }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={handleClick}
+        className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full bg-primary text-primary-foreground shadow-lg px-4 py-3 text-sm font-medium hover:bg-primary/90 transition-colors"
+        title={config.label}
+      >
+        <Plus className="w-4 h-4" />
+        {config.label}
+      </button>
+      <QuickAddActivationDialog open={activationOpen} onOpenChange={setActivationOpen} />
+    </>
+  );
+}

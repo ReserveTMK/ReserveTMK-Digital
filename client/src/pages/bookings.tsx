@@ -202,7 +202,7 @@ function formatTimeSlot(time: string) {
   return `${displayHour}:${m.toString().padStart(2, "0")} ${period}`;
 }
 
-export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
+export default function Bookings({ embedded, onCreateReady }: { embedded?: boolean; onCreateReady?: (open: () => void) => void } = {}) {
   const { data: bookings, isLoading } = useBookings();
   const { data: venues } = useVenues();
   const { data: regularBookers } = useRegularBookers();
@@ -239,6 +239,7 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
   const [classFilter, setClassFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [createOpen, setCreateOpen] = useState(false);
+  useEffect(() => { onCreateReady?.(() => setCreateOpen(true)); }, [onCreateReady]);
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
   const [viewMode, setViewMode] = useState<"calendar" | "list" | "kanban">("calendar");
   const [calMonth, setCalMonth] = useState(new Date());

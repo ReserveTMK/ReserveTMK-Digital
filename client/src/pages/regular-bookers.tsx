@@ -110,7 +110,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   gear: "Gear",
 };
 
-export default function RegularBookersPage({ embedded, categoryScope, hideSuggestions }: { embedded?: boolean; categoryScope?: string[]; hideSuggestions?: boolean } = {}) {
+export default function RegularBookersPage({ embedded, categoryScope, hideSuggestions, onAddReady }: { embedded?: boolean; categoryScope?: string[]; hideSuggestions?: boolean; onAddReady?: (open: () => void) => void } = {}) {
   const { data: regularBookers, isLoading } = useRegularBookers();
   const { data: allBookerLinks, isLoading: linksLoading } = useAllBookerLinks();
   const { data: contacts } = useContacts();
@@ -125,6 +125,7 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
 
   const [editingBooker, setEditingBooker] = useState<RegularBooker | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  useEffect(() => { onAddReady?.(() => { setEditingBooker(null); setFormOpen(true); }); }, [onAddReady]);
   const [createdPortalUrl, setCreatedPortalUrl] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [agreementFilter, setAgreementFilter] = useState<string>("all");
