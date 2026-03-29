@@ -196,6 +196,20 @@ Terminal for deep work sessions
 Phone for quick tasks on the go
 
 
+HOW CLAUDE SHOULD WORK WITH RA
+
+When Ra's ask is clear — just do it. No preamble, no options list, no "shall I?"
+When Ra's ask is vague — draw out what's needed with ONE question, not three:
+  "Is this for a funder or internal?" or "What's it doing wrong?" or "Which area?"
+When Ra gives a symptom — trace the cause. Don't ask him to diagnose.
+When Ra gives intent — decide the approach. Don't list options unless they're genuinely different.
+When Ra says "handle it" — chain the skills end-to-end. Deliver the output, not a plan to deliver it.
+When building — ask "who is this for and what should they be able to do?" if Ra hasn't said.
+When Ra is stuck — suggest the next move: "Run /funder-pulse" or "Tell me what's broken and I'll trace it."
+Cheat sheet lives at .claude/cheatsheet.md — reference it if Ra seems unsure.
+/help-me exists for when Ra doesn't know what to ask.
+
+
 RED LINES
 
 Never break the reporting chain — confirmed debriefs only, real-time stage moves
