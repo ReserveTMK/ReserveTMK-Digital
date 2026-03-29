@@ -104,47 +104,59 @@ export default function Dashboard() {
     return count;
   }, [meetings, events, programmes, bookings]);
 
-  const upcomingItems = useMemo(() => {
-    const now = new Date();
-    const weekEnd = addDays(now, 7);
-    const items: { date: string; name: string; time: string; type: string; typeColor: string; id: string; href?: string }[] = [];
+  type DayItem = { date: string; name: string; time: string; type: string; typeColor: string; id: string; href?: string };
 
+  const buildItemsForRange = (start: Date, end: Date): DayItem[] => {
+    const items: DayItem[] = [];
     meetings?.forEach((m: Meeting) => {
       const d = new Date(m.startTime);
-      if (m.status !== "cancelled" && isAfter(d, now) && isBefore(d, weekEnd)) {
+      if (m.status !== "cancelled" && d >= start && d < end) {
         items.push({ date: format(d, "yyyy-MM-dd"), name: m.title, time: format(d, "h:mm a"), type: "Meeting", typeColor: "bg-blue-500/15 text-blue-700 dark:text-blue-300", id: `meeting-${m.id}` });
       }
     });
     events?.forEach((ev: Event) => {
       const d = new Date(ev.startTime);
-      if (isAfter(d, now) && isBefore(d, weekEnd)) {
+      if (d >= start && d < end) {
         items.push({ date: format(d, "yyyy-MM-dd"), name: ev.name, time: format(d, "h:mm a"), type: ev.type || "Event", typeColor: "bg-violet-500/15 text-violet-700 dark:text-violet-300", id: `event-${ev.id}`, href: "/calendar" });
       }
     });
     (programmes as Programme[] | undefined)?.forEach((p) => {
       if (p.status === "cancelled" || !p.startDate) return;
       const d = new Date(p.startDate);
-      if (isAfter(d, now) && isBefore(d, weekEnd)) {
+      if (d >= start && d < end) {
         items.push({ date: format(d, "yyyy-MM-dd"), name: p.name, time: p.startTime ? formatTimeSlot(p.startTime) : "All day", type: "Programme", typeColor: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300", id: `prog-${p.id}`, href: "/programmes" });
       }
     });
     (bookings as Booking[] | undefined)?.forEach((b) => {
       if (b.status === "cancelled" || !b.startDate) return;
       const d = new Date(b.startDate);
-      if (isAfter(d, now) && isBefore(d, weekEnd)) {
+      if (d >= start && d < end) {
         items.push({ date: format(d, "yyyy-MM-dd"), name: b.title || "", time: b.startTime ? formatTimeSlot(b.startTime) : "TBC", type: "Venue Hire", typeColor: "bg-orange-500/15 text-orange-700 dark:text-orange-300", id: `book-${b.id}`, href: `/bookings/${b.id}` });
       }
     });
     gcalEvents?.forEach((gcal) => {
       if (!gcal.start) return;
       const d = new Date(gcal.start);
-      if (isAfter(d, now) && isBefore(d, weekEnd)) {
+      if (d >= start && d < end) {
         items.push({ date: format(d, "yyyy-MM-dd"), name: gcal.summary, time: format(d, "h:mm a"), type: "Google Cal", typeColor: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300", id: `gcal-${gcal.id}` });
       }
     });
+    items.sort((a, b) => a.time.localeCompare(b.time));
+    return items;
+  };
 
+  const selectedDayItems = useMemo(() => {
+    const dayStart = startOfDay(selectedDate);
+    const dayEnd = addDays(dayStart, 1);
+    return buildItemsForRange(dayStart, dayEnd);
+  }, [selectedDate, meetings, events, programmes, bookings, gcalEvents]);
+
+  const upcomingItems = useMemo(() => {
+    const now = new Date();
+    const weekEnd = addDays(now, 7);
+    const items = buildItemsForRange(now, weekEnd);
     items.sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
-    const grouped = new Map<string, typeof items>();
+    const grouped = new Map<string, DayItem[]>();
     items.forEach((item) => {
       if (!grouped.has(item.date)) grouped.set(item.date, []);
       grouped.get(item.date)!.push(item);
@@ -297,7 +309,7 @@ export default function Dashboard() {
 
   return (
     <>
-    <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
+    <div className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
       <div className="max-w-6xl mx-auto space-y-6">
 
         {/* ── Today strip ──────────────────────────────────────────────────── */}
@@ -439,40 +451,62 @@ export default function Dashboard() {
             </div>
           </Card>
 
-          {/* Upcoming 7 days */}
-          <Card className="p-4" data-testid="card-upcoming">
+          {/* Selected day detail */}
+          <Card className="p-4" data-testid="card-day-view">
             <div className="flex items-center gap-2 mb-3">
               <CalendarIcon className="w-4 h-4 text-blue-600" />
-              <h3 className="text-sm font-semibold font-display">Next 7 Days</h3>
-              <span className="text-xs text-muted-foreground ml-auto">{Array.from(upcomingItems.values()).flat().length} items</span>
+              <h3 className="text-sm font-semibold font-display">
+                {isToday(selectedDate) ? "Today" : format(selectedDate, "EEE, d MMMM")}
+              </h3>
+              <span className="text-xs text-muted-foreground ml-auto">{selectedDayItems.length} {selectedDayItems.length === 1 ? "item" : "items"}</span>
             </div>
-            {upcomingItems.size > 0 ? (
-              <div className="space-y-2.5 max-h-[280px] overflow-y-auto pr-1">
-                {Array.from(upcomingItems.entries()).map(([dateKey, dayItems]) => (
-                  <div key={dateKey}>
-                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                      {format(new Date(dateKey + "T12:00:00"), "EEE, d MMM")}
-                    </p>
-                    <div className="space-y-1">
-                      {dayItems.map((item) => (
-                        <div key={item.id} className="flex items-center gap-2 p-1.5 rounded-md bg-muted/40 text-xs">
-                          <span className="font-medium truncate flex-1">{item.name}</span>
-                          <span className="text-muted-foreground shrink-0">{item.time}</span>
-                          <Badge variant="secondary" className={`text-[9px] shrink-0 px-1.5 py-0 ${item.typeColor}`}>{item.type}</Badge>
-                        </div>
-                      ))}
-                    </div>
+            {selectedDayItems.length > 0 ? (
+              <div className="space-y-1.5 max-h-[280px] overflow-y-auto pr-1">
+                {selectedDayItems.map((item) => (
+                  <div key={item.id} className="flex items-center gap-2 p-2 rounded-md bg-muted/40 text-xs">
+                    <Badge variant="secondary" className={`text-[9px] shrink-0 px-1.5 py-0 ${item.typeColor}`}>{item.type}</Badge>
+                    <span className="font-medium truncate flex-1">{item.name}</span>
+                    <span className="text-muted-foreground shrink-0">{item.time}</span>
                   </div>
                 ))}
               </div>
             ) : (
               <div className="text-center py-6 text-muted-foreground text-xs">
                 <CalendarIcon className="w-6 h-6 mx-auto mb-1.5 opacity-40" />
-                <p>Nothing scheduled</p>
+                <p>Nothing on {format(selectedDate, "EEE d MMM")}</p>
               </div>
             )}
           </Card>
         </div>
+
+        {/* ── Next 7 Days ────────────────────────────────────────────────── */}
+        {upcomingItems.size > 0 && (
+          <Card className="p-4" data-testid="card-upcoming">
+            <div className="flex items-center gap-2 mb-3">
+              <Clock className="w-4 h-4 text-muted-foreground" />
+              <h3 className="text-sm font-semibold font-display">Next 7 Days</h3>
+              <span className="text-xs text-muted-foreground ml-auto">{Array.from(upcomingItems.values()).flat().length} items</span>
+            </div>
+            <div className="flex flex-wrap gap-x-6 gap-y-2">
+              {Array.from(upcomingItems.entries()).map(([dateKey, dayItems]) => (
+                <div key={dateKey} className="min-w-[140px]">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                    {format(new Date(dateKey + "T12:00:00"), "EEE, d MMM")}
+                  </p>
+                  <div className="space-y-0.5">
+                    {dayItems.map((item) => (
+                      <div key={item.id} className="flex items-center gap-1.5 text-xs">
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.typeColor.split(" ")[0]}`} />
+                        <span className="truncate">{item.name}</span>
+                        <span className="text-muted-foreground text-[10px] shrink-0 ml-auto">{item.time}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
 
         {/* ── Projects + Revenue + Growth ─────────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -585,7 +619,7 @@ export default function Dashboard() {
         </div>
 
       </div>
-    </main>
+    </div>
 
     <ViewMeetingDialog meeting={viewMeeting} onClose={() => setViewMeeting(null)} contacts={contacts || []} />
     </>
