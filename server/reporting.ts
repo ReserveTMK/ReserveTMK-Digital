@@ -23,7 +23,7 @@ export interface ReportFilters {
 export const MAORI_ETHNICITIES = ["Māori"];
 
 export const PASIFIKA_ETHNICITIES = [
-  "Samoan", "Tongan", "Cook Islands Māori", "Niuean", "Tokelauan",
+  "Samoan", "Tongan", "Cook Islands Māori", "Cook Island", "Niuean", "Tokelauan",
   "Fijian", "Hawaiian", "Tahitian", "Other Polynesian", "Micronesian", "Melanesian",
 ];
 
@@ -286,10 +286,6 @@ export async function getReachMetrics(filters: ReportFilters) {
     repeatEngagementCount: repeatCount,
     demographicBreakdown,
   };
-}
-
-export async function getEngagementMetrics(filters: ReportFilters) {
-  return getReachMetrics(filters);
 }
 
 // Activation event types to exclude — tracked separately from activations

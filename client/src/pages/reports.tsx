@@ -92,6 +92,7 @@ export default function Reports() {
     setIsGenerating(true);
     try {
       let url: string;
+      const body: any = { quotes, plannedNext };
       if (reportMode === "monthly" && month) {
         url = `/api/reports/html/monthly?month=${month.month}`;
       } else if (reportMode === "quarterly" && quarter) {
@@ -101,7 +102,12 @@ export default function Reports() {
         setIsGenerating(false);
         return;
       }
-      const res = await fetch(url, { credentials: "include" });
+      const res = await fetch(url, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       const html = await res.text();
       setReportHtml(html);

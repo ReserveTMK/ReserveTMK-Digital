@@ -16,6 +16,16 @@ export interface MonthlyReportData {
   plannedNextMonth: Array<{ title: string; description: string }>;
 }
 
+export interface MaoriPipelineData {
+  innovators: { total: number; kakano: number; tipu: number; ora: number };
+  inMentoring: number;
+  inProgrammes: number;
+  stageProgressions: number;
+  pasifikaInnovators: { total: number; kakano: number; tipu: number; ora: number };
+  maoriOrgs: Array<{ name: string; bookings: number }>;
+  previousQuarter?: { innovatorTotal: number; activations: number; footTraffic: number; capabilityBuilding: number };
+}
+
 export interface QuarterlyReportData {
   period: { quarter: string; year: number; label: string; fyLabel: string; months: string[] };
   deliveryNumbers: Array<{ metric: string; values: Record<string, number>; quarterTotal: number; ytd: number }>;
@@ -25,6 +35,7 @@ export interface QuarterlyReportData {
   quotes: Array<{ text: string; attribution: string }>;
   plannedNextQuarter: Array<{ title: string; description: string }>;
   footTraffic: { total: number; byMonth: Record<string, number> };
+  maoriPipeline?: MaoriPipelineData;
 }
 
 // ── Shared CSS ─────────────────────────────────────────────────
@@ -348,21 +359,71 @@ export function renderQuarterlyReport(data: QuarterlyReportData): string {
   </table>
 </div>
 
+${data.maoriPipeline ? `
 <div class="section">
-  <h2>4. Updates</h2>
+  <h2>4. Māori & Pasifika Pipeline</h2>
+  <div class="snapshot-grid">
+    <div class="snapshot-card dark">
+      <div class="snapshot-label">Māori Innovators</div>
+      <div class="snapshot-row"><span class="snapshot-key">Kakano — Starting</span><span class="snapshot-val">${data.maoriPipeline.innovators.kakano}</span></div>
+      <div class="snapshot-row"><span class="snapshot-key">Tipu — Refining</span><span class="snapshot-val">${data.maoriPipeline.innovators.tipu}</span></div>
+      <div class="snapshot-row"><span class="snapshot-key">Ora — Thriving</span><span class="snapshot-val">${data.maoriPipeline.innovators.ora}</span></div>
+      <div class="snapshot-row" style="border-top:2px solid #1a5c3a;margin-top:4px;padding-top:8px;">
+        <span class="snapshot-key" style="color:#a8d4bc;"><strong>Total</strong></span>
+        <span class="snapshot-val"><strong>${data.maoriPipeline.innovators.total}</strong></span>
+      </div>
+      ${data.maoriPipeline.inMentoring > 0 ? `<div class="snapshot-row" style="margin-top:8px;"><span class="snapshot-key" style="color:#a8d4bc;">In Active Mentoring</span><span class="snapshot-val">${data.maoriPipeline.inMentoring}</span></div>` : ""}
+      ${data.maoriPipeline.inProgrammes > 0 ? `<div class="snapshot-row"><span class="snapshot-key" style="color:#a8d4bc;">In Programmes</span><span class="snapshot-val">${data.maoriPipeline.inProgrammes}</span></div>` : ""}
+      ${data.maoriPipeline.stageProgressions > 0 ? `<div class="snapshot-row"><span class="snapshot-key" style="color:#a8d4bc;">Stage Progressions This Quarter</span><span class="snapshot-val">${data.maoriPipeline.stageProgressions}</span></div>` : ""}
+    </div>
+    <div class="snapshot-card">
+      <div class="snapshot-label">Pasifika Innovators</div>
+      <div class="snapshot-row"><span class="snapshot-key">Kakano — Starting</span><span class="snapshot-val">${data.maoriPipeline.pasifikaInnovators.kakano}</span></div>
+      <div class="snapshot-row"><span class="snapshot-key">Tipu — Refining</span><span class="snapshot-val">${data.maoriPipeline.pasifikaInnovators.tipu}</span></div>
+      <div class="snapshot-row"><span class="snapshot-key">Ora — Thriving</span><span class="snapshot-val">${data.maoriPipeline.pasifikaInnovators.ora}</span></div>
+      <div class="snapshot-row" style="border-top:2px solid #e0e0e0;margin-top:4px;padding-top:8px;">
+        <span class="snapshot-key"><strong>Total</strong></span>
+        <span class="snapshot-val" style="font-size:20px;"><strong>${data.maoriPipeline.pasifikaInnovators.total}</strong></span>
+      </div>
+    </div>
+  </div>
+  ${data.maoriPipeline.maoriOrgs.length > 0 ? `
+  <h3>Māori Organisations Using the Space</h3>
+  <table>
+    <thead><tr><th>Organisation</th><th style="text-align:center">Bookings</th></tr></thead>
+    <tbody>
+      ${data.maoriPipeline.maoriOrgs.map(o => `<tr><td>${esc(o.name)}</td><td style="text-align:center">${o.bookings}</td></tr>`).join("")}
+    </tbody>
+  </table>` : ""}
+  ${data.maoriPipeline.previousQuarter ? `
+  <h3>Quarter-on-Quarter Change</h3>
+  <table>
+    <thead><tr><th>Metric</th><th style="text-align:right">Previous Qtr</th><th style="text-align:right">This Qtr</th><th style="text-align:right">Change</th></tr></thead>
+    <tbody>
+      <tr><td>Māori Innovators</td><td class="num">${data.maoriPipeline.previousQuarter.innovatorTotal}</td><td class="num">${data.maoriPipeline.innovators.total}</td><td class="num">${data.maoriPipeline.innovators.total - data.maoriPipeline.previousQuarter.innovatorTotal >= 0 ? "+" : ""}${data.maoriPipeline.innovators.total - data.maoriPipeline.previousQuarter.innovatorTotal}</td></tr>
+      <tr><td>Activations</td><td class="num">${data.maoriPipeline.previousQuarter.activations}</td><td class="num">${data.deliveryNumbers.find(d => d.metric.startsWith("Activation"))?.quarterTotal || 0}</td><td class="num">${((data.deliveryNumbers.find(d => d.metric.startsWith("Activation"))?.quarterTotal || 0) - data.maoriPipeline.previousQuarter.activations) >= 0 ? "+" : ""}${(data.deliveryNumbers.find(d => d.metric.startsWith("Activation"))?.quarterTotal || 0) - data.maoriPipeline.previousQuarter.activations}</td></tr>
+      <tr><td>Foot Traffic</td><td class="num">${data.maoriPipeline.previousQuarter.footTraffic}</td><td class="num">${data.footTraffic.total}</td><td class="num">${(data.footTraffic.total - data.maoriPipeline.previousQuarter.footTraffic) >= 0 ? "+" : ""}${data.footTraffic.total - data.maoriPipeline.previousQuarter.footTraffic}</td></tr>
+      <tr><td>Capability Building</td><td class="num">${data.maoriPipeline.previousQuarter.capabilityBuilding}</td><td class="num">${data.deliveryNumbers.find(d => d.metric.startsWith("Capability"))?.quarterTotal || 0}</td><td class="num">${((data.deliveryNumbers.find(d => d.metric.startsWith("Capability"))?.quarterTotal || 0) - data.maoriPipeline.previousQuarter.capabilityBuilding) >= 0 ? "+" : ""}${(data.deliveryNumbers.find(d => d.metric.startsWith("Capability"))?.quarterTotal || 0) - data.maoriPipeline.previousQuarter.capabilityBuilding}</td></tr>
+    </tbody>
+  </table>` : ""}
+</div>
+` : ""}
+
+<div class="section">
+  <h2>${data.maoriPipeline ? "5" : "4"}. Updates</h2>
   ${updateSections}
 </div>
 
 ${quotes.length > 0 ? `
 <div class="section">
-  <h2>5. In Their Words</h2>
+  <h2>${data.maoriPipeline ? "6" : "5"}. In Their Words</h2>
   <div class="quotes">${quoteBlocks}</div>
 </div>
 ` : ""}
 
 ${plannedNextQuarter.length > 0 ? `
 <div class="section">
-  <h2>6. Planned Next Quarter</h2>
+  <h2>${data.maoriPipeline ? "7" : "6"}. Planned Next Quarter</h2>
   <div class="next-grid">${nextItems}</div>
 </div>
 ` : ""}

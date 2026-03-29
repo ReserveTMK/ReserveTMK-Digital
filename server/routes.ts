@@ -6,8 +6,8 @@ import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON, isAnthropicKeyConfigured, AIKeyMissingError } from "./replit_integrations/anthropic/client";
-import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, getStandoutMoments, getOperatorInsights, getParticipantTransformationStories, getPeopleTierBreakdown, getImpactTagHeatmap, getTheoryOfChangeAlignment, getGrowthStory, getOutcomeChain, getQuarterlyMilestones, type ReportFilters, type CohortDefinition, type OrgProfileContext, type FunderContext } from "./reporting";
-import { renderMonthlyReport, type MonthlyReportData } from "./report-renderer";
+import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, getStandoutMoments, getOperatorInsights, getParticipantTransformationStories, getPeopleTierBreakdown, getImpactTagHeatmap, getTheoryOfChangeAlignment, getGrowthStory, getOutcomeChain, getQuarterlyMilestones, PASIFIKA_ETHNICITIES, type ReportFilters, type CohortDefinition, type OrgProfileContext, type FunderContext } from "./reporting";
+import { renderMonthlyReport, renderQuarterlyReport, type MonthlyReportData, type QuarterlyReportData, type MaoriPipelineData } from "./report-renderer";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
 import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings, normalizeStage, DEFAULT_AVAILABILITY_SCHEDULE, DEFAULT_VENUE_AVAILABILITY_SCHEDULE, type AvailabilitySchedule, bookingChangeRequests, } from "@shared/schema";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -6877,7 +6877,7 @@ Important:
   // === REPORTING ROUTES ===
 
   // HTML monthly report — standalone branded page, open in browser, print to PDF
-  app.get("/api/reports/html/monthly", isAuthenticated, async (req, res) => {
+  const handleMonthlyReport = async (req: any, res: any) => {
     try {
       const userId = (req.user as any).claims.sub;
       const month = parseStr(req.query.month); // YYYY-MM
@@ -6928,7 +6928,7 @@ Important:
             COUNT(CASE WHEN relationship_stage = 'tipu' THEN 1 END) as tipu,
             COUNT(CASE WHEN relationship_stage = 'ora' THEN 1 END) as ora,
             COUNT(CASE WHEN ethnicity @> ARRAY['Māori']::text[] THEN 1 END) as maori,
-            COUNT(CASE WHEN ethnicity && ARRAY['Samoan','Tongan','Niuean','Cook Islands Māori','Fijian']::text[] THEN 1 END) as pasifika,
+            COUNT(CASE WHEN ethnicity && ARRAY[${sql.join(PASIFIKA_ETHNICITIES.map(e => sql`${e}`), sql`, `)}]::text[] THEN 1 END) as pasifika,
             COUNT(CASE WHEN is_rangatahi = true THEN 1 END) as rangatahi
           FROM contacts
           WHERE user_id = ${userId}
@@ -6939,9 +6939,7 @@ Important:
           SELECT
             COALESCE(g.name, b.booker_name) as organisation,
             b.classification as type,
-            COUNT(*) as bookings,
-            g.metadata->>'maori' as maori,
-            g.metadata->>'pasifika' as pasifika
+            COUNT(*) as bookings
           FROM bookings b
           LEFT JOIN groups g ON g.id = b.booker_group_id
           WHERE b.user_id = ${userId}
@@ -6949,7 +6947,7 @@ Important:
             AND b.start_date < ${new Date(endDate)}
             AND b.status IN ('confirmed', 'completed')
             AND b.classification NOT IN ('Meeting', 'Internal')
-          GROUP BY COALESCE(g.name, b.booker_name), b.classification, g.metadata->>'maori', g.metadata->>'pasifika'
+          GROUP BY COALESCE(g.name, b.booker_name), b.classification
           ORDER BY organisation
         `),
         db.execute(sql`
@@ -6981,8 +6979,8 @@ Important:
         organisation: r.organisation || "Unknown",
         type: r.type || "",
         bookings: Number(r.bookings || 0),
-        maori: r.maori === "true",
-        pasifika: r.pasifika === "true",
+        maori: false,
+        pasifika: false,
       }));
 
       // Updates from debriefs
@@ -7014,8 +7012,8 @@ Important:
         },
         spaceUse,
         updates: { "Updates": updateItems },
-        quotes: [],
-        plannedNextMonth: [],
+        quotes: Array.isArray(req.body?.quotes) ? req.body.quotes : [],
+        plannedNextMonth: Array.isArray(req.body?.plannedNext) ? req.body.plannedNext : [],
       };
 
       const html = renderMonthlyReport(reportData);
@@ -7025,7 +7023,303 @@ Important:
       console.error("Monthly HTML report error:", err.message);
       res.status(500).json({ message: "Failed to generate monthly report" });
     }
-  });
+  };
+  app.get("/api/reports/html/monthly", isAuthenticated, handleMonthlyReport);
+  app.post("/api/reports/html/monthly", isAuthenticated, handleMonthlyReport);
+
+  // ── Quarterly branded HTML report ──────────────────────────────────────
+
+  const handleQuarterlyReport = async (req: any, res: any) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const startDate = parseStr(req.query.startDate);
+      const endDate = parseStr(req.query.endDate);
+      const quarter = parseStr(req.query.quarter); // e.g. "2026-Q1"
+
+      if (!startDate || !endDate || !quarter) {
+        return res.status(400).json({ message: "startDate, endDate, and quarter params required" });
+      }
+
+      const [yearStr, qStr] = quarter.split("-Q");
+      const year = parseInt(yearStr, 10);
+      const qNum = parseInt(qStr, 10);
+      const quarterLabel = `Q${qNum} ${year}`;
+
+      // Determine the 3 months in the quarter
+      const qStartMonth = (qNum - 1) * 3; // 0-indexed (Q1=0, Q2=3, etc.)
+      const months: string[] = [];
+      for (let i = 0; i < 3; i++) {
+        const m = qStartMonth + i;
+        const mYear = year;
+        months.push(`${mYear}-${String(m + 1).padStart(2, "0")}`);
+      }
+
+      // Determine FY (Jul-Jun)
+      const fyStartMonth = months[0].split("-").map(Number);
+      const fyStart = fyStartMonth[1] >= 7 ? fyStartMonth[0] : fyStartMonth[0] - 1;
+      const fyEnd = fyStart + 1;
+      const fyLabel = `FY${String(fyEnd).slice(2)}`;
+      const fyStartDate = `${fyStart}-07-01`;
+
+      // Pull delivery metrics per month + full quarter
+      const monthDeliveries = await Promise.all(
+        months.map(m => {
+          const mStart = `${m}-01`;
+          const [y, mo] = m.split("-").map(Number);
+          const mEnd = mo === 12 ? `${y + 1}-01-01` : `${y}-${String(mo + 1).padStart(2, "0")}-01`;
+          return getDeliveryMetrics({ userId, startDate: mStart, endDate: mEnd });
+        })
+      );
+
+      // YTD delivery
+      const ytdDelivery = await getDeliveryMetrics({ userId, startDate: fyStartDate, endDate });
+
+      // Foot traffic per month + total
+      const ftByMonth: Record<string, number> = {};
+      let ftTotal = 0;
+      for (const m of months) {
+        const mStart = `${m}-01`;
+        const [y, mo] = m.split("-").map(Number);
+        const mEnd = mo === 12 ? `${y + 1}-01-01` : `${y}-${String(mo + 1).padStart(2, "0")}-01`;
+        const ftRow = await db.execute(sql`
+          SELECT COALESCE(SUM(count), 0) as total FROM daily_foot_traffic
+          WHERE user_id = ${userId} AND date >= ${new Date(mStart)} AND date < ${new Date(mEnd)}
+        `);
+        const val = Number((ftRow as any).rows?.[0]?.total || 0);
+        ftByMonth[m] = val;
+        ftTotal += val;
+      }
+
+      // YTD foot traffic
+      const ytdFtRow = await db.execute(sql`
+        SELECT COALESCE(SUM(count), 0) as total FROM daily_foot_traffic
+        WHERE user_id = ${userId} AND date >= ${new Date(fyStartDate)} AND date < ${new Date(endDate)}
+      `);
+      const ytdFootTraffic = Number((ytdFtRow as any).rows?.[0]?.total || 0);
+
+      // Community snapshot
+      const communityRows = await db.execute(sql`
+        SELECT
+          COUNT(*) as total,
+          COUNT(CASE WHEN relationship_stage = 'kakano' OR (relationship_stage IS NULL AND stage IS NULL) THEN 1 END) as kakano,
+          COUNT(CASE WHEN relationship_stage = 'tipu' THEN 1 END) as tipu,
+          COUNT(CASE WHEN relationship_stage = 'ora' THEN 1 END) as ora,
+          COUNT(CASE WHEN ethnicity @> ARRAY['Māori']::text[] THEN 1 END) as maori,
+          COUNT(CASE WHEN ethnicity && ARRAY[${sql.join(PASIFIKA_ETHNICITIES.map(e => sql`${e}`), sql`, `)}]::text[] THEN 1 END) as pasifika,
+          COUNT(CASE WHEN is_rangatahi = true THEN 1 END) as rangatahi
+        FROM contacts
+        WHERE user_id = ${userId}
+        AND active = true AND is_archived = false
+        AND (is_innovator = true OR is_community_member = true)
+      `);
+      const comm = (communityRows as any).rows?.[0] || {};
+      const kakano = Number(comm.kakano || 0);
+      const tipu = Number(comm.tipu || 0);
+      const ora = Number(comm.ora || 0);
+
+      // Space use for the quarter
+      const spaceUseRows = await db.execute(sql`
+        SELECT
+          COALESCE(g.name, b.booker_name) as organisation,
+          b.classification as type,
+          COUNT(*) as bookings
+        FROM bookings b
+        LEFT JOIN groups g ON g.id = b.booker_group_id
+        WHERE b.user_id = ${userId}
+          AND b.start_date >= ${new Date(startDate)}
+          AND b.start_date < ${new Date(endDate)}
+          AND b.status IN ('confirmed', 'completed')
+          AND b.classification NOT IN ('Meeting', 'Internal')
+        GROUP BY COALESCE(g.name, b.booker_name), b.classification
+        ORDER BY organisation
+      `);
+      const spaceUse = ((spaceUseRows as any).rows || []).map((r: any) => ({
+        organisation: r.organisation || "Unknown",
+        type: r.type || "",
+        bookings: Number(r.bookings || 0),
+        maori: false,
+        pasifika: false,
+      }));
+
+      // Debrief updates
+      const debriefRows = await db.execute(sql`
+        SELECT il.title, il.notes
+        FROM impact_logs il
+        WHERE il.user_id = ${userId}
+        AND il.status = 'confirmed'
+        AND il.confirmed_at >= ${new Date(startDate)}
+        AND il.confirmed_at < ${new Date(endDate)}
+        AND LENGTH(COALESCE(il.notes, '')) > 50
+        ORDER BY il.confirmed_at
+      `);
+      const updateItems = ((debriefRows as any).rows || []).map((r: any) => {
+        const title = r.title || "Update";
+        const notes = (r.notes || "").slice(0, 200);
+        return `${title} — ${notes}`;
+      });
+
+      // Build delivery numbers array (per-month breakdown)
+      const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const deliveryNumbers: QuarterlyReportData["deliveryNumbers"] = [
+        {
+          metric: "Activations*",
+          values: Object.fromEntries(months.map((m, i) => [m, monthDeliveries[i].totalActivations])),
+          quarterTotal: monthDeliveries.reduce((s, d) => s + d.totalActivations, 0),
+          ytd: ytdDelivery.totalActivations,
+        },
+        {
+          metric: "Capability Building†",
+          values: Object.fromEntries(months.map((m, i) => [m, monthDeliveries[i].mentoringSessions + monthDeliveries[i].programmes.total])),
+          quarterTotal: monthDeliveries.reduce((s, d) => s + d.mentoringSessions + d.programmes.total, 0),
+          ytd: ytdDelivery.mentoringSessions + ytdDelivery.programmes.total,
+        },
+        {
+          metric: "Foot Traffic",
+          values: Object.fromEntries(months.map(m => [m, ftByMonth[m] || 0])),
+          quarterTotal: ftTotal,
+          ytd: ytdFootTraffic,
+        },
+      ];
+
+      // ── Māori & Pasifika Pipeline ────────────────────────────────────────
+      const [maoriInnovRows, pasifikaInnovRows, maoriMentoringRows, maoriProgRows, maoriProgressionRows] = await Promise.all([
+        db.execute(sql`
+          SELECT
+            COALESCE(relationship_stage, 'kakano') as stage, COUNT(*) as count
+          FROM contacts
+          WHERE user_id = ${userId} AND active = true AND is_archived = false AND is_innovator = true
+            AND ethnicity @> ARRAY['Māori']::text[]
+          GROUP BY relationship_stage
+        `),
+        db.execute(sql`
+          SELECT
+            COALESCE(relationship_stage, 'kakano') as stage, COUNT(*) as count
+          FROM contacts
+          WHERE user_id = ${userId} AND active = true AND is_archived = false AND is_innovator = true
+            AND ethnicity && ARRAY[${sql.join(PASIFIKA_ETHNICITIES.map(e => sql`${e}`), sql`, `)}]::text[]
+            AND NOT (ethnicity @> ARRAY['Māori']::text[])
+          GROUP BY relationship_stage
+        `),
+        db.execute(sql`
+          SELECT COUNT(DISTINCT mr.contact_id) as count
+          FROM mentoring_relationships mr
+          JOIN contacts c ON c.id = mr.contact_id
+          WHERE mr.status = 'active' AND c.user_id = ${userId}
+            AND c.ethnicity @> ARRAY['Māori']::text[]
+        `),
+        db.execute(sql`
+          SELECT COUNT(DISTINCT c.id) as count
+          FROM programmes p, unnest(p.attendees) att_id
+          JOIN contacts c ON c.id = att_id
+          WHERE p.user_id = ${userId} AND p.status != 'cancelled'
+            AND p.start_date >= ${new Date(startDate)} AND p.start_date < ${new Date(endDate)}
+            AND c.ethnicity @> ARRAY['Māori']::text[]
+        `),
+        db.execute(sql`
+          SELECT COUNT(*) as count
+          FROM relationship_stage_history rsh
+          JOIN contacts c ON c.id = rsh.entity_id
+          WHERE rsh.entity_type = 'contact'
+            AND rsh.changed_at >= ${new Date(startDate)} AND rsh.changed_at < ${new Date(endDate)}
+            AND c.ethnicity @> ARRAY['Māori']::text[]
+            AND c.user_id = ${userId}
+        `),
+      ]);
+
+      const maoriStages: Record<string, number> = {};
+      for (const r of (maoriInnovRows as any).rows || []) maoriStages[r.stage] = Number(r.count);
+      const pasifikaStages: Record<string, number> = {};
+      for (const r of (pasifikaInnovRows as any).rows || []) pasifikaStages[r.stage] = Number(r.count);
+
+      const maoriTotal = Object.values(maoriStages).reduce((s, v) => s + v, 0);
+      const pasifikaTotal = Object.values(pasifikaStages).reduce((s, v) => s + v, 0);
+
+      // Previous quarter metrics for comparison
+      let previousQuarter: MaoriPipelineData["previousQuarter"] = undefined;
+      try {
+        const prevQStart = new Date(startDate);
+        prevQStart.setMonth(prevQStart.getMonth() - 3);
+        const prevStartStr = prevQStart.toISOString().split("T")[0];
+        const prevDelivery = await getDeliveryMetrics({ userId, startDate: prevStartStr, endDate: startDate });
+        const prevFt = await db.execute(sql`
+          SELECT COALESCE(SUM(count), 0) as total FROM daily_foot_traffic
+          WHERE user_id = ${userId} AND date >= ${prevQStart} AND date < ${new Date(startDate)}
+        `);
+        const prevMaoriCount = await db.execute(sql`
+          SELECT COUNT(*) as count FROM contacts
+          WHERE user_id = ${userId} AND active = true AND is_archived = false AND is_innovator = true
+            AND ethnicity @> ARRAY['Māori']::text[]
+        `);
+        previousQuarter = {
+          innovatorTotal: Number((prevMaoriCount as any).rows?.[0]?.count || 0),
+          activations: prevDelivery.totalActivations,
+          footTraffic: Number((prevFt as any).rows?.[0]?.total || 0),
+          capabilityBuilding: prevDelivery.mentoringSessions + prevDelivery.programmes.total,
+        };
+      } catch {}
+
+      // Māori orgs using space (groups with Māori-identified contacts as bookers)
+      // Note: groups table lacks maori flag, so we use booker contact ethnicity as proxy
+      const maoriOrgRows = await db.execute(sql`
+        SELECT COALESCE(g.name, b.booker_name) as name, COUNT(*) as bookings
+        FROM bookings b
+        LEFT JOIN groups g ON g.id = b.booker_group_id
+        LEFT JOIN contacts c ON c.id = b.booker_id
+        WHERE b.user_id = ${userId}
+          AND b.start_date >= ${new Date(startDate)} AND b.start_date < ${new Date(endDate)}
+          AND b.status IN ('confirmed', 'completed')
+          AND c.ethnicity @> ARRAY['Māori']::text[]
+        GROUP BY COALESCE(g.name, b.booker_name)
+        ORDER BY bookings DESC
+      `);
+
+      const maoriPipeline: MaoriPipelineData = {
+        innovators: { total: maoriTotal, kakano: maoriStages["kakano"] || 0, tipu: maoriStages["tipu"] || 0, ora: maoriStages["ora"] || 0 },
+        inMentoring: Number((maoriMentoringRows as any).rows?.[0]?.count || 0),
+        inProgrammes: Number((maoriProgRows as any).rows?.[0]?.count || 0),
+        stageProgressions: Number((maoriProgressionRows as any).rows?.[0]?.count || 0),
+        pasifikaInnovators: { total: pasifikaTotal, kakano: pasifikaStages["kakano"] || 0, tipu: pasifikaStages["tipu"] || 0, ora: pasifikaStages["ora"] || 0 },
+        maoriOrgs: ((maoriOrgRows as any).rows || []).map((r: any) => ({ name: r.name || "Unknown", bookings: Number(r.bookings) })),
+        previousQuarter,
+      };
+
+      const reportData: QuarterlyReportData = {
+        period: {
+          quarter: quarterLabel,
+          year,
+          label: `${quarterLabel} (${MONTH_NAMES[qStartMonth]}–${MONTH_NAMES[qStartMonth + 2]} ${year})`,
+          fyLabel,
+          months,
+        },
+        deliveryNumbers,
+        communitySnapshot: {
+          maori: Number(comm.maori || 0),
+          pasifika: Number(comm.pasifika || 0),
+          rangatahi: Number(comm.rangatahi || 0),
+          total: Number(comm.total || 0),
+          kakano,
+          tipu,
+          ora,
+          innovatorTotal: kakano + tipu + ora,
+        },
+        spaceUse,
+        updates: { "Updates": updateItems },
+        quotes: Array.isArray(req.body?.quotes) ? req.body.quotes : [],
+        plannedNextQuarter: Array.isArray(req.body?.plannedNext) ? req.body.plannedNext : [],
+        footTraffic: { total: ftTotal, byMonth: ftByMonth },
+        maoriPipeline,
+      };
+
+      const html = renderQuarterlyReport(reportData);
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.send(html);
+    } catch (err: any) {
+      console.error("Quarterly HTML report error:", err.message);
+      res.status(500).json({ message: "Failed to generate quarterly report" });
+    }
+  };
+  app.get("/api/reports/html/quarterly", isAuthenticated, handleQuarterlyReport);
+  app.post("/api/reports/html/quarterly", isAuthenticated, handleQuarterlyReport);
 
   app.get("/api/reports/date-range", isAuthenticated, async (req, res) => {
     try {
@@ -15144,28 +15438,15 @@ Rules:
       const start = new Date(startDate);
       const end = new Date(endDate);
 
-      // ── Pull data ──────────────────────────────────────────────────────────
+      // ── Pull data via shared functions ────────────────────────────────────
 
-      const EVENT_TYPES_ACTIVATION = ["Hub Activity", "Drop-in", "Programme Session", "Programme", "External Event", "Booking"];
-      const EVENT_TYPES_MENTORING = ["Mentoring Session"];
-      const EVENT_TYPES_ECOSYSTEM = ["Meeting", "Catch Up", "Planning"];
+      const narrativeFilters: ReportFilters = { userId, startDate: startDate, endDate: endDate };
+      const delivery = await getDeliveryMetrics(narrativeFilters);
 
-      const allEvents = await storage.getEvents(userId);
-      const periodEvents = allEvents.filter(e =>
-        new Date(e.startTime) >= start &&
-        new Date(e.startTime) <= end &&
-        e.eventStatus !== "cancelled"
-      );
-
-      const activations = periodEvents.filter(e => EVENT_TYPES_ACTIVATION.includes(e.type)).length;
-      const mentoringSessions = periodEvents.filter(e => EVENT_TYPES_MENTORING.includes(e.type)).length;
-      const ecosystemMeetings = periodEvents.filter(e => EVENT_TYPES_ECOSYSTEM.includes(e.type)).length;
-
-      // Programmes
-      const allProgrammes = await storage.getProgrammes(userId);
-      const programmes = allProgrammes.filter(p =>
-        p.startDate && new Date(p.startDate) >= start && new Date(p.startDate) <= end
-      ).length;
+      const activations = delivery.totalActivations;
+      const mentoringSessions = delivery.mentoringSessions;
+      const ecosystemMeetings = delivery.partnerMeetings;
+      const programmes = delivery.programmes.total;
 
       // Community reach (unique contacts at events)
       const allAttendance = await db.execute(sql`
@@ -15181,7 +15462,9 @@ Rules:
 
       // Active mentees
       const mentoringRels = await db.execute(sql`
-        SELECT COUNT(*) as count FROM mentoring_relationships WHERE status = 'active'
+        SELECT COUNT(*) as count FROM mentoring_relationships mr
+        JOIN contacts c ON c.id = mr.contact_id
+        WHERE mr.status = 'active' AND c.user_id = ${userId}
       `);
       const activeMentees = Number((mentoringRels as any).rows?.[0]?.count || 0);
 
@@ -15200,7 +15483,7 @@ Rules:
           AND active = true
           AND is_archived = false
           AND (is_innovator = true OR is_community_member = true)
-          AND ethnicity && ARRAY['Samoan','Tongan','Niuean','Cook Islands Māori','Cook Island','Fijian','Tahitian','Melanesian']::text[]
+          AND ethnicity && ARRAY[${sql.join(PASIFIKA_ETHNICITIES.map(e => sql`${e}`), sql`, `)}]::text[]
           AND NOT (ethnicity @> ARRAY['Māori']::text[])
       `);
       const totalMPCount = await db.execute(sql`
