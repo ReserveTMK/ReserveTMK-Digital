@@ -8894,54 +8894,6 @@ Return a JSON object with this exact structure:
     res.json(history);
   });
 
-  // ── Relationship Stage Dashboard Stats ──
-  app.get("/api/dashboard/relationship-stages", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      const contactsList = await storage.getContacts(userId);
-      const groupsList = await storage.getGroups(userId);
-      const stages = ["kakano", "tipu", "ora", "inactive"];
-      const contactCounts: Record<string, number> = {};
-      const groupCounts: Record<string, number> = {};
-      stages.forEach(s => { contactCounts[s] = 0; groupCounts[s] = 0; });
-      contactsList.forEach((c: any) => {
-        const s = normalizeStage(c.relationshipStage);
-        contactCounts[s] = (contactCounts[s] || 0) + 1;
-      });
-      groupsList.forEach((g: any) => {
-        const s = normalizeStage(g.relationshipStage);
-        groupCounts[s] = (groupCounts[s] || 0) + 1;
-      });
-      res.json({ contactCounts, groupCounts });
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
-  });
-
-  // ── Milestone Dashboard Stats ──
-  app.get("/api/dashboard/milestone-stats", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      const allMilestones = await storage.getMilestones(userId);
-      const startDate = req.query.startDate ? parseDate(req.query.startDate) : null;
-      const endDate = req.query.endDate ? parseDate(req.query.endDate) : null;
-      const filtered = allMilestones.filter(m => {
-        if (startDate && m.createdAt && new Date(m.createdAt) < startDate) return false;
-        if (endDate && m.createdAt && new Date(m.createdAt) > endDate) return false;
-        return true;
-      });
-      const byType: Record<string, number> = {};
-      let totalValue = 0;
-      filtered.forEach(m => {
-        byType[m.milestoneType] = (byType[m.milestoneType] || 0) + 1;
-        if (m.valueAmount) totalValue += parseFloat(String(m.valueAmount));
-      });
-      res.json({ total: filtered.length, byType, totalValue });
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
-  });
-
   // ── Programme Effectiveness ──
   app.get("/api/programme-effectiveness", isAuthenticated, async (req, res) => {
     try {
@@ -9777,51 +9729,96 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     }
   });
 
-  // === Dashboard Blended Stats ===
-  app.get("/api/dashboard/blended-stats", isAuthenticated, async (req, res) => {
+  // === Dashboard Pulse — operator snapshot in one call ===
+  app.get("/api/dashboard/pulse", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const settings = await storage.getReportingSettings(userId);
-      const allLegacyReports = await storage.getLegacyReports(userId);
-      const confirmedReports = allLegacyReports.filter(r => r.status === "confirmed");
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      const monthStartStr = monthStart.toISOString().split("T")[0];
+      const monthEndStr = monthEnd.toISOString().split("T")[0];
 
-      const legacyTotals = {
-        totalActivations: 0,
-        totalFoottraffic: 0,
-        totalBookings: 0,
-        reportCount: confirmedReports.length,
-      };
+      const [
+        delivery,
+        enquiryRows,
+        draftRows,
+        needsDebriefRows,
+        menteeRows,
+        innovatorRows,
+        ftRows,
+      ] = await Promise.all([
+        getDeliveryMetrics({ userId, startDate: monthStartStr, endDate: monthEndStr }),
+        db.execute(sql`
+          SELECT COUNT(*) as count FROM bookings
+          WHERE user_id = ${userId} AND status = 'enquiry'
+        `),
+        db.execute(sql`
+          SELECT COUNT(*) as count FROM impact_logs
+          WHERE user_id = ${userId} AND status = 'draft'
+        `),
+        db.execute(sql`
+          SELECT COUNT(*) as count FROM events e
+          WHERE e.user_id = ${userId}
+            AND e.requires_debrief = true
+            AND e.event_status = 'active'
+            AND e.end_time < ${now}
+            AND NOT EXISTS (
+              SELECT 1 FROM impact_logs il WHERE il.event_id = e.id
+            )
+        `),
+        db.execute(sql`
+          SELECT COUNT(*) as count FROM mentoring_relationships
+          WHERE user_id = ${userId} AND status = 'active'
+        `),
+        db.execute(sql`
+          SELECT
+            COUNT(*) as total,
+            COUNT(CASE WHEN relationship_stage = 'kakano' THEN 1 END) as kakano,
+            COUNT(CASE WHEN relationship_stage = 'tipu' THEN 1 END) as tipu,
+            COUNT(CASE WHEN relationship_stage = 'ora' THEN 1 END) as ora
+          FROM contacts
+          WHERE user_id = ${userId} AND is_innovator = true AND active = true AND is_archived = false
+        `),
+        db.execute(sql`
+          SELECT COALESCE(SUM(count), 0) as total FROM daily_foot_traffic
+          WHERE user_id = ${userId}
+            AND date >= ${monthStart} AND date < ${monthEnd}
+        `),
+      ]);
 
-      for (const report of confirmedReports) {
-        const snapshot = await storage.getLegacyReportSnapshot(report.id);
-        if (snapshot) {
-          legacyTotals.totalActivations += snapshot.activationsTotal || 0;
-          legacyTotals.totalFoottraffic += snapshot.foottrafficUnique || 0;
-          legacyTotals.totalBookings += snapshot.bookingsTotal || 0;
-        }
-      }
-
-      const allProgrammes = await storage.getProgrammes(userId);
-      const completedProgrammes = allProgrammes.filter(p => p.status === "completed").length;
-
-      const allBookings = await storage.getBookings(userId);
-      const completedBookings = allBookings.filter(b => b.status === "completed").length;
-
-      const allDebriefs = await storage.getImpactLogs(userId);
-      const confirmedDebriefs = allDebriefs.filter(d => d.status === "confirmed").length;
+      const enquiries = Number((enquiryRows as any).rows?.[0]?.count || 0);
+      const draftDebriefs = Number((draftRows as any).rows?.[0]?.count || 0);
+      const needsDebrief = Number((needsDebriefRows as any).rows?.[0]?.count || 0);
+      const activeMentees = Number((menteeRows as any).rows?.[0]?.count || 0);
+      const inv = (innovatorRows as any).rows?.[0] || {};
+      const footTraffic = Number((ftRows as any).rows?.[0]?.total || 0);
 
       res.json({
-        legacy: legacyTotals,
-        live: {
-          completedProgrammes,
-          completedBookings,
-          confirmedDebriefs,
+        needsAttention: {
+          enquiries,
+          draftDebriefs,
+          needsDebrief,
+          total: enquiries + draftDebriefs + needsDebrief,
         },
-        boundaryDate: settings?.boundaryDate || null,
+        thisMonth: {
+          activations: delivery.totalActivations || 0,
+          mentoringSessions: delivery.mentoringSessions || 0,
+          programmes: delivery.programmes?.total || 0,
+          venueHires: delivery.bookings?.total || 0,
+          footTraffic,
+        },
+        community: {
+          innovators: Number(inv.total || 0),
+          kakano: Number(inv.kakano || 0),
+          tipu: Number(inv.tipu || 0),
+          ora: Number(inv.ora || 0),
+          activeMentees,
+        },
       });
     } catch (err: any) {
-      console.error("Blended stats error:", err);
-      res.status(500).json({ message: "Failed to fetch blended stats" });
+      console.error("Dashboard pulse error:", err);
+      res.status(500).json({ message: "Failed to fetch dashboard pulse" });
     }
   });
 

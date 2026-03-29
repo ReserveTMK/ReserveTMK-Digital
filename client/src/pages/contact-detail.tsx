@@ -116,7 +116,6 @@ export default function ContactDetail() {
       queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
       queryClient.invalidateQueries({ queryKey: ['/api/contacts', id] });
       queryClient.invalidateQueries({ queryKey: ['/api/relationship-stage-history', 'contact', id] });
-      queryClient.invalidateQueries({ queryKey: ['/api/dashboard/relationship-stages'] });
     },
   });
 
