@@ -1326,6 +1326,11 @@ export default function CalendarPage() {
     queryKey: ["/api/google-calendar/events"],
   });
 
+  const { data: calendarHealth } = useQuery<{ connected: boolean; hasRefreshToken: boolean; tokenExpired: boolean; expiresAt: string | null }>({
+    queryKey: ["/api/google-calendar/health"],
+    refetchInterval: 5 * 60 * 1000,
+  });
+
   const { data: appEvents } = useQuery<AppEvent[]>({
     queryKey: ["/api/events"],
     staleTime: 0,
@@ -1335,7 +1340,7 @@ export default function CalendarPage() {
     queryKey: ["/api/dismissed-calendar-events"],
   });
 
-  const { data: calendarSettings } = useQuery<{ id: number; calendarId: string; label: string; active: boolean }[]>({
+  const { data: calendarSettings } = useQuery<{ id: number; calendarId: string; label: string; active: boolean; autoImport: boolean }[]>({
     queryKey: ["/api/calendar-settings"],
   });
 
@@ -1500,6 +1505,19 @@ export default function CalendarPage() {
     },
     onError: (err: any) => {
       toast({ title: "Failed to update calendar", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const toggleAutoImportMutation = useMutation({
+    mutationFn: async ({ settingId, autoImport }: { settingId: number; autoImport: boolean }) => {
+      await apiRequest("PATCH", `/api/calendar-settings/${settingId}`, { autoImport });
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/calendar-settings"] });
+      toast({ title: variables.autoImport ? "Auto-import enabled" : "Auto-import disabled" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to update", description: err.message, variant: "destructive" });
     },
   });
 
@@ -2129,6 +2147,16 @@ export default function CalendarPage() {
 
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            {calendarHealth && !calendarHealth.connected && (
+              <Badge variant="destructive" className="text-xs">
+                Google Calendar disconnected
+              </Badge>
+            )}
+            {calendarHealth && calendarHealth.connected && calendarHealth.tokenExpired && (
+              <Badge variant="destructive" className="text-xs">
+                Google Calendar token expired — reconnect in Settings
+              </Badge>
+            )}
             {showSchedule && needsAttentionEvents.length > 0 && (
               <Button
                 size="sm"
@@ -2212,7 +2240,8 @@ export default function CalendarPage() {
             ) : availableCalendars && availableCalendars.length > 0 ? (
               <div className="space-y-1">
                 {availableCalendars.map(cal => {
-                  const isEnabled = cal.primary || (calendarSettings || []).some(s => s.calendarId === cal.id);
+                  const setting = (calendarSettings || []).find(s => s.calendarId === cal.id);
+                  const isEnabled = cal.primary || !!setting;
                   return (
                     <div
                       key={cal.id}
@@ -2227,6 +2256,17 @@ export default function CalendarPage() {
                         <p className="text-sm font-medium truncate">{cal.summary}</p>
                         {cal.description && (
                           <p className="text-xs text-muted-foreground truncate">{cal.description}</p>
+                        )}
+                        {isEnabled && setting && (
+                          <label className="flex items-center gap-1.5 mt-1 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="w-3 h-3 rounded"
+                              checked={!!setting.autoImport}
+                              onChange={(e) => toggleAutoImportMutation.mutate({ settingId: setting.id, autoImport: e.target.checked })}
+                            />
+                            <span className="text-xs text-muted-foreground">Auto-import events</span>
+                          </label>
                         )}
                       </div>
                       <Switch

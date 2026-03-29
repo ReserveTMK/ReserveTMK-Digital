@@ -76,6 +76,7 @@ async function deduplicatedReportCall<T>(key: string, fn: () => Promise<T>): Pro
   return promise;
 }
 import { scanGmailEmails, confirmImport, startAutoSync, getGmailOAuth2Client, isNoreplyEmail } from "./gmail-import";
+import { startCalendarAutoSync } from "./calendar-sync";
 
 function parseTimeToMinutes(timeStr: string): number {
   const parts = timeStr.split(":");
@@ -940,10 +941,10 @@ export async function registerRoutes(
   });
 
   // === Google Calendar Event Helper ===
-  async function createCalendarEventForMeeting(meeting: any, options?: { mentorEmail?: string; coMentorEmail?: string; menteeEmail?: string; calendarId?: string; sendInvites?: boolean; additionalAttendees?: string[] }) {
+  async function createCalendarEventForMeeting(calUserId: string, meeting: any, options?: { mentorEmail?: string; coMentorEmail?: string; menteeEmail?: string; calendarId?: string; sendInvites?: boolean; additionalAttendees?: string[] }) {
     try {
       const { getUncachableGoogleCalendarClient } = await import("./replit_integrations/google-calendar/client");
-      const calendar = await getUncachableGoogleCalendarClient(userId);
+      const calendar = await getUncachableGoogleCalendarClient(calUserId);
 
       const attendees: { email: string }[] = [];
       if (options?.mentorEmail) attendees.push({ email: options.mentorEmail });
@@ -979,15 +980,15 @@ export async function registerRoutes(
       }
       return event.data.id;
     } catch (err: any) {
-      console.warn("Google Calendar event creation skipped:", err.message);
+      console.error("Google Calendar event creation failed:", err.message, err.response?.data || "");
       return null;
     }
   }
 
-  async function updateCalendarEventAttendees(googleCalendarEventId: string, attendees: { email: string }[], calendarId?: string, sendInvites?: boolean) {
+  async function updateCalendarEventAttendees(calUserId: string, googleCalendarEventId: string, attendees: { email: string }[], calendarId?: string, sendInvites?: boolean) {
     try {
       const { getUncachableGoogleCalendarClient } = await import("./replit_integrations/google-calendar/client");
-      const calendar = await getUncachableGoogleCalendarClient(userId);
+      const calendar = await getUncachableGoogleCalendarClient(calUserId);
       const calId = calendarId || "primary";
       
       const existing = await calendar.events.get({ calendarId: calId, eventId: googleCalendarEventId });
@@ -1163,7 +1164,7 @@ export async function registerRoutes(
             ? req.body.attendees.filter((a: any) => a.email).map((a: any) => a.email as string)
             : [];
 
-          const eventId = await createCalendarEventForMeeting(meeting, {
+          const eventId = await createCalendarEventForMeeting(userId, meeting, {
             mentorEmail,
             menteeEmail,
             calendarId,
@@ -1179,7 +1180,7 @@ export async function registerRoutes(
                 allAttendees.push({ email });
               }
             });
-            await updateCalendarEventAttendees(eventId, allAttendees, calendarId, sendInvites);
+            await updateCalendarEventAttendees(userId, eventId, allAttendees, calendarId, sendInvites);
           }
         } catch (e) {
           console.warn("Calendar event creation failed silently:", e);
@@ -1250,7 +1251,7 @@ export async function registerRoutes(
                 calAttendees.push({ email: a.email });
               }
             });
-            await updateCalendarEventAttendees(updated.googleCalendarEventId!, calAttendees, mentorProfile?.googleCalendarId || undefined, true);
+            await updateCalendarEventAttendees(userId, updated.googleCalendarEventId!, calAttendees, mentorProfile?.googleCalendarId || undefined, true);
           } catch (e) {
             console.warn("Calendar attendee update failed silently:", e);
           }
@@ -2129,7 +2130,7 @@ export async function registerRoutes(
             (await storage.getMentorProfiles(resolved.ownerUserId))
               .find(p => p.mentorUserId === meetingUserId || `mentor-${p.id}` === meetingUserId)?.email : undefined;
           const additionalAttendees = Array.isArray(extras) ? extras.filter((e: string) => e && e.includes('@')) : [];
-          await createCalendarEventForMeeting(meetingWithLocation, {
+          await createCalendarEventForMeeting(contactOwnerUserId, meetingWithLocation, {
             mentorEmail: mentorEmail || undefined,
             menteeEmail: email || undefined,
             calendarId: resolved.googleCalendarId || undefined,
@@ -4100,6 +4101,17 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     res.json({ success: true });
   });
 
+  app.patch("/api/calendar-settings/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseId(req.params.id);
+      const { autoImport } = req.body;
+      const updated = await storage.updateCalendarSetting(id, { autoImport });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // === Programmes API ===
 
   app.get(api.programmes.list.path, isAuthenticated, async (req, res) => {
@@ -5742,7 +5754,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
           calendarEventCreated = true;
         }
       } catch (calErr: any) {
-        console.warn("Google Calendar event creation skipped for booking:", calErr.message);
+        console.error("Google Calendar event creation failed for booking:", bookingId, calErr.message, calErr.response?.data || "");
       }
 
       res.json({ success: true, booking: updated, emailSent, isAfterHours: afterHoursFlag, calendarEventCreated });
@@ -14087,7 +14099,7 @@ Rules:
             await storage.updateBooking(booking.id, { googleCalendarEventId: calEvent.data.id } as any);
           }
         } catch (calErr: any) {
-          console.warn("[Calendar] Auto-confirm calendar event creation skipped:", calErr.message);
+          console.error("[Calendar] Auto-confirm calendar event creation failed:", booking.id, calErr.message, calErr.response?.data || "");
         }
       } else {
         // Enquiry: send venue enquiry alert to admin
@@ -15721,6 +15733,7 @@ Rules:
   setTimeout(runBookingReminderAutoSend, 10000);
 
   startAutoSync();
+  startCalendarAutoSync();
 
   (async () => {
     try {
@@ -15829,6 +15842,17 @@ Rules:
     const { isCalendarConnected } = await import("./replit_integrations/google-calendar/client");
     const userId = (req.user as any).claims.sub;
     res.json({ connected: await isCalendarConnected(userId) });
+  });
+
+  app.get("/api/google-calendar/health", isAuthenticated, async (req, res) => {
+    try {
+      const { getCalendarHealth } = await import("./replit_integrations/google-calendar/client");
+      const userId = (req.user as any).claims.sub;
+      const health = await getCalendarHealth(userId);
+      res.json(health);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   // === NARRATIVE REPORT GENERATOR ===

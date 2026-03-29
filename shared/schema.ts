@@ -348,6 +348,8 @@ export const calendarSettings = pgTable("calendar_settings", {
   calendarId: text("calendar_id").notNull(),
   label: text("label"),
   active: boolean("active").default(true),
+  autoImport: boolean("auto_import").default(false),
+  lastSyncAt: timestamp("last_sync_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

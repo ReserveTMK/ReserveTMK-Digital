@@ -333,6 +333,7 @@ export interface IStorage {
   addCalendarSetting(data: InsertCalendarSetting): Promise<CalendarSetting>;
   updateCalendarSetting(id: number, updates: Partial<InsertCalendarSetting>): Promise<CalendarSetting>;
   deleteCalendarSetting(id: number): Promise<void>;
+  getAutoImportCalendarSettings(): Promise<CalendarSetting[]>;
 
   // Programmes
   getProgrammes(userId: string): Promise<Programme[]>;
@@ -1277,6 +1278,12 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCalendarSetting(id: number): Promise<void> {
     await db.delete(calendarSettings).where(eq(calendarSettings.id, id));
+  }
+
+  async getAutoImportCalendarSettings(): Promise<CalendarSetting[]> {
+    return await db.select()
+      .from(calendarSettings)
+      .where(and(eq(calendarSettings.active, true), eq(calendarSettings.autoImport, true)));
   }
 
   // Programmes

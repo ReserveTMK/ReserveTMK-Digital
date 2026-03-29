@@ -59,6 +59,26 @@ export async function isCalendarConnected(userId: string): Promise<boolean> {
   return !!tokens?.accessToken;
 }
 
+export async function getCalendarHealth(userId: string): Promise<{
+  connected: boolean;
+  hasRefreshToken: boolean;
+  tokenExpired: boolean;
+  expiresAt: string | null;
+}> {
+  const tokens = await getCalendarTokens(userId);
+  if (!tokens?.accessToken) {
+    return { connected: false, hasRefreshToken: false, tokenExpired: true, expiresAt: null };
+  }
+  const now = Date.now();
+  const expired = tokens.expiryDate ? tokens.expiryDate < now : false;
+  return {
+    connected: true,
+    hasRefreshToken: !!tokens.refreshToken,
+    tokenExpired: expired && !tokens.refreshToken,
+    expiresAt: tokens.expiryDate ? new Date(tokens.expiryDate).toISOString() : null,
+  };
+}
+
 // ── Main client getter ─────────────────────────────────────────────────────────
 
 export async function getUncachableGoogleCalendarClient(userId?: string) {
