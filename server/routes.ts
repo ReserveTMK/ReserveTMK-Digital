@@ -5615,23 +5615,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         console.warn("Google Calendar event creation skipped for booking:", calErr.message);
       }
 
-      let invoiceGenerated = false;
-      let invoiceNumber = "";
-      try {
-        const xeroSettings = await storage.getXeroSettings(userId);
-        if (xeroSettings?.connected) {
-          const { generateXeroInvoice } = await import("./xero");
-          const invoiceResult = await generateXeroInvoice(userId, bookingId);
-          if (invoiceResult) {
-            invoiceGenerated = true;
-            invoiceNumber = invoiceResult.invoiceNumber;
-          }
-        }
-      } catch (invoiceErr: any) {
-        console.error("Auto-invoice generation failed:", invoiceErr.message);
-      }
-
-      res.json({ success: true, booking: updated, emailSent, isAfterHours: afterHoursFlag, invoiceGenerated, invoiceNumber, calendarEventCreated });
+      res.json({ success: true, booking: updated, emailSent, isAfterHours: afterHoursFlag, calendarEventCreated });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

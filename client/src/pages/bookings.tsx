@@ -1101,25 +1101,12 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                                                     After Hours
                                                   </Badge>
                                                 )}
-                                                {booking.xeroInvoiceId && (
-                                                  <Badge variant="outline" className={`text-[10px] ${booking.xeroInvoiceStatus === "paid" ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800" : "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800"}`} data-testid={`badge-xero-invoice-${booking.id}`}>
-                                                    <Receipt className="w-2.5 h-2.5 mr-0.5" />
-                                                    {booking.xeroInvoiceStatus || "invoiced"}
-                                                  </Badge>
-                                                )}
                                                 {pendingChangeRequestBookingIds.has(booking.id) && (
                                                   <Badge variant="outline" className="text-[10px] bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-300 dark:border-orange-800" data-testid={`badge-change-request-kanban-${booking.id}`}>
                                                     <RefreshCw className="w-2.5 h-2.5 mr-0.5" />
                                                     Change Request
                                                   </Badge>
                                                 )}
-                                                {(() => {
-                                                  const ps = (booking as any).paymentStatus || "unpaid";
-                                                  if (ps === "paid") return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">Paid</span>;
-                                                  if (ps === "invoiced") return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">Invoiced</span>;
-                                                  if (ps === "not_required") return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">N/A</span>;
-                                                  return null;
-                                                })()}
                                               </div>
                                             </div>
                                           </div>
@@ -1177,25 +1164,50 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                                           </div>
                                         )}
 
-                                        {(parseFloat(booking.amount || "0") > 0 || (getBookerName(booking.bookerId) && getBookingGroupName(booking.bookerGroupId))) && (
-                                          <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/30">
-                                            {parseFloat(booking.amount || "0") > 0 && (
-                                              <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
-                                                <DollarSign className="w-3 h-3" />
-                                                {parseFloat(booking.amount || "0").toFixed(2)}
-                                                {booking.rateType === "community" && (
-                                                  <Badge variant="secondary" className="text-[8px] ml-1 px-1 py-0">Community</Badge>
-                                                )}
+                                        {(() => {
+                                          const amt = parseFloat(booking.amount || "0");
+                                          const ps = (booking as any).paymentStatus || "unpaid";
+                                          const isFree = booking.pricingTier === "free_koha" || booking.usePackageCredit || ps === "not_required";
+                                          const hasInvoice = !!booking.xeroInvoiceId;
+                                          const isPaid = ps === "paid" || booking.xeroInvoiceStatus === "paid";
+
+                                          if (amt <= 0 && !isFree && !getBookerName(booking.bookerId)) return null;
+
+                                          return (
+                                            <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/30">
+                                              <span className="text-[11px] flex items-center gap-1.5">
+                                                {isPaid ? (
+                                                  <>
+                                                    <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                                                    <span className="text-green-700 dark:text-green-400 font-medium">Paid</span>
+                                                  </>
+                                                ) : hasInvoice ? (
+                                                  <>
+                                                    <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                                                    <span className="text-blue-700 dark:text-blue-400 font-medium">Invoiced</span>
+                                                    <span className="text-muted-foreground">{booking.xeroInvoiceNumber}</span>
+                                                  </>
+                                                ) : isFree ? (
+                                                  <>
+                                                    <span className="w-2 h-2 rounded-full bg-gray-400 shrink-0" />
+                                                    <span className="text-muted-foreground">Covered</span>
+                                                  </>
+                                                ) : amt > 0 ? (
+                                                  <>
+                                                    <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                                                    <span className="text-amber-700 dark:text-amber-400 font-medium">${amt.toFixed(2)}</span>
+                                                  </>
+                                                ) : null}
                                               </span>
-                                            )}
-                                            {getBookerName(booking.bookerId) && getBookingGroupName(booking.bookerGroupId) && (
-                                              <span className="text-[11px] text-muted-foreground flex items-center gap-0.5 ml-auto">
-                                                <Users className="w-3 h-3" />
-                                                {getBookerName(booking.bookerId)}
-                                              </span>
-                                            )}
-                                          </div>
-                                        )}
+                                              {getBookerName(booking.bookerId) && getBookingGroupName(booking.bookerGroupId) && (
+                                                <span className="text-[11px] text-muted-foreground flex items-center gap-0.5 ml-auto">
+                                                  <Users className="w-3 h-3" />
+                                                  {getBookerName(booking.bookerId)}
+                                                </span>
+                                              )}
+                                            </div>
+                                          );
+                                        })()}
                                       </div>
                                     )}
                                   </Draggable>
@@ -1707,24 +1719,6 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
               <div className="space-y-2">
                 <Button
                   className="w-full justify-between gap-2"
-                  variant={completionInvoiceDone ? "secondary" : "default"}
-                  onClick={handleGenerateInvoice}
-                  disabled={completionInvoiceDone || !completionNeedsInvoice || completionInvoiceLoading}
-                  data-testid="button-generate-invoice"
-                >
-                  <span className="flex items-center gap-2">
-                    <Receipt className="w-4 h-4" />
-                    {completionInvoiceDone ? "Invoice Generated" : completionNeedsInvoice ? "Generate Invoice" : "No invoice needed"}
-                  </span>
-                  {completionInvoiceLoading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : completionInvoiceDone ? (
-                    <CheckCircle2 className="w-4 h-4 text-green-500" />
-                  ) : null}
-                </Button>
-
-                <Button
-                  className="w-full justify-between gap-2"
                   variant={completionServedDone ? "secondary" : "default"}
                   onClick={handleMarkServed}
                   disabled={completionServedDone || completionServedLoading}
@@ -1740,6 +1734,9 @@ export default function Bookings({ embedded }: { embedded?: boolean } = {}) {
                     <CheckCircle2 className="w-4 h-4 text-green-500" />
                   ) : null}
                 </Button>
+                {completionNeedsInvoice && !completionInvoiceDone && (
+                  <p className="text-xs text-muted-foreground text-center">Invoice from booking detail when ready</p>
+                )}
               </div>
             </div>
           )}
