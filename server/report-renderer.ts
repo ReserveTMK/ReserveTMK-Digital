@@ -8,6 +8,7 @@
 
 export interface MonthlyReportData {
   period: { month: string; year: number; label: string; fyLabel: string };
+  funderName?: string;
   deliveryNumbers: { activations: number; capabilityBuilding: number; footTraffic: number; ytdActivations: number; ytdCapability: number; ytdFootTraffic: number };
   communitySnapshot: { maori: number; pasifika: number; rangatahi: number; total: number; kakano: number; tipu: number; ora: number; innovatorTotal: number };
   spaceUse: Array<{ organisation: string; type: string; bookings: number; maori: boolean; pasifika: boolean }>;
@@ -28,6 +29,7 @@ export interface MaoriPipelineData {
 
 export interface QuarterlyReportData {
   period: { quarter: string; year: number; label: string; fyLabel: string; months: string[] };
+  funderName?: string;
   deliveryNumbers: Array<{ metric: string; values: Record<string, number>; quarterTotal: number; ytd: number }>;
   communitySnapshot: { maori: number; pasifika: number; rangatahi: number; total: number; kakano: number; tipu: number; ora: number; innovatorTotal: number };
   spaceUse: Array<{ organisation: string; type: string; bookings: number; maori: boolean; pasifika: boolean }>;
@@ -174,7 +176,7 @@ export function renderMonthlyReport(data: MonthlyReportData): string {
 <body>
 
 <div class="header">
-  <div class="header-tag">Monthly Report · ${esc(period.fyLabel)}</div>
+  <div class="header-tag">Monthly Report · ${esc(period.fyLabel)}${data.funderName ? ` · ${esc(data.funderName)}` : ""}</div>
   <h1>Reserve Tāmaki</h1>
   <div class="subtitle">${esc(period.label)}</div>
 </div>
@@ -309,7 +311,7 @@ export function renderQuarterlyReport(data: QuarterlyReportData): string {
 <body>
 
 <div class="header">
-  <div class="header-tag">Quarterly Report · ${esc(period.fyLabel)}</div>
+  <div class="header-tag">Quarterly Report · ${esc(period.fyLabel)}${data.funderName ? ` · ${esc(data.funderName)}` : ""}</div>
   <h1>Reserve Tāmaki</h1>
   <div class="subtitle">${esc(period.label)}</div>
 </div>

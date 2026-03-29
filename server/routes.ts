@@ -6915,6 +6915,7 @@ Important:
       const fyLabel = `FY${String(fyEnd).slice(2)}`;
       const fyStartDate = `${fyStart}-07-01`;
 
+      const funderName = parseStr(req.query.funder) || undefined;
       const filters: ReportFilters = { userId, startDate, endDate };
       const ytdFilters: ReportFilters = { userId, startDate: fyStartDate, endDate };
 
@@ -7005,6 +7006,7 @@ Important:
 
       const reportData: MonthlyReportData = {
         period: { month: month, year, label: `${monthName} ${year}`, fyLabel },
+        funderName,
         deliveryNumbers: {
           activations: delivery.totalActivations || 0,
           capabilityBuilding,
@@ -7053,6 +7055,7 @@ Important:
         return res.status(400).json({ message: "startDate, endDate, and quarter params required" });
       }
 
+      const funderName = parseStr(req.query.funder) || undefined;
       const [yearStr, qStr] = quarter.split("-Q");
       const year = parseInt(yearStr, 10);
       const qNum = parseInt(qStr, 10);
@@ -7304,6 +7307,7 @@ Important:
           fyLabel,
           months,
         },
+        funderName,
         deliveryNumbers,
         communitySnapshot: {
           maori: Number(comm.maori || 0),
@@ -15526,22 +15530,27 @@ Rules:
         l.summary
       );
 
-      // Get linked contacts for each log
-      const logsWithContacts = await Promise.all(
-        periodLogs.slice(0, 30).map(async (log) => {
-          const contacts = await db.execute(sql`
-            SELECT c.name, c.ethnicity FROM impact_log_contacts ilc
+      // Get linked contacts for all logs in a single query
+      const topLogs = periodLogs.slice(0, 30);
+      const logIds = topLogs.map(l => l.id);
+      const allContacts = logIds.length > 0
+        ? ((await db.execute(sql`
+            SELECT ilc.impact_log_id, c.name, c.ethnicity FROM impact_log_contacts ilc
             JOIN contacts c ON c.id = ilc.contact_id
-            WHERE ilc.impact_log_id = ${log.id}
-          `);
-          const contactNames = ((contacts as any).rows || []).map((r: any) => r.name).join(", ");
-          return {
-            title: log.title,
-            summary: log.summary,
-            contacts: contactNames,
-          };
-        })
-      );
+            WHERE ilc.impact_log_id = ANY(${logIds})
+          `)) as any).rows || []
+        : [];
+      const contactsByLog = new Map<number, string[]>();
+      for (const r of allContacts) {
+        const names = contactsByLog.get(r.impact_log_id) || [];
+        names.push(r.name);
+        contactsByLog.set(r.impact_log_id, names);
+      }
+      const logsWithContacts = topLogs.map(log => ({
+        title: log.title,
+        summary: log.summary,
+        contacts: (contactsByLog.get(log.id) || []).join(", "),
+      }));
 
       // ── AI narrative generation ────────────────────────────────────────────
 

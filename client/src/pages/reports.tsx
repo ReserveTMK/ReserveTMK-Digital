@@ -93,10 +93,11 @@ export default function Reports() {
     try {
       let url: string;
       const body: any = { quotes, plannedNext };
+      const funderParam = activeFunder ? `&funder=${encodeURIComponent(activeFunder.name)}` : "";
       if (reportMode === "monthly" && month) {
-        url = `/api/reports/html/monthly?month=${month.month}`;
+        url = `/api/reports/html/monthly?month=${month.month}${funderParam}`;
       } else if (reportMode === "quarterly" && quarter) {
-        url = `/api/reports/html/quarterly?quarter=${quarter.value}&startDate=${quarter.start}&endDate=${quarter.end}`;
+        url = `/api/reports/html/quarterly?quarter=${quarter.value}&startDate=${quarter.start}&endDate=${quarter.end}${funderParam}`;
       } else {
         toast({ title: "Select a period first", variant: "destructive" });
         setIsGenerating(false);
