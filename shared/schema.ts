@@ -1932,7 +1932,7 @@ export type InsertFunderDocument = z.infer<typeof insertFunderDocumentSchema>;
 
 export const DELIVERABLE_METRIC_TYPES = [
   "activations", "programmes", "mentoring", "contacts", "groups",
-  "events", "bookings", "foot_traffic", "revenue", "custom"
+  "events", "bookings", "foot_traffic", "revenue", "custom", "taxonomy_count"
 ] as const;
 export type DeliverableMetricType = typeof DELIVERABLE_METRIC_TYPES[number];
 
@@ -1961,6 +1961,72 @@ export const insertFunderDeliverableSchema = createInsertSchema(funderDeliverabl
 
 export type FunderDeliverable = typeof funderDeliverables.$inferSelect;
 export type InsertFunderDeliverable = z.infer<typeof insertFunderDeliverableSchema>;
+
+// === FUNDER TAXONOMY (per-funder lens for automatic impact routing) ===
+
+export const funderTaxonomyCategories = pgTable("funder_taxonomy_categories", {
+  id: serial("id").primaryKey(),
+  funderId: integer("funder_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  color: text("color"),
+  keywords: text("keywords").array(),
+  rules: jsonb("rules").default({}),
+  sortOrder: integer("sort_order").default(0),
+  active: boolean("active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertFunderTaxonomyCategorySchema = createInsertSchema(funderTaxonomyCategories).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type FunderTaxonomyCategory = typeof funderTaxonomyCategories.$inferSelect;
+export type InsertFunderTaxonomyCategory = z.infer<typeof insertFunderTaxonomyCategorySchema>;
+
+export const funderTaxonomyMappings = pgTable("funder_taxonomy_mappings", {
+  id: serial("id").primaryKey(),
+  funderCategoryId: integer("funder_category_id").notNull(),
+  genericTaxonomyId: integer("generic_taxonomy_id").notNull(),
+  confidenceModifier: integer("confidence_modifier").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertFunderTaxonomyMappingSchema = createInsertSchema(funderTaxonomyMappings).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type FunderTaxonomyMapping = typeof funderTaxonomyMappings.$inferSelect;
+export type InsertFunderTaxonomyMapping = z.infer<typeof insertFunderTaxonomyMappingSchema>;
+
+export const CLASSIFICATION_ENTITY_TYPES = ["debrief", "booking", "programme", "event"] as const;
+export type ClassificationEntityType = typeof CLASSIFICATION_ENTITY_TYPES[number];
+
+export const CLASSIFICATION_SOURCES = ["rule", "keyword", "ai", "generic_inherit"] as const;
+export type ClassificationSource = typeof CLASSIFICATION_SOURCES[number];
+
+export const funderTaxonomyClassifications = pgTable("funder_taxonomy_classifications", {
+  id: serial("id").primaryKey(),
+  funderId: integer("funder_id").notNull(),
+  funderCategoryId: integer("funder_category_id").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: integer("entity_id").notNull(),
+  entityDate: timestamp("entity_date"),
+  confidence: integer("confidence").default(50),
+  source: text("source").notNull().default("rule"),
+  evidence: text("evidence"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertFunderTaxonomyClassificationSchema = createInsertSchema(funderTaxonomyClassifications).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type FunderTaxonomyClassification = typeof funderTaxonomyClassifications.$inferSelect;
+export type InsertFunderTaxonomyClassification = z.infer<typeof insertFunderTaxonomyClassificationSchema>;
 
 // === MENTORING JOURNEY TABLES ===
 

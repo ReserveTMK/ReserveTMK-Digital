@@ -9,7 +9,7 @@ import { claudeJSON, isAnthropicKeyConfigured, AIKeyMissingError } from "./repli
 import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, getStandoutMoments, getOperatorInsights, getParticipantTransformationStories, getPeopleTierBreakdown, getImpactTagHeatmap, getTheoryOfChangeAlignment, getGrowthStory, getOutcomeChain, getQuarterlyMilestones, evaluateDeliverables, PASIFIKA_ETHNICITIES, type ReportFilters, type CohortDefinition, type OrgProfileContext, type FunderContext } from "./reporting";
 import { renderMonthlyReport, renderQuarterlyReport, type MonthlyReportData, type QuarterlyReportData, type MaoriPipelineData } from "./report-renderer";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings, normalizeStage, DEFAULT_AVAILABILITY_SCHEDULE, DEFAULT_VENUE_AVAILABILITY_SCHEDULE, type AvailabilitySchedule, bookingChangeRequests, } from "@shared/schema";
+import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings, normalizeStage, DEFAULT_AVAILABILITY_SCHEDULE, DEFAULT_VENUE_AVAILABILITY_SCHEDULE, type AvailabilitySchedule, bookingChangeRequests, funderTaxonomyCategories, funderTaxonomyClassifications, funderTaxonomyMappings, funders, } from "@shared/schema";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { ObjectStorageService } from "./replit_integrations/object_storage";
 import crypto from "crypto";
@@ -17,6 +17,7 @@ import { getBaseUrl } from "./url";
 import { fromZonedTime } from "date-fns-tz";
 import { db } from "./db";
 import { eq, and, or, sql, gte, lte, inArray } from "drizzle-orm";
+import { classifyForAllFunders, reclassifyAllForFunder } from "./taxonomy-engine";
 
 function parseId(val: unknown): number {
   if (Array.isArray(val)) return parseInt(String(val[0]), 10);
@@ -2894,6 +2895,11 @@ export async function registerRoutes(
             _warnings: [`${actionErrors.length} action item(s) could not be saved`],
           });
         }
+
+        // Classify through funder taxonomy lenses (fire-and-forget)
+        classifyForAllFunders("debrief", id, userId).catch((err) =>
+          console.error(`Taxonomy classification failed for debrief ${id}:`, err),
+        );
       }
 
       res.json(updated);
@@ -4183,6 +4189,13 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         }
       }
 
+      // Classify through funder taxonomy lenses when programme becomes active/completed
+      if (input.status && (input.status === "active" || input.status === "completed")) {
+        classifyForAllFunders("programme", id, existing.userId).catch((err) =>
+          console.error(`Taxonomy classification failed for programme ${id}:`, err),
+        );
+      }
+
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -5140,6 +5153,15 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       }
 
       const updated = await storage.updateBooking(id, input);
+
+      // Classify through funder taxonomy lenses when booking is confirmed/completed
+      if (input.status && (input.status === "confirmed" || input.status === "completed")) {
+        const userId = (req.user as any).claims.sub;
+        classifyForAllFunders("booking", id, userId).catch((err) =>
+          console.error(`Taxonomy classification failed for booking ${id}:`, err),
+        );
+      }
+
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -9847,6 +9869,345 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       if (err instanceof AIKeyMissingError) return res.status(503).json({ message: err.message });
       console.error("Taxonomy scan error:", err);
       res.status(500).json({ message: "Failed to scan for taxonomy suggestions" });
+    }
+  });
+
+  // === FUNDER TAXONOMY — per-funder lens routes ===
+
+  // List funder's taxonomy categories
+  app.get("/api/funders/:funderId/taxonomy", isAuthenticated, async (req, res) => {
+    try {
+      const funderId = parseId(req.params.funderId);
+      const categories = await db
+        .select()
+        .from(funderTaxonomyCategories)
+        .where(eq(funderTaxonomyCategories.funderId, funderId));
+      res.json(categories);
+    } catch (err) {
+      console.error("Error fetching funder taxonomy:", err);
+      res.status(500).json({ message: "Failed to fetch taxonomy categories" });
+    }
+  });
+
+  // Create funder taxonomy category
+  app.post("/api/funders/:funderId/taxonomy", isAuthenticated, async (req, res) => {
+    try {
+      const funderId = parseId(req.params.funderId);
+      const { name, description, color, keywords, rules, sortOrder } = req.body;
+      const [created] = await db
+        .insert(funderTaxonomyCategories)
+        .values({ funderId, name, description, color, keywords, rules: rules || {}, sortOrder: sortOrder || 0 })
+        .returning();
+      res.status(201).json(created);
+    } catch (err) {
+      console.error("Error creating funder taxonomy category:", err);
+      res.status(500).json({ message: "Failed to create taxonomy category" });
+    }
+  });
+
+  // Update funder taxonomy category
+  app.patch("/api/funders/:funderId/taxonomy/:id", isAuthenticated, async (req, res) => {
+    try {
+      const categoryId = parseId(req.params.id);
+      const updates: Record<string, any> = {};
+      for (const key of ["name", "description", "color", "keywords", "rules", "sortOrder", "active"]) {
+        if (req.body[key] !== undefined) updates[key] = req.body[key];
+      }
+      const [updated] = await db
+        .update(funderTaxonomyCategories)
+        .set(updates)
+        .where(eq(funderTaxonomyCategories.id, categoryId))
+        .returning();
+      if (!updated) return res.status(404).json({ message: "Category not found" });
+      res.json(updated);
+    } catch (err) {
+      console.error("Error updating funder taxonomy category:", err);
+      res.status(500).json({ message: "Failed to update taxonomy category" });
+    }
+  });
+
+  // Delete funder taxonomy category
+  app.delete("/api/funders/:funderId/taxonomy/:id", isAuthenticated, async (req, res) => {
+    try {
+      const categoryId = parseId(req.params.id);
+      // Also delete related classifications and mappings
+      await db.delete(funderTaxonomyClassifications).where(eq(funderTaxonomyClassifications.funderCategoryId, categoryId));
+      await db.delete(funderTaxonomyMappings).where(eq(funderTaxonomyMappings.funderCategoryId, categoryId));
+      await db.delete(funderTaxonomyCategories).where(eq(funderTaxonomyCategories.id, categoryId));
+      res.status(204).send();
+    } catch (err) {
+      console.error("Error deleting funder taxonomy category:", err);
+      res.status(500).json({ message: "Failed to delete taxonomy category" });
+    }
+  });
+
+  // List funder taxonomy mappings (generic → funder)
+  app.get("/api/funders/:funderId/taxonomy-mappings", isAuthenticated, async (req, res) => {
+    try {
+      const funderId = parseId(req.params.funderId);
+      const categories = await db
+        .select({ id: funderTaxonomyCategories.id })
+        .from(funderTaxonomyCategories)
+        .where(eq(funderTaxonomyCategories.funderId, funderId));
+      const categoryIds = categories.map((c) => c.id);
+      if (categoryIds.length === 0) return res.json([]);
+      const mappings = await db
+        .select()
+        .from(funderTaxonomyMappings)
+        .where(inArray(funderTaxonomyMappings.funderCategoryId, categoryIds));
+      res.json(mappings);
+    } catch (err) {
+      console.error("Error fetching taxonomy mappings:", err);
+      res.status(500).json({ message: "Failed to fetch taxonomy mappings" });
+    }
+  });
+
+  // Create taxonomy mapping
+  app.post("/api/funders/:funderId/taxonomy-mappings", isAuthenticated, async (req, res) => {
+    try {
+      const { funderCategoryId, genericTaxonomyId, confidenceModifier } = req.body;
+      const [created] = await db
+        .insert(funderTaxonomyMappings)
+        .values({ funderCategoryId, genericTaxonomyId, confidenceModifier: confidenceModifier || 0 })
+        .returning();
+      res.status(201).json(created);
+    } catch (err) {
+      console.error("Error creating taxonomy mapping:", err);
+      res.status(500).json({ message: "Failed to create taxonomy mapping" });
+    }
+  });
+
+  // Delete taxonomy mapping
+  app.delete("/api/funders/:funderId/taxonomy-mappings/:id", isAuthenticated, async (req, res) => {
+    try {
+      const mappingId = parseId(req.params.id);
+      await db.delete(funderTaxonomyMappings).where(eq(funderTaxonomyMappings.id, mappingId));
+      res.status(204).send();
+    } catch (err) {
+      console.error("Error deleting taxonomy mapping:", err);
+      res.status(500).json({ message: "Failed to delete taxonomy mapping" });
+    }
+  });
+
+  // Get classifications for a funder (with optional date range + entity type filter)
+  app.get("/api/funders/:funderId/classifications", isAuthenticated, async (req, res) => {
+    try {
+      const funderId = parseId(req.params.funderId);
+      const conds: any[] = [eq(funderTaxonomyClassifications.funderId, funderId)];
+      if (req.query.entityType) {
+        conds.push(eq(funderTaxonomyClassifications.entityType, parseStr(req.query.entityType)));
+      }
+      if (req.query.startDate) {
+        conds.push(gte(funderTaxonomyClassifications.entityDate, new Date(parseStr(req.query.startDate))));
+      }
+      if (req.query.endDate) {
+        conds.push(lte(funderTaxonomyClassifications.entityDate, new Date(parseStr(req.query.endDate))));
+      }
+      if (req.query.minConfidence) {
+        conds.push(gte(funderTaxonomyClassifications.confidence, parseInt(parseStr(req.query.minConfidence))));
+      }
+      const classifications = await db
+        .select()
+        .from(funderTaxonomyClassifications)
+        .where(and(...conds));
+      res.json(classifications);
+    } catch (err) {
+      console.error("Error fetching classifications:", err);
+      res.status(500).json({ message: "Failed to fetch classifications" });
+    }
+  });
+
+  // Get all funder classifications for a specific entity
+  app.get("/api/classifications/:entityType/:entityId", isAuthenticated, async (req, res) => {
+    try {
+      const entityType = parseStr(req.params.entityType);
+      const entityId = parseId(req.params.entityId);
+      const classifications = await db
+        .select()
+        .from(funderTaxonomyClassifications)
+        .where(
+          and(
+            eq(funderTaxonomyClassifications.entityType, entityType),
+            eq(funderTaxonomyClassifications.entityId, entityId),
+          ),
+        );
+      res.json(classifications);
+    } catch (err) {
+      console.error("Error fetching entity classifications:", err);
+      res.status(500).json({ message: "Failed to fetch entity classifications" });
+    }
+  });
+
+  // Reclassify all entities for a funder
+  app.post("/api/funders/:funderId/reclassify", isAuthenticated, async (req, res) => {
+    try {
+      const funderId = parseId(req.params.funderId);
+      const userId = (req.user as any).claims.sub;
+      const startDate = req.body.startDate ? new Date(req.body.startDate) : undefined;
+      const endDate = req.body.endDate ? new Date(req.body.endDate) : undefined;
+      const result = await reclassifyAllForFunder(funderId, userId, startDate, endDate);
+      res.json(result);
+    } catch (err) {
+      console.error("Error reclassifying:", err);
+      res.status(500).json({ message: "Failed to reclassify" });
+    }
+  });
+
+  // Seed funder taxonomy for known funders
+  app.post("/api/funders/seed-taxonomy", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const genericTaxonomy = await storage.getTaxonomy(userId);
+      const allFunders = await db.select().from(funders).where(eq(funders.userId, userId));
+      let seeded = 0;
+
+      const FUNDER_SEEDS: Record<string, Array<{
+        name: string; description: string; color: string;
+        keywords: string[]; rules: Record<string, any>;
+        inheritsFrom: string[];
+      }>> = {
+        "edo-auckland-council": [
+          {
+            name: "Inclusive Economic Growth",
+            description: "Enterprise development, revenue generation, job creation in Tāmaki",
+            color: "green",
+            keywords: ["enterprise", "revenue", "business growth", "first sale", "hired", "income", "startup", "market"],
+            rules: {},
+            inheritsFrom: ["Venture Progress"],
+          },
+          {
+            name: "Social & Sector Innovation",
+            description: "Activations, workshops, events driving sector and social innovation",
+            color: "blue",
+            keywords: ["wananga", "activation", "innovation", "workshop", "sector", "coworking"],
+            rules: { includeEventTypes: ["External Event", "Programme Session"] },
+            inheritsFrom: ["Hub Engagement", "Network & Ecosystem Connection"],
+          },
+          {
+            name: "Ecosystem Building",
+            description: "Partnerships, referrals, co-investment, collaboration across the ecosystem",
+            color: "orange",
+            keywords: ["partnership", "referral", "co-investment", "collaboration", "GridAKL", "network"],
+            rules: {},
+            inheritsFrom: ["Network & Ecosystem Connection"],
+          },
+          {
+            name: "Tāmaki Rohe Contribution",
+            description: "Local enterprise retention, Glen Innes-specific outcomes",
+            color: "teal",
+            keywords: ["local enterprise", "Glen Innes", "Tāmaki", "retained", "community hub", "local"],
+            rules: {},
+            inheritsFrom: ["Hub Engagement", "Venture Progress"],
+          },
+        ],
+        "nga-matarae": [
+          {
+            name: "Māori Enterprise Development",
+            description: "Māori-led business growth, whanau enterprise, kaupapa Māori economic outcomes",
+            color: "green",
+            keywords: ["Māori business", "whanau enterprise", "kaupapa", "Māori-led", "iwi", "hapū"],
+            rules: { communityLens: "maori" },
+            inheritsFrom: ["Venture Progress", "Skills & Capability Growth"],
+          },
+          {
+            name: "Rangatahi Māori Outcomes",
+            description: "Youth Māori development, taiohi enterprise, rangatahi pathways",
+            color: "pink",
+            keywords: ["rangatahi Māori", "taiohi", "youth Māori", "young Māori", "school leaver"],
+            rules: { communityLens: "maori", requireContactFlags: { isRangatahi: true } },
+            inheritsFrom: ["Rangatahi Development"],
+          },
+          {
+            name: "Whānau Capability",
+            description: "Confidence, capability, mana building for whānau Māori",
+            color: "purple",
+            keywords: ["whānau", "confidence", "capability", "mana", "growth", "upskill"],
+            rules: { communityLens: "maori" },
+            inheritsFrom: ["Skills & Capability Growth"],
+          },
+          {
+            name: "Cultural Connection",
+            description: "Tikanga, te reo, whakapapa, wānanga — cultural grounding through the hub",
+            color: "amber",
+            keywords: ["tikanga", "te reo", "whakapapa", "wānanga", "karakia", "mihi", "kōrero"],
+            rules: {},
+            inheritsFrom: ["Hub Engagement"],
+          },
+        ],
+        "foundation-north": [
+          {
+            name: "Increased Equity",
+            description: "Māori and Pasifika-led outcomes, self-determination, community solutions",
+            color: "green",
+            keywords: ["equity", "Māori-led", "community solution", "self-determination", "Pasifika-led"],
+            rules: { communityLens: "maori" },
+            inheritsFrom: ["Venture Progress", "Skills & Capability Growth"],
+          },
+          {
+            name: "Community Resilience",
+            description: "Community events, hui, belonging, placemaking",
+            color: "blue",
+            keywords: ["community event", "hui", "belonging", "resilient", "placemaking", "whānau"],
+            rules: {},
+            inheritsFrom: ["Hub Engagement", "Network & Ecosystem Connection"],
+          },
+          {
+            name: "Te Tiriti Outcomes",
+            description: "Te reo, tikanga, kaupapa Māori governance, mana whenua connections",
+            color: "purple",
+            keywords: ["te reo", "tikanga", "kaupapa Māori", "Māori governance", "mana whenua", "Ngāti Pāoa"],
+            rules: {},
+            inheritsFrom: [],
+          },
+        ],
+      };
+
+      for (const funder of allFunders) {
+        const tag = funder.funderTag;
+        if (!tag || !FUNDER_SEEDS[tag]) continue;
+
+        // Check if already seeded
+        const existing = await db
+          .select({ id: funderTaxonomyCategories.id })
+          .from(funderTaxonomyCategories)
+          .where(eq(funderTaxonomyCategories.funderId, funder.id));
+        if (existing.length > 0) continue;
+
+        const seeds = FUNDER_SEEDS[tag];
+        for (let i = 0; i < seeds.length; i++) {
+          const seed = seeds[i];
+          const [cat] = await db
+            .insert(funderTaxonomyCategories)
+            .values({
+              funderId: funder.id,
+              name: seed.name,
+              description: seed.description,
+              color: seed.color,
+              keywords: seed.keywords,
+              rules: seed.rules,
+              sortOrder: i,
+            })
+            .returning();
+
+          // Create mappings to generic taxonomy
+          for (const genericName of seed.inheritsFrom) {
+            const generic = genericTaxonomy.find((t) => t.name === genericName);
+            if (generic) {
+              await db.insert(funderTaxonomyMappings).values({
+                funderCategoryId: cat.id,
+                genericTaxonomyId: generic.id,
+                confidenceModifier: 0,
+              });
+            }
+          }
+        }
+        seeded++;
+      }
+
+      res.json({ seeded, message: `Seeded taxonomy for ${seeded} funder(s)` });
+    } catch (err) {
+      console.error("Error seeding funder taxonomy:", err);
+      res.status(500).json({ message: "Failed to seed taxonomy" });
     }
   });
 

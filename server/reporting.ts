@@ -8,6 +8,7 @@ import {
   meetingTypes, monthlySnapshots, footTrafficTouchpoints, dailyFootTraffic,
   metricSnapshots, programmeRegistrations,
   surveys, normalizeStage,
+  funderTaxonomyClassifications,
   type FunderDeliverable,
 } from "@shared/schema";
 
@@ -3380,6 +3381,31 @@ async function evaluateMetric(
         lte(communitySpend.date, end),
       ));
       return safeNum(result?.total);
+    }
+
+    case "taxonomy_count": {
+      const conds: any[] = [
+        gte(funderTaxonomyClassifications.entityDate, start),
+        lte(funderTaxonomyClassifications.entityDate, end),
+      ];
+      if (filter.funderId) {
+        conds.push(eq(funderTaxonomyClassifications.funderId, filter.funderId));
+      }
+      if (filter.funderCategoryIds?.length) {
+        conds.push(inArray(funderTaxonomyClassifications.funderCategoryId, filter.funderCategoryIds));
+      }
+      if (filter.entityTypes?.length) {
+        conds.push(inArray(funderTaxonomyClassifications.entityType, filter.entityTypes));
+      }
+      if (filter.minConfidence) {
+        conds.push(gte(funderTaxonomyClassifications.confidence, filter.minConfidence));
+      }
+      // Count distinct entities (an entity may match multiple categories)
+      const tcResult = await db.select({
+        total: sql<number>`COUNT(DISTINCT (${funderTaxonomyClassifications.entityType} || '-' || ${funderTaxonomyClassifications.entityId}))`,
+      }).from(funderTaxonomyClassifications)
+        .where(and(...conds));
+      return safeNum(tcResult[0]?.total);
     }
 
     case "custom":
