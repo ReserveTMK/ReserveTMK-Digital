@@ -12803,6 +12803,94 @@ Be specific, practical, and grounded in the actual documents and context provide
     }
   });
 
+  app.post("/api/funders/seed-radar", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const radarEntries = [
+        {
+          name: "Foundation North",
+          organisation: "Foundation North",
+          status: "radar" as const,
+          estimatedValue: 50000,
+          fitTags: ["maori", "community", "youth", "pasifika"],
+          notes: "Quick Response <$25k (2 months). Community >$25k multi-year (5 months). Warm intro: Rochelle (advisor) via Jacqui.",
+          nextAction: "Contact Rochelle via Jacqui",
+        },
+        {
+          name: "Te Puni Kokiri — Maori Development Fund",
+          organisation: "Te Puni Kokiri",
+          status: "radar" as const,
+          estimatedValue: 50000,
+          fitTags: ["maori", "enterprise", "innovation"],
+          notes: "$40.21M/year fund. Streams: Putea Kimihia (investigate), Putea Tipuranga (growth), Maori Business Growth Support.",
+          nextAction: "Call Auckland regional TPK office",
+        },
+        {
+          name: "Maungakiekie-Tamaki Local Board — Quick Response",
+          organisation: "Auckland Council",
+          status: "radar" as const,
+          estimatedValue: 5000,
+          applicationDeadline: new Date("2026-04-06"),
+          fitTags: ["youth", "maori", "pasifika", "placemaking"],
+          notes: "$2k-$10k grants. Priorities: youth, Maori/Pacific, placemaking.",
+          nextAction: "Prepare application this week",
+        },
+        {
+          name: "Creative NZ — Arts Orgs Fund Tiers 1-2",
+          organisation: "Creative New Zealand",
+          status: "radar" as const,
+          estimatedValue: 75000,
+          applicationDeadline: new Date("2026-05-31"),
+          fitTags: ["arts", "youth", "community"],
+          notes: "Tier 1: up to $50k/yr. Tier 2: $50-125k/yr. Multi-year options. Fit: podcast studio, Creators Club, content creation.",
+          nextAction: "Assess creative programmes as arts delivery",
+        },
+        {
+          name: "Social Investment Fund — Pathway Four",
+          organisation: "Ministry of Social Development",
+          status: "radar" as const,
+          estimatedValue: 100000,
+          fitTags: ["community", "youth"],
+          notes: "$190M over 4 years. Pathway Four (co-investment with philanthropy) anticipated early 2026. RTMKD data capability is differentiator.",
+          nextAction: "Explore paired with Foundation North",
+        },
+        {
+          name: "Tindall Foundation",
+          organisation: "Auckland Foundation",
+          status: "radar" as const,
+          estimatedValue: 20000,
+          applicationDeadline: new Date("2026-07-20"),
+          fitTags: ["community", "maori", "pasifika"],
+          notes: "Grassroots Giving for whanau experiencing multiple disadvantage. Applications open 20 July 2026, close 9 August.",
+        },
+        {
+          name: "Ministry of Youth Development",
+          organisation: "Ministry of Youth Development",
+          status: "radar" as const,
+          estimatedValue: 30000,
+          fitTags: ["youth", "enterprise"],
+          notes: "~$12M/year. Ages 12-24. Current round locked to June 2027. Next opening likely mid-2026.",
+        },
+      ];
+
+      const created = [];
+      for (const entry of radarEntries) {
+        const existing = await storage.getFunderByTag(userId, entry.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"));
+        if (existing) continue;
+        const funder = await storage.createFunder({
+          userId,
+          ...entry,
+          communityLens: "all",
+          funderTag: entry.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+        });
+        created.push(funder);
+      }
+      res.status(201).json({ created: created.length, entries: created });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to seed radar entries" });
+    }
+  });
+
   // === MENTORING RELATIONSHIPS ===
 
   const verifyContactOwnership = async (contactId: number, userId: string) => {

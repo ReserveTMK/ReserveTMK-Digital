@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -46,6 +47,9 @@ import {
   CheckCircle2,
   AlertTriangle,
   XCircle,
+  Radar,
+  ArrowRight,
+  DollarSign,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -71,15 +75,40 @@ const STATUS_COLORS: Record<string, string> = {
   active_funder: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
   in_conversation: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
   pending_eoi: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
+  applied: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
+  radar: "bg-gray-100 text-gray-600 dark:bg-gray-800/30 dark:text-gray-400",
   completed: "bg-gray-100 text-gray-600 dark:bg-gray-800/30 dark:text-gray-400",
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  active_funder: "Active Funder",
+  active_funder: "Active",
   in_conversation: "In Conversation",
   pending_eoi: "Pending EOI",
+  applied: "Applied",
+  radar: "Radar",
   completed: "Completed",
 };
+
+const FIT_TAG_COLORS: Record<string, string> = {
+  maori: "bg-orange-100 text-orange-700",
+  youth: "bg-pink-100 text-pink-700",
+  enterprise: "bg-blue-100 text-blue-700",
+  arts: "bg-purple-100 text-purple-700",
+  placemaking: "bg-teal-100 text-teal-700",
+  community: "bg-green-100 text-green-700",
+  pasifika: "bg-cyan-100 text-cyan-700",
+  innovation: "bg-indigo-100 text-indigo-700",
+};
+
+const ACTIVE_STATUSES = ["active_funder"];
+const PIPELINE_STATUSES = ["in_conversation", "pending_eoi", "applied"];
+const RADAR_STATUSES = ["radar"];
+
+function formatCurrency(amount: number): string {
+  if (amount >= 1000000) return `$${(amount / 1000000).toFixed(1)}M`;
+  if (amount >= 1000) return `$${(amount / 1000).toFixed(0)}k`;
+  return `$${amount}`;
+}
 
 
 const CADENCE_LABELS: Record<string, string> = {
@@ -441,7 +470,9 @@ export default function FundersPage() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
+  const [activeTab, setActiveTab] = useState("active");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [createDefaultStatus, setCreateDefaultStatus] = useState<string | undefined>();
   const [editingFunder, setEditingFunder] = useState<Funder | null>(null);
   const [viewingFunder, setViewingFunder] = useState<Funder | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
@@ -450,8 +481,24 @@ export default function FundersPage() {
     queryKey: ["/api/funders"],
   });
 
+  const active = useMemo(() => fundersList.filter(f => ACTIVE_STATUSES.includes(f.status)), [fundersList]);
+  const pipeline = useMemo(() => {
+    const items = fundersList.filter(f => PIPELINE_STATUSES.includes(f.status));
+    return items.sort((a, b) => {
+      if (a.applicationDeadline && b.applicationDeadline) return new Date(a.applicationDeadline).getTime() - new Date(b.applicationDeadline).getTime();
+      if (a.applicationDeadline) return -1;
+      if (b.applicationDeadline) return 1;
+      return 0;
+    });
+  }, [fundersList]);
+  const radar = useMemo(() => fundersList.filter(f => RADAR_STATUSES.includes(f.status)), [fundersList]);
+  const completed = useMemo(() => fundersList.filter(f => f.status === "completed"), [fundersList]);
+
+  const activeValue = useMemo(() => active.reduce((s, f) => s + (f.estimatedValue || 0), 0), [active]);
+  const pipelineValue = useMemo(() => pipeline.reduce((s, f) => s + (f.estimatedValue || 0), 0), [pipeline]);
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return fundersList;
+    if (!search.trim()) return null;
     const q = search.toLowerCase();
     return fundersList.filter(f =>
       f.name.toLowerCase().includes(q) ||
@@ -465,6 +512,7 @@ export default function FundersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/funders"] });
       setShowCreateDialog(false);
+      setCreateDefaultStatus(undefined);
       toast({ title: "Funder created" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -492,6 +540,11 @@ export default function FundersPage() {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const handleAdd = (defaultStatus?: string) => {
+    setCreateDefaultStatus(defaultStatus);
+    setShowCreateDialog(true);
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -504,18 +557,43 @@ export default function FundersPage() {
     <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6" data-testid="funders-page">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground" data-testid="text-page-title">Funders</h1>
-          <p className="text-sm text-muted-foreground mt-1">Manage funding relationships, documents, and reporting profiles</p>
+          <h1 className="text-2xl font-bold text-foreground" data-testid="text-page-title">Funding</h1>
+          <p className="text-sm text-muted-foreground mt-1">Active agreements, pipeline, and opportunities</p>
         </div>
-        <Button onClick={() => setShowCreateDialog(true)} data-testid="button-create-funder">
-          <Plus className="w-4 h-4 mr-2" /> Add Funder
+        <Button onClick={() => handleAdd()} data-testid="button-create-funder">
+          <Plus className="w-4 h-4 mr-2" /> Add
         </Button>
+      </div>
+
+      {/* Summary strip */}
+      <div className="flex gap-4 flex-wrap">
+        {activeValue > 0 && (
+          <div className="flex items-center gap-1.5 text-sm">
+            <div className="w-2 h-2 rounded-full bg-green-500" />
+            <span className="text-muted-foreground">Active:</span>
+            <span className="font-medium">{formatCurrency(activeValue)}/yr</span>
+          </div>
+        )}
+        {pipelineValue > 0 && (
+          <div className="flex items-center gap-1.5 text-sm">
+            <div className="w-2 h-2 rounded-full bg-blue-500" />
+            <span className="text-muted-foreground">Pipeline:</span>
+            <span className="font-medium">{formatCurrency(pipelineValue)}</span>
+          </div>
+        )}
+        {radar.length > 0 && (
+          <div className="flex items-center gap-1.5 text-sm">
+            <div className="w-2 h-2 rounded-full bg-gray-400" />
+            <span className="text-muted-foreground">Radar:</span>
+            <span className="font-medium">{radar.length} opportunities</span>
+          </div>
+        )}
       </div>
 
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <Input
-          placeholder="Search funders..."
+          placeholder="Search all funders..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="pl-9"
@@ -523,26 +601,109 @@ export default function FundersPage() {
         />
       </div>
 
-      {filtered.length === 0 ? (
-        <Card className="p-12 text-center">
-          <Building2 className="w-12 h-12 mx-auto text-muted-foreground/40 mb-3" />
-          <p className="text-muted-foreground">
-            {search ? "No funders match your search" : "No funders yet. Add your first funder to get started."}
-          </p>
-        </Card>
-      ) : (
-        <div className="grid gap-3">
-          {filtered.map((funder) => (
-            <FunderCard
-              key={funder.id}
-              funder={funder}
-              onView={() => setViewingFunder(funder)}
-              onEdit={() => setEditingFunder(funder)}
-              onDelete={() => setDeleteConfirm(funder.id)}
-              onGenerateReport={() => setLocation(`/reports?funder=${funder.id}`)}
-            />
-          ))}
+      {filtered ? (
+        /* Search results across all tabs */
+        <div>
+          <p className="text-sm text-muted-foreground mb-3">{filtered.length} result{filtered.length !== 1 ? "s" : ""}</p>
+          <div className="grid gap-3">
+            {filtered.map((funder) => (
+              <FunderCard key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/reports?funder=${funder.id}`)} />
+            ))}
+          </div>
         </div>
+      ) : (
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList>
+            <TabsTrigger value="active" className="gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5" /> Active ({active.length})
+            </TabsTrigger>
+            <TabsTrigger value="pipeline" className="gap-1.5">
+              <TrendingUp className="w-3.5 h-3.5" /> Pipeline ({pipeline.length})
+            </TabsTrigger>
+            <TabsTrigger value="radar" className="gap-1.5">
+              <Radar className="w-3.5 h-3.5" /> Radar ({radar.length})
+            </TabsTrigger>
+            {completed.length > 0 && (
+              <TabsTrigger value="completed" className="gap-1.5">
+                Completed ({completed.length})
+              </TabsTrigger>
+            )}
+          </TabsList>
+
+          <TabsContent value="active" className="mt-4">
+            {active.length === 0 ? (
+              <Card className="p-8 text-center border-dashed">
+                <Building2 className="w-10 h-10 mx-auto text-muted-foreground/40 mb-2" />
+                <p className="text-sm text-muted-foreground">No active funders yet</p>
+                <Button size="sm" variant="outline" className="mt-3" onClick={() => handleAdd("active_funder")}>
+                  <Plus className="w-4 h-4 mr-1" /> Add Active Funder
+                </Button>
+              </Card>
+            ) : (
+              <div className="grid gap-3">
+                {active.map((funder) => (
+                  <ActiveFunderCard key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/reports?funder=${funder.id}`)} />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="pipeline" className="mt-4">
+            {pipeline.length === 0 ? (
+              <Card className="p-8 text-center border-dashed">
+                <TrendingUp className="w-10 h-10 mx-auto text-muted-foreground/40 mb-2" />
+                <p className="text-sm text-muted-foreground">No funding in the pipeline</p>
+                <Button size="sm" variant="outline" className="mt-3" onClick={() => handleAdd("in_conversation")}>
+                  <Plus className="w-4 h-4 mr-1" /> Add to Pipeline
+                </Button>
+              </Card>
+            ) : (
+              <div className="grid gap-3">
+                {pipeline.map((funder) => (
+                  <PipelineCard key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="radar" className="mt-4">
+            {radar.length === 0 ? (
+              <Card className="p-8 text-center border-dashed">
+                <Radar className="w-10 h-10 mx-auto text-muted-foreground/40 mb-2" />
+                <p className="text-sm text-muted-foreground">No opportunities on the radar</p>
+                <p className="text-xs text-muted-foreground mt-1">Add funding opportunities you've researched or heard about</p>
+                <Button size="sm" variant="outline" className="mt-3" onClick={() => handleAdd("radar")}>
+                  <Plus className="w-4 h-4 mr-1" /> Add Opportunity
+                </Button>
+              </Card>
+            ) : (
+              <div className="space-y-2">
+                {radar.map((funder) => (
+                  <RadarRow
+                    key={funder.id}
+                    funder={funder}
+                    onView={() => setViewingFunder(funder)}
+                    onMoveToPipeline={() => updateMutation.mutate({ id: funder.id, data: { status: "in_conversation" } })}
+                    onDelete={() => setDeleteConfirm(funder.id)}
+                  />
+                ))}
+                <Button size="sm" variant="ghost" className="mt-2 text-muted-foreground" onClick={() => handleAdd("radar")}>
+                  <Plus className="w-4 h-4 mr-1" /> Add Opportunity
+                </Button>
+              </div>
+            )}
+          </TabsContent>
+
+          {completed.length > 0 && (
+            <TabsContent value="completed" className="mt-4">
+              <div className="grid gap-3">
+                {completed.map((funder) => (
+                  <FunderCard key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/reports?funder=${funder.id}`)} />
+                ))}
+              </div>
+            </TabsContent>
+          )}
+        </Tabs>
       )}
 
       <FunderFormDialog
@@ -551,6 +712,7 @@ export default function FundersPage() {
         onSubmit={(data) => createMutation.mutate(data)}
         isPending={createMutation.isPending}
         title="Add Funder"
+        defaultValues={createDefaultStatus ? { status: createDefaultStatus } as Partial<Funder> : undefined}
       />
 
       {editingFunder && (
@@ -690,6 +852,213 @@ function FunderCard({
   );
 }
 
+function ActiveFunderCard({
+  funder,
+  onView,
+  onEdit,
+  onDelete,
+  onGenerateReport,
+}: {
+  funder: Funder;
+  onView: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onGenerateReport: () => void;
+}) {
+  const deadlineWarning = funder.nextDeadline && isPast(new Date(funder.nextDeadline));
+  const contractProgress = useMemo(() => {
+    if (!funder.contractStart || !funder.contractEnd) return null;
+    const start = new Date(funder.contractStart).getTime();
+    const end = new Date(funder.contractEnd).getTime();
+    const now = Date.now();
+    const pct = Math.min(100, Math.max(0, ((now - start) / (end - start)) * 100));
+    return Math.round(pct);
+  }, [funder.contractStart, funder.contractEnd]);
+
+  return (
+    <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer border" onClick={onView}>
+      <div className="flex items-start justify-between">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="font-semibold text-foreground truncate">{funder.name}</h3>
+            {funder.estimatedValue && (
+              <span className="text-sm font-medium text-green-700 dark:text-green-400">{formatCurrency(funder.estimatedValue)}/yr</span>
+            )}
+          </div>
+          {funder.organisation && (
+            <p className="text-sm text-muted-foreground truncate">{funder.organisation}</p>
+          )}
+          <div className="flex items-center gap-3 mt-2 flex-wrap">
+            {funder.reportingCadence && (
+              <span className="text-xs text-muted-foreground">{CADENCE_LABELS[funder.reportingCadence]}</span>
+            )}
+            {contractProgress !== null && (
+              <div className="flex items-center gap-2 text-xs">
+                <div className="w-24 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div className="h-full bg-green-500 rounded-full" style={{ width: `${contractProgress}%` }} />
+                </div>
+                <span className="text-muted-foreground">{contractProgress}%</span>
+              </div>
+            )}
+            {funder.nextDeadline && (
+              <span className={`text-xs ${deadlineWarning ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
+                {deadlineWarning && <AlertCircle className="w-3 h-3 inline mr-0.5" />}
+                Due {formatDistanceToNow(new Date(funder.nextDeadline), { addSuffix: true })}
+              </span>
+            )}
+          </div>
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+              <MoreVertical className="w-4 h-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onView(); }}>
+              <Eye className="w-4 h-4 mr-2" /> View Details
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(); }}>
+              <Pencil className="w-4 h-4 mr-2" /> Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onGenerateReport(); }}>
+              <FileText className="w-4 h-4 mr-2" /> Generate Report
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDelete(); }} className="text-red-600">
+              <Trash2 className="w-4 h-4 mr-2" /> Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </Card>
+  );
+}
+
+function PipelineCard({
+  funder,
+  onView,
+  onEdit,
+  onDelete,
+}: {
+  funder: Funder;
+  onView: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const deadlineSoon = funder.applicationDeadline && !isPast(new Date(funder.applicationDeadline));
+  const deadlinePast = funder.applicationDeadline && isPast(new Date(funder.applicationDeadline));
+
+  return (
+    <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer border" onClick={onView}>
+      <div className="flex items-start justify-between">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="font-semibold text-foreground truncate">{funder.name}</h3>
+            <Badge className={STATUS_COLORS[funder.status]}>{STATUS_LABELS[funder.status]}</Badge>
+          </div>
+          {funder.organisation && (
+            <p className="text-sm text-muted-foreground truncate">{funder.organisation}</p>
+          )}
+          <div className="flex items-center gap-3 mt-2 flex-wrap">
+            {funder.estimatedValue && (
+              <span className="text-sm font-medium text-blue-700 dark:text-blue-400">
+                <DollarSign className="w-3 h-3 inline" />{formatCurrency(funder.estimatedValue)}
+              </span>
+            )}
+            {deadlineSoon && (
+              <span className="text-xs text-yellow-700 dark:text-yellow-400 font-medium">
+                <Clock className="w-3 h-3 inline mr-0.5" />
+                Deadline {formatDistanceToNow(new Date(funder.applicationDeadline!), { addSuffix: true })}
+              </span>
+            )}
+            {deadlinePast && (
+              <span className="text-xs text-red-600">
+                <AlertCircle className="w-3 h-3 inline mr-0.5" /> Deadline passed
+              </span>
+            )}
+            {funder.fitTags && funder.fitTags.length > 0 && funder.fitTags.map(tag => (
+              <Badge key={tag} className={`text-xs ${FIT_TAG_COLORS[tag] || "bg-gray-100 text-gray-600"}`}>{tag}</Badge>
+            ))}
+          </div>
+          {funder.nextAction && (
+            <p className="text-xs text-muted-foreground mt-1.5">
+              <ArrowRight className="w-3 h-3 inline mr-0.5" /> {funder.nextAction}
+            </p>
+          )}
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+              <MoreVertical className="w-4 h-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onView(); }}>
+              <Eye className="w-4 h-4 mr-2" /> View Details
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(); }}>
+              <Pencil className="w-4 h-4 mr-2" /> Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDelete(); }} className="text-red-600">
+              <Trash2 className="w-4 h-4 mr-2" /> Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </Card>
+  );
+}
+
+function RadarRow({
+  funder,
+  onView,
+  onMoveToPipeline,
+  onDelete,
+}: {
+  funder: Funder;
+  onView: () => void;
+  onMoveToPipeline: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <Card className="p-3 hover:shadow-sm transition-shadow cursor-pointer border" onClick={onView}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium truncate">{funder.name}</span>
+            {funder.estimatedValue && (
+              <span className="text-xs text-muted-foreground">{formatCurrency(funder.estimatedValue)}</span>
+            )}
+            {funder.fitTags && funder.fitTags.length > 0 && funder.fitTags.map(tag => (
+              <Badge key={tag} className={`text-xs ${FIT_TAG_COLORS[tag] || "bg-gray-100 text-gray-600"}`}>{tag}</Badge>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 mt-0.5">
+            {funder.notes && (
+              <p className="text-xs text-muted-foreground truncate">{funder.notes}</p>
+            )}
+            {funder.applicationDeadline && (
+              <span className="text-xs text-muted-foreground shrink-0">
+                {isPast(new Date(funder.applicationDeadline))
+                  ? "Next round TBC"
+                  : `Opens ${format(new Date(funder.applicationDeadline), "d MMM yyyy")}`}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); onMoveToPipeline(); }}>
+            <ArrowRight className="w-3 h-3 mr-1" /> Pipeline
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground" onClick={(e) => { e.stopPropagation(); onDelete(); }}>
+            <Trash2 className="w-3 h-3" />
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function FunderFormDialog({
   open,
   onOpenChange,
@@ -729,6 +1098,10 @@ function FunderFormDialog({
     reviewDate: defaultValues?.reviewDate ? format(new Date(defaultValues.reviewDate), "yyyy-MM-dd") : "",
     partnershipStrategy: defaultValues?.partnershipStrategy || "",
     notes: defaultValues?.notes || "",
+    estimatedValue: defaultValues?.estimatedValue?.toString() || "",
+    nextAction: defaultValues?.nextAction || "",
+    applicationDeadline: defaultValues?.applicationDeadline ? format(new Date(defaultValues.applicationDeadline), "yyyy-MM-dd") : "",
+    fitTags: defaultValues?.fitTags || [],
   });
 
   const { toast } = useToast();
@@ -756,6 +1129,10 @@ function FunderFormDialog({
       reviewDate: form.reviewDate || null,
       partnershipStrategy: form.partnershipStrategy.trim() || null,
       notes: form.notes.trim() || null,
+      estimatedValue: form.estimatedValue ? parseInt(form.estimatedValue) : null,
+      nextAction: form.nextAction.trim() || null,
+      applicationDeadline: form.applicationDeadline || null,
+      fitTags: form.fitTags.length > 0 ? form.fitTags : null,
     };
     onSubmit(data);
   };
@@ -843,6 +1220,54 @@ function FunderFormDialog({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Estimated Value ($)</Label>
+              <Input
+                type="number"
+                value={form.estimatedValue}
+                onChange={(e) => setForm(p => ({ ...p, estimatedValue: e.target.value }))}
+                placeholder="e.g. 75000"
+              />
+            </div>
+          </div>
+
+          {(form.status === "in_conversation" || form.status === "pending_eoi" || form.status === "applied" || form.status === "radar") && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Next Action</Label>
+                <Input
+                  value={form.nextAction}
+                  onChange={(e) => setForm(p => ({ ...p, nextAction: e.target.value }))}
+                  placeholder="e.g. Contact Rochelle, prepare application"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Application Deadline</Label>
+                <Input
+                  type="date"
+                  value={form.applicationDeadline}
+                  onChange={(e) => setForm(p => ({ ...p, applicationDeadline: e.target.value }))}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label>Fit Tags</Label>
+            <div className="flex gap-2 flex-wrap">
+              {Object.keys(FIT_TAG_COLORS).map(tag => (
+                <Badge
+                  key={tag}
+                  className={`cursor-pointer text-xs ${form.fitTags.includes(tag) ? FIT_TAG_COLORS[tag] : "bg-gray-100 text-gray-400 hover:text-gray-600"}`}
+                  onClick={() => setForm(p => ({
+                    ...p,
+                    fitTags: p.fitTags.includes(tag) ? p.fitTags.filter((t: string) => t !== tag) : [...p.fitTags, tag],
+                  }))}
+                >
+                  {tag}
+                </Badge>
+              ))}
             </div>
           </div>
 

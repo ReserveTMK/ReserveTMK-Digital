@@ -1833,7 +1833,7 @@ export type InsertGmailConnectedAccount = z.infer<typeof insertGmailConnectedAcc
 
 // === FUNDERS ===
 
-export const FUNDER_STATUSES = ["active_funder", "in_conversation", "pending_eoi", "completed"] as const;
+export const FUNDER_STATUSES = ["active_funder", "in_conversation", "pending_eoi", "applied", "radar", "completed"] as const;
 export type FunderStatus = typeof FUNDER_STATUSES[number];
 
 
@@ -1895,6 +1895,10 @@ export const funders = pgTable("funders", {
   partnershipStrategy: text("partnership_strategy"),
   notes: text("notes"),
   isDefault: boolean("is_default").default(false),
+  estimatedValue: integer("estimated_value"),
+  nextAction: text("next_action"),
+  applicationDeadline: timestamp("application_deadline"),
+  fitTags: text("fit_tags").array(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
