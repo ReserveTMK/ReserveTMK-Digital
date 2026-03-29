@@ -256,6 +256,21 @@ app.use((req, res, next) => {
     console.warn("[migration] calendar_attendees migration skipped:", migrationErr.message);
   }
 
+  try {
+    const { db: migDb } = await import("./db");
+    const { sql: migSql } = await import("drizzle-orm");
+    const result = await migDb.execute(migSql`
+      UPDATE events SET requires_debrief = true
+      WHERE source = 'google'
+        AND requires_debrief = false
+        AND debrief_skipped_reason IS NULL
+    `);
+    const count = (result as any).rowCount || 0;
+    if (count > 0) console.log(`[migration] Backfilled requires_debrief=true on ${count} Google-synced events`);
+  } catch (migrationErr: any) {
+    console.warn("[migration] requires_debrief backfill skipped:", migrationErr.message);
+  }
+
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     if (res.headersSent) {
       return next(err);

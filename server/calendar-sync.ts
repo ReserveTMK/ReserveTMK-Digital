@@ -121,7 +121,7 @@ async function syncCalendar(
       googleCalendarEventId: gcalEvent.id,
       source: "google",
       calendarAttendees: attendees.length > 0 ? attendees : null,
-      requiresDebrief: false,
+      requiresDebrief: true,
       eventStatus: "active",
     });
 
