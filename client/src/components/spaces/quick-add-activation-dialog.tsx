@@ -267,8 +267,11 @@ export function QuickAddActivationDialog({ open, onOpenChange }: QuickAddActivat
   );
 }
 
-export function QuickAddActivationFAB() {
+export function QuickAddActivationFAB({ activeTab }: { activeTab?: string }) {
   const [open, setOpen] = useState(false);
+
+  // Only show on tabs where quick-add activation makes sense
+  if (activeTab === "bookers" || activeTab === "resources") return null;
 
   return (
     <>

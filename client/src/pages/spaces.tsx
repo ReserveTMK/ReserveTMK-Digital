@@ -781,8 +781,8 @@ export default function SpacesPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Floating action button */}
-      <QuickAddActivationFAB />
+      {/* Floating action button — contextual per tab */}
+      <QuickAddActivationFAB activeTab={activeTab} />
 
       {/* Monthly Reconcile dialog */}
       <MonthlyReconcileDialog open={reconcileOpen} onOpenChange={setReconcileOpen} />

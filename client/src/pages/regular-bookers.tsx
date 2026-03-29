@@ -534,36 +534,19 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
                           {getBookerDisplayName(booker)}
                         </span>
                         {groupName && getBookerDisplayName(booker) !== groupName ? (
-                          <p className="text-xs text-muted-foreground truncate flex items-center gap-1" data-testid={`text-booker-group-${booker.id}`}>
-                            <Building className="w-3 h-3 shrink-0" />
+                          <p className="text-xs text-muted-foreground truncate" data-testid={`text-booker-group-${booker.id}`}>
                             {groupName}
                           </p>
                         ) : booker.organizationName && getBookerDisplayName(booker) !== booker.organizationName ? (
                           <p className="text-xs text-muted-foreground truncate" data-testid={`text-booker-org-${booker.id}`}>
                             {booker.organizationName}
                           </p>
-                        ) : booker.billingEmail ? (
-                          <p className="text-xs text-muted-foreground truncate" data-testid={`text-booker-email-${booker.id}`}>
-                            {booker.billingEmail}
-                          </p>
                         ) : null}
-                        {(booker as any).notificationsEmail ? (
-                          <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5" data-testid={`text-booker-notif-email-${booker.id}`}>
-                            <Mail className="w-3 h-3 shrink-0" />
-                            {(booker as any).notificationsEmail}
-                          </p>
-                        ) : (
-                          <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1 mt-0.5" data-testid={`text-booker-notif-email-unset-${booker.id}`}>
-                            <Mail className="w-3 h-3 shrink-0" />
-                            <span>Notifications email not set</span>
-                          </p>
-                        )}
-                        {booker.pricingTier !== "free_koha" && !agreement && (booker as any).invoiceEmail && (
-                          <p className="text-xs text-muted-foreground truncate flex items-center gap-1 mt-0.5" data-testid={`text-booker-invoice-email-${booker.id}`}>
-                            <FileText className="w-3 h-3 shrink-0" />
-                            {(booker as any).invoiceEmail}
-                          </p>
-                        )}
+                        <p className="text-xs text-muted-foreground truncate mt-0.5" data-testid={`text-booker-email-${booker.id}`}>
+                          {(booker as any).notificationsEmail || booker.billingEmail || (
+                            <span className="text-amber-600 dark:text-amber-400">No email set</span>
+                          )}
+                        </p>
                         {(booker.mouId || booker.membershipId) && (
                           <BookerAgreementPanel
                             bookerId={booker.id}
