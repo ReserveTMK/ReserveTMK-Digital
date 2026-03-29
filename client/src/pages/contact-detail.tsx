@@ -88,6 +88,7 @@ export default function ContactDetail() {
   const [catchUpPopoverOpen, setCatchUpPopoverOpen] = useState(false);
   const [catchUpNote, setCatchUpNote] = useState("");
   const [catchUpPriority, setCatchUpPriority] = useState("soon");
+  const [showDetails, setShowDetails] = useState(false);
 
   const { data: stageHistory } = useQuery({
     queryKey: ['/api/relationship-stage-history', 'contact', id],
@@ -484,107 +485,73 @@ export default function ContactDetail() {
                   {contact.businessName && (
                     <p className="text-muted-foreground/80 text-base" data-testid="text-business-name">{contact.businessName}</p>
                   )}
+                  {/* Identity line */}
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-muted-foreground text-lg" data-testid="text-contact-role">{contact.role === "Other" && contact.roleOther ? `Other - ${contact.roleOther}` : contact.role}</p>
-                    <Badge
-                      variant={currentTier === "innovator" ? "default" : currentTier === "community" ? "secondary" : "outline"}
-                      className={cn("text-xs capitalize", currentTier === "innovator" && "bg-amber-500/15 text-amber-700 dark:text-amber-300")}
-                      data-testid="badge-tier"
-                    >
-                      {currentTier === "innovator" ? (
-                        <><Rocket className="w-3 h-3 mr-1" /> Innovator</>
-                      ) : currentTier === "community" ? (
-                        <><Users className="w-3 h-3 mr-1" /> Community</>
-                      ) : (
-                        "All"
-                      )}
+                    <span className="text-muted-foreground text-sm" data-testid="text-contact-role">{contact.role === "Other" && contact.roleOther ? `Other - ${contact.roleOther}` : contact.role}</span>
+                    <Badge variant={currentTier === "innovator" ? "default" : currentTier === "community" ? "secondary" : "outline"} className={cn("text-[10px] capitalize", currentTier === "innovator" && "bg-amber-500/15 text-amber-700 dark:text-amber-300")} data-testid="badge-tier">
+                      {currentTier === "innovator" ? <><Rocket className="w-3 h-3 mr-0.5" /> Innovator</> : currentTier === "community" ? <><Users className="w-3 h-3 mr-0.5" /> Community</> : "All"}
                     </Badge>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-6 px-1.5"
-                      onClick={() => toggleVipMutation.mutate()}
-                      disabled={toggleVipMutation.isPending}
-                      title={contact.isVip ? "Remove VIP" : "Mark as VIP"}
-                      data-testid="button-toggle-vip-detail"
-                    >
-                      <Star className={`w-4 h-4 ${contact.isVip ? "text-yellow-500 fill-yellow-500" : "text-muted-foreground"}`} />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-6 px-1.5"
-                      onClick={() => toggleRangatahiMutation.mutate()}
-                      disabled={toggleRangatahiMutation.isPending}
-                      title={contact.isRangatahi ? "Remove Rangatahi flag" : "Mark as Rangatahi"}
-                      data-testid="button-toggle-rangatahi-detail"
-                    >
-                      <span className={`text-xs font-bold ${contact.isRangatahi ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>R</span>
-                    </Button>
-                    {contact.ventureType && (
-                      <Badge variant="outline" className="text-xs capitalize" data-testid="badge-venture-type">
-                        {({
-                          commercial_business: "Commercial Business",
-                          social_enterprise: "Social Enterprise",
-                          creative_movement: "Creative / Arts",
-                          community_initiative: "Community Organisation",
-                          exploring: "Exploring",
-                          ecosystem_partner: "Ecosystem Partner",
-                        } as Record<string, string>)[contact.ventureType] || contact.ventureType.replace(/_/g, ' ')}
-                      </Badge>
-                    )}
                     {contact.stage && (
-                      <Badge variant="secondary" className="text-xs capitalize" data-testid="badge-venture-stage">
-                        {({
-                          kakano: "Kākano",
-                          tipu: "Tipu",
-                          ora: "Ora",
-                          inactive: "Inactive",
-                        } as Record<string, string>)[contact.stage] || contact.stage}
+                      <Badge variant="secondary" className="text-[10px] capitalize" data-testid="badge-venture-stage">
+                        {({ kakano: "Kākano", tipu: "Tipu", ora: "Ora", inactive: "Inactive" } as Record<string, string>)[contact.stage] || contact.stage}
                       </Badge>
                     )}
+                    <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => toggleVipMutation.mutate()} disabled={toggleVipMutation.isPending} title={contact.isVip ? "Remove VIP" : "Mark as VIP"} data-testid="button-toggle-vip-detail">
+                      <Star className={`w-3.5 h-3.5 ${contact.isVip ? "text-yellow-500 fill-yellow-500" : "text-muted-foreground"}`} />
+                    </Button>
+                    {contact.isRangatahi && <Badge variant="outline" className="text-[10px] text-emerald-600 dark:text-emerald-400 border-emerald-300">Rangatahi</Badge>}
                   </div>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm text-muted-foreground">
-                    {contact.age && <span>{contact.age} years old</span>}
-                    <EthnicityQuickEdit contact={contact} />
-                      {contact.suburb && <span>{contact.suburb}</span>}
-                      {contact.localBoard && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 rounded-md text-xs font-medium">
-                          {contact.localBoard}
-                        </span>
-                      )}
-                      {contact.location && <span>{contact.location}</span>}
-                    {contact.revenueBand && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded-md text-xs font-medium">
-                        <DollarSign className="w-3 h-3" /> {contact.revenueBand}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 mt-2">
-                    <DetailConnectionEditor contactId={contact.id} connectionStrength={contact.connectionStrength} />
-                    {contact.isInnovator && (
-                      <DetailSupportEditor contactId={contact.id} supportTypes={contact.supportType || []} />
-                    )}
-                  </div>
-                  {contact.whatTheyAreBuilding && (
-                    <p className="text-sm text-muted-foreground mt-2" data-testid="text-what-building">
-                      {contact.whatTheyAreBuilding}
-                    </p>
-                  )}
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    {contact.tags?.map((tag, i) => (
-                      <span key={i} className="px-2 py-0.5 bg-secondary rounded-md text-xs font-medium text-secondary-foreground">
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="mt-4">
+
+                  {/* Stage selector + expand toggle */}
+                  <div className="flex items-center gap-3 mt-2">
                     <RelationshipStageSelector
                       currentStage={normalizeStage(contact.relationshipStage)}
                       onStageChange={(stage) => stageMutation.mutate(stage)}
                       disabled={stageMutation.isPending}
                     />
+                    <Button variant="ghost" size="sm" className="text-xs h-6 px-2 text-muted-foreground" onClick={() => setShowDetails(!showDetails)} data-testid="button-toggle-details">
+                      {showDetails ? "Less" : "More"}
+                      <ChevronDown className={`w-3 h-3 ml-1 transition-transform ${showDetails ? "rotate-180" : ""}`} />
+                    </Button>
                   </div>
+
+                  {/* Demographics + details — collapsed by default */}
+                  {showDetails && (
+                    <div className="space-y-2 mt-2 pt-2 border-t border-border/50">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                        {contact.age && <span>{contact.age} years old</span>}
+                        <EthnicityQuickEdit contact={contact} />
+                        {contact.suburb && <span>{contact.suburb}</span>}
+                        {contact.localBoard && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 rounded text-[10px] font-medium">{contact.localBoard}</span>
+                        )}
+                        {contact.location && <span>{contact.location}</span>}
+                        {contact.revenueBand && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 rounded text-[10px] font-medium"><DollarSign className="w-3 h-3" /> {contact.revenueBand}</span>
+                        )}
+                        {contact.ventureType && (
+                          <span className="text-[10px] capitalize">{({ commercial_business: "Commercial Business", social_enterprise: "Social Enterprise", creative_movement: "Creative / Arts", community_initiative: "Community Org", exploring: "Exploring", ecosystem_partner: "Ecosystem Partner" } as Record<string, string>)[contact.ventureType] || contact.ventureType.replace(/_/g, ' ')}</span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <DetailConnectionEditor contactId={contact.id} connectionStrength={contact.connectionStrength} />
+                        {contact.isInnovator && <DetailSupportEditor contactId={contact.id} supportTypes={contact.supportType || []} />}
+                        <Button size="sm" variant="ghost" className="h-5 px-1.5" onClick={() => toggleRangatahiMutation.mutate()} disabled={toggleRangatahiMutation.isPending} title={contact.isRangatahi ? "Remove Rangatahi flag" : "Mark as Rangatahi"} data-testid="button-toggle-rangatahi-detail">
+                          <span className={`text-[10px] font-bold ${contact.isRangatahi ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>Rangatahi {contact.isRangatahi ? "✓" : "+"}</span>
+                        </Button>
+                      </div>
+                      {contact.whatTheyAreBuilding && (
+                        <p className="text-xs text-muted-foreground" data-testid="text-what-building">{contact.whatTheyAreBuilding}</p>
+                      )}
+                      {contact.tags && contact.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {contact.tags.map((tag: string, i: number) => (
+                            <span key={i} className="px-1.5 py-0.5 bg-secondary rounded text-[10px] font-medium text-secondary-foreground">#{tag}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1109,8 +1076,6 @@ export default function ContactDetail() {
           <Tabs defaultValue="overview" className="space-y-6">
             <TabsList className="bg-card border border-border p-1 rounded-xl w-full overflow-x-auto flex-nowrap justify-start sm:justify-center">
               <TabsTrigger value="overview" className="rounded-lg data-[state=active]:bg-primary/10 data-[state=active]:text-primary" data-testid="tab-overview">Overview</TabsTrigger>
-              <TabsTrigger value="history" className="rounded-lg data-[state=active]:bg-primary/10 data-[state=active]:text-primary" data-testid="tab-history">History</TabsTrigger>
-              <TabsTrigger value="timeline" className="rounded-lg data-[state=active]:bg-primary/10 data-[state=active]:text-primary" data-testid="tab-timeline">Timeline</TabsTrigger>
               <TabsTrigger value="activity" className="rounded-lg data-[state=active]:bg-primary/10 data-[state=active]:text-primary" data-testid="tab-activity">Activity</TabsTrigger>
             </TabsList>
 
@@ -1200,165 +1165,100 @@ export default function ContactDetail() {
               )}
             </TabsContent>
 
-            <TabsContent value="history" className="space-y-4">
-               {interactionsLoading ? (
-                 <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
-               ) : interactions?.length === 0 ? (
-                 <div className="text-center py-12 text-muted-foreground bg-card rounded-2xl border border-dashed border-border">
-                   No interactions logged yet.
-                 </div>
-               ) : (
-                 <div className="grid gap-4">
-                   {interactions?.map((interaction) => (
-                     <div key={interaction.id} className="bg-card p-6 rounded-2xl border border-border hover:shadow-md transition-all">
-                       <div className="flex justify-between items-start mb-3">
-                         <div>
-                           <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                             {interaction.type}
-                           </span>
-                           <h4 className="font-bold text-lg">{format(new Date(interaction.date), 'MMMM d, yyyy')}</h4>
-                         </div>
-                         <div className="flex gap-2">
-                           {interaction.analysis?.keyInsights?.map((insight, i) => (
-                             <span key={i} className="bg-primary/10 text-primary text-xs px-2 py-1 rounded-full font-medium">
-                               {insight}
-                             </span>
-                           ))}
-                         </div>
-                       </div>
-                       
-                       <p className="text-muted-foreground text-sm mb-4 leading-relaxed">
-                         {interaction.summary || interaction.transcript}
-                       </p>
-                       
-                       <div className="overflow-x-auto -mx-2 px-2 border-t border-border pt-4">
-                         <div className="grid grid-cols-7 gap-2 min-w-[420px]">
-                           <div className="text-center">
-                             <p className="text-xs text-muted-foreground mb-1">Mindset</p>
-                             <p className="font-bold text-primary">{interaction.analysis?.mindsetScore || "-"}</p>
-                           </div>
-                           <div className="text-center">
-                             <p className="text-xs text-muted-foreground mb-1">Skill</p>
-                             <p className="font-bold text-secondary-foreground">{interaction.analysis?.skillScore || "-"}</p>
-                           </div>
-                           <div className="text-center">
-                             <p className="text-xs text-muted-foreground mb-1">Confidence</p>
-                             <p className="font-bold text-amber-500">{interaction.analysis?.confidenceScore || "-"}</p>
-                           </div>
-                           <div className="text-center">
-                             <p className="text-xs text-muted-foreground mb-1">Biz Conf.</p>
-                             <p className="font-bold text-pink-500">{interaction.analysis?.bizConfidenceScore || interaction.analysis?.confidenceScoreMetric || "-"}</p>
-                           </div>
-                           <div className="text-center">
-                             <p className="text-xs text-muted-foreground mb-1">Systems</p>
-                             <p className="font-bold text-cyan-500">{interaction.analysis?.systemsInPlaceScore || "-"}</p>
-                           </div>
-                           <div className="text-center">
-                             <p className="text-xs text-muted-foreground mb-1">Funding</p>
-                             <p className="font-bold text-teal-500">{interaction.analysis?.fundingReadinessScore || "-"}</p>
-                           </div>
-                           <div className="text-center">
-                             <p className="text-xs text-muted-foreground mb-1">Network</p>
-                             <p className="font-bold text-orange-500">{interaction.analysis?.networkStrengthScore || "-"}</p>
-                           </div>
-                         </div>
-                       </div>
-                     </div>
-                   ))}
-                 </div>
-               )}
-            </TabsContent>
-
-            <TabsContent value="timeline" className="space-y-4" data-testid="timeline-content">
-              {timelineItems.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground bg-card rounded-2xl border border-dashed border-border">
-                  No timeline activity yet.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {timelineItems.map((item, idx) => (
-                    <TimelineCard key={`${item.type}-${item.data.id}-${idx}`} item={item} />
-                  ))}
-                </div>
-              )}
-            </TabsContent>
-
             <TabsContent value="activity" className="space-y-4" data-testid="activity-content">
+              {/* Programme registrations */}
               {programmeRegistrations && programmeRegistrations.length > 0 && (
-                <Card className="p-5" data-testid="programme-registrations-section">
-                  <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                    <ClipboardList className="w-4 h-4 text-purple-500" />
-                    Programme Registrations
+                <Card className="p-4" data-testid="programme-registrations-section">
+                  <h4 className="text-xs font-semibold mb-2 flex items-center gap-2 text-muted-foreground uppercase tracking-wide">
+                    <ClipboardList className="w-3.5 h-3.5 text-purple-500" />
+                    Programmes
                   </h4>
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     {programmeRegistrations.map((reg: any) => (
-                      <div key={reg.id} className="flex items-center gap-3 text-sm" data-testid={`programme-reg-${reg.id}`}>
-                        <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
-                          reg.attended ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-purple-500/10 text-purple-600 dark:text-purple-400'
-                        }`}>
-                          {reg.attended ? <Check className="w-3.5 h-3.5" /> : <ClipboardList className="w-3.5 h-3.5" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium" data-testid={`programme-reg-title-${reg.id}`}>
-                            {reg.attended ? 'Attended' : 'Registered for'} {reg.programmeName}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {format(new Date(reg.registeredAt), 'MMM d, yyyy')}
-                          </p>
-                        </div>
-                        <Badge variant="secondary" className={`text-xs shrink-0 ${
+                      <div key={reg.id} className="flex items-center gap-2 text-xs" data-testid={`programme-reg-${reg.id}`}>
+                        {reg.attended ? <Check className="w-3 h-3 text-emerald-500 shrink-0" /> : <ClipboardList className="w-3 h-3 text-purple-500 shrink-0" />}
+                        <span className="font-medium truncate">{reg.programmeName}</span>
+                        <span className="text-muted-foreground shrink-0">{format(new Date(reg.registeredAt), 'MMM d')}</span>
+                        <Badge variant="secondary" className={`text-[9px] shrink-0 px-1.5 py-0 ${
                           reg.attended ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' :
-                          reg.status === 'cancelled' ? 'bg-red-500/15 text-red-700 dark:text-red-300' :
-                          reg.status === 'waitlisted' ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300' :
+                          reg.status === 'cancelled' ? 'bg-red-500/15 text-red-700' :
                           'bg-purple-500/15 text-purple-700 dark:text-purple-300'
-                        }`} data-testid={`programme-reg-status-${reg.id}`}>
-                          {reg.attended ? 'Attended' : reg.status}
-                        </Badge>
+                        }`}>{reg.attended ? 'Attended' : reg.status}</Badge>
                       </div>
                     ))}
                   </div>
                 </Card>
               )}
 
+              {/* Interactions */}
+              {interactions && interactions.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                    <Mic className="w-3.5 h-3.5" />
+                    Interactions ({interactions.length})
+                  </h4>
+                  {interactions.map((interaction) => (
+                    <Card key={interaction.id} className="p-4">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{interaction.type}</span>
+                          <p className="text-sm font-semibold">{format(new Date(interaction.date), 'MMM d, yyyy')}</p>
+                        </div>
+                        <div className="flex gap-1.5">
+                          {interaction.analysis?.keyInsights?.map((insight, i) => (
+                            <span key={i} className="bg-primary/10 text-primary text-[10px] px-1.5 py-0.5 rounded-full font-medium">{insight}</span>
+                          ))}
+                        </div>
+                      </div>
+                      {(interaction.summary || interaction.transcript) && (
+                        <p className="text-muted-foreground text-xs leading-relaxed line-clamp-3">{interaction.summary || interaction.transcript}</p>
+                      )}
+                    </Card>
+                  ))}
+                </div>
+              )}
+
+              {/* Timeline events */}
+              {timelineItems.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                    <History className="w-3.5 h-3.5" />
+                    Timeline
+                  </h4>
+                  {timelineItems.map((item, idx) => (
+                    <TimelineCard key={`${item.type}-${item.data.id}-${idx}`} item={item} />
+                  ))}
+                </div>
+              )}
+
+              {/* Cross-system activity */}
               {activityLoading ? (
-                <div className="flex justify-center py-12">
-                  <Loader2 className="w-8 h-8 animate-spin text-primary" data-testid="activity-loading" />
-                </div>
-              ) : !activityData || (activityData as any[]).length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground bg-card rounded-2xl border border-dashed border-border" data-testid="activity-empty">
-                  No activity recorded yet.
-                </div>
-              ) : (
-                <>
-                  <div className="flex flex-wrap gap-2" data-testid="activity-summary">
+                <Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" data-testid="activity-loading" />
+              ) : activityData && (activityData as any[]).length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-1.5" data-testid="activity-summary">
                     {(() => {
                       const counts: Record<string, number> = {};
-                      (activityData as any[]).forEach((item: any) => {
-                        counts[item.type] = (counts[item.type] || 0) + 1;
-                      });
-                      const typeLabels: Record<string, string> = {
-                        interaction: 'Interactions',
-                        booking: 'Venue Hire',
-                        programme: 'Programmes',
-                        event: 'Events',
-                        membership: 'Memberships',
-                        mou: 'MOUs',
-                        community_spend: 'Community Spend',
-                        legacy_report: 'Legacy Reports',
-                      };
+                      (activityData as any[]).forEach((item: any) => { counts[item.type] = (counts[item.type] || 0) + 1; });
+                      const labels: Record<string, string> = { interaction: 'Interactions', booking: 'Venue Hire', programme: 'Programmes', event: 'Events', membership: 'Memberships', mou: 'MOUs', community_spend: 'Spend', legacy_report: 'Legacy' };
                       return Object.entries(counts).map(([type, count]) => (
-                        <Badge key={type} variant="secondary" className="text-xs" data-testid={`badge-activity-count-${type}`}>
-                          {count} {typeLabels[type] || type}
-                        </Badge>
+                        <Badge key={type} variant="secondary" className="text-[10px]">{count} {labels[type] || type}</Badge>
                       ));
                     })()}
                   </div>
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {(activityData as any[]).map((item: any, idx: number) => (
                       <ActivityCard key={`${item.type}-${item.id}-${idx}`} item={item} />
                     ))}
                   </div>
-                </>
+                </div>
+              )}
+
+              {/* Empty state */}
+              {!interactionsLoading && (!interactions || interactions.length === 0) && timelineItems.length === 0 && (!activityData || (activityData as any[]).length === 0) && (!programmeRegistrations || programmeRegistrations.length === 0) && (
+                <div className="text-center py-12 text-muted-foreground bg-card rounded-2xl border border-dashed border-border" data-testid="activity-empty">
+                  No activity recorded yet.
+                </div>
               )}
             </TabsContent>
           </Tabs>

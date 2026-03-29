@@ -435,92 +435,52 @@ export default function Contacts() {
                   <Trash2 className="w-4 h-4 mr-2" />
                   {isMobile ? selectedContacts.size : `Delete (${selectedContacts.size})`}
                 </Button>
-                {isMobile ? (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="icon" data-testid="button-bulk-actions-mobile">
-                        <MoreVertical className="w-4 h-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      {(viewMode === "all" || viewMode === "community" || viewMode === "innovators") && (
-                        <DropdownMenuItem onClick={async () => {
-                          for (const id of Array.from(selectedContacts)) {
-                            await promoteMutation.mutateAsync({ id });
-                          }
-                          setSelectedContacts(new Set());
-                        }} disabled={promoteMutation.isPending} data-testid="menu-bulk-promote">
-                          <ArrowUp className="w-4 h-4 mr-2" />
-                          Promote ({selectedContacts.size})
-                        </DropdownMenuItem>
-                      )}
-                      {(viewMode === "community" || viewMode === "innovators") && (
-                        <DropdownMenuItem onClick={async () => {
-                          for (const id of Array.from(selectedContacts)) {
-                            await demoteMutation.mutateAsync(id);
-                          }
-                          setSelectedContacts(new Set());
-                        }} disabled={demoteMutation.isPending} data-testid="menu-bulk-demote">
-                          <ArrowDown className="w-4 h-4 mr-2" />
-                          Demote ({selectedContacts.size})
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuItem onClick={() => setBulkRoleOpen(true)} data-testid="menu-bulk-update-role">
-                        <Tag className="w-4 h-4 mr-2" />
-                        Update Role
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setBulkRelationshipOpen(true)} data-testid="menu-bulk-update-relationship">
-                        <Users className="w-4 h-4 mr-2" />
-                        Update Relationship
-                      </DropdownMenuItem>
-                      {selectedContacts.size >= 2 && (
-                        <DropdownMenuItem onClick={openMergeDialog} data-testid="menu-merge-contacts">
-                          <Merge className="w-4 h-4 mr-2" />
-                          Merge ({selectedContacts.size})
-                        </DropdownMenuItem>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                ) : (
-                  <>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" data-testid="button-bulk-actions">
+                      <MoreVertical className="w-4 h-4 mr-1" />
+                      Actions
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
                     {(viewMode === "all" || viewMode === "community" || viewMode === "innovators") && (
-                      <Button variant="outline" onClick={async () => {
+                      <DropdownMenuItem onClick={async () => {
                         for (const id of Array.from(selectedContacts)) {
                           await promoteMutation.mutateAsync({ id });
                         }
                         setSelectedContacts(new Set());
-                      }} disabled={promoteMutation.isPending} data-testid="button-bulk-promote">
-                        {promoteMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowUp className="w-4 h-4 mr-2" />}
+                      }} disabled={promoteMutation.isPending} data-testid="menu-bulk-promote">
+                        <ArrowUp className="w-4 h-4 mr-2" />
                         Promote ({selectedContacts.size})
-                      </Button>
+                      </DropdownMenuItem>
                     )}
                     {(viewMode === "community" || viewMode === "innovators") && (
-                      <Button variant="outline" onClick={async () => {
+                      <DropdownMenuItem onClick={async () => {
                         for (const id of Array.from(selectedContacts)) {
                           await demoteMutation.mutateAsync(id);
                         }
                         setSelectedContacts(new Set());
-                      }} disabled={demoteMutation.isPending} data-testid="button-bulk-demote">
-                        {demoteMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowDown className="w-4 h-4 mr-2" />}
+                      }} disabled={demoteMutation.isPending} data-testid="menu-bulk-demote">
+                        <ArrowDown className="w-4 h-4 mr-2" />
                         Demote ({selectedContacts.size})
-                      </Button>
+                      </DropdownMenuItem>
                     )}
-                    <Button variant="outline" onClick={() => setBulkRoleOpen(true)} data-testid="button-bulk-update-role">
+                    <DropdownMenuItem onClick={() => setBulkRoleOpen(true)} data-testid="menu-bulk-update-role">
                       <Tag className="w-4 h-4 mr-2" />
                       Update Role
-                    </Button>
-                    <Button variant="outline" onClick={() => setBulkRelationshipOpen(true)} data-testid="button-bulk-update-relationship">
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setBulkRelationshipOpen(true)} data-testid="menu-bulk-update-relationship">
                       <Users className="w-4 h-4 mr-2" />
                       Update Relationship
-                    </Button>
+                    </DropdownMenuItem>
                     {selectedContacts.size >= 2 && (
-                      <Button variant="outline" onClick={openMergeDialog} data-testid="button-merge-contacts">
+                      <DropdownMenuItem onClick={openMergeDialog} data-testid="menu-merge-contacts">
                         <Merge className="w-4 h-4 mr-2" />
                         Merge ({selectedContacts.size})
-                      </Button>
+                      </DropdownMenuItem>
                     )}
-                  </>
-                )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </>
             )}
             {filteredContacts && filteredContacts.length > 0 && (
