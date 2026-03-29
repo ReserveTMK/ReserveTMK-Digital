@@ -1597,13 +1597,19 @@ export async function registerRoutes(
       const userId = (req.user as any).claims.sub;
       const category = parseStr(req.query.category) || undefined;
       let types = await storage.getMeetingTypes(userId);
-      if (types.length === 0) {
-        const defaults = [
-          { userId, name: 'Quick Chat', description: 'A brief check-in or introduction', duration: 15, focus: 'General Catch-up', color: '#22c55e', isActive: true, sortOrder: 0, category: 'mentoring' },
-          { userId, name: 'Standard Session', description: 'A regular mentoring session', duration: 30, focus: 'Goal Setting', color: '#3b82f6', isActive: true, sortOrder: 1, category: 'mentoring' },
-          { userId, name: 'Deep Dive', description: 'An in-depth working session', duration: 60, focus: 'Venture Planning', color: '#8b5cf6', isActive: true, sortOrder: 2, category: 'mentoring' },
-        ];
-        for (const d of defaults) {
+      const allDefaults = [
+        { userId, name: 'Quick Chat', description: 'A brief check-in or introduction', duration: 15, focus: 'General Catch-up', color: '#22c55e', isActive: true, sortOrder: 0, category: 'mentoring' },
+        { userId, name: 'Standard Session', description: 'A regular mentoring session', duration: 30, focus: 'Goal Setting', color: '#3b82f6', isActive: true, sortOrder: 1, category: 'mentoring' },
+        { userId, name: 'Deep Dive', description: 'An in-depth working session', duration: 60, focus: 'Venture Planning', color: '#8b5cf6', isActive: true, sortOrder: 2, category: 'mentoring' },
+        { userId, name: 'Catchup', description: 'Informal catch-up meeting', duration: 30, focus: null, color: '#f59e0b', isActive: true, sortOrder: 3, category: 'business' },
+        { userId, name: 'Funder Meeting', description: 'Meeting with funder or reporting contact', duration: 60, focus: null, color: '#ef4444', isActive: true, sortOrder: 4, category: 'business' },
+        { userId, name: 'Partnership', description: 'Partnership or collaboration discussion', duration: 45, focus: null, color: '#06b6d4', isActive: true, sortOrder: 5, category: 'business' },
+        { userId, name: 'Coffee Chat', description: 'Quick informal coffee meeting', duration: 15, focus: null, color: '#a855f7', isActive: true, sortOrder: 6, category: 'business' },
+      ];
+      const existingNames = new Set(types.map(t => t.name));
+      const missing = allDefaults.filter(d => !existingNames.has(d.name));
+      if (missing.length > 0) {
+        for (const d of missing) {
           await storage.createMeetingType(d);
         }
         types = await storage.getMeetingTypes(userId);

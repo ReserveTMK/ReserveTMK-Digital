@@ -26,6 +26,7 @@ import {
   Wrench,
   BarChart3,
   Receipt,
+  CalendarPlus,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "../ui/beautiful-button";
@@ -68,6 +69,7 @@ const navigation: NavItem[] = [
       { name: "Calendar", href: "/calendar", icon: CalendarCheck },
       { name: "Debriefs", href: "/debriefs", icon: Mic },
       { name: "Catch Up", href: "/catch-up", icon: PhoneCall },
+      { name: "Meet", href: "/meet", icon: CalendarPlus },
       { name: "Community Spend", href: "/community-spend", icon: DollarSign },
     ],
   },

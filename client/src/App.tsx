@@ -49,6 +49,7 @@ import TeamSettingsPage from "@/pages/team-settings";
 import CasualHirePage from "@/pages/casual-hire";
 import CommsPage from "@/pages/comms";
 import XeroSettingsPage from "@/pages/xero-settings";
+import MeetPage from "@/pages/meet";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -246,6 +247,10 @@ function Router() {
 
         <Route path="/catch-up">
           <ProtectedRoute component={CatchUpPage} />
+        </Route>
+
+        <Route path="/meet">
+          <ProtectedRoute component={MeetPage} />
         </Route>
 
         <Route path="/settings/about-us">
