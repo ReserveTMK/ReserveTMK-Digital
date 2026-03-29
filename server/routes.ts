@@ -2252,6 +2252,7 @@ export async function registerRoutes(
 
       const needsDebrief = userEvents.filter(e => {
         if (e.eventStatus === "cancelled") return false;
+        if (e.requiresDebrief === false) return false;
         if (e.debriefSkippedReason) return false;
         if (confirmedEventIds.has(e.id)) return false;
         const eventEnd = new Date(e.endTime || e.startTime);
@@ -2368,57 +2369,6 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Dismissed debriefs error:", err);
       res.status(500).json({ message: "Failed to fetch dismissed debriefs" });
-    }
-  });
-
-  // One-time migration: link orphaned debriefs (gcal_event_id but no event_id) to internal events
-  app.post("/api/events/migrate-orphaned-debriefs", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      const orphaned = await db.execute(sql`
-        SELECT id, title, gcal_event_id
-        FROM impact_logs
-        WHERE user_id = ${userId}
-          AND gcal_event_id IS NOT NULL
-          AND event_id IS NULL
-      `);
-      const rows = (orphaned as any).rows || [];
-      if (rows.length === 0) {
-        return res.json({ message: "No orphaned debriefs found", migrated: 0 });
-      }
-
-      let migrated = 0;
-      const results: { debriefId: number; gcalEventId: string; action: string }[] = [];
-
-      for (const row of rows) {
-        const gcalId = row.gcal_event_id;
-        let event = await storage.getEventByGoogleCalendarId(gcalId, userId);
-
-        if (!event) {
-          // Create placeholder event from the debrief title
-          event = await storage.createEvent({
-            userId,
-            name: row.title || "Imported Event",
-            type: "Meeting",
-            startTime: new Date(),
-            endTime: new Date(),
-            googleCalendarEventId: gcalId,
-            source: "google",
-            requiresDebrief: false, // already has a debrief
-          });
-          results.push({ debriefId: row.id, gcalEventId: gcalId, action: "created_event" });
-        } else {
-          results.push({ debriefId: row.id, gcalEventId: gcalId, action: "linked_existing" });
-        }
-
-        await db.execute(sql`UPDATE impact_logs SET event_id = ${event.id} WHERE id = ${row.id}`);
-        migrated++;
-      }
-
-      res.json({ message: `Migrated ${migrated} orphaned debriefs`, migrated, results });
-    } catch (err) {
-      console.error("Migration error:", err);
-      res.status(500).json({ message: "Migration failed" });
     }
   });
 
