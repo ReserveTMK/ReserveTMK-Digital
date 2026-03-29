@@ -68,7 +68,8 @@ export default function Dashboard() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [viewMeeting, setViewMeeting] = useState<Meeting | null>(null);
 
-  const { data: pulse } = useQuery<PulseData>({ queryKey: ["/api/dashboard/pulse"] });
+  const pulseMonth = format(currentMonth, "yyyy-MM");
+  const { data: pulse } = useQuery<PulseData>({ queryKey: [`/api/dashboard/pulse?month=${pulseMonth}`] });
 
   const { data: projectsData } = useQuery<Project[]>({ queryKey: ["/api/projects"] });
   const { data: allTasks } = useQuery<ProjectTask[]>({ queryKey: ["/api/projects", "all-tasks"] });
@@ -166,10 +167,10 @@ export default function Dashboard() {
 
   const bookingRevenue = useMemo(() => {
     if (!bookings) return { thisMonth: 0, lastMonth: 0, change: 0 };
-    const now = new Date();
-    const thisMonthStart = startOfMonth(now);
-    const lastMonthStart = startOfMonth(subMonths(now, 1));
-    const lastMonthEnd = endOfMonth(subMonths(now, 1));
+    const thisMonthStart = startOfMonth(currentMonth);
+    const thisMonthEnd = endOfMonth(currentMonth);
+    const lastMonthStart = startOfMonth(subMonths(currentMonth, 1));
+    const lastMonthEnd = endOfMonth(subMonths(currentMonth, 1));
     let thisMonth = 0;
     let lastMonth = 0;
     (bookings as Booking[]).forEach((b) => {
@@ -177,12 +178,12 @@ export default function Dashboard() {
       const amount = parseFloat((b as any).amount) || 0;
       if (amount === 0) return;
       const d = new Date(b.startDate);
-      if (d >= thisMonthStart) thisMonth += amount;
+      if (d >= thisMonthStart && d <= thisMonthEnd) thisMonth += amount;
       else if (d >= lastMonthStart && d <= lastMonthEnd) lastMonth += amount;
     });
     const change = lastMonth > 0 ? ((thisMonth - lastMonth) / lastMonth) * 100 : (thisMonth > 0 ? 100 : 0);
     return { thisMonth, lastMonth, change };
-  }, [bookings]);
+  }, [bookings, currentMonth]);
 
   const projectWidget = useMemo(() => {
     if (!projectsData) return { active: 0, planning: 0, pendingTasks: 0, urgent: [] as (Project & { pendingTaskCount: number })[] };
@@ -557,7 +558,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 mb-3">
               <DollarSign className="w-4 h-4 text-green-600" />
               <h3 className="text-sm font-semibold font-display">Venue Revenue</h3>
-              <span className="text-[10px] text-muted-foreground ml-auto">{format(new Date(), "MMM yyyy")}</span>
+              <span className="text-[10px] text-muted-foreground ml-auto">{format(currentMonth, "MMM yyyy")}</span>
             </div>
             <p className="text-3xl font-bold tabular-nums" data-testid="text-revenue-this-month">
               ${bookingRevenue.thisMonth.toLocaleString("en-NZ", { minimumFractionDigits: 0 })}

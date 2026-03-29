@@ -10228,8 +10228,10 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     try {
       const userId = (req.user as any).claims.sub;
       const now = new Date();
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      const monthParam = req.query.month as string | undefined;
+      const anchor = monthParam ? new Date(monthParam + "-01") : now;
+      const monthStart = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+      const monthEnd = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 1);
       const monthStartStr = monthStart.toISOString().split("T")[0];
       const monthEndStr = monthEnd.toISOString().split("T")[0];
 
