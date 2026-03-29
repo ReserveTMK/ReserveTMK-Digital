@@ -1,6 +1,8 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/beautiful-button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -10,6 +12,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useState, useMemo, useCallback } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import {
   DragDropContext,
   Droppable,
@@ -20,6 +24,11 @@ import {
   AlertCircle,
   Target,
   GripVertical,
+  Plus,
+  Loader2,
+  Sprout,
+  TreePine,
+  Sun,
 } from "lucide-react";
 import {
   type EnrichedRelationship,
@@ -105,16 +114,140 @@ function PipelineCard({ card, onClick }: { card: KanbanCard; onClick: () => void
   );
 }
 
-function KanbanColumn({ column, cards, onCardClick }: {
+const STAGE_OPTIONS = [
+  { value: "kakano", label: "Kakano", icon: Sprout, desc: "Seed stage" },
+  { value: "tipu", label: "Tipu", icon: TreePine, desc: "Growing" },
+  { value: "ora", label: "Ora", icon: Sun, desc: "Thriving" },
+] as const;
+
+function QuickAddMenteeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [stage, setStage] = useState("kakano");
+  const [whatBuilding, setWhatBuilding] = useState("");
+
+  const resetForm = () => {
+    setName("");
+    setEmail("");
+    setStage("kakano");
+    setWhatBuilding("");
+  };
+
+  const createContact = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", "/api/contacts", data);
+      return res.json();
+    },
+  });
+
+  const createRelationship = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", "/api/mentoring-relationships", data);
+      return res.json();
+    },
+  });
+
+  const handleSubmit = async () => {
+    if (!name.trim()) return;
+    try {
+      const contact = await createContact.mutateAsync({
+        name: name.trim(),
+        email: email.trim() || null,
+        role: "entrepreneur",
+        isCommunityMember: true,
+        stage,
+        whatTheyAreBuilding: whatBuilding.trim() || null,
+      });
+      await createRelationship.mutateAsync({
+        contactId: contact.id,
+        status: "application",
+        startDate: new Date().toISOString(),
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/mentoring-relationships/enriched"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast({ title: "Mentee added to pipeline" });
+      resetForm();
+      onOpenChange(false);
+    } catch (err: any) {
+      toast({ title: "Failed to add mentee", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const isSubmitting = createContact.isPending || createRelationship.isPending;
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) resetForm(); onOpenChange(v); }}>
+      <DialogContent className="sm:max-w-[400px]">
+        <DialogHeader>
+          <DialogTitle>Quick Add Mentee</DialogTitle>
+          <DialogDescription>Add someone to the discovery pipeline</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="qa-name">Name *</Label>
+            <Input id="qa-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" autoFocus />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="qa-email">Email</Label>
+            <Input id="qa-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Optional" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Stage</Label>
+            <div className="flex gap-2">
+              {STAGE_OPTIONS.map(({ value, label, icon: Icon }) => (
+                <Button
+                  key={value}
+                  type="button"
+                  variant={stage === value ? "default" : "outline"}
+                  size="sm"
+                  className="flex-1 gap-1"
+                  onClick={() => setStage(value)}
+                >
+                  <Icon className="w-3.5 h-3.5" /> {label}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="qa-building">What they're building</Label>
+            <Input id="qa-building" value={whatBuilding} onChange={(e) => setWhatBuilding(e.target.value)} placeholder="Optional" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={!name.trim() || isSubmitting}>
+            {isSubmitting ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Adding...</> : "Add to Pipeline"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function KanbanColumn({ column, cards, onCardClick, onQuickAdd }: {
   column: typeof COLUMN_CONFIG[number];
   cards: KanbanCard[];
   onCardClick: (card: KanbanCard) => void;
+  onQuickAdd?: () => void;
 }) {
   return (
     <div className="flex flex-col min-w-[260px] w-full md:w-[280px] lg:w-[300px] shrink-0" data-testid={`kanban-column-${column.id}`}>
       <div className={`flex items-center justify-between px-3 py-2 rounded-t-lg border ${column.bgClass}`}>
         <span className={`text-sm font-semibold ${column.color}`}>{column.title}</span>
-        <Badge variant="secondary" className="text-[10px] h-5 px-1.5">{cards.length}</Badge>
+        <div className="flex items-center gap-1.5">
+          <Badge variant="secondary" className="text-[10px] h-5 px-1.5">{cards.length}</Badge>
+          {onQuickAdd && (
+            <button
+              onClick={onQuickAdd}
+              className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              title="Quick add mentee"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </div>
       <Droppable droppableId={column.id}>
         {(provided, snapshot) => (
@@ -168,6 +301,7 @@ export function PipelineKanban({
   onUpdateRelationshipStatus: (relationshipId: number, newStatus: string, notes?: string) => void;
 }) {
   const { toast } = useToast();
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [confirmDrag, setConfirmDrag] = useState<{
     card: KanbanCard;
     from: ColumnId;
@@ -343,6 +477,7 @@ export function PipelineKanban({
               column={col}
               cards={columns[col.id]}
               onCardClick={onCardClick}
+              onQuickAdd={col.id === "discovery" ? () => setQuickAddOpen(true) : undefined}
             />
           ))}
         </div>
@@ -362,6 +497,8 @@ export function PipelineKanban({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <QuickAddMenteeDialog open={quickAddOpen} onOpenChange={setQuickAddOpen} />
     </>
   );
 }
