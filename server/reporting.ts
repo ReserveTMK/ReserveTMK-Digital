@@ -2,7 +2,7 @@ import { db } from "./db";
 import { sql, eq, ne, and, or, gte, lte, inArray, count, sum, asc } from "drizzle-orm";
 import {
   impactLogs, impactLogContacts, impactLogGroups, impactTags, impactTaxonomy,
-  contacts, groups, groupMembers, events, eventAttendance,
+  contacts, groups, groupMembers, groupTaxonomyLinks, events, eventAttendance,
   programmes, bookings, memberships, mous,
   milestones, relationshipStageHistory, communitySpend, meetings, interactions,
   meetingTypes, monthlySnapshots, footTrafficTouchpoints, dailyFootTraffic,
@@ -3230,6 +3230,53 @@ function proRata(annualTarget: number | null, contractStart: Date | null, contra
   return Math.round(annualTarget * (elapsedDays / contractDays));
 }
 
+/** Get event IDs that have confirmed debriefs tagged with any of the given taxonomy IDs */
+async function getEventIdsWithTaxonomy(userId: string, taxonomyIds: number[], start: Date, end: Date): Promise<number[]> {
+  const rows = await db
+    .selectDistinct({ eventId: impactLogs.eventId })
+    .from(impactLogs)
+    .innerJoin(impactTags, eq(impactTags.impactLogId, impactLogs.id))
+    .where(and(
+      eq(impactLogs.userId, userId),
+      eq(impactLogs.status, "confirmed"),
+      inArray(impactTags.taxonomyId, taxonomyIds),
+      sql`${impactLogs.eventId} IS NOT NULL`,
+      gte(impactLogs.createdAt, start),
+      lte(impactLogs.createdAt, end),
+    ));
+  return rows.map(r => r.eventId!);
+}
+
+/** Get contact IDs linked to confirmed debriefs tagged with any of the given taxonomy IDs */
+async function getContactIdsWithTaxonomy(userId: string, taxonomyIds: number[], start: Date, end: Date): Promise<number[]> {
+  const rows = await db
+    .selectDistinct({ contactId: impactLogContacts.contactId })
+    .from(impactLogContacts)
+    .innerJoin(impactLogs, eq(impactLogs.id, impactLogContacts.impactLogId))
+    .innerJoin(impactTags, eq(impactTags.impactLogId, impactLogs.id))
+    .where(and(
+      eq(impactLogs.userId, userId),
+      eq(impactLogs.status, "confirmed"),
+      inArray(impactTags.taxonomyId, taxonomyIds),
+      gte(impactLogs.createdAt, start),
+      lte(impactLogs.createdAt, end),
+    ));
+  return rows.map(r => r.contactId);
+}
+
+/** Get group IDs linked to any of the given taxonomy IDs */
+async function getGroupIdsWithTaxonomy(userId: string, taxonomyIds: number[]): Promise<number[]> {
+  const rows = await db
+    .selectDistinct({ groupId: groupTaxonomyLinks.groupId })
+    .from(groupTaxonomyLinks)
+    .innerJoin(groups, eq(groups.id, groupTaxonomyLinks.groupId))
+    .where(and(
+      eq(groups.userId, userId),
+      inArray(groupTaxonomyLinks.taxonomyId, taxonomyIds),
+    ));
+  return rows.map(r => r.groupId);
+}
+
 async function evaluateMetric(
   metricType: string,
   filter: Record<string, any>,
@@ -3240,6 +3287,9 @@ async function evaluateMetric(
   switch (metricType) {
     case "activations": {
       const excludeTypes = filter.excludeTypes || ACTIVATION_EXCLUDE_TYPES;
+      const taxEventIds = filter.taxonomyIds?.length
+        ? await getEventIdsWithTaxonomy(userId, filter.taxonomyIds, start, end)
+        : null;
       const evtConds: any[] = [
         eq(events.userId, userId),
         ne(events.eventStatus, "cancelled"),
@@ -3247,10 +3297,17 @@ async function evaluateMetric(
         lte(events.startTime, end),
       ];
       if (filter.eventTypes?.length) evtConds.push(inArray(events.type, filter.eventTypes));
+      if (taxEventIds) {
+        if (taxEventIds.length === 0) return 0;
+        evtConds.push(inArray(events.id, taxEventIds));
+      }
       const evtRows = await db.select({ id: events.id, type: events.type }).from(events).where(and(...evtConds));
       const activationEvts = filter.eventTypes?.length
         ? evtRows
         : evtRows.filter(e => !excludeTypes.includes(e.type || ""));
+
+      // When filtering by taxonomy, only count events (bookings/programmes don't have taxonomy links yet)
+      if (taxEventIds) return activationEvts.length;
 
       const bkgConds: any[] = [
         eq(bookings.userId, userId),
@@ -3284,6 +3341,11 @@ async function evaluateMetric(
         for (const t of filter.excludeTypes) {
           conds.push(ne(events.type, t));
         }
+      }
+      if (filter.taxonomyIds?.length) {
+        const taxIds = await getEventIdsWithTaxonomy(userId, filter.taxonomyIds, start, end);
+        if (taxIds.length === 0) return 0;
+        conds.push(inArray(events.id, taxIds));
       }
       const rows = await db.select({ id: events.id }).from(events).where(and(...conds));
       return rows.length;
@@ -3329,6 +3391,11 @@ async function evaluateMetric(
       if (filter.stage) conds.push(eq(contacts.stage, filter.stage));
       if (filter.isInnovator) conds.push(eq(contacts.isInnovator, true));
       if (filter.isCommunityMember) conds.push(eq(contacts.isCommunityMember, true));
+      if (filter.taxonomyIds?.length) {
+        const taxIds = await getContactIdsWithTaxonomy(userId, filter.taxonomyIds, start, end);
+        if (taxIds.length === 0) return 0;
+        conds.push(inArray(contacts.id, taxIds));
+      }
       const rows = await db.select({ id: contacts.id }).from(contacts).where(and(...conds));
       return rows.length;
     }
@@ -3343,6 +3410,11 @@ async function evaluateMetric(
       if (filter.createdInPeriod) {
         conds.push(gte(groups.createdAt, start));
         conds.push(lte(groups.createdAt, end));
+      }
+      if (filter.taxonomyIds?.length) {
+        const taxIds = await getGroupIdsWithTaxonomy(userId, filter.taxonomyIds);
+        if (taxIds.length === 0) return 0;
+        conds.push(inArray(groups.id, taxIds));
       }
       const rows = await db.select({ id: groups.id }).from(groups).where(and(...conds));
       return rows.length;

@@ -65,10 +65,14 @@ import {
   FUNDER_DOCUMENT_TYPES,
   DELIVERABLE_METRIC_TYPES,
   DELIVERABLE_UNITS,
+  BOOKING_CLASSIFICATIONS,
+  GROUP_TYPES,
+  RELATIONSHIP_STAGES,
   type Funder,
   type FunderDocument,
   type FunderDeliverable,
 } from "@shared/schema";
+import { useTaxonomy } from "@/hooks/use-taxonomy";
 import { useLocation } from "wouter";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -364,6 +368,255 @@ function FunderDeliverablesSection({ funderId }: { funderId: number }) {
   );
 }
 
+const EVENT_TYPES = ["Meeting", "Mentoring Session", "External Event", "Personal Development", "Planning", "Programme", "Catch Up", "Content"] as const;
+const ETHNICITY_OPTIONS = ["Māori", "Pasifika", "NZ European", "Asian", "Other"] as const;
+const SESSION_STATUSES = ["completed", "confirmed", "cancelled", "no-show"] as const;
+const PROGRAMME_STATUSES = ["draft", "active", "completed", "cancelled"] as const;
+
+function MultiSelectField({
+  label,
+  options,
+  selected,
+  onChange,
+}: {
+  label: string;
+  options: readonly string[];
+  selected: string[];
+  onChange: (val: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <Label className="text-xs">{label}</Label>
+      <div className="mt-1 relative">
+        <div
+          className="flex flex-wrap gap-1 min-h-[36px] items-center border rounded-md px-2 py-1.5 cursor-pointer text-sm"
+          onClick={() => setOpen(!open)}
+        >
+          {selected.length === 0 && <span className="text-muted-foreground text-xs">Any</span>}
+          {selected.map(v => (
+            <Badge key={v} variant="secondary" className="text-xs gap-1">
+              {v}
+              <X className="w-3 h-3 cursor-pointer" onClick={e => { e.stopPropagation(); onChange(selected.filter(s => s !== v)); }} />
+            </Badge>
+          ))}
+        </div>
+        {open && (
+          <div className="absolute z-50 mt-1 w-full bg-popover border rounded-md shadow-md max-h-48 overflow-y-auto">
+            {options.map(opt => (
+              <div
+                key={opt}
+                className="flex items-center gap-2 px-3 py-1.5 hover:bg-accent cursor-pointer text-sm"
+                onClick={() => {
+                  onChange(selected.includes(opt) ? selected.filter(s => s !== opt) : [...selected, opt]);
+                }}
+              >
+                <Checkbox checked={selected.includes(opt)} />
+                <span>{opt}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TaxonomySelectField({
+  selected,
+  onChange,
+}: {
+  selected: number[];
+  onChange: (val: number[]) => void;
+}) {
+  const { data: categories } = useTaxonomy();
+  const [open, setOpen] = useState(false);
+  if (!categories?.length) return null;
+
+  return (
+    <div>
+      <Label className="text-xs">Taxonomy Tags</Label>
+      <div className="mt-1 relative">
+        <div
+          className="flex flex-wrap gap-1 min-h-[36px] items-center border rounded-md px-2 py-1.5 cursor-pointer text-sm"
+          onClick={() => setOpen(!open)}
+        >
+          {selected.length === 0 && <span className="text-muted-foreground text-xs">Any</span>}
+          {selected.map(id => {
+            const cat = categories.find((c: any) => c.id === id);
+            return (
+              <Badge key={id} variant="secondary" className="text-xs gap-1" style={cat?.color ? { backgroundColor: `${cat.color}20`, color: cat.color } : {}}>
+                {cat?.name || id}
+                <X className="w-3 h-3 cursor-pointer" onClick={e => { e.stopPropagation(); onChange(selected.filter(s => s !== id)); }} />
+              </Badge>
+            );
+          })}
+        </div>
+        {open && (
+          <div className="absolute z-50 mt-1 w-full bg-popover border rounded-md shadow-md max-h-48 overflow-y-auto">
+            {categories.map((cat: any) => (
+              <div
+                key={cat.id}
+                className="flex items-center gap-2 px-3 py-1.5 hover:bg-accent cursor-pointer text-sm"
+                onClick={() => {
+                  onChange(selected.includes(cat.id) ? selected.filter((s: number) => s !== cat.id) : [...selected, cat.id]);
+                }}
+              >
+                <Checkbox checked={selected.includes(cat.id)} />
+                <span className="flex items-center gap-1.5">
+                  {cat.color && <span className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }} />}
+                  {cat.name}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FilterBuilder({
+  metricType,
+  filter,
+  onChange,
+}: {
+  metricType: string;
+  filter: Record<string, any>;
+  onChange: (filter: Record<string, any>) => void;
+}) {
+  const set = (key: string, val: any) => {
+    const next = { ...filter };
+    if (val === false || val === "" || val === null || val === undefined || (Array.isArray(val) && val.length === 0)) {
+      delete next[key];
+    } else {
+      next[key] = val;
+    }
+    onChange(next);
+  };
+
+  switch (metricType) {
+    case "activations":
+      return (
+        <div className="space-y-2">
+          <MultiSelectField label="Event Types (include)" options={EVENT_TYPES} selected={filter.eventTypes || []} onChange={v => set("eventTypes", v)} />
+          <MultiSelectField label="Event Types (exclude)" options={EVENT_TYPES} selected={filter.excludeTypes || []} onChange={v => set("excludeTypes", v)} />
+          <MultiSelectField label="Booking Classifications" options={BOOKING_CLASSIFICATIONS} selected={filter.classifications || []} onChange={v => set("classifications", v)} />
+          <TaxonomySelectField selected={filter.taxonomyIds || []} onChange={v => set("taxonomyIds", v)} />
+        </div>
+      );
+
+    case "events":
+      return (
+        <div className="space-y-2">
+          <MultiSelectField label="Event Types (include)" options={EVENT_TYPES} selected={filter.eventTypes || []} onChange={v => set("eventTypes", v)} />
+          <MultiSelectField label="Event Types (exclude)" options={EVENT_TYPES} selected={filter.excludeTypes || []} onChange={v => set("excludeTypes", v)} />
+          <TaxonomySelectField selected={filter.taxonomyIds || []} onChange={v => set("taxonomyIds", v)} />
+        </div>
+      );
+
+    case "programmes":
+      return (
+        <div className="space-y-2">
+          <MultiSelectField label="Classifications" options={BOOKING_CLASSIFICATIONS} selected={filter.classifications || []} onChange={v => set("classifications", v)} />
+          <div>
+            <Label className="text-xs">Programme Status</Label>
+            <Select value={filter.programmeStatus || ""} onValueChange={v => set("programmeStatus", v || null)}>
+              <SelectTrigger className="mt-1"><SelectValue placeholder="Any" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Any</SelectItem>
+                {PROGRAMME_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      );
+
+    case "mentoring":
+      return (
+        <div>
+          <Label className="text-xs">Session Status</Label>
+          <Select value={filter.sessionStatus || ""} onValueChange={v => set("sessionStatus", v || null)}>
+            <SelectTrigger className="mt-1"><SelectValue placeholder="Completed + Confirmed" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Completed + Confirmed (default)</SelectItem>
+              {SESSION_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+      );
+
+    case "contacts":
+      return (
+        <div className="space-y-2">
+          <MultiSelectField label="Ethnicity" options={ETHNICITY_OPTIONS} selected={filter.ethnicity || []} onChange={v => set("ethnicity", v)} />
+          <div>
+            <Label className="text-xs">Stage</Label>
+            <Select value={filter.stage || ""} onValueChange={v => set("stage", v || null)}>
+              <SelectTrigger className="mt-1"><SelectValue placeholder="Any" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Any</SelectItem>
+                {RELATIONSHIP_STAGES.map(s => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-wrap gap-4">
+            <label className="flex items-center gap-1.5 text-xs">
+              <Checkbox checked={!!filter.isRangatahi} onCheckedChange={v => set("isRangatahi", v)} />
+              Rangatahi
+            </label>
+            <label className="flex items-center gap-1.5 text-xs">
+              <Checkbox checked={!!filter.isInnovator} onCheckedChange={v => set("isInnovator", v)} />
+              Innovator
+            </label>
+            <label className="flex items-center gap-1.5 text-xs">
+              <Checkbox checked={!!filter.isCommunityMember} onCheckedChange={v => set("isCommunityMember", v)} />
+              Community Member
+            </label>
+          </div>
+          <TaxonomySelectField selected={filter.taxonomyIds || []} onChange={v => set("taxonomyIds", v)} />
+        </div>
+      );
+
+    case "groups":
+      return (
+        <div className="space-y-2">
+          <MultiSelectField label="Group Type" options={GROUP_TYPES} selected={filter.groupType || []} onChange={v => set("groupType", v)} />
+          <div className="flex flex-wrap gap-4">
+            <label className="flex items-center gap-1.5 text-xs">
+              <Checkbox checked={!!filter.isMaori} onCheckedChange={v => set("isMaori", v)} />
+              Māori
+            </label>
+            <label className="flex items-center gap-1.5 text-xs">
+              <Checkbox checked={!!filter.isPasifika} onCheckedChange={v => set("isPasifika", v)} />
+              Pasifika
+            </label>
+            <label className="flex items-center gap-1.5 text-xs">
+              <Checkbox checked={!!filter.createdInPeriod} onCheckedChange={v => set("createdInPeriod", v)} />
+              Created in period only
+            </label>
+          </div>
+          <TaxonomySelectField selected={filter.taxonomyIds || []} onChange={v => set("taxonomyIds", v)} />
+        </div>
+      );
+
+    case "bookings":
+      return (
+        <div className="space-y-2">
+          <MultiSelectField label="Classifications" options={BOOKING_CLASSIFICATIONS} selected={filter.classifications || []} onChange={v => set("classifications", v)} />
+        </div>
+      );
+
+    case "foot_traffic":
+    case "revenue":
+    case "custom":
+      return <p className="text-xs text-muted-foreground italic">No filters for this metric type</p>;
+
+    default:
+      return null;
+  }
+}
+
 function DeliverableForm({
   initial,
   onSubmit,
@@ -380,13 +633,11 @@ function DeliverableForm({
   const [metricType, setMetricType] = useState(initial?.metricType || "activations");
   const [targetAnnual, setTargetAnnual] = useState(initial?.targetAnnual?.toString() || "");
   const [unit, setUnit] = useState(initial?.unit || "count");
-  const [filterJson, setFilterJson] = useState(
-    initial?.filter ? JSON.stringify(initial.filter, null, 2) : "{}"
+  const [filter, setFilter] = useState<Record<string, any>>(
+    (initial?.filter as Record<string, any>) || {}
   );
 
   const handleSubmit = () => {
-    let filter = {};
-    try { filter = JSON.parse(filterJson); } catch { /* keep empty */ }
     onSubmit({
       name,
       description: description || null,
@@ -408,7 +659,7 @@ function DeliverableForm({
         </div>
         <div>
           <Label className="text-xs">Metric Type</Label>
-          <Select value={metricType} onValueChange={setMetricType}>
+          <Select value={metricType} onValueChange={v => { setMetricType(v); setFilter({}); }}>
             <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
             <SelectContent>
               {DELIVERABLE_METRIC_TYPES.map(t => (
@@ -440,14 +691,8 @@ function DeliverableForm({
         </div>
       </div>
       <div>
-        <Label className="text-xs">Filter Rules (JSON)</Label>
-        <Textarea
-          value={filterJson}
-          onChange={e => setFilterJson(e.target.value)}
-          placeholder='{"eventTypes": ["Workshop"], "ethnicity": ["Maori"]}'
-          className="mt-1 font-mono text-xs"
-          rows={3}
-        />
+        <Label className="text-xs mb-1 block">Filter Rules</Label>
+        <FilterBuilder metricType={metricType} filter={filter} onChange={setFilter} />
       </div>
       <div className="flex gap-2 justify-end">
         <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
