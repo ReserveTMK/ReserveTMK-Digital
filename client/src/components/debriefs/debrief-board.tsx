@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/beautiful-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useImpactLogs } from "@/hooks/use-impact-logs";
-import { format, formatDistanceToNow, isPast, isFuture } from "date-fns";
+import { format, formatDistanceToNow, isFuture } from "date-fns";
 import {
   Mic,
   CheckCircle2,
@@ -48,13 +48,12 @@ const COLUMNS = [
 // ── Unified event type ────────────────────────────────────────────────────────
 
 type BoardEvent = {
-  id: string; // "app-123" or "gcal-abc123"
+  id: string;
   name: string;
   type: string;
   startTime: string;
   isPast: boolean;
-  internalId?: number; // internal event DB id
-  gcalId?: string;
+  internalId: number;
   existingDebriefId?: number;
   existingDebriefStatus?: string;
 };
@@ -65,49 +64,23 @@ export function DebriefBoard() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
-  // Internal queue events
+  // Events needing debriefs — single source from internal events table
   const { data: queueItems, isLoading: queueLoading } = useQuery<QueueItem[]>({
     queryKey: ["/api/events/needs-debrief"],
     staleTime: 0,
   });
 
-  // GCal events (last 90 days + next 30 days)
-  const { data: gcalEvents, isLoading: gcalLoading } = useQuery<any[]>({
-    queryKey: ["/api/google-calendar/events"],
-    staleTime: 0,
-  });
-
-  // Dismissed GCal events
-  const { data: dismissedEvents } = useQuery<{ id: number; gcalEventId: string; reason: string }[]>({
-    queryKey: ["/api/dismissed-calendar-events"],
-  });
-
   // All debriefs
   const { data: allLogs, isLoading: logsLoading } = useImpactLogs() as { data: ImpactLog[] | undefined; isLoading: boolean };
 
-  const isLoading = queueLoading || gcalLoading || logsLoading;
-
-  // Build lookup sets
-  const dismissedGcalIds = useMemo(() =>
-    new Set((dismissedEvents || []).map(d => d.gcalEventId)),
-    [dismissedEvents]
-  );
-
-  // Confirmed debrief titles (for fuzzy matching when no eventId/gcalId)
-  const confirmedTitles = useMemo(() =>
-    new Set((allLogs || [])
-      .filter(l => l.status === "confirmed")
-      .map(l => l.title.toLowerCase().trim())
-    ),
-    [allLogs]
-  );
+  const isLoading = queueLoading || logsLoading;
 
   const isRealDebrief = (log: ImpactLog) =>
     log.status === "pending_review" ||
     (log.transcript && log.transcript.trim().length > 0) ||
     (log.audioUrl && log.audioUrl.trim().length > 0);
 
-  // Maps for debrief lookup
+  // Debrief lookup by eventId — single path
   const debriefByEventId = useMemo(() => {
     const map = new Map<number, ImpactLog>();
     for (const log of (allLogs || [])) {
@@ -120,31 +93,12 @@ export function DebriefBoard() {
     return map;
   }, [allLogs]);
 
-  const debriefByGcalId = useMemo(() => {
-    const map = new Map<string, ImpactLog>();
-    for (const log of (allLogs || [])) {
-      const gcalId = (log as any).gcalEventId;
-      if (!gcalId) continue;
-      const existing = map.get(gcalId);
-      if (!existing || log.status === "confirmed") {
-        map.set(gcalId, log);
-      }
-    }
-    return map;
-  }, [allLogs]);
-
-  // Build unified event list from internal + GCal
+  // Build board events from needs-debrief queue only
   const allBoardEvents = useMemo(() => {
-    const events: BoardEvent[] = [];
-    const seenKeys = new Set<string>();
-
-    // Internal queue events
-    for (const q of (queueItems || [])) {
-      const key = `app-${q.id}`;
-      seenKeys.add(key);
+    return (queueItems || []).map(q => {
       const log = debriefByEventId.get(q.id);
-      events.push({
-        id: key,
+      return {
+        id: `app-${q.id}`,
         name: q.name,
         type: q.type,
         startTime: q.startTime,
@@ -152,39 +106,9 @@ export function DebriefBoard() {
         internalId: q.id,
         existingDebriefId: log?.id,
         existingDebriefStatus: log?.status,
-      });
-    }
-
-    // GCal events not already covered
-    for (const e of (gcalEvents || [])) {
-      if (dismissedGcalIds.has(e.id)) continue;
-      const nameKey = `${(e.summary || "").trim().toLowerCase()}|${new Date(e.start).toDateString()}`;
-      // Skip if an internal event covers this (by name+date)
-      const alreadyCovered = [...seenKeys].some(k => {
-        const q = (queueItems || []).find(q => `app-${q.id}` === k);
-        return q && `${q.name.toLowerCase()}|${new Date(q.startTime).toDateString()}` === nameKey;
-      });
-      if (alreadyCovered) continue;
-
-      const log = debriefByGcalId.get(e.id);
-      if (log?.status === "confirmed") continue; // already done, skip column 1
-      // Also skip if a confirmed debrief has matching title
-      if (confirmedTitles.has((e.summary || "").toLowerCase().trim())) continue;
-
-      events.push({
-        id: `gcal-${e.id}`,
-        name: e.summary || "Untitled Event",
-        type: e.calendarId?.includes("@") ? "Meeting" : "Event",
-        startTime: e.start,
-        isPast: new Date(e.end || e.start) < new Date(),
-        gcalId: e.id,
-        existingDebriefId: log?.id,
-        existingDebriefStatus: log?.status,
-      });
-    }
-
-    return events;
-  }, [queueItems, gcalEvents, dismissedGcalIds, debriefByEventId, debriefByGcalId]);
+      } as BoardEvent;
+    });
+  }, [queueItems, debriefByEventId]);
 
   // Column 1: No debrief or empty draft
   const toDebrief = useMemo(() => allBoardEvents.filter(e => {
@@ -213,8 +137,7 @@ export function DebriefBoard() {
       const res = await apiRequest("POST", "/api/impact-logs", {
         title: event.name,
         status: "draft",
-        eventId: event.internalId || null,
-        gcalEventId: event.gcalId || null,
+        eventId: event.internalId,
       });
       const log = await res.json();
       queryClient.invalidateQueries({ queryKey: ["/api/impact-logs"] });
@@ -227,14 +150,8 @@ export function DebriefBoard() {
 
   const handleDismiss = async (event: BoardEvent, reason: string) => {
     try {
-      if (event.internalId) {
-        await apiRequest("POST", `/api/events/${event.internalId}/skip-debrief`, { reason });
-        queryClient.invalidateQueries({ queryKey: ["/api/events/needs-debrief"] });
-      } else if (event.gcalId) {
-        await apiRequest("POST", "/api/dismissed-calendar-events", { gcalEventId: event.gcalId, reason });
-        queryClient.invalidateQueries({ queryKey: ["/api/dismissed-calendar-events"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/google-calendar/events"] });
-      }
+      await apiRequest("POST", `/api/events/${event.internalId}/skip-debrief`, { reason });
+      queryClient.invalidateQueries({ queryKey: ["/api/events/needs-debrief"] });
       toast({ title: "Dismissed", description: "Event removed from queue." });
     } catch {
       toast({ title: "Error", description: "Failed to dismiss", variant: "destructive" });

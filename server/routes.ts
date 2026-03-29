@@ -2371,6 +2371,57 @@ export async function registerRoutes(
     }
   });
 
+  // One-time migration: link orphaned debriefs (gcal_event_id but no event_id) to internal events
+  app.post("/api/events/migrate-orphaned-debriefs", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const orphaned = await db.execute(sql`
+        SELECT id, title, gcal_event_id
+        FROM impact_logs
+        WHERE user_id = ${userId}
+          AND gcal_event_id IS NOT NULL
+          AND event_id IS NULL
+      `);
+      const rows = (orphaned as any).rows || [];
+      if (rows.length === 0) {
+        return res.json({ message: "No orphaned debriefs found", migrated: 0 });
+      }
+
+      let migrated = 0;
+      const results: { debriefId: number; gcalEventId: string; action: string }[] = [];
+
+      for (const row of rows) {
+        const gcalId = row.gcal_event_id;
+        let event = await storage.getEventByGoogleCalendarId(gcalId, userId);
+
+        if (!event) {
+          // Create placeholder event from the debrief title
+          event = await storage.createEvent({
+            userId,
+            name: row.title || "Imported Event",
+            type: "Meeting",
+            startTime: new Date(),
+            endTime: new Date(),
+            googleCalendarEventId: gcalId,
+            source: "google",
+            requiresDebrief: false, // already has a debrief
+          });
+          results.push({ debriefId: row.id, gcalEventId: gcalId, action: "created_event" });
+        } else {
+          results.push({ debriefId: row.id, gcalEventId: gcalId, action: "linked_existing" });
+        }
+
+        await db.execute(sql`UPDATE impact_logs SET event_id = ${event.id} WHERE id = ${row.id}`);
+        migrated++;
+      }
+
+      res.json({ message: `Migrated ${migrated} orphaned debriefs`, migrated, results });
+    } catch (err) {
+      console.error("Migration error:", err);
+      res.status(500).json({ message: "Migration failed" });
+    }
+  });
+
   app.get(api.events.get.path, isAuthenticated, async (req, res) => {
     const id = parseId(req.params.id);
     const event = await storage.getEvent(id);
@@ -2604,15 +2655,7 @@ export async function registerRoutes(
   app.get(api.impactLogs.list.path, isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
     const logs = await storage.getImpactLogs(userId);
-    // Enrich with gcalEventId
-    try {
-      const gcalIds = await db.execute(sql`SELECT id, gcal_event_id FROM impact_logs WHERE user_id = ${userId} AND gcal_event_id IS NOT NULL`);
-      const gcalMap = new Map((gcalIds as any).rows?.map((r: any) => [r.id, r.gcal_event_id]) || []);
-      const enriched = logs.map(l => gcalMap.has(l.id) ? { ...l, gcalEventId: gcalMap.get(l.id) } : l);
-      res.json(enriched);
-    } catch {
-      res.json(logs);
-    }
+    res.json(logs);
   });
 
   app.get(api.impactLogs.get.path, isAuthenticated, async (req, res) => {
@@ -2627,20 +2670,40 @@ export async function registerRoutes(
     try {
       const userId = (req.user as any).claims.sub;
       const gcalEventId = req.body.gcalEventId || null;
+      let eventId = req.body.eventId || null;
+
+      // Auto-import: if gcalEventId provided without eventId, ensure internal event exists
+      if (gcalEventId && !eventId) {
+        try {
+          let event = await storage.getEventByGoogleCalendarId(gcalEventId, userId);
+          if (!event) {
+            event = await storage.createEvent({
+              userId,
+              name: req.body.title || "Untitled Event",
+              type: req.body.eventType || "Meeting",
+              startTime: req.body.startTime ? new Date(req.body.startTime) : new Date(),
+              endTime: req.body.endTime ? new Date(req.body.endTime) : new Date(),
+              location: req.body.location || null,
+              description: req.body.description || null,
+              googleCalendarEventId: gcalEventId,
+              calendarAttendees: req.body.calendarAttendees || null,
+              attendeeCount: req.body.attendeeCount || null,
+              source: "google",
+              requiresDebrief: true,
+            });
+          }
+          eventId = event.id;
+        } catch (e) {
+          console.warn("[impact-log] Failed to auto-import GCal event:", e);
+        }
+      }
+
       const input = api.impactLogs.create.input.parse({
         ...req.body,
         userId,
+        eventId,
       });
       const log = await storage.createImpactLog(input);
-      // Store gcalEventId if provided
-      if (gcalEventId && log.id) {
-        try {
-          await db.execute(sql`UPDATE impact_logs SET gcal_event_id = ${gcalEventId} WHERE id = ${log.id}`);
-          (log as any).gcalEventId = gcalEventId;
-        } catch (e) {
-          console.warn("[impact-log] Failed to store gcalEventId:", e);
-        }
-      }
 
       if (input.eventId) {
         try {

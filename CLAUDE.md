@@ -207,15 +207,18 @@ If unsure — ask, don't guess and build
 
 
 SESSION PROTOCOL
+Handoff file: .claude/handoff.md (project-relative, always read this first)
+
 Start of every session:
 
 Read this file
-Run /session-start (reads handoff, checks staleness, shows recent activity)
+Read .claude/handoff.md if it exists — this is the relay baton from the last session
+Run /session-start (checks staleness, uncommitted work, recent activity)
 Confirm with Ra what we're working on today
 
 End of every session:
 
-Run /handoff to save session state for next session
+Run /handoff to save session state to .claude/handoff.md
 Run /session-summary for Ra
 Note any new decisions or patterns Ra wants remembered
 Flag anything unresolved before closing

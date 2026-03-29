@@ -1369,19 +1369,11 @@ export default function CalendarPage() {
 
   const debriefByGcalId = useMemo(() => {
     const map = new Map<string, DebriefInfo>();
-    // Match via internal event's googleCalendarEventId
+    // Match via internal event's googleCalendarEventId → debriefByEventId
     if (appEvents && debriefByEventId.size) {
       for (const event of appEvents) {
         if (event.googleCalendarEventId && debriefByEventId.has(event.id)) {
           map.set(event.googleCalendarEventId, debriefByEventId.get(event.id)!);
-        }
-      }
-    }
-    // Also match directly via gcalEventId stored on the debrief
-    if (impactLogs) {
-      for (const log of impactLogs) {
-        if ((log as any).gcalEventId && !map.has((log as any).gcalEventId)) {
-          map.set((log as any).gcalEventId, { debriefId: log.id, status: log.status });
         }
       }
     }
