@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { useContacts, useArchiveContact, useRestoreContact } from "@/hooks/use-contacts";
-import { Plus, Search, Filter, Loader2, X, Check, MessageSquare, FileText, Users, TrendingUp, UserCheck, UserX, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, Lightbulb, ChevronRight, Upload, Star, BookUser, Sprout, Leaf, Sun, Ban, Mail, Archive, ArchiveRestore } from "lucide-react";
+import { Plus, Search, Filter, Loader2, X, Check, MessageSquare, FileText, Users, UserCheck, MoreVertical, Trash2, ArrowRightLeft, Edit3, Tag, Link2, Building2, Merge, List, Table, Pencil, ArrowUp, ArrowDown, Lightbulb, ChevronRight, Upload, Star, BookUser, Sprout, Leaf, Sun, Ban, Mail, Archive, ArchiveRestore } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useState, useMemo, useEffect } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -57,7 +57,8 @@ export default function Contacts() {
   const isMobile = useIsMobile();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
-  const [viewMode, setViewMode] = useState<"community" | "innovators" | "all" | "vip">("community");
+  const [viewMode, setViewMode] = useState<"community" | "innovators" | "all">("community");
+  const [vipOnly, setVipOnly] = useState(false);
   const [open, setOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -398,20 +399,22 @@ export default function Contacts() {
                           contact.businessName?.toLowerCase().includes(search.toLowerCase()) ||
                           contact.email?.toLowerCase().includes(search.toLowerCase());
     const matchesRole = roleFilter === "all" || contact.role === roleFilter;
-    const matchesView = viewMode === "all" || (viewMode === "community" && (contact as any).isCommunityMember === true) || (viewMode === "innovators" && (contact as any).isInnovator === true) || (viewMode === "vip" && (contact as any).isVip === true);
-    return matchesSearch && matchesRole && matchesView;
+    const matchesView = viewMode === "all" || (viewMode === "community" && (contact as any).isCommunityMember === true) || (viewMode === "innovators" && (contact as any).isInnovator === true);
+    const matchesVip = !vipOnly || (contact as any).isVip === true;
+    return matchesSearch && matchesRole && matchesView && matchesVip;
   });
 
   const roleCounts = useMemo(() => {
     if (!contacts) return {} as Record<string, number>;
-    const pool = viewMode === "community" ? (contacts as any[]).filter(c => c.isCommunityMember) : viewMode === "innovators" ? (contacts as any[]).filter(c => c.isInnovator) : viewMode === "vip" ? (contacts as any[]).filter(c => c.isVip) : (contacts as any[]);
+    let pool = viewMode === "community" ? (contacts as any[]).filter(c => c.isCommunityMember) : viewMode === "innovators" ? (contacts as any[]).filter(c => c.isInnovator) : (contacts as any[]);
+    if (vipOnly) pool = pool.filter(c => c.isVip);
     const counts: Record<string, number> = {};
     for (const c of pool) {
       const r = c.role || "Unknown";
       counts[r] = (counts[r] || 0) + 1;
     }
     return counts;
-  }, [contacts, viewMode]);
+  }, [contacts, viewMode, vipOnly]);
 
   const tierCounts = useMemo(() => {
     if (!contacts) return { innovators: 0, community: 0, all: 0, vip: 0 };
@@ -420,39 +423,6 @@ export default function Contacts() {
     const vip = (contacts as any[]).filter(c => c.isVip).length;
     return { innovators, community, all: contacts.length, vip };
   }, [contacts]);
-
-  const analytics = useMemo(() => {
-    if (!contacts || contacts.length === 0) return null;
-    const communityContacts = (contacts as any[]).filter(c => c.isCommunityMember);
-    const innovatorContacts = (contacts as any[]).filter(c => c.isInnovator);
-    const vipContacts = (contacts as any[]).filter(c => c.isVip);
-    const pool = viewMode === "community" ? communityContacts : viewMode === "innovators" ? innovatorContacts : viewMode === "vip" ? vipContacts : (contacts as any[]);
-    if (pool.length === 0) return null;
-
-    const now = Date.now();
-    const ninetyDaysAgo = now - 90 * 24 * 60 * 60 * 1000;
-    let active = 0;
-    let inactive = 0;
-    let totalInteractions = 0;
-    let totalDebriefs = 0;
-    const roleCounts: Record<string, number> = {};
-
-    for (const c of pool) {
-      const lastActive = c.lastActiveDate ? new Date(c.lastActiveDate).getTime() : (c.lastInteractionDate ? new Date(c.lastInteractionDate).getTime() : 0);
-      if (lastActive >= ninetyDaysAgo) active++;
-      else inactive++;
-      totalInteractions += (c.interactionCount || 0) + (c.eventCount || 0);
-      totalDebriefs += c.debriefCount || 0;
-      const role = c.role || "Unknown";
-      roleCounts[role] = (roleCounts[role] || 0) + 1;
-    }
-
-    const topRoles = Object.entries(roleCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 4);
-
-    return { total: pool.length, active, inactive, totalInteractions, totalDebriefs, topRoles };
-  }, [contacts, viewMode]);
 
   return (
     <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
@@ -484,7 +454,7 @@ export default function Contacts() {
                           Promote ({selectedContacts.size})
                         </DropdownMenuItem>
                       )}
-                      {(viewMode === "community" || viewMode === "innovators" || viewMode === "vip") && (
+                      {(viewMode === "community" || viewMode === "innovators") && (
                         <DropdownMenuItem onClick={async () => {
                           for (const id of Array.from(selectedContacts)) {
                             await demoteMutation.mutateAsync(id);
@@ -524,7 +494,7 @@ export default function Contacts() {
                         Promote ({selectedContacts.size})
                       </Button>
                     )}
-                    {(viewMode === "community" || viewMode === "innovators" || viewMode === "vip") && (
+                    {(viewMode === "community" || viewMode === "innovators") && (
                       <Button variant="outline" onClick={async () => {
                         for (const id of Array.from(selectedContacts)) {
                           await demoteMutation.mutateAsync(id);
@@ -927,27 +897,33 @@ export default function Contacts() {
 
           {/* View Toggle */}
           <div className="flex items-center justify-between gap-2" data-testid="view-toggle">
-            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "community" | "innovators" | "all" | "vip")} className="min-w-0 flex-1">
+            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "community" | "innovators" | "all")} className="min-w-0 flex-1">
               <TabsList className="overflow-x-auto flex-nowrap w-full justify-start">
                 <TabsTrigger value="innovators" className="shrink-0" data-testid="button-view-innovators">
                   <Lightbulb className="w-4 h-4 mr-1.5" />
-                  Our Innovators ({tierCounts.innovators})
+                  Innovators ({tierCounts.innovators})
                 </TabsTrigger>
                 <TabsTrigger value="community" className="shrink-0" data-testid="button-view-community">
                   <Users className="w-4 h-4 mr-1.5" />
-                  Our Community ({tierCounts.community})
+                  Community ({tierCounts.community})
                 </TabsTrigger>
                 <TabsTrigger value="all" className="shrink-0" data-testid="button-view-all">
                   <BookUser className="w-4 h-4 mr-1.5" />
-                  All Contacts ({tierCounts.all})
-                </TabsTrigger>
-                <TabsTrigger value="vip" className="shrink-0" data-testid="button-view-vip">
-                  <Star className="w-4 h-4 mr-1.5" />
-                  VIP ({tierCounts.vip})
+                  All ({tierCounts.all})
                 </TabsTrigger>
               </TabsList>
             </Tabs>
             <div className="flex items-center gap-2">
+              <Button
+                variant={vipOnly ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setVipOnly(!vipOnly)}
+                data-testid="button-toggle-vip"
+                title={vipOnly ? "Showing VIP only" : "Filter to VIP"}
+              >
+                <Star className={`w-4 h-4 ${vipOnly ? "text-yellow-500 fill-yellow-500" : ""}`} />
+                {vipOnly && <span className="ml-1 text-xs">{tierCounts.vip}</span>}
+              </Button>
               <Button
                 variant={showArchived ? "secondary" : "ghost"}
                 size="sm"
@@ -978,67 +954,6 @@ export default function Contacts() {
               </div>
             </div>
           </div>
-
-              {analytics && (
-                <div className="space-y-3" data-testid="community-analytics">
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <Card className="p-4" data-testid="stat-total-members">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                          <Users className="w-4 h-4 text-primary" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-2xl font-bold font-display leading-none">{analytics.total}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">Total</p>
-                        </div>
-                      </div>
-                    </Card>
-                    <Card className="p-4" data-testid="stat-active">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
-                          <UserCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-2xl font-bold font-display leading-none">{analytics.active}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">Active (90d)</p>
-                        </div>
-                      </div>
-                    </Card>
-                    <Card className="p-4" data-testid="stat-inactive">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-orange-500/10 flex items-center justify-center shrink-0">
-                          <UserX className="w-4 h-4 text-orange-600 dark:text-orange-400" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-2xl font-bold font-display leading-none">{analytics.inactive}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">Inactive (90d+)</p>
-                        </div>
-                      </div>
-                    </Card>
-                    <Card className="p-4" data-testid="stat-ytd-interactions">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-violet-500/10 flex items-center justify-center shrink-0">
-                          <TrendingUp className="w-4 h-4 text-violet-600 dark:text-violet-400" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-2xl font-bold font-display leading-none">{analytics.totalInteractions}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">Interactions</p>
-                        </div>
-                      </div>
-                    </Card>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {analytics.topRoles.map(([role, count]) => (
-                      <Badge key={role} variant="secondary" className="text-xs" data-testid={`stat-role-${role.toLowerCase().replace(/\s+/g, '-')}`}>
-                        {role}: {count}
-                      </Badge>
-                    ))}
-                    <span className="text-xs text-muted-foreground ml-1" data-testid="stat-total-debriefs">
-                      {analytics.totalDebriefs} debrief{analytics.totalDebriefs !== 1 ? 's' : ''} logged
-                    </span>
-                  </div>
-                </div>
-              )}
 
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
