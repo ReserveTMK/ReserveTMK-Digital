@@ -2343,7 +2343,7 @@ export type ResourceCategory = typeof RESOURCE_CATEGORIES[number];
 export const GEAR_COLLECTIONS = ["creators", "personal"] as const;
 export type GearCollection = typeof GEAR_COLLECTIONS[number];
 
-export const GEAR_TIERS = ["beginner", "pro"] as const;
+export const GEAR_TIERS = ["beginner", "pro", "staff_only", "not_for_loan"] as const;
 export type GearTier = typeof GEAR_TIERS[number];
 
 export const GEAR_SUBCATEGORIES = [

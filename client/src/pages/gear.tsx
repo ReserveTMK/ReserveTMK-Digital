@@ -1,4 +1,6 @@
 import { useState, useMemo } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/beautiful-button";
 import { Badge } from "@/components/ui/badge";
@@ -76,6 +78,20 @@ function formatDisplayDate(dateStr: string | Date | null): string {
   const d = new Date(dateStr);
   return d.toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" });
 }
+
+const TIER_LABELS: Record<string, string> = {
+  beginner: "Beginner",
+  pro: "Pro",
+  staff_only: "Staff Only",
+  not_for_loan: "Not for Loan",
+};
+
+const TIER_COLORS: Record<string, string> = {
+  beginner: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+  pro: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  staff_only: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+  not_for_loan: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
+};
 
 function GearAvailabilityTab() {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -208,15 +224,16 @@ function GearAvailabilityTab() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {activeGear.map((item) => {
+            const isRestricted = item.tier === "not_for_loan" || item.tier === "staff_only";
             const availability = (gearAvailability || []).find((a: any) => a.resourceId === item.id);
-            const isCheckedOut = availability ? !availability.isAvailable : false;
+            const isCheckedOut = !isRestricted && availability ? !availability.isAvailable : false;
             const bookingStatus = availability?.bookings?.[0]?.status;
             const isLate = bookingStatus === "late";
 
             return (
               <Card
                 key={item.id}
-                className={`p-4 ${isLate ? "border-amber-300 dark:border-amber-700" : isCheckedOut ? "border-destructive/30" : "border-emerald-200 dark:border-emerald-800"}`}
+                className={`p-4 ${isRestricted ? "border-muted opacity-70" : isLate ? "border-amber-300 dark:border-amber-700" : isCheckedOut ? "border-destructive/30" : "border-emerald-200 dark:border-emerald-800"}`}
                 data-testid={`card-gear-${item.id}`}
               >
                 <div className="flex items-center justify-between gap-3">
@@ -224,18 +241,24 @@ function GearAvailabilityTab() {
                     <Wrench className="w-4 h-4 text-muted-foreground shrink-0" />
                     <div className="min-w-0">
                       <span className="text-sm font-medium truncate block">{item.name}</span>
-                      {item.requiresApproval && (
+                      {item.requiresApproval && !isRestricted && (
                         <span className="text-[10px] text-amber-600 dark:text-amber-400">Approval required</span>
                       )}
                     </div>
                   </div>
-                  <Badge
-                    variant={isLate ? "outline" : isCheckedOut ? "destructive" : "secondary"}
-                    className={isLate ? "border-amber-500 text-amber-600" : ""}
-                    data-testid={`badge-gear-status-${item.id}`}
-                  >
-                    {isLate ? "Late Return" : isCheckedOut ? "Checked Out" : "Available"}
-                  </Badge>
+                  {isRestricted ? (
+                    <Badge className={`text-[10px] border-0 ${TIER_COLORS[item.tier!] || ""}`}>
+                      {TIER_LABELS[item.tier!] || item.tier}
+                    </Badge>
+                  ) : (
+                    <Badge
+                      variant={isLate ? "outline" : isCheckedOut ? "destructive" : "secondary"}
+                      className={isLate ? "border-amber-500 text-amber-600" : ""}
+                      data-testid={`badge-gear-status-${item.id}`}
+                    >
+                      {isLate ? "Late Return" : isCheckedOut ? "Checked Out" : "Available"}
+                    </Badge>
+                  )}
                 </div>
               </Card>
             );
@@ -510,14 +533,51 @@ function GearInventoryTab() {
   const [gearCollection, setGearCollection] = useState("");
   const [gearTier, setGearTier] = useState("");
   const [gearRequiresApproval, setGearRequiresApproval] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkTierValue, setBulkTierValue] = useState<string>("");
 
   const { data: gearResources, isLoading: gearLoading } = useBookableResources("gear");
   const createMutation = useCreateBookableResource();
   const updateMutation = useUpdateBookableResource();
   const deleteMutation = useDeleteBookableResource();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const [collectionFilter, setCollectionFilter] = useState<string>("all");
+
+  const bulkTierMutation = useMutation({
+    mutationFn: async ({ ids, tier }: { ids: number[]; tier: string }) => {
+      const res = await apiRequest("PATCH", "/api/bookable-resources/bulk-tier", { ids, tier: tier || null });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookable-resources"] });
+      setSelectedIds(new Set());
+      setBulkTierValue("");
+      toast({ title: `Updated ${data.updated} items` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    const allIds = (gearResources || []).filter(r => r.active !== false).map(r => r.id);
+    if (selectedIds.size === allIds.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(allIds));
+    }
+  };
 
   const groupedGear = useMemo(() => {
     if (!gearResources || gearResources.length === 0) return [];
@@ -597,7 +657,12 @@ function GearInventoryTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-base font-semibold">Gear Inventory</h3>
+        <div className="flex items-center gap-3">
+          <h3 className="text-base font-semibold">Gear Inventory</h3>
+          <Button size="sm" variant="ghost" onClick={selectAll} className="text-xs">
+            {selectedIds.size > 0 && selectedIds.size === (gearResources || []).filter(r => r.active !== false).length ? "Deselect all" : "Select all"}
+          </Button>
+        </div>
         <Button size="sm" onClick={() => openGearForm()} data-testid="button-add-gear">
           <Plus className="w-4 h-4 mr-1.5" />
           Add Item
@@ -620,6 +685,40 @@ function GearInventoryTab() {
           </Button>
         ))}
       </div>
+
+      {selectedIds.size > 0 && (
+        <Card className="p-3 mb-4 border-primary/30 bg-primary/5">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm font-medium">{selectedIds.size} selected</span>
+            <Select value={bulkTierValue || "__pick__"} onValueChange={(v) => setBulkTierValue(v === "__pick__" ? "" : v)}>
+              <SelectTrigger className="w-[160px] h-8">
+                <SelectValue placeholder="Set tier..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__pick__">Set tier...</SelectItem>
+                {GEAR_TIERS.map((t) => (
+                  <SelectItem key={t} value={t}>{TIER_LABELS[t] || t}</SelectItem>
+                ))}
+                <SelectItem value="__clear__">Clear tier</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              size="sm"
+              disabled={(!bulkTierValue || bulkTierValue === "__pick__") || bulkTierMutation.isPending}
+              onClick={() => {
+                const tier = bulkTierValue === "__clear__" ? "" : bulkTierValue;
+                bulkTierMutation.mutate({ ids: Array.from(selectedIds), tier });
+              }}
+            >
+              {bulkTierMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
+              Apply
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+              Cancel
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {gearLoading ? (
         <div className="space-y-3">
@@ -646,8 +745,14 @@ function GearInventoryTab() {
                 <CardContent className="p-3">
                   <div className="space-y-2">
                     {group.items.map((item) => (
-                      <div key={item.id} className="flex items-center justify-between gap-3 py-2 px-2 rounded-md hover:bg-muted/50" data-testid={`row-gear-setting-${item.id}`}>
+                      <div key={item.id} className={`flex items-center justify-between gap-3 py-2 px-2 rounded-md hover:bg-muted/50 ${selectedIds.has(item.id) ? "bg-primary/5" : ""}`} data-testid={`row-gear-setting-${item.id}`}>
                         <div className="flex items-center gap-2 min-w-0">
+                          <input
+                            type="checkbox"
+                            className="w-3.5 h-3.5 rounded shrink-0"
+                            checked={selectedIds.has(item.id)}
+                            onChange={() => toggleSelect(item.id)}
+                          />
                           <Wrench className="w-4 h-4 text-muted-foreground shrink-0" />
                           <div className="min-w-0">
                             <span className="text-sm font-medium">{item.name}</span>
@@ -656,7 +761,7 @@ function GearInventoryTab() {
                                 <Badge variant="secondary" className="text-[10px] capitalize">{item.collection}</Badge>
                               )}
                               {item.tier && (
-                                <Badge variant={item.tier === "pro" ? "default" : "outline"} className="text-[10px] capitalize">{item.tier}</Badge>
+                                <Badge className={`text-[10px] border-0 ${TIER_COLORS[item.tier] || ""}`}>{TIER_LABELS[item.tier] || item.tier}</Badge>
                               )}
                               {item.subcategory && (
                                 <Badge variant="secondary" className="text-[10px]" data-testid={`badge-subcategory-${item.id}`}>{item.subcategory}</Badge>
@@ -742,7 +847,7 @@ function GearInventoryTab() {
                   <SelectContent>
                     <SelectItem value="__none__">None</SelectItem>
                     {GEAR_TIERS.map((t) => (
-                      <SelectItem key={t} value={t} className="capitalize">{t === "beginner" ? "Beginner" : "Pro"}</SelectItem>
+                      <SelectItem key={t} value={t}>{TIER_LABELS[t] || t}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

@@ -14661,7 +14661,7 @@ Rules:
       }
 
       const resources = await storage.getBookableResourcesByCategory(booker.userId, "gear");
-      const activeResources = resources.filter(r => r.active);
+      const activeResources = resources.filter(r => r.active && r.tier !== "not_for_loan" && r.tier !== "staff_only");
 
       const allGearBookings = await storage.getGearBookingsByDate(booker.userId, targetDate);
 
@@ -14672,6 +14672,7 @@ Rules:
           resourceName: resource.name,
           description: resource.description,
           requiresApproval: resource.requiresApproval,
+          tier: resource.tier,
           isAvailable: resourceBookings.length === 0,
           isYours: resourceBookings.some(b => b.regularBookerId === booker.id),
         };
@@ -15764,6 +15765,24 @@ Rules:
       if (existing.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
       await storage.deleteBookableResource(id);
       res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/bookable-resources/bulk-tier", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { ids, tier } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ message: "ids required" });
+      let updated = 0;
+      for (const id of ids) {
+        const existing = await storage.getBookableResource(id);
+        if (!existing || existing.userId !== userId) continue;
+        await storage.updateBookableResource(id, { tier: tier || null });
+        updated++;
+      }
+      res.json({ updated });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
