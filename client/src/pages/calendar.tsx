@@ -1835,8 +1835,26 @@ export default function CalendarPage() {
   }, [selectedDayFootTraffic]);
 
   const monthEventCount = useMemo(() => {
-    return filteredEvents.filter(e => isSameMonth(e.date, currentMonth)).length;
-  }, [filteredEvents, currentMonth]);
+    // Count ALL platform events for the month (not just filtered/displayed ones)
+    const mStart = startOfMonth(currentMonth);
+    const mEnd = endOfMonth(currentMonth);
+    let count = 0;
+    if (appEvents) {
+      for (const e of appEvents) {
+        const d = new Date(e.startTime);
+        if (d >= mStart && d <= mEnd) count++;
+      }
+    }
+    if (allBookings) {
+      for (const b of allBookings as Booking[]) {
+        if (b.status !== "confirmed" && b.status !== "completed") continue;
+        if (!b.startDate) continue;
+        const d = new Date(b.startDate);
+        if (d >= mStart && d <= mEnd) count++;
+      }
+    }
+    return count;
+  }, [appEvents, allBookings, currentMonth]);
 
   const monthDebriefedCount = useMemo(() => {
     if (!appEvents || !impactLogs) return 0;
