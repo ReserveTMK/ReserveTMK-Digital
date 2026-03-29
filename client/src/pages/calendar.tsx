@@ -348,8 +348,14 @@ function BookingCalendarCard({ booking, venueMap, allContacts }: {
       >
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <h4 className="font-medium text-sm truncate">{booking.title}</h4>
+            <h4 className="font-medium text-sm truncate">{booking.title || booking.classification || "Untitled booking"}</h4>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground mt-1">
+              {(booking.bookerName || booking.bookerId) && (
+                <span className="flex items-center gap-1">
+                  <Users className="w-3 h-3" />
+                  {booking.bookerName || allContacts.find(c => c.id === booking.bookerId)?.name || "Unknown"}
+                </span>
+              )}
               {booking.startTime && (
                 <span className="flex items-center gap-1">
                   <Clock className="w-3 h-3" />
@@ -1855,6 +1861,19 @@ export default function CalendarPage() {
     return map;
   }, [filteredEvents]);
 
+  const footTrafficByDate = useMemo(() => {
+    const map = new Map<string, number>();
+    if (Array.isArray(dailyFootTrafficData)) {
+      dailyFootTrafficData.forEach((entry: any) => {
+        if (entry.count > 0) {
+          const key = format(new Date(entry.date), "yyyy-MM-dd");
+          map.set(key, entry.count);
+        }
+      });
+    }
+    return map;
+  }, [dailyFootTrafficData]);
+
   const selectedDayEvents = useMemo(() => {
     const key = format(selectedDate, "yyyy-MM-dd");
     return (eventsByDate.get(key) || []).sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -1991,6 +2010,7 @@ export default function CalendarPage() {
     kind: "booking" | "programme";
     id: number;
     title: string;
+    bookerName: string | null;
     date: Date;
     startDate: Date | null;
     endDate: Date | null;
@@ -2037,7 +2057,8 @@ export default function CalendarPage() {
       items.push({
         kind: "booking",
         id: b.id,
-        title: b.title || "",
+        title: b.title || b.classification || "Untitled booking",
+        bookerName: b.bookerName || ((allContacts || []) as Contact[]).find(c => c.id === b.bookerId)?.name || null,
         date: sDate || new Date(b.createdAt || Date.now()),
         startDate: sDate,
         endDate: b.endDate ? new Date(b.endDate) : sDate,
@@ -2056,6 +2077,7 @@ export default function CalendarPage() {
         kind: "programme",
         id: p.id,
         title: p.name,
+        bookerName: null,
         date: sDate || new Date(p.createdAt || Date.now()),
         startDate: sDate,
         endDate: p.endDate ? new Date(p.endDate) : sDate,
@@ -2068,7 +2090,7 @@ export default function CalendarPage() {
       });
     });
     return items;
-  }, [allBookings, programmes, venueMap]);
+  }, [allBookings, programmes, venueMap, allContacts]);
 
   const spaceByDate = useMemo(() => {
     const map = new Map<string, SpaceOccupancyItem[]>();
@@ -2097,7 +2119,7 @@ export default function CalendarPage() {
   }, [selectedDate, spaceByDate]);
 
   return (
-    <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
+    <div className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
       <div className="max-w-5xl mx-auto">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
@@ -2254,7 +2276,7 @@ export default function CalendarPage() {
             <div className="flex items-center gap-2">
               <Footprints className="w-4 h-4 text-primary" />
               <span className="text-sm font-semibold" data-testid="text-monthly-summary-title">
-                {format(currentMonth, "MMMM yyyy")} Summary
+                {isSameMonth(currentMonth, new Date()) ? "This Month" : format(currentMonth, "MMMM yyyy")}
               </span>
             </div>
             <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-4">
@@ -2379,6 +2401,38 @@ export default function CalendarPage() {
           </Card>
         )}
 
+        {showSchedule && (
+          <div className="flex flex-wrap items-center gap-1.5 mb-4" data-testid="type-filter-pills">
+            {Object.entries(EVENT_TYPE_BADGE_COLORS).map(([type, color]) => {
+              const isActive = activeTypeFilters.has(type);
+              const isFiltering = activeTypeFilters.size > 0;
+              return (
+                <button
+                  key={type}
+                  onClick={() => toggleTypeFilter(type)}
+                  className={`
+                    inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium transition-all
+                    ${isActive ? `${color} ring-1 ring-current` : isFiltering ? "bg-muted/40 text-muted-foreground/50" : `${color}`}
+                  `}
+                  data-testid={`pill-filter-${type}`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${EVENT_TYPE_DOT_COLORS[type]}`} />
+                  {type}
+                </button>
+              );
+            })}
+            {activeTypeFilters.size > 0 && (
+              <button
+                onClick={() => setActiveTypeFilters(new Set())}
+                className="text-xs text-muted-foreground hover:text-foreground px-1.5 py-0.5"
+                data-testid="pill-clear-filters"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
             <Card className="p-4 md:p-6">
@@ -2386,9 +2440,22 @@ export default function CalendarPage() {
                 <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} data-testid="button-prev-month">
                   <ChevronLeft className="w-4 h-4" />
                 </Button>
-                <h3 className="text-lg font-semibold font-display" data-testid="text-current-month">
-                  {format(currentMonth, "MMMM yyyy")}
-                </h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-semibold font-display" data-testid="text-current-month">
+                    {format(currentMonth, "MMMM yyyy")}
+                  </h3>
+                  {!isSameMonth(currentMonth, new Date()) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-6 px-2"
+                      onClick={() => { setCurrentMonth(new Date()); handleSelectDate(new Date()); }}
+                      data-testid="button-today"
+                    >
+                      Today
+                    </Button>
+                  )}
+                </div>
                 <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} data-testid="button-next-month">
                   <ChevronRight className="w-4 h-4" />
                 </Button>
@@ -2419,6 +2486,7 @@ export default function CalendarPage() {
                       return aStart < bEnd && bStart < aEnd;
                     })
                   );
+                  const dayFT = footTrafficByDate.get(key);
                   const allDots: { color: string; key: string; reconciled?: boolean }[] = [];
                   dayEvents.forEach((e, i) => {
                     const isManual = e.type === "app" && e.app?.source === "internal";
@@ -2460,7 +2528,9 @@ export default function CalendarPage() {
                           )}
                         </div>
                       )}
-
+                      {dayFT && isCurrentMonth && (
+                        <span className="hidden md:block absolute bottom-0.5 right-1 text-[9px] text-green-600/70 dark:text-green-400/70 font-medium">{dayFT}</span>
+                      )}
 
                     </button>
                   );
@@ -2553,6 +2623,12 @@ export default function CalendarPage() {
                         </Badge>
                       </div>
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        {item.bookerName && (
+                          <span className="flex items-center gap-1">
+                            <Users className="w-3 h-3" />
+                            {item.bookerName}
+                          </span>
+                        )}
                         {item.startTime && (
                           <span className="flex items-center gap-1">
                             <Clock className="w-3 h-3" />
@@ -3062,6 +3138,6 @@ export default function CalendarPage() {
           )}
         </div>
       )}
-    </main>
+    </div>
   );
 }
