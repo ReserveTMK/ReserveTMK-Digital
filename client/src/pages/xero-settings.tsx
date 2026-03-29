@@ -24,6 +24,8 @@ export default function XeroSettingsPage() {
   const queryClient = useQueryClient();
   const [accountCode, setAccountCode] = useState("");
   const [taxType, setTaxType] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
 
   const { data: status, isLoading } = useQuery<XeroStatus>({
     queryKey: ["/api/xero/status"],
@@ -45,6 +47,21 @@ export default function XeroSettingsPage() {
     },
     onError: (err: any) => {
       toast({ title: "Connection failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const saveCredentialsMutation = useMutation({
+    mutationFn: async (data: { xeroClientId: string; xeroClientSecret: string }) => {
+      await apiRequest("POST", "/api/xero/save-credentials", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/xero/status"] });
+      toast({ title: "Credentials saved" });
+      setClientId("");
+      setClientSecret("");
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to save", description: err.message, variant: "destructive" });
     },
   });
 
@@ -153,13 +170,47 @@ export default function XeroSettingsPage() {
             )}
           </div>
 
-          {!status?.hasCredentials && (
-            <p className="text-sm text-amber-600">
-              No API credentials found. Add your Xero Client ID and Secret in the developer portal, then contact your admin.
-            </p>
-          )}
         </CardContent>
       </Card>
+
+      {/* Credentials */}
+      {!status?.connected && !status?.hasCredentials && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">API Credentials</CardTitle>
+            <CardDescription>From your Xero Developer app settings.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="clientId">Client ID</Label>
+              <Input
+                id="clientId"
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+                placeholder="Paste your Xero Client ID"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="clientSecret">Client Secret</Label>
+              <Input
+                id="clientSecret"
+                type="password"
+                value={clientSecret}
+                onChange={(e) => setClientSecret(e.target.value)}
+                placeholder="Paste your Xero Client Secret"
+              />
+            </div>
+            <Button
+              size="sm"
+              onClick={() => saveCredentialsMutation.mutate({ xeroClientId: clientId, xeroClientSecret: clientSecret })}
+              disabled={!clientId.trim() || !clientSecret.trim() || saveCredentialsMutation.isPending}
+            >
+              {saveCredentialsMutation.isPending && <Loader2 className="w-4 h-4 animate-spin mr-1.5" />}
+              Save Credentials
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Account Settings */}
       {status?.connected && (
