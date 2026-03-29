@@ -1113,6 +1113,21 @@ export async function registerRoutes(
       if (!contact) return res.status(404).json({ message: "Contact not found" });
       if (contact.userId !== userId) return res.status(403).json({ message: "Forbidden" });
 
+      // Conflict check — prevent double-booking the same mentor slot
+      const existingMeetings = await storage.getMeetings(effectiveUserId);
+      const hasConflict = existingMeetings.some((m: any) => {
+        if (m.status === 'cancelled') return false;
+        const mStart = new Date(m.startTime);
+        const mEnd = new Date(m.endTime);
+        return input.startTime < mEnd && input.endTime > mStart;
+      });
+      if (hasConflict) {
+        return res.status(409).json({
+          message: "This time slot conflicts with an existing booking.",
+          code: "SLOT_CONFLICT",
+        });
+      }
+
       const meeting = await storage.createMeeting(input);
 
       if (req.body.discoveryGoals && contact) {
@@ -1964,6 +1979,21 @@ export async function registerRoutes(
       const startTime = toNzDate(date, time + ':00');
       const endTime = new Date(startTime.getTime() + slotDuration * 60 * 1000);
 
+      // Conflict check — prevent double-booking the same mentor slot
+      const existingMeetings = await storage.getMeetings(meetingUserId);
+      const hasConflict = existingMeetings.some((m: any) => {
+        if (m.status === 'cancelled') return false;
+        const mStart = new Date(m.startTime);
+        const mEnd = new Date(m.endTime);
+        return startTime < mEnd && endTime > mStart;
+      });
+      if (hasConflict) {
+        return res.status(409).json({
+          message: "This time slot is no longer available. Please choose another time.",
+          code: "SLOT_CONFLICT",
+        });
+      }
+
       let contact;
       let isNewContact = false;
       if (email) {
@@ -2016,7 +2046,29 @@ export async function registerRoutes(
         meetingTypeId: meetingTypeId ? parseInt(meetingTypeId) : undefined,
       });
 
-      if (pathway === 'mentoring' && isNewContact) {
+      // Re-activation: reactivate an existing graduated/ended relationship
+      if (pathway === 'mentoring' && req.body.reactivationRelationshipId) {
+        try {
+          const relId = parseInt(req.body.reactivationRelationshipId);
+          const existingRel = await storage.getMentoringRelationship(relId);
+          if (existingRel && (existingRel.status === 'graduated' || existingRel.status === 'ended')) {
+            const updateData: any = {
+              status: 'active',
+              endDate: null,
+              startDate: new Date(),
+            };
+            if (req.body.updatedFocusAreas) updateData.focusAreas = req.body.updatedFocusAreas;
+            await storage.updateMentoringRelationship(relId, updateData);
+            // Re-activate the contact
+            await storage.updateContact(existingRel.contactId, {
+              stage: 'kakano',
+              isCommunityMember: true,
+            });
+          }
+        } catch (reactivateErr) {
+          console.warn("Failed to reactivate relationship:", reactivateErr);
+        }
+      } else if (pathway === 'mentoring' && isNewContact) {
         try {
           const appData: any = {
             contactId: contact.id,
@@ -2116,7 +2168,22 @@ export async function registerRoutes(
         if (!contact) return res.json({ isReturning: false });
         const relationships = await storage.getMentoringRelationshipsByContact(contact.id);
         const hasActive = relationships.some((r: any) => r.status === 'active' || r.status === 'on_hold');
-        return res.json({ isReturning: hasActive, contactName: contact.name, matchedByEmail: true });
+        if (hasActive) {
+          return res.json({ isReturning: true, contactName: contact.name, matchedByEmail: true });
+        }
+        // Check for graduated/ended — re-activation path
+        const previousRel = relationships.find((r: any) => r.status === 'graduated' || r.status === 'ended');
+        if (previousRel) {
+          return res.json({
+            isReturning: false,
+            isReactivation: true,
+            contactName: contact.name,
+            matchedByEmail: true,
+            previousRelationshipId: previousRel.id,
+            previousFocusAreas: previousRel.focusAreas || null,
+          });
+        }
+        return res.json({ isReturning: false, contactName: contact.name, matchedByEmail: true });
       }
 
       if (name) {
@@ -2128,6 +2195,18 @@ export async function registerRoutes(
           const hasActive = relationships.some((r: any) => r.status === 'active' || r.status === 'on_hold');
           if (hasActive) {
             return res.json({ isReturning: true, contactName: contact.name, nameFound: true });
+          }
+          // Check for graduated/ended — re-activation path
+          const previousRel = relationships.find((r: any) => r.status === 'graduated' || r.status === 'ended');
+          if (previousRel) {
+            return res.json({
+              isReturning: false,
+              isReactivation: true,
+              contactName: contact.name,
+              nameFound: true,
+              previousRelationshipId: previousRel.id,
+              previousFocusAreas: previousRel.focusAreas || null,
+            });
           }
         }
         return res.json({ isReturning: false, nameFound: true, contactName: nameMatches[0].name });

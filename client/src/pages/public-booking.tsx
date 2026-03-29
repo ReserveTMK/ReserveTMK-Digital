@@ -236,6 +236,12 @@ export default function PublicBookingPage() {
   const [pathway, setPathway] = useState<Pathway | null>(null);
   const [step, setStep] = useState<StepId>("pathway");
   const [isReturningMentee, setIsReturningMentee] = useState(false);
+  const [isReactivation, setIsReactivation] = useState(false);
+  const [reactivationData, setReactivationData] = useState<{
+    previousRelationshipId?: number;
+    previousFocusAreas?: string | null;
+    contactName?: string;
+  } | null>(null);
   const [emailChecked, setEmailChecked] = useState(false);
   const [knownContact, setKnownContact] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
@@ -362,8 +368,11 @@ export default function PublicBookingPage() {
     },
     onSuccess: (data: {
       isReturning: boolean;
+      isReactivation?: boolean;
       contactName?: string;
       matchedByEmail?: boolean;
+      previousRelationshipId?: number;
+      previousFocusAreas?: string | null;
     }) => {
       setEmailChecked(true);
       if (data.matchedByEmail && data.contactName) {
@@ -372,19 +381,33 @@ export default function PublicBookingPage() {
         if (pathway === "mentoring") {
           if (data.isReturning) {
             setIsReturningMentee(true);
+            setIsReactivation(false);
             setStep(getReturningNextStep());
+          } else if (data.isReactivation) {
+            // Graduated/ended mentee returning — welcome back flow
+            setIsReturningMentee(true);
+            setIsReactivation(true);
+            setReactivationData({
+              previousRelationshipId: data.previousRelationshipId,
+              previousFocusAreas: data.previousFocusAreas,
+              contactName: data.contactName,
+            });
+            setStep("questions"); // reused as "welcome back" step
           } else {
             setIsReturningMentee(false);
+            setIsReactivation(false);
             setStep("stage");
           }
         } else {
           setIsReturningMentee(false);
+          setIsReactivation(false);
           const hasMT = meetingTypes && meetingTypes.length > 0;
           setStep(hasMT ? "type" : "date");
         }
       } else {
         setKnownContact(false);
         setIsReturningMentee(false);
+        setIsReactivation(false);
         if (pathway === "mentoring") {
           setStep("name");
         } else {
@@ -519,6 +542,14 @@ export default function PublicBookingPage() {
     if (!pathway) return [];
     if (pathway === "mentoring") {
       const steps: { id: StepId; label: string }[] = [];
+      if (isReactivation) {
+        // Re-activation: welcome back → booking
+        steps.push({ id: "questions", label: "Welcome Back" });
+        if (hasMultipleMentors) steps.push({ id: "mentor", label: "Mentor" });
+        if (hasMeetingTypes) steps.push({ id: "type", label: "Session" });
+        steps.push({ id: "date", label: "When" });
+        return steps;
+      }
       if (!isReturningMentee) {
         steps.push({ id: "stage", label: "Your Journey" });
         steps.push({ id: "questions", label: "About You" });
@@ -547,6 +578,7 @@ export default function PublicBookingPage() {
   }, [
     pathway,
     isReturningMentee,
+    isReactivation,
     emailChecked,
     knownContact,
     hasMeetingTypes,
@@ -620,12 +652,47 @@ export default function PublicBookingPage() {
     setStep("contact");
   };
 
-  const handleContactContinue = () => {
+  const handleContactContinue = async () => {
     if (!contactName.trim() || !contactEmail.trim()) return;
     // Set name/email from contact step (used for booking)
     setName(contactName.trim());
     setEmail(contactEmail.trim());
     setEmailChecked(true);
+
+    // Check if this email belongs to a graduated/ended mentee (re-activation)
+    if (pathway === "mentoring") {
+      try {
+        const res = await fetch(
+          `/api/public/mentoring/${userId}/check-mentee?email=${encodeURIComponent(contactEmail.trim())}`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          if (data.isReactivation) {
+            setIsReturningMentee(true);
+            setIsReactivation(true);
+            setKnownContact(true);
+            setReactivationData({
+              previousRelationshipId: data.previousRelationshipId,
+              previousFocusAreas: data.previousFocusAreas,
+              contactName: data.contactName || contactName.trim(),
+            });
+            setName(data.contactName || contactName.trim());
+            setStep("questions"); // welcome back step
+            return;
+          }
+          if (data.isReturning) {
+            setIsReturningMentee(true);
+            setKnownContact(true);
+            setName(data.contactName || contactName.trim());
+            setStep(getReturningNextStep());
+            return;
+          }
+        }
+      } catch {
+        // Silently continue — check failed, proceed as new
+      }
+    }
+
     setIsReturningMentee(false);
     setKnownContact(false);
     // Now proceed to mentor/type/date
@@ -677,6 +744,11 @@ export default function PublicBookingPage() {
       }
     }
 
+    // Re-activation: pass relationship ID so server reactivates instead of creating new
+    if (isReactivation && reactivationData?.previousRelationshipId) {
+      bookData.reactivationRelationshipId = reactivationData.previousRelationshipId;
+    }
+
     // Also pass ethnicity and consent
     if (ethnicity.length > 0) bookData.ethnicity = ethnicity;
     if (consentGiven) bookData.consentGiven = true;
@@ -695,6 +767,8 @@ export default function PublicBookingPage() {
     setBookingResult(null);
     setPathway(null);
     setIsReturningMentee(false);
+    setIsReactivation(false);
+    setReactivationData(null);
     setOnboardingAnswers({});
     setSelectedStage(null);
     setKakanoIdea("");
@@ -1220,7 +1294,31 @@ export default function PublicBookingPage() {
           )}
 
           {/* ── PATH-SPECIFIC QUESTIONS (mentoring — Step 2) ── */}
-          {step === "questions" && pathway === "mentoring" && (
+          {step === "questions" && pathway === "mentoring" && isReactivation && reactivationData && (
+            <div className="p-5 sm:p-6 space-y-5 step-animate">
+              <div>
+                <h3 className="font-semibold text-lg" data-testid="heading-welcome-back">
+                  Welcome back, {reactivationData.contactName || name}!
+                </h3>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Great to see you again. Let's get you booked in for a session.
+                </p>
+              </div>
+              {reactivationData.previousFocusAreas && (
+                <div className="bg-muted/50 rounded-lg p-4">
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Last time you were focused on:</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {reactivationData.previousFocusAreas.split(",").map((area: string) => (
+                      <Badge key={area.trim()} variant="secondary" className="text-xs">
+                        {area.trim()}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {step === "questions" && pathway === "mentoring" && !isReactivation && (
             <div className="p-5 sm:p-6 space-y-5 step-animate">
               <button
                 className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-[44px]"
@@ -1963,11 +2061,16 @@ export default function PublicBookingPage() {
           <div className="sticky bottom-0 z-10 p-4 border-t bg-background sm:static sm:border-0 sm:bg-transparent sm:px-6 sm:pb-6 sm:pt-0">
             <Button
               className="w-full"
-              disabled={!questionsValid}
-              onClick={handleQuestionsContinue}
+              disabled={isReactivation ? false : !questionsValid}
+              onClick={isReactivation ? () => {
+                // Skip to booking steps
+                if (hasMultipleMentors) setStep("mentor");
+                else if (hasMeetingTypes) setStep("type");
+                else setStep("date");
+              } : handleQuestionsContinue}
               data-testid="button-continue-questions"
             >
-              Continue
+              {isReactivation ? "Book a Session" : "Continue"}
             </Button>
           </div>
         )}
