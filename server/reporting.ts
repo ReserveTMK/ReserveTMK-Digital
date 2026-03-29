@@ -8,6 +8,7 @@ import {
   meetingTypes, monthlySnapshots, footTrafficTouchpoints, dailyFootTraffic,
   metricSnapshots, programmeRegistrations,
   surveys, normalizeStage,
+  type FunderDeliverable,
 } from "@shared/schema";
 
 export interface ReportFilters {
@@ -3184,4 +3185,249 @@ export async function getCohortMetrics(def: CohortDefinition): Promise<CohortMet
       avgCurrentGrowthScore,
     },
   };
+}
+
+// === FUNDER DELIVERABLES EVALUATION ENGINE ===
+
+export interface DeliverableResult {
+  deliverableId: number;
+  name: string;
+  description: string | null;
+  metricType: string;
+  unit: string;
+  actual: number;
+  targetAnnual: number | null;
+  targetTotal: number | null;
+  proRataTarget: number | null;
+  status: "exceeded" | "on_track" | "needs_attention" | "at_risk" | "no_target";
+  percentOfTarget: number | null;
+}
+
+function calcStatus(actual: number, target: number): DeliverableResult["status"] {
+  const pct = (actual / target) * 100;
+  if (pct >= 110) return "exceeded";
+  if (pct >= 80) return "on_track";
+  if (pct >= 60) return "needs_attention";
+  return "at_risk";
+}
+
+function proRata(annualTarget: number | null, contractStart: Date | null, contractEnd: Date | null, periodStart: Date, periodEnd: Date): number | null {
+  if (!annualTarget) return null;
+  if (!contractStart || !contractEnd) {
+    // Default to calendar year pro-rata
+    const yearStart = new Date(periodEnd.getFullYear(), 0, 1);
+    const yearEnd = new Date(periodEnd.getFullYear(), 11, 31);
+    const totalDays = (yearEnd.getTime() - yearStart.getTime()) / (1000 * 60 * 60 * 24);
+    const elapsedDays = (periodEnd.getTime() - yearStart.getTime()) / (1000 * 60 * 60 * 24);
+    return Math.round(annualTarget * (elapsedDays / totalDays));
+  }
+  const contractDays = (contractEnd.getTime() - contractStart.getTime()) / (1000 * 60 * 60 * 24);
+  const elapsedDays = Math.min(
+    (periodEnd.getTime() - contractStart.getTime()) / (1000 * 60 * 60 * 24),
+    contractDays
+  );
+  if (contractDays <= 0 || elapsedDays <= 0) return 0;
+  return Math.round(annualTarget * (elapsedDays / contractDays));
+}
+
+async function evaluateMetric(
+  metricType: string,
+  filter: Record<string, any>,
+  userId: string,
+  start: Date,
+  end: Date
+): Promise<number> {
+  switch (metricType) {
+    case "activations": {
+      const excludeTypes = filter.excludeTypes || ACTIVATION_EXCLUDE_TYPES;
+      const evtConds: any[] = [
+        eq(events.userId, userId),
+        ne(events.eventStatus, "cancelled"),
+        gte(events.startTime, start),
+        lte(events.startTime, end),
+      ];
+      if (filter.eventTypes?.length) evtConds.push(inArray(events.type, filter.eventTypes));
+      const evtRows = await db.select({ id: events.id, type: events.type }).from(events).where(and(...evtConds));
+      const activationEvts = filter.eventTypes?.length
+        ? evtRows
+        : evtRows.filter(e => !excludeTypes.includes(e.type || ""));
+
+      const bkgConds: any[] = [
+        eq(bookings.userId, userId),
+        inArray(bookings.status, ["confirmed", "completed"]),
+        gte(bookings.startDate, start),
+        lte(bookings.startDate, end),
+      ];
+      if (filter.classifications?.length) bkgConds.push(inArray(bookings.classification, filter.classifications));
+      const bkgRows = await db.select({ id: bookings.id }).from(bookings).where(and(...bkgConds));
+
+      const progConds: any[] = [
+        eq(programmes.userId, userId),
+        ne(programmes.status, "cancelled"),
+        gte(programmes.startDate, start),
+        lte(programmes.startDate, end),
+      ];
+      const progRows = await db.select({ id: programmes.id }).from(programmes).where(and(...progConds));
+
+      return activationEvts.length + bkgRows.length + progRows.length;
+    }
+
+    case "events": {
+      const conds: any[] = [
+        eq(events.userId, userId),
+        ne(events.eventStatus, "cancelled"),
+        gte(events.startTime, start),
+        lte(events.startTime, end),
+      ];
+      if (filter.eventTypes?.length) conds.push(inArray(events.type, filter.eventTypes));
+      if (filter.excludeTypes?.length) {
+        for (const t of filter.excludeTypes) {
+          conds.push(ne(events.type, t));
+        }
+      }
+      const rows = await db.select({ id: events.id }).from(events).where(and(...conds));
+      return rows.length;
+    }
+
+    case "programmes": {
+      const conds: any[] = [
+        eq(programmes.userId, userId),
+        ne(programmes.status, "cancelled"),
+        gte(programmes.startDate, start),
+        lte(programmes.startDate, end),
+      ];
+      if (filter.classifications?.length) conds.push(inArray(programmes.classification, filter.classifications));
+      if (filter.programmeStatus) conds.push(eq(programmes.status, filter.programmeStatus));
+      const rows = await db.select({ id: programmes.id }).from(programmes).where(and(...conds));
+      return rows.length;
+    }
+
+    case "mentoring": {
+      const MENTORING_TYPES = await getMentoringTypeNames(userId);
+      const conds: any[] = [
+        eq(meetings.userId, userId),
+        inArray(meetings.type, MENTORING_TYPES),
+        gte(meetings.startTime, start),
+        lte(meetings.startTime, end),
+      ];
+      if (filter.sessionStatus) conds.push(eq(meetings.status, filter.sessionStatus));
+      else conds.push(inArray(meetings.status, ["completed", "confirmed"]));
+      const rows = await db.select({ id: meetings.id }).from(meetings).where(and(...conds));
+      return rows.length;
+    }
+
+    case "contacts": {
+      const conds: any[] = [
+        eq(contacts.userId, userId),
+        gte(contacts.createdAt, start),
+        lte(contacts.createdAt, end),
+      ];
+      if (filter.ethnicity?.length) {
+        conds.push(sql`${contacts.ethnicity} && ARRAY[${sql.join(filter.ethnicity.map((e: string) => sql`${e}`), sql`, `)}]::text[]`);
+      }
+      if (filter.isRangatahi) conds.push(eq(contacts.isRangatahi, true));
+      if (filter.stage) conds.push(eq(contacts.stage, filter.stage));
+      if (filter.isInnovator) conds.push(eq(contacts.isInnovator, true));
+      if (filter.isCommunityMember) conds.push(eq(contacts.isCommunityMember, true));
+      const rows = await db.select({ id: contacts.id }).from(contacts).where(and(...conds));
+      return rows.length;
+    }
+
+    case "groups": {
+      const conds: any[] = [
+        eq(groups.userId, userId),
+      ];
+      if (filter.groupType?.length) conds.push(inArray(groups.type, filter.groupType));
+      if (filter.isMaori) conds.push(eq(groups.isMaori, true));
+      if (filter.isPasifika) conds.push(eq(groups.isPasifika, true));
+      if (filter.createdInPeriod) {
+        conds.push(gte(groups.createdAt, start));
+        conds.push(lte(groups.createdAt, end));
+      }
+      const rows = await db.select({ id: groups.id }).from(groups).where(and(...conds));
+      return rows.length;
+    }
+
+    case "bookings": {
+      const conds: any[] = [
+        eq(bookings.userId, userId),
+        inArray(bookings.status, ["confirmed", "completed"]),
+        gte(bookings.startDate, start),
+        lte(bookings.startDate, end),
+      ];
+      if (filter.classifications?.length) conds.push(inArray(bookings.classification, filter.classifications));
+      const rows = await db.select({ id: bookings.id }).from(bookings).where(and(...conds));
+      return rows.length;
+    }
+
+    case "foot_traffic": {
+      const [result] = await db.select({
+        total: sql<number>`COALESCE(SUM(${dailyFootTraffic.count}), 0)`,
+      }).from(dailyFootTraffic).where(and(
+        eq(dailyFootTraffic.userId, userId),
+        gte(dailyFootTraffic.date, start),
+        lte(dailyFootTraffic.date, end),
+      ));
+      return safeNum(result?.total);
+    }
+
+    case "revenue": {
+      const [result] = await db.select({
+        total: sql<number>`COALESCE(SUM(${communitySpend.amount}), 0)`,
+      }).from(communitySpend).where(and(
+        eq(communitySpend.userId, userId),
+        gte(communitySpend.date, start),
+        lte(communitySpend.date, end),
+      ));
+      return safeNum(result?.total);
+    }
+
+    case "custom":
+      return 0;
+
+    default:
+      return 0;
+  }
+}
+
+export async function evaluateDeliverables(
+  deliverables: FunderDeliverable[],
+  userId: string,
+  startDate: string,
+  endDate: string,
+  contractStart?: Date | null,
+  contractEnd?: Date | null,
+): Promise<DeliverableResult[]> {
+  const start = parseDate(startDate);
+  const end = parseDate(endDate);
+
+  const results: DeliverableResult[] = [];
+
+  for (const d of deliverables) {
+    const filter = (d.filter || {}) as Record<string, any>;
+    const actual = await evaluateMetric(d.metricType, filter, userId, start, end);
+
+    const prt = proRata(d.targetAnnual, contractStart ?? null, contractEnd ?? null, start, end);
+    const target = prt ?? d.targetTotal;
+    const percentOfTarget = target && target > 0 ? Math.round((actual / target) * 100) : null;
+    const status: DeliverableResult["status"] = target && target > 0
+      ? calcStatus(actual, target)
+      : "no_target";
+
+    results.push({
+      deliverableId: d.id,
+      name: d.name,
+      description: d.description,
+      metricType: d.metricType,
+      unit: d.unit,
+      actual,
+      targetAnnual: d.targetAnnual,
+      targetTotal: d.targetTotal,
+      proRataTarget: prt,
+      status,
+      percentOfTarget,
+    });
+  }
+
+  return results;
 }

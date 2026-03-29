@@ -41,6 +41,11 @@ import {
   AlertCircle,
   Sparkles,
   Handshake,
+  Target,
+  TrendingUp,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -54,8 +59,11 @@ import {
   REPORTING_CADENCES,
   NARRATIVE_STYLES,
   FUNDER_DOCUMENT_TYPES,
+  DELIVERABLE_METRIC_TYPES,
+  DELIVERABLE_UNITS,
   type Funder,
   type FunderDocument,
+  type FunderDeliverable,
 } from "@shared/schema";
 import { useLocation } from "wouter";
 
@@ -118,6 +126,310 @@ const REPORT_SECTIONS = [
   { id: "value", label: "Value & Contribution" },
   { id: "narrative", label: "Narrative" },
 ];
+
+const METRIC_TYPE_LABELS: Record<string, string> = {
+  activations: "Activations",
+  programmes: "Programmes",
+  mentoring: "Mentoring Sessions",
+  contacts: "Contacts",
+  groups: "Groups/Businesses",
+  events: "Events",
+  bookings: "Bookings",
+  foot_traffic: "Foot Traffic",
+  revenue: "Revenue",
+  custom: "Custom",
+};
+
+const PULSE_STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof CheckCircle2 }> = {
+  exceeded: { label: "Exceeded", color: "text-green-600", icon: TrendingUp },
+  on_track: { label: "On Track", color: "text-green-600", icon: CheckCircle2 },
+  needs_attention: { label: "Needs Attention", color: "text-yellow-600", icon: AlertTriangle },
+  at_risk: { label: "At Risk", color: "text-red-600", icon: XCircle },
+  no_target: { label: "No Target", color: "text-gray-400", icon: Target },
+};
+
+interface PulseResult {
+  deliverableId: number;
+  name: string;
+  description: string | null;
+  metricType: string;
+  unit: string;
+  actual: number;
+  targetAnnual: number | null;
+  targetTotal: number | null;
+  proRataTarget: number | null;
+  status: string;
+  percentOfTarget: number | null;
+}
+
+function FunderDeliverablesSection({ funderId }: { funderId: number }) {
+  const { toast } = useToast();
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+
+  const { data: deliverables = [], isLoading } = useQuery<FunderDeliverable[]>({
+    queryKey: ["/api/funders", funderId, "deliverables"],
+    queryFn: async () => {
+      const res = await fetch(`/api/funders/${funderId}/deliverables`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load");
+      return res.json();
+    },
+  });
+
+  const { data: pulse } = useQuery<{ deliverables: PulseResult[]; summary: { overall: string } }>({
+    queryKey: ["/api/funders", funderId, "pulse"],
+    queryFn: async () => {
+      const res = await fetch(`/api/funders/${funderId}/pulse`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load");
+      return res.json();
+    },
+    enabled: deliverables.length > 0,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (data: any) => apiRequest("POST", `/api/funders/${funderId}/deliverables`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/funders", funderId, "deliverables"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/funders", funderId, "pulse"] });
+      setShowAddForm(false);
+      toast({ title: "Deliverable added" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => apiRequest("PATCH", `/api/funder-deliverables/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/funders", funderId, "deliverables"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/funders", funderId, "pulse"] });
+      setEditingId(null);
+      toast({ title: "Deliverable updated" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/funder-deliverables/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/funders", funderId, "deliverables"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/funders", funderId, "pulse"] });
+      toast({ title: "Deliverable removed" });
+    },
+  });
+
+  const pulseByDeliverable = useMemo(() => {
+    const map = new Map<number, PulseResult>();
+    if (pulse?.deliverables) {
+      for (const p of pulse.deliverables) map.set(p.deliverableId, p);
+    }
+    return map;
+  }, [pulse]);
+
+  if (isLoading) return <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin" /></div>;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Target className="w-4 h-4 text-muted-foreground" />
+          <h3 className="font-medium">Deliverables</h3>
+          {pulse?.summary && (
+            <Badge className={`text-xs ${
+              pulse.summary.overall === "on_track" ? "bg-green-100 text-green-700" :
+              pulse.summary.overall === "needs_attention" ? "bg-yellow-100 text-yellow-700" :
+              pulse.summary.overall === "at_risk" ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-600"
+            }`}>
+              {PULSE_STATUS_CONFIG[pulse.summary.overall]?.label || pulse.summary.overall}
+            </Badge>
+          )}
+        </div>
+        <Button size="sm" variant="outline" onClick={() => setShowAddForm(true)} data-testid="button-add-deliverable">
+          <Plus className="w-4 h-4 mr-1" /> Add
+        </Button>
+      </div>
+
+      {deliverables.length === 0 && !showAddForm ? (
+        <Card className="p-6 text-center border-dashed">
+          <Target className="w-8 h-8 mx-auto text-muted-foreground/40 mb-2" />
+          <p className="text-sm text-muted-foreground">No deliverables defined yet</p>
+          <p className="text-xs text-muted-foreground mt-1">Add what this funder expects you to deliver</p>
+          <Button size="sm" variant="outline" className="mt-3" onClick={() => setShowAddForm(true)}>
+            <Plus className="w-4 h-4 mr-1" /> Add Deliverable
+          </Button>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {deliverables.map(d => {
+            const p = pulseByDeliverable.get(d.id);
+            const statusConf = p ? PULSE_STATUS_CONFIG[p.status] : null;
+            const StatusIcon = statusConf?.icon || Target;
+
+            if (editingId === d.id) {
+              return (
+                <DeliverableForm
+                  key={d.id}
+                  initial={d}
+                  onSubmit={(data) => updateMutation.mutate({ id: d.id, data })}
+                  onCancel={() => setEditingId(null)}
+                  isPending={updateMutation.isPending}
+                />
+              );
+            }
+
+            return (
+              <Card key={d.id} className="p-3" data-testid={`deliverable-${d.id}`}>
+                <div className="flex items-center justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{d.name}</span>
+                      <Badge variant="outline" className="text-xs">{METRIC_TYPE_LABELS[d.metricType] || d.metricType}</Badge>
+                    </div>
+                    {d.description && <p className="text-xs text-muted-foreground mt-0.5">{d.description}</p>}
+                    {p && (
+                      <div className="flex items-center gap-3 mt-1.5 text-xs">
+                        <span className="font-medium">{p.actual} {d.unit !== "count" ? d.unit : ""}</span>
+                        {p.proRataTarget != null && (
+                          <span className="text-muted-foreground">/ {p.proRataTarget} target</span>
+                        )}
+                        {p.percentOfTarget != null && (
+                          <span className={statusConf?.color || ""}>{p.percentOfTarget}%</span>
+                        )}
+                        <span className={`flex items-center gap-1 ${statusConf?.color || ""}`}>
+                          <StatusIcon className="w-3 h-3" />
+                          {statusConf?.label}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <MoreVertical className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => setEditingId(d.id)}>
+                        <Pencil className="w-4 h-4 mr-2" /> Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-red-600"
+                        onClick={() => deleteMutation.mutate(d.id)}
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" /> Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {showAddForm && (
+        <DeliverableForm
+          onSubmit={(data) => createMutation.mutate(data)}
+          onCancel={() => setShowAddForm(false)}
+          isPending={createMutation.isPending}
+        />
+      )}
+    </div>
+  );
+}
+
+function DeliverableForm({
+  initial,
+  onSubmit,
+  onCancel,
+  isPending,
+}: {
+  initial?: FunderDeliverable;
+  onSubmit: (data: any) => void;
+  onCancel: () => void;
+  isPending: boolean;
+}) {
+  const [name, setName] = useState(initial?.name || "");
+  const [description, setDescription] = useState(initial?.description || "");
+  const [metricType, setMetricType] = useState(initial?.metricType || "activations");
+  const [targetAnnual, setTargetAnnual] = useState(initial?.targetAnnual?.toString() || "");
+  const [unit, setUnit] = useState(initial?.unit || "count");
+  const [filterJson, setFilterJson] = useState(
+    initial?.filter ? JSON.stringify(initial.filter, null, 2) : "{}"
+  );
+
+  const handleSubmit = () => {
+    let filter = {};
+    try { filter = JSON.parse(filterJson); } catch { /* keep empty */ }
+    onSubmit({
+      name,
+      description: description || null,
+      metricType,
+      filter,
+      targetAnnual: targetAnnual ? parseInt(targetAnnual) : null,
+      unit,
+      sortOrder: initial?.sortOrder ?? 0,
+      isActive: true,
+    });
+  };
+
+  return (
+    <Card className="p-4 mt-2 space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label className="text-xs">Name</Label>
+          <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Programmes delivered" className="mt-1" />
+        </div>
+        <div>
+          <Label className="text-xs">Metric Type</Label>
+          <Select value={metricType} onValueChange={setMetricType}>
+            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {DELIVERABLE_METRIC_TYPES.map(t => (
+                <SelectItem key={t} value={t}>{METRIC_TYPE_LABELS[t] || t}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div>
+        <Label className="text-xs">Description</Label>
+        <Input value={description} onChange={e => setDescription(e.target.value)} placeholder="What this measures" className="mt-1" />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label className="text-xs">Annual Target</Label>
+          <Input type="number" value={targetAnnual} onChange={e => setTargetAnnual(e.target.value)} placeholder="e.g. 50" className="mt-1" />
+        </div>
+        <div>
+          <Label className="text-xs">Unit</Label>
+          <Select value={unit} onValueChange={setUnit}>
+            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {DELIVERABLE_UNITS.map(u => (
+                <SelectItem key={u} value={u}>{u}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div>
+        <Label className="text-xs">Filter Rules (JSON)</Label>
+        <Textarea
+          value={filterJson}
+          onChange={e => setFilterJson(e.target.value)}
+          placeholder='{"eventTypes": ["Workshop"], "ethnicity": ["Maori"]}'
+          className="mt-1 font-mono text-xs"
+          rows={3}
+        />
+      </div>
+      <div className="flex gap-2 justify-end">
+        <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
+        <Button size="sm" onClick={handleSubmit} disabled={!name || isPending}>
+          {isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+          {initial ? "Update" : "Add"}
+        </Button>
+      </div>
+    </Card>
+  );
+}
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -832,6 +1144,8 @@ function FunderDetailDialog({
             {funder.narrativeStyle && <Badge variant="outline">{STYLE_LABELS[funder.narrativeStyle] || funder.narrativeStyle}</Badge>}
             {funder.reportingCadence && <Badge variant="outline">{CADENCE_LABELS[funder.reportingCadence]}</Badge>}
           </div>
+
+          <FunderDeliverablesSection funderId={funder.id} />
 
           <div>
             <div className="flex items-center justify-between mb-3">

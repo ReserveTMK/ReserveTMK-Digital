@@ -150,10 +150,13 @@ import {
   type InsertOrganisationProfile,
   funders,
   funderDocuments,
+  funderDeliverables,
   type Funder,
   type InsertFunder,
   type FunderDocument,
   type InsertFunderDocument,
+  type FunderDeliverable,
+  type InsertFunderDeliverable,
   mentoringRelationships,
   mentoringApplications,
   type MentoringRelationship,
@@ -515,6 +518,13 @@ export interface IStorage {
   createFunderDocument(data: InsertFunderDocument): Promise<FunderDocument>;
   deleteFunderDocument(id: number): Promise<void>;
   getFunderDocument(id: number): Promise<FunderDocument | undefined>;
+
+  // Funder Deliverables
+  getFunderDeliverables(funderId: number): Promise<FunderDeliverable[]>;
+  getFunderDeliverable(id: number): Promise<FunderDeliverable | undefined>;
+  createFunderDeliverable(data: InsertFunderDeliverable): Promise<FunderDeliverable>;
+  updateFunderDeliverable(id: number, updates: Partial<InsertFunderDeliverable>): Promise<FunderDeliverable>;
+  deleteFunderDeliverable(id: number): Promise<void>;
 
   // Mentoring Relationships
   getMentoringRelationships(): Promise<MentoringRelationship[]>;
@@ -2140,6 +2150,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteFunder(id: number): Promise<void> {
+    await db.delete(funderDeliverables).where(eq(funderDeliverables.funderId, id));
     await db.delete(funderDocuments).where(eq(funderDocuments.funderId, id));
     await db.delete(funders).where(eq(funders.id, id));
   }
@@ -2160,6 +2171,32 @@ export class DatabaseStorage implements IStorage {
 
   async deleteFunderDocument(id: number): Promise<void> {
     await db.delete(funderDocuments).where(eq(funderDocuments.id, id));
+  }
+
+  // Funder Deliverables
+  async getFunderDeliverables(funderId: number): Promise<FunderDeliverable[]> {
+    return db.select().from(funderDeliverables)
+      .where(eq(funderDeliverables.funderId, funderId))
+      .orderBy(funderDeliverables.sortOrder);
+  }
+
+  async getFunderDeliverable(id: number): Promise<FunderDeliverable | undefined> {
+    const [item] = await db.select().from(funderDeliverables).where(eq(funderDeliverables.id, id));
+    return item;
+  }
+
+  async createFunderDeliverable(data: InsertFunderDeliverable): Promise<FunderDeliverable> {
+    const [item] = await db.insert(funderDeliverables).values(data).returning();
+    return item;
+  }
+
+  async updateFunderDeliverable(id: number, updates: Partial<InsertFunderDeliverable>): Promise<FunderDeliverable> {
+    const [item] = await db.update(funderDeliverables).set(updates).where(eq(funderDeliverables.id, id)).returning();
+    return item;
+  }
+
+  async deleteFunderDeliverable(id: number): Promise<void> {
+    await db.delete(funderDeliverables).where(eq(funderDeliverables.id, id));
   }
 
   // Mentoring Relationships

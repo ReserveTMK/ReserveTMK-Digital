@@ -6,7 +6,7 @@ import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON, isAnthropicKeyConfigured, AIKeyMissingError } from "./replit_integrations/anthropic/client";
-import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, getStandoutMoments, getOperatorInsights, getParticipantTransformationStories, getPeopleTierBreakdown, getImpactTagHeatmap, getTheoryOfChangeAlignment, getGrowthStory, getOutcomeChain, getQuarterlyMilestones, PASIFIKA_ETHNICITIES, type ReportFilters, type CohortDefinition, type OrgProfileContext, type FunderContext } from "./reporting";
+import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, getStandoutMoments, getOperatorInsights, getParticipantTransformationStories, getPeopleTierBreakdown, getImpactTagHeatmap, getTheoryOfChangeAlignment, getGrowthStory, getOutcomeChain, getQuarterlyMilestones, evaluateDeliverables, PASIFIKA_ETHNICITIES, type ReportFilters, type CohortDefinition, type OrgProfileContext, type FunderContext } from "./reporting";
 import { renderMonthlyReport, renderQuarterlyReport, type MonthlyReportData, type QuarterlyReportData, type MaoriPipelineData } from "./report-renderer";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
 import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings, normalizeStage, DEFAULT_AVAILABILITY_SCHEDULE, DEFAULT_VENUE_AVAILABILITY_SCHEDULE, type AvailabilitySchedule, bookingChangeRequests, } from "@shared/schema";
@@ -12648,6 +12648,161 @@ Be specific, practical, and grounded in the actual documents and context provide
     }
   });
 
+  // === FUNDER DELIVERABLES ===
+
+  app.get("/api/funders/:id/deliverables", isAuthenticated, async (req, res) => {
+    try {
+      const funderId = parseId(req.params.id);
+      const funder = await storage.getFunder(funderId);
+      if (!funder || funder.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+      const deliverables = await storage.getFunderDeliverables(funderId);
+      res.json(deliverables);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch deliverables" });
+    }
+  });
+
+  app.post("/api/funders/:id/deliverables", isAuthenticated, async (req, res) => {
+    try {
+      const funderId = parseId(req.params.id);
+      const funder = await storage.getFunder(funderId);
+      if (!funder || funder.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+      const deliverable = await storage.createFunderDeliverable({ ...req.body, funderId });
+      res.status(201).json(deliverable);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to create deliverable" });
+    }
+  });
+
+  app.patch("/api/funder-deliverables/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseId(req.params.id);
+      const existing = await storage.getFunderDeliverable(id);
+      if (!existing) return res.status(404).json({ message: "Deliverable not found" });
+      const funder = await storage.getFunder(existing.funderId);
+      if (!funder || funder.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+      const updated = await storage.updateFunderDeliverable(id, req.body);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update deliverable" });
+    }
+  });
+
+  app.delete("/api/funder-deliverables/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseId(req.params.id);
+      const existing = await storage.getFunderDeliverable(id);
+      if (!existing) return res.status(404).json({ message: "Deliverable not found" });
+      const funder = await storage.getFunder(existing.funderId);
+      if (!funder || funder.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+      await storage.deleteFunderDeliverable(id);
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to delete deliverable" });
+    }
+  });
+
+  app.get("/api/funders/:id/pulse", isAuthenticated, async (req, res) => {
+    try {
+      const funderId = parseId(req.params.id);
+      const userId = (req.user as any).claims.sub;
+      const funder = await storage.getFunder(funderId);
+      if (!funder || funder.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+
+      const startDate = (req.query.start as string) || new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10);
+      const endDate = (req.query.end as string) || new Date().toISOString().slice(0, 10);
+
+      const deliverables = await storage.getFunderDeliverables(funderId);
+      const activeDeliverables = deliverables.filter(d => d.isActive);
+
+      const results = await evaluateDeliverables(
+        activeDeliverables,
+        userId,
+        startDate,
+        endDate,
+        funder.contractStart,
+        funder.contractEnd,
+      );
+
+      const atRisk = results.filter(r => r.status === "at_risk").length;
+      const needsAttention = results.filter(r => r.status === "needs_attention").length;
+      const overall = atRisk > 0 ? "at_risk" : needsAttention > 0 ? "needs_attention" : "on_track";
+
+      res.json({
+        funder: { id: funder.id, name: funder.name, organisation: funder.organisation },
+        period: { start: startDate, end: endDate },
+        contract: { start: funder.contractStart, end: funder.contractEnd },
+        deliverables: results,
+        summary: { total: results.length, atRisk, needsAttention, overall },
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to generate pulse" });
+    }
+  });
+
+  app.post("/api/funders/seed-deliverables", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+
+      const SEED_MAP: Record<string, Array<{ name: string; description: string; metricType: string; filter: Record<string, any>; targetAnnual?: number }>> = {
+        "edo-auckland-council": [
+          { name: "Activations", description: "Total activations (events + bookings + programmes)", metricType: "activations", filter: {} },
+          { name: "Programmes delivered", description: "Innovation and entrepreneurial programmes", metricType: "programmes", filter: {} },
+          { name: "Events delivered", description: "Community events, workshops, wananga", metricType: "events", filter: { excludeTypes: ["Meeting", "Catch Up", "Planning", "Mentoring Session"] } },
+          { name: "Mentoring sessions", description: "1:1 capability building sessions", metricType: "mentoring", filter: { sessionStatus: "completed" } },
+          { name: "Maori businesses registered", description: "Maori-led businesses and enterprises in the ecosystem", metricType: "groups", filter: { groupType: ["Business", "Social Enterprise"], isMaori: true } },
+          { name: "Rangatahi participating", description: "Rangatahi engaged in programmes and mentoring", metricType: "contacts", filter: { isRangatahi: true } },
+          { name: "Venue hire bookings", description: "External venue hire bookings", metricType: "bookings", filter: { classifications: ["venue_hire"] } },
+          { name: "Foot traffic", description: "Total people through the space", metricType: "foot_traffic", filter: {}, targetAnnual: 5000 },
+        ],
+        "nga-matarae": [
+          { name: "Maori innovators engaged", description: "Maori innovators and entrepreneurs in the ecosystem", metricType: "contacts", filter: { ethnicity: ["Māori"], isInnovator: true } },
+          { name: "Rangatahi participating", description: "Maori and Pasifika rangatahi in programmes", metricType: "contacts", filter: { isRangatahi: true } },
+          { name: "Programmes/services delivered", description: "Capability building programmes", metricType: "programmes", filter: {} },
+          { name: "Events delivered", description: "Community activations and wananga", metricType: "events", filter: { excludeTypes: ["Meeting", "Catch Up", "Planning", "Mentoring Session"] } },
+          { name: "Mentoring sessions", description: "1:1 capability sessions delivered", metricType: "mentoring", filter: { sessionStatus: "completed" } },
+          { name: "Maori businesses in ecosystem", description: "Maori-led businesses registered", metricType: "groups", filter: { groupType: ["Business", "Social Enterprise"], isMaori: true } },
+        ],
+        "trc-clc": [
+          { name: "Storytelling campaigns", description: "Digital storytelling campaigns delivered", metricType: "events", filter: { eventTypes: ["Content"] }, targetAnnual: 3 },
+        ],
+      };
+
+      const results: Record<string, any[]> = {};
+      for (const [tag, deliverables] of Object.entries(SEED_MAP)) {
+        const funder = await storage.getFunderByTag(userId, tag);
+        if (!funder) continue;
+        const existing = await storage.getFunderDeliverables(funder.id);
+        if (existing.length > 0) {
+          results[tag] = { skipped: true, existing: existing.length } as any;
+          continue;
+        }
+        const created = [];
+        for (let i = 0; i < deliverables.length; i++) {
+          const d = deliverables[i];
+          const item = await storage.createFunderDeliverable({
+            funderId: funder.id,
+            name: d.name,
+            description: d.description,
+            metricType: d.metricType,
+            filter: d.filter,
+            targetAnnual: d.targetAnnual || null,
+            targetTotal: null,
+            unit: "count",
+            sortOrder: i,
+            isActive: true,
+          });
+          created.push(item);
+        }
+        results[tag] = created;
+      }
+
+      res.status(201).json(results);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to seed deliverables" });
+    }
+  });
+
   // === MENTORING RELATIONSHIPS ===
 
   const verifyContactOwnership = async (contactId: number, userId: string) => {
@@ -14673,6 +14828,20 @@ Rules:
         resolvedAt: new Date(),
       });
 
+      // Send email notification to booker
+      try {
+        const booker = await storage.getRegularBooker(request.requestedBy);
+        if (booker?.email) {
+          const venues = await storage.getVenues(userId);
+          const venueId = booking.venueIds?.[0] || booking.venueId;
+          const venueName = venues.find(v => v.id === venueId)?.name || "your venue";
+          const { sendChangeRequestStatusEmail } = await import("./email");
+          await sendChangeRequestStatusEmail(booker.email, booker.name || "there", "approved", booking.startDate?.toString() || "", venueName, adminNotes);
+        }
+      } catch (emailErr) {
+        console.warn("Failed to send change request approval email:", emailErr);
+      }
+
       res.json({ success: true, message: "Change request approved and booking updated" });
     } catch (err: any) {
       console.error("Approve change request error:", err);
@@ -14699,6 +14868,20 @@ Rules:
         adminNotes: adminNotes || undefined,
         resolvedAt: new Date(),
       });
+
+      // Send email notification to booker
+      try {
+        const booker = await storage.getRegularBooker(request.requestedBy);
+        if (booker?.email) {
+          const venues = await storage.getVenues(userId);
+          const venueId = booking.venueIds?.[0] || booking.venueId;
+          const venueName = venues.find(v => v.id === venueId)?.name || "your venue";
+          const { sendChangeRequestStatusEmail } = await import("./email");
+          await sendChangeRequestStatusEmail(booker.email, booker.name || "there", "declined", booking.startDate?.toString() || "", venueName, adminNotes);
+        }
+      } catch (emailErr) {
+        console.warn("Failed to send change request decline email:", emailErr);
+      }
 
       res.json({ success: true, message: "Change request declined" });
     } catch (err: any) {
