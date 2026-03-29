@@ -16,8 +16,8 @@ const XERO_TOKEN_URL = "https://identity.xero.com/connect/token";
 const XERO_API_BASE = "https://api.xero.com/api.xro/2.0";
 const XERO_CONNECTIONS_URL = "https://api.xero.com/connections";
 const XERO_AUTH_URL = "https://login.xero.com/identity/connect/authorize";
-// Granular scopes required for apps created after 2 March 2026
-const XERO_SCOPES = "openid profile email accounting.contacts accounting.contacts.read accounting.invoices accounting.invoices.read accounting.transactions.read offline_access";
+// accounting.contacts unchanged, accounting.transactions replaced by accounting.invoices (March 2026)
+const XERO_SCOPES = "openid profile email accounting.contacts accounting.invoices offline_access";
 
 const pendingOAuthStates = new Map<string, { userId: string; expiresAt: number }>();
 
