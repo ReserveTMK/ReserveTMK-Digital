@@ -1926,6 +1926,38 @@ export const insertFunderDocumentSchema = createInsertSchema(funderDocuments).om
 export type FunderDocument = typeof funderDocuments.$inferSelect;
 export type InsertFunderDocument = z.infer<typeof insertFunderDocumentSchema>;
 
+export const DELIVERABLE_METRIC_TYPES = [
+  "activations", "programmes", "mentoring", "contacts", "groups",
+  "events", "bookings", "foot_traffic", "revenue", "custom"
+] as const;
+export type DeliverableMetricType = typeof DELIVERABLE_METRIC_TYPES[number];
+
+export const DELIVERABLE_UNITS = ["count", "hours", "dollars", "people"] as const;
+export type DeliverableUnit = typeof DELIVERABLE_UNITS[number];
+
+export const funderDeliverables = pgTable("funder_deliverables", {
+  id: serial("id").primaryKey(),
+  funderId: integer("funder_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  metricType: text("metric_type").notNull(),
+  filter: jsonb("filter").default({}),
+  targetAnnual: integer("target_annual"),
+  targetTotal: integer("target_total"),
+  unit: text("unit").notNull().default("count"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertFunderDeliverableSchema = createInsertSchema(funderDeliverables).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type FunderDeliverable = typeof funderDeliverables.$inferSelect;
+export type InsertFunderDeliverable = z.infer<typeof insertFunderDeliverableSchema>;
+
 // === MENTORING JOURNEY TABLES ===
 
 export const INNOVATOR_SUPPORT_TYPES = ["mentoring", "space", "venue_hire", "hot_desking", "service_trade", "paid_work", "networking"] as const;
@@ -2406,3 +2438,27 @@ export const insertBookingChangeRequestSchema = createInsertSchema(bookingChange
 });
 export type BookingChangeRequest = typeof bookingChangeRequests.$inferSelect;
 export type InsertBookingChangeRequest = z.infer<typeof insertBookingChangeRequestSchema>;
+
+export const recurringBookingTemplates = pgTable("recurring_booking_templates", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  venueId: integer("venue_id"),
+  classification: text("classification"),
+  dayOfWeek: integer("day_of_week").notNull(),
+  startTime: text("start_time"),
+  endTime: text("end_time"),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  bookerName: text("booker_name"),
+  notes: text("notes"),
+  active: boolean("active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertRecurringBookingTemplateSchema = createInsertSchema(recurringBookingTemplates).omit({
+  id: true,
+  createdAt: true,
+});
+export type RecurringBookingTemplate = typeof recurringBookingTemplates.$inferSelect;
+export type InsertRecurringBookingTemplate = z.infer<typeof insertRecurringBookingTemplateSchema>;

@@ -394,7 +394,7 @@ export function PipelineKanban({
       discovery: ["active"],
       active: ["on_hold", "graduated"],
       on_hold: ["active", "graduated"],
-      graduated: [],
+      graduated: ["active"],
     },
   };
 
@@ -422,6 +422,11 @@ export function PipelineKanban({
     }
 
     if (to === "graduated") {
+      setConfirmDrag({ card, from, to });
+      return;
+    }
+
+    if (from === "graduated" && to === "active") {
       setConfirmDrag({ card, from, to });
       return;
     }
@@ -457,6 +462,12 @@ export function PipelineKanban({
       return {
         title: "Graduate Mentee",
         description: `Mark ${card.contactName} as graduated? This will end the active mentoring relationship.`,
+      };
+    }
+    if (from === "graduated" && to === "active") {
+      return {
+        title: "Re-activate Mentee",
+        description: `Re-start mentoring with ${card.contactName}? They'll move back to Kakano with a fresh start date.`,
       };
     }
     return {

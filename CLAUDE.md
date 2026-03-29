@@ -78,11 +78,11 @@ Never break these rules. Flag before proceeding if a build touches this chain.
 LAUNCH CRITICAL — MENTORING
 These must work before community launch:
 
-Admin-side booking on behalf of mentee
+Admin-side booking on behalf of mentee — ✅ VERIFIED: ScheduleSessionDialog in sessions tab
 Re-activation flow — graduated/ended mentees can't self-rebook
-Attendance → report wire-up (verify)
-Kanban quick-add — currently must go through contact record
-Debrief confirmed only counting toward reporting (verify chain)
+Attendance → report wire-up — ✅ VERIFIED: meetings track completed/no-show, totalSessions counted
+Kanban quick-add — ✅ VERIFIED: QuickAddMenteeDialog in Discovery column
+Debrief confirmed only counting toward reporting — ✅ VERIFIED: only status="confirmed" debriefs feed reports
 
 
 LAUNCH CRITICAL — SPACES
@@ -90,8 +90,8 @@ These must work before community launch:
 
 Payment instructions not clear in confirmation emails
 Payment status not visible in booking view
-Over-allowance behaviour — what happens? (verify)
-Confirmation showing $0 / covered (verify)
+Over-allowance behaviour — ✅ VERIFIED: frontend warns, user confirms, auto-confirms at 20% discount, admin gets alert
+Confirmation showing $0 / covered — ✅ VERIFIED: free_koha shows "No charge", package credit shows "$0 (using prepaid package credit)"
 
 
 BUILD LIST — PRIORITY ORDER

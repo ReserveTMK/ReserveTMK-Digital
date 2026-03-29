@@ -189,6 +189,14 @@ export async function sendBookingConfirmationEmail(booking: Booking, userId: str
     packageHtml = `<p style="margin:5px 0;color:#6b7280;">Package Status: ${remaining} bookings remaining</p>`;
   }
 
+  let paymentInfoHtml = "";
+  const isPaid = regularBooker?.pricingTier !== "free_koha" && !booking.usePackageCredit && parseFloat(booking.amount || "0") > 0;
+  if (isPaid) {
+    const terms = regularBooker?.paymentTerms || "immediate";
+    const termsLabel = terms === "net_7" ? "7 days" : terms === "net_14" ? "14 days" : terms === "net_30" ? "30 days" : null;
+    paymentInfoHtml = `<p style="margin:8px 0 0;font-size:13px;color:#6b7280;border-top:1px solid #dbeafe;padding-top:8px;">An invoice will be sent separately via email.${termsLabel ? ` Payment terms: Net ${termsLabel}.` : ""}</p>`;
+  }
+
   const bookingSummaryHtml = booking.bookingSummary
     ? `
     <tr><td style="padding:15px 30px;">
@@ -241,6 +249,7 @@ export async function sendBookingConfirmationEmail(booking: Booking, userId: str
         ${classificationText}
         ${pricingHtml}
         ${packageHtml}
+        ${paymentInfoHtml}
       </td></tr>
     </table>
   </td></tr>
@@ -925,4 +934,55 @@ export async function sendVenueEnquiryAlert(booking: {
   } catch (error) {
     console.error("[Email] Failed to send venue enquiry alert:", error);
   }
+}
+
+export async function sendChangeRequestStatusEmail(
+  bookerEmail: string,
+  bookerName: string,
+  status: "approved" | "declined",
+  bookingDate: string,
+  venueName: string,
+  adminNotes?: string | null,
+): Promise<void> {
+  const isApproved = status === "approved";
+  const dateStr = formatDate(bookingDate);
+  const bannerColor = isApproved ? "#16a34a" : "#dc2626";
+  const statusLabel = isApproved ? "Approved" : "Declined";
+  const icon = isApproved ? "\u2705" : "\u274c";
+
+  const notesHtml = adminNotes
+    ? `<tr><td style="padding:15px 30px;">
+        <table width="100%" style="background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb;" cellpadding="0" cellspacing="0">
+          <tr><td style="padding:12px 15px;">
+            <p style="margin:0 0 5px;font-size:13px;font-weight:600;color:#374151;">Note from admin</p>
+            <p style="margin:0;font-size:14px;color:#6b7280;">${adminNotes.replace(/\n/g, "<br>")}</p>
+          </td></tr>
+        </table>
+      </td></tr>`
+    : "";
+
+  const htmlBody = `<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:20px auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+  <tr><td style="padding:25px 30px;background:${bannerColor};text-align:center;">
+    <h1 style="margin:0;color:#ffffff;font-size:20px;">${icon} Change Request ${statusLabel}</h1>
+    <p style="margin:8px 0 0;color:rgba(255,255,255,0.8);font-size:14px;">Reserve T\u0101maki</p>
+  </td></tr>
+  <tr><td style="padding:25px 30px;">
+    <p style="margin:0 0 15px;font-size:16px;color:#111827;">Hi ${bookerName},</p>
+    <p style="margin:0 0 15px;font-size:14px;color:#374151;">
+      Your change request for your booking on <strong>${dateStr}</strong> at <strong>${venueName}</strong> has been <strong>${status}</strong>.
+    </p>
+    ${isApproved ? `<p style="margin:0;font-size:14px;color:#374151;">Your booking has been updated with the requested changes.</p>` : ""}
+  </td></tr>
+  ${notesHtml}
+  <tr><td style="padding:15px 30px;border-top:1px solid #eee;">
+    <p style="margin:0;color:#999;font-size:12px;">Reserve T\u0101maki — Venue Bookings</p>
+  </td></tr>
+</table>
+</body>
+</html>`;
+
+  await sendEmail(bookerEmail, `Change Request ${statusLabel} — ${dateStr}`, htmlBody);
 }

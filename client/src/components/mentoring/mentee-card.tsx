@@ -164,6 +164,7 @@ function InlineEditText({ value, onSave, placeholder, multiline, testId }: {
 export function MenteeCard({ relationship, defaultExpanded }: { relationship: EnrichedRelationship; defaultExpanded?: boolean }) {
   const [expanded, setExpanded] = useState(defaultExpanded || false);
   const [confirmStatus, setConfirmStatus] = useState<"graduated" | "ended" | null>(null);
+  const [showReactivate, setShowReactivate] = useState(false);
   const [editingBaseline, setEditingBaseline] = useState(false);
   const [editingFocus, setEditingFocus] = useState(false);
   const [baselineDraft, setBaselineDraft] = useState<Record<string, number>>({
@@ -354,6 +355,19 @@ export function MenteeCard({ relationship, defaultExpanded }: { relationship: En
                     {RELATIONSHIP_STATUS_CONFIG[status]?.label || status}
                   </Button>
                 ))}
+                {(relationship.status === "graduated" || relationship.status === "ended") && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs h-7 border-green-300 text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-900/20"
+                    onClick={(e) => { e.stopPropagation(); setShowReactivate(true); }}
+                    disabled={updateRelationship.isPending}
+                    data-testid={`button-reactivate-${relationship.id}`}
+                  >
+                    <ArrowRight className="w-3 h-3 mr-1" />
+                    Re-activate
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -683,6 +697,36 @@ export function MenteeCard({ relationship, defaultExpanded }: { relationship: En
           }}
         />
       )}
+      <Dialog open={showReactivate} onOpenChange={setShowReactivate}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Re-activate Mentee</DialogTitle>
+            <DialogDescription>
+              Re-start the mentoring relationship with {relationship.contactName}? They'll move back to Kakano stage with a fresh start date.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowReactivate(false)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                updateRelationship.mutate({
+                  id: relationship.id,
+                  status: "active",
+                  endDate: null,
+                  startDate: new Date().toISOString(),
+                });
+                updateContact.mutate({ id: relationship.contactId, stage: "kakano", isCommunityMember: true });
+                setShowReactivate(false);
+              }}
+              disabled={updateRelationship.isPending}
+              data-testid={`button-confirm-reactivate-${relationship.id}`}
+            >
+              {updateRelationship.isPending && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+              Re-activate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
