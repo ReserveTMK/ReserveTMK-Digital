@@ -182,6 +182,51 @@ function coerceDateFields(body: Record<string, any>): Record<string, any> {
   return result;
 }
 
+// Auto-create an event linked to a confirmed/completed booking (makes it debriefable + dedupes with GCal)
+async function ensureBookingEvent(booking: any, userId: string): Promise<void> {
+  try {
+    if (!booking.id || !booking.startDate) return;
+    const existingEvents = await storage.getEvents(userId);
+    if (existingEvents.find(e => e.linkedBookingId === booking.id)) return;
+
+    const venues = await storage.getVenues(userId);
+    const bookingVenueIds = booking.venueIds || (booking.venueId ? [booking.venueId] : []);
+    const venueNames = bookingVenueIds.map((vid: number) => venues.find(v => v.id === vid)?.name).filter(Boolean);
+    const venueName = venueNames.join(", ") || "Venue";
+    const bookerName = booking.bookerName || "";
+    const title = booking.title || `${booking.classification || "Venue Hire"} — ${bookerName}`.trim();
+
+    const startDate = new Date(booking.startDate);
+    let startTime = new Date(startDate);
+    let endTime = new Date(startDate);
+    if (booking.startTime) {
+      const [h, m] = booking.startTime.split(":").map(Number);
+      startTime.setHours(h, m, 0, 0);
+    }
+    if (booking.endTime) {
+      const [h, m] = booking.endTime.split(":").map(Number);
+      endTime.setHours(h, m, 0, 0);
+    } else {
+      endTime = new Date(startTime.getTime() + 2 * 60 * 60 * 1000);
+    }
+
+    await storage.createEvent({
+      userId,
+      name: title,
+      type: "Venue Hire",
+      startTime,
+      endTime,
+      location: venueName,
+      source: "booking",
+      linkedBookingId: booking.id,
+      requiresDebrief: true,
+      googleCalendarEventId: booking.googleCalendarEventId || null,
+    });
+  } catch (e) {
+    console.warn(`Failed to create event for booking ${booking.id}:`, e);
+  }
+}
+
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December"
@@ -5264,6 +5309,10 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       }
 
       const booking = await storage.createBooking(input);
+      if (booking.status === "confirmed" || booking.status === "completed") {
+        const userId = (req.user as any).claims.sub;
+        ensureBookingEvent(booking, userId);
+      }
       res.status(201).json({ ...booking, allowanceWarning });
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -5339,12 +5388,13 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
       const updated = await storage.updateBooking(id, input);
 
-      // Classify through funder taxonomy lenses when booking is confirmed/completed
+      // When booking confirmed/completed: classify + create linked event for debrief
       if (input.status && (input.status === "confirmed" || input.status === "completed")) {
         const userId = (req.user as any).claims.sub;
         classifyForAllFunders("booking", id, userId).catch((err) =>
           console.error(`Taxonomy classification failed for booking ${id}:`, err),
         );
+        ensureBookingEvent(updated, userId);
       }
 
       res.json(updated);
@@ -14753,6 +14803,11 @@ Rules:
         isFirstBooking: isFirstBooking || false,
         attendeeCount: attendeeCount ? parseInt(attendeeCount) : null,
       } as any);
+
+      // Create linked event for confirmed bookings (debriefable)
+      if (bookingStatus === "confirmed") {
+        ensureBookingEvent(booking, booker.userId);
+      }
 
       // Send appropriate email notifications
       if (bookingStatus === "confirmed" && autoConfirmedAt) {
