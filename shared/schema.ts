@@ -395,6 +395,8 @@ export const groups = pgTable("groups", {
   vipReason: text("vip_reason"),
   isMaori: boolean("is_maori").default(false),
   isPasifika: boolean("is_pasifika").default(false),
+  servesMaori: boolean("serves_maori").default(false),
+  servesPasifika: boolean("serves_pasifika").default(false),
   active: boolean("active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

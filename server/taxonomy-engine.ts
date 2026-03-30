@@ -404,6 +404,8 @@ async function passRuleBased(
         id: groups.id,
         isMaori: groups.isMaori,
         isPasifika: groups.isPasifika,
+        servesMaori: groups.servesMaori,
+        servesPasifika: groups.servesPasifika,
         type: groups.type,
       })
       .from(groups)
@@ -424,7 +426,7 @@ async function passRuleBased(
         const hasMaoriContact = contactData.some(
           (c) => c.ethnicity && c.ethnicity.some((e) => /m[aā]ori/i.test(e)),
         );
-        const hasMaoriGroup = groupData.some((g) => g.isMaori);
+        const hasMaoriGroup = groupData.some((g) => g.isMaori || g.servesMaori);
         if (hasMaoriContact || hasMaoriGroup) {
           matches.push(`Māori community lens: ${hasMaoriContact ? "contact" : "group"} match`);
         }
@@ -436,7 +438,7 @@ async function passRuleBased(
         }
       }
       if (lens === "pasifika") {
-        const hasPasifika = groupData.some((g) => g.isPasifika);
+        const hasPasifika = groupData.some((g) => g.isPasifika || g.servesPasifika);
         const hasPasifikaContact = contactData.some(
           (c) => c.ethnicity && c.ethnicity.some((e) => /pacific|pasifika|samoan|tongan|cook island|niuean|fijian/i.test(e)),
         );
@@ -462,6 +464,12 @@ async function passRuleBased(
       }
       if (flags.isPasifika && groupData.some((g) => g.isPasifika)) {
         matches.push("Group is Pasifika-led");
+      }
+      if (flags.servesMaori && groupData.some((g) => g.servesMaori)) {
+        matches.push("Group serves Māori");
+      }
+      if (flags.servesPasifika && groupData.some((g) => g.servesPasifika)) {
+        matches.push("Group serves Pasifika");
       }
     }
 

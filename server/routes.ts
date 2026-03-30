@@ -7238,7 +7238,9 @@ Important:
             b.classification as type,
             COUNT(*) as bookings,
             BOOL_OR(g.is_maori) as is_maori,
-            BOOL_OR(g.is_pasifika) as is_pasifika
+            BOOL_OR(g.is_pasifika) as is_pasifika,
+            BOOL_OR(g.serves_maori) as serves_maori,
+            BOOL_OR(g.serves_pasifika) as serves_pasifika
           FROM bookings b
           LEFT JOIN groups g ON g.id = b.booker_group_id
           WHERE b.user_id = ${userId}
@@ -7280,6 +7282,8 @@ Important:
         bookings: Number(r.bookings || 0),
         maori: r.is_maori === true,
         pasifika: r.is_pasifika === true,
+        servesMaori: r.serves_maori === true,
+        servesPasifika: r.serves_pasifika === true,
       }));
 
       // Updates from debriefs
@@ -7442,7 +7446,9 @@ Important:
           b.classification as type,
           COUNT(*) as bookings,
           BOOL_OR(g.is_maori) as is_maori,
-          BOOL_OR(g.is_pasifika) as is_pasifika
+          BOOL_OR(g.is_pasifika) as is_pasifika,
+          BOOL_OR(g.serves_maori) as serves_maori,
+          BOOL_OR(g.serves_pasifika) as serves_pasifika
         FROM bookings b
         LEFT JOIN groups g ON g.id = b.booker_group_id
         WHERE b.user_id = ${userId}
@@ -7459,6 +7465,8 @@ Important:
         bookings: Number(r.bookings || 0),
         maori: r.is_maori === true,
         pasifika: r.is_pasifika === true,
+        servesMaori: r.serves_maori === true,
+        servesPasifika: r.serves_pasifika === true,
       }));
 
       // Debrief updates

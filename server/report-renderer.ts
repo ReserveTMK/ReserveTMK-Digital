@@ -11,7 +11,7 @@ export interface MonthlyReportData {
   funderName?: string;
   deliveryNumbers: { activations: number; capabilityBuilding: number; footTraffic: number; ytdActivations: number; ytdCapability: number; ytdFootTraffic: number };
   communitySnapshot: { maori: number; pasifika: number; rangatahi: number; total: number; kakano: number; tipu: number; ora: number; innovatorTotal: number };
-  spaceUse: Array<{ organisation: string; type: string; bookings: number; maori: boolean; pasifika: boolean }>;
+  spaceUse: Array<{ organisation: string; type: string; bookings: number; maori: boolean; pasifika: boolean; servesMaori: boolean; servesPasifika: boolean }>;
   updates: Record<string, string[]>;
   quotes: Array<{ text: string; attribution: string }>;
   plannedNextMonth: Array<{ title: string; description: string }>;
@@ -33,7 +33,7 @@ export interface QuarterlyReportData {
   funderName?: string;
   deliveryNumbers: Array<{ metric: string; values: Record<string, number>; quarterTotal: number; ytd: number }>;
   communitySnapshot: { maori: number; pasifika: number; rangatahi: number; total: number; kakano: number; tipu: number; ora: number; innovatorTotal: number };
-  spaceUse: Array<{ organisation: string; type: string; bookings: number; maori: boolean; pasifika: boolean }>;
+  spaceUse: Array<{ organisation: string; type: string; bookings: number; maori: boolean; pasifika: boolean; servesMaori: boolean; servesPasifika: boolean }>;
   updates: Record<string, string[]>;
   quotes: Array<{ text: string; attribution: string }>;
   plannedNextQuarter: Array<{ title: string; description: string }>;
@@ -125,6 +125,13 @@ function checkMark(val: boolean): string {
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+function communityLabel(led: boolean, serves: boolean): string {
+  if (led && serves) return "Led + Serves";
+  if (led) return "Led";
+  if (serves) return "Serves";
+  return "—";
+}
+
 function monthLabel(monthStr: string): string {
   const [, m] = monthStr.split("-");
   return MONTH_NAMES[parseInt(m, 10) - 1] || monthStr;
@@ -144,8 +151,8 @@ export function renderMonthlyReport(data: MonthlyReportData): string {
       <td>${esc(s.organisation)}</td>
       <td>${esc(s.type)}</td>
       <td style="text-align:center">${s.bookings}</td>
-      <td style="text-align:center">${checkMark(s.maori)}</td>
-      <td style="text-align:center">${checkMark(s.pasifika)}</td>
+      <td style="text-align:center">${communityLabel(s.maori, s.servesMaori)}</td>
+      <td style="text-align:center">${communityLabel(s.pasifika, s.servesPasifika)}</td>
     </tr>
   `).join("");
 
@@ -309,8 +316,8 @@ export function renderQuarterlyReport(data: QuarterlyReportData): string {
       <td>${esc(s.organisation)}</td>
       <td>${esc(s.type)}</td>
       <td style="text-align:center">${s.bookings}</td>
-      <td style="text-align:center">${checkMark(s.maori)}</td>
-      <td style="text-align:center">${checkMark(s.pasifika)}</td>
+      <td style="text-align:center">${communityLabel(s.maori, s.servesMaori)}</td>
+      <td style="text-align:center">${communityLabel(s.pasifika, s.servesPasifika)}</td>
     </tr>
   `).join("");
 
