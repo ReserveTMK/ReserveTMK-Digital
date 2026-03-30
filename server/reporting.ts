@@ -3450,8 +3450,8 @@ async function evaluateMetric(
         eq(groups.userId, userId),
       ];
       if (filter.groupType?.length) conds.push(inArray(groups.type, filter.groupType));
-      if (filter.isMaori) conds.push(eq(groups.isMaori, true));
-      if (filter.isPasifika) conds.push(eq(groups.isPasifika, true));
+      if (filter.isMaori) conds.push(or(eq(groups.isMaori, true), eq(groups.servesMaori, true)));
+      if (filter.isPasifika) conds.push(or(eq(groups.isPasifika, true), eq(groups.servesPasifika, true)));
       if (filter.createdInPeriod) {
         conds.push(gte(groups.createdAt, start));
         conds.push(lte(groups.createdAt, end));

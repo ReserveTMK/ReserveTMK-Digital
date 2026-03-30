@@ -577,16 +577,19 @@ export default function Groups() {
           {/* Ecosystem summary strip */}
           {groups && (groups as any[]).length > 0 && (() => {
             const activeGroups = (groups as any[]).filter((g: any) => g.active !== false);
-            const maoriCount = activeGroups.filter((g: any) => g.isMaori).length;
-            const pasifikaCount = activeGroups.filter((g: any) => g.isPasifika).length;
-            const typeCount = new Set(activeGroups.map((g: any) => g.type).filter(Boolean)).size;
+            const maoriLedCount = activeGroups.filter((g: any) => g.isMaori).length;
+            const servesMaoriCount = activeGroups.filter((g: any) => g.servesMaori).length;
+            const pasifikaLedCount = activeGroups.filter((g: any) => g.isPasifika).length;
+            const servesPasifikaCount = activeGroups.filter((g: any) => g.servesPasifika).length;
             return (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                 {[
                   { label: "Total Orgs", value: activeGroups.length },
-                  { label: "Māori-led", value: maoriCount },
-                  { label: "Pasifika-led", value: pasifikaCount },
-                  { label: "Org Types", value: typeCount },
+                  { label: "Māori-led", value: maoriLedCount },
+                  { label: "Serves Māori", value: servesMaoriCount },
+                  { label: "Pasifika-led", value: pasifikaLedCount },
+                  { label: "Serves Pasifika", value: servesPasifikaCount },
+                  { label: "Māori reach", value: activeGroups.filter((g: any) => g.isMaori || g.servesMaori).length },
                 ].map((s) => (
                   <div key={s.label} className="bg-card border rounded-lg px-3 py-2">
                     <p className="text-xs text-muted-foreground">{s.label}</p>
@@ -1594,6 +1597,8 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
   const [notes, setNotes] = useState("");
   const [isMaori, setIsMaori] = useState(false);
   const [isPasifika, setIsPasifika] = useState(false);
+  const [servesMaori, setServesMaori] = useState(false);
+  const [servesPasifika, setServesPasifika] = useState(false);
 
   const resetForm = () => {
     setName(group?.name || "");
@@ -1607,6 +1612,8 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
     setNotes(group?.notes || "");
     setIsMaori(group?.isMaori ?? false);
     setIsPasifika(group?.isPasifika ?? false);
+    setServesMaori(group?.servesMaori ?? false);
+    setServesPasifika(group?.servesPasifika ?? false);
   };
 
   const handleOpenChange = (isOpen: boolean) => {
@@ -1628,6 +1635,8 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
       notes: notes.trim() || undefined,
       isMaori,
       isPasifika,
+      servesMaori,
+      servesPasifika,
     };
 
     if (group) {
@@ -1711,14 +1720,18 @@ function GroupFormDialog({ open, onOpenChange, group, onCreate, onUpdate }: {
             <Label>Notes</Label>
             <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Additional notes..." data-testid="input-group-notes" />
           </div>
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">Community Connection</Label>
+            <div className="grid grid-cols-3 gap-x-4 gap-y-2 text-sm">
+              <div />
+              <span className="text-xs text-muted-foreground font-medium">Māori</span>
+              <span className="text-xs text-muted-foreground font-medium">Pasifika</span>
+              <span className="text-xs text-muted-foreground">Led by</span>
               <Checkbox id="isMaori" checked={isMaori} onCheckedChange={(v) => setIsMaori(v === true)} data-testid="checkbox-is-maori" />
-              <Label htmlFor="isMaori" className="text-sm font-normal cursor-pointer">Maori-led</Label>
-            </div>
-            <div className="flex items-center gap-2">
               <Checkbox id="isPasifika" checked={isPasifika} onCheckedChange={(v) => setIsPasifika(v === true)} data-testid="checkbox-is-pasifika" />
-              <Label htmlFor="isPasifika" className="text-sm font-normal cursor-pointer">Pasifika-led</Label>
+              <span className="text-xs text-muted-foreground">Serves</span>
+              <Checkbox id="servesMaori" checked={servesMaori} onCheckedChange={(v) => setServesMaori(v === true)} data-testid="checkbox-serves-maori" />
+              <Checkbox id="servesPasifika" checked={servesPasifika} onCheckedChange={(v) => setServesPasifika(v === true)} data-testid="checkbox-serves-pasifika" />
             </div>
           </div>
         </div>
@@ -1907,8 +1920,10 @@ function GroupDetailDialog({ group, open, onOpenChange, contacts, onEdit, allGro
                   {group.engagementLevel}
                 </Badge>
               )}
-              {group.isMaori && <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300">Maori-led</Badge>}
+              {group.isMaori && <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300">Māori-led</Badge>}
+              {group.servesMaori && <Badge variant="outline" className="border-orange-300 text-orange-700 dark:border-orange-700 dark:text-orange-400">Serves Māori</Badge>}
               {group.isPasifika && <Badge className="bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300">Pasifika-led</Badge>}
+              {group.servesPasifika && <Badge variant="outline" className="border-teal-300 text-teal-700 dark:border-teal-700 dark:text-teal-400">Serves Pasifika</Badge>}
               <Button
                 size="sm"
                 variant="outline"
