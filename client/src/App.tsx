@@ -23,7 +23,6 @@ import Programmes from "@/pages/programmes";
 import Bookings from "@/pages/bookings";
 import Agreements from "@/pages/agreements";
 import GroupsPage from "@/pages/groups";
-import EcosystemPage from "@/pages/ecosystem";
 import LegacyReportsPage from "@/pages/legacy-reports";
 import MilestonesPage from "@/pages/milestones";
 import ProgrammeEffectivenessPage from "@/pages/programme-effectiveness";

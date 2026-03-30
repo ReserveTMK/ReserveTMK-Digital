@@ -57,9 +57,11 @@ export default function Contacts() {
   const { data: contacts, isLoading } = useContacts(showArchived);
   const { toast } = useToast();
   const isMobile = useIsMobile();
+  const groupFilterParam = new URLSearchParams(window.location.search).get("group");
+  const [groupFilter, setGroupFilter] = useState<number | null>(groupFilterParam ? parseInt(groupFilterParam) : null);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
-  const [viewMode, setViewMode] = useState<"community" | "innovators" | "all">("community");
+  const [viewMode, setViewMode] = useState<"community" | "innovators" | "all" | "vip">("community");
   const [vipOnly, setVipOnly] = useState(false);
   const [open, setOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -419,7 +421,7 @@ export default function Contacts() {
                           contact.businessName?.toLowerCase().includes(search.toLowerCase()) ||
                           contact.email?.toLowerCase().includes(search.toLowerCase());
     const matchesRole = roleFilter === "all" || contact.role === roleFilter;
-    const matchesView = viewMode === "all" || (viewMode === "community" && c.isCommunityMember === true) || (viewMode === "innovators" && c.isInnovator === true);
+    const matchesView = viewMode === "all" || (viewMode === "community" && c.isCommunityMember === true) || (viewMode === "innovators" && c.isInnovator === true) || (viewMode === "vip" && c.isVip === true);
     const matchesVip = !vipOnly || c.isVip === true;
 
     const f = advFilters;
@@ -430,15 +432,16 @@ export default function Contacts() {
     const matchesVenture = f.ventureTypes.length === 0 || f.ventureTypes.includes(c.ventureType);
     const matchesStage = f.stages.length === 0 || f.stages.includes(c.relationshipStage || c.stage);
     const matchesCatchUp = !f.onCatchUpList || catchUpContactIds.has(contact.id);
+    const matchesGroup = !groupFilter || c.linkedGroupId === groupFilter;
 
     return matchesSearch && matchesRole && matchesView && matchesVip &&
       matchesEthnicity && matchesSuburb && matchesSupport && matchesConnection &&
-      matchesVenture && matchesStage && matchesCatchUp;
+      matchesVenture && matchesStage && matchesCatchUp && matchesGroup;
   });
 
   const roleCounts = useMemo(() => {
     if (!contacts) return {} as Record<string, number>;
-    let pool = viewMode === "community" ? (contacts as any[]).filter(c => c.isCommunityMember) : viewMode === "innovators" ? (contacts as any[]).filter(c => c.isInnovator) : (contacts as any[]);
+    let pool = viewMode === "community" ? (contacts as any[]).filter(c => c.isCommunityMember) : viewMode === "innovators" ? (contacts as any[]).filter(c => c.isInnovator) : viewMode === "vip" ? (contacts as any[]).filter(c => c.isVip) : (contacts as any[]);
     if (vipOnly) pool = pool.filter(c => c.isVip);
     const counts: Record<string, number> = {};
     for (const c of pool) {
@@ -887,9 +890,20 @@ export default function Contacts() {
             </DialogContent>
           </Dialog>
 
+          {/* Group filter banner */}
+          {groupFilter && allGroups && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-primary/5 border border-primary/20 rounded-lg text-sm">
+              <Building2 className="w-4 h-4 text-primary shrink-0" />
+              <span>Showing members of <strong>{(allGroups as any[]).find((g: any) => g.id === groupFilter)?.name || `Group #${groupFilter}`}</strong></span>
+              <Button variant="ghost" size="icon" className="h-6 w-6 ml-auto shrink-0" onClick={() => { setGroupFilter(null); window.history.replaceState({}, "", "/community/people"); }}>
+                <X className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+          )}
+
           {/* View Toggle */}
           <div className="flex items-center justify-between gap-2" data-testid="view-toggle">
-            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "community" | "innovators" | "all")} className="min-w-0 flex-1">
+            <Tabs value={viewMode} onValueChange={(v) => { setViewMode(v as "community" | "innovators" | "all" | "vip"); if (v === "vip") setVipOnly(false); }} className="min-w-0 flex-1">
               <TabsList className="overflow-x-auto flex-nowrap w-full justify-start">
                 <TabsTrigger value="innovators" className="shrink-0" data-testid="button-view-innovators">
                   <Lightbulb className="w-4 h-4 mr-1.5" />
@@ -898,6 +912,10 @@ export default function Contacts() {
                 <TabsTrigger value="community" className="shrink-0" data-testid="button-view-community">
                   <Users className="w-4 h-4 mr-1.5" />
                   Community ({tierCounts.community})
+                </TabsTrigger>
+                <TabsTrigger value="vip" className="shrink-0" data-testid="button-view-vip">
+                  <Star className="w-4 h-4 mr-1.5" />
+                  VIP ({tierCounts.vip})
                 </TabsTrigger>
                 <TabsTrigger value="all" className="shrink-0" data-testid="button-view-all">
                   <BookUser className="w-4 h-4 mr-1.5" />
@@ -1068,10 +1086,15 @@ export default function Contacts() {
                       </h3>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground truncate">
                         {(contact.linkedGroupName || contact.businessName) && (
-                          <span className="flex items-center gap-1 truncate" data-testid={`text-group-link-${contact.id}`}>
+                          <Link
+                            href={contact.linkedGroupId ? `/community/people?group=${contact.linkedGroupId}` : "#"}
+                            className="flex items-center gap-1 truncate hover:text-primary transition-colors"
+                            onClick={(e: React.MouseEvent) => { e.stopPropagation(); if (contact.linkedGroupId) { setGroupFilter(contact.linkedGroupId); } }}
+                            data-testid={`text-group-link-${contact.id}`}
+                          >
                             <Building2 className="w-3 h-3 shrink-0" />
                             {contact.linkedGroupName || contact.businessName}
-                          </span>
+                          </Link>
                         )}
                         {lastEngaged?.[contact.id] && (() => {
                           const days = Math.floor((Date.now() - new Date(lastEngaged[contact.id]).getTime()) / 86400000);

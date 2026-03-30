@@ -55,9 +55,8 @@ const navGroups: NavGroup[] = [
     name: "Community",
     href: "/community/people",
     children: [
-      { name: "People", href: "/community/people", icon: Users, description: "Manage contacts & mentees" },
-      { name: "Groups", href: "/community/groups", icon: Network, description: "Organisations & collectives" },
-      { name: "Ecosystems", href: "/community/ecosystems", icon: Handshake, description: "Organisation network overview" },
+      { name: "Contacts", href: "/community/people", icon: Users, description: "Manage contacts & mentees" },
+      { name: "Organisations", href: "/community/groups", icon: Network, description: "Organisations & collectives" },
     ],
   },
   {

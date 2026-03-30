@@ -3,10 +3,7 @@ import { useGroups, useCreateGroup, useUpdateGroup, useDeleteGroup, useGroupMemb
 import { useContacts } from "@/hooks/use-contacts";
 import { useTaxonomy } from "@/hooks/use-taxonomy";
 import { Plus, Search, Loader2, Building2, Users, X, Trash2, UserPlus, ChevronRight, Mail, Phone, MapPin, Sparkles, Check, Globe, Target, Pencil, Edit3, CheckSquare, UserCheck, Merge, List, Table, ArrowUp, ArrowDown, ArrowUpDown, Lightbulb, MoreVertical, Star, Link2, Network } from "lucide-react";
-import {
-  HealthSummaryCards, VipSection, CategoriesView, ConnectionsView, ConnectionManagementPanel,
-  type EngagementMetrics, type HealthSummary, type VipItem,
-} from "@/components/community/ecosystem-views";
+import { ConnectionManagementPanel } from "@/components/community/ecosystem-views";
 import { Link } from "wouter";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -92,7 +89,7 @@ export default function Groups() {
   const [selectedGroups, setSelectedGroups] = useState<Set<number>>(new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"community" | "innovators" | "all" | "vip">("all");
-  const [layoutView, setLayoutView] = useState<"list" | "table" | "ecosystem">("list");
+  const [layoutView, setLayoutView] = useState<"list" | "table">("list");
 
 
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
@@ -111,18 +108,6 @@ export default function Groups() {
 
   const { data: communityDensity } = useQuery<Record<number, { communityCount: number; totalMembers: number }>>({
     queryKey: ['/api/groups/community-density'],
-  });
-  const { data: engagementData } = useQuery<Record<number, EngagementMetrics>>({
-    queryKey: ['/api/groups/engagement-metrics'],
-    enabled: layoutView === "ecosystem",
-  });
-  const { data: healthData } = useQuery<HealthSummary>({
-    queryKey: ['/api/groups/ecosystem-health'],
-    enabled: layoutView === "ecosystem",
-  });
-  const { data: vipItems } = useQuery<VipItem[]>({
-    queryKey: ['/api/ecosystem/vip'],
-    enabled: layoutView === "ecosystem",
   });
   const { data: allAssociations } = useAllGroupAssociations();
 
@@ -448,30 +433,7 @@ export default function Groups() {
     return map;
   }, [allAssociations, groups]);
 
-  const ecoGroupedByType = useMemo(() => {
-    const result: Record<string, Group[]> = {};
-    for (const t of GROUP_TYPES) result[t] = [];
-    for (const g of filteredGroups) {
-      const key = g.type || "Uncategorised";
-      if (!result[key]) result[key] = [];
-      result[key].push(g);
-    }
-    if (communityDensity) {
-      for (const key of Object.keys(result)) {
-        result[key].sort((a, b) => {
-          const aDensity = communityDensity[a.id]?.communityCount || 0;
-          const bDensity = communityDensity[b.id]?.communityCount || 0;
-          return bDensity - aDensity;
-        });
-      }
-    }
-    return result;
-  }, [filteredGroups, communityDensity]);
-
-  const [ecoSubView, setEcoSubView] = useState<"categories" | "connections">("categories");
   const [connectionPanelGroupId, setConnectionPanelGroupId] = useState<number | null>(null);
-  const [ecoEditMode, setEcoEditMode] = useState(false);
-  const [ecoSelectedIds, setEcoSelectedIds] = useState<number[]>([]);
 
   const openCreateDialog = () => {
     setEditingGroup(null);
@@ -612,10 +574,33 @@ export default function Groups() {
             <span className="text-foreground font-medium" data-testid="breadcrumb-current">Groups</span>
           </nav>
 
+          {/* Ecosystem summary strip */}
+          {groups && (groups as any[]).length > 0 && (() => {
+            const activeGroups = (groups as any[]).filter((g: any) => g.active !== false);
+            const maoriCount = activeGroups.filter((g: any) => g.isMaori).length;
+            const pasifikaCount = activeGroups.filter((g: any) => g.isPasifika).length;
+            const typeCount = new Set(activeGroups.map((g: any) => g.type).filter(Boolean)).size;
+            return (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: "Total Orgs", value: activeGroups.length },
+                  { label: "Māori-led", value: maoriCount },
+                  { label: "Pasifika-led", value: pasifikaCount },
+                  { label: "Org Types", value: typeCount },
+                ].map((s) => (
+                  <div key={s.label} className="bg-card border rounded-lg px-3 py-2">
+                    <p className="text-xs text-muted-foreground">{s.label}</p>
+                    <p className="text-lg font-bold">{s.value}</p>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl md:text-3xl font-bold font-display" data-testid="text-groups-title">
-                Groups & Organisations
+                Organisations
               </h1>
               <p className="text-muted-foreground text-sm mt-1">
                 Manage organisations, collectives and community groups
@@ -709,14 +694,6 @@ export default function Groups() {
                 >
                   <Table className="w-4 h-4" />
                 </Button>
-                <Button
-                  variant={layoutView === "ecosystem" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setLayoutView("ecosystem")}
-                  data-testid="button-layout-ecosystem"
-                >
-                  <Network className="w-4 h-4" />
-                </Button>
               </div>
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
@@ -786,46 +763,6 @@ export default function Groups() {
                 )}
               </div>
             </Card>
-          ) : layoutView === "ecosystem" ? (
-            <div className="space-y-6">
-              <HealthSummaryCards healthData={healthData} totalGroups={groups?.length || 0} />
-              {vipItems && vipItems.length > 0 && <VipSection vipItems={vipItems} />}
-              <div className="flex items-center gap-1 border rounded-lg p-0.5 w-fit">
-                <Button size="sm" variant={ecoSubView === "categories" ? "default" : "ghost"} className="h-8 text-xs" onClick={() => setEcoSubView("categories")}>
-                  <Building2 className="w-3.5 h-3.5 mr-1" />Categories
-                </Button>
-                <Button size="sm" variant={ecoSubView === "connections" ? "default" : "ghost"} className="h-8 text-xs" onClick={() => setEcoSubView("connections")}>
-                  <Network className="w-3.5 h-3.5 mr-1" />Connections
-                </Button>
-              </div>
-              {ecoSubView === "categories" ? (
-                <CategoriesView
-                  groupedByType={ecoGroupedByType}
-                  densityData={communityDensity || undefined}
-                  engagementData={engagementData}
-                  editMode={ecoEditMode}
-                  selectedIds={ecoSelectedIds}
-                  onToggleSelect={(id) => setEcoSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])}
-                  onDelete={(id) => setDeleteConfirmId(id)}
-                  onManageConnections={(id) => setConnectionPanelGroupId(id)}
-                  parentMap={parentMap}
-                />
-              ) : (
-                <ConnectionsView
-                  groups={filteredGroups}
-                  allGroups={(groups as Group[]) || []}
-                  associations={(allAssociations as any[]) || []}
-                  densityData={communityDensity || undefined}
-                  engagementData={engagementData}
-                  editMode={ecoEditMode}
-                  selectedIds={ecoSelectedIds}
-                  onToggleSelect={(id) => setEcoSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])}
-                  onDelete={(id) => setDeleteConfirmId(id)}
-                  onManageConnections={(id) => setConnectionPanelGroupId(id)}
-                  parentMap={parentMap}
-                />
-              )}
-            </div>
           ) : layoutView === "table" ? (
             <GroupsTableView
               groups={displayGroups}
@@ -1574,6 +1511,12 @@ function GroupCard({ group, onSelect, onEdit, onDelete, editMode, isSelected, on
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <Link href={`/community/people?group=${group.id}`}>
+                  <Users className="w-4 h-4 mr-2" />
+                  View Members
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={onEdit} data-testid={`menu-edit-group-${group.id}`}>
                 <Pencil className="w-4 h-4 mr-2" />
                 Edit
