@@ -5532,6 +5532,28 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     try {
       const userId = (req.user as any).claims.sub;
       const data = insertRegularBookerSchema.parse({ ...req.body, userId });
+
+      // Duplicate detection
+      const existing = await storage.getRegularBookers(userId);
+      const emailMatch = existing.find(b =>
+        (data.billingEmail && b.billingEmail?.toLowerCase() === data.billingEmail.toLowerCase()) ||
+        (data.loginEmail && b.loginEmail && b.loginEmail.toLowerCase() === data.loginEmail.toLowerCase())
+      );
+      if (emailMatch) {
+        return res.status(409).json({ message: "A booker with this email already exists", existingId: emailMatch.id });
+      }
+      if (data.contactId) {
+        const contactMatch = existing.find(b => b.contactId === data.contactId);
+        if (contactMatch) {
+          return res.status(409).json({ message: "This contact already has a booker profile", existingId: contactMatch.id });
+        }
+      }
+
+      // Enforce contactId for individual bookers
+      if (!data.groupId && !data.contactId) {
+        return res.status(400).json({ message: "Individual bookers must be linked to a contact" });
+      }
+
       const booker = await storage.createRegularBooker(data);
 
       const token = crypto.randomUUID();
@@ -14869,6 +14891,25 @@ Rules:
         }
       }
 
+      // Check for mentoring/programme data (individual bookers only)
+      const isGroupLink = linkResult.link.isGroupLink === true;
+      let hasMentoring = false;
+      let hasProgrammes = false;
+      if (!isGroupLink && booker.contactId) {
+        const mentoringSessions = await db.select({ id: meetings.id }).from(meetings)
+          .where(and(eq(meetings.contactId, booker.contactId), inArray(meetings.type, ["mentoring"])))
+          .limit(1);
+        hasMentoring = mentoringSessions.length > 0;
+
+        const progRegs = await db.select({ id: programmeRegistrations.id }).from(programmeRegistrations)
+          .where(eq(programmeRegistrations.contactId, booker.contactId))
+          .limit(1);
+        hasProgrammes = progRegs.length > 0;
+      }
+
+      if (hasMentoring) categories.push("mentoring");
+      if (hasProgrammes) categories.push("programmes");
+
       res.json({
         categories,
         agreement: agreement ? {
@@ -14883,6 +14924,94 @@ Rules:
     } catch (err: any) {
       console.error("Booker categories error:", err);
       res.status(500).json({ message: "Failed to fetch categories" });
+    }
+  });
+
+  // ── Booker Portal: Mentoring Sessions ──
+  app.get("/api/booker/mentoring-sessions/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const linkResult = await storage.getBookerByLinkToken(token);
+      if (!linkResult || (linkResult.link.tokenExpiry && new Date(linkResult.link.tokenExpiry) < new Date()) || !linkResult.link.enabled) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+      }
+      const booker = linkResult.booker;
+      if (!booker.contactId || linkResult.link.isGroupLink) {
+        return res.json([]);
+      }
+
+      const rows = await db.select({
+        id: meetings.id,
+        title: meetings.title,
+        startTime: meetings.startTime,
+        endTime: meetings.endTime,
+        status: meetings.status,
+        type: meetings.type,
+        mentoringFocus: meetings.mentoringFocus,
+        duration: meetings.duration,
+        location: meetings.location,
+      }).from(meetings).where(and(
+        eq(meetings.contactId, booker.contactId),
+        inArray(meetings.type, ["mentoring"]),
+      )).orderBy(sql`${meetings.startTime} DESC`).limit(20);
+
+      // Enrich with mentor name
+      const profiles = await storage.getMentorProfiles(booker.userId);
+      const enriched = rows.map(m => {
+        const mentor = profiles.find(p => p.mentorUserId === (m as any).userId || `mentor-${p.id}` === (m as any).userId);
+        return { ...m, mentorName: mentor?.name || null };
+      });
+
+      res.json(enriched);
+    } catch (err: any) {
+      console.error("Booker mentoring sessions error:", err);
+      res.status(500).json({ message: "Failed to fetch mentoring sessions" });
+    }
+  });
+
+  // ── Booker Portal: Programme Registrations ──
+  app.get("/api/booker/programme-registrations/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const linkResult = await storage.getBookerByLinkToken(token);
+      if (!linkResult || (linkResult.link.tokenExpiry && new Date(linkResult.link.tokenExpiry) < new Date()) || !linkResult.link.enabled) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+      }
+      const booker = linkResult.booker;
+      if (!booker.contactId || linkResult.link.isGroupLink) {
+        return res.json([]);
+      }
+
+      const regs = await db.select({
+        id: programmeRegistrations.id,
+        programmeId: programmeRegistrations.programmeId,
+        status: programmeRegistrations.status,
+        attended: programmeRegistrations.attended,
+        createdAt: programmeRegistrations.createdAt,
+      }).from(programmeRegistrations).where(
+        eq(programmeRegistrations.contactId, booker.contactId),
+      );
+
+      // Enrich with programme details
+      const progIds = [...new Set(regs.map(r => r.programmeId))];
+      const progs: Record<number, any> = {};
+      for (const pid of progIds) {
+        const p = await storage.getProgramme(pid);
+        if (p) progs[pid] = p;
+      }
+
+      const enriched = regs.map(r => ({
+        ...r,
+        programmeName: progs[r.programmeId]?.name || "Unknown Programme",
+        programmeDate: progs[r.programmeId]?.startDate || null,
+        programmeTime: progs[r.programmeId]?.startTime || null,
+        programmeLocation: progs[r.programmeId]?.location || null,
+      }));
+
+      res.json(enriched);
+    } catch (err: any) {
+      console.error("Booker programme registrations error:", err);
+      res.status(500).json({ message: "Failed to fetch programme registrations" });
     }
   });
 
@@ -16297,13 +16426,36 @@ Rules:
         const allBookers = await storage.getRegularBookers(userId);
         let booker = allBookers.find(b => b.loginEmail === email || b.billingEmail === email);
         if (!booker) {
+          // Find or create a contact for this staff user
+          let staffContactId: number | undefined;
+          const staffName = userRecord ? `${userRecord.firstName || ''} ${userRecord.lastName || ''}`.trim() || 'Staff' : 'Staff';
+          if (email && !email.endsWith('@internal')) {
+            const allContacts = await storage.getContacts(userId);
+            const existing = allContacts.find(c => c.email && c.email.toLowerCase() === email.toLowerCase());
+            if (existing) {
+              staffContactId = existing.id;
+            } else {
+              const newContact = await storage.createContact({
+                userId, name: staffName, email, role: 'Staff', active: true,
+              } as any);
+              staffContactId = newContact.id;
+            }
+          }
           booker = await storage.createRegularBooker({
             userId,
             billingEmail: email,
-            organizationName: userRecord ? `${userRecord.firstName || ''} ${userRecord.lastName || ''}`.trim() || 'Staff' : 'Staff',
+            organizationName: staffName,
+            contactId: staffContactId,
             pricingTier: 'full_price',
             accountStatus: 'active',
           });
+        } else if (!booker.contactId && email && !email.endsWith('@internal')) {
+          // Backfill contactId on existing self-checkout booker
+          const allContacts = await storage.getContacts(userId);
+          const existing = allContacts.find(c => c.email && c.email.toLowerCase() === email.toLowerCase());
+          if (existing) {
+            await storage.updateRegularBooker(booker.id, { contactId: existing.id });
+          }
         }
         body.regularBookerId = booker.id;
         body.approved = true;

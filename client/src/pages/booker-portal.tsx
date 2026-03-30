@@ -43,9 +43,11 @@ import {
   AlertTriangle,
   Pencil,
   Settings,
+  GraduationCap,
+  Heart,
 } from "lucide-react";
 
-type PortalView = "login" | "dashboard" | "calendar" | "desk-booking" | "gear-booking";
+type PortalView = "login" | "dashboard" | "calendar" | "desk-booking" | "gear-booking" | "mentoring" | "programmes";
 
 const CLASSIFICATIONS = ["Meeting", "Workshop", "Rangatahi / Youth Workshop"];
 
@@ -158,12 +160,16 @@ function DashboardView({
   onBookSpace,
   onBookDesk,
   onBookGear,
+  onViewMentoring,
+  onViewProgrammes,
 }: {
   authData: any;
   token: string;
   onBookSpace: () => void;
   onBookDesk: () => void;
   onBookGear: () => void;
+  onViewMentoring: () => void;
+  onViewProgrammes: () => void;
 }) {
   const { toast } = useToast();
   const booker = authData.booker;
@@ -626,6 +632,44 @@ function DashboardView({
                   </div>
                   <Button size="sm" onClick={onBookGear} data-testid="button-book-gear">
                     Book
+                  </Button>
+                </div>
+              </Card>
+            )}
+
+            {categories.includes("mentoring") && (
+              <Card className="p-4" data-testid="card-category-mentoring">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0">
+                      <Heart className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium" data-testid="text-mentoring-category-label">Mentoring Sessions</p>
+                      <p className="text-xs text-muted-foreground">Your upcoming and recent mentoring sessions</p>
+                    </div>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={onViewMentoring} data-testid="button-view-mentoring">
+                    View
+                  </Button>
+                </div>
+              </Card>
+            )}
+
+            {categories.includes("programmes") && (
+              <Card className="p-4" data-testid="card-category-programmes">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-full bg-purple-500/10 flex items-center justify-center shrink-0">
+                      <GraduationCap className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium" data-testid="text-programmes-category-label">Programmes</p>
+                      <p className="text-xs text-muted-foreground">Your programme registrations</p>
+                    </div>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={onViewProgrammes} data-testid="button-view-programmes">
+                    View
                   </Button>
                 </div>
               </Card>
@@ -2944,6 +2988,145 @@ function CalendarView({
   );
 }
 
+function MentoringSessionsView({ token, onBack }: { token: string; onBack: () => void }) {
+  const { data: sessions, isLoading } = useQuery<any[]>({
+    queryKey: ["/api/booker/mentoring-sessions", token],
+    queryFn: async () => {
+      const res = await fetch(`/api/booker/mentoring-sessions/${token}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const formatSessionDate = (dt: string) => {
+    const d = new Date(dt);
+    return d.toLocaleDateString("en-NZ", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "Pacific/Auckland" });
+  };
+  const formatSessionTime = (dt: string) => {
+    const d = new Date(dt);
+    return d.toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Pacific/Auckland" });
+  };
+
+  const now = new Date();
+  const upcoming = (sessions || []).filter(s => new Date(s.startTime) >= now && s.status !== "cancelled");
+  const past = (sessions || []).filter(s => new Date(s.startTime) < now || s.status === "cancelled");
+
+  return (
+    <div className="max-w-lg mx-auto p-4 space-y-4">
+      <button onClick={onBack} className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1">
+        <ChevronLeft className="w-4 h-4" /> Back
+      </button>
+      <h2 className="text-lg font-bold flex items-center gap-2">
+        <Heart className="w-5 h-5 text-emerald-600" />
+        Mentoring Sessions
+      </h2>
+
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin" /></div>
+      ) : !sessions || sessions.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-8">No mentoring sessions yet</p>
+      ) : (
+        <div className="space-y-4">
+          {upcoming.length > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Upcoming</h3>
+              <div className="space-y-2">
+                {upcoming.map((s: any) => (
+                  <Card key={s.id} className="p-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium">{formatSessionDate(s.startTime)}</p>
+                        <p className="text-xs text-muted-foreground">{formatSessionTime(s.startTime)} — {s.duration || 30} min</p>
+                        {s.mentorName && <p className="text-xs text-muted-foreground mt-1">with {s.mentorName}</p>}
+                        {s.mentoringFocus && <p className="text-xs text-muted-foreground">{s.mentoringFocus}</p>}
+                      </div>
+                      <Badge variant="outline" className="text-xs capitalize">{s.status}</Badge>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+          {past.length > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Past Sessions</h3>
+              <div className="space-y-2">
+                {past.map((s: any) => (
+                  <Card key={s.id} className="p-3 opacity-70">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium">{formatSessionDate(s.startTime)}</p>
+                        <p className="text-xs text-muted-foreground">{formatSessionTime(s.startTime)} — {s.duration || 30} min</p>
+                        {s.mentorName && <p className="text-xs text-muted-foreground mt-1">with {s.mentorName}</p>}
+                      </div>
+                      <Badge variant="outline" className="text-xs capitalize">{s.status}</Badge>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProgrammeRegistrationsView({ token, onBack }: { token: string; onBack: () => void }) {
+  const { data: registrations, isLoading } = useQuery<any[]>({
+    queryKey: ["/api/booker/programme-registrations", token],
+    queryFn: async () => {
+      const res = await fetch(`/api/booker/programme-registrations/${token}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const formatDate = (dt: string | null) => {
+    if (!dt) return null;
+    const d = new Date(dt);
+    return d.toLocaleDateString("en-NZ", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "Pacific/Auckland" });
+  };
+
+  return (
+    <div className="max-w-lg mx-auto p-4 space-y-4">
+      <button onClick={onBack} className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1">
+        <ChevronLeft className="w-4 h-4" /> Back
+      </button>
+      <h2 className="text-lg font-bold flex items-center gap-2">
+        <GraduationCap className="w-5 h-5 text-purple-600" />
+        Programmes
+      </h2>
+
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin" /></div>
+      ) : !registrations || registrations.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-8">No programme registrations</p>
+      ) : (
+        <div className="space-y-2">
+          {registrations.map((r: any) => (
+            <Card key={r.id} className="p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">{r.programmeName}</p>
+                  {r.programmeDate && <p className="text-xs text-muted-foreground">{formatDate(r.programmeDate)}</p>}
+                  {r.programmeLocation && <p className="text-xs text-muted-foreground">{r.programmeLocation}</p>}
+                </div>
+                <div className="flex items-center gap-2">
+                  {r.attended && (
+                    <Badge className="text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400">Attended</Badge>
+                  )}
+                  <Badge variant="outline" className="text-xs capitalize">{r.status}</Badge>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function BookerPortalPage() {
   const [, loginParams] = useRoute("/booker/login");
   const [, portalParams] = useRoute("/booker/portal/:token");
@@ -3010,6 +3193,14 @@ export default function BookerPortalPage() {
     return <GearBookingView authData={authData} token={token} onBack={() => setView("dashboard")} />;
   }
 
+  if (view === "mentoring") {
+    return <MentoringSessionsView token={token} onBack={() => setView("dashboard")} />;
+  }
+
+  if (view === "programmes") {
+    return <ProgrammeRegistrationsView token={token} onBack={() => setView("dashboard")} />;
+  }
+
   return (
     <DashboardView
       authData={authData}
@@ -3017,6 +3208,8 @@ export default function BookerPortalPage() {
       onBookSpace={() => setView("calendar")}
       onBookDesk={() => setView("desk-booking")}
       onBookGear={() => setView("gear-booking")}
+      onViewMentoring={() => setView("mentoring")}
+      onViewProgrammes={() => setView("programmes")}
     />
   );
 }
