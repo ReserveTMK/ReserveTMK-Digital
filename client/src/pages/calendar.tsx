@@ -92,6 +92,10 @@ interface GoogleCalendarEvent {
   attendees: { email: string; displayName: string; responseStatus: string; organizer?: boolean }[];
   htmlLink: string;
   status: string;
+  calendarId?: string;
+  calendarLabel?: string | null;
+  suggestedType?: string | null;
+  matchedContacts?: { contactId: number; contactName: string; email: string }[];
 }
 
 interface GoogleCalendarInfo {
@@ -207,6 +211,8 @@ function isPersonalEvent(title: string, description?: string): boolean {
 }
 
 function classifyGcalEvent(gcal: GoogleCalendarEvent): string {
+  // Prefer server-side classification from calendar source
+  if (gcal.suggestedType) return gcal.suggestedType;
   const text = `${gcal.summary || ""} ${gcal.description || ""}`.toLowerCase();
   for (const { type, keywords } of GCAL_TYPE_KEYWORDS) {
     if (keywords.some(kw => text.includes(kw))) return type;
@@ -904,10 +910,21 @@ function EventCard({
               <span className="truncate max-w-[120px]">{location}</span>
             </span>
           )}
+          {isGcal && entry.gcal!.calendarLabel && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+              {entry.gcal!.calendarLabel}
+            </Badge>
+          )}
           {isGcal && entry.gcal!.attendees?.length > 0 && (
             <span className="flex items-center gap-1">
               <Users className="w-3 h-3" />
               {entry.gcal!.attendees.length}
+            </span>
+          )}
+          {isGcal && entry.gcal!.matchedContacts && entry.gcal!.matchedContacts.length > 0 && (
+            <span className="flex items-center gap-1 text-primary">
+              <Link2 className="w-3 h-3" />
+              {entry.gcal!.matchedContacts.map(mc => mc.contactName).join(", ")}
             </span>
           )}
           {attendance && attendance.length > 0 && (

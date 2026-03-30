@@ -245,6 +245,81 @@ async function ensureBookingEvent(booking: any, userId: string): Promise<void> {
   }
 }
 
+// Map venue to the correct Google Calendar for space bookings
+async function getCalendarIdForVenue(venueIds: number[], userId: string): Promise<string> {
+  if (!venueIds.length) return "primary";
+  const venues = await storage.getVenues(userId);
+  const settings = await storage.getCalendarSettings(userId);
+
+  const calEntries: { label: string; calId: string }[] = [];
+  for (const s of settings) {
+    if (!s.active || !s.label) continue;
+    calEntries.push({ label: s.label.toLowerCase(), calId: s.calendarId });
+  }
+
+  for (const vid of venueIds) {
+    const venue = venues.find(v => v.id === vid);
+    if (!venue) continue;
+    const name = venue.name.toLowerCase();
+
+    for (const { label, calId } of calEntries) {
+      const cleanLabel = label.replace("office - ", "").replace("studio - ", "");
+      if (cleanLabel.includes(name) || name.includes(cleanLabel)) {
+        return calId;
+      }
+    }
+
+    const findCal = (...names: string[]) => calEntries.find(e => names.includes(e.label))?.calId;
+    if (name.includes("workshop")) {
+      const ws = findCal("workshop space", "workshop");
+      if (ws) return ws;
+    }
+    if (name.includes("boardroom")) {
+      const br = findCal("office - boardroom", "boardroom space");
+      if (br) return br;
+    }
+    if (name.includes("lounge")) {
+      const ls = findCal("studio - lounge set", "lounge set");
+      if (ls) return ls;
+    }
+    if (name.includes("black")) {
+      const bs = findCal("studio - black set", "black set");
+      if (bs) return bs;
+    }
+    if (name.includes("hot desk") || name.includes("office")) {
+      const hd = findCal("office - hot desk", "hot desk");
+      if (hd) return hd;
+    }
+  }
+
+  return "primary";
+}
+
+// Auto-classify event type based on source calendar
+function classifyEventFromCalendar(calendarId: string, calendarSettings: { calendarId: string; label: string }[], title?: string): string | null {
+  const setting = calendarSettings.find(s => s.calendarId === calendarId);
+  if (!setting) return null;
+
+  const label = setting.label.toLowerCase();
+
+  if (label.includes("workshop") || label.includes("boardroom") || label.includes("studio") || label.includes("hot desk") || label.includes("office")) {
+    return "Venue Hire";
+  }
+  if (label.includes("mentoring")) {
+    return "Mentoring Session";
+  }
+
+  if (title) {
+    const t = title.toLowerCase();
+    if (t.includes("catch up") || t.includes("catchup") || t.includes("catch-up")) return "Catch Up";
+    if (t.includes("mentoring") || t.startsWith("mentoring:")) return "Mentoring Session";
+    if (t.includes("workshop") || t.includes("programme")) return "Programme Session";
+    if (t.includes("podcast") || t.includes("recording")) return "Hub Activity";
+  }
+
+  return null;
+}
+
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December"
@@ -4056,6 +4131,39 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         }
       }
 
+      // Auto-classify and match contacts
+      const allContacts = await storage.getContacts(userId);
+      const emailToContact = new Map<string, { id: number; name: string }>();
+      const ownEmails = new Set(["ra@reservetmk.co.nz", "kim@reservetmk.co.nz", "kiaora@reservetmk.co.nz"]);
+      for (const c of allContacts) {
+        if (!c.email) continue;
+        for (const e of c.email.split(/[,;]\s*/)) {
+          const em = e.trim().toLowerCase();
+          if (em && !ownEmails.has(em)) emailToContact.set(em, { id: c.id, name: c.name });
+        }
+      }
+
+      for (const ev of allEvents) {
+        // Suggested type from source calendar
+        ev.suggestedType = classifyEventFromCalendar(ev.calendarId, additionalCalendars.filter(c => c.label).map(c => ({ calendarId: c.calendarId, label: c.label! })), ev.summary);
+
+        // Match attendees to contacts
+        const matched: { contactId: number; contactName: string; email: string }[] = [];
+        for (const att of (ev.attendees || [])) {
+          const em = (att.email || "").toLowerCase();
+          if (ownEmails.has(em)) continue;
+          const contact = emailToContact.get(em);
+          if (contact) {
+            matched.push({ contactId: contact.id, contactName: contact.name, email: em });
+          }
+        }
+        ev.matchedContacts = matched;
+
+        // Calendar label for frontend display
+        const calSetting = additionalCalendars.find(c => c.calendarId === ev.calendarId);
+        ev.calendarLabel = calSetting?.label || (ev.calendarId === "primary" ? "Ra" : null);
+      }
+
       allEvents.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
       res.json(allEvents);
     } catch (err: any) {
@@ -6025,9 +6133,10 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
         const orgProfile = await storage.getOrganisationProfile(userId);
         const locationStr = orgProfile?.location || undefined;
+        const targetCalendarId = await getCalendarIdForVenue(vIds, userId);
 
         const event = await calendar.events.insert({
-          calendarId: "primary",
+          calendarId: targetCalendarId,
           sendUpdates: attendees.length > 0 ? "all" : "none",
           requestBody: {
             summary: `Venue Hire: ${venueSummary}${bookerName ? ` — ${bookerName}` : ""}`,
@@ -14939,9 +15048,10 @@ Rules:
 
           const orgProfile = await storage.getOrganisationProfile(booker.userId);
           const calLocationStr = orgProfile?.location || undefined;
+          const portalTargetCalId = await getCalendarIdForVenue(resolvedVenueIds, booker.userId);
 
           const calEvent = await calendar.events.insert({
-            calendarId: "primary",
+            calendarId: portalTargetCalId,
             sendUpdates: calAttendees.length > 0 ? "all" : "none",
             requestBody: {
               summary: `Venue Hire: ${venueNamesForCal}${bookerName ? ` — ${bookerName}` : ""}`,
