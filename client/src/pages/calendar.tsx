@@ -255,13 +255,15 @@ const BOOKING_CARD_COLORS: Record<string, string> = {
   "Other": "border-gray-500/30 bg-gray-500/5",
 };
 
-function BookingCalendarCard({ booking, venueMap, allContacts, debriefStatus, onLogDebrief, onViewDebrief }: {
+function BookingCalendarCard({ booking, venueMap, allContacts, debriefStatus, onLogDebrief, onViewDebrief, onSkipDebrief, isSkipped }: {
   booking: Booking;
   venueMap: Record<number, string>;
   allContacts: Contact[];
   debriefStatus?: "none" | "draft" | "confirmed" | null;
   onLogDebrief?: (booking: Booking) => void;
   onViewDebrief?: (booking: Booking) => void;
+  onSkipDebrief?: (booking: Booking) => void;
+  isSkipped?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [attendeeCount, setAttendeeCount] = useState<string>(booking.attendeeCount?.toString() || "");
@@ -341,7 +343,7 @@ function BookingCalendarCard({ booking, venueMap, allContacts, debriefStatus, on
 
   return (
     <Card
-      className={`p-4 overflow-visible ${cardColor}`}
+      className={`p-4 overflow-visible ${cardColor} ${isSkipped ? "opacity-50" : ""}`}
       data-testid={`card-booking-calendar-${booking.id}`}
     >
       <div
@@ -503,11 +505,22 @@ function BookingCalendarCard({ booking, venueMap, allContacts, debriefStatus, on
                   <CircleDashed className="w-3.5 h-3.5 mr-1 text-amber-500" />
                   Debrief Draft
                 </Button>
+              ) : isSkipped ? (
+                <Badge variant="secondary" className="text-xs">
+                  <EyeOff className="w-3 h-3 mr-1" />
+                  Skipped
+                </Badge>
               ) : (
-                <Button size="sm" variant="default" className="text-xs" onClick={() => onLogDebrief?.(booking)}>
-                  <FileText className="w-3.5 h-3.5 mr-1" />
-                  Log Debrief
-                </Button>
+                <>
+                  <Button size="sm" variant="default" className="text-xs" onClick={() => onLogDebrief?.(booking)}>
+                    <FileText className="w-3.5 h-3.5 mr-1" />
+                    Log Debrief
+                  </Button>
+                  <Button size="sm" variant="ghost" className="text-xs text-muted-foreground" onClick={() => onSkipDebrief?.(booking)}>
+                    <EyeOff className="w-3.5 h-3.5 mr-1" />
+                    Skip
+                  </Button>
+                </>
               )}
             </div>
           )}
@@ -1373,6 +1386,7 @@ export default function CalendarPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [showSchedule, setShowSchedule] = useState(true);
   const [showSpace, setShowSpace] = useState(true);
+  const [skippedBookingIds, setSkippedBookingIds] = useState<Set<number>>(new Set());
   const [logActivityOpen, setLogActivityOpen] = useState(false);
   const [activityName, setActivityName] = useState("");
   const [activityType, setActivityType] = useState("Hub Activity");
@@ -2754,6 +2768,8 @@ export default function CalendarPage() {
                       debriefStatus={getBookingDebriefStatus(entry.booking.id)}
                       onLogDebrief={handleLogDebriefFromBooking}
                       onViewDebrief={handleLogDebriefFromBooking}
+                      onSkipDebrief={(b) => setSkippedBookingIds(prev => { const next = new Set(Array.from(prev)); next.add(Number(b.id)); return next; })}
+                      isSkipped={skippedBookingIds.has(Number(entry.booking.id))}
                     />
                   ) : (
                   <div key={entry.type === "gcal" ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`} className="relative">
