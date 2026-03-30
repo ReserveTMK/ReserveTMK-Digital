@@ -2150,8 +2150,12 @@ export default function CalendarPage() {
 
   const spaceItems = useMemo<SpaceOccupancyItem[]>(() => {
     const items: SpaceOccupancyItem[] = [];
+    const spaceLinkedBookingIds = new Set(
+      (appEvents || []).filter(e => e.linkedBookingId).map(e => Number(e.linkedBookingId))
+    );
     (allBookings || []).forEach((b: Booking) => {
       if (b.status === "cancelled") return;
+      if (spaceLinkedBookingIds.has(Number(b.id))) return;
       const sDate = b.startDate ? new Date(b.startDate) : null;
       items.push({
         kind: "booking",
@@ -2189,7 +2193,7 @@ export default function CalendarPage() {
       });
     });
     return items;
-  }, [allBookings, programmes, venueMap, allContacts]);
+  }, [allBookings, programmes, venueMap, allContacts, appEvents]);
 
   const spaceByDate = useMemo(() => {
     const map = new Map<string, SpaceOccupancyItem[]>();
