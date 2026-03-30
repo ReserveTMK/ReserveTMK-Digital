@@ -320,13 +320,24 @@ export default function Reports() {
         </Card>
       )}
 
-      {/* ── Editable sections ───────────────────────────────────────────────── */}
+      {/* ── Editable sections — only show after first generation ─────────── */}
+      {reportHtml && (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold">Add to report</h2>
+          {(quotes.length > 0 || plannedNext.length > 0) && (
+            <Button onClick={handleGenerate} disabled={isGenerating} size="sm" className="h-8 gap-1">
+              {isGenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+              Regenerate with additions
+            </Button>
+          )}
+        </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* In Their Words */}
         <Card className="p-4 space-y-3">
           <h3 className="font-semibold text-sm">In Their Words</h3>
           <p className="text-xs text-muted-foreground">
-            Community quotes to include in the next report generation.
+            Add community quotes, then regenerate.
           </p>
 
           {quotes.length > 0 && (
@@ -372,7 +383,7 @@ export default function Reports() {
             Planned Next {reportMode === "monthly" ? "Month" : "Quarter"}
           </h3>
           <p className="text-xs text-muted-foreground">
-            Upcoming activities and deliverables to include in the report.
+            Add upcoming activities, then regenerate.
           </p>
 
           {plannedNext.length > 0 && (
@@ -414,6 +425,8 @@ export default function Reports() {
           </div>
         </Card>
       </div>
+      </div>
+      )}
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/beautiful-button";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -140,7 +140,6 @@ export default function TrackingDashboard() {
   const { toast } = useToast();
   const monthOptions = getMonthOptions();
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[0]?.value || "");
-  const [generated, setGenerated] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [reportData, setReportData] = useState<any>(null);
 
@@ -158,41 +157,36 @@ export default function TrackingDashboard() {
   const jp = reportData?.journeyProgression;
   const taxBreakdown = reportData?.taxonomyBreakdown as Array<{ categoryName: string; categoryColor: string | null; funderName: string; funderId: number; entityType: string; count: number }> | undefined;
 
-  const handleGenerate = async () => {
-    if (!selectedOpt) return;
+  // Auto-load on mount and month change
+  const loadingRef = useRef(false);
+  useEffect(() => {
+    if (!selectedOpt || loadingRef.current) return;
+    loadingRef.current = true;
     setIsGenerating(true);
-    setGenerated(false);
-    try {
-      const res = await apiRequest("POST", "/api/reports/generate", {
-        startDate: selectedOpt.start,
-        endDate: selectedOpt.end,
-        reportType: "monthly",
-      });
-      const data = await res.json();
-      setReportData(data);
-      setGenerated(true);
-    } catch {
-      toast({ title: "Error", description: "Failed to generate tracking data", variant: "destructive" });
-    } finally {
-      setIsGenerating(false);
-    }
-  };
+    apiRequest("POST", "/api/reports/generate", {
+      startDate: selectedOpt.start,
+      endDate: selectedOpt.end,
+      reportType: "monthly",
+    })
+      .then(res => res.json())
+      .then(data => setReportData(data))
+      .catch(() => toast({ title: "Error", description: "Failed to load tracking data", variant: "destructive" }))
+      .finally(() => { setIsGenerating(false); loadingRef.current = false; });
+  }, [selectedMonth]);
 
-  const handleLoadTrends = async () => {
+  // Auto-load trends
+  useEffect(() => {
+    if (!selectedOpt) return;
     setIsTrendLoading(true);
-    try {
-      const res = await apiRequest("POST", "/api/reports/trends", {
-        endDate: selectedOpt?.end || format(new Date(), "yyyy-MM-dd"),
-        granularity: trendGranularity,
-      });
-      const data = await res.json();
-      setTrendData(data);
-    } catch {
-      toast({ title: "Error", description: "Failed to load trend data", variant: "destructive" });
-    } finally {
-      setIsTrendLoading(false);
-    }
-  };
+    apiRequest("POST", "/api/reports/trends", {
+      endDate: selectedOpt.end,
+      granularity: trendGranularity,
+    })
+      .then(res => res.json())
+      .then(data => setTrendData(data))
+      .catch(() => {})
+      .finally(() => setIsTrendLoading(false));
+  }, [selectedMonth, trendGranularity]);
 
   return (
     <div className="container mx-auto p-6 max-w-6xl space-y-6" data-testid="tracking-dashboard">
@@ -213,10 +207,6 @@ export default function TrackingDashboard() {
               ))}
             </SelectContent>
           </Select>
-          <Button onClick={handleGenerate} disabled={isGenerating} data-testid="button-generate">
-            {isGenerating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Zap className="w-4 h-4 mr-2" />}
-            {isGenerating ? "Loading..." : "Generate"}
-          </Button>
         </div>
       </div>
 
@@ -227,16 +217,8 @@ export default function TrackingDashboard() {
         </div>
       )}
 
-      {/* Empty state */}
-      {!generated && !isGenerating && (
-        <div className="text-center py-16 text-muted-foreground" data-testid="tracking-empty">
-          <Activity className="w-10 h-10 mx-auto mb-3 opacity-40" />
-          <p className="text-sm">Select a month and hit Generate to see your tracking data.</p>
-        </div>
-      )}
-
       {/* Sections */}
-      {generated && reportData && !isGenerating && (
+      {reportData && !isGenerating && (
         <div className="space-y-4">
 
           {/* 1. Reach */}
@@ -589,10 +571,6 @@ export default function TrackingDashboard() {
                       Quarterly
                     </Button>
                   </div>
-                  <Button onClick={handleLoadTrends} disabled={isTrendLoading} size="sm" data-testid="button-load-trends">
-                    {isTrendLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <TrendingUp className="w-4 h-4 mr-1" />}
-                    {isTrendLoading ? "Loading..." : "Load Trends"}
-                  </Button>
                 </div>
               </div>
 
@@ -637,11 +615,6 @@ export default function TrackingDashboard() {
                 </div>
               )}
 
-              {!trendData && !isTrendLoading && (
-                <div className="text-center py-8 text-muted-foreground text-sm" data-testid="trends-placeholder">
-                  Click "Load Trends" to see how your metrics have changed over the last {trendGranularity === "monthly" ? "12 months" : "8 quarters"}.
-                </div>
-              )}
             </div>
           </CollapsibleSection>
 
