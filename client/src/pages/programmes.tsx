@@ -818,6 +818,28 @@ export default function Programmes() {
 function RegistrationsDialog({ programme, open, onOpenChange }: { programme: Programme; open: boolean; onOpenChange: (open: boolean) => void }) {
   const { toast } = useToast();
   const [linkCopied, setLinkCopied] = useState(false);
+  const [showAdminReg, setShowAdminReg] = useState(false);
+  const [regFirstName, setRegFirstName] = useState("");
+  const [regLastName, setRegLastName] = useState("");
+  const [regEmail, setRegEmail] = useState("");
+  const [regPhone, setRegPhone] = useState("");
+  const [regOrg, setRegOrg] = useState("");
+
+  const adminRegMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", `/api/programmes/${programme.id}/admin-register`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/programmes', programme.id, 'registrations'] });
+      toast({ title: "Registered successfully" });
+      setShowAdminReg(false);
+      setRegFirstName(""); setRegLastName(""); setRegEmail(""); setRegPhone(""); setRegOrg("");
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
 
   const { data, isLoading, refetch } = useQuery<{ registrations: any[]; count: number; capacity: number | null }>({
     queryKey: ['/api/programmes', programme.id, 'registrations'],
@@ -948,11 +970,64 @@ function RegistrationsDialog({ programme, open, onOpenChange }: { programme: Pro
             <h3 className="text-sm font-medium" data-testid="text-registration-count">
               {count} registration{count !== 1 ? 's' : ''}
             </h3>
-            <Button size="sm" variant="outline" onClick={handleExport} disabled={!registrations.length} data-testid="button-export-csv">
-              <Download className="w-3 h-3 mr-1" />
-              Export CSV
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => setShowAdminReg(!showAdminReg)} data-testid="button-admin-register">
+                <UserPlus className="w-3 h-3 mr-1" />
+                Register Someone
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleExport} disabled={!registrations.length} data-testid="button-export-csv">
+                <Download className="w-3 h-3 mr-1" />
+                Export CSV
+              </Button>
+            </div>
           </div>
+
+          {showAdminReg && (
+            <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">First Name *</Label>
+                  <Input value={regFirstName} onChange={e => setRegFirstName(e.target.value)} placeholder="First name" className="h-8 text-sm" />
+                </div>
+                <div>
+                  <Label className="text-xs">Last Name *</Label>
+                  <Input value={regLastName} onChange={e => setRegLastName(e.target.value)} placeholder="Last name" className="h-8 text-sm" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Email *</Label>
+                  <Input value={regEmail} onChange={e => setRegEmail(e.target.value)} placeholder="email@example.com" type="email" className="h-8 text-sm" />
+                </div>
+                <div>
+                  <Label className="text-xs">Phone</Label>
+                  <Input value={regPhone} onChange={e => setRegPhone(e.target.value)} placeholder="Phone" className="h-8 text-sm" />
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs">Organisation</Label>
+                <Input value={regOrg} onChange={e => setRegOrg(e.target.value)} placeholder="Organisation" className="h-8 text-sm" />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button size="sm" variant="ghost" onClick={() => setShowAdminReg(false)}>Cancel</Button>
+                <Button
+                  size="sm"
+                  disabled={!regFirstName || !regLastName || !regEmail || adminRegMutation.isPending}
+                  onClick={() => adminRegMutation.mutate({
+                    firstName: regFirstName,
+                    lastName: regLastName,
+                    email: regEmail,
+                    phone: regPhone || null,
+                    organization: regOrg || null,
+                  })}
+                  data-testid="button-submit-admin-reg"
+                >
+                  {adminRegMutation.isPending && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+                  Register
+                </Button>
+              </div>
+            </div>
+          )}
 
           {isLoading ? (
             <div className="flex justify-center p-8">

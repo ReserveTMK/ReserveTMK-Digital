@@ -2143,6 +2143,27 @@ export async function registerRoutes(
         }
       })();
 
+      // Send confirmation email
+      if (email) {
+        (async () => {
+          try {
+            const profiles = await storage.getMentorProfiles(contactOwnerUserId);
+            const mentorProfile = profiles.find(p => p.mentorUserId === meetingUserId || `mentor-${p.id}` === meetingUserId);
+            const mentorName = mentorProfile?.name || "your mentor";
+            const timeStr = `${time} (${slotDuration} min)`;
+            const { sendMentoringBookingConfirmation } = await import("./email");
+            await sendMentoringBookingConfirmation(email, {
+              contactName: name,
+              mentorName,
+              date,
+              time: timeStr,
+            });
+          } catch (e) {
+            console.warn("Mentoring booking confirmation email failed:", e);
+          }
+        })();
+      }
+
       res.status(201).json({
         id: meeting.id,
         date,
@@ -2339,6 +2360,22 @@ export async function registerRoutes(
         status: "registered",
         attended: false,
       });
+
+      // Send confirmation email
+      (async () => {
+        try {
+          const { sendRegistrationConfirmation } = await import("./email");
+          await sendRegistrationConfirmation(email, {
+            contactName: `${firstName} ${lastName}`,
+            programmeName: programme.name,
+            date: programme.startDate,
+            time: programme.startTime ? `${programme.startTime}${programme.endTime ? ` – ${programme.endTime}` : ""}` : null,
+            location: programme.location,
+          });
+        } catch (e) {
+          console.warn("Registration confirmation email failed:", e);
+        }
+      })();
 
       res.json({ success: true, registration });
     } catch (err) {
@@ -4386,6 +4423,93 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Failed to delete registration" });
+    }
+  });
+
+  app.post('/api/programmes/:id/admin-register', isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const programmeId = parseId(req.params.id);
+      const programme = await storage.getProgramme(programmeId);
+      if (!programme || programme.userId !== userId) {
+        return res.status(404).json({ message: "Programme not found" });
+      }
+
+      const { contactId, firstName, lastName, email, phone, organization, dietaryRequirements, accessibilityNeeds } = req.body;
+      if (!firstName || !lastName || !email) {
+        return res.status(400).json({ message: "First name, last name, and email are required" });
+      }
+
+      // Check duplicate
+      const existingRegs = await storage.getProgrammeRegistrations(programmeId);
+      const alreadyRegistered = existingRegs.find(
+        r => r.email.toLowerCase() === email.toLowerCase() && r.status === "registered"
+      );
+      if (alreadyRegistered) {
+        return res.status(400).json({ message: "Already registered", code: "DUPLICATE" });
+      }
+
+      // Link or create contact
+      let resolvedContactId = contactId || null;
+      if (!resolvedContactId) {
+        const allContacts = await storage.getContacts(userId);
+        const existing = allContacts.find(c => c.email && c.email.toLowerCase() === email.toLowerCase());
+        if (existing) {
+          resolvedContactId = existing.id;
+          await autoPromoteToInnovator(existing.id);
+        } else {
+          const now = new Date();
+          const newContact = await storage.createContact({
+            userId,
+            name: `${firstName} ${lastName}`,
+            email,
+            phone: phone || null,
+            role: null,
+            stage: "kakano",
+            active: true,
+            source: "admin_registration",
+            isCommunityMember: true,
+            isInnovator: true,
+            movedToCommunityAt: now,
+            movedToInnovatorsAt: now,
+          } as any);
+          resolvedContactId = newContact.id;
+        }
+      }
+
+      const registration = await storage.createProgrammeRegistration({
+        programmeId,
+        contactId: resolvedContactId,
+        userId,
+        firstName,
+        lastName,
+        email,
+        phone: phone || null,
+        organization: organization || null,
+        dietaryRequirements: dietaryRequirements || null,
+        accessibilityNeeds: accessibilityNeeds || null,
+        status: "registered",
+        attended: false,
+      });
+
+      // Send confirmation
+      (async () => {
+        try {
+          const { sendRegistrationConfirmation } = await import("./email");
+          await sendRegistrationConfirmation(email, {
+            contactName: `${firstName} ${lastName}`,
+            programmeName: programme.name,
+            date: programme.startDate,
+            time: programme.startTime ? `${programme.startTime}${programme.endTime ? ` – ${programme.endTime}` : ""}` : null,
+            location: programme.location,
+          });
+        } catch (e) { console.warn("Admin registration confirmation email failed:", e); }
+      })();
+
+      res.json({ success: true, registration });
+    } catch (err: any) {
+      console.error("Admin registration error:", err);
+      res.status(500).json({ message: err.message || "Failed to register" });
     }
   });
 
@@ -6438,7 +6562,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       } as any);
 
       try {
-        const { sendVenueEnquiryAlert } = await import("./email");
+        const { sendVenueEnquiryAlert, sendCasualHireConfirmation } = await import("./email");
         await sendVenueEnquiryAlert({
           userId: ownerUserId,
           bookerName: name.trim(),
@@ -6454,8 +6578,16 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
           venueIds: resolvedVenueIds,
           source: "casual_hire",
         });
+        // Confirmation to the enquirer
+        await sendCasualHireConfirmation(email, {
+          contactName: name.trim(),
+          venueName: venue.name || "Reserve Tāmaki Space",
+          date: startDate,
+          startTime,
+          endTime,
+        });
       } catch (emailErr) {
-        console.error("[Email] Venue enquiry alert failed (casual hire):", emailErr);
+        console.error("[Email] Casual hire email failed:", emailErr);
       }
 
       res.json({ success: true, bookingId: booking.id });
@@ -14928,6 +15060,23 @@ Rules:
       });
 
       if (booker.contactId) await autoPromoteToInnovator(booker.contactId);
+
+      // Send confirmation email
+      const deskResource = await storage.getBookableResource(resourceId);
+      const deskEmail = booker.notificationsEmail || (booker.contactId ? (await storage.getContact(booker.contactId))?.email : null);
+      if (deskEmail) {
+        (async () => {
+          try {
+            const { sendDeskBookingConfirmation } = await import("./email");
+            await sendDeskBookingConfirmation(deskEmail, {
+              contactName: booker.name || "there",
+              deskName: deskResource?.name || "Hot Desk",
+              date,
+            });
+          } catch (e) { console.warn("Desk booking confirmation email failed:", e); }
+        })();
+      }
+
       res.json(deskBooking);
     } catch (err: any) {
       if (err.message === "CONFLICT") {
@@ -14993,6 +15142,22 @@ Rules:
       });
 
       if (booker.contactId) await autoPromoteToInnovator(booker.contactId);
+
+      // Send confirmation email
+      const gearEmail = booker.notificationsEmail || (booker.contactId ? (await storage.getContact(booker.contactId))?.email : null);
+      if (gearEmail) {
+        (async () => {
+          try {
+            const { sendGearBookingConfirmation } = await import("./email");
+            await sendGearBookingConfirmation(gearEmail, {
+              contactName: booker.name || "there",
+              itemName: resource.name,
+              date,
+            });
+          } catch (e) { console.warn("Gear booking confirmation email failed:", e); }
+        })();
+      }
+
       res.json({
         ...gearBooking,
         requiresApproval: resource.requiresApproval,
