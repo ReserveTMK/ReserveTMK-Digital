@@ -13296,9 +13296,41 @@ Notes: ${funder.notes || ""}`;
         ? "\n\nUPLOADED DOCUMENTS:\n" + documentContents.map(d => `--- ${d.name} (${d.type}) ---\n${d.content}`).join("\n\n")
         : "";
 
+      // Read funder context file maintained by Claude Code
+      let funderDeepContext = "";
+      try {
+        const fs = await import("fs");
+        const path = await import("path");
+        const contextPath = path.join(process.cwd(), ".claude", "funder-context.md");
+        if (fs.existsSync(contextPath)) {
+          const fullContext = fs.readFileSync(contextPath, "utf-8");
+          // Extract the section for this funder by name matching
+          const funderName = funder.name.toLowerCase();
+          const sections = fullContext.split(/\n---\n/);
+          for (const section of sections) {
+            const headerMatch = section.match(/^## (.+)/m);
+            if (headerMatch && (
+              funderName.includes(headerMatch[1].toLowerCase().split("(")[0].trim()) ||
+              headerMatch[1].toLowerCase().includes(funderName.split("(")[0].trim()) ||
+              section.toLowerCase().includes(`**full name:** ${funderName}`) ||
+              section.toLowerCase().includes(funderName)
+            )) {
+              funderDeepContext = `\n\nCLAUDE CODE CONTEXT (maintained by AI assistant with deep knowledge of this funder):\n${section.trim()}`;
+              break;
+            }
+          }
+          if (!funderDeepContext) {
+            // No specific match — include the whole file for general context
+            funderDeepContext = `\n\nCLAUDE CODE CONTEXT (maintained by AI assistant):\n${fullContext.substring(0, 8000)}`;
+          }
+        }
+      } catch {
+        // Context file not available — continue without it
+      }
+
       const systemPrompt = `You are an expert in Aotearoa New Zealand community development, Māori and Pasifika outcomes frameworks, and funder relationship management. You help organisations like ReserveTMK Digital build rich funder profiles.
 
-Given the organisation context, existing funder information, and any uploaded documents, generate a comprehensive funder profile. Use te reo Māori terms where appropriate and be specific to the funder's actual framework and focus areas.
+Given the organisation context, existing funder information, Claude Code's deep knowledge, and any uploaded documents, generate a comprehensive funder profile. The Claude Code context is authoritative — it reflects the operator's real relationship with this funder, including politics, preferences, and strategy. Prioritise it over generic assumptions.
 
 ${orgContext}
 
@@ -13317,7 +13349,7 @@ Be specific, practical, and grounded in the actual documents and context provide
       const result = await claudeJSON({
         model: "claude-sonnet-4-6",
         system: systemPrompt,
-        prompt: `Generate a comprehensive funder profile for this funder:\n\n${existingInfo}${docsContext}`,
+        prompt: `Generate a comprehensive funder profile for this funder:\n\n${existingInfo}${funderDeepContext}${docsContext}`,
         temperature: 0.4,
         maxTokens: 4096,
       });
