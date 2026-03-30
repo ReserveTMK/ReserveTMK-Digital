@@ -73,7 +73,9 @@ import {
   type FunderDeliverable,
 } from "@shared/schema";
 import { useTaxonomy } from "@/hooks/use-taxonomy";
-import { useLocation } from "wouter";
+import { useGroups } from "@/hooks/use-groups";
+import { useContacts as useContactsHook } from "@/hooks/use-contacts";
+import { useLocation, Link } from "wouter";
 
 const STATUS_COLORS: Record<string, string> = {
   active_funder: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
@@ -1782,6 +1784,41 @@ function FunderFormDialog({
     fitTags: defaultValues?.fitTags || [],
   });
 
+  const [groupId, setGroupId] = useState<number | null>(defaultValues?.groupId || null);
+  const [headContactId, setHeadContactId] = useState<number | null>(defaultValues?.headContactId || null);
+  const [liaisonContactId, setLiaisonContactId] = useState<number | null>(defaultValues?.liaisonContactId || null);
+  const [leadContactId, setLeadContactId] = useState<number | null>(defaultValues?.leadContactId || null);
+  const [groupSearch, setGroupSearch] = useState("");
+  const [headSearch, setHeadSearch] = useState("");
+  const [liaisonSearch, setLiaisonSearch] = useState("");
+  const [leadSearch, setLeadSearch] = useState("");
+
+  const { data: allGroups } = useGroups();
+  const { data: allContacts } = useContactsHook();
+
+  const filteredGroups = useMemo(() => {
+    if (!allGroups || !groupSearch.trim()) return [];
+    const term = groupSearch.toLowerCase();
+    return (allGroups as any[]).filter((g: any) => g.name.toLowerCase().includes(term)).slice(0, 5);
+  }, [allGroups, groupSearch]);
+
+  const getGroupName = (id: number | null) => {
+    if (!id || !allGroups) return null;
+    return (allGroups as any[]).find((g: any) => g.id === id)?.name || null;
+  };
+
+  const getContactName = (id: number | null) => {
+    if (!id || !allContacts) return null;
+    return (allContacts as any[]).find((c: any) => c.id === id)?.name || null;
+  };
+
+  const filterContacts = (search: string, excludeIds: number[]) => {
+    if (!allContacts || !search.trim()) return [];
+    const term = search.toLowerCase();
+    const excluded = new Set(excludeIds);
+    return (allContacts as any[]).filter((c: any) => !excluded.has(c.id) && c.name.toLowerCase().includes(term)).slice(0, 5);
+  };
+
   const { toast } = useToast();
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -1811,6 +1848,10 @@ function FunderFormDialog({
       nextAction: form.nextAction.trim() || null,
       applicationDeadline: form.applicationDeadline || null,
       fitTags: form.fitTags.length > 0 ? form.fitTags : null,
+      groupId: groupId || null,
+      headContactId: headContactId || null,
+      liaisonContactId: liaisonContactId || null,
+      leadContactId: leadContactId || null,
     };
     onSubmit(data);
   };
@@ -1848,38 +1889,106 @@ function FunderFormDialog({
             </div>
             <div className="space-y-2">
               <Label>Organisation</Label>
-              <Input
-                value={form.organisation}
-                onChange={(e) => setForm(p => ({ ...p, organisation: e.target.value }))}
-                placeholder="e.g. Auckland Council"
-                data-testid="input-funder-org"
-              />
+              {groupId ? (
+                <div className="flex items-center gap-2">
+                  <Badge className="bg-primary/10 text-primary">{getGroupName(groupId) || `Group #${groupId}`}</Badge>
+                  <Button size="sm" variant="ghost" className="h-6 px-1" onClick={() => { setGroupId(null); setForm(p => ({ ...p, organisation: "" })); }}>
+                    <X className="w-3 h-3" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <Input
+                    value={groupSearch || form.organisation}
+                    onChange={(e) => { setGroupSearch(e.target.value); setForm(p => ({ ...p, organisation: e.target.value })); }}
+                    placeholder="Search orgs or type name..."
+                    data-testid="input-funder-org"
+                  />
+                  {filteredGroups.length > 0 && groupSearch && (
+                    <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md max-h-[150px] overflow-y-auto">
+                      {filteredGroups.map((g: any) => (
+                        <button key={g.id} type="button" className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent" onClick={() => { setGroupId(g.id); setForm(p => ({ ...p, organisation: g.name })); setGroupSearch(""); }}>
+                          {g.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
+          </div>
+
+          <div className="space-y-3">
+            <Label className="text-xs text-muted-foreground">Key Personnel</Label>
+            {([
+              { label: "Head", id: headContactId, setId: setHeadContactId, search: headSearch, setSearch: setHeadSearch, testId: "head" },
+              { label: "Liaison", id: liaisonContactId, setId: setLiaisonContactId, search: liaisonSearch, setSearch: setLiaisonSearch, testId: "liaison" },
+              { label: "Lead", id: leadContactId, setId: setLeadContactId, search: leadSearch, setSearch: setLeadSearch, testId: "lead" },
+            ] as const).map((role) => {
+              const excludeIds = [headContactId, liaisonContactId, leadContactId].filter((id): id is number => id !== null && id !== role.id);
+              const filtered = filterContacts(role.search, excludeIds);
+              return (
+                <div key={role.testId} className="flex items-center gap-3">
+                  <span className="text-xs text-muted-foreground w-14 shrink-0">{role.label}</span>
+                  {role.id ? (
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-primary/10 text-primary">{getContactName(role.id) || `Contact #${role.id}`}</Badge>
+                      <Button size="sm" variant="ghost" className="h-6 px-1" onClick={() => role.setId(null)} type="button">
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="relative flex-1">
+                      <Input
+                        value={role.search}
+                        onChange={(e) => role.setSearch(e.target.value)}
+                        placeholder="Search contacts..."
+                        className="h-8 text-sm"
+                        data-testid={`input-personnel-${role.testId}`}
+                      />
+                      {filtered.length > 0 && role.search && (
+                        <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md max-h-[150px] overflow-y-auto">
+                          {filtered.map((c: any) => (
+                            <button key={c.id} type="button" className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent" onClick={() => { role.setId(c.id); role.setSearch(""); }}>
+                              {c.name}{c.email ? ` — ${c.email}` : ""}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label>Contact Person</Label>
+              <Label className="text-xs text-muted-foreground">Contact (text fallback)</Label>
               <Input
                 value={form.contactPerson}
                 onChange={(e) => setForm(p => ({ ...p, contactPerson: e.target.value }))}
+                placeholder="Name"
+                className="h-8 text-sm"
                 data-testid="input-contact-person"
               />
             </div>
             <div className="space-y-2">
-              <Label>Email</Label>
+              <Label className="text-xs text-muted-foreground">Email</Label>
               <Input
                 type="email"
                 value={form.contactEmail}
                 onChange={(e) => setForm(p => ({ ...p, contactEmail: e.target.value }))}
+                className="h-8 text-sm"
                 data-testid="input-contact-email"
               />
             </div>
             <div className="space-y-2">
-              <Label>Phone</Label>
+              <Label className="text-xs text-muted-foreground">Phone</Label>
               <Input
                 value={form.contactPhone}
                 onChange={(e) => setForm(p => ({ ...p, contactPhone: e.target.value }))}
+                className="h-8 text-sm"
                 data-testid="input-contact-phone"
               />
             </div>
@@ -2125,6 +2234,14 @@ function FunderDetailDialog({
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [isEnriching, setIsEnriching] = useState(false);
 
+  const { data: detailGroups } = useGroups();
+  const { data: detailContacts } = useContactsHook();
+  const linkedGroupName = detailGroups && funder.groupId ? (detailGroups as any[]).find((g: any) => g.id === funder.groupId)?.name : null;
+  const getDetailContactName = (id: number | null | undefined) => {
+    if (!id || !detailContacts) return null;
+    return (detailContacts as any[]).find((c: any) => c.id === id)?.name || null;
+  };
+
   const { data: documents = [], isLoading: docsLoading } = useQuery<any[]>({
     queryKey: ["/api/funders", funder.id, "documents"],
     queryFn: async () => {
@@ -2248,6 +2365,32 @@ function FunderDetailDialog({
             {funder.reportingCadence && <Badge variant="outline">{CADENCE_LABELS[funder.reportingCadence]}</Badge>}
           </div>
 
+          {(linkedGroupName || funder.headContactId || funder.liaisonContactId || funder.leadContactId) && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+              {linkedGroupName && (
+                <span className="flex items-center gap-1 text-muted-foreground">
+                  <Building2 className="w-3.5 h-3.5" />
+                  <Link href={`/community/groups`} className="text-primary hover:underline">{linkedGroupName}</Link>
+                </span>
+              )}
+              {funder.headContactId && getDetailContactName(funder.headContactId) && (
+                <span className="flex items-center gap-1 text-muted-foreground">
+                  Head: <Link href={`/contacts/${funder.headContactId}`} className="text-primary hover:underline">{getDetailContactName(funder.headContactId)}</Link>
+                </span>
+              )}
+              {funder.liaisonContactId && getDetailContactName(funder.liaisonContactId) && (
+                <span className="flex items-center gap-1 text-muted-foreground">
+                  Liaison: <Link href={`/contacts/${funder.liaisonContactId}`} className="text-primary hover:underline">{getDetailContactName(funder.liaisonContactId)}</Link>
+                </span>
+              )}
+              {funder.leadContactId && getDetailContactName(funder.leadContactId) && (
+                <span className="flex items-center gap-1 text-muted-foreground">
+                  Lead: <Link href={`/contacts/${funder.leadContactId}`} className="text-primary hover:underline">{getDetailContactName(funder.leadContactId)}</Link>
+                </span>
+              )}
+            </div>
+          )}
+
           <FunderDeliverablesSection funderId={funder.id} />
 
           <FunderTaxonomySection funderId={funder.id} />
@@ -2258,7 +2401,7 @@ function FunderDetailDialog({
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h3 className="font-medium" data-testid="text-documents-heading">Documents</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">Upload funder documents (framework, contract, profile) to enable AI enrichment</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Upload funder documents (framework, contract, profile) for reference</p>
               </div>
               <Button size="sm" variant="outline" onClick={() => setShowUploadDialog(true)} data-testid="button-upload-doc">
                 <Upload className="w-4 h-4 mr-1" /> Upload
@@ -2297,7 +2440,7 @@ function FunderDetailDialog({
               <Card className="p-6 text-center border-dashed">
                 <Upload className="w-8 h-8 mx-auto text-muted-foreground/40 mb-2" />
                 <p className="text-sm text-muted-foreground">No documents uploaded yet</p>
-                <p className="text-xs text-muted-foreground mt-1">Upload funder documents to get started with AI enrichment</p>
+                <p className="text-xs text-muted-foreground mt-1">Upload funder documents for easy access and reference</p>
                 <Button size="sm" variant="outline" className="mt-3" onClick={() => setShowUploadDialog(true)} data-testid="button-upload-doc-empty">
                   <Upload className="w-4 h-4 mr-1" /> Upload Document
                 </Button>
@@ -2346,27 +2489,27 @@ function FunderDetailDialog({
             )}
           </div>
 
-          <Card className={`p-4 ${documents.length === 0 ? "opacity-60" : ""}`} data-testid="card-enrichment">
+          <Card className="p-4" data-testid="card-enrichment">
             <div className="flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <Sparkles className="w-4 h-4 text-primary" />
-                  <h3 className="font-medium">Funder Enrichment</h3>
+                  <h3 className="font-medium">AI Profile</h3>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {documents.length === 0
-                    ? "Upload documents above first, then use AI to auto-generate profile fields"
-                    : `Reads ${documents.length} uploaded document${documents.length === 1 ? "" : "s"} and auto-generates outcomes framework, reporting guidance, and partnership strategy`}
+                  {documents.length > 0
+                    ? `Uses Claude Code context + ${documents.length} document${documents.length === 1 ? "" : "s"} to generate profile`
+                    : "Uses Claude Code's knowledge of this funder to auto-generate profile fields"}
                 </p>
               </div>
               <Button
                 onClick={handleEnrichment}
-                disabled={isEnriching || documents.length === 0}
+                disabled={isEnriching}
                 className="gap-1.5 shrink-0"
                 data-testid="button-funder-enrichment"
               >
                 {isEnriching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                {isEnriching ? "Enriching…" : "Funder Enrichment"}
+                {isEnriching ? "Generating…" : "Generate Profile"}
               </Button>
             </div>
           </Card>
