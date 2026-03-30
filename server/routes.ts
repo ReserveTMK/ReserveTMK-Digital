@@ -15862,8 +15862,10 @@ Rules:
       const userId = (req.user as any).claims.sub;
       const { ids, tier } = req.body;
       if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ message: "ids required" });
+      const parsedIds = ids.map((v: any) => typeof v === "number" ? v : parseInt(v, 10)).filter((v: number) => !isNaN(v));
+      if (parsedIds.length === 0) return res.status(400).json({ message: "no valid ids" });
       let updated = 0;
-      for (const id of ids) {
+      for (const id of parsedIds) {
         const existing = await storage.getBookableResource(id);
         if (!existing || existing.userId !== userId) continue;
         await storage.updateBookableResource(id, { tier: tier || null });

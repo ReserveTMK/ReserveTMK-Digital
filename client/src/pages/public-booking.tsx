@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
-import { useRoute } from "wouter";
+import { useRoute, useLocation } from "wouter";
 import {
   Loader2,
   Calendar,
@@ -230,11 +230,13 @@ function StepProgress({
 }
 
 export default function PublicBookingPage() {
-  const [, params] = useRoute("/book/:userId");
+  const [, params] = useRoute("/book/:userId/:pathwayParam?");
+  const [location] = useLocation();
+  const isMentoringDirect = location.endsWith("/mentoring");
   const userId = params?.userId || "";
 
-  const [pathway, setPathway] = useState<Pathway | null>(null);
-  const [step, setStep] = useState<StepId>("pathway");
+  const [pathway, setPathway] = useState<Pathway | null>(isMentoringDirect ? "mentoring" : null);
+  const [step, setStep] = useState<StepId>(isMentoringDirect ? "stage" : "pathway");
   const [isReturningMentee, setIsReturningMentee] = useState(false);
   const [isReactivation, setIsReactivation] = useState(false);
   const [reactivationData, setReactivationData] = useState<{
@@ -1231,17 +1233,19 @@ export default function PublicBookingPage() {
           {/* ── STAGE SELECTOR (mentoring pathway — Step 1) ── */}
           {step === "stage" && pathway === "mentoring" && (
             <div className="p-5 sm:p-6 space-y-5 step-animate">
-              <button
-                className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-[44px]"
-                onClick={() => {
-                  setPathway(null);
-                  setStep("pathway");
-                  setSelectedStage(null);
-                }}
-                data-testid="button-back-to-pathway"
-              >
-                <ChevronLeft className="w-4 h-4" /> Back
-              </button>
+              {!isMentoringDirect && (
+                <button
+                  className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 min-h-[44px]"
+                  onClick={() => {
+                    setPathway(null);
+                    setStep("pathway");
+                    setSelectedStage(null);
+                  }}
+                  data-testid="button-back-to-pathway"
+                >
+                  <ChevronLeft className="w-4 h-4" /> Back
+                </button>
+              )}
               <div>
                 <h3 className="font-semibold text-base" data-testid="heading-stage">
                   Where are you right now?

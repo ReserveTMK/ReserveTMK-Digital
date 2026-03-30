@@ -399,77 +399,53 @@ function AvailabilitySection({ category }: { category: string }) {
           </div>
         </Card>
       ) : (
-        <div className="grid gap-2">
+        <div className="grid gap-1">
           {DAY_NAMES.map((day, dayIdx) => {
             const daySlots = slots.filter(s => s.dayOfWeek === dayIdx);
-            if (daySlots.length === 0) return null;
             return (
-              <Card key={dayIdx} className="p-3" data-testid={`availability-day-${dayIdx}`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="font-medium text-sm w-24">{day}</span>
-                    <div className="flex flex-wrap gap-2">
-                      {daySlots.map(slot => (
-                        <div key={slot.id} className="flex items-center gap-2 flex-wrap">
-                          <Badge variant="outline" className="text-xs">
-                            {formatTimeSlot(slot.startTime)} {"\u2013"} {formatTimeSlot(slot.endTime)}
-                          </Badge>
-                          <Select
-                            value={String(slot.slotDuration || 30)}
-                            onValueChange={(v) => updateAvailability.mutate({ id: slot.id, slotDuration: parseInt(v) })}
-                          >
-                            <SelectTrigger className="h-7 w-[90px] text-xs" data-testid={`select-slot-duration-${slot.id}`}>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="15">15 min</SelectItem>
-                              <SelectItem value="30">30 min</SelectItem>
-                              <SelectItem value="45">45 min</SelectItem>
-                              <SelectItem value="60">60 min</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Select
-                            value={String(slot.bufferMinutes ?? 15)}
-                            onValueChange={(v) => updateAvailability.mutate({ id: slot.id, bufferMinutes: parseInt(v) })}
-                          >
-                            <SelectTrigger className="h-7 w-[100px] text-xs" data-testid={`select-buffer-${slot.id}`}>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="0">No buffer</SelectItem>
-                              <SelectItem value="5">5 min gap</SelectItem>
-                              <SelectItem value="10">10 min gap</SelectItem>
-                              <SelectItem value="15">15 min gap</SelectItem>
-                              <SelectItem value="30">30 min gap</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Switch
-                            checked={slot.isActive ?? true}
-                            onCheckedChange={(checked) => updateAvailability.mutate({ id: slot.id, isActive: checked })}
-                            data-testid={`switch-active-${slot.id}`}
-                          />
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => setEditingSlot(slot)}
-                            data-testid={`button-edit-avail-${slot.id}`}
-                          >
-                            <Pencil className="w-3 h-3" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => deleteAvailability.mutate(slot.id)}
-                            data-testid={`button-delete-avail-${slot.id}`}
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
+              <div key={dayIdx} className={`flex items-center gap-3 px-3 py-2 rounded-md ${daySlots.length > 0 ? "bg-card border border-border" : "opacity-40"}`} data-testid={`availability-day-${dayIdx}`}>
+                <span className="font-medium text-sm w-20 shrink-0">{day}</span>
+                {daySlots.length === 0 ? (
+                  <span className="text-xs text-muted-foreground">No availability</span>
+                ) : (
+                  <div className="flex items-center gap-3 flex-1 flex-wrap">
+                    {daySlots.map(slot => (
+                      <div key={slot.id} className="flex items-center gap-2">
+                        <span className={`text-sm font-medium ${(slot.isActive ?? true) ? "" : "line-through text-muted-foreground"}`}>
+                          {formatTimeSlot(slot.startTime)} {"\u2013"} {formatTimeSlot(slot.endTime)}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {slot.slotDuration || 30}min slots
+                        </span>
+                        <Switch
+                          checked={slot.isActive ?? true}
+                          onCheckedChange={(checked) => updateAvailability.mutate({ id: slot.id, isActive: checked })}
+                          className="scale-75"
+                          data-testid={`switch-active-${slot.id}`}
+                        />
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6"
+                          onClick={() => setEditingSlot(slot)}
+                          data-testid={`button-edit-avail-${slot.id}`}
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                          onClick={() => deleteAvailability.mutate(slot.id)}
+                          data-testid={`button-delete-avail-${slot.id}`}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    ))}
                   </div>
-                </div>
-              </Card>
+                )}
+              </div>
             );
           })}
         </div>

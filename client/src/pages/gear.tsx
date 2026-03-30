@@ -571,11 +571,11 @@ function GearInventoryTab() {
   };
 
   const selectAll = () => {
-    const allIds = (gearResources || []).filter(r => r.active !== false).map(r => r.id);
-    if (selectedIds.size === allIds.length) {
+    const visibleIds = groupedGear.flatMap(g => g.items).map(r => r.id);
+    if (visibleIds.length > 0 && visibleIds.every(id => selectedIds.has(id))) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(allIds));
+      setSelectedIds(new Set(visibleIds));
     }
   };
 
@@ -660,7 +660,7 @@ function GearInventoryTab() {
         <div className="flex items-center gap-3">
           <h3 className="text-base font-semibold">Gear Inventory</h3>
           <Button size="sm" variant="ghost" onClick={selectAll} className="text-xs">
-            {selectedIds.size > 0 && selectedIds.size === (gearResources || []).filter(r => r.active !== false).length ? "Deselect all" : "Select all"}
+            {selectedIds.size > 0 && groupedGear.flatMap(g => g.items).every(r => selectedIds.has(r.id)) ? "Deselect all" : "Select all"}
           </Button>
         </div>
         <Button size="sm" onClick={() => openGearForm()} data-testid="button-add-gear">

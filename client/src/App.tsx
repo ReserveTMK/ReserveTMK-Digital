@@ -286,6 +286,9 @@ function Router() {
           <PublicRegistrationPage />
         </Route>
 
+        <Route path="/book/:userId/mentoring">
+          <PublicBookingPage />
+        </Route>
         <Route path="/book/:userId">
           <PublicBookingPage />
         </Route>

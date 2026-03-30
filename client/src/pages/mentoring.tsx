@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState } from "react";
 import { Settings } from "lucide-react";
 import { MeetingTypesSection } from "@/components/meeting-types-section";
+import { MentoringOnboardingSetup } from "@/components/mentoring-onboarding-setup";
 import { SessionsTab } from "@/components/mentoring/sessions-tab";
 import { MenteesTab } from "@/components/mentoring/mentees-tab";
 import { MentorsTab } from "@/components/mentoring/mentors-tab";
@@ -44,11 +45,19 @@ export default function MentoringPage() {
       <Dialog open={showSettings} onOpenChange={setShowSettings}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Session Settings</DialogTitle>
-            <DialogDescription>Configure session types for mentoring</DialogDescription>
+            <DialogTitle>Mentoring Settings</DialogTitle>
+            <DialogDescription>Configure session types and onboarding questions</DialogDescription>
           </DialogHeader>
-          <div className="mt-4">
-            <MeetingTypesSection category="mentoring" />
+          <div className="mt-4 space-y-8">
+            <div>
+              <h3 className="text-sm font-semibold mb-3">Session Types</h3>
+              <MeetingTypesSection category="mentoring" />
+            </div>
+            <div className="border-t pt-6">
+              <h3 className="text-sm font-semibold mb-3">Onboarding Questions</h3>
+              <p className="text-xs text-muted-foreground mb-4">Questions shown to new mentees during the booking flow</p>
+              <MentoringOnboardingSetup />
+            </div>
           </div>
         </DialogContent>
       </Dialog>
