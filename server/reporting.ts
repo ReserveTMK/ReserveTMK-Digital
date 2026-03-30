@@ -8,7 +8,7 @@ import {
   meetingTypes, monthlySnapshots, footTrafficTouchpoints, dailyFootTraffic,
   metricSnapshots, programmeRegistrations,
   surveys, normalizeStage,
-  funderTaxonomyClassifications,
+  funderTaxonomyClassifications, funderTaxonomyCategories, funders,
   type FunderDeliverable,
 } from "@shared/schema";
 
@@ -2816,7 +2816,7 @@ export async function getProgrammeAttributedOutcomes(userId: string, programmeId
 }
 
 export async function getFullMonthlyReport(filters: ReportFilters) {
-  const [reach, delivery, impact, value, mentoring, organisationsEngaged, peopleFeatured, journeyProgression, communityDiscounts, connectionStrength, surveyData, programmeOutcomes] = await Promise.all([
+  const [reach, delivery, impact, value, mentoring, organisationsEngaged, peopleFeatured, journeyProgression, communityDiscounts, connectionStrength, surveyData, programmeOutcomes, taxonomyBreakdown] = await Promise.all([
     getReachMetrics(filters),
     getDeliveryMetrics(filters),
     getImpactMetrics(filters),
@@ -2834,6 +2834,7 @@ export async function getFullMonthlyReport(filters: ReportFilters) {
       filters.startDate,
       filters.endDate,
     ),
+    getTaxonomyBreakdown(filters),
   ]);
 
   let relevantOutcomes = programmeOutcomes;
@@ -2881,7 +2882,50 @@ export async function getFullMonthlyReport(filters: ReportFilters) {
       milestoneCount: impact.milestoneCount,
     },
     economicRollup: impact.economicRollup,
+    taxonomyBreakdown,
   };
+}
+
+export async function getTaxonomyBreakdown(filters: ReportFilters) {
+  const start = new Date(filters.startDate);
+  const end = new Date(filters.endDate);
+
+  const rows = await db
+    .select({
+      categoryName: funderTaxonomyCategories.name,
+      categoryColor: funderTaxonomyCategories.color,
+      funderName: funders.name,
+      funderId: funders.id,
+      entityType: funderTaxonomyClassifications.entityType,
+      count: sql<number>`COUNT(DISTINCT (${funderTaxonomyClassifications.entityType} || '-' || ${funderTaxonomyClassifications.entityId}))`,
+    })
+    .from(funderTaxonomyClassifications)
+    .innerJoin(funderTaxonomyCategories, eq(funderTaxonomyClassifications.funderCategoryId, funderTaxonomyCategories.id))
+    .innerJoin(funders, eq(funderTaxonomyClassifications.funderId, funders.id))
+    .where(
+      and(
+        eq(funders.userId, filters.userId),
+        gte(funderTaxonomyClassifications.entityDate, start),
+        lte(funderTaxonomyClassifications.entityDate, end),
+      ),
+    )
+    .groupBy(
+      funderTaxonomyCategories.id,
+      funderTaxonomyCategories.name,
+      funderTaxonomyCategories.color,
+      funders.id,
+      funders.name,
+      funderTaxonomyClassifications.entityType,
+    );
+
+  return rows.map((r) => ({
+    categoryName: r.categoryName,
+    categoryColor: r.categoryColor,
+    funderName: r.funderName,
+    funderId: r.funderId,
+    entityType: r.entityType,
+    count: Number(r.count),
+  }));
 }
 
 export interface CohortDefinition {

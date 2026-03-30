@@ -87,7 +87,6 @@ const navGroups: NavGroup[] = [
     children: [
       { name: "Reports", href: "/reports", icon: FileText, description: "Branded funder reports" },
       { name: "Tracking", href: "/tracking", icon: BarChart3, description: "Operational dashboard" },
-      { name: "Taxonomy", href: "/taxonomy", icon: Tags, description: "Impact categories & tags" },
     ],
   },
   {
@@ -113,6 +112,7 @@ const navGroups: NavGroup[] = [
     href: "/scheduling",
     children: [
       { name: "Availability", href: "/scheduling", icon: CalendarClock, description: "Manage staff & mentor availability" },
+      { name: "Taxonomy", href: "/settings/taxonomy", icon: Tags, description: "Impact categories & tags" },
       { name: "About Us", href: "/settings/about-us", icon: Building2, description: "Organisation profile & identity" },
       { name: "Xero", href: "/settings/xero", icon: Receipt, description: "Xero integration & invoicing" },
       { name: "Team", href: "/settings/team", icon: UserCog, description: "Manage platform access", adminOnly: true },

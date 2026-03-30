@@ -157,7 +157,7 @@ function Router() {
           <ProtectedRoute component={TrackingDashboard} />
         </Route>
 
-        <Route path="/taxonomy">
+        <Route path="/settings/taxonomy">
           <ProtectedRoute component={Taxonomy} />
         </Route>
 

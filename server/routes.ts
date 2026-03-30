@@ -6,7 +6,7 @@ import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON, isAnthropicKeyConfigured, AIKeyMissingError } from "./replit_integrations/anthropic/client";
-import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, getStandoutMoments, getOperatorInsights, getParticipantTransformationStories, getPeopleTierBreakdown, getImpactTagHeatmap, getTheoryOfChangeAlignment, getGrowthStory, getOutcomeChain, getQuarterlyMilestones, evaluateDeliverables, PASIFIKA_ETHNICITIES, type ReportFilters, type CohortDefinition, type OrgProfileContext, type FunderContext } from "./reporting";
+import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, getStandoutMoments, getOperatorInsights, getParticipantTransformationStories, getPeopleTierBreakdown, getImpactTagHeatmap, getTheoryOfChangeAlignment, getGrowthStory, getOutcomeChain, getQuarterlyMilestones, evaluateDeliverables, getTaxonomyBreakdown, PASIFIKA_ETHNICITIES, type ReportFilters, type CohortDefinition, type OrgProfileContext, type FunderContext } from "./reporting";
 import { renderMonthlyReport, renderQuarterlyReport, type MonthlyReportData, type QuarterlyReportData, type MaoriPipelineData } from "./report-renderer";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
 import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings, normalizeStage, DEFAULT_AVAILABILITY_SCHEDULE, DEFAULT_VENUE_AVAILABILITY_SCHEDULE, type AvailabilitySchedule, bookingChangeRequests, funderTaxonomyCategories, funderTaxonomyClassifications, funderTaxonomyMappings, funders, } from "@shared/schema";
@@ -7157,6 +7157,22 @@ Important:
         return `${title} — ${notes}`;
       });
 
+      // Taxonomy breakdown for report
+      const rawTaxBreakdown = await getTaxonomyBreakdown({ userId, startDate, endDate });
+      const taxMap = new Map<string, { funderName: string; entityCounts: Record<string, number>; total: number }>();
+      for (const row of rawTaxBreakdown) {
+        if (!taxMap.has(row.categoryName)) {
+          taxMap.set(row.categoryName, { funderName: row.funderName, entityCounts: {}, total: 0 });
+        }
+        const entry = taxMap.get(row.categoryName)!;
+        entry.entityCounts[row.entityType] = (entry.entityCounts[row.entityType] || 0) + row.count;
+        entry.total += row.count;
+      }
+      const taxonomyBreakdown = Array.from(taxMap.entries()).map(([categoryName, data]) => ({
+        categoryName,
+        ...data,
+      }));
+
       const reportData: MonthlyReportData = {
         period: { month: month, year, label: `${monthName} ${year}`, fyLabel },
         funderName,
@@ -7182,6 +7198,7 @@ Important:
         updates: { "Updates": updateItems },
         quotes: Array.isArray(req.body?.quotes) ? req.body.quotes : [],
         plannedNextMonth: Array.isArray(req.body?.plannedNext) ? req.body.plannedNext : [],
+        taxonomyBreakdown: taxonomyBreakdown.length > 0 ? taxonomyBreakdown : undefined,
       };
 
       const html = renderMonthlyReport(reportData);
@@ -7454,6 +7471,22 @@ Important:
         previousQuarter,
       };
 
+      // Taxonomy breakdown for quarterly report
+      const rawQTaxBreakdown = await getTaxonomyBreakdown({ userId, startDate, endDate });
+      const qTaxMap = new Map<string, { funderName: string; entityCounts: Record<string, number>; total: number }>();
+      for (const row of rawQTaxBreakdown) {
+        if (!qTaxMap.has(row.categoryName)) {
+          qTaxMap.set(row.categoryName, { funderName: row.funderName, entityCounts: {}, total: 0 });
+        }
+        const entry = qTaxMap.get(row.categoryName)!;
+        entry.entityCounts[row.entityType] = (entry.entityCounts[row.entityType] || 0) + row.count;
+        entry.total += row.count;
+      }
+      const qTaxonomyBreakdown = Array.from(qTaxMap.entries()).map(([categoryName, data]) => ({
+        categoryName,
+        ...data,
+      }));
+
       const reportData: QuarterlyReportData = {
         period: {
           quarter: quarterLabel,
@@ -7480,6 +7513,7 @@ Important:
         plannedNextQuarter: Array.isArray(req.body?.plannedNext) ? req.body.plannedNext : [],
         footTraffic: { total: ftTotal, byMonth: ftByMonth },
         maoriPipeline,
+        taxonomyBreakdown: qTaxonomyBreakdown.length > 0 ? qTaxonomyBreakdown : undefined,
       };
 
       const html = renderQuarterlyReport(reportData);
@@ -10019,10 +10053,61 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
         conds.push(gte(funderTaxonomyClassifications.confidence, parseInt(parseStr(req.query.minConfidence))));
       }
       const classifications = await db
-        .select()
+        .select({
+          id: funderTaxonomyClassifications.id,
+          funderId: funderTaxonomyClassifications.funderId,
+          funderCategoryId: funderTaxonomyClassifications.funderCategoryId,
+          entityType: funderTaxonomyClassifications.entityType,
+          entityId: funderTaxonomyClassifications.entityId,
+          entityDate: funderTaxonomyClassifications.entityDate,
+          confidence: funderTaxonomyClassifications.confidence,
+          source: funderTaxonomyClassifications.source,
+          evidence: funderTaxonomyClassifications.evidence,
+          categoryName: funderTaxonomyCategories.name,
+          categoryColor: funderTaxonomyCategories.color,
+        })
         .from(funderTaxonomyClassifications)
+        .innerJoin(funderTaxonomyCategories, eq(funderTaxonomyClassifications.funderCategoryId, funderTaxonomyCategories.id))
         .where(and(...conds));
-      res.json(classifications);
+
+      // Batch-lookup entity titles
+      const byType = new Map<string, number[]>();
+      for (const c of classifications) {
+        if (!byType.has(c.entityType)) byType.set(c.entityType, []);
+        byType.get(c.entityType)!.push(c.entityId);
+      }
+      const titleMap = new Map<string, string>();
+      for (const [type, ids] of byType) {
+        const uniqueIds = [...new Set(ids)];
+        if (uniqueIds.length === 0) continue;
+        let rows: Array<{ id: number; title: string }> = [];
+        if (type === "debrief") {
+          rows = (await db.execute<{ id: number; title: string }>(
+            `SELECT id, COALESCE(title, 'Untitled debrief') as title FROM impact_logs WHERE id = ANY(ARRAY[${uniqueIds.join(",")}])`
+          )).rows;
+        } else if (type === "booking") {
+          rows = (await db.execute<{ id: number; title: string }>(
+            `SELECT id, COALESCE(title, booker_name, 'Untitled booking') as title FROM bookings WHERE id = ANY(ARRAY[${uniqueIds.join(",")}])`
+          )).rows;
+        } else if (type === "programme") {
+          rows = (await db.execute<{ id: number; title: string }>(
+            `SELECT id, COALESCE(name, 'Untitled programme') as title FROM programmes WHERE id = ANY(ARRAY[${uniqueIds.join(",")}])`
+          )).rows;
+        } else if (type === "event") {
+          rows = (await db.execute<{ id: number; title: string }>(
+            `SELECT id, COALESCE(name, 'Untitled event') as title FROM events WHERE id = ANY(ARRAY[${uniqueIds.join(",")}])`
+          )).rows;
+        }
+        for (const r of rows) {
+          titleMap.set(`${type}-${r.id}`, r.title);
+        }
+      }
+
+      const enriched = classifications.map((c) => ({
+        ...c,
+        entityTitle: titleMap.get(`${c.entityType}-${c.entityId}`) || "Unknown",
+      }));
+      res.json(enriched);
     } catch (err) {
       console.error("Error fetching classifications:", err);
       res.status(500).json({ message: "Failed to fetch classifications" });

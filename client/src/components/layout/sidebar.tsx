@@ -78,7 +78,6 @@ const navigation: NavItem[] = [
       { name: "Reports", href: "/reports", icon: FileText },
       { name: "Tracking", href: "/tracking", icon: BarChart3 },
       { name: "DOM", href: "/dom", icon: FileText },
-      { name: "Taxonomy", href: "/taxonomy", icon: Tags },
     ],
   },
   {
@@ -93,6 +92,7 @@ const navigation: NavItem[] = [
     name: "Settings", href: "/scheduling", icon: Settings,
     children: [
       { name: "Availability", href: "/scheduling", icon: CalendarClock },
+      { name: "Taxonomy", href: "/settings/taxonomy", icon: Tags },
       { name: "About Us", href: "/settings/about-us", icon: Building2 },
       { name: "Xero", href: "/settings/xero", icon: Receipt },
     ],
