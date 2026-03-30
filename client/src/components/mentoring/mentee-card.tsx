@@ -165,6 +165,9 @@ export function MenteeCard({ relationship, defaultExpanded }: { relationship: En
   const [expanded, setExpanded] = useState(defaultExpanded || false);
   const [confirmStatus, setConfirmStatus] = useState<"graduated" | "ended" | null>(null);
   const [showReactivate, setShowReactivate] = useState(false);
+  const [reactivateStage, setReactivateStage] = useState<string>(
+    relationship.status === "graduated" ? "tipu" : "kakano"
+  );
   const [editingBaseline, setEditingBaseline] = useState(false);
   const [editingFocus, setEditingFocus] = useState(false);
   const [baselineDraft, setBaselineDraft] = useState<Record<string, number>>({
@@ -702,9 +705,29 @@ export function MenteeCard({ relationship, defaultExpanded }: { relationship: En
           <DialogHeader>
             <DialogTitle>Re-activate Mentee</DialogTitle>
             <DialogDescription>
-              Re-start the mentoring relationship with {relationship.contactName}? They'll move back to Kakano stage with a fresh start date.
+              Re-start the mentoring relationship with {relationship.contactName}? They'll get a fresh start date.
             </DialogDescription>
           </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label className="text-sm font-medium">Starting stage</Label>
+            <div className="flex gap-2">
+              {[
+                { value: "kakano", label: "Kākano" },
+                { value: "tipu", label: "Tipu" },
+                { value: "ora", label: "Ora" },
+              ].map((s) => (
+                <Button
+                  key={s.value}
+                  size="sm"
+                  variant={reactivateStage === s.value ? "default" : "outline"}
+                  className="flex-1"
+                  onClick={() => setReactivateStage(s.value)}
+                >
+                  {s.label}
+                </Button>
+              ))}
+            </div>
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowReactivate(false)}>Cancel</Button>
             <Button
@@ -715,7 +738,7 @@ export function MenteeCard({ relationship, defaultExpanded }: { relationship: En
                   endDate: null,
                   startDate: new Date().toISOString(),
                 });
-                updateContact.mutate({ id: relationship.contactId, stage: "kakano", isCommunityMember: true });
+                updateContact.mutate({ id: relationship.contactId, stage: reactivateStage, isCommunityMember: true });
                 setShowReactivate(false);
               }}
               disabled={updateRelationship.isPending}

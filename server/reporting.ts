@@ -1233,7 +1233,7 @@ export async function getTheoryOfChangeAlignment(filters: ReportFilters, orgProf
     description: "Building and strengthening community relationships",
     activities: [
       `${delivery.events.total} community events delivered`,
-      `${mentoring.totalSessions} mentoring sessions facilitated`,
+      `${mentoring.completedSessions} mentoring sessions facilitated`,
       delivery.partnerMeetings > 0 ? `${delivery.partnerMeetings} partner meetings held` : "",
     ].filter(Boolean),
     evidence: [

@@ -110,6 +110,16 @@ export default function ContactDetail() {
     enabled: !!id,
   });
 
+  const { data: mentoringRelationships } = useQuery<any[]>({
+    queryKey: ['/api/contacts', id, 'mentoring-relationships'],
+    queryFn: () => fetch(`/api/contacts/${id}/mentoring-relationships`, { credentials: 'include' }).then(r => r.json()),
+    enabled: !!id,
+  });
+
+  const { data: mentorProfiles } = useQuery<any[]>({
+    queryKey: ['/api/mentor-profiles'],
+  });
+
   const stageMutation = useMutation({
     mutationFn: (stage: string) =>
       apiRequest('PATCH', `/api/contacts/${id}/relationship-stage`, { stage }),
@@ -1084,6 +1094,9 @@ export default function ContactDetail() {
           <Tabs defaultValue="overview" className="space-y-6">
             <TabsList className="bg-card border border-border p-1 rounded-xl w-full overflow-x-auto flex-nowrap justify-start sm:justify-center">
               <TabsTrigger value="overview" className="rounded-lg data-[state=active]:bg-primary/10 data-[state=active]:text-primary" data-testid="tab-overview">Overview</TabsTrigger>
+              {mentoringRelationships && mentoringRelationships.length > 0 && (
+                <TabsTrigger value="mentoring" className="rounded-lg data-[state=active]:bg-primary/10 data-[state=active]:text-primary" data-testid="tab-mentoring">Mentoring</TabsTrigger>
+              )}
               <TabsTrigger value="activity" className="rounded-lg data-[state=active]:bg-primary/10 data-[state=active]:text-primary" data-testid="tab-activity">Activity</TabsTrigger>
             </TabsList>
 
@@ -1172,6 +1185,92 @@ export default function ContactDetail() {
                 </div>
               )}
             </TabsContent>
+
+            {mentoringRelationships && mentoringRelationships.length > 0 && (
+              <TabsContent value="mentoring" className="space-y-6" data-testid="mentoring-content">
+                {mentoringRelationships.map((rel: any) => {
+                  const mentor = mentorProfiles?.find((p: any) => p.id === rel.mentorId || `mentor-${p.id}` === rel.mentorId);
+                  const statusColors: Record<string, string> = {
+                    active: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
+                    on_hold: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
+                    graduated: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+                    ended: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
+                    application: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
+                  };
+                  return (
+                    <div key={rel.id} className="bg-card rounded-2xl p-6 border border-border shadow-sm space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-semibold flex items-center gap-2">
+                          <Users className="w-5 h-5 text-primary" />
+                          Mentoring Relationship
+                        </h3>
+                        <Badge className={cn("text-xs", statusColors[rel.status] || "bg-gray-100")}>
+                          {rel.status === "on_hold" ? "On Hold" : rel.status?.charAt(0).toUpperCase() + rel.status?.slice(1)}
+                        </Badge>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+                        {mentor && (
+                          <div>
+                            <p className="text-xs text-muted-foreground">Mentor</p>
+                            <p className="font-medium">{mentor.name}</p>
+                          </div>
+                        )}
+                        {rel.startDate && (
+                          <div>
+                            <p className="text-xs text-muted-foreground">Started</p>
+                            <p className="font-medium">{format(new Date(rel.startDate), "d MMM yyyy")}</p>
+                          </div>
+                        )}
+                        {rel.frequency && (
+                          <div>
+                            <p className="text-xs text-muted-foreground">Frequency</p>
+                            <p className="font-medium capitalize">{rel.frequency}</p>
+                          </div>
+                        )}
+                        {rel.focusAreas && (
+                          <div className="col-span-2 sm:col-span-3">
+                            <p className="text-xs text-muted-foreground">Focus Areas</p>
+                            <p className="font-medium">{rel.focusAreas}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Growth scores from contact metrics */}
+                      {contact?.metrics && Object.keys(contact.metrics).length > 0 && (
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-2">Current Growth Scores</p>
+                          <div className="flex flex-wrap gap-2">
+                            {Object.entries(contact.metrics as Record<string, number>).filter(([, v]) => typeof v === "number" && v > 0).map(([key, value]) => (
+                              <div key={key} className="flex items-center gap-1.5 bg-muted/50 rounded-lg px-2.5 py-1.5">
+                                <span className="text-[10px] text-muted-foreground capitalize">{key.replace(/([A-Z])/g, " $1").trim()}</span>
+                                <span className="text-xs font-bold">{value}/10</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {rel.mentorNotes && (
+                        <div>
+                          <p className="text-xs text-muted-foreground">Mentor Notes</p>
+                          <p className="text-sm mt-1">{rel.mentorNotes}</p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                <div className="flex justify-center">
+                  <Link href="/mentoring">
+                    <Button variant="outline" size="sm">
+                      <Users className="w-4 h-4 mr-2" />
+                      View in Mentoring
+                    </Button>
+                  </Link>
+                </div>
+              </TabsContent>
+            )}
 
             <TabsContent value="activity" className="space-y-4" data-testid="activity-content">
               {/* Programme registrations */}
