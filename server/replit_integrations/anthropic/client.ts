@@ -66,5 +66,11 @@ export async function claudeJSON(options: {
   });
 
   const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
-  return JSON.parse(cleaned);
+  try {
+    return JSON.parse(cleaned);
+  } catch (e) {
+    // Log truncated response for debugging
+    console.error("[claudeJSON] Failed to parse response. Length:", cleaned.length, "Last 100 chars:", cleaned.slice(-100));
+    throw new Error(`AI returned invalid JSON (response length: ${cleaned.length} chars). Response may have been truncated.`);
+  }
 }

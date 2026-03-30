@@ -3595,6 +3595,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         model: "claude-sonnet-4-6",
         prompt,
         temperature: 0.3,
+        maxTokens: 16384,
       });
 
       const autoApplyTags = async (logId: number, extractedTags: any[]) => {
@@ -3657,8 +3658,12 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       }
     } catch (error: any) {
       if (error instanceof AIKeyMissingError) return res.status(503).json({ message: error.message });
-      console.error("Impact extraction error:", error);
-      res.status(500).json({ message: "Failed to extract impact data" });
+      const isJsonParse = error instanceof SyntaxError || error.message?.includes("JSON");
+      console.error("Impact extraction error:", isJsonParse ? "JSON parse failure — likely truncated response" : error.message, error);
+      if (isJsonParse) {
+        return res.status(500).json({ message: "AI analysis returned incomplete data. Try a shorter transcript or retry." });
+      }
+      res.status(500).json({ message: `Extraction failed: ${error.message || "unknown error"}` });
     }
   });
 
