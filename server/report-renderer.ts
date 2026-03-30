@@ -15,6 +15,7 @@ export interface MonthlyReportData {
   updates: Record<string, string[]>;
   quotes: Array<{ text: string; attribution: string }>;
   plannedNextMonth: Array<{ title: string; description: string }>;
+  taxonomyBreakdown?: Array<{ categoryName: string; funderName: string; entityCounts: Record<string, number>; total: number }>;
 }
 
 export interface MaoriPipelineData {
@@ -38,6 +39,7 @@ export interface QuarterlyReportData {
   plannedNextQuarter: Array<{ title: string; description: string }>;
   footTraffic: { total: number; byMonth: Record<string, number> };
   maoriPipeline?: MaoriPipelineData;
+  taxonomyBreakdown?: Array<{ categoryName: string; funderName: string; entityCounts: Record<string, number>; total: number }>;
 }
 
 // ── Shared CSS ─────────────────────────────────────────────────
@@ -153,6 +155,21 @@ export function renderMonthlyReport(data: MonthlyReportData): string {
     <ul class="bullets">${items.map(i => `<li>${esc(i)}</li>`).join("")}</ul>
   `).join("");
 
+  // Taxonomy breakdown rows
+  const hasTaxonomy = data.taxonomyBreakdown && data.taxonomyBreakdown.length > 0;
+  const taxonomyRows = (data.taxonomyBreakdown || []).map(t => `
+    <tr>
+      <td>${esc(t.categoryName)}</td>
+      <td style="text-align:center">${t.entityCounts["debrief"] || 0}</td>
+      <td style="text-align:center">${t.entityCounts["booking"] || 0}</td>
+      <td style="text-align:center">${t.entityCounts["programme"] || 0}</td>
+      <td style="text-align:center"><strong>${t.total}</strong></td>
+    </tr>
+  `).join("");
+
+  // Section numbering — shift if taxonomy section present
+  const sn = (base: number) => hasTaxonomy ? base + 1 : base;
+
   // Quote blocks
   const quoteBlocks = quotes.map(q => `
     <div class="quote">
@@ -235,21 +252,33 @@ export function renderMonthlyReport(data: MonthlyReportData): string {
   </table>
 </div>
 
+${hasTaxonomy ? `
 <div class="section">
-  <h2>4. Updates</h2>
+  <h2>4. Impact Classification</h2>
+  <table>
+    <thead><tr><th>Category</th><th style="text-align:center">Debriefs</th><th style="text-align:center">Bookings</th><th style="text-align:center">Programmes</th><th style="text-align:center">Total</th></tr></thead>
+    <tbody>
+      ${taxonomyRows}
+    </tbody>
+  </table>
+</div>
+` : ""}
+
+<div class="section">
+  <h2>${sn(4)}. Updates</h2>
   ${updateSections}
 </div>
 
 ${quotes.length > 0 ? `
 <div class="section">
-  <h2>5. In Their Words</h2>
+  <h2>${sn(5)}. In Their Words</h2>
   <div class="quotes">${quoteBlocks}</div>
 </div>
 ` : ""}
 
 ${plannedNextMonth.length > 0 ? `
 <div class="section">
-  <h2>6. Planned Next Month</h2>
+  <h2>${sn(6)}. Planned Next Month</h2>
   <div class="next-grid">${nextItems}</div>
 </div>
 ` : ""}
@@ -300,6 +329,25 @@ export function renderQuarterlyReport(data: QuarterlyReportData): string {
   const nextItems = plannedNextQuarter.map(n =>
     `<div class="next-item"><strong>${esc(n.title)}</strong>${esc(n.description)}</div>`
   ).join("");
+
+  const qHasTaxonomy = data.taxonomyBreakdown && data.taxonomyBreakdown.length > 0;
+  const qTaxonomyRows = (data.taxonomyBreakdown || []).map(t => `
+    <tr>
+      <td>${esc(t.categoryName)}</td>
+      <td style="text-align:center">${t.entityCounts["debrief"] || 0}</td>
+      <td style="text-align:center">${t.entityCounts["booking"] || 0}</td>
+      <td style="text-align:center">${t.entityCounts["programme"] || 0}</td>
+      <td style="text-align:center"><strong>${t.total}</strong></td>
+    </tr>
+  `).join("");
+
+  // Dynamic section numbering for quarterly: 1=Delivery, 2=Community, 3=Space Use, then optional taxonomy, optional maori pipeline, updates, etc.
+  let qSec = 4;
+  const qTaxSec = qHasTaxonomy ? qSec++ : 0;
+  const qMaoriSec = data.maoriPipeline ? qSec++ : 0;
+  const qUpdateSec = qSec++;
+  const qQuoteSec = qSec++;
+  const qPlannedSec = qSec++;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -361,9 +409,21 @@ export function renderQuarterlyReport(data: QuarterlyReportData): string {
   </table>
 </div>
 
+${qHasTaxonomy ? `
+<div class="section">
+  <h2>${qTaxSec}. Impact Classification</h2>
+  <table>
+    <thead><tr><th>Category</th><th style="text-align:center">Debriefs</th><th style="text-align:center">Bookings</th><th style="text-align:center">Programmes</th><th style="text-align:center">Total</th></tr></thead>
+    <tbody>
+      ${qTaxonomyRows}
+    </tbody>
+  </table>
+</div>
+` : ""}
+
 ${data.maoriPipeline ? `
 <div class="section">
-  <h2>4. Māori & Pasifika Pipeline</h2>
+  <h2>${qMaoriSec}. Māori & Pasifika Pipeline</h2>
   <div class="snapshot-grid">
     <div class="snapshot-card dark">
       <div class="snapshot-label">Māori Innovators</div>
@@ -412,20 +472,20 @@ ${data.maoriPipeline ? `
 ` : ""}
 
 <div class="section">
-  <h2>${data.maoriPipeline ? "5" : "4"}. Updates</h2>
+  <h2>${qUpdateSec}. Updates</h2>
   ${updateSections}
 </div>
 
 ${quotes.length > 0 ? `
 <div class="section">
-  <h2>${data.maoriPipeline ? "6" : "5"}. In Their Words</h2>
+  <h2>${qQuoteSec}. In Their Words</h2>
   <div class="quotes">${quoteBlocks}</div>
 </div>
 ` : ""}
 
 ${plannedNextQuarter.length > 0 ? `
 <div class="section">
-  <h2>${data.maoriPipeline ? "7" : "6"}. Planned Next Quarter</h2>
+  <h2>${qPlannedSec}. Planned Next Quarter</h2>
   <div class="next-grid">${nextItems}</div>
 </div>
 ` : ""}

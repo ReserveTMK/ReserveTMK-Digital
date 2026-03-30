@@ -11,7 +11,7 @@ import {
 } from "recharts";
 import {
   Users, Loader2, CalendarDays, Activity, TrendingUp, Building2,
-  DollarSign, Handshake, Clock, Zap, ChevronDown, ChevronUp,
+  DollarSign, Handshake, Clock, Zap, ChevronDown, ChevronUp, Tags,
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
 
@@ -156,6 +156,7 @@ export default function TrackingDashboard() {
   const imp = reportData?.impact;
   const val = reportData?.value;
   const jp = reportData?.journeyProgression;
+  const taxBreakdown = reportData?.taxonomyBreakdown as Array<{ categoryName: string; categoryColor: string | null; funderName: string; funderId: number; entityType: string; count: number }> | undefined;
 
   const handleGenerate = async () => {
     if (!selectedOpt) return;
@@ -508,7 +509,63 @@ export default function TrackingDashboard() {
             </div>
           </CollapsibleSection>
 
-          {/* 5. Trends */}
+          {/* 5. Impact by Category */}
+          {taxBreakdown && taxBreakdown.length > 0 && (() => {
+            const COLOR_MAP: Record<string, string> = {
+              purple: "bg-purple-500", blue: "bg-blue-500", green: "bg-green-500",
+              amber: "bg-amber-500", red: "bg-red-500", pink: "bg-pink-500",
+              teal: "bg-teal-500", orange: "bg-orange-500", cyan: "bg-cyan-500",
+              indigo: "bg-indigo-500",
+            };
+            const TYPE_LABELS: Record<string, string> = {
+              debrief: "Debriefs", booking: "Bookings", programme: "Programmes", event: "Events",
+            };
+            // Group by funder, then by category
+            const byFunder = new Map<string, Map<string, { color: string | null; types: Record<string, number>; total: number }>>();
+            for (const row of taxBreakdown) {
+              if (!byFunder.has(row.funderName)) byFunder.set(row.funderName, new Map());
+              const cats = byFunder.get(row.funderName)!;
+              if (!cats.has(row.categoryName)) cats.set(row.categoryName, { color: row.categoryColor, types: {}, total: 0 });
+              const cat = cats.get(row.categoryName)!;
+              cat.types[row.entityType] = (cat.types[row.entityType] || 0) + row.count;
+              cat.total += row.count;
+            }
+            return (
+              <CollapsibleSection title="Impact by Category" icon={Tags} testId="section-taxonomy" defaultOpen={false}>
+                <div className="pt-4 space-y-4">
+                  {Array.from(byFunder.entries()).map(([funderName, cats]) => (
+                    <div key={funderName}>
+                      {byFunder.size > 1 && (
+                        <h4 className="text-sm font-semibold mb-2">{funderName}</h4>
+                      )}
+                      <div className="space-y-2">
+                        {Array.from(cats.entries())
+                          .sort((a, b) => b[1].total - a[1].total)
+                          .map(([catName, data]) => (
+                            <div key={catName} className="flex items-center gap-3 p-3 rounded-lg border border-border">
+                              <span className={`w-3 h-3 rounded-full shrink-0 ${COLOR_MAP[data.color || "purple"] || "bg-purple-500"}`} />
+                              <div className="flex-1 min-w-0">
+                                <span className="font-medium text-sm">{catName}</span>
+                                <div className="flex gap-2 mt-0.5 flex-wrap">
+                                  {Object.entries(data.types).map(([type, count]) => (
+                                    <span key={type} className="text-xs text-muted-foreground">
+                                      {count} {TYPE_LABELS[type] || type}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                              <Badge variant="secondary" className="text-sm font-semibold">{data.total}</Badge>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CollapsibleSection>
+            );
+          })()}
+
+          {/* 6. Trends */}
           <CollapsibleSection title="Trends" icon={TrendingUp} testId="section-trends" defaultOpen={false}>
             <div className="pt-4 space-y-4">
               <div className="flex items-center justify-between gap-3 flex-wrap">
