@@ -986,3 +986,151 @@ export async function sendChangeRequestStatusEmail(
 
   await sendEmail(bookerEmail, `Change Request ${statusLabel} — ${dateStr}`, htmlBody);
 }
+
+// ─── Delivery Confirmation Emails ───────────────────────────────────────────
+
+function deliveryConfirmationTemplate(opts: {
+  bannerColor: string;
+  heading: string;
+  greeting: string;
+  intro: string;
+  details: Array<{ label: string; value: string }>;
+  footer?: string;
+}): string {
+  const detailRows = opts.details
+    .map(d => `<p style="margin:5px 0;"><strong>${d.label}:</strong> ${d.value}</p>`)
+    .join("");
+
+  return `<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:20px auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+  <tr><td style="padding:30px;background:${opts.bannerColor};text-align:center;">
+    <h1 style="margin:0;color:#ffffff;font-size:22px;">${opts.heading}</h1>
+    <p style="margin:8px 0 0;color:rgba(255,255,255,0.8);font-size:14px;">Reserve Tāmaki</p>
+  </td></tr>
+  <tr><td style="padding:25px 30px 10px;">
+    <p style="margin:0;font-size:16px;color:#111827;">Hi ${opts.greeting},</p>
+    <p style="margin:10px 0;font-size:14px;color:#374151;">${opts.intro}</p>
+  </td></tr>
+  <tr><td style="padding:10px 30px;">
+    <table width="100%" style="background:#f0fdf4;border-radius:6px;" cellpadding="0" cellspacing="0">
+      <tr><td style="padding:15px;">
+        ${detailRows}
+      </td></tr>
+    </table>
+  </td></tr>
+  <tr><td style="padding:25px 30px;">
+    ${opts.footer || ""}
+    <p style="margin:15px 0 0;font-size:14px;color:#374151;">Questions? Reply to this email or call <strong>021 022 98172</strong></p>
+    <p style="margin:15px 0 0;font-size:14px;color:#374151;">Ngā mihi,<br><strong>Reserve Tāmaki Team</strong></p>
+  </td></tr>
+  <tr><td style="padding:15px 30px;background:#f9fafb;text-align:center;">
+    <p style="margin:0;font-size:12px;color:#9ca3af;">Reserve Tāmaki Hub &bull; 133a Line Road, Glen Innes, Auckland 1072</p>
+  </td></tr>
+</table>
+</body>
+</html>`;
+}
+
+export async function sendMentoringBookingConfirmation(
+  to: string,
+  opts: { contactName: string; mentorName: string; date: string; time: string },
+): Promise<void> {
+  const dateStr = formatDate(opts.date);
+  const html = deliveryConfirmationTemplate({
+    bannerColor: "#2563eb",
+    heading: "Mentoring Session Booked!",
+    greeting: opts.contactName,
+    intro: "Your mentoring session has been booked. We look forward to seeing you!",
+    details: [
+      { label: "Mentor", value: opts.mentorName },
+      { label: "Date", value: dateStr },
+      { label: "Time", value: opts.time },
+      { label: "Location", value: "Reserve Tāmaki Hub, 133a Line Road, Glen Innes" },
+    ],
+  });
+  await sendEmail(to, `Mentoring Session Booked — ${dateStr}`, html);
+}
+
+export async function sendRegistrationConfirmation(
+  to: string,
+  opts: { contactName: string; programmeName: string; date?: string | null; time?: string | null; location?: string | null },
+): Promise<void> {
+  const dateStr = opts.date ? formatDate(opts.date) : null;
+  const details: Array<{ label: string; value: string }> = [
+    { label: "Programme", value: opts.programmeName },
+  ];
+  if (dateStr) details.push({ label: "Date", value: dateStr });
+  if (opts.time) details.push({ label: "Time", value: opts.time });
+  details.push({ label: "Location", value: opts.location || "Reserve Tāmaki Hub, 133a Line Road, Glen Innes" });
+
+  const html = deliveryConfirmationTemplate({
+    bannerColor: "#7c3aed",
+    heading: "Registration Confirmed!",
+    greeting: opts.contactName,
+    intro: `You're registered for ${opts.programmeName}. We're excited to have you!`,
+    details,
+  });
+  await sendEmail(to, `Registered — ${opts.programmeName}`, html);
+}
+
+export async function sendCasualHireConfirmation(
+  to: string,
+  opts: { contactName: string; venueName: string; date: string; startTime?: string | null; endTime?: string | null },
+): Promise<void> {
+  const dateStr = formatDate(opts.date);
+  const timeStr = [opts.startTime, opts.endTime].filter(Boolean).map(t => formatTime(t!)).join(" – ") || "TBC";
+  const html = deliveryConfirmationTemplate({
+    bannerColor: "#f59e0b",
+    heading: "Enquiry Received!",
+    greeting: opts.contactName,
+    intro: "Thanks for your venue hire enquiry. Our team will be in touch shortly to confirm your booking.",
+    details: [
+      { label: "Space", value: opts.venueName },
+      { label: "Date", value: dateStr },
+      { label: "Time", value: timeStr },
+      { label: "Status", value: "Pending confirmation" },
+    ],
+    footer: `<p style="margin:0 0 10px;font-size:14px;color:#374151;">We'll review your request and get back to you within 1-2 business days.</p>`,
+  });
+  await sendEmail(to, `Venue Enquiry Received — ${dateStr}`, html);
+}
+
+export async function sendGearBookingConfirmation(
+  to: string,
+  opts: { contactName: string; itemName: string; date: string },
+): Promise<void> {
+  const dateStr = formatDate(opts.date);
+  const html = deliveryConfirmationTemplate({
+    bannerColor: "#059669",
+    heading: "Gear Booking Confirmed!",
+    greeting: opts.contactName,
+    intro: "Your gear booking has been confirmed.",
+    details: [
+      { label: "Item", value: opts.itemName },
+      { label: "Date", value: dateStr },
+      { label: "Pickup", value: "Reserve Tāmaki Hub, 133a Line Road, Glen Innes" },
+    ],
+  });
+  await sendEmail(to, `Gear Booked — ${opts.itemName} — ${dateStr}`, html);
+}
+
+export async function sendDeskBookingConfirmation(
+  to: string,
+  opts: { contactName: string; deskName: string; date: string },
+): Promise<void> {
+  const dateStr = formatDate(opts.date);
+  const html = deliveryConfirmationTemplate({
+    bannerColor: "#0891b2",
+    heading: "Desk Booking Confirmed!",
+    greeting: opts.contactName,
+    intro: "Your hot desk booking is confirmed. See you there!",
+    details: [
+      { label: "Desk", value: opts.deskName },
+      { label: "Date", value: dateStr },
+      { label: "Location", value: "Reserve Tāmaki Hub, 133a Line Road, Glen Innes" },
+    ],
+  });
+  await sendEmail(to, `Desk Booked — ${dateStr}`, html);
+}
