@@ -1817,11 +1817,11 @@ export default function CalendarPage() {
     });
 
     const linkedBookingIds = new Set(
-      (appEvents || []).filter(e => e.linkedBookingId).map(e => e.linkedBookingId)
+      (appEvents || []).filter(e => e.linkedBookingId).map(e => Number(e.linkedBookingId))
     );
     (allBookings || []).forEach((b: Booking) => {
       if (b.status !== "confirmed" && b.status !== "completed") return;
-      if (linkedBookingIds.has(b.id)) return;
+      if (linkedBookingIds.has(Number(b.id))) return;
       if (!b.startDate) return;
       const d = new Date(b.startDate);
       let endMoment: Date;
@@ -1898,6 +1898,9 @@ export default function CalendarPage() {
     const mStart = startOfMonth(currentMonth);
     const mEnd = endOfMonth(currentMonth);
     let count = 0;
+    const monthLinkedBookingIds = new Set(
+      (appEvents || []).filter(e => e.linkedBookingId).map(e => Number(e.linkedBookingId))
+    );
     if (appEvents) {
       for (const e of appEvents) {
         const d = new Date(e.startTime);
@@ -1907,6 +1910,7 @@ export default function CalendarPage() {
     if (allBookings) {
       for (const b of allBookings as Booking[]) {
         if (b.status !== "confirmed" && b.status !== "completed") continue;
+        if (monthLinkedBookingIds.has(Number(b.id))) continue;
         if (!b.startDate) continue;
         const d = new Date(b.startDate);
         if (d >= mStart && d <= mEnd) count++;

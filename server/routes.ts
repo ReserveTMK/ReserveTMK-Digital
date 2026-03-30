@@ -196,16 +196,20 @@ async function ensureBookingEvent(booking: any, userId: string): Promise<void> {
     const bookerName = booking.bookerName || "";
     const title = booking.title || `${booking.classification || "Venue Hire"} — ${bookerName}`.trim();
 
-    const startDate = new Date(booking.startDate);
-    let startTime = new Date(startDate);
-    let endTime = new Date(startDate);
+    // booking.startDate is stored as midnight NZ time in UTC (e.g. 2026-03-30T11:00:00Z = Mar 31 00:00 NZDT)
+    // To build correct event times, add hours/minutes to this base (which keeps NZ timezone alignment)
+    const baseDateMs = new Date(booking.startDate).getTime();
+    let startTime: Date;
+    let endTime: Date;
     if (booking.startTime) {
       const [h, m] = booking.startTime.split(":").map(Number);
-      startTime.setHours(h, m, 0, 0);
+      startTime = new Date(baseDateMs + (h * 60 + m) * 60 * 1000);
+    } else {
+      startTime = new Date(baseDateMs + 9 * 60 * 60 * 1000); // default 9am
     }
     if (booking.endTime) {
       const [h, m] = booking.endTime.split(":").map(Number);
-      endTime.setHours(h, m, 0, 0);
+      endTime = new Date(baseDateMs + (h * 60 + m) * 60 * 1000);
     } else {
       endTime = new Date(startTime.getTime() + 2 * 60 * 60 * 1000);
     }
