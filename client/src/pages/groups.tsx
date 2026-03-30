@@ -1232,6 +1232,19 @@ function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, t
     },
   });
 
+  const inlineUpdateMutation = useMutation({
+    mutationFn: async ({ groupId, data }: { groupId: number; data: Record<string, any> }) => {
+      const res = await apiRequest("PATCH", `/api/groups/${groupId}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
   const handleSort = (field: GroupSortField) => {
     if (sortField === field) {
       if (sortDir === "asc") setSortDir("desc");
@@ -1288,6 +1301,8 @@ function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, t
               )}
               <GroupSortHeader label="Name" field="name" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-4" />
               <GroupSortHeader label="Type" field="type" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
+              <th className="px-2 py-3 text-xs font-medium text-muted-foreground text-center" title="Māori-led">Māori</th>
+              <th className="px-2 py-3 text-xs font-medium text-muted-foreground text-center" title="Pasifika-led">Pasifika</th>
               <th className="px-3 py-3 text-xs font-medium text-muted-foreground text-left">Community</th>
               <GroupSortHeader label="Members" field="members" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
               <GroupSortHeader label="Contact" field="contact" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
@@ -1326,17 +1341,38 @@ function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, t
                       <span className="font-medium truncate max-w-[200px]">{group.name}</span>
                     </button>
                   </td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-1.5">
-                      <Badge className={`text-[10px] h-5 px-2 ${GROUP_TYPE_COLORS[group.type] || ""}`} data-testid={`table-type-group-${group.id}`}>
-                        {displayGroupType(group)}
+                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                    <select
+                      className="text-[11px] font-medium bg-transparent border border-transparent hover:border-border rounded px-1.5 py-0.5 cursor-pointer transition-colors focus:border-primary focus:outline-none"
+                      value={group.type || ""}
+                      onChange={(e) => inlineUpdateMutation.mutate({ groupId: group.id, data: { type: e.target.value } })}
+                      data-testid={`table-type-group-${group.id}`}
+                    >
+                      {GROUP_TYPES.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                    {group.engagementLevel && group.engagementLevel !== "Active" && (
+                      <Badge className={`text-[9px] h-4 px-1.5 ml-1 ${ENGAGEMENT_COLORS[group.engagementLevel] || ""}`} data-testid={`table-engagement-${group.id}`}>
+                        {group.engagementLevel}
                       </Badge>
-                      {group.engagementLevel && group.engagementLevel !== "Active" && (
-                        <Badge className={`text-[9px] h-4 px-1.5 ${ENGAGEMENT_COLORS[group.engagementLevel] || ""}`} data-testid={`table-engagement-${group.id}`}>
-                          {group.engagementLevel}
-                        </Badge>
-                      )}
-                    </div>
+                    )}
+                  </td>
+                  <td className="px-2 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      checked={group.isMaori || false}
+                      onCheckedChange={(v) => inlineUpdateMutation.mutate({ groupId: group.id, data: { isMaori: v === true } })}
+                      className="mx-auto"
+                      data-testid={`table-maori-${group.id}`}
+                    />
+                  </td>
+                  <td className="px-2 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      checked={group.isPasifika || false}
+                      onCheckedChange={(v) => inlineUpdateMutation.mutate({ groupId: group.id, data: { isPasifika: v === true } })}
+                      className="mx-auto"
+                      data-testid={`table-pasifika-${group.id}`}
+                    />
                   </td>
                   <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                     {group.isCommunity ? (
@@ -1374,14 +1410,21 @@ function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, t
                       )}
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-xs text-muted-foreground">
-                    {group.contactEmail ? (
-                      <span className="truncate max-w-[160px] block" title={group.contactEmail} data-testid={`table-email-group-${group.id}`}>
-                        {group.contactEmail}
-                      </span>
-                    ) : (
-                      "—"
-                    )}
+                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="email"
+                      className="text-xs text-muted-foreground bg-transparent border border-transparent hover:border-border rounded px-1.5 py-0.5 w-full max-w-[180px] transition-colors focus:border-primary focus:outline-none focus:text-foreground"
+                      defaultValue={group.contactEmail || ""}
+                      placeholder="—"
+                      onBlur={(e) => {
+                        const val = e.target.value.trim();
+                        if (val !== (group.contactEmail || "")) {
+                          inlineUpdateMutation.mutate({ groupId: group.id, data: { contactEmail: val || null } });
+                        }
+                      }}
+                      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                      data-testid={`table-email-group-${group.id}`}
+                    />
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
