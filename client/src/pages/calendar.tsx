@@ -255,10 +255,13 @@ const BOOKING_CARD_COLORS: Record<string, string> = {
   "Other": "border-gray-500/30 bg-gray-500/5",
 };
 
-function BookingCalendarCard({ booking, venueMap, allContacts }: {
+function BookingCalendarCard({ booking, venueMap, allContacts, debriefStatus, onLogDebrief, onViewDebrief }: {
   booking: Booking;
   venueMap: Record<number, string>;
   allContacts: Contact[];
+  debriefStatus?: "none" | "draft" | "confirmed" | null;
+  onLogDebrief?: (booking: Booking) => void;
+  onViewDebrief?: (booking: Booking) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [attendeeCount, setAttendeeCount] = useState<string>(booking.attendeeCount?.toString() || "");
@@ -380,6 +383,15 @@ function BookingCalendarCard({ booking, venueMap, allContacts }: {
             <Badge className={`text-[10px] ${booking.status === "completed" ? "bg-green-500/10 text-green-700 dark:text-green-300" : "bg-blue-500/10 text-blue-700 dark:text-blue-300"}`}>
               {booking.status}
             </Badge>
+            {booking.status === "completed" && debriefStatus === "none" && (
+              <span className="w-2 h-2 rounded-full bg-amber-500" title="Needs debrief" />
+            )}
+            {booking.status === "completed" && debriefStatus === "confirmed" && (
+              <span className="w-2 h-2 rounded-full bg-green-500" title="Debriefed" />
+            )}
+            {booking.status === "completed" && debriefStatus === "draft" && (
+              <span className="w-2 h-2 rounded-full bg-amber-300" title="Draft debrief" />
+            )}
             {expanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
           </div>
         </div>
@@ -476,6 +488,27 @@ function BookingCalendarCard({ booking, venueMap, allContacts }: {
                   </Badge>
                 );
               })}
+            </div>
+          )}
+
+          {booking.status === "completed" && (
+            <div className="flex items-center gap-2 pt-2 border-t">
+              {debriefStatus === "confirmed" ? (
+                <Button size="sm" variant="outline" className="text-xs" onClick={() => onViewDebrief?.(booking)}>
+                  <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-green-600" />
+                  Debrief Confirmed
+                </Button>
+              ) : debriefStatus === "draft" ? (
+                <Button size="sm" variant="outline" className="text-xs" onClick={() => onViewDebrief?.(booking)}>
+                  <CircleDashed className="w-3.5 h-3.5 mr-1 text-amber-500" />
+                  Debrief Draft
+                </Button>
+              ) : (
+                <Button size="sm" variant="default" className="text-xs" onClick={() => onLogDebrief?.(booking)}>
+                  <FileText className="w-3.5 h-3.5 mr-1" />
+                  Log Debrief
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -1460,6 +1493,25 @@ export default function CalendarPage() {
     return null;
   }
 
+  // Map booking ID → debrief status (via linked event → impact log)
+  const debriefByBookingId = useMemo(() => {
+    const map = new Map<number, "none" | "draft" | "confirmed">();
+    if (!appEvents || !impactLogs) return map;
+    for (const event of appEvents) {
+      if (!event.linkedBookingId) continue;
+      const debrief = debriefByEventId.get(event.id);
+      if (debrief) {
+        map.set(Number(event.linkedBookingId), debrief.status as "draft" | "confirmed");
+      }
+    }
+    // Also check debriefs that reference booking title directly (for debriefs created before linking)
+    return map;
+  }, [appEvents, impactLogs, debriefByEventId]);
+
+  function getBookingDebriefStatus(bookingId: number): "none" | "draft" | "confirmed" {
+    return debriefByBookingId.get(Number(bookingId)) || "none";
+  }
+
   function eventNeedsAttention(e: CombinedEvent): boolean {
     if (!e.isPast) return false;
     if (e.type === "booking") return false;
@@ -1767,6 +1819,27 @@ export default function CalendarPage() {
       summary: details.length > 0 ? details.join("\n") : undefined,
       _linkedAppEvent: appEvent,
       _linkedTags: appEvent.tags || [],
+    });
+  }
+
+  function handleLogDebriefFromBooking(booking: Booking) {
+    const details: string[] = [];
+    if (booking.startDate) details.push(`Date: ${formatDate(new Date(booking.startDate).toISOString())}${booking.startTime ? ` ${booking.startTime}` : ""}${booking.endTime ? ` - ${booking.endTime}` : ""}`);
+    const bookingVIds = booking.venueIds || (booking.venueId ? [booking.venueId] : []);
+    const vName = bookingVIds.map((id: number) => venueMap[id]).filter(Boolean).join(" + ");
+    if (vName) details.push(`Venue: ${vName}`);
+    if (booking.bookerName) details.push(`Booker: ${booking.bookerName}`);
+    if (booking.attendeeCount) details.push(`Attendees: ${booking.attendeeCount}`);
+
+    // Find linked event if one exists
+    const linkedEvent = (appEvents || []).find(e => Number(e.linkedBookingId) === Number(booking.id));
+
+    createDebriefMutation.mutate({
+      title: booking.title || booking.bookerName || booking.classification || "Venue Hire",
+      eventId: linkedEvent?.id,
+      summary: details.length > 0 ? details.join("\n") : undefined,
+      _linkedAppEvent: linkedEvent || null,
+      _linkedTags: linkedEvent?.tags || [],
     });
   }
 
@@ -2150,12 +2223,8 @@ export default function CalendarPage() {
 
   const spaceItems = useMemo<SpaceOccupancyItem[]>(() => {
     const items: SpaceOccupancyItem[] = [];
-    const spaceLinkedBookingIds = new Set(
-      (appEvents || []).filter(e => e.linkedBookingId).map(e => Number(e.linkedBookingId))
-    );
     (allBookings || []).forEach((b: Booking) => {
       if (b.status === "cancelled") return;
-      if (spaceLinkedBookingIds.has(Number(b.id))) return;
       const sDate = b.startDate ? new Date(b.startDate) : null;
       items.push({
         kind: "booking",
@@ -2193,7 +2262,7 @@ export default function CalendarPage() {
       });
     });
     return items;
-  }, [allBookings, programmes, venueMap, allContacts, appEvents]);
+  }, [allBookings, programmes, venueMap, allContacts]);
 
   const spaceByDate = useMemo(() => {
     const map = new Map<string, SpaceOccupancyItem[]>();
@@ -2682,6 +2751,9 @@ export default function CalendarPage() {
                       booking={entry.booking}
                       venueMap={venueMap}
                       allContacts={(allContacts || []) as Contact[]}
+                      debriefStatus={getBookingDebriefStatus(entry.booking.id)}
+                      onLogDebrief={handleLogDebriefFromBooking}
+                      onViewDebrief={handleLogDebriefFromBooking}
                     />
                   ) : (
                   <div key={entry.type === "gcal" ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`} className="relative">

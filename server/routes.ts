@@ -193,8 +193,22 @@ async function ensureBookingEvent(booking: any, userId: string): Promise<void> {
     const bookingVenueIds = booking.venueIds || (booking.venueId ? [booking.venueId] : []);
     const venueNames = bookingVenueIds.map((vid: number) => venues.find(v => v.id === vid)?.name).filter(Boolean);
     const venueName = venueNames.join(", ") || "Venue";
-    const bookerName = booking.bookerName || "";
-    const title = booking.title || `${booking.classification || "Venue Hire"} — ${bookerName}`.trim();
+
+    // Title: lead with org name for venue hires (e.g. "WE Mana Booking")
+    let title = booking.title;
+    if (!title) {
+      let orgName = "";
+      if (booking.bookerGroupId) {
+        const group = await storage.getGroup(booking.bookerGroupId);
+        if (group) orgName = group.name;
+      }
+      if (orgName) {
+        title = `${orgName} Booking`;
+      } else {
+        const bookerName = booking.bookerName || "";
+        title = `${bookerName || booking.classification || "Venue Hire"} Booking`;
+      }
+    }
 
     // booking.startDate is stored as midnight NZ time in UTC (e.g. 2026-03-30T11:00:00Z = Mar 31 00:00 NZDT)
     // To build correct event times, add hours/minutes to this base (which keeps NZ timezone alignment)
