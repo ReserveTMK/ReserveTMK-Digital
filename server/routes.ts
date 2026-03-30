@@ -2400,17 +2400,9 @@ export async function registerRoutes(
       const allDebriefs = await storage.getImpactLogs(userId);
       const now = new Date();
 
-      const confirmedEventIds = new Set(
-        allDebriefs
-          .filter(d => d.eventId && d.status === "confirmed")
-          .map(d => d.eventId)
-      );
-
       const needsDebrief = userEvents.filter(e => {
         if (e.eventStatus === "cancelled") return false;
-        if (e.requiresDebrief === false) return false;
         if (e.debriefSkippedReason) return false;
-        if (confirmedEventIds.has(e.id)) return false;
         const eventEnd = new Date(e.endTime || e.startTime);
         if (eventEnd > now) return false;
         return true;
@@ -2420,9 +2412,16 @@ export async function registerRoutes(
 
       const enriched = needsDebrief.map(e => {
         const eventEnd = new Date(e.endTime || e.startTime);
-        const existingDebrief = allDebriefs.find(d => d.eventId === e.id);
-        let queueStatus: "overdue" | "due" | "in_progress" = "due";
-        if (existingDebrief && existingDebrief.status === "draft") {
+        // Find best debrief: prefer confirmed > pending_review > draft
+        const eventDebriefs = allDebriefs.filter(d => d.eventId === e.id);
+        const existingDebrief = eventDebriefs.find(d => d.status === "confirmed")
+          || eventDebriefs.find(d => d.status === "pending_review")
+          || eventDebriefs.find(d => d.status === "draft")
+          || null;
+        let queueStatus: "overdue" | "due" | "in_progress" | "confirmed" = "due";
+        if (existingDebrief?.status === "confirmed") {
+          queueStatus = "confirmed";
+        } else if (existingDebrief && (existingDebrief.status === "pending_review" || existingDebrief.status === "draft")) {
           queueStatus = "in_progress";
         } else if (eventEnd < sevenDaysAgo) {
           queueStatus = "overdue";
@@ -2804,6 +2803,19 @@ export async function registerRoutes(
         }
       }
 
+      // Prevent double debriefs for the same event
+      if (eventId) {
+        const existing = await storage.getImpactLogs(userId);
+        const hasDebrief = existing.find(d => d.eventId === eventId && d.status !== "draft");
+        if (hasDebrief) {
+          return res.status(409).json({
+            message: "This event already has a debrief",
+            existingId: hasDebrief.id,
+            code: "DUPLICATE_DEBRIEF",
+          });
+        }
+      }
+
       const input = api.impactLogs.create.input.parse({
         ...req.body,
         userId,
@@ -2889,6 +2901,18 @@ export async function registerRoutes(
           input.confirmedAt = new Date();
         }
       }
+      // Clean up when un-confirming: remove action items + taxonomy classifications
+      if (input.status && input.status !== 'confirmed' && existing.status === 'confirmed') {
+        try {
+          await db.delete(actionItems).where(eq(actionItems.impactLogId, id));
+          await db.delete(funderTaxonomyClassifications).where(
+            and(eq(funderTaxonomyClassifications.entityType, "debrief"), eq(funderTaxonomyClassifications.entityId, id))
+          );
+        } catch (e) {
+          console.warn(`Un-confirm cleanup failed for debrief ${id}:`, e);
+        }
+      }
+
       const updated = await storage.updateImpactLog(id, input);
 
       if (input.status === 'confirmed' && input.reviewedData) {
@@ -2932,6 +2956,25 @@ export async function registerRoutes(
             ...updated,
             _warnings: [`${actionErrors.length} action item(s) could not be saved`],
           });
+        }
+
+        // Snapshot primary contacts' metrics before any changes
+        try {
+          const logContacts = await storage.getImpactLogContacts(id);
+          const primaryContacts = logContacts.filter((c: any) => c.role === "primary");
+          for (const pc of primaryContacts) {
+            const contact = await storage.getContact(pc.contactId);
+            if (contact?.metrics && typeof contact.metrics === "object" && Object.keys(contact.metrics).length > 0) {
+              await storage.createMetricSnapshot({
+                contactId: pc.contactId,
+                userId,
+                metrics: contact.metrics as any,
+                source: "debrief",
+              });
+            }
+          }
+        } catch (e) {
+          console.warn(`Metric snapshot failed for debrief ${id}:`, e);
         }
 
         // Classify through funder taxonomy lenses (fire-and-forget)
@@ -3540,7 +3583,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
           return res.status(404).json({ message: "Impact log not found" });
         }
         await autoApplyTags(existingLogId, extraction.impactTags);
-        const preserveStatus = existing.status === "confirmed" ? "confirmed" : "pending_review";
+        const preserveStatus = "pending_review"; // Reanalysis always requires re-confirmation
         const updated = await storage.updateImpactLog(existingLogId, {
           transcript,
           summary: extraction.summary || "",
@@ -3718,7 +3761,13 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
           const { ensureCompatibleFormat, speechToText } = await import("./replit_integrations/audio/client");
           const { buffer, format } = await ensureCompatibleFormat(audioBuffer);
           console.log(`[transcribe] format=${format} size=${buffer.length}`);
-          const transcript = await speechToText(buffer, format);
+
+          // 60-second timeout on transcription
+          const transcriptPromise = speechToText(buffer, format);
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("Transcription timed out after 60 seconds. Please try again.")), 60000)
+          );
+          const transcript = await Promise.race([transcriptPromise, timeoutPromise]);
 
           res.json({ transcript });
         } catch (err: any) {
@@ -9707,6 +9756,7 @@ Return a JSON object with this exact structure:
         actionsCompleted,
         averagedDevelopmentMetrics: Object.keys(averagedDevelopmentMetrics).length > 0 ? averagedDevelopmentMetrics : null,
         keyQuotes: keyQuotes.length > 0 ? keyQuotes : null,
+        sourceDebriefIds: confirmedDebriefs.map((d: any) => d.id),
       };
 
       const summaryParts: string[] = [];
@@ -9890,6 +9940,7 @@ Return a JSON object with this exact structure:
         actionsCompleted,
         averagedDevelopmentMetrics: Object.keys(averagedDevelopmentMetrics).length > 0 ? averagedDevelopmentMetrics : null,
         keyQuotes: keyQuotes.length > 0 ? keyQuotes : null,
+        sourceDebriefIds: confirmedDebriefs.map((d: any) => d.id),
       };
 
       const summaryParts: string[] = [];

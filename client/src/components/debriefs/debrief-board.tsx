@@ -93,7 +93,7 @@ export function DebriefBoard() {
     return map;
   }, [allLogs]);
 
-  // Build board events from needs-debrief queue only
+  // Build board events from ALL past events (debrief queue)
   const allBoardEvents = useMemo(() => {
     return (queueItems || []).map(q => {
       const log = debriefByEventId.get(q.id);
@@ -104,32 +104,42 @@ export function DebriefBoard() {
         startTime: q.startTime,
         isPast: new Date(q.endTime) < new Date(),
         internalId: q.id,
-        existingDebriefId: log?.id,
-        existingDebriefStatus: log?.status,
+        existingDebriefId: log?.id ?? q.existingDebriefId ?? undefined,
+        existingDebriefStatus: log?.status ?? q.existingDebriefStatus ?? undefined,
       } as BoardEvent;
     });
   }, [queueItems, debriefByEventId]);
 
-  // Column 1: No debrief or empty draft
+  // Column 1: To Debrief — no debrief text or recording saved
   const toDebrief = useMemo(() => allBoardEvents.filter(e => {
     if (!e.existingDebriefId) return true;
     const log = allLogs?.find(l => l.id === e.existingDebriefId);
     return log ? !isRealDebrief(log) : true;
   }).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()), [allBoardEvents, allLogs]);
 
-  // Column 2: Real debrief in progress
+  // Column 2: Recorded & Reviewing — something entered but not confirmed
   const inProgress = useMemo(() => allBoardEvents.filter(e => {
     if (!e.existingDebriefId) return false;
     const log = allLogs?.find(l => l.id === e.existingDebriefId);
     return log ? isRealDebrief(log) && log.status !== "confirmed" : false;
   }), [allBoardEvents, allLogs]);
 
-  // Column 3: Confirmed
-  const completed = useMemo(() => (allLogs || [])
-    .filter(l => l.status === "confirmed")
-    .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime())
-    .slice(0, 30),
-    [allLogs]);
+  // Column 3: Completed — confirmed debriefs (from board events + standalone logs)
+  const completed = useMemo(() => {
+    // Events with confirmed debriefs
+    const confirmedFromBoard = allBoardEvents.filter(e => e.existingDebriefStatus === "confirmed");
+    const confirmedEventIds = new Set(confirmedFromBoard.map(e => e.internalId));
+    // Also include confirmed logs not linked to board events (standalone debriefs)
+    const standaloneLogs = (allLogs || [])
+      .filter(l => l.status === "confirmed" && (!l.eventId || !confirmedEventIds.has(l.eventId)));
+    return [
+      ...confirmedFromBoard.map(e => {
+        const log = allLogs?.find(l => l.id === e.existingDebriefId);
+        return log || { id: e.existingDebriefId, title: e.name, status: "confirmed", createdAt: e.startTime } as any;
+      }),
+      ...standaloneLogs,
+    ].sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime()).slice(0, 50);
+  }, [allBoardEvents, allLogs]);
 
   // Actions
   const handleDebrief = async (event: BoardEvent) => {
