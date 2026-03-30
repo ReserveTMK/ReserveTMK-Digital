@@ -10264,8 +10264,9 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
             )
         `),
         db.execute(sql`
-          SELECT COUNT(*) as count FROM mentoring_relationships
-          WHERE user_id = ${userId} AND status = 'active'
+          SELECT COUNT(*) as count FROM mentoring_relationships mr
+          JOIN contacts c ON c.id = mr.contact_id
+          WHERE c.user_id = ${userId} AND mr.status = 'active'
         `),
         db.execute(sql`
           SELECT
