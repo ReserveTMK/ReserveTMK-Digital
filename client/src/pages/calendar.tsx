@@ -6,7 +6,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import {
   Calendar,
   CalendarX,
@@ -769,6 +769,9 @@ function EventCard({
   // Debrief status
   const isConfirmed = debriefInfo?.status === "confirmed";
   const isInProgress = debriefInfo && debriefInfo.status !== "confirmed";
+  const needsDebrief = entry.isPast && !debriefInfo
+    && entry.type !== "booking"
+    && !(entry.type === "app" && entry.app?.source === "internal");
 
   // All cards same grey — fade if debriefed or in progress
   const debriefOpacity = entry.isPast && (isConfirmed || isInProgress)
@@ -870,6 +873,19 @@ function EventCard({
         </div>
         )}
 
+        {entry.isPast && (isConfirmed || isInProgress || needsDebrief) && (
+          <div className={`flex items-center gap-1 text-xs mt-0.5 ${
+            isConfirmed ? "text-emerald-600/60 dark:text-emerald-400/60"
+            : isInProgress ? "text-blue-600/60 dark:text-blue-400/60"
+            : "text-amber-600/70 dark:text-amber-400/70"
+          }`}>
+            {isConfirmed ? <CheckCircle2 className="w-3 h-3" />
+              : isInProgress ? <Clock className="w-3 h-3" />
+              : <CircleDashed className="w-3 h-3" />}
+            {isConfirmed ? "Debriefed" : isInProgress ? "In progress" : "To debrief"}
+          </div>
+        )}
+
         {isManualLog && entry.app?.description && (
           <p className="text-xs text-muted-foreground whitespace-pre-line">{entry.app.description}</p>
         )}
@@ -923,6 +939,49 @@ function EventCard({
               </Select>
             </div>
             )}
+
+            {isGcal && entry.gcal!.attendees?.length > 0 && (() => {
+              const contactByEmail = new Map(
+                (contacts || []).filter((c: Contact) => c.email).map((c: Contact) => [c.email!.toLowerCase(), c])
+              );
+              const invitees = entry.gcal!.attendees.filter(a => !a.organizer);
+              if (invitees.length === 0) return null;
+              const statusIcon = (s: string) => {
+                if (s === "accepted") return <span className="text-emerald-500 text-[10px]">✓</span>;
+                if (s === "declined") return <span className="text-red-400 text-[10px]">✗</span>;
+                if (s === "tentative") return <span className="text-amber-500 text-[10px]">?</span>;
+                return <span className="text-muted-foreground text-[10px]">—</span>;
+              };
+              return (
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Users className="w-3 h-3" /> Invitees
+                  </Label>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    {invitees.map((a) => {
+                      const matched = contactByEmail.get(a.email.toLowerCase());
+                      const name = matched?.name || a.displayName || a.email;
+                      return (
+                        <span key={a.email} className="flex items-center gap-1 text-xs">
+                          {statusIcon(a.responseStatus)}
+                          {matched ? (
+                            <Link
+                              href={`/contacts/${matched.id}`}
+                              className="text-primary hover:underline"
+                              onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                            >
+                              {name}
+                            </Link>
+                          ) : (
+                            <span className="text-muted-foreground">{name}</span>
+                          )}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
 
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Community Members</Label>
