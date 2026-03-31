@@ -59,6 +59,7 @@ import {
 import { format, formatDistanceToNow, isPast } from "date-fns";
 import {
   FUNDER_STATUSES,
+  FUND_TYPES,
   REPORTING_CADENCES,
   NARRATIVE_STYLES,
   FUNDER_DOCUMENT_TYPES,
@@ -1299,13 +1300,58 @@ export default function FundersPage() {
         </Card>
       ) : (
         <div className="space-y-8">
-          {/* MANAGING — active funds */}
-          {active.length > 0 && (
+          {/* MANAGING — active delivery funds */}
+          {active.filter(f => (f as any).fundType !== "project").length > 0 && (
             <div>
               <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Managing</h2>
               <div className="grid gap-3">
-                {active.map((funder) => (
-                  <ActiveFunderCard key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/reports?funder=${funder.id}`)} />
+                {active.filter(f => (f as any).fundType !== "project").map((funder) => (
+                  <ActiveFunderCard key={funder.id} funder={funder} onView={() => setLocation(`/funders/${funder.id}`)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/reports?funder=${funder.id}`)} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* MANAGING — active project funds */}
+          {active.filter(f => (f as any).fundType === "project").length > 0 && (
+            <div>
+              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Projects</h2>
+              <div className="grid gap-3">
+                {active.filter(f => (f as any).fundType === "project").map((funder) => (
+                  <Card key={funder.id} className="p-4 hover:shadow-md transition-shadow cursor-pointer border" onClick={() => setViewingFunder(funder)}>
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold text-foreground truncate">{funder.name}</h3>
+                          {funder.estimatedValue && (
+                            <span className="text-sm font-medium text-green-700 dark:text-green-400">{formatCurrency(funder.estimatedValue)}</span>
+                          )}
+                          <Badge variant="outline" className="text-[10px]">Project</Badge>
+                        </div>
+                        {funder.organisation && (
+                          <p className="text-sm text-muted-foreground truncate">{funder.organisation}</p>
+                        )}
+                        {funder.nextAction && (
+                          <p className="text-xs text-muted-foreground mt-1">{funder.nextAction}</p>
+                        )}
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                            <MoreVertical className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setEditingFunder(funder); }}>
+                            <Pencil className="w-4 h-4 mr-2" /> Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setDeleteConfirm(funder.id); }} className="text-red-600">
+                            <Trash2 className="w-4 h-4 mr-2" /> Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </Card>
                 ))}
               </div>
             </div>
@@ -1747,6 +1793,7 @@ function FunderFormDialog({
     nextAction: defaultValues?.nextAction || "",
     applicationDeadline: defaultValues?.applicationDeadline ? format(new Date(defaultValues.applicationDeadline), "yyyy-MM-dd") : "",
     fitTags: defaultValues?.fitTags || [],
+    fundType: (defaultValues as any)?.fundType || "delivery",
   });
 
   const [groupId, setGroupId] = useState<number | null>(defaultValues?.groupId || null);
@@ -1817,6 +1864,7 @@ function FunderFormDialog({
       headContactId: headContactId || null,
       liaisonContactId: liaisonContactId || null,
       leadContactId: leadContactId || null,
+      fundType: form.fundType,
     };
     onSubmit(data);
   };
@@ -1842,9 +1890,9 @@ function FunderFormDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label>Funder Name *</Label>
+              <Label>Fund Name *</Label>
               <Input
                 value={form.name}
                 onChange={(e) => setForm(p => ({ ...p, name: e.target.value }))}
@@ -1880,6 +1928,18 @@ function FunderFormDialog({
                   )}
                 </div>
               )}
+            </div>
+            <div className="space-y-2">
+              <Label>Fund Type</Label>
+              <Select value={form.fundType} onValueChange={(v) => setForm(p => ({ ...p, fundType: v }))}>
+                <SelectTrigger data-testid="select-fund-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="delivery">Delivery Funder</SelectItem>
+                  <SelectItem value="project">Project Fund</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

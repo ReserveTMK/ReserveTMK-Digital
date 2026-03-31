@@ -875,7 +875,7 @@ function EventCard({
                 Not personal
               </Button>
               <DismissPopover
-                reasons={["Didn't happen", "Personal event", "Duplicate", "Not relevant"]}
+                reasons={["Archive", "Ignore", "Personal"]}
                 onDismiss={(reason) => onDismissEvent(entry.gcal!.id, reason)}
                 isPending={isDismissPending}
                 testIdPrefix={`quick-dismiss-${entry.gcal!.id}`}
@@ -1348,8 +1348,14 @@ function EventCard({
               ) : null}
               {isGcal && !personalEvent && (
                 <DismissPopover
-                  reasons={["Duplicate", "Ignore", "Personal"]}
-                  onDismiss={(reason) => { onDismissEvent(entry.gcal!.id, reason); }}
+                  reasons={["Archive", "Ignore"]}
+                  onDismiss={(reason) => {
+                    if (reason === "Ignore" && appEventId && onSkipDebrief) {
+                      onSkipDebrief(appEventId, "Ignored");
+                    } else {
+                      onDismissEvent(entry.gcal!.id, reason);
+                    }
+                  }}
                   isPending={isDismissPending}
                   testIdPrefix={`dismiss-event-${entry.gcal!.id}`}
                 >
@@ -1365,8 +1371,14 @@ function EventCard({
               )}
               {isApp && entry.isPast && (
                 <DismissPopover
-                  reasons={["Duplicate", "Ignore", "Personal"]}
-                  onDismiss={(reason) => { onSkipDebrief && onSkipDebrief(entry.app!.id, reason); }}
+                  reasons={["Archive", "Ignore"]}
+                  onDismiss={(reason) => {
+                    if (reason === "Archive") {
+                      onDeleteEvent(entry.app!);
+                    } else {
+                      onSkipDebrief && onSkipDebrief(entry.app!.id, reason);
+                    }
+                  }}
                   isPending={false}
                   testIdPrefix={`skip-debrief-${entry.app!.id}`}
                 >
@@ -2574,7 +2586,7 @@ export default function CalendarPage() {
           </Card>
         )}
 
-        {showSchedule && (
+        {false && showSchedule && (
           <div className="flex flex-wrap items-center gap-1.5 mb-4" data-testid="type-filter-pills">
             {Object.entries(EVENT_TYPE_BADGE_COLORS).map(([type, color]) => {
               const isActive = activeTypeFilters.has(type);
