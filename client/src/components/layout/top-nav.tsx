@@ -27,6 +27,7 @@ import {
   BarChart3,
   Receipt,
   CalendarPlus,
+  UserCheck,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useRef, useEffect } from "react";
@@ -65,6 +66,7 @@ const navGroups: NavGroup[] = [
     children: [
       { name: "Mentoring", href: "/mentoring", icon: Users, description: "1:1 sessions & scheduling" },
       { name: "Spaces", href: "/spaces", icon: Building2, description: "Spaces, venue hire & hot desking" },
+      { name: "Bookers", href: "/bookers", icon: UserCheck, description: "Portal access, agreements & links" },
       { name: "Gear", href: "/gear", icon: Wrench, description: "Equipment lending & tracking" },
       { name: "Programmes", href: "/programmes", icon: Layers, description: "Workshops & activations" },
     ],

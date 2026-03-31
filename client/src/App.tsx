@@ -46,6 +46,7 @@ import GearPage from "@/pages/gear";
 import AboutUsPage from "@/pages/about-us";
 import TeamSettingsPage from "@/pages/team-settings";
 import CasualHirePage from "@/pages/casual-hire";
+import RegularBookersPage from "@/pages/regular-bookers";
 import CommsPage from "@/pages/comms";
 import XeroSettingsPage from "@/pages/xero-settings";
 import MeetPage from "@/pages/meet";
@@ -176,8 +177,12 @@ function Router() {
           <ProtectedRoute component={Programmes} />
         </Route>
 
+        <Route path="/bookers">
+          <ProtectedRoute component={RegularBookersPage} />
+        </Route>
+
         <Route path="/regular-bookers">
-          <Redirect to="/spaces?tab=bookers" />
+          <Redirect to="/bookers" />
         </Route>
 
         <Route path="/spaces">

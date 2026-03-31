@@ -27,6 +27,7 @@ import {
   BarChart3,
   Receipt,
   CalendarPlus,
+  UserCheck,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "../ui/beautiful-button";
@@ -58,6 +59,7 @@ const navigation: NavItem[] = [
     children: [
       { name: "Mentoring", href: "/mentoring", icon: Users },
       { name: "Spaces", href: "/spaces", icon: Building2 },
+      { name: "Bookers", href: "/bookers", icon: UserCheck },
       { name: "Gear", href: "/gear", icon: Wrench },
       { name: "Programmes", href: "/programmes", icon: Layers },
     ],
