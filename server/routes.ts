@@ -7747,8 +7747,8 @@ Important:
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.send(html);
     } catch (err: any) {
-      console.error("Monthly HTML report error:", err.message);
-      res.status(500).json({ message: "Failed to generate monthly report" });
+      console.error("Monthly HTML report error:", err);
+      res.status(500).json({ message: "Failed to generate monthly report", error: err.message });
     }
   };
   app.get("/api/reports/html/monthly", isAuthenticated, handleMonthlyReport);
@@ -8071,8 +8071,8 @@ Important:
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.send(html);
     } catch (err: any) {
-      console.error("Quarterly HTML report error:", err.message);
-      res.status(500).json({ message: "Failed to generate quarterly report" });
+      console.error("Quarterly HTML report error:", err);
+      res.status(500).json({ message: "Failed to generate quarterly report", error: err.message });
     }
   };
   app.get("/api/reports/html/quarterly", isAuthenticated, handleQuarterlyReport);
