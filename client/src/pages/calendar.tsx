@@ -2734,25 +2734,16 @@ export default function CalendarPage() {
                       `}>
                         {format(day, "d")}
                       </span>
-                      {allDots.length > 0 && allDots.length <= 3 ? (
-                        <div className="flex flex-wrap gap-0.5 mt-0.5">
-                          {allDots.map((dot) => (
-                            <div
-                              key={dot.key}
-                              className={`w-full h-1 rounded-full ${dot.color} ${dot.reconciled === false ? "opacity-100 ring-1 ring-amber-400/60" : ""} ${dot.reconciled === true ? "opacity-50" : ""}`}
-                            />
+                      {allDots.length > 0 && (
+                        <div className="flex items-center gap-0.5 mt-0.5 flex-wrap">
+                          {allDots.slice(0, 6).map((dot) => (
+                            <div key={dot.key} className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot.color} ${dot.reconciled === false ? "ring-1 ring-amber-400/60" : ""} ${dot.reconciled === true ? "opacity-40" : ""}`} />
                           ))}
-                        </div>
-                      ) : allDots.length > 3 ? (
-                        <div className="flex items-center gap-0.5 mt-0.5">
-                          {allDots.slice(0, 5).map((dot) => (
-                            <div key={dot.key} className={`w-1.5 h-1.5 rounded-full ${dot.color} ${dot.reconciled === true ? "opacity-50" : ""}`} />
-                          ))}
-                          {allDots.length > 5 && (
-                            <span className="text-[9px] text-muted-foreground leading-none">+{allDots.length - 5}</span>
+                          {allDots.length > 6 && (
+                            <span className="text-[9px] text-muted-foreground leading-none">+{allDots.length - 6}</span>
                           )}
                         </div>
-                      ) : null}
+                      )}
                       {dayFT && isCurrentMonth && (
                         <span className="hidden md:block absolute bottom-0.5 right-1 text-[9px] text-green-600/70 dark:text-green-400/70 font-medium">{dayFT}</span>
                       )}
