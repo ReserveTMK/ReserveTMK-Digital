@@ -7546,21 +7546,26 @@ Important:
         return `${title} — ${notes}`;
       });
 
-      // Taxonomy breakdown for report
-      const rawTaxBreakdown = await getTaxonomyBreakdown({ userId, startDate, endDate });
-      const taxMap = new Map<string, { funderName: string; entityCounts: Record<string, number>; total: number }>();
-      for (const row of rawTaxBreakdown) {
-        if (!taxMap.has(row.categoryName)) {
-          taxMap.set(row.categoryName, { funderName: row.funderName, entityCounts: {}, total: 0 });
+      // Taxonomy breakdown for report (non-fatal)
+      let taxonomyBreakdown: Array<{ categoryName: string; funderName: string; entityCounts: Record<string, number>; total: number }> = [];
+      try {
+        const rawTaxBreakdown = await getTaxonomyBreakdown({ userId, startDate, endDate });
+        const taxMap = new Map<string, { funderName: string; entityCounts: Record<string, number>; total: number }>();
+        for (const row of rawTaxBreakdown) {
+          if (!taxMap.has(row.categoryName)) {
+            taxMap.set(row.categoryName, { funderName: row.funderName, entityCounts: {}, total: 0 });
+          }
+          const entry = taxMap.get(row.categoryName)!;
+          entry.entityCounts[row.entityType] = (entry.entityCounts[row.entityType] || 0) + row.count;
+          entry.total += row.count;
         }
-        const entry = taxMap.get(row.categoryName)!;
-        entry.entityCounts[row.entityType] = (entry.entityCounts[row.entityType] || 0) + row.count;
-        entry.total += row.count;
+        taxonomyBreakdown = Array.from(taxMap.entries()).map(([categoryName, data]) => ({
+          categoryName,
+          ...data,
+        }));
+      } catch (err: any) {
+        console.error("Taxonomy breakdown failed (non-fatal):", err.message);
       }
-      const taxonomyBreakdown = Array.from(taxMap.entries()).map(([categoryName, data]) => ({
-        categoryName,
-        ...data,
-      }));
 
       const reportData: MonthlyReportData = {
         period: { month: month, year, label: `${monthName} ${year}`, fyLabel },
@@ -7864,21 +7869,26 @@ Important:
         previousQuarter,
       };
 
-      // Taxonomy breakdown for quarterly report
-      const rawQTaxBreakdown = await getTaxonomyBreakdown({ userId, startDate, endDate });
-      const qTaxMap = new Map<string, { funderName: string; entityCounts: Record<string, number>; total: number }>();
-      for (const row of rawQTaxBreakdown) {
-        if (!qTaxMap.has(row.categoryName)) {
-          qTaxMap.set(row.categoryName, { funderName: row.funderName, entityCounts: {}, total: 0 });
+      // Taxonomy breakdown for quarterly report (non-fatal)
+      let qTaxonomyBreakdown: Array<{ categoryName: string; funderName: string; entityCounts: Record<string, number>; total: number }> = [];
+      try {
+        const rawQTaxBreakdown = await getTaxonomyBreakdown({ userId, startDate, endDate });
+        const qTaxMap = new Map<string, { funderName: string; entityCounts: Record<string, number>; total: number }>();
+        for (const row of rawQTaxBreakdown) {
+          if (!qTaxMap.has(row.categoryName)) {
+            qTaxMap.set(row.categoryName, { funderName: row.funderName, entityCounts: {}, total: 0 });
+          }
+          const entry = qTaxMap.get(row.categoryName)!;
+          entry.entityCounts[row.entityType] = (entry.entityCounts[row.entityType] || 0) + row.count;
+          entry.total += row.count;
         }
-        const entry = qTaxMap.get(row.categoryName)!;
-        entry.entityCounts[row.entityType] = (entry.entityCounts[row.entityType] || 0) + row.count;
-        entry.total += row.count;
+        qTaxonomyBreakdown = Array.from(qTaxMap.entries()).map(([categoryName, data]) => ({
+          categoryName,
+          ...data,
+        }));
+      } catch (err: any) {
+        console.error("Quarterly taxonomy breakdown failed (non-fatal):", err.message);
       }
-      const qTaxonomyBreakdown = Array.from(qTaxMap.entries()).map(([categoryName, data]) => ({
-        categoryName,
-        ...data,
-      }));
 
       const reportData: QuarterlyReportData = {
         period: {
