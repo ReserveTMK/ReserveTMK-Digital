@@ -217,6 +217,31 @@ export default function TrackingDashboard() {
         </div>
       )}
 
+      {/* Error / empty state */}
+      {!isGenerating && !reportData && (
+        <div className="text-center py-12 space-y-3">
+          <p className="text-muted-foreground">No data loaded</p>
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (!selectedOpt) return;
+              setIsGenerating(true);
+              apiRequest("POST", "/api/reports/generate", {
+                startDate: selectedOpt.start,
+                endDate: selectedOpt.end,
+                reportType: "monthly",
+              })
+                .then(res => res.json())
+                .then(data => setReportData(data))
+                .catch(() => toast({ title: "Error", description: "Failed to load tracking data", variant: "destructive" }))
+                .finally(() => setIsGenerating(false));
+            }}
+          >
+            Load {selectedOpt?.label || "data"}
+          </Button>
+        </div>
+      )}
+
       {/* Sections */}
       {reportData && !isGenerating && (
         <div className="space-y-4">
