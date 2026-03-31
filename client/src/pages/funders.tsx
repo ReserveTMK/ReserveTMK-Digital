@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-// Tabs removed — funders use single grouped list view
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -1357,16 +1356,7 @@ export default function FundersPage() {
           })}
           <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => handleAdd("radar")}>
             <Plus className="w-4 h-4 mr-1" /> Add Opportunity
-                </Button>
-              </div>
-            )}
-          </TabsContent>
-
-          {completed.length > 0 && (
-            <TabsContent value="completed" className="mt-4">
-              <div className="grid gap-3">
-                {completed.map((funder) => (
-                  <FunderCard key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/reports?funder=${funder.id}`)} />
+          </Button>
         </div>
       )}
 
