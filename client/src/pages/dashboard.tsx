@@ -4,6 +4,7 @@ import { useEvents } from "@/hooks/use-events";
 import { useAuth } from "@/hooks/use-auth";
 import { useProgrammes } from "@/hooks/use-programmes";
 import { useBookings, useVenues } from "@/hooks/use-bookings";
+import { useGroups } from "@/hooks/use-groups";
 import {
   Calendar as CalendarIcon, ArrowRight, Clock, MapPin, Trash2,
   ChevronLeft, ChevronRight, Building2, Layers, Rocket, Loader2,
@@ -139,7 +140,7 @@ export default function Dashboard() {
       if (b.status === "cancelled" || !b.startDate) return;
       const d = new Date(b.startDate);
       if (d >= start && d < end) {
-        items.push({ date: format(d, "yyyy-MM-dd"), name: b.title || "", time: b.startTime ? formatTimeSlot(b.startTime) : "TBC", type: "Venue Hire", typeColor: "bg-orange-500/15 text-orange-700 dark:text-orange-300", id: `book-${b.id}`, href: `/bookings/${b.id}` });
+        items.push({ date: format(d, "yyyy-MM-dd"), name: (b as any).displayName || b.title || b.bookerName || b.classification || "Venue Hire", time: b.startTime ? formatTimeSlot(b.startTime) : "TBC", type: "Venue Hire", typeColor: "bg-orange-500/15 text-orange-700 dark:text-orange-300", id: `book-${b.id}`, href: `/bookings/${b.id}` });
       }
     });
     gcalEvents?.forEach((gcal) => {

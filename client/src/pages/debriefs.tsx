@@ -478,7 +478,7 @@ function OperationsView() {
                     return (
                       <div key={b.id} className="flex items-center justify-between p-2 rounded-lg bg-muted/40 hover:bg-muted transition-colors" data-testid={`enquiry-card-${b.id}`}>
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium truncate">{b.bookerName || b.title}</p>
+                          <p className="text-sm font-medium truncate">{(b as any).displayName || b.bookerName || b.title}</p>
                           <p className="text-xs text-muted-foreground">{venueName} · {dateStr}{b.startTime ? ` · ${b.startTime}` : ""}</p>
                         </div>
                         <Link href={`/bookings/${b.id}`}>

@@ -347,7 +347,7 @@ function BookingCalendarCard({ booking, venueMap, allContacts, debriefStatus, on
       >
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <h4 className="font-medium text-sm truncate">{booking.title || booking.classification || "Untitled booking"}</h4>
+            <h4 className="font-medium text-sm truncate">{(booking as any).displayName || booking.title || booking.classification || "Untitled booking"}</h4>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground mt-1">
               {(booking.bookerName || booking.bookerId) && (
                 <span className="flex items-center gap-1">
@@ -1865,7 +1865,7 @@ export default function CalendarPage() {
     const linkedEvent = (appEvents || []).find(e => Number(e.linkedBookingId) === Number(booking.id));
 
     createDebriefMutation.mutate({
-      title: booking.title || booking.bookerName || booking.classification || "Venue Hire",
+      title: (booking as any).displayName || booking.title || booking.bookerName || booking.classification || "Venue Hire",
       eventId: linkedEvent?.id,
       summary: details.length > 0 ? details.join("\n") : undefined,
       _linkedAppEvent: linkedEvent || null,
@@ -2237,7 +2237,7 @@ export default function CalendarPage() {
       items.push({
         kind: "booking",
         id: b.id,
-        title: b.title || b.classification || "Untitled booking",
+        title: (b as any).displayName || b.title || b.classification || "Untitled booking",
         bookerName: b.bookerName || ((allContacts || []) as Contact[]).find(c => c.id === b.bookerId)?.name || null,
         date: sDate || new Date(b.createdAt || Date.now()),
         startDate: sDate,
