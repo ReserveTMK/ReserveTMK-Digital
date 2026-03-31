@@ -971,7 +971,6 @@ function EventCard({
                 <p className="text-xs text-muted-foreground whitespace-pre-line max-h-24 overflow-y-auto">{desc}</p>
               ) : null;
             })()}
-            {!isManualLog && (
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Event Type</Label>
               <Select
@@ -994,7 +993,6 @@ function EventCard({
                 </SelectContent>
               </Select>
             </div>
-            )}
 
             {entry.isPast && appEventId && (
             <div className="space-y-1.5">
