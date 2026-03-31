@@ -1173,30 +1173,6 @@ export default function FundersPage() {
   const activeValue = useMemo(() => active.reduce((s, f) => s + (f.estimatedValue || 0), 0), [active]);
   const pipelineValue = useMemo(() => pipeline.reduce((s, f) => s + (f.estimatedValue || 0), 0), [pipeline]);
 
-  // Group by organisation for the unified view
-  const STATUS_PRIORITY: Record<string, number> = { active_funder: 0, in_conversation: 1, pending_eoi: 2, applied: 3, radar: 4, completed: 5 };
-  const groupedByOrg = useMemo(() => {
-    const groups: Record<string, Funder[]> = {};
-    for (const f of fundersList) {
-      const key = f.organisation?.trim() || f.name;
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(f);
-    }
-    // Sort funds within each org by status priority
-    for (const key of Object.keys(groups)) {
-      groups[key].sort((a, b) => (STATUS_PRIORITY[a.status] ?? 9) - (STATUS_PRIORITY[b.status] ?? 9));
-    }
-    // Sort org groups: orgs with active funds first, then by total value
-    return Object.entries(groups).sort(([, a], [, b]) => {
-      const aHasActive = a.some(f => f.status === "active_funder") ? 0 : 1;
-      const bHasActive = b.some(f => f.status === "active_funder") ? 0 : 1;
-      if (aHasActive !== bHasActive) return aHasActive - bHasActive;
-      const aVal = a.reduce((s, f) => s + (f.estimatedValue || 0), 0);
-      const bVal = b.reduce((s, f) => s + (f.estimatedValue || 0), 0);
-      return bVal - aVal;
-    });
-  }, [fundersList]);
-
   const filtered = useMemo(() => {
     if (!search.trim()) return null;
     const q = search.toLowerCase();
@@ -1320,40 +1296,55 @@ export default function FundersPage() {
           </Button>
         </Card>
       ) : (
-        <div className="space-y-6">
-          {groupedByOrg.map(([orgName, funds]) => {
-            const orgTotal = funds.reduce((s, f) => s + (f.estimatedValue || 0), 0);
-            const hasMultiple = funds.length > 1;
-            const hasActive = funds.some(f => f.status === "active_funder");
-
-            return (
-              <div key={orgName}>
-                {hasMultiple && (
-                  <div className="flex items-center gap-2 mb-2">
-                    <Building2 className="w-4 h-4 text-muted-foreground" />
-                    <h3 className="text-sm font-semibold">{orgName}</h3>
-                    {orgTotal > 0 && (
-                      <span className="text-xs text-muted-foreground">({formatCurrency(orgTotal)} total)</span>
-                    )}
-                  </div>
-                )}
-                <div className={`grid gap-3 ${hasMultiple ? "pl-6 border-l-2 border-muted" : ""}`}>
-                  {funds.map((funder) => {
-                    if (funder.status === "active_funder") {
-                      return <ActiveFunderCard key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/reports?funder=${funder.id}`)} />;
-                    }
-                    if (PIPELINE_STATUSES.includes(funder.status)) {
-                      return <PipelineCard key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} />;
-                    }
-                    if (funder.status === "radar") {
-                      return <RadarRow key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onMoveToPipeline={() => updateMutation.mutate({ id: funder.id, data: { status: "in_conversation" } })} onDelete={() => setDeleteConfirm(funder.id)} />;
-                    }
-                    return <FunderCard key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/reports?funder=${funder.id}`)} />;
-                  })}
-                </div>
+        <div className="space-y-8">
+          {/* MANAGING — active funds */}
+          {active.length > 0 && (
+            <div>
+              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Managing</h2>
+              <div className="grid gap-3">
+                {active.map((funder) => (
+                  <ActiveFunderCard key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/reports?funder=${funder.id}`)} />
+                ))}
               </div>
-            );
-          })}
+            </div>
+          )}
+
+          {/* PURSUING — pipeline */}
+          {pipeline.length > 0 && (
+            <div>
+              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Pursuing</h2>
+              <div className="grid gap-3">
+                {pipeline.map((funder) => (
+                  <PipelineCard key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* RADAR — opportunities spotted */}
+          {radar.length > 0 && (
+            <div>
+              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Radar</h2>
+              <div className="space-y-2">
+                {radar.map((funder) => (
+                  <RadarRow key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onMoveToPipeline={() => updateMutation.mutate({ id: funder.id, data: { status: "in_conversation" } })} onDelete={() => setDeleteConfirm(funder.id)} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* COMPLETED */}
+          {completed.length > 0 && (
+            <div>
+              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Completed</h2>
+              <div className="grid gap-3">
+                {completed.map((funder) => (
+                  <FunderCard key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/reports?funder=${funder.id}`)} />
+                ))}
+              </div>
+            </div>
+          )}
+
           <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => handleAdd("radar")}>
             <Plus className="w-4 h-4 mr-1" /> Add Opportunity
           </Button>
@@ -1519,7 +1510,6 @@ function ActiveFunderCard({
   onDelete: () => void;
   onGenerateReport: () => void;
 }) {
-  const deadlineWarning = funder.nextDeadline && isPast(new Date(funder.nextDeadline));
   const contractProgress = useMemo(() => {
     if (!funder.contractStart || !funder.contractEnd) return null;
     const start = new Date(funder.contractStart).getTime();
@@ -1527,6 +1517,11 @@ function ActiveFunderCard({
     const now = Date.now();
     const pct = Math.min(100, Math.max(0, ((now - start) / (end - start)) * 100));
     return Math.round(pct);
+  }, [funder.contractStart, funder.contractEnd]);
+
+  const contractPeriod = useMemo(() => {
+    if (!funder.contractStart || !funder.contractEnd) return null;
+    return `${format(new Date(funder.contractStart), "MMM yyyy")} — ${format(new Date(funder.contractEnd), "MMM yyyy")}`;
   }, [funder.contractStart, funder.contractEnd]);
 
   return (
@@ -1543,8 +1538,8 @@ function ActiveFunderCard({
             <p className="text-sm text-muted-foreground truncate">{funder.organisation}</p>
           )}
           <div className="flex items-center gap-3 mt-2 flex-wrap">
-            {funder.reportingCadence && (
-              <span className="text-xs text-muted-foreground">{CADENCE_LABELS[funder.reportingCadence]}</span>
+            {contractPeriod && (
+              <span className="text-xs text-muted-foreground">{contractPeriod}</span>
             )}
             {contractProgress !== null && (
               <div className="flex items-center gap-2 text-xs">
@@ -1553,12 +1548,6 @@ function ActiveFunderCard({
                 </div>
                 <span className="text-muted-foreground">{contractProgress}%</span>
               </div>
-            )}
-            {funder.nextDeadline && (
-              <span className={`text-xs ${deadlineWarning ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
-                {deadlineWarning && <AlertCircle className="w-3 h-3 inline mr-0.5" />}
-                Due {formatDistanceToNow(new Date(funder.nextDeadline), { addSuffix: true })}
-              </span>
             )}
           </div>
         </div>
