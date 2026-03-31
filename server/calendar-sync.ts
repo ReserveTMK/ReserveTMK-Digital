@@ -107,8 +107,10 @@ async function syncCalendar(
 
     // Determine event type from calendar label
     const calLabel = (setting.label || "").toLowerCase();
+    const isHolidayCalendar = setting.calendarId.includes("holiday@group.v.calendar.google.com");
     let eventType = "Community Event";
-    if (calLabel.includes("boardroom")) eventType = "Meeting";
+    if (isHolidayCalendar) eventType = "Public Holiday";
+    else if (calLabel.includes("boardroom")) eventType = "Meeting";
     else if (calLabel.includes("workshop")) eventType = "Community Event";
     else if (calLabel.includes("mentoring")) eventType = "Mentoring Session";
 
@@ -123,9 +125,10 @@ async function syncCalendar(
       googleCalendarEventId: gcalEvent.id,
       source: "google",
       calendarAttendees: attendees.length > 0 ? attendees : null,
-      requiresDebrief: true,
+      requiresDebrief: !isHolidayCalendar,
+      isPublicHoliday: isHolidayCalendar,
       eventStatus: "active",
-    });
+    } as any);
 
     imported++;
   }

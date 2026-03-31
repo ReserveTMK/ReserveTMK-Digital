@@ -130,6 +130,7 @@ const EVENT_TYPE_DOT_COLORS: Record<string, string> = {
   "Planning": "bg-rose-400",
   "Programme": "bg-indigo-400",
   "Venue Hire": "bg-amber-400",
+  "Public Holiday": "bg-red-400",
 };
 
 const EVENT_TYPE_BADGE_COLORS: Record<string, string> = {
@@ -140,6 +141,7 @@ const EVENT_TYPE_BADGE_COLORS: Record<string, string> = {
   "Planning": "bg-rose-500/10 text-rose-700 dark:text-rose-300",
   "Programme": "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
   "Venue Hire": "bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  "Public Holiday": "bg-red-500/10 text-red-700 dark:text-red-300",
 };
 
 const EVENT_TYPE_CARD_TINTS: Record<string, string> = {
@@ -149,6 +151,7 @@ const EVENT_TYPE_CARD_TINTS: Record<string, string> = {
   "Personal Development": "border-violet-500/20 bg-violet-500/5 dark:bg-violet-500/5",
   "Planning": "border-rose-500/20 bg-rose-500/5 dark:bg-rose-500/5",
   "Programme": "border-indigo-500/20 bg-indigo-500/5 dark:bg-indigo-500/5",
+  "Public Holiday": "border-red-500/30 bg-red-500/10 dark:bg-red-500/10",
 };
 
 const PROG_CLASSIFICATION_COLORS: Record<string, string> = {
@@ -2677,6 +2680,7 @@ export default function CalendarPage() {
                     })
                   );
                   const dayFT = footTrafficByDate.get(key);
+                  const hasPublicHoliday = dayEvents.some(e => e.type === "app" && (e.app as any)?.isPublicHoliday) || dayEvents.some(e => e.type === "app" && (e.app as any)?.type === "Public Holiday");
                   const allDots: { color: string; key: string; reconciled?: boolean }[] = [];
                   dayEvents.forEach((e, i) => {
                     const isManual = e.type === "app" && e.app?.source === "internal";
@@ -2695,7 +2699,8 @@ export default function CalendarPage() {
                         relative p-1 min-h-[3rem] md:min-h-[4rem] text-sm border border-border/30 transition-colors
                         ${!isCurrentMonth ? "text-muted-foreground/40" : "text-foreground"}
                         ${isSelected ? "bg-primary/10 border-primary/50" : "hover:bg-muted/50"}
-                        ${today && !isSelected ? "bg-accent/30" : ""}
+                        ${hasPublicHoliday && !isSelected ? "bg-red-50 dark:bg-red-950/30 border-red-200/50 dark:border-red-800/30" : ""}
+                        ${today && !isSelected && !hasPublicHoliday ? "bg-accent/30" : ""}
 
                       `}
                     >
