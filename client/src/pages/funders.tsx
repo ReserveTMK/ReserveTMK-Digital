@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+// Tabs removed — funders use single grouped list view
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -1150,7 +1150,6 @@ export default function FundersPage() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
-  const [activeTab, setActiveTab] = useState("active");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [createDefaultStatus, setCreateDefaultStatus] = useState<string | undefined>();
   const [editingFunder, setEditingFunder] = useState<Funder | null>(null);
@@ -1176,6 +1175,30 @@ export default function FundersPage() {
 
   const activeValue = useMemo(() => active.reduce((s, f) => s + (f.estimatedValue || 0), 0), [active]);
   const pipelineValue = useMemo(() => pipeline.reduce((s, f) => s + (f.estimatedValue || 0), 0), [pipeline]);
+
+  // Group by organisation for the unified view
+  const STATUS_PRIORITY: Record<string, number> = { active_funder: 0, in_conversation: 1, pending_eoi: 2, applied: 3, radar: 4, completed: 5 };
+  const groupedByOrg = useMemo(() => {
+    const groups: Record<string, Funder[]> = {};
+    for (const f of fundersList) {
+      const key = f.organisation?.trim() || f.name;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(f);
+    }
+    // Sort funds within each org by status priority
+    for (const key of Object.keys(groups)) {
+      groups[key].sort((a, b) => (STATUS_PRIORITY[a.status] ?? 9) - (STATUS_PRIORITY[b.status] ?? 9));
+    }
+    // Sort org groups: orgs with active funds first, then by total value
+    return Object.entries(groups).sort(([, a], [, b]) => {
+      const aHasActive = a.some(f => f.status === "active_funder") ? 0 : 1;
+      const bHasActive = b.some(f => f.status === "active_funder") ? 0 : 1;
+      if (aHasActive !== bHasActive) return aHasActive - bHasActive;
+      const aVal = a.reduce((s, f) => s + (f.estimatedValue || 0), 0);
+      const bVal = b.reduce((s, f) => s + (f.estimatedValue || 0), 0);
+      return bVal - aVal;
+    });
+  }, [fundersList]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return null;
@@ -1282,7 +1305,6 @@ export default function FundersPage() {
       </div>
 
       {filtered ? (
-        /* Search results across all tabs */
         <div>
           <p className="text-sm text-muted-foreground mb-3">{filtered.length} result{filtered.length !== 1 ? "s" : ""}</p>
           <div className="grid gap-3">
@@ -1291,84 +1313,52 @@ export default function FundersPage() {
             ))}
           </div>
         </div>
+      ) : fundersList.length === 0 ? (
+        <Card className="p-12 text-center border-dashed">
+          <Building2 className="w-12 h-12 mx-auto text-muted-foreground/40 mb-3" />
+          <h3 className="text-lg font-semibold mb-1">No funders yet</h3>
+          <p className="text-sm text-muted-foreground mb-4">Track active funding, pipeline opportunities, and prospects</p>
+          <Button onClick={() => handleAdd()}>
+            <Plus className="w-4 h-4 mr-2" /> Add Funder
+          </Button>
+        </Card>
       ) : (
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
-            <TabsTrigger value="active" className="gap-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5" /> Active ({active.length})
-            </TabsTrigger>
-            <TabsTrigger value="pipeline" className="gap-1.5">
-              <TrendingUp className="w-3.5 h-3.5" /> Pipeline ({pipeline.length})
-            </TabsTrigger>
-            <TabsTrigger value="radar" className="gap-1.5">
-              <Radar className="w-3.5 h-3.5" /> Radar ({radar.length})
-            </TabsTrigger>
-            {completed.length > 0 && (
-              <TabsTrigger value="completed" className="gap-1.5">
-                Completed ({completed.length})
-              </TabsTrigger>
-            )}
-          </TabsList>
+        <div className="space-y-6">
+          {groupedByOrg.map(([orgName, funds]) => {
+            const orgTotal = funds.reduce((s, f) => s + (f.estimatedValue || 0), 0);
+            const hasMultiple = funds.length > 1;
+            const hasActive = funds.some(f => f.status === "active_funder");
 
-          <TabsContent value="active" className="mt-4">
-            {active.length === 0 ? (
-              <Card className="p-8 text-center border-dashed">
-                <Building2 className="w-10 h-10 mx-auto text-muted-foreground/40 mb-2" />
-                <p className="text-sm text-muted-foreground">No active funders yet</p>
-                <Button size="sm" variant="outline" className="mt-3" onClick={() => handleAdd("active_funder")}>
-                  <Plus className="w-4 h-4 mr-1" /> Add Active Funder
-                </Button>
-              </Card>
-            ) : (
-              <div className="grid gap-3">
-                {active.map((funder) => (
-                  <ActiveFunderCard key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/reports?funder=${funder.id}`)} />
-                ))}
+            return (
+              <div key={orgName}>
+                {hasMultiple && (
+                  <div className="flex items-center gap-2 mb-2">
+                    <Building2 className="w-4 h-4 text-muted-foreground" />
+                    <h3 className="text-sm font-semibold">{orgName}</h3>
+                    {orgTotal > 0 && (
+                      <span className="text-xs text-muted-foreground">({formatCurrency(orgTotal)} total)</span>
+                    )}
+                  </div>
+                )}
+                <div className={`grid gap-3 ${hasMultiple ? "pl-6 border-l-2 border-muted" : ""}`}>
+                  {funds.map((funder) => {
+                    if (funder.status === "active_funder") {
+                      return <ActiveFunderCard key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/reports?funder=${funder.id}`)} />;
+                    }
+                    if (PIPELINE_STATUSES.includes(funder.status)) {
+                      return <PipelineCard key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} />;
+                    }
+                    if (funder.status === "radar") {
+                      return <RadarRow key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onMoveToPipeline={() => updateMutation.mutate({ id: funder.id, data: { status: "in_conversation" } })} onDelete={() => setDeleteConfirm(funder.id)} />;
+                    }
+                    return <FunderCard key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/reports?funder=${funder.id}`)} />;
+                  })}
+                </div>
               </div>
-            )}
-          </TabsContent>
-
-          <TabsContent value="pipeline" className="mt-4">
-            {pipeline.length === 0 ? (
-              <Card className="p-8 text-center border-dashed">
-                <TrendingUp className="w-10 h-10 mx-auto text-muted-foreground/40 mb-2" />
-                <p className="text-sm text-muted-foreground">No funding in the pipeline</p>
-                <Button size="sm" variant="outline" className="mt-3" onClick={() => handleAdd("in_conversation")}>
-                  <Plus className="w-4 h-4 mr-1" /> Add to Pipeline
-                </Button>
-              </Card>
-            ) : (
-              <div className="grid gap-3">
-                {pipeline.map((funder) => (
-                  <PipelineCard key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} />
-                ))}
-              </div>
-            )}
-          </TabsContent>
-
-          <TabsContent value="radar" className="mt-4">
-            {radar.length === 0 ? (
-              <Card className="p-8 text-center border-dashed">
-                <Radar className="w-10 h-10 mx-auto text-muted-foreground/40 mb-2" />
-                <p className="text-sm text-muted-foreground">No opportunities on the radar</p>
-                <p className="text-xs text-muted-foreground mt-1">Add funding opportunities you've researched or heard about</p>
-                <Button size="sm" variant="outline" className="mt-3" onClick={() => handleAdd("radar")}>
-                  <Plus className="w-4 h-4 mr-1" /> Add Opportunity
-                </Button>
-              </Card>
-            ) : (
-              <div className="space-y-2">
-                {radar.map((funder) => (
-                  <RadarRow
-                    key={funder.id}
-                    funder={funder}
-                    onView={() => setViewingFunder(funder)}
-                    onMoveToPipeline={() => updateMutation.mutate({ id: funder.id, data: { status: "in_conversation" } })}
-                    onDelete={() => setDeleteConfirm(funder.id)}
-                  />
-                ))}
-                <Button size="sm" variant="ghost" className="mt-2 text-muted-foreground" onClick={() => handleAdd("radar")}>
-                  <Plus className="w-4 h-4 mr-1" /> Add Opportunity
+            );
+          })}
+          <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => handleAdd("radar")}>
+            <Plus className="w-4 h-4 mr-1" /> Add Opportunity
                 </Button>
               </div>
             )}
@@ -1379,11 +1369,7 @@ export default function FundersPage() {
               <div className="grid gap-3">
                 {completed.map((funder) => (
                   <FunderCard key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/reports?funder=${funder.id}`)} />
-                ))}
-              </div>
-            </TabsContent>
-          )}
-        </Tabs>
+        </div>
       )}
 
       <FunderFormDialog
