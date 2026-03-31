@@ -385,21 +385,12 @@ function BookingCalendarCard({ booking, venueMap, allContacts, debriefStatus, on
             {isRangatahi && (
               <Badge className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">Rangatahi</Badge>
             )}
-            <Badge className={`text-[10px] ${BOOKING_BADGE_COLORS[booking.classification] || ""}`}>
-              {booking.classification}
+            <Badge className={`text-[10px] ${EVENT_TYPE_BADGE_COLORS["Venue Hire"] || ""}`}>
+              Venue Hire
             </Badge>
             <Badge className={`text-[10px] ${booking.status === "completed" ? "bg-green-500/10 text-green-700 dark:text-green-300" : "bg-blue-500/10 text-blue-700 dark:text-blue-300"}`}>
               {booking.status}
             </Badge>
-            {booking.status === "completed" && debriefStatus === "none" && (
-              <span className="w-2 h-2 rounded-full bg-amber-500" title="Needs debrief" />
-            )}
-            {booking.status === "completed" && debriefStatus === "confirmed" && (
-              <span className="w-2 h-2 rounded-full bg-green-500" title="Debriefed" />
-            )}
-            {booking.status === "completed" && debriefStatus === "draft" && (
-              <span className="w-2 h-2 rounded-full bg-amber-300" title="Draft debrief" />
-            )}
             {expanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
           </div>
         </div>
@@ -426,7 +417,7 @@ function BookingCalendarCard({ booking, venueMap, allContacts, debriefStatus, on
             {attendanceMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className={`grid ${isRangatahi ? "grid-cols-2" : "grid-cols-1"} gap-2`}>
             <div>
               <Label className="text-xs text-muted-foreground">Head Count</Label>
               <Input
@@ -439,6 +430,7 @@ function BookingCalendarCard({ booking, venueMap, allContacts, debriefStatus, on
                 data-testid={`input-attendee-count-${booking.id}`}
               />
             </div>
+            {isRangatahi && (
             <div>
               <Label className="text-xs text-muted-foreground">Rangatahi Count</Label>
               <Input
@@ -451,6 +443,7 @@ function BookingCalendarCard({ booking, venueMap, allContacts, debriefStatus, on
                 data-testid={`input-rangatahi-count-${booking.id}`}
               />
             </div>
+            )}
           </div>
 
           <div>
@@ -531,12 +524,10 @@ function BookingCalendarCard({ booking, venueMap, allContacts, debriefStatus, on
                 )}
               </>
             )}
-            <Link href={`/bookings/${booking.id}`} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-              <Button size="sm" variant="outline" className="text-xs ml-auto">
-                <ExternalLink className="w-3.5 h-3.5 mr-1" />
-                View Booking
-              </Button>
-            </Link>
+            <Button size="sm" variant="outline" className="text-xs ml-auto" onClick={(e) => { e.stopPropagation(); window.location.href = `/bookings/${booking.id}`; }}>
+              <ExternalLink className="w-3.5 h-3.5 mr-1" />
+              View Booking
+            </Button>
           </div>
         </div>
       )}
