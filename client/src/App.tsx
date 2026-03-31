@@ -30,6 +30,7 @@ import CohortAnalysisPage from "@/pages/cohort-analysis";
 import CommunitySpend from "@/pages/community-spend";
 import GmailImportPage from "@/pages/gmail-import";
 import FundersPage from "@/pages/funders";
+import FunderDetailPage from "@/pages/funder-detail";
 import MentoringPage from "@/pages/mentoring";
 import SchedulingPage from "@/pages/scheduling";
 import PublicBookingPage from "@/pages/public-booking";
@@ -232,6 +233,9 @@ function Router() {
           <ProtectedRoute component={GmailImportPage} />
         </Route>
 
+        <Route path="/funders/:id">
+          <ProtectedRoute component={FunderDetailPage} />
+        </Route>
         <Route path="/funders">
           <ProtectedRoute component={FundersPage} />
         </Route>

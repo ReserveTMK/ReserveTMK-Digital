@@ -1838,6 +1838,8 @@ export type InsertGmailConnectedAccount = z.infer<typeof insertGmailConnectedAcc
 
 export const FUNDER_STATUSES = ["active_funder", "in_conversation", "pending_eoi", "applied", "radar", "completed"] as const;
 export type FunderStatus = typeof FUNDER_STATUSES[number];
+export const FUND_TYPES = ["delivery", "project"] as const;
+export type FundType = typeof FUND_TYPES[number];
 
 
 export const REPORTING_CADENCES = ["monthly", "quarterly", "annual", "adhoc"] as const;
@@ -1891,6 +1893,9 @@ export const funders = pgTable("funders", {
   narrativeStyle: text("narrative_style").default("compliance"),
   prioritySections: text("priority_sections").array(),
   funderTag: text("funder_tag"),
+  fundType: text("fund_type").default("delivery"), // "delivery" | "project"
+  contactId: integer("contact_id"), // FK to contacts table
+  groupId: integer("group_id"), // FK to groups table (funder organisation)
   contractStart: timestamp("contract_start"),
   contractEnd: timestamp("contract_end"),
   nextDeadline: timestamp("next_deadline"),
