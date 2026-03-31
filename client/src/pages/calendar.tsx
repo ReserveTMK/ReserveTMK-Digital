@@ -2567,6 +2567,13 @@ export default function CalendarPage() {
                     );
                     if (shownAsSchedule) return false;
                   }
+                  // Skip programmes already shown as schedule cards (linked via event)
+                  if (showSchedule && item.kind === "programme") {
+                    const shownAsSchedule = selectedDayEvents.some(e =>
+                      e.type === "app" && Number(e.app?.linkedProgrammeId) === item.id
+                    );
+                    if (shownAsSchedule) return false;
+                  }
                   return true;
                 }).map((item) => (
                   <Card
