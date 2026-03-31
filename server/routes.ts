@@ -8288,7 +8288,7 @@ Important:
       res.json(result);
     } catch (err: any) {
       console.error("Report generation error:", err);
-      res.status(500).json({ message: "Failed to generate report" });
+      res.status(500).json({ message: "Failed to generate report", error: err.message, stack: err.stack?.split("\n").slice(0, 5).join("\n") });
     }
   });
 
