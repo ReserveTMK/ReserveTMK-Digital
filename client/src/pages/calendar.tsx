@@ -446,87 +446,10 @@ function BookingCalendarCard({ booking, venueMap, allContacts, debriefStatus, on
             )}
           </div>
 
-          <div>
-            <Label className="text-xs text-muted-foreground mb-1 block">Tag Community Members</Label>
-            <div className="relative">
-              <Search className="absolute left-2 top-2 w-3.5 h-3.5 text-muted-foreground" />
-              <Input
-                placeholder="Search people..."
-                value={attendeeSearch}
-                onChange={e => setAttendeeSearch(e.target.value)}
-                className="h-8 text-sm pl-7"
-                data-testid={`input-attendee-search-${booking.id}`}
-              />
-            </div>
-            {filteredContacts.length > 0 && (
-              <div className="mt-1 border rounded-md bg-popover max-h-32 overflow-y-auto">
-                {filteredContacts.map(c => (
-                  <button
-                    key={c.id}
-                    onClick={() => addAttendee(c.id)}
-                    className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted flex items-center gap-2"
-                    data-testid={`button-add-attendee-${booking.id}-${c.id}`}
-                  >
-                    <UserPlus className="w-3 h-3 text-muted-foreground" />
-                    {c.name}
-                    {c.role && <span className="text-xs text-muted-foreground">({c.role})</span>}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {taggedIds.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {taggedIds.map(cId => {
-                const contact = allContacts.find(c => c.id === cId);
-                return (
-                  <Badge key={cId} variant="secondary" className="text-xs gap-1 pr-1" data-testid={`badge-attendee-${booking.id}-${cId}`}>
-                    {contact?.name || `#${cId}`}
-                    <button onClick={() => removeAttendee(cId)} className="ml-0.5 hover:text-destructive">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </Badge>
-                );
-              })}
-            </div>
-          )}
-
           <div className="flex items-center gap-2 pt-2 border-t">
-            {booking.status === "completed" && (
-              <>
-                {debriefStatus === "confirmed" ? (
-                  <Button size="sm" variant="outline" className="text-xs" onClick={() => onViewDebrief?.(booking)}>
-                    <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-green-600" />
-                    Debrief Confirmed
-                  </Button>
-                ) : debriefStatus === "draft" ? (
-                  <Button size="sm" variant="outline" className="text-xs" onClick={() => onViewDebrief?.(booking)}>
-                    <CircleDashed className="w-3.5 h-3.5 mr-1 text-amber-500" />
-                    Debrief Draft
-                  </Button>
-                ) : isSkipped ? (
-                  <Badge variant="secondary" className="text-xs">
-                    <EyeOff className="w-3 h-3 mr-1" />
-                    Archived
-                  </Badge>
-                ) : (
-                  <>
-                    <Button size="sm" variant="default" className="text-xs" onClick={() => onLogDebrief?.(booking)}>
-                      <FileText className="w-3.5 h-3.5 mr-1" />
-                      Log Debrief
-                    </Button>
-                    <Button size="sm" variant="ghost" className="text-xs text-muted-foreground" onClick={() => onSkipDebrief?.(booking)}>
-                      <EyeOff className="w-3.5 h-3.5 mr-1" />
-                      Archive
-                    </Button>
-                  </>
-                )}
-              </>
-            )}
-            <Button size="sm" variant="outline" className="text-xs ml-auto" onClick={(e) => { e.stopPropagation(); window.location.href = `/bookings/${booking.id}`; }}>
-              <ExternalLink className="w-3.5 h-3.5 mr-1" />
-              View Booking
+            <Button size="sm" variant="ghost" className="text-xs text-muted-foreground" onClick={(e) => { e.stopPropagation(); onSkipDebrief?.(booking); }}>
+              <EyeOff className="w-3.5 h-3.5 mr-1" />
+              Archive
             </Button>
           </div>
         </div>
