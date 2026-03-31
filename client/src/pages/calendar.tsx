@@ -750,7 +750,12 @@ function EventCard({
     && !(entry.type === "app" && entry.app?.source === "internal");
 
   // Card color + fade based on debrief state
-  const cardState = entry.isPast && isConfirmed
+  const isVenueHire = eventType === "Venue Hire";
+  const cardState = isVenueHire
+    ? entry.isPast && isConfirmed
+      ? "opacity-50 hover:opacity-75 transition-opacity border-orange-500/20 bg-orange-500/5 dark:bg-orange-500/5"
+      : "border-orange-500/20 bg-orange-500/5 dark:bg-orange-500/5"
+    : entry.isPast && isConfirmed
     ? "opacity-50 hover:opacity-75 transition-opacity border-green-500/20 bg-green-500/5"
     : entry.isPast && isInProgress
     ? "opacity-70 hover:opacity-90 transition-opacity border-blue-500/20 bg-blue-500/5"
@@ -811,18 +816,18 @@ function EventCard({
               <Badge variant="secondary" className={`text-xs ${badgeColor}`}>
                 {eventType}
               </Badge>
-              {isGcal && (
-                <Badge variant="secondary" className="text-xs">
-                  <Calendar className="w-3 h-3 mr-1" />
-                  GCal
-                </Badge>
-              )}
-              {expanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
             </div>
           </div>
+          {location && (
+            <div className="flex justify-end">
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <MapPin className="w-3 h-3" />{location}
+              </span>
+            </div>
+          )}
         </div>
 
-        {(!isManualLog || location || (attendance && attendance.length > 0)) && (
+        {(!isManualLog || (attendance && attendance.length > 0)) && (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           {!isManualLog && (
             <span className="flex items-center gap-1">
@@ -830,30 +835,18 @@ function EventCard({
               {formatTime(startStr)} - {formatTime(endStr)}
             </span>
           )}
-          {location && (
-            <span className="flex items-center gap-1">
-              <MapPin className="w-3 h-3" />
-              <span className="truncate max-w-[120px]">{location}</span>
-            </span>
-          )}
-          {isGcal && entry.gcal!.calendarLabel && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-              {entry.gcal!.calendarLabel}
-            </Badge>
-          )}
-          {isGcal && entry.gcal!.attendees?.length > 0 && (
-            <span className="flex items-center gap-1">
-              <Users className="w-3 h-3" />
-              {entry.gcal!.attendees.length}
-            </span>
-          )}
-          {isGcal && entry.gcal!.matchedContacts && entry.gcal!.matchedContacts.length > 0 && (
-            <span className="flex items-center gap-1 text-primary">
-              <Link2 className="w-3 h-3" />
-              {entry.gcal!.matchedContacts.map(mc => mc.contactName).join(", ")}
-            </span>
-          )}
-          {attendance && attendance.length > 0 && (
+          {(() => {
+            const count = entry.app?.attendeeCount
+              || (isGcal && entry.gcal!.attendees ? entry.gcal!.attendees.filter(a => !a.organizer).length : 0)
+              || (attendance ? attendance.length : 0);
+            return count > 0 ? (
+              <span className="flex items-center gap-1">
+                <Users className="w-3 h-3" />
+                {count}
+              </span>
+            ) : null;
+          })()}
+          {attendance && attendance.length > 0 && !isConfirmed && !expanded && (
             <span className="flex items-center gap-1">
               <UserPlus className="w-3 h-3" />
               {attendance.length} tagged
@@ -873,10 +866,6 @@ function EventCard({
               : <CircleDashed className="w-3 h-3" />}
             {isConfirmed ? "Debriefed" : isInProgress ? "In progress" : "To debrief"}
           </div>
-        )}
-
-        {isManualLog && entry.app?.description && (
-          <p className="text-xs text-muted-foreground whitespace-pre-line line-clamp-3">{cleanDescription(entry.app.description)}</p>
         )}
 
         {expanded && (
@@ -933,7 +922,7 @@ function EventCard({
             </div>
             )}
 
-            {false && isGcal && entry.gcal!.attendees?.length > 0 && (() => {
+            {isGcal && entry.gcal!.attendees?.length > 0 && (() => {
               const contactByEmail = new Map(
                 (contacts || []).filter((c: Contact) => c.email).map((c: Contact) => [c.email!.toLowerCase(), c])
               );
@@ -949,6 +938,15 @@ function EventCard({
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground flex items-center gap-1">
                     <Users className="w-3 h-3" /> Invitees
+                    <Button size="sm" variant="ghost" className="h-5 text-[10px] px-1.5" onClick={(e) => {
+                      e.stopPropagation();
+                      const matched = invitees
+                        .map(a => contactByEmail.get(a.email.toLowerCase()))
+                        .filter((c): c is Contact => !!c);
+                      matched.forEach(c => handleAddContact(c));
+                    }}>
+                      Tag all ↓
+                    </Button>
                   </Label>
                   <div className="flex flex-wrap gap-x-3 gap-y-1">
                     {invitees.map((a) => {
@@ -976,7 +974,7 @@ function EventCard({
               );
             })()}
 
-            {false && <div className="space-y-1.5">
+            {<div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Community Members</Label>
               {attendance && attendance.length > 0 && (
                 <div className="flex flex-wrap gap-1 mb-1.5">
@@ -1100,72 +1098,43 @@ function EventCard({
             </Dialog>}
 
 
-            <div className="flex gap-2 pt-1">
-              {isGcal && !personalEvent && (
+            <div className="flex items-center gap-2 pt-2">
+              <Button size="sm" variant="outline" className="text-xs" onClick={(e) => e.stopPropagation()} data-testid="button-save-event">
+                <Save className="w-3 h-3 mr-1" /> Save
+              </Button>
+              <div className="flex-1" />
+              {(entry.isPast && !isConfirmed && !isInProgress) || !entry.isPast ? (
                 <DismissPopover
-                  reasons={["Archive", "Ignore"]}
+                  reasons={["Not relevant", "Duplicate", "Personal"]}
                   onDismiss={(reason) => {
-                    if (reason === "Ignore" && appEventId && onSkipDebrief) {
-                      onSkipDebrief(appEventId, "Ignored");
-                    } else {
-                      onDismissEvent(entry.gcal!.id, reason);
-                    }
+                    if (appEventId && onSkipDebrief) onSkipDebrief(appEventId, reason);
+                    else if (isGcal) onDismissEvent(entry.gcal!.id, reason);
                   }}
                   isPending={isDismissPending}
-                  testIdPrefix={`dismiss-event-${entry.gcal!.id}`}
+                  testIdPrefix={`skip-${isGcal ? entry.gcal!.id : entry.app?.id}`}
                 >
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={(e) => e.stopPropagation()}
-                    data-testid={`button-dismiss-event-${entry.gcal!.id}`}
-                  >
-                    <EyeOff className="w-4 h-4 text-muted-foreground" />
+                  <Button size="sm" variant="ghost" className="text-xs text-muted-foreground" onClick={(e) => e.stopPropagation()}>
+                    Skip
                   </Button>
                 </DismissPopover>
-              )}
-              {isApp && entry.isPast && (
-                <DismissPopover
-                  reasons={["Archive", "Ignore"]}
-                  onDismiss={(reason) => {
-                    if (reason === "Archive") {
-                      onDeleteEvent(entry.app!);
-                    } else {
-                      onSkipDebrief && onSkipDebrief(entry.app!.id, reason);
-                    }
-                  }}
-                  isPending={false}
-                  testIdPrefix={`skip-debrief-${entry.app!.id}`}
-                >
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={(e) => e.stopPropagation()}
-                    data-testid={`button-skip-debrief-${entry.app!.id}`}
-                  >
-                    <EyeOff className="w-4 h-4 text-muted-foreground" />
-                  </Button>
-                </DismissPopover>
-              )}
-              {isApp && (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => onDeleteEvent(entry.app!)}
-                  data-testid={`button-delete-event-${entry.app!.id}`}
-                >
-                  <Trash2 className="w-4 h-4 text-muted-foreground" />
+              ) : null}
+              <DismissPopover
+                reasons={["Duplicate", "Didn't happen", "Personal", "Not relevant"]}
+                onDismiss={(reason) => {
+                  if (isGcal) onDismissEvent(entry.gcal!.id, reason);
+                  else if (entry.app) onDeleteEvent(entry.app);
+                }}
+                isPending={isDismissPending}
+                testIdPrefix={`archive-${isGcal ? entry.gcal!.id : entry.app?.id}`}
+              >
+                <Button size="sm" variant="ghost" className="text-xs text-muted-foreground" onClick={(e) => e.stopPropagation()}>
+                  Archive
                 </Button>
-              )}
+              </DismissPopover>
             </div>
           </div>
         )}
 
-        {!expanded && (
-          <p className="text-xs text-muted-foreground italic line-clamp-2">
-            {cleanDescription(isGcal ? entry.gcal?.description : entry.app?.description) || (entry.isPast ? "Tap to debrief" : "Tap to expand")}
-          </p>
-        )}
       </div>
     </Card>
   );
