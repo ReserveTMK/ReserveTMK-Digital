@@ -110,58 +110,152 @@ const CATEGORY_LABELS: Record<string, string> = {
   gear: "Gear",
 };
 
-const CHANNEL_BADGES: Record<string, { label: string; color: string }> = {
-  venue: { label: "Venue", color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" },
-  mentoring: { label: "Mentoring", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
-  programme: { label: "Programme", color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300" },
-  gear: { label: "Gear", color: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300" },
-  desk: { label: "Desk", color: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300" },
-};
+function BookerDetailDialog({ booker, bookings, contacts, groups, memberships, mous, bookerLinks, open, onOpenChange, onEdit }: {
+  booker: any;
+  bookings: any[];
+  contacts: any[];
+  groups: any[];
+  memberships: any[];
+  mous: any[];
+  bookerLinks: any[];
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onEdit: () => void;
+}) {
+  const contact = contacts.find((c: any) => c.id === booker.contactId);
+  const group = groups.find((g: any) => g.id === booker.groupId);
+  const membership = memberships.find((m: any) => m.id === booker.membershipId);
+  const mou = mous.find((m: any) => m.id === booker.mouId);
+  const agreement = membership || mou;
+  const agreementType = membership ? "Membership" : mou ? "MOU" : null;
 
-function BookingDirectorySection() {
-  const { data: directory, isLoading } = useQuery<Array<{ id: number; name: string; email: string | null; phone: string | null; channels: string[] }>>({
-    queryKey: ["/api/booking-directory"],
-  });
+  const categories = agreement?.bookingCategories || [];
 
-  if (isLoading || !directory || directory.length === 0) return null;
+  const bookerBookings = useMemo(() => {
+    return bookings.filter((b: any) =>
+      b.bookerId === booker.contactId ||
+      (booker.groupId && b.bookerGroupId === booker.groupId) ||
+      (booker.membershipId && b.membershipId === booker.membershipId) ||
+      (booker.mouId && b.mouId === booker.mouId)
+    ).sort((a: any, b: any) => {
+      const da = a.startDate ? new Date(a.startDate).getTime() : 0;
+      const db = b.startDate ? new Date(b.startDate).getTime() : 0;
+      return db - da;
+    });
+  }, [booker, bookings]);
+
+  const confirmed = bookerBookings.filter((b: any) => b.status === "confirmed" || b.status === "completed");
+  const totalValue = confirmed.reduce((sum: number, b: any) => sum + parseFloat(b.amount || "0"), 0);
+  const activeLink = bookerLinks.find((l: any) => l.enabled);
+
+  const displayName = group?.name || contact?.name || booker.organizationName || "Booker";
+  const email = (booker as any).notificationsEmail || contact?.email || booker.billingEmail;
 
   return (
-    <Card className="p-4">
-      <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-        <Users className="w-4 h-4 text-muted-foreground" />
-        Booking Activity ({directory.length} people)
-      </h3>
-      <div className="border rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-muted/30">
-              <th className="px-3 py-2 text-left font-medium">Name</th>
-              <th className="px-3 py-2 text-left font-medium hidden sm:table-cell">Email</th>
-              <th className="px-3 py-2 text-left font-medium">Channels</th>
-            </tr>
-          </thead>
-          <tbody>
-            {directory.map((person) => (
-              <tr key={person.id} className="border-b last:border-0 hover:bg-muted/20">
-                <td className="px-3 py-2 font-medium">
-                  <a href={`/contacts/${person.id}`} className="hover:underline text-primary">{person.name}</a>
-                </td>
-                <td className="px-3 py-2 text-muted-foreground hidden sm:table-cell">{person.email || "—"}</td>
-                <td className="px-3 py-2">
-                  <div className="flex gap-1 flex-wrap">
-                    {person.channels.map(ch => (
-                      <Badge key={ch} className={`text-[10px] ${CHANNEL_BADGES[ch]?.color || "bg-gray-100 text-gray-600"}`}>
-                        {CHANNEL_BADGES[ch]?.label || ch}
-                      </Badge>
-                    ))}
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <DialogTitle>{displayName}</DialogTitle>
+              {email && <p className="text-sm text-muted-foreground mt-0.5">{email}</p>}
+            </div>
+            <Button variant="outline" size="sm" onClick={onEdit}>
+              <Pencil className="w-3 h-3 mr-1" /> Edit
+            </Button>
+          </div>
+        </DialogHeader>
+
+        <div className="space-y-5 mt-2">
+          {/* Access */}
+          <div className="bg-muted/30 rounded-lg p-4 space-y-2">
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Access</h3>
+            <div className="flex items-center gap-2 flex-wrap">
+              {["venue_hire", "hot_desking", "gear"].map(cat => (
+                <Badge key={cat} variant="outline" className={`text-xs ${categories.includes(cat) ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800" : "opacity-40"}`}>
+                  {categories.includes(cat) ? "✓" : "✗"} {CATEGORY_LABELS[cat] || cat}
+                </Badge>
+              ))}
+            </div>
+            {agreement && (
+              <div className="flex items-center gap-2 text-sm mt-1">
+                <Badge variant="outline" className="text-xs">{agreementType}</Badge>
+                <span className="text-muted-foreground">
+                  {agreement.bookingAllowance > 0
+                    ? `${confirmed.length} / ${agreement.bookingAllowance} per ${agreement.allowancePeriod === "monthly" ? "month" : "quarter"}`
+                    : "Unlimited"}
+                </span>
+                <Badge className={`text-[10px] ${agreement.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
+                  {agreement.status}
+                </Badge>
+              </div>
+            )}
+            {!agreement && (
+              <p className="text-xs text-muted-foreground">No agreement linked</p>
+            )}
+          </div>
+
+          {/* Bookings */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Bookings ({confirmed.length})
+              </h3>
+              {totalValue > 0 && (
+                <span className="text-xs text-muted-foreground">${totalValue.toFixed(0)} total</span>
+              )}
+            </div>
+            {bookerBookings.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No bookings yet</p>
+            ) : (
+              <div className="space-y-1">
+                {bookerBookings.slice(0, 10).map((b: any) => (
+                  <div key={b.id} className="flex items-center justify-between text-sm py-1.5 border-b border-border/50 last:border-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-xs text-muted-foreground shrink-0 w-16">
+                        {b.startDate ? format(new Date(b.startDate), "d MMM") : "—"}
+                      </span>
+                      <span className="truncate">{b.classification || b.title || "Booking"}</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {parseFloat(b.amount || "0") > 0 && (
+                        <span className="text-xs text-muted-foreground">${parseFloat(b.amount).toFixed(0)}</span>
+                      )}
+                      <Badge variant="outline" className={`text-[9px] ${
+                        b.status === "confirmed" || b.status === "completed" ? "text-green-700 border-green-200" :
+                        b.status === "cancelled" ? "text-red-700 border-red-200" :
+                        "text-muted-foreground"
+                      }`}>{b.status}</Badge>
+                    </div>
                   </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Card>
+                ))}
+                {bookerBookings.length > 10 && (
+                  <p className="text-xs text-muted-foreground mt-1">+ {bookerBookings.length - 10} more</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Portal */}
+          {activeLink && (
+            <div className="bg-muted/30 rounded-lg p-4 space-y-2">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Portal</h3>
+              <code className="text-xs bg-background rounded px-2 py-1 block truncate border">
+                {activeLink.portalUrl}
+              </code>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => { navigator.clipboard.writeText(activeLink.portalUrl); }}>
+                  <Copy className="w-3 h-3 mr-1" /> Copy Link
+                </Button>
+                <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => window.open(activeLink.portalUrl, "_blank")}>
+                  <ExternalLink className="w-3 h-3 mr-1" /> Open
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -179,6 +273,7 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
   const { data: allBookings } = useBookings();
 
   const [editingBooker, setEditingBooker] = useState<RegularBooker | null>(null);
+  const [viewingBooker, setViewingBooker] = useState<RegularBooker | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   useEffect(() => { onAddReady?.(() => { setEditingBooker(null); setFormOpen(true); }); }, [onAddReady]);
   const [createdPortalUrl, setCreatedPortalUrl] = useState<string | null>(null);
@@ -586,9 +681,13 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
                   <TableRow key={booker.id} data-testid={`row-booker-${booker.id}`}>
                     <TableCell>
                       <div>
-                        <span className="font-medium text-sm" data-testid={`text-booker-name-${booker.id}`}>
+                        <button
+                          className="font-medium text-sm text-left hover:text-primary hover:underline"
+                          onClick={() => setViewingBooker(booker)}
+                          data-testid={`text-booker-name-${booker.id}`}
+                        >
                           {getBookerDisplayName(booker)}
-                        </span>
+                        </button>
                         {groupName && getBookerDisplayName(booker) !== groupName ? (
                           <p className="text-xs text-muted-foreground truncate" data-testid={`text-booker-group-${booker.id}`}>
                             {groupName}
@@ -917,8 +1016,20 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
         </Collapsible>
       )}
 
-      {/* Booking Activity Directory */}
-      {!embedded && <BookingDirectorySection />}
+      {viewingBooker && (
+        <BookerDetailDialog
+          booker={viewingBooker}
+          bookings={allBookings || []}
+          contacts={contacts || []}
+          groups={groups || []}
+          memberships={allMemberships || []}
+          mous={allMous || []}
+          bookerLinks={(allBookerLinks || []).filter((l: any) => l.regularBookerId === viewingBooker.id)}
+          open={!!viewingBooker}
+          onOpenChange={(v) => { if (!v) setViewingBooker(null); }}
+          onEdit={() => { setEditingBooker(viewingBooker); setFormOpen(true); setViewingBooker(null); }}
+        />
+      )}
 
       <RegularBookerFormDialog
         open={formOpen}
