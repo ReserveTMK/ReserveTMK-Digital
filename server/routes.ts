@@ -261,6 +261,46 @@ async function ensureBookingEvent(booking: any, userId: string): Promise<void> {
   }
 }
 
+// Auto-create an event linked to an active/completed programme (makes it debriefable + shows on calendar)
+async function ensureProgrammeEvent(programme: any, userId: string): Promise<void> {
+  try {
+    if (!programme.id || !programme.startDate) return;
+    if (programme.status === "cancelled" || programme.status === "planned") return;
+    const existingEvents = await storage.getEvents(userId);
+    if (existingEvents.find(e => e.linkedProgrammeId === programme.id)) return;
+
+    const baseDateMs = new Date(programme.startDate).getTime();
+    let startTime: Date;
+    let endTime: Date;
+    if (programme.startTime) {
+      const [h, m] = programme.startTime.split(":").map(Number);
+      startTime = new Date(baseDateMs + (h * 60 + m) * 60 * 1000);
+    } else {
+      startTime = new Date(baseDateMs + 10 * 60 * 60 * 1000); // default 10am
+    }
+    if (programme.endTime) {
+      const [h, m] = programme.endTime.split(":").map(Number);
+      endTime = new Date(baseDateMs + (h * 60 + m) * 60 * 1000);
+    } else {
+      endTime = new Date(startTime.getTime() + 2 * 60 * 60 * 1000);
+    }
+
+    await storage.createEvent({
+      userId,
+      name: programme.name,
+      type: "Programme",
+      startTime,
+      endTime,
+      location: programme.location || null,
+      source: "programme",
+      linkedProgrammeId: programme.id,
+      requiresDebrief: true,
+    });
+  } catch (e) {
+    console.warn(`Failed to create event for programme ${programme.id}:`, e);
+  }
+}
+
 // Map venue to the correct Google Calendar for space bookings
 async function getCalendarIdForVenue(venueIds: number[], userId: string): Promise<string> {
   if (!venueIds.length) return "primary";
@@ -4488,6 +4528,9 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const input = api.programmes.create.input.parse(body);
       const programme = await storage.createProgramme(input);
 
+      // Create calendar event for active programmes
+      ensureProgrammeEvent(programme, userId);
+
       if (programme.facilitators && programme.facilitators.length > 0 && programme.facilitatorCost && parseFloat(String(programme.facilitatorCost)) > 0) {
         const costPerFacilitator = parseFloat(String(programme.facilitatorCost)) / programme.facilitators.length;
         for (const contactId of programme.facilitators) {
@@ -4548,6 +4591,11 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         }
       }
 
+      // Create calendar event when programme becomes active/completed
+      if (input.status && (input.status === "active" || input.status === "completed")) {
+        ensureProgrammeEvent(updated, existing.userId);
+      }
+
       // Classify through funder taxonomy lenses when programme becomes active/completed
       if (input.status && (input.status === "active" || input.status === "completed")) {
         classifyForAllFunders("programme", id, existing.userId).catch((err) =>
@@ -4561,6 +4609,24 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
       }
       throw err;
+    }
+  });
+
+  // Backfill events for existing programmes that don't have one
+  app.post("/api/programmes/backfill-events", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const allProgrammes = await storage.getProgrammes(userId);
+      let created = 0;
+      for (const prog of allProgrammes) {
+        if (prog.status === "cancelled" || prog.status === "planned") continue;
+        if (!prog.startDate) continue;
+        await ensureProgrammeEvent(prog, userId);
+        created++;
+      }
+      res.json({ message: `Backfill complete`, checked: allProgrammes.length, created });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
   });
 
