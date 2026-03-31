@@ -3604,8 +3604,18 @@ TRANSCRIPT:
 ${transcript}
 """
 
+PROFESSIONAL RECORD REQUIREMENT:
+The transcript is a spoken debrief by the operator — informal, stream-of-consciousness, sometimes blunt. Your output becomes the permanent professional record. Rewrite the content as measured, accurate operational notes:
+- Be honest and precise — do NOT sugar-coat or spin positively. If someone is disengaged, say "participant showed limited engagement" not "participant is thriving"
+- Remove filler, repetition, and casual speech patterns
+- Replace informal/blunt language with professional equivalents ("not putting in effort" → "limited follow-through on agreed actions")
+- Keep all factual content, observations, and assessments — just express them as you would in an operational report
+- Maintain the operator's perspective and judgement — professional framing, not different conclusions
+- This must be safe to disclose under a data request without embarrassing anyone
+
 Return a JSON object with EXACTLY this structure:
 {
+  "professionalTranscript": "Full rewrite of the transcript as professional operational notes. Paragraph form. Include all key content but in measured, report-ready language.",
   "summary": "2-3 sentence summary of the debrief",
   "sentiment": "positive" | "neutral" | "negative" | "mixed",
   "impactTags": [
@@ -3716,6 +3726,9 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         extraction.impactTags = extractedTags;
       };
 
+      // Use professional transcript as the permanent record, discard raw
+      const professionalText = extraction.professionalTranscript || transcript;
+
       if (existingLogId) {
         const existing = await storage.getImpactLog(existingLogId);
         if (!existing || existing.userId !== userId) {
@@ -3724,20 +3737,21 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         await autoApplyTags(existingLogId, extraction.impactTags);
         const preserveStatus = "pending_review"; // Reanalysis always requires re-confirmation
         const updated = await storage.updateImpactLog(existingLogId, {
-          transcript,
+          transcript: professionalText,
           summary: extraction.summary || "",
           rawExtraction: extraction,
           status: preserveStatus,
           sentiment: extraction.sentiment || "neutral",
           milestones: extraction.milestones || [],
           keyQuotes: extraction.keyQuotes || [],
+          audioUrl: null, // Clear audio — professional record replaces raw
         });
         res.status(200).json({ id: updated.id, impactLog: updated, extraction });
       } else {
         const impactLog = await storage.createImpactLog({
           userId,
           title: title || "Untitled Debrief",
-          transcript,
+          transcript: professionalText,
           summary: extraction.summary || "",
           rawExtraction: extraction,
           status: "pending_review",
@@ -3746,7 +3760,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
           keyQuotes: extraction.keyQuotes || [],
         });
         await autoApplyTags(impactLog.id, extraction.impactTags);
-        await storage.updateImpactLog(impactLog.id, { rawExtraction: extraction });
+        await storage.updateImpactLog(impactLog.id, { rawExtraction: extraction, audioUrl: null });
         res.status(201).json({ id: impactLog.id, impactLog, extraction });
       }
     } catch (error: any) {
