@@ -1304,8 +1304,10 @@ function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, t
               )}
               <GroupSortHeader label="Name" field="name" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-4" />
               <GroupSortHeader label="Type" field="type" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
-              <th className="px-2 py-3 text-xs font-medium text-muted-foreground text-center" title="Māori-led">Māori</th>
-              <th className="px-2 py-3 text-xs font-medium text-muted-foreground text-center" title="Pasifika-led">Pasifika</th>
+              <th className="px-1.5 py-3 text-[10px] font-medium text-muted-foreground text-center" title="Māori-led">Māori Led</th>
+              <th className="px-1.5 py-3 text-[10px] font-medium text-muted-foreground text-center" title="Serves Māori">Serves M</th>
+              <th className="px-1.5 py-3 text-[10px] font-medium text-muted-foreground text-center" title="Pasifika-led">Pasifika Led</th>
+              <th className="px-1.5 py-3 text-[10px] font-medium text-muted-foreground text-center" title="Serves Pasifika">Serves P</th>
               <th className="px-3 py-3 text-xs font-medium text-muted-foreground text-left">Community</th>
               <GroupSortHeader label="Members" field="members" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
               <GroupSortHeader label="Contact" field="contact" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3" />
@@ -1361,7 +1363,7 @@ function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, t
                       </Badge>
                     )}
                   </td>
-                  <td className="px-2 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-1.5 py-2 text-center" onClick={(e) => e.stopPropagation()}>
                     <Checkbox
                       checked={group.isMaori || false}
                       onCheckedChange={(v) => inlineUpdateMutation.mutate({ groupId: group.id, data: { isMaori: v === true } })}
@@ -1369,12 +1371,28 @@ function GroupsTableView({ groups, communityDensity, editMode, selectedGroups, t
                       data-testid={`table-maori-${group.id}`}
                     />
                   </td>
-                  <td className="px-2 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-1.5 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      checked={group.servesMaori || false}
+                      onCheckedChange={(v) => inlineUpdateMutation.mutate({ groupId: group.id, data: { servesMaori: v === true } })}
+                      className="mx-auto"
+                      data-testid={`table-serves-maori-${group.id}`}
+                    />
+                  </td>
+                  <td className="px-1.5 py-2 text-center" onClick={(e) => e.stopPropagation()}>
                     <Checkbox
                       checked={group.isPasifika || false}
                       onCheckedChange={(v) => inlineUpdateMutation.mutate({ groupId: group.id, data: { isPasifika: v === true } })}
                       className="mx-auto"
                       data-testid={`table-pasifika-${group.id}`}
+                    />
+                  </td>
+                  <td className="px-1.5 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      checked={group.servesPasifika || false}
+                      onCheckedChange={(v) => inlineUpdateMutation.mutate({ groupId: group.id, data: { servesPasifika: v === true } })}
+                      className="mx-auto"
+                      data-testid={`table-serves-pasifika-${group.id}`}
                     />
                   </td>
                   <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
