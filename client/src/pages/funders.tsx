@@ -122,6 +122,7 @@ const CADENCE_LABELS: Record<string, string> = {
   quarterly: "Quarterly",
   annual: "Annual",
   adhoc: "Ad Hoc",
+  on_completion: "On Completion",
 };
 
 const STYLE_LABELS: Record<string, string> = {
@@ -1363,7 +1364,7 @@ export default function FundersPage() {
               <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Pursuing</h2>
               <div className="grid gap-3">
                 {pipeline.map((funder) => (
-                  <PipelineCard key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} />
+                  <PipelineCard key={funder.id} funder={funder} onView={() => setLocation(`/funders/${funder.id}`)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} />
                 ))}
               </div>
             </div>
@@ -1375,7 +1376,7 @@ export default function FundersPage() {
               <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Radar</h2>
               <div className="space-y-2">
                 {radar.map((funder) => (
-                  <RadarRow key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onMoveToPipeline={() => updateMutation.mutate({ id: funder.id, data: { status: "in_conversation" } })} onDelete={() => setDeleteConfirm(funder.id)} />
+                  <RadarRow key={funder.id} funder={funder} onView={() => setLocation(`/funders/${funder.id}`)} onMoveToPipeline={() => updateMutation.mutate({ id: funder.id, data: { status: "in_conversation" } })} onDelete={() => setDeleteConfirm(funder.id)} />
                 ))}
               </div>
             </div>
@@ -1387,7 +1388,7 @@ export default function FundersPage() {
               <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Completed</h2>
               <div className="grid gap-3">
                 {completed.map((funder) => (
-                  <FunderCard key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/reports?funder=${funder.id}`)} />
+                  <FunderCard key={funder.id} funder={funder} onView={() => setLocation(`/funders/${funder.id}`)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/reports?funder=${funder.id}`)} />
                 ))}
               </div>
             </div>
@@ -1487,7 +1488,7 @@ function FunderCard({
               <Badge variant="outline" className="text-xs shrink-0">Default</Badge>
             )}
           </div>
-          {funder.organisation && (
+          {funder.organisation && funder.organisation.toLowerCase() !== funder.name.toLowerCase() && (
             <p className="text-sm text-muted-foreground truncate">{funder.organisation}</p>
           )}
           <div className="flex items-center gap-2 mt-2 flex-wrap">
@@ -1582,7 +1583,7 @@ function ActiveFunderCard({
               <span className="text-sm font-medium text-green-700 dark:text-green-400">{formatCurrency(funder.estimatedValue)}/yr</span>
             )}
           </div>
-          {funder.organisation && (
+          {funder.organisation && funder.organisation.toLowerCase() !== funder.name.toLowerCase() && (
             <p className="text-sm text-muted-foreground truncate">{funder.organisation}</p>
           )}
           <div className="flex items-center gap-3 mt-2 flex-wrap">
@@ -1647,7 +1648,7 @@ function PipelineCard({
             <h3 className="font-semibold text-foreground truncate">{funder.name}</h3>
             <Badge className={STATUS_COLORS[funder.status]}>{STATUS_LABELS[funder.status]}</Badge>
           </div>
-          {funder.organisation && (
+          {funder.organisation && funder.organisation.toLowerCase() !== funder.name.toLowerCase() && (
             <p className="text-sm text-muted-foreground truncate">{funder.organisation}</p>
           )}
           <div className="flex items-center gap-3 mt-2 flex-wrap">
