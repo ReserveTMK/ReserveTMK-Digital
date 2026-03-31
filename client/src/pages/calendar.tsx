@@ -2643,18 +2643,24 @@ export default function CalendarPage() {
               </div>
             ) : (showSchedule && selectedDayEvents.length > 0) || (showSpace && selectedDaySpace.length > 0) ? (
               <div className="space-y-3">
-                {showSchedule && selectedDayEvents.map((entry) => (
-                  entry.type === "booking" && entry.booking ? (
+                {showSchedule && selectedDayEvents.map((entry) => {
+                  // If app event is linked to a booking, render as BookingCalendarCard instead
+                  const linkedBooking = entry.type === "app" && entry.app?.linkedBookingId
+                    ? (allBookings as Booking[] || []).find(b => Number(b.id) === Number(entry.app!.linkedBookingId))
+                    : null;
+                  const bookingToRender = (entry.type === "booking" && entry.booking) ? entry.booking : linkedBooking;
+
+                  return bookingToRender ? (
                     <BookingCalendarCard
-                      key={`booking-${entry.booking.id}`}
-                      booking={entry.booking}
+                      key={`booking-${bookingToRender.id}`}
+                      booking={bookingToRender}
                       venueMap={venueMap}
                       allContacts={(allContacts || []) as Contact[]}
-                      debriefStatus={getBookingDebriefStatus(entry.booking.id)}
+                      debriefStatus={getBookingDebriefStatus(bookingToRender.id)}
                       onLogDebrief={handleLogDebriefFromBooking}
                       onViewDebrief={handleLogDebriefFromBooking}
                       onSkipDebrief={(b) => setSkippedBookingIds(prev => { const next = new Set(Array.from(prev)); next.add(Number(b.id)); return next; })}
-                      isSkipped={skippedBookingIds.has(Number(entry.booking.id))}
+                      isSkipped={skippedBookingIds.has(Number(bookingToRender.id))}
                     />
                   ) : (
                   <div key={entry.type === "gcal" ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`} className={`relative ${entry.isDismissed ? "opacity-40 hover:opacity-75 transition-opacity" : ""}`}>
@@ -2704,9 +2710,19 @@ export default function CalendarPage() {
                       }}
                     />
                   </div>
-                  )
-                ))}
-                {showSpace && selectedDaySpace.map((item) => (
+                  );
+                })}
+                {showSpace && selectedDaySpace.filter(item => {
+                  // Skip bookings already shown as schedule cards
+                  if (showSchedule && item.kind === "booking") {
+                    const shownAsSchedule = selectedDayEvents.some(e =>
+                      (e.type === "booking" && Number(e.booking?.id) === item.id) ||
+                      (e.type === "app" && Number(e.app?.linkedBookingId) === item.id)
+                    );
+                    if (shownAsSchedule) return false;
+                  }
+                  return true;
+                }).map((item) => (
                   <Card
                     key={`${item.kind}-${item.id}`}
                     className="p-4 border-orange-500/20 bg-orange-500/5 dark:bg-orange-500/5 cursor-pointer overflow-visible hover-elevate"
