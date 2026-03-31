@@ -2701,20 +2701,20 @@ export async function getProgrammeAttributedOutcomes(userId: string, programmeId
       }).from(milestones).where(milestoneConditions!);
     }
 
+    let directMilestoneConds = and(
+      eq(milestones.userId, userId),
+      eq(milestones.linkedProgrammeId, prog.id),
+    );
+    if (start) directMilestoneConds = and(directMilestoneConds, gte(milestones.createdAt, start));
+    if (end) directMilestoneConds = and(directMilestoneConds, lte(milestones.createdAt, end));
+
     const directLinkedMilestones = await db.select({
       id: milestones.id,
       title: milestones.title,
       milestoneType: milestones.milestoneType,
       valueAmount: milestones.valueAmount,
       linkedContactId: milestones.linkedContactId,
-    }).from(milestones).where(
-      and(
-        eq(milestones.userId, userId),
-        eq(milestones.linkedProgrammeId, prog.id),
-        start ? gte(milestones.createdAt, start) : undefined,
-        end ? lte(milestones.createdAt, end) : undefined,
-      )!
-    );
+    }).from(milestones).where(directMilestoneConds!);
 
     const allMilestoneIds = new Set<number>();
     const combinedMilestones = [];
