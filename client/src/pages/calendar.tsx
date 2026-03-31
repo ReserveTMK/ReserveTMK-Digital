@@ -559,6 +559,7 @@ function EventCard({
   isMarkedNotPersonal,
   debriefInfo,
   onViewDebrief,
+  venueNames,
 }: {
   entry: CombinedEvent;
   appEvents: AppEvent[];
@@ -574,6 +575,7 @@ function EventCard({
   isMarkedNotPersonal: boolean;
   debriefInfo: DebriefInfo;
   onViewDebrief: (debriefId: number) => void;
+  venueNames?: string[];
 }) {
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
@@ -1009,8 +1011,8 @@ function EventCard({
                   <SelectValue placeholder="Select space use..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {["Venue Hire", "Space Use", "Studio", "Drop-in"].map(opt => (
-                    <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                  {(venueNames || []).map(name => (
+                    <SelectItem key={name} value={name}>{name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -2681,6 +2683,7 @@ export default function CalendarPage() {
                       entry={entry}
                       appEvents={appEvents || []}
                       programmes={programmes || []}
+                      venueNames={(venues || []).filter((v: any) => v.active !== false).map((v: any) => v.name)}
                       onLogDebrief={handleLogDebrief}
                       onLogDebriefFromApp={handleLogDebriefFromApp}
                       onDeleteEvent={handleDeleteEvent}
