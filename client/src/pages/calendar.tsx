@@ -40,6 +40,7 @@ import {
   Save,
   BarChart3,
   CircleAlert,
+  ExternalLink,
 } from "lucide-react";
 import {
   format,
@@ -47,7 +48,6 @@ import {
   endOfMonth,
   startOfWeek,
   endOfWeek,
-  eachDayOfInterval,
   isSameMonth,
   isSameDay,
   addMonths,
@@ -55,6 +55,8 @@ import {
   isToday,
   isBefore,
 } from "date-fns";
+import { useCalendarGrid } from "@/hooks/use-calendar-grid";
+import type { GoogleCalendarEvent, GoogleCalendarInfo } from "@/types/google-calendar";
 import {
   Dialog,
   DialogContent,
@@ -81,32 +83,6 @@ import { useGroups } from "@/hooks/use-groups";
 import { useProgrammes } from "@/hooks/use-programmes";
 import { useBookings, useVenues } from "@/hooks/use-bookings";
 import type { Contact, Programme, Booking, Venue } from "@shared/schema";
-
-interface GoogleCalendarEvent {
-  id: string;
-  summary: string;
-  description: string;
-  location: string;
-  start: string;
-  end: string;
-  attendees: { email: string; displayName: string; responseStatus: string; organizer?: boolean }[];
-  htmlLink: string;
-  status: string;
-  calendarId?: string;
-  calendarLabel?: string | null;
-  suggestedType?: string | null;
-  matchedContacts?: { contactId: number; contactName: string; email: string }[];
-}
-
-interface GoogleCalendarInfo {
-  id: string;
-  summary: string;
-  description: string;
-  backgroundColor: string;
-  foregroundColor: string;
-  primary: boolean;
-  accessRole: string;
-}
 
 interface AppEvent {
   id: number;
@@ -273,16 +249,16 @@ function BookingCalendarCard({ booking, venueMap, allContacts, debriefStatus, on
 }) {
   const [expanded, setExpanded] = useState(false);
   const [attendeeCount, setAttendeeCount] = useState<string>(booking.attendeeCount?.toString() || "");
-  const [rangatahiCount, setRangatahiCount] = useState<string>((booking as any).rangatahiCount?.toString() || "");
-  const [isRangatahi, setIsRangatahi] = useState<boolean>((booking as any).isRangatahi || false);
+  const [rangatahiCount, setRangatahiCount] = useState<string>(booking.rangatahiCount?.toString() || "");
+  const [isRangatahi, setIsRangatahi] = useState<boolean>(booking.isRangatahi || false);
   const [attendeeSearch, setAttendeeSearch] = useState("");
   const [taggedIds, setTaggedIds] = useState<number[]>(booking.attendees || []);
   const { toast } = useToast();
 
   useEffect(() => {
     setAttendeeCount(booking.attendeeCount?.toString() || "");
-    setRangatahiCount((booking as any).rangatahiCount?.toString() || "");
-    setIsRangatahi((booking as any).isRangatahi || false);
+    setRangatahiCount(booking.rangatahiCount?.toString() || "");
+    setIsRangatahi(booking.isRangatahi || false);
     setTaggedIds(booking.attendees || []);
   }, [booking]);
 
@@ -345,11 +321,23 @@ function BookingCalendarCard({ booking, venueMap, allContacts, debriefStatus, on
 
   const bookingVIds = booking.venueIds || (booking.venueId ? [booking.venueId] : []);
   const venueName = bookingVIds.map((id: number) => venueMap[id]).filter(Boolean).join(" + ") || null;
-  const cardColor = BOOKING_CARD_COLORS[booking.classification] || BOOKING_CARD_COLORS["Other"];
+  const defaultCardColor = BOOKING_CARD_COLORS[booking.classification] || BOOKING_CARD_COLORS["Other"];
+
+  // Card color + fade based on debrief state
+  const cardColor = debriefStatus === "confirmed"
+    ? "border-green-500/20 bg-green-500/5"
+    : debriefStatus === "draft"
+    ? "border-blue-500/20 bg-blue-500/5"
+    : defaultCardColor;
+  const cardOpacity = debriefStatus === "confirmed"
+    ? "opacity-50 hover:opacity-75 transition-opacity"
+    : debriefStatus === "draft"
+    ? "opacity-70 hover:opacity-90 transition-opacity"
+    : isSkipped ? "opacity-40 hover:opacity-75 transition-opacity" : "";
 
   return (
     <Card
-      className={`p-4 overflow-visible ${cardColor} ${isSkipped ? "opacity-50" : ""}`}
+      className={`p-4 overflow-visible ${cardColor} ${cardOpacity}`}
       data-testid={`card-booking-calendar-${booking.id}`}
     >
       <div
@@ -499,37 +487,45 @@ function BookingCalendarCard({ booking, venueMap, allContacts, debriefStatus, on
             </div>
           )}
 
-          {booking.status === "completed" && (
-            <div className="flex items-center gap-2 pt-2 border-t">
-              {debriefStatus === "confirmed" ? (
-                <Button size="sm" variant="outline" className="text-xs" onClick={() => onViewDebrief?.(booking)}>
-                  <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-green-600" />
-                  Debrief Confirmed
-                </Button>
-              ) : debriefStatus === "draft" ? (
-                <Button size="sm" variant="outline" className="text-xs" onClick={() => onViewDebrief?.(booking)}>
-                  <CircleDashed className="w-3.5 h-3.5 mr-1 text-amber-500" />
-                  Debrief Draft
-                </Button>
-              ) : isSkipped ? (
-                <Badge variant="secondary" className="text-xs">
-                  <EyeOff className="w-3 h-3 mr-1" />
-                  Skipped
-                </Badge>
-              ) : (
-                <>
-                  <Button size="sm" variant="default" className="text-xs" onClick={() => onLogDebrief?.(booking)}>
-                    <FileText className="w-3.5 h-3.5 mr-1" />
-                    Log Debrief
+          <div className="flex items-center gap-2 pt-2 border-t">
+            {booking.status === "completed" && (
+              <>
+                {debriefStatus === "confirmed" ? (
+                  <Button size="sm" variant="outline" className="text-xs" onClick={() => onViewDebrief?.(booking)}>
+                    <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-green-600" />
+                    Debrief Confirmed
                   </Button>
-                  <Button size="sm" variant="ghost" className="text-xs text-muted-foreground" onClick={() => onSkipDebrief?.(booking)}>
-                    <EyeOff className="w-3.5 h-3.5 mr-1" />
-                    Skip
+                ) : debriefStatus === "draft" ? (
+                  <Button size="sm" variant="outline" className="text-xs" onClick={() => onViewDebrief?.(booking)}>
+                    <CircleDashed className="w-3.5 h-3.5 mr-1 text-amber-500" />
+                    Debrief Draft
                   </Button>
-                </>
-              )}
-            </div>
-          )}
+                ) : isSkipped ? (
+                  <Badge variant="secondary" className="text-xs">
+                    <EyeOff className="w-3 h-3 mr-1" />
+                    Archived
+                  </Badge>
+                ) : (
+                  <>
+                    <Button size="sm" variant="default" className="text-xs" onClick={() => onLogDebrief?.(booking)}>
+                      <FileText className="w-3.5 h-3.5 mr-1" />
+                      Log Debrief
+                    </Button>
+                    <Button size="sm" variant="ghost" className="text-xs text-muted-foreground" onClick={() => onSkipDebrief?.(booking)}>
+                      <EyeOff className="w-3.5 h-3.5 mr-1" />
+                      Archive
+                    </Button>
+                  </>
+                )}
+              </>
+            )}
+            <Link href={`/bookings/${booking.id}`} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+              <Button size="sm" variant="outline" className="text-xs ml-auto">
+                <ExternalLink className="w-3.5 h-3.5 mr-1" />
+                View Booking
+              </Button>
+            </Link>
+          </div>
         </div>
       )}
     </Card>
@@ -825,14 +821,16 @@ function EventCard({
     && entry.type !== "booking"
     && !(entry.type === "app" && entry.app?.source === "internal");
 
-  // All cards same grey — fade if debriefed or in progress
-  const debriefOpacity = entry.isPast && (isConfirmed || isInProgress)
-    ? "opacity-40 hover:opacity-75 transition-opacity"
-    : "";
+  // Card color + fade based on debrief state
+  const cardState = entry.isPast && isConfirmed
+    ? "opacity-50 hover:opacity-75 transition-opacity border-green-500/20 bg-green-500/5"
+    : entry.isPast && isInProgress
+    ? "opacity-70 hover:opacity-90 transition-opacity border-blue-500/20 bg-blue-500/5"
+    : "bg-muted/40 border-border";
 
   return (
     <Card
-      className={`p-4 cursor-pointer bg-muted/40 border-border ${debriefOpacity}`}
+      className={`p-4 cursor-pointer ${cardState}`}
       onClick={() => setExpanded(!expanded)} data-testid={`card-event-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}>
       <div className="space-y-2">
         {personalEvent && (
@@ -869,7 +867,7 @@ function EventCard({
                   data-testid={`button-quick-dismiss-${entry.gcal!.id}`}
                 >
                   <EyeOff className="w-3 h-3 mr-1" />
-                  Dismiss
+                  Archive
                 </Button>
               </DismissPopover>
             </div>
@@ -1399,7 +1397,6 @@ export default function CalendarPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ type: "gcal" | "app"; event: GoogleCalendarEvent | AppEvent } | null>(null);
   const [deleteReason, setDeleteReason] = useState("");
   const [activeTypeFilters, setActiveTypeFilters] = useState<Set<string>>(new Set());
-  const [showDismissed, setShowDismissed] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showSchedule, setShowSchedule] = useState(true);
   const [showSpace, setShowSpace] = useState(true);
@@ -1599,10 +1596,10 @@ export default function CalendarPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dismissed-calendar-events"] });
-      toast({ title: "Event dismissed" });
+      toast({ title: "Event archived" });
     },
     onError: (err: any) => {
-      toast({ title: "Failed to dismiss event", description: err.message, variant: "destructive" });
+      toast({ title: "Failed to archive event", description: err.message, variant: "destructive" });
     },
   });
 
@@ -1684,12 +1681,14 @@ export default function CalendarPage() {
         attendeeCount: data.contacts.length || null,
       });
       const event = await res.json();
-      for (const contact of data.contacts) {
-        await apiRequest("POST", "/api/event-attendance", {
-          eventId: event.id,
-          contactId: contact.id,
-          role: "attendee",
-        });
+      if (data.contacts.length > 0) {
+        await Promise.all(data.contacts.map(contact =>
+          apiRequest("POST", "/api/event-attendance", {
+            eventId: event.id,
+            contactId: contact.id,
+            role: "attendee",
+          })
+        ));
       }
       return event;
     },
@@ -1888,16 +1887,20 @@ export default function CalendarPage() {
   const allEvents = useMemo(() => {
     const combined: CombinedEvent[] = [];
 
-    const linkedGcalIds = new Set(
-      (appEvents || [])
-        .filter(e => e.googleCalendarEventId && (e.linkedProgrammeId || e.linkedBookingId))
-        .map(e => e.googleCalendarEventId)
-    );
+    // Primary dedup: any GCal ID that has a matching platform event or booking
+    const importedGcalIds = new Set([
+      ...(appEvents || [])
+        .filter(e => e.googleCalendarEventId)
+        .map(e => e.googleCalendarEventId),
+      ...(allBookings || [])
+        .filter((b: Booking) => b.googleCalendarEventId)
+        .map((b: Booking) => b.googleCalendarEventId),
+    ]);
 
-    // Build a set of internal event name+date keys to detect duplicates with GCal
+    // Fallback dedup: name+date for unlinked events (catches manual duplicates)
     const internalEventKeys = new Set(
       (appEvents || [])
-        .filter(e => !e.googleCalendarEventId || e.linkedProgrammeId || e.linkedBookingId)
+        .filter(e => !e.googleCalendarEventId)
         .map(e => {
           const d = new Date(e.startTime);
           return `${(e.name || "").trim().toLowerCase()}|${d.toDateString()}`;
@@ -1905,8 +1908,9 @@ export default function CalendarPage() {
     );
 
     (gcalEvents || []).forEach(e => {
-      if (linkedGcalIds.has(e.id)) return;
-      // Suppress GCal event if a matching internal event exists (same name + date)
+      // Skip if platform already has this event (by ID — reliable)
+      if (importedGcalIds.has(e.id)) return;
+      // Skip if a manually-created platform event matches (by name+date — fallback)
       const gcalKey = `${(e.summary || "").trim().toLowerCase()}|${new Date(e.start).toDateString()}`;
       if (internalEventKeys.has(gcalKey)) return;
       const d = new Date(e.start);
@@ -1915,7 +1919,7 @@ export default function CalendarPage() {
     });
 
     (appEvents || []).forEach(e => {
-      if (e.googleCalendarEventId && !e.linkedProgrammeId && !e.linkedBookingId) return;
+      // Show all platform events — they're the source of truth once imported
       const d = new Date(e.startTime);
       combined.push({ date: d, type: "app", app: e, isPast: new Date(e.endTime) < new Date() });
     });
@@ -1948,9 +1952,6 @@ export default function CalendarPage() {
 
   const filteredEvents = useMemo(() => {
     let events = allEvents;
-    if (!showDismissed) {
-      events = events.filter(e => !e.isDismissed);
-    }
     if (activeTypeFilters.size > 0) {
       events = events.filter(e => activeTypeFilters.has(getEventType(e)));
     }
@@ -1958,7 +1959,7 @@ export default function CalendarPage() {
       events = events.filter(e => eventNeedsAttention(e));
     }
     return events;
-  }, [allEvents, activeTypeFilters, showDismissed, showNeedsAttention, debriefByEventId, debriefByGcalId]);
+  }, [allEvents, activeTypeFilters, showNeedsAttention, debriefByEventId, debriefByGcalId]);
 
   const currentMonthKey = format(startOfMonth(currentMonth), "yyyy-MM-dd");
   const currentSnapshot = useMemo(() => {
@@ -2082,40 +2083,19 @@ export default function CalendarPage() {
     return (eventsByDate.get(key) || []).sort((a, b) => a.date.getTime() - b.date.getTime());
   }, [selectedDate, eventsByDate]);
 
-  const calendarDays = useMemo(() => {
-    const start = startOfMonth(currentMonth);
-    const end = endOfMonth(currentMonth);
-    const days = eachDayOfInterval({ start, end });
-    const rawDay = start.getDay();
-    const startDay = rawDay === 0 ? 6 : rawDay - 1;
-    const paddingBefore = Array.from({ length: startDay }, (_, i) => {
-      const d = new Date(start);
-      d.setDate(d.getDate() - (startDay - i));
-      return d;
-    });
-    const totalCells = paddingBefore.length + days.length;
-    const paddingAfter = Array.from({ length: (7 - (totalCells % 7)) % 7 }, (_, i) => {
-      const d = new Date(end);
-      d.setDate(d.getDate() + i + 1);
-      return d;
-    });
-    return [...paddingBefore, ...days, ...paddingAfter];
-  }, [currentMonth]);
+  const calendarDays = useCalendarGrid(currentMonth);
 
   const pastEventsNeedingDebrief = useMemo(() => {
     return filteredEvents.filter(e => e.isPast && e.type !== "booking" && !(e.type === "app" && e.app?.source === "internal")).length;
   }, [filteredEvents]);
 
   const needsAttentionEvents = useMemo(() => {
-    let events = allEvents;
-    if (!showDismissed) {
-      events = events.filter(e => !e.isDismissed);
-    }
+    let events = allEvents.filter(e => !e.isDismissed);
     if (activeTypeFilters.size > 0) {
       events = events.filter(e => activeTypeFilters.has(getEventType(e)));
     }
     return events.filter(e => eventNeedsAttention(e));
-  }, [allEvents, activeTypeFilters, showDismissed, debriefByEventId, debriefByGcalId]);
+  }, [allEvents, activeTypeFilters, debriefByEventId, debriefByGcalId]);
 
   const needsAttentionByDate = useMemo(() => {
     const map = new Map<string, number>();
@@ -2130,15 +2110,12 @@ export default function CalendarPage() {
   const selectedWeekEnd = useMemo(() => endOfWeek(selectedDate, { weekStartsOn: 1 }), [selectedDate]);
 
   const baseFilteredEvents = useMemo(() => {
-    let events = allEvents;
-    if (!showDismissed) {
-      events = events.filter(e => !e.isDismissed);
-    }
+    let events = allEvents.filter(e => !e.isDismissed);
     if (activeTypeFilters.size > 0) {
       events = events.filter(e => activeTypeFilters.has(getEventType(e)));
     }
     return events;
-  }, [allEvents, activeTypeFilters, showDismissed]);
+  }, [allEvents, activeTypeFilters]);
 
   const weekCrossesMonthBoundary = useMemo(() => {
     return !isSameMonth(selectedWeekStart, selectedWeekEnd);
@@ -2358,18 +2335,6 @@ export default function CalendarPage() {
               <Badge variant="secondary" data-testid="badge-events-count">
                 {pastEventsNeedingDebrief} past events
               </Badge>
-            )}
-            {showSchedule && (
-              <Button
-                size="sm"
-                variant="outline"
-                className={`toggle-elevate ${showDismissed ? "toggle-elevated" : ""}`}
-                onClick={() => setShowDismissed(!showDismissed)}
-                data-testid="button-toggle-dismissed"
-              >
-                {showDismissed ? <Eye className="w-4 h-4 mr-1" /> : <EyeOff className="w-4 h-4 mr-1" />}
-                {showDismissed ? "Showing dismissed" : "Hidden"}
-              </Button>
             )}
             <Button
               size="icon"
@@ -2789,27 +2754,26 @@ export default function CalendarPage() {
                       isSkipped={skippedBookingIds.has(Number(entry.booking.id))}
                     />
                   ) : (
-                  <div key={entry.type === "gcal" ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`} className="relative">
+                  <div key={entry.type === "gcal" ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`} className={`relative ${entry.isDismissed ? "opacity-40 hover:opacity-75 transition-opacity" : ""}`}>
                     {entry.isDismissed && (
-                      <div className="absolute inset-0 bg-background/60 z-10 flex items-center justify-center rounded-md">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="secondary" className="text-xs">
-                            <EyeOff className="w-3 h-3 mr-1" />
-                            Dismissed
-                          </Badge>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              const dismissed = (dismissedEvents || []).find(d => d.gcalEventId === entry.gcal?.id);
-                              if (dismissed) restoreMutation.mutate(dismissed.id);
-                            }}
-                            data-testid={`button-restore-event-${entry.gcal?.id}`}
-                          >
-                            <Eye className="w-3 h-3 mr-1" />
-                            Restore
-                          </Button>
-                        </div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <Badge variant="secondary" className="text-xs">
+                          <EyeOff className="w-3 h-3 mr-1" />
+                          Archived
+                        </Badge>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 text-xs px-2"
+                          onClick={() => {
+                            const dismissed = (dismissedEvents || []).find(d => d.gcalEventId === entry.gcal?.id);
+                            if (dismissed) restoreMutation.mutate(dismissed.id);
+                          }}
+                          data-testid={`button-restore-event-${entry.gcal?.id}`}
+                        >
+                          <Eye className="w-3 h-3 mr-1" />
+                          Restore
+                        </Button>
                       </div>
                     )}
                     <EventCard

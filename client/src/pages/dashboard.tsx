@@ -12,10 +12,12 @@ import {
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
-  format, startOfMonth, endOfMonth, startOfDay, eachDayOfInterval,
+  format, startOfMonth, endOfMonth, startOfDay,
   isSameMonth, isSameDay, addMonths, subMonths, addDays, isToday,
   isBefore, isAfter,
 } from "date-fns";
+import { useCalendarGrid } from "@/hooks/use-calendar-grid";
+import type { GoogleCalendarEvent } from "@/types/google-calendar";
 import { formatTimeSlot } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -28,18 +30,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { BarChart, Bar, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import type { Meeting, Contact, Event, Programme, Booking, Project, ProjectTask } from "@shared/schema";
-
-interface GoogleCalendarEvent {
-  id: string;
-  summary: string;
-  description: string;
-  location: string;
-  start: string;
-  end: string;
-  attendees: { email: string; displayName: string; responseStatus: string; organizer?: boolean }[];
-  htmlLink: string;
-  status: string;
-}
 
 interface PulseData {
   needsAttention: { enquiries: number; draftDebriefs: number; needsDebrief: number; total: number };
@@ -77,6 +67,23 @@ export default function Dashboard() {
     queryKey: ["/api/google-calendar/events"],
     retry: false,
   });
+  const { data: dismissedEvents } = useQuery<{ id: number; gcalEventId: string; reason: string }[]>({
+    queryKey: ["/api/dismissed-calendar-events"],
+  });
+
+  // ── Derived: dismissed + linked GCal IDs (for dedup) ─────────────────────
+
+  const dismissedGcalIds = useMemo(() => {
+    return new Set((dismissedEvents || []).filter(d => d.reason !== "__not_personal__").map(d => d.gcalEventId));
+  }, [dismissedEvents]);
+
+  const linkedGcalIds = useMemo(() => {
+    return new Set(
+      ((events as Event[] | undefined) || [])
+        .filter((e: any) => e.googleCalendarEventId)
+        .map((e: any) => e.googleCalendarEventId as string)
+    );
+  }, [events]);
 
   // ── Derived data ──────────────────────────────────────────────────────────
 
@@ -137,6 +144,8 @@ export default function Dashboard() {
     });
     gcalEvents?.forEach((gcal) => {
       if (!gcal.start) return;
+      if (dismissedGcalIds.has(gcal.id)) return;
+      if (linkedGcalIds.has(gcal.id)) return;
       const d = new Date(gcal.start);
       if (d >= start && d < end) {
         items.push({ date: format(d, "yyyy-MM-dd"), name: gcal.summary, time: format(d, "h:mm a"), type: "Google Cal", typeColor: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300", id: `gcal-${gcal.id}` });
@@ -150,7 +159,7 @@ export default function Dashboard() {
     const dayStart = startOfDay(selectedDate);
     const dayEnd = addDays(dayStart, 1);
     return buildItemsForRange(dayStart, dayEnd);
-  }, [selectedDate, meetings, events, programmes, bookings, gcalEvents]);
+  }, [selectedDate, meetings, events, programmes, bookings, gcalEvents, dismissedGcalIds, linkedGcalIds]);
 
   const upcomingItems = useMemo(() => {
     const now = new Date();
@@ -163,7 +172,7 @@ export default function Dashboard() {
       grouped.get(item.date)!.push(item);
     });
     return grouped;
-  }, [meetings, events, programmes, bookings, gcalEvents]);
+  }, [meetings, events, programmes, bookings, gcalEvents, dismissedGcalIds, linkedGcalIds]);
 
   const bookingRevenue = useMemo(() => {
     if (!bookings) return { thisMonth: 0, lastMonth: 0, change: 0 };
@@ -229,25 +238,7 @@ export default function Dashboard() {
 
   // ── Calendar data ─────────────────────────────────────────────────────────
 
-  const calendarDays = useMemo(() => {
-    const start = startOfMonth(currentMonth);
-    const end = endOfMonth(currentMonth);
-    const days = eachDayOfInterval({ start, end });
-    const rawDay = start.getDay();
-    const startDay = rawDay === 0 ? 6 : rawDay - 1;
-    const paddingBefore = Array.from({ length: startDay }, (_, i) => {
-      const d = new Date(start);
-      d.setDate(d.getDate() - (startDay - i));
-      return d;
-    });
-    const totalCells = paddingBefore.length + days.length;
-    const paddingAfter = Array.from({ length: (7 - (totalCells % 7)) % 7 }, (_, i) => {
-      const d = new Date(end);
-      d.setDate(d.getDate() + i + 1);
-      return d;
-    });
-    return [...paddingBefore, ...days, ...paddingAfter];
-  }, [currentMonth]);
+  const calendarDays = useCalendarGrid(currentMonth);
 
   const meetingsByDate = useMemo(() => {
     const map = new Map<string, Meeting[]>();
@@ -295,12 +286,14 @@ export default function Dashboard() {
     const map = new Map<string, GoogleCalendarEvent[]>();
     gcalEvents?.forEach((ev) => {
       if (!ev.start) return;
+      if (dismissedGcalIds.has(ev.id)) return;
+      if (linkedGcalIds.has(ev.id)) return;
       const key = format(new Date(ev.start), "yyyy-MM-dd");
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(ev);
     });
     return map;
-  }, [gcalEvents]);
+  }, [gcalEvents, dismissedGcalIds, linkedGcalIds]);
 
   if (!user) return null;
 

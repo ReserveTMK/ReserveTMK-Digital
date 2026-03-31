@@ -86,10 +86,12 @@ async function syncCalendar(
     if (!gcalEvent.id || !gcalEvent.summary) continue;
     if (gcalEvent.status === "cancelled") continue;
 
-    // Skip if already imported or dismissed
+    // Skip if already imported, dismissed, or linked to a booking
     if (dismissedIds.has(gcalEvent.id)) continue;
     const existing = await storage.getEventByGoogleCalendarId(gcalEvent.id, userId);
     if (existing) continue;
+    const existingBooking = await storage.getBookingByGoogleCalendarId(gcalEvent.id, userId);
+    if (existingBooking) continue;
 
     // Auto-import as platform event
     const start = gcalEvent.start?.dateTime || gcalEvent.start?.date;

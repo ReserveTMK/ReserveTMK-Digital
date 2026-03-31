@@ -357,6 +357,7 @@ export interface IStorage {
   // Bookings
   getBookings(userId: string): Promise<Booking[]>;
   getBooking(id: number): Promise<Booking | undefined>;
+  getBookingByGoogleCalendarId(googleCalendarEventId: string, userId: string): Promise<Booking | undefined>;
   createBooking(data: InsertBooking): Promise<Booking>;
   updateBooking(id: number, updates: Partial<InsertBooking>): Promise<Booking>;
   deleteBooking(id: number): Promise<void>;
@@ -1376,6 +1377,12 @@ export class DatabaseStorage implements IStorage {
 
   async getBooking(id: number): Promise<Booking | undefined> {
     const [booking] = await db.select().from(bookings).where(eq(bookings.id, id));
+    return booking;
+  }
+
+  async getBookingByGoogleCalendarId(googleCalendarEventId: string, userId: string): Promise<Booking | undefined> {
+    const [booking] = await db.select().from(bookings)
+      .where(and(eq(bookings.googleCalendarEventId, googleCalendarEventId), eq(bookings.userId, userId)));
     return booking;
   }
 
