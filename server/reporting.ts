@@ -2834,7 +2834,10 @@ export async function getFullMonthlyReport(filters: ReportFilters) {
       filters.startDate,
       filters.endDate,
     ),
-    getTaxonomyBreakdown(filters),
+    getTaxonomyBreakdown(filters).catch((err) => {
+      console.error("getTaxonomyBreakdown failed (non-fatal):", err.message);
+      return [];
+    }),
   ]);
 
   let relevantOutcomes = programmeOutcomes;
