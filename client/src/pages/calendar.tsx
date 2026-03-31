@@ -1908,7 +1908,7 @@ export default function CalendarPage() {
   }, [gcalEvents, appEvents, dismissedIds, allBookings]);
 
   const filteredEvents = useMemo(() => {
-    let events = allEvents;
+    let events = allEvents.filter(e => !e.isDismissed);
     if (activeTypeFilters.size > 0) {
       events = events.filter(e => activeTypeFilters.has(getEventType(e)));
     }
