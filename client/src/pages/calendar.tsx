@@ -1010,7 +1010,7 @@ function EventCard({
             </div>
             )}
 
-            {isGcal && entry.gcal!.attendees?.length > 0 && (() => {
+            {false && isGcal && entry.gcal!.attendees?.length > 0 && (() => {
               const contactByEmail = new Map(
                 (contacts || []).filter((c: Contact) => c.email).map((c: Contact) => [c.email!.toLowerCase(), c])
               );
@@ -1053,7 +1053,7 @@ function EventCard({
               );
             })()}
 
-            <div className="space-y-1.5">
+            {false && <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Community Members</Label>
               {attendance && attendance.length > 0 && (
                 <div className="flex flex-wrap gap-1 mb-1.5">
@@ -1117,9 +1117,9 @@ function EventCard({
                   </button>
                 </div>
               )}
-            </div>
+            </div>}
 
-            <Dialog open={showNewPersonDialog} onOpenChange={setShowNewPersonDialog}>
+            {false && <Dialog open={showNewPersonDialog} onOpenChange={setShowNewPersonDialog}>
               <DialogContent className="max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Add New Person</DialogTitle>
@@ -1174,78 +1174,10 @@ function EventCard({
                   </Button>
                 </DialogFooter>
               </DialogContent>
-            </Dialog>
+            </Dialog>}
 
-
-            {isLinkedToProgramme && linkedProgramme && (
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Linked Programme</Label>
-                <div className="flex items-center justify-between gap-2 p-2 border border-indigo-500/20 rounded-md bg-indigo-500/5">
-                  <div className="flex items-center gap-1.5 text-xs">
-                    <Link2 className="w-3 h-3 text-indigo-500" />
-                    <span className="font-medium">{linkedProgramme.name}</span>
-                    <Badge variant="secondary" className="text-[10px]">{linkedProgramme.classification}</Badge>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 text-xs px-2 text-muted-foreground hover:text-destructive"
-                    onClick={() => appEventId && unlinkMutation.mutate(appEventId)}
-                    disabled={unlinkMutation.isPending}
-                    data-testid={`button-unlink-programme-${appEventId}`}
-                  >
-                    <X className="w-3 h-3" />
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {entry.isPast && debriefInfo && (
-              <div className="flex items-center gap-2 pt-1 mb-1">
-                <Badge
-                  variant="secondary"
-                  className={`text-[10px] no-default-hover-elevate no-default-active-elevate ${
-                    debriefInfo.status === "confirmed"
-                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400"
-                      : "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
-                  }`}
-                  data-testid={`badge-debrief-status-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}
-                >
-                  <CheckCircle2 className="w-3 h-3 mr-0.5" />
-                  {debriefInfo.status === "confirmed" ? "Debriefed" : "In progress"}
-                </Badge>
-              </div>
-            )}
 
             <div className="flex gap-2 pt-1">
-              {entry.isPast && debriefInfo ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="flex-1"
-                  onClick={(e) => { e.stopPropagation(); onViewDebrief(debriefInfo.debriefId); }}
-                  data-testid={`button-view-debrief-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}
-                >
-                  <Eye className="w-3.5 h-3.5 mr-1" />
-                  View Debrief
-                </Button>
-              ) : entry.isPast ? (
-                <Button
-                  size="sm"
-                  variant="default"
-                  className="flex-1"
-                  onClick={(e) => { e.stopPropagation(); isGcal ? onLogDebrief(entry.gcal!) : onLogDebriefFromApp(entry.app!); }}
-                  disabled={isDebriefPending}
-                  data-testid={`button-debrief-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}
-                >
-                  {isDebriefPending ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
-                  ) : (
-                    <FileText className="w-3.5 h-3.5 mr-1" />
-                  )}
-                  Log Debrief
-                </Button>
-              ) : null}
               {isGcal && !personalEvent && (
                 <DismissPopover
                   reasons={["Archive", "Ignore"]}
