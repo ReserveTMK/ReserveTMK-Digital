@@ -117,7 +117,7 @@ function formatDate(dateStr: string) {
 function formatTime(dateStr: string) {
   if (!dateStr) return "";
   const d = new Date(dateStr);
-  return d.toLocaleTimeString("en-NZ", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Pacific/Auckland" });
 }
 
 const EVENT_TYPES = ["Meeting", "Mentoring Session", "External Event", "Personal Development", "Planning", "Programme"] as const;
@@ -2516,50 +2516,6 @@ export default function CalendarPage() {
           </div>
         </Card>
 
-        <Card className="p-4 mb-6" data-testid="panel-weekly-summary">
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-primary" />
-              <span className="text-sm font-semibold" data-testid="text-weekly-summary-title">
-                Week of {format(selectedWeekStart, "MMM d")} – {format(selectedWeekEnd, "MMM d, yyyy")}{weeklyStats.isCurrentWeek ? " (so far)" : ""}
-              </span>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="rounded-lg bg-muted/50 p-3 text-center">
-                <div className="text-2xl font-bold" data-testid="text-week-event-count">{weeklyStats.totalEvents}</div>
-                <div className="text-xs text-muted-foreground">Events</div>
-              </div>
-              <div className="rounded-lg bg-muted/50 p-3 text-center">
-                <div className="text-2xl font-bold" data-testid="text-week-attendees">{weeklyStats.totalAttendees.toLocaleString()}</div>
-                <div className="text-xs text-muted-foreground">Attendees</div>
-              </div>
-              <div className="rounded-lg bg-muted/50 p-3 text-center">
-                <div className="text-2xl font-bold" data-testid="text-week-foot-traffic">{weeklyStats.weekFootTraffic.toLocaleString()}</div>
-                <div className="text-xs text-muted-foreground">Foot Traffic</div>
-              </div>
-              <div className="rounded-lg bg-muted/50 p-3 text-center">
-                <div className="flex items-center justify-center gap-1">
-                  <span className="text-2xl font-bold text-emerald-600 dark:text-emerald-400" data-testid="text-week-debriefed">{weeklyStats.debriefed}</span>
-                  {weeklyStats.pending > 0 && (
-                    <span className="text-sm text-amber-600 dark:text-amber-400" data-testid="text-week-pending">/ {weeklyStats.pending} pending</span>
-                  )}
-                </div>
-                <div className="text-xs text-muted-foreground">Debriefed</div>
-              </div>
-            </div>
-            {Object.keys(weeklyStats.typeBreakdown).length > 0 && (
-              <div className="flex flex-wrap gap-1.5" data-testid="week-type-breakdown">
-                {Object.entries(weeklyStats.typeBreakdown)
-                  .sort(([, a], [, b]) => b - a)
-                  .map(([type, count]) => (
-                    <Badge key={type} variant="secondary" className={`text-xs ${EVENT_TYPE_BADGE_COLORS[type] || ""}`} data-testid={`badge-week-type-${type}`}>
-                      {type}: {count}
-                    </Badge>
-                  ))}
-              </div>
-            )}
-          </div>
-        </Card>
 
         {showNeedsAttention && needsAttentionEvents.length > 0 && (
           <Card className="p-4 mb-6 border-amber-500/30 bg-amber-500/5" data-testid="panel-needs-attention">

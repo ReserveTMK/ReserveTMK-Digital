@@ -330,7 +330,7 @@ export function SessionCard({ meeting, contacts, showMentor, mentorProfiles, deb
               </span>
               <span className="flex items-center gap-1">
                 <Clock className="w-3 h-3" />
-                {new Date(meeting.startTime).toLocaleTimeString("en-NZ", { hour: "2-digit", minute: "2-digit" })}
+                {new Date(meeting.startTime).toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Pacific/Auckland" })}
                 {meeting.duration && ` · ${meeting.duration}min`}
               </span>
               {meeting.location && <span>{meeting.location}</span>}
