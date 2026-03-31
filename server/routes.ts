@@ -5878,6 +5878,68 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     }
   });
 
+  // Booking activity directory — all contacts with any booking activity across channels
+  app.get("/api/booking-directory", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+
+      const venueBookerIds = await db.selectDistinct({ id: bookings.bookerId }).from(bookings)
+        .where(and(eq(bookings.userId, userId), sql`${bookings.bookerId} IS NOT NULL`));
+
+      const mentoringContactIds = await db.select({ id: meetings.contactId }).from(meetings)
+        .where(and(eq(meetings.userId, userId), inArray(meetings.type, ["mentoring"])))
+        .groupBy(meetings.contactId);
+
+      const programmeContactIds = await db.selectDistinct({ id: programmeRegistrations.contactId }).from(programmeRegistrations)
+        .where(and(eq(programmeRegistrations.userId, userId), sql`${programmeRegistrations.contactId} IS NOT NULL`));
+
+      const allContactIds = new Set<number>();
+      const channels: Record<number, string[]> = {};
+      const addChannel = (id: number, ch: string) => {
+        allContactIds.add(id);
+        if (!channels[id]) channels[id] = [];
+        if (!channels[id].includes(ch)) channels[id].push(ch);
+      };
+
+      venueBookerIds.forEach(r => { if (r.id) addChannel(r.id, "venue"); });
+      mentoringContactIds.forEach(r => { if (r.id) addChannel(r.id, "mentoring"); });
+      programmeContactIds.forEach(r => { if (r.id) addChannel(r.id, "programme"); });
+
+      // Also add gear/desk via regularBookers
+      const bookerList = await storage.getRegularBookers(userId);
+      for (const b of bookerList) {
+        if (b.contactId) {
+          const gearCount = await db.select({ c: sql<number>`count(*)` }).from(gearBookings)
+            .where(eq(gearBookings.regularBookerId, b.id));
+          const deskCount = await db.select({ c: sql<number>`count(*)` }).from(deskBookings)
+            .where(eq(deskBookings.regularBookerId, b.id));
+          if (Number(gearCount[0]?.c) > 0) addChannel(b.contactId, "gear");
+          if (Number(deskCount[0]?.c) > 0) addChannel(b.contactId, "desk");
+        }
+      }
+
+      if (allContactIds.size === 0) return res.json([]);
+
+      const contactsList = await storage.getContacts(userId);
+      const result = Array.from(allContactIds).map(id => {
+        const contact = contactsList.find(c => c.id === id);
+        if (!contact) return null;
+        return {
+          id: contact.id,
+          name: contact.name,
+          email: contact.email,
+          phone: contact.phone,
+          channels: channels[id] || [],
+        };
+      }).filter(Boolean).sort((a: any, b: any) => b.channels.length - a.channels.length);
+
+      res.json(result);
+    } catch (err: any) {
+      console.error("Booking directory error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/regular-bookers", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
     const bookers = await storage.getRegularBookers(userId);

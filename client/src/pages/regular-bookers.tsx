@@ -110,6 +110,61 @@ const CATEGORY_LABELS: Record<string, string> = {
   gear: "Gear",
 };
 
+const CHANNEL_BADGES: Record<string, { label: string; color: string }> = {
+  venue: { label: "Venue", color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" },
+  mentoring: { label: "Mentoring", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
+  programme: { label: "Programme", color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300" },
+  gear: { label: "Gear", color: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300" },
+  desk: { label: "Desk", color: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300" },
+};
+
+function BookingDirectorySection() {
+  const { data: directory, isLoading } = useQuery<Array<{ id: number; name: string; email: string | null; phone: string | null; channels: string[] }>>({
+    queryKey: ["/api/booking-directory"],
+  });
+
+  if (isLoading || !directory || directory.length === 0) return null;
+
+  return (
+    <Card className="p-4">
+      <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+        <Users className="w-4 h-4 text-muted-foreground" />
+        Booking Activity ({directory.length} people)
+      </h3>
+      <div className="border rounded-lg overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/30">
+              <th className="px-3 py-2 text-left font-medium">Name</th>
+              <th className="px-3 py-2 text-left font-medium hidden sm:table-cell">Email</th>
+              <th className="px-3 py-2 text-left font-medium">Channels</th>
+            </tr>
+          </thead>
+          <tbody>
+            {directory.map((person) => (
+              <tr key={person.id} className="border-b last:border-0 hover:bg-muted/20">
+                <td className="px-3 py-2 font-medium">
+                  <a href={`/contacts/${person.id}`} className="hover:underline text-primary">{person.name}</a>
+                </td>
+                <td className="px-3 py-2 text-muted-foreground hidden sm:table-cell">{person.email || "—"}</td>
+                <td className="px-3 py-2">
+                  <div className="flex gap-1 flex-wrap">
+                    {person.channels.map(ch => (
+                      <Badge key={ch} className={`text-[10px] ${CHANNEL_BADGES[ch]?.color || "bg-gray-100 text-gray-600"}`}>
+                        {CHANNEL_BADGES[ch]?.label || ch}
+                      </Badge>
+                    ))}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
 export default function RegularBookersPage({ embedded, categoryScope, hideSuggestions, onAddReady }: { embedded?: boolean; categoryScope?: string[]; hideSuggestions?: boolean; onAddReady?: (open: () => void) => void } = {}) {
   const { data: regularBookers, isLoading } = useRegularBookers();
   const { data: allBookerLinks, isLoading: linksLoading } = useAllBookerLinks();
@@ -861,6 +916,9 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
           </Card>
         </Collapsible>
       )}
+
+      {/* Booking Activity Directory */}
+      {!embedded && <BookingDirectorySection />}
 
       <RegularBookerFormDialog
         open={formOpen}
