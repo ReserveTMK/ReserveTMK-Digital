@@ -89,7 +89,22 @@ async function syncCalendar(
     // Skip if already imported, dismissed, or linked to a booking
     if (dismissedIds.has(gcalEvent.id)) continue;
     const existing = await storage.getEventByGoogleCalendarId(gcalEvent.id, userId);
-    if (existing) continue;
+    if (existing) {
+      // Fix events with wrong dates (0-duration imports from initial sync)
+      const existingStart = new Date(existing.startTime);
+      const existingEnd = new Date(existing.endTime);
+      if (existingStart.getTime() === existingEnd.getTime()) {
+        const correctStart = gcalEvent.start?.dateTime || gcalEvent.start?.date;
+        const correctEnd = gcalEvent.end?.dateTime || gcalEvent.end?.date;
+        if (correctStart && correctEnd) {
+          await storage.updateEvent(existing.id, {
+            startTime: new Date(correctStart),
+            endTime: new Date(correctEnd),
+          });
+        }
+      }
+      continue;
+    }
     const existingBooking = await storage.getBookingByGoogleCalendarId(gcalEvent.id, userId);
     if (existingBooking) continue;
 

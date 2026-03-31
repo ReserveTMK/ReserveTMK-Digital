@@ -4317,6 +4317,62 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     }
   });
 
+  // One-time repair: fix events with 0-duration (broken initial sync)
+  app.post("/api/google-calendar/repair-dates", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { getUncachableGoogleCalendarClient } = await import("./replit_integrations/google-calendar/client");
+      const calendar = await getUncachableGoogleCalendarClient(userId);
+
+      // Find events with 0 duration (start === end)
+      const broken = await db.select().from(events)
+        .where(and(
+          eq(events.userId, userId),
+          eq(events.source, "google"),
+          sql`${events.startTime} = ${events.endTime}`,
+        ));
+
+      let fixed = 0;
+      const results: { id: number; name: string; status: string; newStart?: string; newEnd?: string }[] = [];
+
+      for (const evt of broken) {
+        if (!evt.googleCalendarEventId) continue;
+        try {
+          // Try each calendar to find the event
+          const calSettings = await storage.getCalendarSettings(userId);
+          let found = false;
+          for (const cal of calSettings) {
+            try {
+              const gcalEvt = await calendar.events.get({
+                calendarId: cal.calendarId,
+                eventId: evt.googleCalendarEventId,
+              });
+              const start = gcalEvt.data.start?.dateTime || gcalEvt.data.start?.date;
+              const end = gcalEvt.data.end?.dateTime || gcalEvt.data.end?.date;
+              if (start && end) {
+                await storage.updateEvent(evt.id, {
+                  startTime: new Date(start),
+                  endTime: new Date(end),
+                });
+                results.push({ id: evt.id, name: evt.name, status: "fixed", newStart: start, newEnd: end });
+                fixed++;
+                found = true;
+                break;
+              }
+            } catch { /* not in this calendar */ }
+          }
+          if (!found) results.push({ id: evt.id, name: evt.name, status: "not_found" });
+        } catch (e: any) {
+          results.push({ id: evt.id, name: evt.name, status: `error: ${e.message}` });
+        }
+      }
+
+      res.json({ total: broken.length, fixed, results });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/google-calendar/reconcile", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
