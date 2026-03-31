@@ -1,4 +1,3 @@
-import OpenAI, { toFile } from "openai";
 import { Buffer } from "node:buffer";
 import { spawn, execSync } from "child_process";
 import { writeFile, unlink, readFile } from "fs/promises";
@@ -6,8 +5,8 @@ import { randomUUID } from "crypto";
 import { tmpdir } from "os";
 import { join } from "path";
 
-export function isOpenAIKeyConfigured(): boolean {
-  return !!process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+export function isTranscriptionConfigured(): boolean {
+  return !!process.env.ASSEMBLYAI_API_KEY;
 }
 
 let _ffmpegAvailable: boolean | null = null;
@@ -23,11 +22,6 @@ export function isFfmpegAvailable(): boolean {
   }
   return _ffmpegAvailable;
 }
-
-export const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || "https://api.openai.com",
-});
 
 export type AudioFormat = "wav" | "mp3" | "webm" | "mp4" | "ogg" | "unknown";
 
@@ -78,23 +72,21 @@ export async function convertToWav(audioBuffer: Buffer): Promise<Buffer> {
   const outputPath = join(tmpdir(), `output-${randomUUID()}.wav`);
 
   try {
-    // Write input to temp file (required for video containers that need seeking)
     await writeFile(inputPath, audioBuffer);
 
-    // Run ffmpeg with file paths
     await new Promise<void>((resolve, reject) => {
       const ffmpeg = spawn("ffmpeg", [
         "-i", inputPath,
-        "-vn",              // Extract audio only (ignore video track)
+        "-vn",
         "-f", "wav",
-        "-ar", "16000",     // 16kHz sample rate (good for speech)
-        "-ac", "1",         // Mono
+        "-ar", "16000",
+        "-ac", "1",
         "-acodec", "pcm_s16le",
-        "-y",               // Overwrite output
+        "-y",
         outputPath,
       ]);
 
-      ffmpeg.stderr.on("data", () => {}); // Suppress logs
+      ffmpeg.stderr.on("data", () => {});
       ffmpeg.on("close", (code) => {
         if (code === 0) resolve();
         else reject(new Error(`ffmpeg exited with code ${code}`));
@@ -102,17 +94,15 @@ export async function convertToWav(audioBuffer: Buffer): Promise<Buffer> {
       ffmpeg.on("error", reject);
     });
 
-    // Read converted audio
     return await readFile(outputPath);
   } finally {
-    // Clean up temp files
     await unlink(inputPath).catch(() => {});
     await unlink(outputPath).catch(() => {});
   }
 }
 
 /**
- * Auto-detect and ensure audio is in an OpenAI-compatible format.
+ * Auto-detect and ensure audio is in a compatible format for AssemblyAI.
  * - WAV/MP3/WebM: Pass through (already compatible)
  * - MP4/OGG: Convert to WAV via ffmpeg if available, otherwise pass through directly
  * - Unknown: Convert via ffmpeg if available, otherwise send as webm (best-guess fallback)
@@ -131,7 +121,7 @@ export async function ensureCompatibleFormat(
       return { buffer: wavBuffer, format: "wav" };
     }
     console.warn(
-      "ffmpeg not available and audio format unrecognized; sending to OpenAI as webm (best-guess fallback)"
+      "ffmpeg not available and audio format unrecognized; sending to AssemblyAI as webm (best-guess fallback)"
     );
     return { buffer: audioBuffer, format: "webm" };
   }
@@ -142,157 +132,16 @@ export async function ensureCompatibleFormat(
   }
 
   console.warn(
-    `ffmpeg not available; sending ${detected} audio directly to OpenAI without conversion`
+    `ffmpeg not available; sending ${detected} audio directly to AssemblyAI without conversion`
   );
   return { buffer: audioBuffer, format: detected };
 }
 
 /**
- * Voice Chat: User speaks, LLM responds with audio (audio-in, audio-out).
- * Uses gpt-audio model via Replit AI Integrations.
- * Note: Browser records WebM/opus - convert to WAV using ffmpeg before calling this.
- */
-export async function voiceChat(
-  audioBuffer: Buffer,
-  voice: "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer" = "alloy",
-  inputFormat: "wav" | "mp3" = "wav",
-  outputFormat: "wav" | "mp3" = "mp3"
-): Promise<{ transcript: string; audioResponse: Buffer }> {
-  if (!isOpenAIKeyConfigured()) {
-    throw new Error("AI service unavailable: OpenAI API key is not configured");
-  }
-  const audioBase64 = audioBuffer.toString("base64");
-  const response = await openai.chat.completions.create({
-    model: "gpt-audio",
-    modalities: ["text", "audio"],
-    audio: { voice, format: outputFormat },
-    messages: [{
-      role: "user",
-      content: [
-        { type: "input_audio", input_audio: { data: audioBase64, format: inputFormat } },
-      ],
-    }],
-  });
-  const message = response.choices[0]?.message as any;
-  const transcript = message?.audio?.transcript || message?.content || "";
-  const audioData = message?.audio?.data ?? "";
-  return {
-    transcript,
-    audioResponse: Buffer.from(audioData, "base64"),
-  };
-}
-
-/**
- * Streaming Voice Chat: For real-time audio responses.
- * Note: Streaming only supports pcm16 output format.
- *
- * @example
- * // Converting browser WebM to WAV before calling:
- * const webmBuffer = Buffer.from(req.body.audio, "base64");
- * const wavBuffer = await convertWebmToWav(webmBuffer);
- * for await (const chunk of voiceChatStream(wavBuffer)) { ... }
- */
-export async function voiceChatStream(
-  audioBuffer: Buffer,
-  voice: "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer" = "alloy",
-  inputFormat: "wav" | "mp3" = "wav"
-): Promise<AsyncIterable<{ type: "transcript" | "audio"; data: string }>> {
-  if (!isOpenAIKeyConfigured()) {
-    throw new Error("AI service unavailable: OpenAI API key is not configured");
-  }
-  const audioBase64 = audioBuffer.toString("base64");
-  const stream = await openai.chat.completions.create({
-    model: "gpt-audio",
-    modalities: ["text", "audio"],
-    audio: { voice, format: "pcm16" },
-    messages: [{
-      role: "user",
-      content: [
-        { type: "input_audio", input_audio: { data: audioBase64, format: inputFormat } },
-      ],
-    }],
-    stream: true,
-  });
-
-  return (async function* () {
-    for await (const chunk of stream) {
-      const delta = chunk.choices?.[0]?.delta as any;
-      if (!delta) continue;
-      if (delta?.audio?.transcript) {
-        yield { type: "transcript", data: delta.audio.transcript };
-      }
-      if (delta?.audio?.data) {
-        yield { type: "audio", data: delta.audio.data };
-      }
-    }
-  })();
-}
-
-/**
- * Text-to-Speech: Converts text to speech verbatim.
- * Uses gpt-audio model via Replit AI Integrations.
- */
-export async function textToSpeech(
-  text: string,
-  voice: "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer" = "alloy",
-  format: "wav" | "mp3" | "flac" | "opus" | "pcm16" = "wav"
-): Promise<Buffer> {
-  if (!isOpenAIKeyConfigured()) {
-    throw new Error("AI service unavailable: OpenAI API key is not configured");
-  }
-  const response = await openai.chat.completions.create({
-    model: "gpt-audio",
-    modalities: ["text", "audio"],
-    audio: { voice, format },
-    messages: [
-      { role: "system", content: "You are an assistant that performs text-to-speech." },
-      { role: "user", content: `Repeat the following text verbatim: ${text}` },
-    ],
-  });
-  const audioData = (response.choices[0]?.message as any)?.audio?.data ?? "";
-  return Buffer.from(audioData, "base64");
-}
-
-/**
- * Streaming Text-to-Speech: Converts text to speech with real-time streaming.
- * Uses gpt-audio model via Replit AI Integrations.
- * Note: Streaming only supports pcm16 output format.
- */
-export async function textToSpeechStream(
-  text: string,
-  voice: "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer" = "alloy"
-): Promise<AsyncIterable<string>> {
-  if (!isOpenAIKeyConfigured()) {
-    throw new Error("AI service unavailable: OpenAI API key is not configured");
-  }
-  const stream = await openai.chat.completions.create({
-    model: "gpt-audio",
-    modalities: ["text", "audio"],
-    audio: { voice, format: "pcm16" },
-    messages: [
-      { role: "system", content: "You are an assistant that performs text-to-speech." },
-      { role: "user", content: `Repeat the following text verbatim: ${text}` },
-    ],
-    stream: true,
-  });
-
-  return (async function* () {
-    for await (const chunk of stream) {
-      const delta = chunk.choices?.[0]?.delta as any;
-      if (!delta) continue;
-      if (delta?.audio?.data) {
-        yield delta.audio.data;
-      }
-    }
-  })();
-}
-
-/**
  * Speech-to-Text via AssemblyAI REST API.
  * Uploads audio, starts transcription, polls until complete.
- * Auth header uses plain API key (not Bearer).
  */
-export async function speechToTextAssemblyAI(audioBuffer: Buffer): Promise<string> {
+export async function speechToText(audioBuffer: Buffer): Promise<string> {
   const apiKey = process.env.ASSEMBLYAI_API_KEY;
   if (!apiKey) {
     throw new Error("ASSEMBLYAI_API_KEY is not configured");
@@ -328,9 +177,10 @@ export async function speechToTextAssemblyAI(audioBuffer: Buffer): Promise<strin
   }
   const { id } = await transcriptRes.json() as { id: string };
 
-  // Step 3: Poll until completed
+  // Step 3: Poll until completed (max 3 minutes)
   const pollUrl = `https://api.assemblyai.com/v2/transcript/${id}`;
-  while (true) {
+  const maxPolls = 120;
+  for (let i = 0; i < maxPolls; i++) {
     await new Promise((r) => setTimeout(r, 1500));
     const pollRes = await fetch(pollUrl, {
       headers: { "Authorization": apiKey },
@@ -346,64 +196,6 @@ export async function speechToTextAssemblyAI(audioBuffer: Buffer): Promise<strin
     if (result.status === "error") {
       throw new Error(`[AssemblyAI] Transcription error: ${result.error}`);
     }
-    // status is "queued" or "processing" — keep polling
   }
-}
-
-/**
- * Speech-to-Text: Transcribes audio using dedicated transcription model.
- * Uses AssemblyAI if ASSEMBLYAI_API_KEY is set, otherwise falls back to OpenAI whisper-1.
- */
-export async function speechToText(
-  audioBuffer: Buffer,
-  format: "wav" | "mp3" | "webm" | "mp4" | "ogg" = "wav"
-): Promise<string> {
-  // Prefer AssemblyAI if key is configured
-  if (process.env.ASSEMBLYAI_API_KEY) {
-    console.log(`[speechToText] provider=assemblyai size=${audioBuffer.length}`);
-    return speechToTextAssemblyAI(audioBuffer);
-  }
-
-  if (!isOpenAIKeyConfigured()) {
-    throw new Error("AI service unavailable: neither ASSEMBLYAI_API_KEY nor OpenAI API key is configured");
-  }
-  const file = await toFile(audioBuffer, `audio.${format}`);
-  console.log(`[speechToText] format=${format} size=${audioBuffer.length} model=whisper-1`);
-  try {
-    const response = await openai.audio.transcriptions.create({
-      file,
-      model: "whisper-1",
-    });
-    return response.text;
-  } catch (err: any) {
-    console.error(`[speechToText] OpenAI error:`, err?.status, err?.message, JSON.stringify(err?.error));
-    throw err;
-  }
-}
-
-/**
- * Streaming Speech-to-Text: Transcribes audio with real-time streaming.
- * Uses gpt-4o-mini-transcribe for accurate transcription.
- */
-export async function speechToTextStream(
-  audioBuffer: Buffer,
-  format: "wav" | "mp3" | "webm" = "wav"
-): Promise<AsyncIterable<string>> {
-  if (!isOpenAIKeyConfigured()) {
-    throw new Error("AI service unavailable: OpenAI API key is not configured");
-  }
-  const file = await toFile(audioBuffer, `audio.${format}`);
-  const stream = await openai.audio.transcriptions.create({
-    file,
-    model: "whisper-1",
-    stream: true,
-  });
-
-  return (async function* () {
-    for await (const event of stream) {
-      if (event.type === "transcript.text.delta") {
-        yield event.delta;
-      }
-    }
-  })();
+  throw new Error("Transcription timed out after 3 minutes");
 }

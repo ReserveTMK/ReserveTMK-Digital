@@ -3765,7 +3765,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
           sentiment: extraction.sentiment || "neutral",
           milestones: extraction.milestones || [],
           keyQuotes: extraction.keyQuotes || [],
-          audioUrl: null, // Clear audio — professional record replaces raw
+          // audioUrl preserved — keep original recording alongside professional transcript
         });
         res.status(200).json({ id: updated.id, impactLog: updated, extraction });
       } else {
@@ -3781,7 +3781,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
           keyQuotes: extraction.keyQuotes || [],
         });
         await autoApplyTags(impactLog.id, extraction.impactTags);
-        await storage.updateImpactLog(impactLog.id, { rawExtraction: extraction, audioUrl: null });
+        await storage.updateImpactLog(impactLog.id, { rawExtraction: extraction });
         res.status(201).json({ id: impactLog.id, impactLog, extraction });
       }
     } catch (error: any) {
@@ -3908,9 +3908,9 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
 
   app.post("/api/impact-transcribe", isAuthenticated, async (req, res) => {
     try {
-      const { isOpenAIKeyConfigured } = await import("./replit_integrations/audio/client");
-      if (!isOpenAIKeyConfigured()) {
-        return res.status(503).json({ message: "Audio transcription is unavailable: OpenAI API key is not configured" });
+      const { isTranscriptionConfigured } = await import("./replit_integrations/audio/client");
+      if (!isTranscriptionConfigured()) {
+        return res.status(503).json({ message: "Audio transcription is unavailable: ASSEMBLYAI_API_KEY is not configured" });
       }
 
       const chunks: Buffer[] = [];
@@ -3936,16 +3936,10 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
             return res.status(400).json({ message: "No audio data received" });
           }
 
-          const { ensureCompatibleFormat, speechToText } = await import("./replit_integrations/audio/client");
-          const { buffer, format } = await ensureCompatibleFormat(audioBuffer);
-          console.log(`[transcribe] format=${format} size=${buffer.length}`);
+          const { speechToText } = await import("./replit_integrations/audio/client");
+          console.log(`[transcribe] size=${audioBuffer.length}`);
 
-          // 60-second timeout on transcription
-          const transcriptPromise = speechToText(buffer, format);
-          const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("Transcription timed out after 60 seconds. Please try again.")), 60000)
-          );
-          const transcript = await Promise.race([transcriptPromise, timeoutPromise]);
+          const transcript = await speechToText(audioBuffer);
 
           res.json({ transcript });
         } catch (err: any) {
