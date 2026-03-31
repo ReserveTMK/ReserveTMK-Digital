@@ -1072,6 +1072,9 @@ export default function CasualHirePage() {
                       {bookMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CalendarDays className="w-4 h-4 mr-2" />}
                       Submit Enquiry
                     </Button>
+                    <p className="text-[10px] text-muted-foreground text-center">
+                      By submitting you agree to our <a href="/privacy" target="_blank" className="underline">privacy policy</a>
+                    </p>
 
                     {bookMutation.isError && (
                       <p className="text-xs text-red-500" data-testid="text-casual-booking-error">

@@ -219,7 +219,7 @@ interface FunderTaxMapping {
   confidenceModifier: number | null;
 }
 
-function FunderTaxonomySection({ funderId }: { funderId: number }) {
+export function FunderTaxonomySection({ funderId }: { funderId: number }) {
   const { toast } = useToast();
   const [showAdd, setShowAdd] = useState(false);
   const [editingCat, setEditingCat] = useState<FunderTaxCategory | null>(null);
@@ -536,7 +536,7 @@ const ENTITY_ICONS: Record<string, string> = {
   debrief: "Debrief", booking: "Booking", programme: "Programme", event: "Event",
 };
 
-function FunderClassificationsSection({ funderId }: { funderId: number }) {
+export function FunderClassificationsSection({ funderId }: { funderId: number }) {
   const now = new Date();
   const monthStart = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
   const monthEnd = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd");
@@ -631,7 +631,7 @@ function FunderClassificationsSection({ funderId }: { funderId: number }) {
   );
 }
 
-function FunderDeliverablesSection({ funderId }: { funderId: number }) {
+export function FunderDeliverablesSection({ funderId }: { funderId: number }) {
   const { toast } = useToast();
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);

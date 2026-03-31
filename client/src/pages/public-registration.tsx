@@ -398,7 +398,7 @@ export default function PublicRegistrationPage() {
             )}
           </div>
 
-          <div className="p-5 sm:p-6 border-t">
+          <div className="p-5 sm:p-6 border-t space-y-2">
             <Button
               type="submit"
               className="w-full"
@@ -410,6 +410,9 @@ export default function PublicRegistrationPage() {
               ) : null}
               {registerMutation.isPending ? "Registering..." : "Register"}
             </Button>
+            <p className="text-[10px] text-muted-foreground text-center">
+              By registering you agree to our <a href="/privacy" target="_blank" className="underline">privacy policy</a>
+            </p>
           </div>
         </form>
       </Card>

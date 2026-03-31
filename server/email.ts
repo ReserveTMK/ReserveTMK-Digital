@@ -270,6 +270,7 @@ export async function sendBookingConfirmationEmail(booking: Booking, userId: str
 
   <tr><td style="padding:15px 30px;background:#f9fafb;text-align:center;">
     <p style="margin:0;font-size:12px;color:#9ca3af;">Reserve T\u0101maki Hub &bull; 133a Line Road, Glen Innes, Auckland 1072</p>
+    <p style="margin:5px 0 0;font-size:11px;color:#c0c0c0;">Don't want these emails? Reply with "unsubscribe" or email kiaora@reservetmk.co.nz</p>
   </td></tr>
 </table>
 </body>
@@ -1027,6 +1028,7 @@ function deliveryConfirmationTemplate(opts: {
   </td></tr>
   <tr><td style="padding:15px 30px;background:#f9fafb;text-align:center;">
     <p style="margin:0;font-size:12px;color:#9ca3af;">Reserve Tāmaki Hub &bull; 133a Line Road, Glen Innes, Auckland 1072</p>
+    <p style="margin:5px 0 0;font-size:11px;color:#c0c0c0;">Don't want these emails? Reply with "unsubscribe" or email kiaora@reservetmk.co.nz</p>
   </td></tr>
 </table>
 </body>
