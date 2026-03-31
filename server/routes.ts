@@ -7653,13 +7653,13 @@ Important:
           ORDER BY organisation
         `),
         db.execute(sql`
-          SELECT il.title, il.notes
+          SELECT il.title, il.summary as notes
           FROM impact_logs il
           WHERE il.user_id = ${userId}
           AND il.status = 'confirmed'
           AND il.confirmed_at >= ${new Date(startDate)}
           AND il.confirmed_at < ${new Date(endDate)}
-          AND LENGTH(COALESCE(il.notes, '')) > 50
+          AND LENGTH(COALESCE(il.summary, '')) > 50
           ORDER BY il.confirmed_at
         `),
       ]);
