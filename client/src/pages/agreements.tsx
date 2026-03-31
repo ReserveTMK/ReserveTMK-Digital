@@ -50,6 +50,8 @@ import {
   TrendingDown,
   Info,
   MapPin,
+  RefreshCw,
+  AlertTriangle,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -190,6 +192,103 @@ export default function Agreements() {
   const getGroupName = (groupId: number | null | undefined) => {
     if (!groupId || !allGroups) return null;
     return (allGroups as Group[]).find((g) => g.id === groupId)?.name || null;
+  };
+
+  // Compute effective status — if endDate has passed and status is still "active", show as expired
+  const getEffectiveStatus = (status: string, endDate: string | Date | null | undefined) => {
+    if (!endDate || status === "expired" || status === "terminated") return status;
+    return new Date(endDate) < new Date() ? "expired" : status;
+  };
+
+  // Days until expiry (null if no endDate or already expired)
+  const getDaysUntilExpiry = (endDate: string | Date | null | undefined) => {
+    if (!endDate) return null;
+    const diff = Math.ceil((new Date(endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    return diff > 0 ? diff : null;
+  };
+
+  // Next allowance reset date
+  const getNextResetDate = (period: string | null | undefined) => {
+    const now = new Date();
+    if (period === "monthly") {
+      const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      return format(next, "d MMM");
+    }
+    const qMonth = Math.floor(now.getMonth() / 3) * 3 + 3;
+    const next = new Date(now.getFullYear(), qMonth, 1);
+    return format(next, "d MMM");
+  };
+
+  // Value delivered — sum of booking amounts under an agreement
+  const getValueDelivered = (agreementId: number, type: "membership" | "mou") => {
+    if (!bookings) return 0;
+    const matched = bookings.filter((b: Booking) =>
+      type === "membership" ? b.membershipId === agreementId : b.mouId === agreementId
+    );
+    return matched.reduce((sum: number, b: Booking) => {
+      const stdVal = type === "membership"
+        ? parseFloat((memberships?.find(m => m.id === agreementId)?.standardValue) || "0")
+        : parseFloat((mous?.find(m => m.id === agreementId)?.actualValue) || "0");
+      const perBooking = matched.length > 0 && stdVal > 0 ? stdVal / (memberships?.find(m => m.id === agreementId)?.bookingAllowance || matched.length) : 0;
+      return sum + perBooking;
+    }, 0);
+  };
+
+  // Renew an agreement — create new one with same terms, bumped dates
+  const handleRenewMembership = (membership: Membership) => {
+    const nextYear = (membership.membershipYear || new Date().getFullYear()) + 1;
+    const startDate = new Date(`${nextYear}-01-01`).toISOString();
+    const endDate = new Date(`${nextYear}-12-31`).toISOString();
+    createMembershipMutation.mutate({
+      name: membership.name,
+      contactId: membership.contactId,
+      groupId: (membership as any).groupId,
+      standardValue: membership.standardValue,
+      annualFee: membership.annualFee,
+      bookingAllowance: membership.bookingAllowance,
+      allowancePeriod: membership.allowancePeriod,
+      bookingCategories: membership.bookingCategories,
+      allowedLocations: membership.allowedLocations,
+      membershipYear: nextYear,
+      startDate,
+      endDate,
+      status: "active",
+      paymentStatus: "unpaid",
+      notes: membership.notes,
+    } as any, {
+      onSuccess: () => {
+        toast({ title: `Renewed for ${nextYear}` });
+      },
+    });
+  };
+
+  const handleRenewMou = (mou: Mou) => {
+    const oldEnd = mou.endDate ? new Date(mou.endDate) : new Date();
+    const duration = mou.startDate ? oldEnd.getTime() - new Date(mou.startDate).getTime() : 365 * 24 * 60 * 60 * 1000;
+    const newStart = new Date(oldEnd.getTime() + 24 * 60 * 60 * 1000);
+    const newEnd = new Date(newStart.getTime() + duration);
+    createMouMutation.mutate({
+      title: mou.title,
+      partnerName: mou.partnerName,
+      contactId: mou.contactId,
+      groupId: (mou as any).groupId,
+      providing: mou.providing,
+      receiving: mou.receiving,
+      actualValue: mou.actualValue,
+      inKindValue: mou.inKindValue,
+      bookingAllowance: mou.bookingAllowance,
+      allowancePeriod: mou.allowancePeriod,
+      bookingCategories: mou.bookingCategories,
+      allowedLocations: mou.allowedLocations,
+      startDate: newStart.toISOString(),
+      endDate: newEnd.toISOString(),
+      status: "draft",
+      notes: mou.notes,
+    } as any, {
+      onSuccess: () => {
+        toast({ title: "MOU renewed as draft" });
+      },
+    });
   };
 
   const handleDeleteWithUndo = useCallback((id: number, type: "membership" | "mou") => {
@@ -345,11 +444,13 @@ export default function Agreements() {
                     const stdVal = parseFloat(membership.standardValue || "0");
                     const fee = parseFloat(membership.annualFee || "0");
                     const savings = stdVal - fee;
+                    const effectiveStatus = getEffectiveStatus(membership.status, membership.endDate);
+                    const daysLeft = getDaysUntilExpiry(membership.endDate);
 
                     return (
                       <Card
                         key={membership.id}
-                        className={`p-4 hover-elevate transition-all ${MEMBERSHIP_STATUS_COLORS[membership.status] || ""}`}
+                        className={`p-4 hover-elevate transition-all ${MEMBERSHIP_STATUS_COLORS[effectiveStatus] || ""}`}
                         data-testid={`card-membership-${membership.id}`}
                       >
                         <div className="flex items-start justify-between gap-3">
@@ -404,8 +505,20 @@ export default function Agreements() {
                               {(membership.bookingAllowance || 0) > 0 && (
                                 <span className="flex items-center gap-1" data-testid={`text-membership-allowance-${membership.id}`}>
                                   <Calendar className="w-3 h-3" />
-                                  {bookingsUsed} / {membership.bookingAllowance} bookings used ({membership.allowancePeriod === "monthly" ? "monthly" : "quarterly"})
+                                  {bookingsUsed} / {membership.bookingAllowance} used — resets {getNextResetDate(membership.allowancePeriod)}
                                 </span>
+                              )}
+                              {effectiveStatus === "expired" && membership.status === "active" && (
+                                <Badge className="bg-red-500/15 text-red-700 dark:text-red-300 text-[10px]">
+                                  <AlertTriangle className="w-3 h-3 mr-0.5" />
+                                  Expired (update status)
+                                </Badge>
+                              )}
+                              {daysLeft !== null && daysLeft <= 30 && (
+                                <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px]">
+                                  <Clock className="w-3 h-3 mr-0.5" />
+                                  {daysLeft} day{daysLeft !== 1 ? "s" : ""} left
+                                </Badge>
                               )}
                             </div>
                             {membership.notes && (
@@ -422,6 +535,10 @@ export default function Agreements() {
                               <DropdownMenuItem onClick={() => setEditMembership(membership)} data-testid={`button-edit-membership-${membership.id}`}>
                                 <Pencil className="w-4 h-4 mr-2" />
                                 Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleRenewMembership(membership)} data-testid={`button-renew-membership-${membership.id}`}>
+                                <RefreshCw className="w-4 h-4 mr-2" />
+                                Renew
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => handleDeleteWithUndo(membership.id, "membership")}
@@ -506,11 +623,13 @@ export default function Agreements() {
                     const av = parseFloat(mou.actualValue || "0");
                     const ikv = parseFloat(mou.inKindValue || "0");
                     const subsidy = av - ikv;
+                    const effectiveStatus = getEffectiveStatus(mou.status, mou.endDate);
+                    const daysLeft = getDaysUntilExpiry(mou.endDate);
 
                     return (
                       <Card
                         key={mou.id}
-                        className={`p-4 hover-elevate transition-all ${MOU_STATUS_COLORS[mou.status] || ""}`}
+                        className={`p-4 hover-elevate transition-all ${MOU_STATUS_COLORS[effectiveStatus] || ""}`}
                         data-testid={`card-mou-${mou.id}`}
                       >
                         <div className="flex items-start justify-between gap-3">
@@ -591,8 +710,20 @@ export default function Agreements() {
                               {(mou.bookingAllowance || 0) > 0 && (
                                 <span className="flex items-center gap-1" data-testid={`text-mou-allowance-${mou.id}`}>
                                   <Clock className="w-3 h-3" />
-                                  {mou.bookingAllowance}/{mou.allowancePeriod === "monthly" ? "mo" : "qtr"}
+                                  {linkedBookings} / {mou.bookingAllowance} used — resets {getNextResetDate(mou.allowancePeriod)}
                                 </span>
+                              )}
+                              {effectiveStatus === "expired" && mou.status === "active" && (
+                                <Badge className="bg-red-500/15 text-red-700 dark:text-red-300 text-[10px]">
+                                  <AlertTriangle className="w-3 h-3 mr-0.5" />
+                                  Expired (update status)
+                                </Badge>
+                              )}
+                              {daysLeft !== null && daysLeft <= 30 && (
+                                <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px]">
+                                  <Clock className="w-3 h-3 mr-0.5" />
+                                  {daysLeft} day{daysLeft !== 1 ? "s" : ""} left
+                                </Badge>
                               )}
                             </div>
                             {mou.notes && (
@@ -609,6 +740,10 @@ export default function Agreements() {
                               <DropdownMenuItem onClick={() => setEditMou(mou)} data-testid={`button-edit-mou-${mou.id}`}>
                                 <Pencil className="w-4 h-4 mr-2" />
                                 Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleRenewMou(mou)} data-testid={`button-renew-mou-${mou.id}`}>
+                                <RefreshCw className="w-4 h-4 mr-2" />
+                                Renew
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => handleDeleteWithUndo(mou.id, "mou")}
