@@ -131,7 +131,7 @@ export async function getReachMetrics(filters: ReportFilters) {
     const typeMap = new Map(evtRows.map(e => [e.id, e.type]));
     for (const a of attRows) {
       addTouch(a.contactId);
-      if (typeMap.get(a.eventId) === "External Event") src.externalEvents++;
+      if (typeMap.get(a.eventId) === "External Meeting") src.externalEvents++;
       else src.events++;
     }
   }
@@ -291,7 +291,7 @@ export async function getReachMetrics(filters: ReportFilters) {
 }
 
 // Activation event types to exclude — tracked separately from activations
-const ACTIVATION_EXCLUDE_TYPES = ["Meeting", "Catch Up", "Planning", "Mentoring Session"];
+const ACTIVATION_EXCLUDE_TYPES = ["Team Meeting", "External Meeting", "Mentoring Session", "Public Holiday"];
 
 export async function getDeliveryMetrics(filters: ReportFilters) {
   const start = parseDate(filters.startDate);

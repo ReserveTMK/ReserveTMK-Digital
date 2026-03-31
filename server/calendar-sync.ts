@@ -120,14 +120,16 @@ async function syncCalendar(
       organizer: a.organizer || false,
     }));
 
-    // Determine event type from calendar label
+    // Determine event type from calendar label + attendees
     const calLabel = (setting.label || "").toLowerCase();
     const isHolidayCalendar = setting.calendarId.includes("holiday@group.v.calendar.google.com");
-    let eventType = "Community Event";
+    const summary = (gcalEvent.summary || "").toLowerCase();
+    const hasExternalAttendees = attendees.some((a: any) => a.email && !a.email.endsWith("@reservetmk.co.nz"));
+    let eventType = "Team Meeting";
     if (isHolidayCalendar) eventType = "Public Holiday";
-    else if (calLabel.includes("boardroom")) eventType = "Meeting";
-    else if (calLabel.includes("workshop")) eventType = "Community Event";
-    else if (calLabel.includes("mentoring")) eventType = "Mentoring Session";
+    else if (summary.includes("mentor") || summary.includes("1:1") || calLabel.includes("mentoring")) eventType = "Mentoring Session";
+    else if (calLabel.includes("workshop") || calLabel.includes("studio") || calLabel.includes("boardroom") || calLabel.includes("office")) eventType = "Venue Hire";
+    else if (hasExternalAttendees) eventType = "External Meeting";
 
     await storage.createEvent({
       userId,

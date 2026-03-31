@@ -120,37 +120,32 @@ function formatTime(dateStr: string) {
   return d.toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Pacific/Auckland" });
 }
 
-const EVENT_TYPES = ["Meeting", "Mentoring Session", "External Event", "Personal Development", "Planning", "Programme"] as const;
+const EVENT_TYPES = ["Team Meeting", "External Meeting", "Mentoring Session", "Programme", "Venue Hire", "Public Holiday"] as const;
 
 const EVENT_TYPE_DOT_COLORS: Record<string, string> = {
-  "Meeting": "bg-teal-400",
+  "Team Meeting": "bg-gray-400",
+  "External Meeting": "bg-teal-400",
   "Mentoring Session": "bg-blue-400",
-  "External Event": "bg-orange-400",
-  "Personal Development": "bg-violet-400",
-  "Planning": "bg-rose-400",
   "Programme": "bg-indigo-400",
   "Venue Hire": "bg-amber-400",
   "Public Holiday": "bg-red-400",
 };
 
 const EVENT_TYPE_BADGE_COLORS: Record<string, string> = {
-  "Meeting": "bg-teal-500/10 text-teal-700 dark:text-teal-300",
+  "Team Meeting": "bg-gray-500/10 text-gray-700 dark:text-gray-300",
+  "External Meeting": "bg-teal-500/10 text-teal-700 dark:text-teal-300",
   "Mentoring Session": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
-  "External Event": "bg-orange-500/10 text-orange-700 dark:text-orange-300",
-  "Personal Development": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
-  "Planning": "bg-rose-500/10 text-rose-700 dark:text-rose-300",
   "Programme": "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
   "Venue Hire": "bg-amber-500/10 text-amber-700 dark:text-amber-300",
   "Public Holiday": "bg-red-500/10 text-red-700 dark:text-red-300",
 };
 
 const EVENT_TYPE_CARD_TINTS: Record<string, string> = {
-  "Meeting": "border-teal-500/20 bg-teal-500/5 dark:bg-teal-500/5",
+  "Team Meeting": "border-gray-500/20 bg-gray-500/5 dark:bg-gray-500/5",
+  "External Meeting": "border-teal-500/20 bg-teal-500/5 dark:bg-teal-500/5",
   "Mentoring Session": "border-blue-500/20 bg-blue-500/5 dark:bg-blue-500/5",
-  "External Event": "border-orange-500/20 bg-orange-500/5 dark:bg-orange-500/5",
-  "Personal Development": "border-violet-500/20 bg-violet-500/5 dark:bg-violet-500/5",
-  "Planning": "border-rose-500/20 bg-rose-500/5 dark:bg-rose-500/5",
   "Programme": "border-indigo-500/20 bg-indigo-500/5 dark:bg-indigo-500/5",
+  "Venue Hire": "border-amber-500/20 bg-amber-500/5 dark:bg-amber-500/5",
   "Public Holiday": "border-red-500/30 bg-red-500/10 dark:bg-red-500/10",
 };
 
@@ -170,12 +165,8 @@ const PROG_STATUS_COLORS: Record<string, string> = {
 };
 
 const GCAL_TYPE_KEYWORDS: { type: string; keywords: string[] }[] = [
-  { type: "Programme", keywords: ["programme", "program", "community workshop", "creative workshop", "youth workshop", "talks", "activation"] },
   { type: "Mentoring Session", keywords: ["mentor", "mentoring", "mentee", "coaching", "1:1", "one on one", "1-on-1"] },
-  { type: "Planning", keywords: ["planning", "plan", "strategy", "budgeting", "budget", "roadmap", "prep", "preparation", "brainstorm"] },
-  { type: "Meeting", keywords: ["meeting", "hui", "catch up", "catchup", "sync", "standup", "check-in", "collab", "collaboration"] },
-  { type: "External Event", keywords: ["event", "conference", "summit", "expo", "workshop", "networking", "ecosystem"] },
-  { type: "Personal Development", keywords: ["training", "development", "learning", "course", "study", "webinar", "professional development", "pd"] },
+  { type: "Programme", keywords: ["programme", "program", "community workshop", "creative workshop", "youth workshop", "talks", "activation"] },
 ];
 
 const PERSONAL_EVENT_KEYWORDS = [
