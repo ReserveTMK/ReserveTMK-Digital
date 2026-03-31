@@ -184,6 +184,24 @@ const PERSONAL_EVENT_KEYWORDS = [
   "pickup", "drop off", "school run", "flight", "personal",
 ];
 
+function cleanDescription(desc: string | null | undefined): string {
+  if (!desc) return "";
+  // Strip Teams/Zoom join blocks
+  return desc
+    .replace(/_{3,}/g, "")
+    .replace(/Microsoft Teams meeting[\s\S]*?(?=\n\n|$)/gi, "")
+    .replace(/Join:?\s*https:\/\/teams\.microsoft\.com\S*/gi, "")
+    .replace(/Meeting ID:\s*[\d\s]+/gi, "")
+    .replace(/Passcode:\s*\S+/gi, "")
+    .replace(/Need help\?[\s\S]*?(?=\n\n|$)/gi, "")
+    .replace(/For organisers:[\s\S]*?(?=\n\n|$)/gi, "")
+    .replace(/System reference[\s\S]*?(?=\n\n|$)/gi, "")
+    .replace(/https:\/\/teams\.microsoft\.com\S*/gi, "")
+    .replace(/https:\/\/\S*zoom\S*/gi, "[Zoom link]")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function isPersonalEvent(title: string, description?: string): boolean {
   const text = `${title} ${description || ""}`.toLowerCase();
   return PERSONAL_EVENT_KEYWORDS.some(kw => text.includes(kw));
@@ -951,11 +969,17 @@ function EventCard({
         )}
 
         {isManualLog && entry.app?.description && (
-          <p className="text-xs text-muted-foreground whitespace-pre-line">{entry.app.description}</p>
+          <p className="text-xs text-muted-foreground whitespace-pre-line line-clamp-3">{cleanDescription(entry.app.description)}</p>
         )}
 
         {expanded && (
           <div className="space-y-3 pt-2 border-t border-border/50 mt-2">
+            {(() => {
+              const desc = cleanDescription(isGcal ? entry.gcal?.description : entry.app?.description);
+              return desc ? (
+                <p className="text-xs text-muted-foreground whitespace-pre-line max-h-24 overflow-y-auto">{desc}</p>
+              ) : null;
+            })()}
             {!isManualLog && (
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Event Type</Label>
@@ -1372,7 +1396,7 @@ function EventCard({
 
         {!expanded && (
           <p className="text-xs text-muted-foreground italic line-clamp-2">
-            {(isGcal ? entry.gcal?.description : entry.app?.description) || (isGcal ? entry.gcal?.summary : entry.app?.name) || (entry.isPast ? "Tap to debrief" : "Tap to expand")}
+            {cleanDescription(isGcal ? entry.gcal?.description : entry.app?.description) || (entry.isPast ? "Tap to debrief" : "Tap to expand")}
           </p>
         )}
       </div>
@@ -2710,19 +2734,25 @@ export default function CalendarPage() {
                       `}>
                         {format(day, "d")}
                       </span>
-                      {allDots.length > 0 && (
+                      {allDots.length > 0 && allDots.length <= 3 ? (
                         <div className="flex flex-wrap gap-0.5 mt-0.5">
-                          {allDots.slice(0, 4).map((dot) => (
+                          {allDots.map((dot) => (
                             <div
                               key={dot.key}
                               className={`w-full h-1 rounded-full ${dot.color} ${dot.reconciled === false ? "opacity-100 ring-1 ring-amber-400/60" : ""} ${dot.reconciled === true ? "opacity-50" : ""}`}
                             />
                           ))}
-                          {allDots.length > 4 && (
-                            <span className="text-[10px] text-muted-foreground">+{allDots.length - 4}</span>
+                        </div>
+                      ) : allDots.length > 3 ? (
+                        <div className="flex items-center gap-0.5 mt-0.5">
+                          {allDots.slice(0, 5).map((dot) => (
+                            <div key={dot.key} className={`w-1.5 h-1.5 rounded-full ${dot.color} ${dot.reconciled === true ? "opacity-50" : ""}`} />
+                          ))}
+                          {allDots.length > 5 && (
+                            <span className="text-[9px] text-muted-foreground leading-none">+{allDots.length - 5}</span>
                           )}
                         </div>
-                      )}
+                      ) : null}
                       {dayFT && isCurrentMonth && (
                         <span className="hidden md:block absolute bottom-0.5 right-1 text-[9px] text-green-600/70 dark:text-green-400/70 font-medium">{dayFT}</span>
                       )}
