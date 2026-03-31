@@ -23,6 +23,7 @@ import {
   Radar,
 } from "lucide-react";
 import type { Funder } from "@shared/schema";
+import { FunderDeliverablesSection, FunderTaxonomySection, FunderClassificationsSection } from "@/pages/funders";
 
 function formatCurrency(amount: number): string {
   if (amount >= 1000000) return `$${(amount / 1000000).toFixed(1)}M`;
@@ -349,6 +350,12 @@ export default function FunderDetailPage() {
 
       {/* ═══════════ ACTIVE FUNDER VIEW ═══════════ */}
       {isActive && (
+        <>
+        {/* Deliverables, Taxonomy, Classifications — full width */}
+        <FunderDeliverablesSection funderId={funder.id} />
+        <FunderTaxonomySection funderId={funder.id} />
+        <FunderClassificationsSection funderId={funder.id} />
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="md:col-span-2 space-y-6">
             {funder.outcomesFramework && (
@@ -453,6 +460,7 @@ export default function FunderDetailPage() {
             )}
           </div>
         </div>
+        </>
       )}
 
       {/* ═══════════ COMPLETED VIEW ═══════════ */}

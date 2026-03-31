@@ -51,6 +51,7 @@ import RegularBookersPage from "@/pages/regular-bookers";
 import CommsPage from "@/pages/comms";
 import XeroSettingsPage from "@/pages/xero-settings";
 import MeetPage from "@/pages/meet";
+import PrivacyPage from "@/pages/privacy";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -76,7 +77,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   return <Component />;
 }
 
-const PUBLIC_ROUTE_PREFIXES = ['/book/', '/register/', '/survey/', '/booker/', '/casual-hire', '/casual-booking'];
+const PUBLIC_ROUTE_PREFIXES = ['/book/', '/register/', '/survey/', '/booker/', '/casual-hire', '/casual-booking', '/privacy'];
 
 function AppLayout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -318,6 +319,9 @@ function Router() {
         </Route>
         <Route path="/casual-booking">
           <CasualHirePage />
+        </Route>
+        <Route path="/privacy">
+          <PrivacyPage />
         </Route>
 
         <Route component={NotFound} />
