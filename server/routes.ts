@@ -5130,41 +5130,46 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     const bookingsList = await storage.getBookings(userId);
 
     // Resolve display names: group name > booker org name > booker name > classification
-    const groupIds = [...new Set(bookingsList.filter(b => b.bookerGroupId).map(b => b.bookerGroupId!))];
-    const bookerIds = [...new Set(bookingsList.filter(b => b.bookerId).map(b => b.bookerId!))];
+    try {
+      const groupIds = [...new Set(bookingsList.filter(b => b.bookerGroupId).map(b => b.bookerGroupId!))];
+      const bookerIds = [...new Set(bookingsList.filter(b => b.bookerId).map(b => b.bookerId!))];
 
-    const groupMap = new Map<number, string>();
-    const bookerOrgMap = new Map<number, string>();
+      const groupMap = new Map<number, string>();
+      const bookerOrgMap = new Map<number, string>();
 
-    if (groupIds.length > 0) {
-      const groupRows = await db.execute(sql`SELECT id, name FROM groups WHERE id = ANY(${groupIds})`);
-      for (const row of (groupRows as any).rows || []) {
-        groupMap.set(row.id, row.name);
+      if (groupIds.length > 0) {
+        const groupRows = await db.execute(sql`SELECT id, name FROM groups WHERE id IN (${sql.join(groupIds.map(id => sql`${id}`), sql`, `)})`);
+        for (const row of (groupRows as any).rows || []) {
+          groupMap.set(row.id, row.name);
+        }
       }
-    }
-    if (bookerIds.length > 0) {
-      const bookerRows = await db.execute(sql`
-        SELECT rb.id, rb.organization_name, g.name as group_name
-        FROM regular_bookers rb
-        LEFT JOIN groups g ON g.id = rb.group_id
-        WHERE rb.id = ANY(${bookerIds})
-      `);
-      for (const row of (bookerRows as any).rows || []) {
-        const orgName = row.organization_name || row.group_name;
-        if (orgName) bookerOrgMap.set(row.id, orgName);
+      if (bookerIds.length > 0) {
+        const bookerRows = await db.execute(sql`
+          SELECT rb.id, rb.organization_name, g.name as group_name
+          FROM regular_bookers rb
+          LEFT JOIN groups g ON g.id = rb.group_id
+          WHERE rb.id IN (${sql.join(bookerIds.map(id => sql`${id}`), sql`, `)})
+        `);
+        for (const row of (bookerRows as any).rows || []) {
+          const orgName = row.organization_name || row.group_name;
+          if (orgName) bookerOrgMap.set(row.id, orgName);
+        }
       }
+
+      const enriched = bookingsList.map(b => ({
+        ...b,
+        displayName: (b.bookerGroupId ? groupMap.get(b.bookerGroupId) : null)
+          || (b.bookerId ? bookerOrgMap.get(b.bookerId) : null)
+          || b.bookerName
+          || b.classification
+          || "Venue Hire",
+      }));
+
+      res.json(enriched);
+    } catch (err: any) {
+      console.error("Bookings displayName enrichment failed, returning raw:", err.message);
+      res.json(bookingsList);
     }
-
-    const enriched = bookingsList.map(b => ({
-      ...b,
-      displayName: (b.bookerGroupId ? groupMap.get(b.bookerGroupId) : null)
-        || (b.bookerId ? bookerOrgMap.get(b.bookerId) : null)
-        || b.bookerName
-        || b.classification
-        || "Venue Hire",
-    }));
-
-    res.json(enriched);
   });
 
   app.get(api.bookings.get.path, isAuthenticated, async (req, res) => {
