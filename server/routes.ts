@@ -14788,6 +14788,11 @@ Rules:
     }
   });
 
+  // === Portal routes (extracted to server/routes/portal.ts) ===
+  const { registerPortalRoutes } = await import("./routes/portal");
+  registerPortalRoutes(app);
+
+  // NOTE: Old portal routes below are superseded.
   // === Booker Portal API (Public - token-based auth) ===
 
   app.post("/api/booker/login", async (req, res) => {
