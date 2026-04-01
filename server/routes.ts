@@ -14963,6 +14963,12 @@ Rules:
       }
       const booker = linkResult.booker;
 
+      // Tier enforcement
+      const bookerTier = (booker as any).tier || "regular";
+      if (bookerTier === "public" && !(booker as any).inductedAt) {
+        return res.status(403).json({ message: "Induction required before booking. Please contact Reserve Tāmaki to arrange your induction." });
+      }
+
       const { venueId, venueIds: rawVenueIds, startDate, startTime, endTime, classification, bookingSummary, usePackageCredit, bookerName, notes, isFirstBooking, attendeeCount } = req.body;
       if (!venueId || !startDate || !startTime || !endTime || !classification) {
         return res.status(400).json({ message: "Missing required fields" });
@@ -15184,12 +15190,16 @@ Rules:
         isWithinAllowance = true;
       }
 
-      // Determine booking status, pricing and payment_status based on allowance
+      // Determine booking status, pricing and payment_status based on tier + allowance
       let bookingStatus = "enquiry";
       let bookingPaymentStatus = "unpaid";
       let autoConfirmedAt: Date | null = null;
 
-      if (isWithinAllowance && (membershipId || mouId)) {
+      // Public tier: always needs approval regardless of allowance
+      if (bookerTier === "public") {
+        bookingStatus = "enquiry";
+        bookingPaymentStatus = "unpaid";
+      } else if (isWithinAllowance && (membershipId || mouId)) {
         // Auto-confirm: within allowance, free
         bookingStatus = "confirmed";
         bookingPaymentStatus = "not_required";

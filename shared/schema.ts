@@ -557,6 +557,9 @@ export type RegularBookerStatus = typeof REGULAR_BOOKER_STATUSES[number];
 export const PAYMENT_TERMS = ["immediate", "net_7", "net_14", "net_30"] as const;
 export type PaymentTerms = typeof PAYMENT_TERMS[number];
 
+export const BOOKER_TIERS = ["public", "casual", "regular"] as const;
+export type BookerTier = typeof BOOKER_TIERS[number];
+
 export const regularBookers = pgTable("regular_bookers", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
@@ -584,6 +587,8 @@ export const regularBookers = pgTable("regular_bookers", {
   xeroContactId: text("xero_contact_id"),
   paymentTerms: text("payment_terms").default("immediate"),
   accountStatus: text("account_status").notNull().default("active"),
+  tier: text("tier").notNull().default("regular"),
+  inductedAt: timestamp("inducted_at"),
   notes: text("notes"),
   usualBookingNeeds: text("usual_booking_needs"),
   notificationsEmail: text("notifications_email"),
@@ -1633,6 +1638,7 @@ export const insertRegularBookerSchema = createInsertSchema(regularBookers).omit
   pricingTier: z.enum(PRICING_TIERS).default("full_price"),
   accountStatus: z.enum(REGULAR_BOOKER_STATUSES).default("active"),
   paymentTerms: z.enum(PAYMENT_TERMS).default("immediate"),
+  tier: z.enum(BOOKER_TIERS).default("regular"),
 });
 
 export type RegularBooker = typeof regularBookers.$inferSelect;
