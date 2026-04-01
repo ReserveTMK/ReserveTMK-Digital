@@ -61,13 +61,20 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    name: "Delivery",
-    href: "/programmes",
+    name: "Access",
+    href: "/spaces",
+    children: [
+      { name: "Spaces", href: "/spaces", icon: Building2, description: "Venue hire, calendar & hot desking" },
+      { name: "Gear", href: "/gear", icon: Wrench, description: "Equipment lending & tracking" },
+      { name: "Bookers", href: "/bookers", icon: UserCheck, description: "Portal access & links" },
+      { name: "Agreements", href: "/agreements", icon: Handshake, description: "Memberships & MOUs" },
+    ],
+  },
+  {
+    name: "Capability",
+    href: "/mentoring",
     children: [
       { name: "Mentoring", href: "/mentoring", icon: Users, description: "1:1 sessions & scheduling" },
-      { name: "Spaces", href: "/spaces", icon: Building2, description: "Spaces, venue hire & hot desking" },
-      { name: "Bookers", href: "/bookers", icon: UserCheck, description: "Portal access, agreements & links" },
-      { name: "Gear", href: "/gear", icon: Wrench, description: "Equipment lending & tracking" },
       { name: "Programmes", href: "/programmes", icon: Layers, description: "Workshops & activations" },
     ],
   },
@@ -95,7 +102,6 @@ const navGroups: NavGroup[] = [
     href: "/projects",
     children: [
       { name: "Projects", href: "/projects", icon: Rocket, description: "Initiatives & work streams" },
-      { name: "Agreements", href: "/agreements", icon: Handshake, description: "Memberships & MOUs" },
       { name: "Funders", href: "/funders", icon: Handshake, description: "Manage funding relationships" },
     ],
   },

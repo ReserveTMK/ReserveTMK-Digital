@@ -55,12 +55,18 @@ const navigation: NavItem[] = [
     ],
   },
   {
-    name: "Delivery", href: "/programmes", icon: Layers,
+    name: "Access", href: "/spaces", icon: Building2,
+    children: [
+      { name: "Spaces", href: "/spaces", icon: Building2 },
+      { name: "Gear", href: "/gear", icon: Wrench },
+      { name: "Bookers", href: "/bookers", icon: UserCheck },
+      { name: "Agreements", href: "/agreements", icon: Handshake },
+    ],
+  },
+  {
+    name: "Capability", href: "/mentoring", icon: Layers,
     children: [
       { name: "Mentoring", href: "/mentoring", icon: Users },
-      { name: "Spaces", href: "/spaces", icon: Building2 },
-      { name: "Bookers", href: "/bookers", icon: UserCheck },
-      { name: "Gear", href: "/gear", icon: Wrench },
       { name: "Programmes", href: "/programmes", icon: Layers },
     ],
   },
@@ -86,7 +92,6 @@ const navigation: NavItem[] = [
     name: "Ops", href: "/projects", icon: Rocket,
     children: [
       { name: "Projects", href: "/projects", icon: Rocket },
-      { name: "Agreements", href: "/agreements", icon: Handshake },
       { name: "Funders", href: "/funders", icon: Handshake },
     ],
   },
