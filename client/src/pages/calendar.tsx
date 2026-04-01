@@ -1122,20 +1122,21 @@ function EventCard({
 
 
             <div className="flex items-center gap-2 pt-2">
-              <Button size="sm" variant="outline" className="text-xs" onClick={(e) => e.stopPropagation()} data-testid="button-save-event">
-                <Save className="w-3 h-3 mr-1" /> Save
-              </Button>
-              {bk && (
-                <Button size="sm" variant="outline" className="text-xs" onClick={(e) => { e.stopPropagation(); window.location.href = `/bookings/${bk.id}`; }}>
-                  <ExternalLink className="w-3 h-3 mr-1" /> View Booking
+              <div className="flex items-center gap-2 flex-1">
+                <Button size="sm" variant="outline" className="text-xs" onClick={(e) => e.stopPropagation()} data-testid="button-save-event">
+                  <Save className="w-3 h-3 mr-1" /> Save
                 </Button>
-              )}
-              {linkedAppEvent?.linkedProgrammeId && (
-                <Button size="sm" variant="outline" className="text-xs" onClick={(e) => { e.stopPropagation(); window.location.href = `/programmes`; }}>
-                  <ExternalLink className="w-3 h-3 mr-1" /> View Programme
-                </Button>
-              )}
-              <div className="flex-1" />
+                {bk && (
+                  <Button size="sm" variant="outline" className="text-xs" onClick={(e) => { e.stopPropagation(); window.location.href = `/bookings/${bk.id}`; }}>
+                    <ExternalLink className="w-3 h-3 mr-1" /> Booking
+                  </Button>
+                )}
+                {linkedAppEvent?.linkedProgrammeId && (
+                  <Button size="sm" variant="outline" className="text-xs" onClick={(e) => { e.stopPropagation(); window.location.href = `/programmes`; }}>
+                    <ExternalLink className="w-3 h-3 mr-1" /> Programme
+                  </Button>
+                )}
+              </div>
               {(entry.isPast && !isConfirmed && !isInProgress) || !entry.isPast ? (
                 <DismissPopover
                   reasons={["Not relevant", "Duplicate", "Personal"]}
