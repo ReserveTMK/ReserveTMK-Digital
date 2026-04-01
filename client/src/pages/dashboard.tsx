@@ -91,6 +91,8 @@ export default function Dashboard() {
   const todayItems = useMemo(() => {
     const today = startOfDay(new Date());
     const tomorrow = addDays(today, 1);
+    const linkedBIds = new Set((events || []).filter((e: Event) => e.linkedBookingId).map((e: Event) => e.linkedBookingId));
+    const linkedPIds = new Set((events || []).filter((e: Event) => e.linkedProgrammeId).map((e: Event) => e.linkedProgrammeId));
     let count = 0;
     meetings?.forEach((m: Meeting) => {
       const d = new Date(m.startTime);
@@ -102,11 +104,13 @@ export default function Dashboard() {
     });
     (programmes as Programme[] | undefined)?.forEach((p) => {
       if (p.status === "cancelled" || !p.startDate) return;
+      if (linkedPIds.has(p.id)) return;
       const d = new Date(p.startDate);
       if (d >= today && d < tomorrow) count++;
     });
     (bookings as Booking[] | undefined)?.forEach((b) => {
       if (b.status === "cancelled" || !b.startDate) return;
+      if (linkedBIds.has(b.id)) return;
       const d = new Date(b.startDate);
       if (d >= today && d < tomorrow) count++;
     });
@@ -129,15 +133,22 @@ export default function Dashboard() {
         items.push({ date: format(d, "yyyy-MM-dd"), name: ev.name, time: format(d, "h:mm a"), type: ev.type || "Event", typeColor: "bg-violet-500/15 text-violet-700 dark:text-violet-300", id: `event-${ev.id}`, href: "/calendar" });
       }
     });
+    // Build set of booking/programme IDs that have linked events (to avoid double-ups on dashboard)
+    const linkedBookingIds = new Set((events || []).filter((e: Event) => e.linkedBookingId).map((e: Event) => e.linkedBookingId));
+    const linkedProgrammeIds = new Set((events || []).filter((e: Event) => e.linkedProgrammeId).map((e: Event) => e.linkedProgrammeId));
+
     (programmes as Programme[] | undefined)?.forEach((p) => {
       if (p.status === "cancelled" || !p.startDate) return;
+      if (linkedProgrammeIds.has(p.id)) return; // Already shown as event
       const d = new Date(p.startDate);
       if (d >= start && d < end) {
         items.push({ date: format(d, "yyyy-MM-dd"), name: p.name, time: p.startTime ? formatTimeSlot(p.startTime) : "All day", type: "Programme", typeColor: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300", id: `prog-${p.id}`, href: "/programmes" });
       }
     });
+
     (bookings as Booking[] | undefined)?.forEach((b) => {
       if (b.status === "cancelled" || !b.startDate) return;
+      if (linkedBookingIds.has(b.id)) return; // Already shown as event
       const d = new Date(b.startDate);
       if (d >= start && d < end) {
         items.push({ date: format(d, "yyyy-MM-dd"), name: (b as any).displayName || b.title || b.bookerName || b.classification || "Venue Hire", time: b.startTime ? formatTimeSlot(b.startTime) : "TBC", type: "Venue Hire", typeColor: "bg-orange-500/15 text-orange-700 dark:text-orange-300", id: `book-${b.id}`, href: `/bookings/${b.id}` });
