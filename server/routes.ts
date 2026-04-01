@@ -2595,6 +2595,11 @@ export async function registerRoutes(
 
   // === Events API ===
 
+  // === Debrief routes (extracted to server/routes/debriefs.ts) ===
+  const { registerDebriefRoutes } = await import("./routes/debriefs");
+  registerDebriefRoutes(app);
+
+  // NOTE: Old debrief/event routes below are superseded.
   app.get(api.events.list.path, isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
     const eventsList = await storage.getEvents(userId);
@@ -7172,6 +7177,11 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     }
   });
 
+  // === Groups routes (extracted to server/routes/groups.ts) ===
+  const { registerGroupRoutes } = await import("./routes/groups");
+  registerGroupRoutes(app);
+
+  // NOTE: Old group routes below are superseded.
   // === Groups API ===
   app.get(api.groups.list.path, isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
