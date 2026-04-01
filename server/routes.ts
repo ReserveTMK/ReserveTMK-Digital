@@ -17594,6 +17594,12 @@ Rules: Only include sections that have real content from the debrief data. Keep 
   // === COMMS MODULE ===
 
   // Stories
+  // === Comms routes (extracted to server/routes/comms.ts) ===
+  const { registerCommsRoutes } = await import("./routes/comms");
+  registerCommsRoutes(app);
+
+  // NOTE: Old comms routes below are superseded by registerCommsRoutes above.
+  // They will be removed in the deletion pass after all modules are extracted.
   app.get("/api/comms/stories", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
