@@ -13896,6 +13896,100 @@ Be specific, practical, and grounded in the actual documents and context provide
     }
   });
 
+  // Funder innovator stats — filtered by communityLens
+  app.get("/api/funders/:id/innovator-stats", isAuthenticated, async (req, res) => {
+    try {
+      const funderId = parseId(req.params.id);
+      const userId = (req.user as any).claims.sub;
+      const funder = await storage.getFunder(funderId);
+      if (!funder || funder.userId !== userId) return res.status(404).json({ message: "Funder not found" });
+
+      const allContacts = await storage.getContacts(userId);
+      const innovators = allContacts.filter((c: any) => c.isInnovator);
+
+      // Filter by community lens
+      const lens = funder.communityLens || "all";
+      const MAORI_ETHNICITIES = ["Māori", "Maori"];
+      const PASIFIKA_ETHNICITIES = ["Samoan", "Tongan", "Cook Islands Māori", "Cook Island", "Niuean", "Fijian", "Tokelauan", "Tuvaluan"];
+
+      const isMaori = (c: any) => {
+        if (!c.ethnicity || !Array.isArray(c.ethnicity)) return false;
+        return c.ethnicity.some((e: string) => MAORI_ETHNICITIES.some(m => e.includes(m)));
+      };
+      const isPasifika = (c: any) => {
+        if (!c.ethnicity || !Array.isArray(c.ethnicity)) return false;
+        return c.ethnicity.some((e: string) => PASIFIKA_ETHNICITIES.some(p => e.includes(p)));
+      };
+
+      let filtered = innovators;
+      if (lens === "maori") filtered = innovators.filter(isMaori);
+      else if (lens === "pasifika") filtered = innovators.filter(isPasifika);
+
+      // Stage breakdown
+      const stages = { kakano: 0, tipu: 0, ora: 0, other: 0 };
+      for (const c of filtered) {
+        const stage = c.stage || "kakano";
+        if (stages.hasOwnProperty(stage)) stages[stage as keyof typeof stages]++;
+        else stages.other++;
+      }
+
+      // Stage progressions this quarter
+      const now = new Date();
+      const qStart = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
+      const filteredIds = new Set(filtered.map((c: any) => c.id));
+      const stageHistory = await db.select().from(relationshipStageHistory).where(
+        and(gte(relationshipStageHistory.changedAt, qStart))
+      );
+      const progressions = stageHistory.filter((h: any) =>
+        h.entityType === "contact" && filteredIds.has(h.entityId) &&
+        h.previousStage && h.newStage && h.previousStage !== h.newStage
+      ).length;
+
+      // Mentoring sessions this quarter
+      const mentoringSessions = await db.select({ id: meetings.id }).from(meetings).where(and(
+        eq(meetings.userId, userId),
+        inArray(meetings.type, ["mentoring"]),
+        inArray(meetings.status, ["completed", "confirmed"]),
+        gte(meetings.startTime, qStart),
+      ));
+      // Filter to sessions with contacts in our lens
+      let sessionCount = mentoringSessions.length;
+      if (lens !== "all") {
+        const sessionDetails = await Promise.all(mentoringSessions.map(async (m: any) => {
+          const full = await storage.getMeeting(m.id);
+          return full?.contactId && filteredIds.has(full.contactId) ? 1 : 0;
+        }));
+        sessionCount = sessionDetails.reduce((a, b) => a + b, 0);
+      }
+
+      // Programme completions this quarter
+      const progRegs = await db.select().from(programmeRegistrations).where(
+        and(eq(programmeRegistrations.userId, userId), eq(programmeRegistrations.attended, true))
+      );
+      let programmeCount = progRegs.length;
+      if (lens !== "all") {
+        programmeCount = progRegs.filter((r: any) => r.contactId && filteredIds.has(r.contactId)).length;
+      }
+
+      res.json({
+        lens,
+        total: filtered.length,
+        allInnovators: innovators.length,
+        stages,
+        progressionsThisQuarter: progressions,
+        mentoringSessionsThisQuarter: sessionCount,
+        programmeCompletionsThisQuarter: programmeCount,
+        ethnicityBreakdown: lens === "all" ? {
+          maori: innovators.filter(isMaori).length,
+          pasifika: innovators.filter(isPasifika).length,
+        } : undefined,
+      });
+    } catch (err: any) {
+      console.error("Funder innovator stats error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/funders/:id/pulse", isAuthenticated, async (req, res) => {
     try {
       const funderId = parseId(req.params.id);
