@@ -2467,6 +2467,11 @@ export async function registerRoutes(
 
   // === Public Programme Registration API ===
 
+  // === Programme routes (extracted to server/routes/programmes.ts) ===
+  const { registerProgrammeRoutes } = await import("./routes/programmes");
+  registerProgrammeRoutes(app);
+
+  // NOTE: Old programme routes below are superseded.
   app.get('/api/public/programme/:slug', async (req, res) => {
     try {
       const programme = await storage.getProgrammeBySlug(req.params.slug);
