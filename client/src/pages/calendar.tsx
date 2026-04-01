@@ -474,6 +474,9 @@ function EventCard({
   debriefInfo,
   onViewDebrief,
   venueNames,
+  sourceBooking,
+  venueMap,
+  allContacts: allContactsProp,
 }: {
   entry: CombinedEvent;
   appEvents: AppEvent[];
@@ -490,6 +493,9 @@ function EventCard({
   debriefInfo: DebriefInfo;
   onViewDebrief: (debriefId: number) => void;
   venueNames?: string[];
+  sourceBooking?: Booking | null;
+  venueMap?: Record<number, string>;
+  allContacts?: Contact[];
 }) {
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
@@ -547,11 +553,20 @@ function EventCard({
     : entry.app;
 
   const appEventId = linkedAppEvent?.id;
-  const eventName = isGcal ? entry.gcal!.summary : entry.app!.name;
-  const eventType = linkedAppEvent?.type || (isGcal ? classifyGcalEvent(entry.gcal!) : entry.app!.type);
+
+  // Booking-aware: use booking data when available
+  const bk = sourceBooking;
+  const bkVenueIds = bk ? (bk.venueIds || (bk.venueId ? [bk.venueId] : [])) : [];
+  const bkVenueName = bk && venueMap ? bkVenueIds.map((id: number) => venueMap[id]).filter(Boolean).join(" + ") : null;
+
+  const eventName = bk
+    ? ((bk as any).displayName || bk.title || bk.classification || "Venue Hire")
+    : (isGcal ? entry.gcal!.summary : entry.app!.name);
+  const eventType = bk ? "Venue Hire" : (linkedAppEvent?.type || (isGcal ? classifyGcalEvent(entry.gcal!) : entry.app!.type));
   const startStr = isGcal ? entry.gcal!.start : entry.app!.startTime;
   const endStr = isGcal ? entry.gcal!.end : entry.app!.endTime;
-  const location = isGcal ? entry.gcal!.location : entry.app!.location;
+  const location = bkVenueName || (isGcal ? entry.gcal!.location : entry.app!.location);
+  const bookerName = bk ? (bk.bookerName || (allContactsProp || []).find(c => c.id === bk.bookerId)?.name) : null;
 
   const { data: attendance } = useEventAttendance(appEventId);
   const addAttendance = useAddAttendance();
@@ -811,11 +826,19 @@ function EventCard({
           data-testid={`button-expand-event-${isGcal ? entry.gcal!.id : entry.app!.id}`}
         >
           <div className="flex items-start justify-between gap-2">
-            <h4 className="font-medium text-sm text-foreground">{eventName}</h4>
+            <div className="flex-1 min-w-0">
+              <h4 className="font-medium text-sm text-foreground truncate">{eventName}</h4>
+              {bookerName && (
+                <span className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                  <Users className="w-3 h-3" />{bookerName}
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-1.5 shrink-0">
               <Badge variant="secondary" className={`text-xs ${badgeColor}`}>
                 {eventType}
               </Badge>
+              {expanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
             </div>
           </div>
           {location && (
@@ -862,9 +885,9 @@ function EventCard({
             : "text-amber-600/70 dark:text-amber-400/70"
           }`}>
             {isConfirmed ? <CheckCircle2 className="w-3 h-3" />
-              : isInProgress ? <Clock className="w-3 h-3" />
+              : isInProgress ? <Loader2 className="w-3 h-3 animate-spin" />
               : <CircleDashed className="w-3 h-3" />}
-            {isConfirmed ? "Debriefed" : isInProgress ? "In progress" : "To debrief"}
+            {isConfirmed ? "Debriefed" : isInProgress ? "Debriefing" : "To debrief"}
           </div>
         )}
 
@@ -1102,6 +1125,16 @@ function EventCard({
               <Button size="sm" variant="outline" className="text-xs" onClick={(e) => e.stopPropagation()} data-testid="button-save-event">
                 <Save className="w-3 h-3 mr-1" /> Save
               </Button>
+              {bk && (
+                <Button size="sm" variant="outline" className="text-xs" onClick={(e) => { e.stopPropagation(); window.location.href = `/bookings/${bk.id}`; }}>
+                  <ExternalLink className="w-3 h-3 mr-1" /> View Booking
+                </Button>
+              )}
+              {linkedAppEvent?.linkedProgrammeId && (
+                <Button size="sm" variant="outline" className="text-xs" onClick={(e) => { e.stopPropagation(); window.location.href = `/programmes`; }}>
+                  <ExternalLink className="w-3 h-3 mr-1" /> View Programme
+                </Button>
+              )}
               <div className="flex-1" />
               {(entry.isPast && !isConfirmed && !isInProgress) || !entry.isPast ? (
                 <DismissPopover
@@ -2465,19 +2498,7 @@ export default function CalendarPage() {
                     : null;
                   const bookingToRender = (entry.type === "booking" && entry.booking) ? entry.booking : linkedBooking;
 
-                  return bookingToRender ? (
-                    <BookingCalendarCard
-                      key={`booking-${bookingToRender.id}`}
-                      booking={bookingToRender}
-                      venueMap={venueMap}
-                      allContacts={(allContacts || []) as Contact[]}
-                      debriefStatus={getBookingDebriefStatus(bookingToRender.id)}
-                      onLogDebrief={handleLogDebriefFromBooking}
-                      onViewDebrief={handleLogDebriefFromBooking}
-                      onSkipDebrief={(b) => setSkippedBookingIds(prev => { const next = new Set(Array.from(prev)); next.add(Number(b.id)); return next; })}
-                      isSkipped={skippedBookingIds.has(Number(bookingToRender.id))}
-                    />
-                  ) : (
+                  return (
                   <div key={entry.type === "gcal" ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`} className={`relative ${entry.isDismissed ? "opacity-40 hover:opacity-75 transition-opacity" : ""}`}>
                     {entry.isDismissed && (
                       <div className="flex items-center gap-2 mb-1">
@@ -2505,6 +2526,9 @@ export default function CalendarPage() {
                       appEvents={appEvents || []}
                       programmes={programmes || []}
                       venueNames={(venues || []).filter((v: any) => v.active !== false).map((v: any) => v.name)}
+                      sourceBooking={bookingToRender || null}
+                      venueMap={venueMap}
+                      allContacts={(allContacts || []) as Contact[]}
                       onLogDebrief={handleLogDebrief}
                       onLogDebriefFromApp={handleLogDebriefFromApp}
                       onDeleteEvent={handleDeleteEvent}
