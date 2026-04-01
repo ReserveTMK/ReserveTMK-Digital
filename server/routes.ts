@@ -487,6 +487,15 @@ export async function registerRoutes(
   // Object Storage Routes
   registerObjectStorageRoutes(app);
 
+  // === Contacts routes (extracted to server/routes/contacts.ts) ===
+  const { registerContactRoutes } = await import("./routes/contacts");
+  registerContactRoutes(app);
+
+  // === Mentoring routes (extracted to server/routes/mentoring.ts) ===
+  const { registerMentoringRoutes } = await import("./routes/mentoring");
+  registerMentoringRoutes(app);
+
+  // NOTE: Old contacts/mentoring routes below are superseded.
   // === Contacts API ===
 
   app.get(api.contacts.list.path, isAuthenticated, async (req, res) => {
