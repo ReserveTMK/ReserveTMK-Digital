@@ -6,7 +6,7 @@ import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON, isAnthropicKeyConfigured, AIKeyMissingError } from "./replit_integrations/anthropic/client";
-import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, getStandoutMoments, getOperatorInsights, getParticipantTransformationStories, getPeopleTierBreakdown, getImpactTagHeatmap, getTheoryOfChangeAlignment, getGrowthStory, getOutcomeChain, getQuarterlyMilestones, evaluateDeliverables, getTaxonomyBreakdown, PASIFIKA_ETHNICITIES, type ReportFilters, type CohortDefinition, type OrgProfileContext, type FunderContext } from "./reporting";
+import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, getStandoutMoments, getOperatorInsights, getParticipantTransformationStories, getPeopleTierBreakdown, getImpactTagHeatmap, getTheoryOfChangeAlignment, getGrowthStory, getOutcomeChain, getQuarterlyMilestones, evaluateDeliverables, getTaxonomyBreakdown, getDebriefQuotesForReport, PASIFIKA_ETHNICITIES, type ReportFilters, type CohortDefinition, type OrgProfileContext, type FunderContext } from "./reporting";
 import { renderMonthlyReport, renderQuarterlyReport, type MonthlyReportData, type QuarterlyReportData, type MaoriPipelineData } from "./report-renderer";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
 import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings, normalizeStage, DEFAULT_AVAILABILITY_SCHEDULE, DEFAULT_VENUE_AVAILABILITY_SCHEDULE, type AvailabilitySchedule, bookingChangeRequests, funderTaxonomyCategories, funderTaxonomyClassifications, funderTaxonomyMappings, funders, } from "@shared/schema";
@@ -5263,6 +5263,11 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     res.status(204).send();
   });
 
+  // === Bookings routes (extracted to server/routes/bookings.ts) ===
+  const { registerBookingRoutes } = await import("./routes/bookings");
+  registerBookingRoutes(app);
+
+  // NOTE: Old booking routes below are superseded.
   // === Bookings API ===
 
   app.get(api.bookings.list.path, isAuthenticated, async (req, res) => {
@@ -7866,6 +7871,14 @@ Important:
         console.error("Taxonomy breakdown failed (non-fatal):", err.message);
       }
 
+      // Operator insights from confirmed debriefs
+      let operatorInsights;
+      try {
+        operatorInsights = await getOperatorInsights(filters);
+      } catch (err: any) {
+        console.error("Operator insights failed (non-fatal):", err.message);
+      }
+
       const reportData: MonthlyReportData = {
         period: { month: month, year, label: `${monthName} ${year}`, fyLabel },
         funderName,
@@ -7892,6 +7905,7 @@ Important:
         quotes: Array.isArray(req.body?.quotes) ? req.body.quotes : [],
         plannedNextMonth: Array.isArray(req.body?.plannedNext) ? req.body.plannedNext : [],
         taxonomyBreakdown: taxonomyBreakdown.length > 0 ? taxonomyBreakdown : undefined,
+        operatorInsights: operatorInsights || undefined,
       };
 
       const html = renderMonthlyReport(reportData);
@@ -8228,6 +8242,76 @@ Important:
   };
   app.get("/api/reports/html/quarterly", isAuthenticated, handleQuarterlyReport);
   app.post("/api/reports/html/quarterly", isAuthenticated, handleQuarterlyReport);
+
+  // ── Contact journey summary from linked debriefs ─────────────────────
+  app.get("/api/contacts/:id/journey", isAuthenticated, async (req, res) => {
+    try {
+      const contactId = parseId(req.params.id);
+      const contact = await storage.getContact(contactId);
+      if (!contact) return res.status(404).json({ message: "Contact not found" });
+      if (contact.userId !== (req.user as any).claims.sub) return res.status(403).json({ message: "Forbidden" });
+
+      const links = await storage.getContactImpactLogs(contactId);
+      if (links.length === 0) return res.json({ debriefCount: 0, milestones: [], quotes: [], sentimentArc: [], summary: null });
+
+      const milestones: Array<{ text: string; date: string; debriefTitle: string }> = [];
+      const quotes: Array<{ text: string; debriefTitle: string }> = [];
+      const sentimentArc: Array<{ date: string; sentiment: string; title: string }> = [];
+
+      for (const link of links) {
+        const log = await storage.getImpactLog(link.impactLogId);
+        if (!log || log.status !== "confirmed") continue;
+
+        const date = (log.confirmedAt || log.createdAt)?.toISOString().slice(0, 10) || "";
+        const title = log.title || "Debrief";
+
+        if (log.sentiment) {
+          sentimentArc.push({ date, sentiment: log.sentiment, title });
+        }
+
+        if (log.milestones) {
+          for (const m of log.milestones) {
+            milestones.push({ text: m, date, debriefTitle: title });
+          }
+        }
+
+        if (log.keyQuotes) {
+          for (const q of log.keyQuotes) {
+            quotes.push({ text: q, debriefTitle: title });
+          }
+        }
+      }
+
+      // Sort milestones chronologically
+      milestones.sort((a, b) => a.date.localeCompare(b.date));
+      sentimentArc.sort((a, b) => a.date.localeCompare(b.date));
+
+      res.json({
+        debriefCount: links.length,
+        milestones,
+        quotes: quotes.slice(0, 10),
+        sentimentArc,
+      });
+    } catch (err: any) {
+      console.error("Contact journey error:", err);
+      res.status(500).json({ message: "Failed to generate journey", error: err.message });
+    }
+  });
+
+  // ── Debrief quote suggestions for report builder ─────────────────────
+  app.get("/api/reports/quote-suggestions", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { startDate, endDate, funder } = req.query as { startDate?: string; endDate?: string; funder?: string };
+      if (!startDate || !endDate) return res.status(400).json({ message: "startDate and endDate required" });
+      const filters: ReportFilters = { userId, startDate, endDate, funder: funder || undefined };
+      const suggestions = await getDebriefQuotesForReport(filters);
+      res.json(suggestions);
+    } catch (err: any) {
+      console.error("Quote suggestions error:", err);
+      res.status(500).json({ message: "Failed to get quote suggestions", error: err.message });
+    }
+  });
 
   app.get("/api/reports/date-range", isAuthenticated, async (req, res) => {
     try {
