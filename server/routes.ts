@@ -1039,6 +1039,11 @@ export async function registerRoutes(
 
   // === Interactions API ===
 
+  // === Interactions routes (extracted to server/routes/interactions.ts) ===
+  const { registerInteractionRoutes } = await import("./routes/interactions");
+  registerInteractionRoutes(app);
+
+  // NOTE: Old interaction routes below are superseded.
   app.get(api.interactions.list.path, isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
     const contactId = req.query.contactId ? parseId(req.query.contactId) : undefined;
@@ -16830,6 +16835,11 @@ Rules:
   setInterval(runBookingReminderAutoSend, 30 * 60 * 1000);
   // === Bookable Resources API ===
 
+  // === Resources routes (extracted to server/routes/resources.ts) ===
+  const { registerResourceRoutes } = await import("./routes/resources");
+  registerResourceRoutes(app);
+
+  // NOTE: Old resource routes below are superseded by registerResourceRoutes above.
   app.get("/api/bookable-resources", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
