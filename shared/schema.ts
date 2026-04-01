@@ -1912,6 +1912,7 @@ export const funders = pgTable("funders", {
   nextAction: text("next_action"),
   applicationDeadline: timestamp("application_deadline"),
   fitTags: text("fit_tags").array(),
+  audienceContext: text("audience_context"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

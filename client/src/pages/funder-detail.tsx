@@ -24,6 +24,42 @@ import {
 } from "lucide-react";
 import type { Funder } from "@shared/schema";
 import { FunderDeliverablesSection, FunderTaxonomySection, FunderClassificationsSection } from "@/pages/funders";
+import { Users, MapPin, TrendingUp as Growth } from "lucide-react";
+
+// Static census context by community lens (from reference_geographic_lenses.md)
+const COMMUNITY_CONTEXT: Record<string, { title: string; stats: Array<{ label: string; value: string; highlight?: boolean }> }> = {
+  maori: {
+    title: "Māori in Tāmaki",
+    stats: [
+      { label: "Māori in core area", value: "22%", highlight: true },
+      { label: "Auckland average", value: "12%" },
+      { label: "Māori population (hub proximity)", value: "~4,300" },
+      { label: "Deprivation", value: "All decile 10" },
+      { label: "Te reo speakers", value: "5% (2× Auckland rate)" },
+    ],
+  },
+  pasifika: {
+    title: "Pasifika in Tāmaki",
+    stats: [
+      { label: "Pasifika in core area", value: "46%", highlight: true },
+      { label: "Auckland average", value: "17%" },
+      { label: "Pasifika population (hub proximity)", value: "~4,800" },
+      { label: "Deprivation", value: "All decile 10" },
+      { label: "Under 30", value: "~47% of core community" },
+    ],
+  },
+  all: {
+    title: "Tāmaki Community",
+    stats: [
+      { label: "Hub reach population", value: "20,630", highlight: true },
+      { label: "Māori & Pasifika (core)", value: "68%" },
+      { label: "Businesses in area", value: "846" },
+      { label: "Firms per 1,000 (most deprived SA2)", value: "25" },
+      { label: "Deprivation", value: "Decile 9-10" },
+      { label: "Median personal income (core)", value: "$34,000 (vs $44,700 Auckland)" },
+    ],
+  },
+};
 
 function formatCurrency(amount: number): string {
   if (amount >= 1000000) return `$${(amount / 1000000).toFixed(1)}M`;
@@ -115,6 +151,18 @@ export default function FunderDetailPage() {
 
   const isActive = funder ? ACTIVE_STATUSES.includes(funder.status) : false;
   const isPursuing = funder ? PIPELINE_STATUSES.includes(funder.status) : false;
+
+  const { data: innovatorStats } = useQuery<any>({
+    queryKey: ["/api/funders", funderId, "innovator-stats"],
+    queryFn: async () => {
+      const res = await fetch(`/api/funders/${funderId}/innovator-stats`, { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: funderId > 0 && !!funder,
+  });
+
+  const communityContext = funder ? COMMUNITY_CONTEXT[(funder as any).communityLens || "all"] || COMMUNITY_CONTEXT.all : null;
 
   const currentStepIndex = funder ? APPLICATION_STEPS.findIndex(s => s.status === funder.status) : -1;
 
@@ -346,6 +394,69 @@ export default function FunderDetailPage() {
             </div>
           </div>
         </>
+      )}
+
+      {/* ═══════════ CONTEXT + STATS (active + pursuing) ═══════════ */}
+      {(isActive || isPursuing) && communityContext && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Community Context — static census data */}
+          <Card className="p-5">
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+              <MapPin className="w-3.5 h-3.5" />
+              {communityContext.title}
+            </h3>
+            <div className="space-y-2">
+              {communityContext.stats.map((s, i) => (
+                <div key={i} className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">{s.label}</span>
+                  <span className={s.highlight ? "font-bold text-foreground" : "font-medium"}>{s.value}</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-3">Source: Stats NZ 2023 Census, SA2 data</p>
+          </Card>
+
+          {/* Live Innovator Stats */}
+          {innovatorStats && (
+            <Card className="p-5">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+                <Users className="w-3.5 h-3.5" />
+                {innovatorStats.lens === "all" ? "All Innovators" : innovatorStats.lens === "maori" ? "Māori Innovators" : "Pasifika Innovators"}
+              </h3>
+              <div className="space-y-3">
+                <div className="text-3xl font-bold">{innovatorStats.total}</div>
+                {innovatorStats.lens === "all" && innovatorStats.ethnicityBreakdown && (
+                  <div className="flex gap-3 text-xs text-muted-foreground">
+                    <span>{innovatorStats.ethnicityBreakdown.maori} Māori</span>
+                    <span>{innovatorStats.ethnicityBreakdown.pasifika} Pasifika</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 text-sm">
+                  <Badge variant="outline" className="text-xs">Kākano {innovatorStats.stages?.kakano || 0}</Badge>
+                  <span className="text-muted-foreground">→</span>
+                  <Badge variant="outline" className="text-xs">Tipu {innovatorStats.stages?.tipu || 0}</Badge>
+                  <span className="text-muted-foreground">→</span>
+                  <Badge variant="outline" className="text-xs">Ora {innovatorStats.stages?.ora || 0}</Badge>
+                </div>
+                <div className="grid grid-cols-3 gap-3 pt-2 border-t text-center">
+                  <div>
+                    <p className="text-lg font-bold">{innovatorStats.progressionsThisQuarter}</p>
+                    <p className="text-[10px] text-muted-foreground">Progressed</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold">{innovatorStats.mentoringSessionsThisQuarter}</p>
+                    <p className="text-[10px] text-muted-foreground">1:1 Sessions</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold">{innovatorStats.programmeCompletionsThisQuarter}</p>
+                    <p className="text-[10px] text-muted-foreground">1:Few Completions</p>
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground">This quarter · Live from platform</p>
+              </div>
+            </Card>
+          )}
+        </div>
       )}
 
       {/* ═══════════ ACTIVE FUNDER VIEW ═══════════ */}
