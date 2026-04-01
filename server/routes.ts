@@ -14500,6 +14500,11 @@ Be specific, practical, and grounded in the actual documents and context provide
 
   // === PROJECTS ===
 
+  // === Projects routes (extracted to server/routes/projects.ts) ===
+  const { registerProjectRoutes } = await import("./routes/projects");
+  registerProjectRoutes(app);
+
+  // NOTE: Old project routes below are superseded by registerProjectRoutes above.
   app.get("/api/projects", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
