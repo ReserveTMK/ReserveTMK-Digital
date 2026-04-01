@@ -83,27 +83,18 @@ const navGroups: NavGroup[] = [
     href: "/calendar",
     children: [
       { name: "Calendar", href: "/calendar", icon: CalendarCheck, description: "Events, activities & foot traffic" },
-      { name: "Debriefs", href: "/debriefs", icon: Mic, description: "Interactions, calendar & weekly debriefs" },
+      { name: "Debriefs", href: "/debriefs", icon: Mic, description: "Process & confirm what happened" },
       { name: "Catch Up", href: "/catch-up", icon: PhoneCall, description: "Plan who to connect with next" },
       { name: "Meet", href: "/meet", icon: CalendarPlus, description: "Quick schedule a meeting" },
       { name: "Community Spend", href: "/community-spend", icon: DollarSign, description: "Track community investment" },
-    ],
-  },
-  {
-    name: "Reporting",
-    href: "/reports",
-    children: [
+      { name: "Dashboard", href: "/tracking", icon: BarChart3, description: "Monthly operational snapshot" },
       { name: "Reports", href: "/reports", icon: FileText, description: "Branded funder reports" },
-      { name: "Tracking", href: "/tracking", icon: BarChart3, description: "Operational dashboard" },
     ],
   },
   {
-    name: "Ops",
-    href: "/projects",
-    children: [
-      { name: "Projects", href: "/projects", icon: Rocket, description: "Initiatives & work streams" },
-      { name: "Funders", href: "/funders", icon: Handshake, description: "Manage funding relationships" },
-    ],
+    name: "Funders",
+    href: "/funders",
+    children: [],
   },
   {
     name: "Comms",
@@ -120,8 +111,10 @@ const navGroups: NavGroup[] = [
     children: [
       { name: "Availability", href: "/scheduling", icon: CalendarClock, description: "Manage staff & mentor availability" },
       { name: "Taxonomy", href: "/settings/taxonomy", icon: Tags, description: "Impact categories & tags" },
+      { name: "Projects", href: "/projects", icon: Rocket, description: "Initiatives & work streams" },
       { name: "About Us", href: "/settings/about-us", icon: Building2, description: "Organisation profile & identity" },
       { name: "Xero", href: "/settings/xero", icon: Receipt, description: "Xero integration & invoicing" },
+      { name: "DOM", href: "/dom", icon: FileText, description: "Digital Operations Manual" },
       { name: "Team", href: "/settings/team", icon: UserCog, description: "Manage platform access", adminOnly: true },
     ],
   },

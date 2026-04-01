@@ -78,30 +78,22 @@ const navigation: NavItem[] = [
       { name: "Catch Up", href: "/catch-up", icon: PhoneCall },
       { name: "Meet", href: "/meet", icon: CalendarPlus },
       { name: "Community Spend", href: "/community-spend", icon: DollarSign },
-    ],
-  },
-  {
-    name: "Reporting", href: "/reports", icon: FileText,
-    children: [
+      { name: "Dashboard", href: "/tracking", icon: BarChart3 },
       { name: "Reports", href: "/reports", icon: FileText },
-      { name: "Tracking", href: "/tracking", icon: BarChart3 },
-      { name: "DOM", href: "/dom", icon: FileText },
     ],
   },
   {
-    name: "Ops", href: "/projects", icon: Rocket,
-    children: [
-      { name: "Projects", href: "/projects", icon: Rocket },
-      { name: "Funders", href: "/funders", icon: Handshake },
-    ],
+    name: "Funders", href: "/funders", icon: Handshake,
   },
   {
     name: "Settings", href: "/scheduling", icon: Settings,
     children: [
       { name: "Availability", href: "/scheduling", icon: CalendarClock },
       { name: "Taxonomy", href: "/settings/taxonomy", icon: Tags },
+      { name: "Projects", href: "/projects", icon: Rocket },
       { name: "About Us", href: "/settings/about-us", icon: Building2 },
       { name: "Xero", href: "/settings/xero", icon: Receipt },
+      { name: "DOM", href: "/dom", icon: FileText },
     ],
   },
 ];
