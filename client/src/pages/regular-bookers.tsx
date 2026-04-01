@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -71,7 +72,7 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { format, formatDistanceToNow } from "date-fns";
 import { getAgreementAllowanceUsage, getPeriodLabel } from "@/lib/utils";
-import { PRICING_TIERS, REGULAR_BOOKER_STATUSES, PAYMENT_TERMS, type Contact, type RegularBooker, type Group } from "@shared/schema";
+import { PRICING_TIERS, REGULAR_BOOKER_STATUSES, PAYMENT_TERMS, BOOKER_TIERS, type Contact, type RegularBooker, type Group } from "@shared/schema";
 
 const PRICING_LABELS: Record<string, string> = {
   full_price: "Full Price",
@@ -832,9 +833,17 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge className={ACCOUNT_STATUS_COLORS[booker.accountStatus] || ""} data-testid={`badge-status-${booker.id}`}>
-                        {booker.accountStatus}
-                      </Badge>
+                      <div className="flex flex-col gap-1">
+                        <Badge className={ACCOUNT_STATUS_COLORS[booker.accountStatus] || ""} data-testid={`badge-status-${booker.id}`}>
+                          {booker.accountStatus}
+                        </Badge>
+                        <Badge className={`text-[10px] ${(booker as any).tier === "public" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" : (booker as any).tier === "casual" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"}`}>
+                          {(booker as any).tier || "regular"}
+                        </Badge>
+                        {(booker as any).tier === "public" && !(booker as any).inductedAt && (
+                          <span className="text-[10px] text-amber-600">Not inducted</span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-0.5">
@@ -1143,6 +1152,10 @@ function RegularBookerFormDialog({
   );
   const [accountStatus, setAccountStatus] = useState(booker?.accountStatus || "active");
   const [paymentTerms, setPaymentTerms] = useState(booker?.paymentTerms || "immediate");
+  const [tier, setTier] = useState((booker as any)?.tier || "regular");
+  const [inductedAt, setInductedAt] = useState<string>((booker as any)?.inductedAt ? format(new Date((booker as any).inductedAt), "yyyy-MM-dd") : "");
+  const [canSelfBook, setCanSelfBook] = useState(booker?.canSelfBook ?? true);
+  const [canViewCalendar, setCanViewCalendar] = useState(booker?.canViewCalendar ?? true);
   const [notificationsEmail, setNotificationsEmail] = useState((booker as any)?.notificationsEmail || "");
   const [notes, setNotes] = useState(booker?.notes || "");
   const [usualBookingNeeds, setUsualBookingNeeds] = useState(booker?.usualBookingNeeds || "");
@@ -1282,6 +1295,10 @@ function RegularBookerFormDialog({
       loginEmail: null,
       accountStatus,
       paymentTerms,
+      tier,
+      inductedAt: inductedAt ? new Date(inductedAt).toISOString() : null,
+      canSelfBook,
+      canViewCalendar,
       notificationsEmail: notificationsEmail.trim() || null,
       notes: notes.trim() || null,
       usualBookingNeeds: usualBookingNeeds.trim() || null,
@@ -1492,6 +1509,54 @@ function RegularBookerFormDialog({
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+          </div>
+
+          {/* Section 3b: Access Tier and Permissions */}
+          <div className="space-y-3 border-t pt-4">
+            <Label className="text-sm font-semibold">Access Tier</Label>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Tier</Label>
+                <Select value={tier} onValueChange={(v) => {
+                  setTier(v);
+                  if (v === "public") { setCanSelfBook(false); setPricingTier("full_price"); setPaymentTerms("net_14"); }
+                  if (v === "casual") { setCanSelfBook(true); setPricingTier("free_koha"); setPaymentTerms("immediate"); }
+                  if (v === "regular") { setCanSelfBook(true); }
+                }}>
+                  <SelectTrigger data-testid="select-booker-tier">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {BOOKER_TIERS.map(t => (
+                      <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {tier === "public" && (
+                <div>
+                  <Label>Inducted</Label>
+                  <Input
+                    type="date"
+                    value={inductedAt}
+                    onChange={(e) => setInductedAt(e.target.value)}
+                    placeholder="Not yet inducted"
+                    data-testid="input-booker-inducted"
+                  />
+                  {!inductedAt && <p className="text-xs text-amber-600 mt-1">Not inducted — bookings blocked</p>}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-6">
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox checked={canViewCalendar} onCheckedChange={(v) => setCanViewCalendar(v === true)} data-testid="checkbox-can-view-calendar" />
+                Can view calendar
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox checked={canSelfBook} onCheckedChange={(v) => setCanSelfBook(v === true)} data-testid="checkbox-can-self-book" />
+                Can self-book
+              </label>
             </div>
           </div>
 
