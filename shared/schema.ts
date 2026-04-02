@@ -2497,11 +2497,14 @@ export const metricSnapshots = pgTable("metric_snapshots", {
     mindset?: number;
     skill?: number;
     confidence?: number;
+    businessReadiness?: number;
+    networkStrength?: number;
+    resilience?: number;
+    // Legacy fields (may exist in old snapshots)
     bizConfidence?: number;
     confidenceScore?: number;
     systemsInPlace?: number;
     fundingReadiness?: number;
-    networkStrength?: number;
     communityImpact?: number;
     digitalPresence?: number;
   }>().notNull(),

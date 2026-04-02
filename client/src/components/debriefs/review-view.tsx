@@ -1041,10 +1041,9 @@ export function ReviewView({ id }: { id: number }) {
     mindset: "Mindset",
     skill: "Skill",
     confidence: "Confidence",
-    businessConfidence: "Business Confidence",
-    systems: "Systems",
-    fundingReadiness: "Funding Readiness",
-    network: "Network",
+    businessReadiness: "Business Readiness",
+    networkStrength: "Network Strength",
+    resilience: "Resilience",
   };
 
   return (
@@ -1067,6 +1066,14 @@ export function ReviewView({ id }: { id: number }) {
                 )}
                 <Badge variant="secondary" className={`text-xs ${STATUS_COLORS[impactLog.status] || ""}`}>
                   {STATUS_LABELS[impactLog.status] || impactLog.status}
+                </Badge>
+                <Badge
+                  variant="secondary"
+                  className={`text-xs cursor-pointer ${SENTIMENT_COLORS[sentiment] || ""}`}
+                  onClick={cycleSentiment}
+                  data-testid="badge-sentiment-title"
+                >
+                  {sentiment}
                 </Badge>
                 {impactLog.createdAt && (
                   <span className="text-xs text-muted-foreground">
@@ -1537,8 +1544,8 @@ export function ReviewView({ id }: { id: number }) {
               )}
             </div>
 
-            {/* SENTIMENT - mobile:2 desktop:left */}
-            <div className="order-2 lg:order-none">
+            {/* SENTIMENT - MOVED TO TITLE BADGE */}
+            {false && <div className="order-2 lg:order-none">
               <CollapsibleSection title="Sentiment" count={sentiment ? 1 : 0} testId="sentiment">
                 <Badge
                   variant="secondary"
@@ -1550,7 +1557,7 @@ export function ReviewView({ id }: { id: number }) {
                 </Badge>
                 <p className="text-xs text-muted-foreground mt-2">Tap to change</p>
               </CollapsibleSection>
-            </div>
+            </div>}
 
             {/* COMMUNITY ACTIONS - REMOVED: dead extraction, never used */}
 

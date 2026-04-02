@@ -3646,18 +3646,24 @@ export async function registerRoutes(
       const prompt = `You are an impact analysis system for ReserveTMK Digital, a Māori and Pasifika entrepreneurship hub in Aotearoa New Zealand. Analyze the following debrief transcript and extract structured data for both community impact tracking and operational management.
 
 IMPACT TAXONOMY (use these categories for tagging):
-${taxonomyContext || `- Hub Engagement: Track facility usage and programme participation metrics
-- Venture Progress: Capture venture development and economic outcomes across businesses, social enterprises, creative projects, and movements
-- Skills & Capability Growth: Measure competency development and confidence building
-- Network & Ecosystem Connection: Document relationship formation and ecosystem integration
-- Rangatahi Development: Track youth-specific engagement and outcomes`}
+${taxonomyContext || `- Capability Growth: People developing skills, knowledge, and confidence
+- Venture Progress: Businesses hitting milestones — revenue, customers, launches
+- Rangatahi Development: Youth-specific engagement, pathways, and transformation
+- Ecosystem Connections: Relationships forming, partnerships developing
+- Space Activation: The hub being used — events, venue hires, capacity
+- Content & Creative: Podcast, digital content, storytelling, media output
+- Wellbeing & Resilience: Personal breakthroughs, overcoming barriers, whānau support
+- Leadership & Advocacy: Stepping into leadership, facilitating, mentoring others`}
 
 SEMANTIC INDICATORS (phrases/meanings that map to categories):
-Hub Engagement: registered as member, attended workshop, came to event, used coworking space, participated in programme, joined session, turned up to, booked in for, regular user, used recording studio, booked creative space, joined movement group
-Venture Progress: made first sale, got customer, launched business, registered company, earned revenue, hired someone, secured contract, still trading, business growing, sustainable income, wholesale client, repeat customer, launched brand, first sponsorship, content going viral, secured partnership, built audience, social media growth, earned first income, grant received, movement growing
-Skills & Capability Growth: learned how to, now understand, figured out how, gained confidence, feel capable, can now do, developed skill in, understand pricing, know how to market, improved at, making better decisions, ready to take next step, learned to create content, built website, designed brand, filmed first video, built portfolio, developed social media strategy
-Network & Ecosystem Connection: met someone who, introduced to, connected with, found mentor, got referral to, partnered with, collaborated with, supported by, linked to, now working with, relationships with, found sponsor, connected with brand, partnered with collective
-Rangatahi Development: young entrepreneur, rangatahi participated, youth attended, first business idea, school leaver, starting out, early career, young person, student entrepreneur, developing mindset, youth-led initiative, young creative, digital creator, rangatahi movement, first brand
+Capability Growth: learned how to, now understands, figured out, gained confidence, feel capable, can now do, developed skill in, understand pricing, knows how to market, improved at, making better decisions, ready for next step, built website, designed brand, created first pitch deck, developed strategy, completed training, applied learning, practiced new skill, moved from theory to action, first time doing X independently, homework completed, applied feedback
+Venture Progress: made first sale, got customer, launched business, registered company, earned revenue, hired someone, secured contract, still trading, business growing, sustainable income, wholesale client, repeat customer, launched brand, first sponsorship, secured partnership, built audience, social media growth, earned first income, grant received, listed product, recurring revenue, price increase, new product line, break even, profitable month
+Rangatahi Development: rangatahi participated, youth attended, first business idea, school leaver, starting out, early career, young person, student entrepreneur, developing mindset, youth-led initiative, young creative, digital creator, rangatahi movement, under 25, tamariki, teens, alternative education, NEET pathway, youth voice, first time in a professional space, exposed to new environment, young people leading, peer-to-peer
+Ecosystem Connections: met someone who, introduced to, connected with, found mentor, got referral, partnered with, collaborated with, supported by, linked to, now working with, found sponsor, new relationship, MOU discussion, wants to come back, expressed interest in partnering, brought their network, referred someone, cross-org collaboration, community org using space, iwi connection, marae relationship, warm intro
+Space Activation: used the space, booked venue, attended event, came to workshop, full capacity, venue hire, workshop delivered, event held, people through the door, first time using space, regular user, space at capacity, new booking, external org using space, community event, drop-in, coworking session, studio booked, recording session, repeat booking, space enabled the work
+Content & Creative: recorded podcast, filmed video, created content, photo shoot, editing session, published episode, social media content, YouTube upload, Instagram post, brand content, storytelling, digital portfolio, creative brief, production session, studio session, content strategy, audience building, creative workshop, media skills, podcast interview, first episode, series planning
+Wellbeing & Resilience: feeling supported, personal breakthrough, overcame barrier, mental health conversation, stress reduced, whānau situation, housing challenge, financial pressure, crisis navigated, resilience shown, came back after setback, asked for help, opened up, trust built, safe space, felt heard, cultural safety, belonging, not alone anymore, reconnected with community, reduced isolation, identity strengthened, cultural reconnection
+Leadership & Advocacy: facilitated for first time, mentored someone, spoke publicly, presented to group, advocated for community, organised event, led workshop, took initiative, stepped up, volunteered to lead, represented their org, community voice, spoke at hui, championed a cause, brought others along, teaching what they learned, peer support, role model, community champion, advocating for access
 
 KEYWORD DICTIONARY (additional user-configured phrase mappings):
 ${keywordContext || 'No additional keywords configured.'}
@@ -3715,9 +3721,14 @@ Return a JSON object with EXACTLY this structure:
       "evidence": "brief quote or paraphrase from transcript supporting this tag"
     }
   ],
+  "primaryEntity": {
+    "type": "person" | "group",
+    "name": "the main subject of this debrief",
+    "matchedId": null or number (ID from KNOWN COMMUNITY MEMBERS or KNOWN GROUPS if matched)
+  },
   "peopleIdentified": [
     {
-      "name": "person name as mentioned",
+      "name": "person's full real name (not nickname or title — match 'Coach Manuel' to 'Manuel Walker' from contacts list)",
       "matchedContactId": null or number (ID from KNOWN COMMUNITY MEMBERS if matched),
       "role": "subject" | "mentioned" | "participant",
       "confidence": 0-100
@@ -3741,12 +3752,9 @@ Return a JSON object with EXACTLY this structure:
     "mindset": 1-10 or null,
     "skill": 1-10 or null,
     "confidence": 1-10 or null,
-    "bizConfidence": 1-10 or null,
-    "systemsInPlace": 1-10 or null,
-    "fundingReadiness": 1-10 or null,
+    "businessReadiness": 1-10 or null,
     "networkStrength": 1-10 or null,
-    "communityImpact": 1-10 or null,
-    "digitalPresence": 1-10 or null
+    "resilience": 1-10 or null
   }
 }
 
@@ -3755,9 +3763,12 @@ ${previousMetricsContext}
 
 IMPORTANT RULES:
 - Only tag impact categories where there is clear evidence in the transcript. Set confidence scores honestly.
-- For metrics: only score metrics with clear evidence in the transcript. Use null for metrics not discussed or not evidenced. Do not guess all 9 — most debriefs will only evidence 2-4 metrics. If previous assessment scores are provided, score relative to those — show growth or decline where the transcript provides evidence.
+- For metrics (6 fields: mindset, skill, confidence, businessReadiness, networkStrength, resilience): only score metrics with clear evidence in the transcript. Use null for metrics not discussed. Most debriefs evidence 2-4 metrics. Scoring rubric: 1-2 = hasn't started/no awareness, 3-4 = aware but not acting, 5-6 = functional but inconsistent, 7-8 = confident and consistent, 9-10 = mastery/teaching others. If previous scores are provided, score relative — show growth or decline where evidenced. Don't inflate.
 - For keyQuotes: write from the subject's perspective, outcome-focused. These go directly into funder reports.
-- For reflections: capture the operator's genuine assessment — wins, concerns, learnings. These inform operator insights in reports.`;
+- For reflections: capture the operator's genuine assessment — wins, concerns, learnings. These inform operator insights in reports.
+- For primaryEntity: identify the main subject of this debrief. If the debrief is about an organisation's activity (e.g. "GI Eagles x Le Va workshop"), the primary is the group. If it's a 1:1 catch-up (e.g. "Catch up Cleona"), the primary is the person. Check the title for strong hints.
+- For peopleIdentified: match names against KNOWN COMMUNITY MEMBERS using fuzzy matching. "Coach Manuel" = Manuel Walker. "Charles" = Charles Lavea. Titles like Coach, Matua, Dr are prefixes not names. Always return the real name from the contacts list when matched, not the nickname/title from the transcript.
+- For impact tags: maximum 4 tags per debrief. Choose the most relevant. Avoid overlapping categories for the same evidence.`;
 
       const extraction = await claudeJSON({
         model: "claude-sonnet-4-6",
@@ -3865,18 +3876,24 @@ IMPORTANT RULES:
       const tagPrompt = `You are an impact analysis system for ReserveTMK Digital, a Māori and Pasifika entrepreneurship hub in Aotearoa New Zealand. Analyze the following debrief transcript and extract impact tags ONLY.
 
 IMPACT TAXONOMY (use these categories for tagging):
-${taxonomyContext || `- Hub Engagement: Track facility usage and programme participation metrics
-- Venture Progress: Capture venture development and economic outcomes across businesses, social enterprises, creative projects, and movements
-- Skills & Capability Growth: Measure competency development and confidence building
-- Network & Ecosystem Connection: Document relationship formation and ecosystem integration
-- Rangatahi Development: Track youth-specific engagement and outcomes`}
+${taxonomyContext || `- Capability Growth: People developing skills, knowledge, and confidence
+- Venture Progress: Businesses hitting milestones — revenue, customers, launches
+- Rangatahi Development: Youth-specific engagement, pathways, and transformation
+- Ecosystem Connections: Relationships forming, partnerships developing
+- Space Activation: The hub being used — events, venue hires, capacity
+- Content & Creative: Podcast, digital content, storytelling, media output
+- Wellbeing & Resilience: Personal breakthroughs, overcoming barriers, whānau support
+- Leadership & Advocacy: Stepping into leadership, facilitating, mentoring others`}
 
 SEMANTIC INDICATORS (phrases/meanings that map to categories):
-Hub Engagement: registered as member, attended workshop, came to event, used coworking space, participated in programme, joined session, turned up to, booked in for, regular user, used recording studio, booked creative space, joined movement group
-Venture Progress: made first sale, got customer, launched business, registered company, earned revenue, hired someone, secured contract, still trading, business growing, sustainable income, wholesale client, repeat customer, launched brand, first sponsorship, content going viral, secured partnership, built audience, social media growth, earned first income, grant received, movement growing
-Skills & Capability Growth: learned how to, now understand, figured out how, gained confidence, feel capable, can now do, developed skill in, understand pricing, know how to market, improved at, making better decisions, ready to take next step, learned to create content, built website, designed brand, filmed first video, built portfolio, developed social media strategy
-Network & Ecosystem Connection: met someone who, introduced to, connected with, found mentor, got referral to, partnered with, collaborated with, supported by, linked to, now working with, relationships with, found sponsor, connected with brand, partnered with collective
-Rangatahi Development: young entrepreneur, rangatahi participated, youth attended, first business idea, school leaver, starting out, early career, young person, student entrepreneur, developing mindset, youth-led initiative, young creative, digital creator, rangatahi movement, first brand
+Capability Growth: learned how to, now understands, figured out, gained confidence, feel capable, can now do, developed skill in, understand pricing, knows how to market, improved at, making better decisions, ready for next step, built website, designed brand, created first pitch deck, developed strategy, completed training, applied learning, practiced new skill, moved from theory to action, first time doing X independently, homework completed, applied feedback
+Venture Progress: made first sale, got customer, launched business, registered company, earned revenue, hired someone, secured contract, still trading, business growing, sustainable income, wholesale client, repeat customer, launched brand, first sponsorship, secured partnership, built audience, social media growth, earned first income, grant received, listed product, recurring revenue, price increase, new product line, break even, profitable month
+Rangatahi Development: rangatahi participated, youth attended, first business idea, school leaver, starting out, early career, young person, student entrepreneur, developing mindset, youth-led initiative, young creative, digital creator, rangatahi movement, under 25, tamariki, teens, alternative education, NEET pathway, youth voice, first time in a professional space, exposed to new environment, young people leading, peer-to-peer
+Ecosystem Connections: met someone who, introduced to, connected with, found mentor, got referral, partnered with, collaborated with, supported by, linked to, now working with, found sponsor, new relationship, MOU discussion, wants to come back, expressed interest in partnering, brought their network, referred someone, cross-org collaboration, community org using space, iwi connection, marae relationship, warm intro
+Space Activation: used the space, booked venue, attended event, came to workshop, full capacity, venue hire, workshop delivered, event held, people through the door, first time using space, regular user, space at capacity, new booking, external org using space, community event, drop-in, coworking session, studio booked, recording session, repeat booking, space enabled the work
+Content & Creative: recorded podcast, filmed video, created content, photo shoot, editing session, published episode, social media content, YouTube upload, Instagram post, brand content, storytelling, digital portfolio, creative brief, production session, studio session, content strategy, audience building, creative workshop, media skills, podcast interview, first episode, series planning
+Wellbeing & Resilience: feeling supported, personal breakthrough, overcame barrier, mental health conversation, stress reduced, whānau situation, housing challenge, financial pressure, crisis navigated, resilience shown, came back after setback, asked for help, opened up, trust built, safe space, felt heard, cultural safety, belonging, not alone anymore, reconnected with community, reduced isolation, identity strengthened, cultural reconnection
+Leadership & Advocacy: facilitated for first time, mentored someone, spoke publicly, presented to group, advocated for community, organised event, led workshop, took initiative, stepped up, volunteered to lead, represented their org, community voice, spoke at hui, championed a cause, brought others along, teaching what they learned, peer support, role model, community champion, advocating for access
 
 KEYWORD DICTIONARY (additional user-configured phrase mappings):
 ${keywordContext || 'No additional keywords configured.'}
