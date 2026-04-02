@@ -223,6 +223,7 @@ export const events = pgTable("events", {
   googleCalendarEventId: text("google_calendar_event_id"),
   linkedProgrammeId: integer("linked_programme_id"),
   linkedBookingId: integer("linked_booking_id"),
+  linkedMeetingId: integer("linked_meeting_id"),
   source: text("source").default("internal"), // 'google', 'internal'
   requiresDebrief: boolean("requires_debrief").default(false),
   eventStatus: text("event_status").default("active"), // 'active', 'cancelled'
