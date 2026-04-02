@@ -3157,19 +3157,28 @@ export async function registerRoutes(
           });
         }
 
-        // Snapshot primary contacts' metrics before any changes
+        // Save debrief-extracted metrics as a snapshot for the primary contact
         try {
-          const logContacts = await storage.getImpactLogContacts(id);
-          const primaryContacts = logContacts.filter((c: any) => c.role === "primary");
-          for (const pc of primaryContacts) {
-            const contact = await storage.getContact(pc.contactId);
-            if (contact?.metrics && typeof contact.metrics === "object" && Object.keys(contact.metrics).length > 0) {
-              await storage.createMetricSnapshot({
-                contactId: pc.contactId,
-                userId,
-                metrics: contact.metrics as any,
-                source: "debrief",
-              });
+          const reviewed = updated.reviewedData as Record<string, any> | null;
+          const debriefMetrics = reviewed?.metrics || (updated.rawExtraction as any)?.metrics;
+          if (debriefMetrics && typeof debriefMetrics === "object") {
+            // Filter out null values — only save scored metrics
+            const scoredMetrics: Record<string, number> = {};
+            for (const [k, v] of Object.entries(debriefMetrics)) {
+              if (typeof v === "number" && v > 0) scoredMetrics[k] = v;
+            }
+            if (Object.keys(scoredMetrics).length > 0) {
+              const logContacts = await storage.getImpactLogContacts(id);
+              // Use first linked contact as primary (primary role is rarely set)
+              const primaryContactId = logContacts[0]?.contactId;
+              if (primaryContactId) {
+                await storage.createMetricSnapshot({
+                  contactId: primaryContactId,
+                  userId,
+                  metrics: scoredMetrics,
+                  source: "debrief",
+                });
+              }
             }
           }
         } catch (e) {
@@ -3614,6 +3623,26 @@ export async function registerRoutes(
         `- ${g.name}${g.type ? ` (${g.type})` : ''} [ID: ${g.id}]`
       ).join('\n');
 
+      // Fetch previous metric scores for the primary contact (if re-analysing an existing debrief)
+      let previousMetricsContext = "";
+      if (existingLogId) {
+        try {
+          const logContacts = await storage.getImpactLogContacts(existingLogId);
+          const primaryContact = logContacts.length > 0 ? logContacts[0] : null;
+          if (primaryContact) {
+            const snapshots = await storage.getMetricSnapshots(primaryContact.contactId);
+            if (snapshots.length > 0) {
+              const latest = snapshots[snapshots.length - 1];
+              const m = latest.metrics as Record<string, number>;
+              const scores = Object.entries(m).filter(([_, v]) => v != null).map(([k, v]) => `${k}: ${v}/10`).join(", ");
+              if (scores) {
+                previousMetricsContext = `\n\nPREVIOUS ASSESSMENT for the primary person (from ${new Date(latest.createdAt!).toLocaleDateString()}):\n${scores}\nScore relative to these — show growth or decline where evidenced. Only change scores where the transcript provides clear evidence.`;
+              }
+            }
+          }
+        } catch { /* non-fatal */ }
+      }
+
       const prompt = `You are an impact analysis system for ReserveTMK Digital, a Māori and Pasifika entrepreneurship hub in Aotearoa New Zealand. Analyze the following debrief transcript and extract structured data for both community impact tracking and operational management.
 
 IMPACT TAXONOMY (use these categories for tagging):
@@ -3721,9 +3750,12 @@ Return a JSON object with EXACTLY this structure:
   }
 }
 
+
+${previousMetricsContext}
+
 IMPORTANT RULES:
 - Only tag impact categories where there is clear evidence in the transcript. Set confidence scores honestly.
-- For metrics: only score metrics with clear evidence in the transcript. Use null for metrics not discussed or not evidenced. Do not guess all 9 — most debriefs will only evidence 2-4 metrics.
+- For metrics: only score metrics with clear evidence in the transcript. Use null for metrics not discussed or not evidenced. Do not guess all 9 — most debriefs will only evidence 2-4 metrics. If previous assessment scores are provided, score relative to those — show growth or decline where the transcript provides evidence.
 - For keyQuotes: write from the subject's perspective, outcome-focused. These go directly into funder reports.
 - For reflections: capture the operator's genuine assessment — wins, concerns, learnings. These inform operator insights in reports.`;
 
@@ -7832,7 +7864,49 @@ Important:
         },
         spaceUse,
         updates: { "Updates": updateItems },
-        quotes: Array.isArray(req.body?.quotes) ? req.body.quotes : [],
+        operatorInsights: await (async () => {
+          try {
+            const insightDebriefs = await db.execute(sql`
+              SELECT reviewed_data, sentiment FROM impact_logs
+              WHERE user_id = ${userId} AND status = 'confirmed'
+              AND confirmed_at >= ${new Date(startDate)} AND confirmed_at < ${new Date(endDate)}
+              AND reviewed_data IS NOT NULL
+            `);
+            const rows = (insightDebriefs as any).rows || [];
+            const wins: string[] = [], concerns: string[] = [], learnings: string[] = [];
+            const sentimentBreakdown: Record<string, number> = {};
+            for (const row of rows) {
+              const r = row.reviewed_data?.reflections;
+              if (r) {
+                if (Array.isArray(r.wins)) wins.push(...r.wins);
+                if (Array.isArray(r.concerns)) concerns.push(...r.concerns);
+                if (Array.isArray(r.learnings)) learnings.push(...r.learnings);
+              }
+              if (row.sentiment) sentimentBreakdown[row.sentiment] = (sentimentBreakdown[row.sentiment] || 0) + 1;
+            }
+            if (wins.length === 0 && concerns.length === 0 && learnings.length === 0) return undefined;
+            return { totalDebriefs: rows.length, sentimentBreakdown, wins: wins.slice(0, 10), concerns: concerns.slice(0, 5), learnings: learnings.slice(0, 5), standoutQuotes: [] };
+          } catch { return undefined; }
+        })(),
+        quotes: Array.isArray(req.body?.quotes) && req.body.quotes.length > 0
+          ? req.body.quotes
+          : await (async () => {
+              try {
+                const debriefs = await db.execute(sql`
+                  SELECT key_quotes FROM impact_logs
+                  WHERE user_id = ${userId} AND status = 'confirmed'
+                  AND confirmed_at >= ${new Date(startDate)} AND confirmed_at < ${new Date(endDate)}
+                  AND key_quotes IS NOT NULL AND array_length(key_quotes, 1) > 0
+                `);
+                const allQuotes: { text: string; attribution: string }[] = [];
+                for (const row of (debriefs as any).rows || []) {
+                  for (const q of row.key_quotes || []) {
+                    allQuotes.push({ text: q, attribution: "" });
+                  }
+                }
+                return allQuotes.slice(0, 5);
+              } catch { return []; }
+            })(),
         plannedNextMonth: Array.isArray(req.body?.plannedNext) ? req.body.plannedNext : [],
         taxonomyBreakdown: taxonomyBreakdown.length > 0 ? taxonomyBreakdown : undefined,
       };
@@ -8154,7 +8228,49 @@ Important:
         },
         spaceUse,
         updates: { "Updates": updateItems },
-        quotes: Array.isArray(req.body?.quotes) ? req.body.quotes : [],
+        operatorInsights: await (async () => {
+          try {
+            const insightDebriefs = await db.execute(sql`
+              SELECT reviewed_data, sentiment FROM impact_logs
+              WHERE user_id = ${userId} AND status = 'confirmed'
+              AND confirmed_at >= ${new Date(startDate)} AND confirmed_at < ${new Date(endDate)}
+              AND reviewed_data IS NOT NULL
+            `);
+            const rows = (insightDebriefs as any).rows || [];
+            const wins: string[] = [], concerns: string[] = [], learnings: string[] = [];
+            const sentimentBreakdown: Record<string, number> = {};
+            for (const row of rows) {
+              const r = row.reviewed_data?.reflections;
+              if (r) {
+                if (Array.isArray(r.wins)) wins.push(...r.wins);
+                if (Array.isArray(r.concerns)) concerns.push(...r.concerns);
+                if (Array.isArray(r.learnings)) learnings.push(...r.learnings);
+              }
+              if (row.sentiment) sentimentBreakdown[row.sentiment] = (sentimentBreakdown[row.sentiment] || 0) + 1;
+            }
+            if (wins.length === 0 && concerns.length === 0 && learnings.length === 0) return undefined;
+            return { totalDebriefs: rows.length, sentimentBreakdown, wins: wins.slice(0, 10), concerns: concerns.slice(0, 5), learnings: learnings.slice(0, 5), standoutQuotes: [] };
+          } catch { return undefined; }
+        })(),
+        quotes: Array.isArray(req.body?.quotes) && req.body.quotes.length > 0
+          ? req.body.quotes
+          : await (async () => {
+              try {
+                const debriefs = await db.execute(sql`
+                  SELECT key_quotes FROM impact_logs
+                  WHERE user_id = ${userId} AND status = 'confirmed'
+                  AND confirmed_at >= ${new Date(startDate)} AND confirmed_at < ${new Date(endDate)}
+                  AND key_quotes IS NOT NULL AND array_length(key_quotes, 1) > 0
+                `);
+                const allQuotes: { text: string; attribution: string }[] = [];
+                for (const row of (debriefs as any).rows || []) {
+                  for (const q of row.key_quotes || []) {
+                    allQuotes.push({ text: q, attribution: "" });
+                  }
+                }
+                return allQuotes.slice(0, 8);
+              } catch { return []; }
+            })(),
         plannedNextQuarter: Array.isArray(req.body?.plannedNext) ? req.body.plannedNext : [],
         footTraffic: { total: ftTotal, byMonth: ftByMonth },
         maoriPipeline,
