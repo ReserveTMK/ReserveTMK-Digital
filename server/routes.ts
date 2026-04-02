@@ -17791,6 +17791,9 @@ Rules: Only include sections that have real content from the debrief data. Keep 
   const { registerCommsRoutes } = await import("./routes/comms");
   registerCommsRoutes(app);
 
+  const { registerTrackingRoutes } = await import("./routes/tracking");
+  registerTrackingRoutes(app);
+
   // NOTE: Old comms routes below are superseded by registerCommsRoutes above.
   // They will be removed in the deletion pass after all modules are extracted.
   app.get("/api/comms/stories", isAuthenticated, async (req, res) => {
