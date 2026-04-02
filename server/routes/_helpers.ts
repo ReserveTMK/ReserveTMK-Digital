@@ -244,3 +244,75 @@ export const METRIC_KEY_TO_SNAPSHOT_FIELD: Record<string, string> = {
   hub_foottraffic: "foottrafficUnique",
   bookings_total: "bookingsTotal",
 };
+
+export function buildExtractionPrompt(pdfText: string): string {
+  return `You are an impact data analyst extracting information from a community organisation MONTHLY report.
+
+CRITICAL: These reports often contain YEAR-TO-DATE (YTD) cumulative tallies alongside monthly numbers. You MUST:
+- Look for column headers or labels indicating "YTD", "Year to Date", "Total", "Cumulative", quarterly totals
+- Extract ONLY the SINGLE MONTH's figures, NOT the YTD/cumulative/quarterly totals
+- If only YTD or quarterly figures are available and no single-month breakdown exists, set the value to null rather than guessing
+- If there are columns for each month (e.g. Jul, Aug, Sep) and a quarterly/YTD total column, extract ONLY the specific month's column value
+- The report title usually says the month (e.g. "August 2025") - extract data for THAT month only
+
+Extract FIVE types of information:
+
+0. REPORT DATE - Look at the document title, header, or first page for the report's month and year. Common patterns:
+- "Monthly Report - August 2025"
+- "August 2025 Report"
+- "Report for the month of August 2025"
+- "TMK Monthly Report Aug 2025"
+- "The Reserve - September 2024"
+Return the detected month (1-12) and year (e.g. 2025). If not found, return null for both.
+
+1. QUANTITATIVE METRICS - For each metric below, find the SINGLE MONTH value:
+${LEGACY_METRIC_KEYS.map(m => `- ${m.key} (${m.label}, unit: ${m.unit})`).join("\n")}
+
+2. ORGANISATIONS & PARTNERS - Extract names of organisations, businesses, community groups, partners mentioned in the report. Include:
+- Partner organisations
+- Businesses mentored or supported
+- Community groups engaged
+- Community collectives
+- Resident companies
+- Any named collective, trust, or entity
+
+3. NARRATIVE HIGHLIGHTS - Extract key themes, achievements, and activities described in the report. Capture:
+- Major accomplishments or milestones
+- Key programmes or events described
+- Community outcomes or stories
+- Challenges or growth areas mentioned
+
+4. PEOPLE - Extract names of specific individuals mentioned (facilitators, mentees, community leaders, partners). Do NOT include generic titles without names.
+
+Report text:
+"""
+${pdfText.substring(0, 12000)}
+"""
+
+Respond in JSON format only:
+{
+  "detectedMonth": 8,
+  "detectedYear": 2025,
+  "metrics": [
+    { "metricKey": "activations_total", "metricValue": 42, "metricUnit": "count", "confidence": 85, "evidenceSnippet": "exact text snippet (max 200 chars)" }
+  ],
+  "organisations": [
+    { "name": "Org Name", "type": "partner|business|community_group|community_collective|resident_company|government|iwi|ngo|education|other", "description": "brief context about this org from the report", "relationship": "mentored|partnered|engaged|supported|hosted|other" }
+  ],
+  "highlights": [
+    { "theme": "short theme label", "summary": "2-3 sentence description of this highlight from the report", "activityType": "workshop|mentoring|event|community|partnership|programme|other" }
+  ],
+  "people": [
+    { "name": "Person Name", "role": "facilitator|mentee|partner|leader|other", "context": "brief context about their mention" }
+  ]
+}
+
+Rules:
+- For detectedMonth/detectedYear: Look at the document title, heading, or header for the month and year this report covers. Return null if not found.
+- For metrics: confidence 0-100. If not found, set metricValue to null, confidence to 0
+- Be conservative: do NOT fabricate numbers. If uncertain between YTD/quarterly and monthly, set to null
+- For organisations: only include named entities explicitly mentioned in the text
+- For highlights: stick to what the report actually says, do not infer or embellish
+- For people: only include people mentioned by name, not generic roles
+- Only return the JSON, no other text`;
+}
