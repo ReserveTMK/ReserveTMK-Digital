@@ -9,7 +9,7 @@ import { claudeJSON, isAnthropicKeyConfigured, AIKeyMissingError } from "./repli
 import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, getStandoutMoments, getOperatorInsights, getParticipantTransformationStories, getPeopleTierBreakdown, getImpactTagHeatmap, getTheoryOfChangeAlignment, getGrowthStory, getOutcomeChain, getQuarterlyMilestones, evaluateDeliverables, getTaxonomyBreakdown, getDebriefQuotesForReport, getConcernArcs, PASIFIKA_ETHNICITIES, type ReportFilters, type CohortDefinition, type OrgProfileContext, type FunderContext } from "./reporting";
 import { renderMonthlyReport, renderQuarterlyReport, type MonthlyReportData, type QuarterlyReportData, type MaoriPipelineData } from "./report-renderer";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
-import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings, normalizeStage, DEFAULT_AVAILABILITY_SCHEDULE, DEFAULT_VENUE_AVAILABILITY_SCHEDULE, type AvailabilitySchedule, bookingChangeRequests, funderTaxonomyCategories, funderTaxonomyClassifications, funderTaxonomyMappings, funders, } from "@shared/schema";
+import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings, normalizeStage, DEFAULT_AVAILABILITY_SCHEDULE, DEFAULT_VENUE_AVAILABILITY_SCHEDULE, type AvailabilitySchedule, bookingChangeRequests, funderTaxonomyCategories, funderTaxonomyClassifications, funderTaxonomyMappings, funders, communityConnections, } from "@shared/schema";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { ObjectStorageService } from "./replit_integrations/object_storage";
 import crypto from "crypto";
@@ -3204,6 +3204,27 @@ export async function registerRoutes(
         classifyForAllFunders("debrief", id, userId).catch((err) =>
           console.error(`Taxonomy classification failed for debrief ${id}:`, err),
         );
+
+        // Persist whakapapa connections from extraction (fire-and-forget)
+        try {
+          const connectionsData = Array.isArray(reviewed.connections) ? reviewed.connections : [];
+          if (connectionsData.length > 0) {
+            for (const conn of connectionsData as Array<{ fromContactId?: number; toContactId?: number; type: string; context?: string }>) {
+              if (conn.fromContactId || conn.toContactId) {
+                await db.insert(communityConnections).values({
+                  userId,
+                  fromContactId: conn.fromContactId || null,
+                  toContactId: conn.toContactId || null,
+                  type: conn.type || "collaborates_with",
+                  context: conn.context || null,
+                  sourceDebriefId: id,
+                });
+              }
+            }
+          }
+        } catch (e) {
+          console.warn(`Connection persistence failed for debrief ${id}:`, e);
+        }
       }
 
       res.json(updated);
@@ -3774,7 +3795,17 @@ Return a JSON object with EXACTLY this structure:
     "networkStrength": 1-10,
     "communityImpact": 1-10,
     "digitalPresence": 1-10
-  }
+  },
+  "connections": [
+    {
+      "fromName": "person or org name",
+      "fromContactId": null or number,
+      "toName": "person or org name",
+      "toContactId": null or number,
+      "type": "referred_by" | "introduced_through" | "collaborates_with" | "mentored_by" | "employed_by" | "founded" | "partnered_with",
+      "context": "brief description of the connection"
+    }
+  ]
 }
 
 Be precise. Only tag impact categories where there is clear evidence in the transcript. Set confidence scores honestly — lower if the evidence is ambiguous. For communityActions, focus on follow-ups with specific people. For operationalActions, focus on internal tasks for running the hub.`;

@@ -726,6 +726,20 @@ export const impactLogGroups = pgTable("impact_log_groups", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Whakapapa connections — typed links between people, groups, and debriefs
+export const communityConnections = pgTable("community_connections", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  fromContactId: integer("from_contact_id"),
+  fromGroupId: integer("from_group_id"),
+  toContactId: integer("to_contact_id"),
+  toGroupId: integer("to_group_id"),
+  type: text("type").notNull(), // referred_by, introduced_through, collaborates_with, mentored_by, employed_by, founded, partnered_with
+  context: text("context"),
+  sourceDebriefId: integer("source_debrief_id"), // which debrief surfaced this connection
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const relationshipStageHistory = pgTable("relationship_stage_history", {
   id: serial("id").primaryKey(),
   entityType: text("entity_type").notNull(),
