@@ -1552,8 +1552,9 @@ export function ReviewView({ id }: { id: number }) {
               </CollapsibleSection>
             </div>
 
-            {/* COMMUNITY ACTIONS - mobile:6 desktop:left */}
-            <div className="order-6 lg:order-none">
+            {/* COMMUNITY ACTIONS - REMOVED: dead extraction, never used */}
+
+            {false && <div className="order-6 lg:order-none">
               <CollapsibleSection
                 title="Community Actions"
                 count={communityActions.length + suggestedCommunityActions.length}
@@ -1650,10 +1651,11 @@ export function ReviewView({ id }: { id: number }) {
 
                 {communityActions.length === 0 && suggestedCommunityActions.length === 0 && <p className="text-xs text-muted-foreground italic">No community actions extracted.</p>}
               </CollapsibleSection>
-            </div>
+            </div>}
 
-            {/* OPERATIONAL ACTIONS - mobile:7 desktop:left */}
-            <div className="order-7 lg:order-none">
+            {/* OPERATIONAL ACTIONS - REMOVED: dead extraction, never used */}
+
+            {false && <div className="order-7 lg:order-none">
               <CollapsibleSection
                 title="Operational Actions"
                 count={operationalActions.length + suggestedOperationalActions.length}
@@ -1754,7 +1756,7 @@ export function ReviewView({ id }: { id: number }) {
 
                 {operationalActions.length === 0 && suggestedOperationalActions.length === 0 && <p className="text-xs text-muted-foreground italic">No operational actions extracted.</p>}
               </CollapsibleSection>
-            </div>
+            </div>}
 
             {/* OPERATOR REFLECTIONS - mobile:9 desktop:left */}
             <div className="order-9 lg:order-none">
@@ -2404,8 +2406,9 @@ export function ReviewView({ id }: { id: number }) {
               </CollapsibleSection>
             </div>
 
-            {/* FUNDER TAGS - mobile:10 desktop:right */}
-            <div className="order-10 lg:order-none">
+            {/* FUNDER TAGS - REMOVED: dead field, 0 across all 64 debriefs */}
+
+            {false && <div className="order-10 lg:order-none">
               <CollapsibleSection
                 title="Funder Tags"
                 count={funderTags.length}
@@ -2461,7 +2464,7 @@ export function ReviewView({ id }: { id: number }) {
                   </Button>
                 </div>
               </CollapsibleSection>
-            </div>
+            </div>}
             </div>
           </div>
         </div>
