@@ -50,6 +50,7 @@ export interface QuarterlyReportData {
   footTraffic: { total: number; byMonth: Record<string, number> };
   maoriPipeline?: MaoriPipelineData;
   taxonomyBreakdown?: Array<{ categoryName: string; funderName: string; entityCounts: Record<string, number>; total: number }>;
+  operatorInsights?: OperatorInsightsData;
 }
 
 // ── Shared CSS ─────────────────────────────────────────────────
@@ -382,6 +383,8 @@ export function renderQuarterlyReport(data: QuarterlyReportData): string {
   const qTaxSec = qHasTaxonomy ? qSec++ : 0;
   const qMaoriSec = data.maoriPipeline ? qSec++ : 0;
   const qUpdateSec = qSec++;
+  const hasInsights = data.operatorInsights && (data.operatorInsights.wins.length > 0 || data.operatorInsights.concerns.length > 0 || data.operatorInsights.learnings.length > 0);
+  const qInsightsSec = hasInsights ? qSec++ : 0;
   const qQuoteSec = qSec++;
   const qPlannedSec = qSec++;
 
@@ -511,6 +514,25 @@ ${data.maoriPipeline ? `
   <h2>${qUpdateSec}. Updates</h2>
   ${updateSections}
 </div>
+
+${hasInsights ? `
+<div class="section">
+  <h2>${qInsightsSec}. Operator Reflections</h2>
+  <p style="font-size:11px;color:#888;margin-bottom:12px;">From ${data.operatorInsights!.totalDebriefs} confirmed debriefs this quarter</p>
+  ${data.operatorInsights!.wins.length > 0 ? `
+  <h3 style="color:#003F2B;margin-bottom:6px;">Highlights</h3>
+  <ul class="bullets">${data.operatorInsights!.wins.map(w => `<li>${esc(w)}</li>`).join("")}</ul>
+  ` : ""}
+  ${data.operatorInsights!.concerns.length > 0 ? `
+  <h3 style="color:#b45309;margin-bottom:6px;margin-top:12px;">Challenges &amp; Risks</h3>
+  <ul class="bullets">${data.operatorInsights!.concerns.map(c => `<li>${esc(c)}</li>`).join("")}</ul>
+  ` : ""}
+  ${data.operatorInsights!.learnings.length > 0 ? `
+  <h3 style="color:#1e40af;margin-bottom:6px;margin-top:12px;">Learnings</h3>
+  <ul class="bullets">${data.operatorInsights!.learnings.map(l => `<li>${esc(l)}</li>`).join("")}</ul>
+  ` : ""}
+</div>
+` : ""}
 
 ${quotes.length > 0 ? `
 <div class="section">

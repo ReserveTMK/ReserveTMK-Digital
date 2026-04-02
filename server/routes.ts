@@ -8203,6 +8203,15 @@ Important:
         console.error("Quarterly taxonomy breakdown failed (non-fatal):", err.message);
       }
 
+      // Operator insights from confirmed debriefs
+      let qOperatorInsights;
+      try {
+        const qInsightFilters: ReportFilters = { userId, startDate, endDate };
+        qOperatorInsights = await getOperatorInsights(qInsightFilters);
+      } catch (err: any) {
+        console.error("Quarterly operator insights failed (non-fatal):", err.message);
+      }
+
       const reportData: QuarterlyReportData = {
         period: {
           quarter: quarterLabel,
@@ -8230,6 +8239,7 @@ Important:
         footTraffic: { total: ftTotal, byMonth: ftByMonth },
         maoriPipeline,
         taxonomyBreakdown: qTaxonomyBreakdown.length > 0 ? qTaxonomyBreakdown : undefined,
+        operatorInsights: qOperatorInsights || undefined,
       };
 
       const html = renderQuarterlyReport(reportData);
