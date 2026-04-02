@@ -93,8 +93,10 @@ export default function Dashboard() {
     const tomorrow = addDays(today, 1);
     const linkedBIds = new Set((events || []).filter((e: Event) => e.linkedBookingId).map((e: Event) => e.linkedBookingId));
     const linkedPIds = new Set((events || []).filter((e: Event) => e.linkedProgrammeId).map((e: Event) => e.linkedProgrammeId));
+    const linkedMIds = new Set((events || []).filter((e: Event) => e.linkedMeetingId).map((e: Event) => e.linkedMeetingId));
     let count = 0;
     meetings?.forEach((m: Meeting) => {
+      if (linkedMIds.has(m.id)) return;
       const d = new Date(m.startTime);
       if (m.status !== "cancelled" && d >= today && d < tomorrow) count++;
     });
@@ -121,7 +123,11 @@ export default function Dashboard() {
 
   const buildItemsForRange = (start: Date, end: Date): DayItem[] => {
     const items: DayItem[] = [];
+    // Build set of meeting IDs that have linked events (to avoid double-ups)
+    const linkedMeetingIds = new Set((events || []).filter((e: Event) => e.linkedMeetingId).map((e: Event) => e.linkedMeetingId));
+
     meetings?.forEach((m: Meeting) => {
+      if (linkedMeetingIds.has(m.id)) return; // Already shown as event
       const d = new Date(m.startTime);
       if (m.status !== "cancelled" && d >= start && d < end) {
         items.push({ date: format(d, "yyyy-MM-dd"), name: m.title, time: format(d, "h:mm a"), type: "Meeting", typeColor: "bg-blue-500/15 text-blue-700 dark:text-blue-300", id: `meeting-${m.id}` });

@@ -301,6 +301,42 @@ async function ensureProgrammeEvent(programme: any, userId: string): Promise<voi
   }
 }
 
+// Auto-create an event linked to a completed/confirmed meeting (makes it debriefable + shows on calendar)
+async function ensureMeetingEvent(meeting: any, userId: string): Promise<void> {
+  try {
+    if (!meeting.id || !meeting.startTime) return;
+    if (meeting.status === "cancelled") return;
+    const existingEvents = await storage.getEvents(userId);
+    // Check by linkedMeetingId or by googleCalendarEventId match
+    if (existingEvents.find(e => e.linkedMeetingId === meeting.id)) return;
+    if (meeting.googleCalendarEventId && existingEvents.find(e => e.googleCalendarEventId === meeting.googleCalendarEventId)) {
+      // Link existing GCal-imported event to this meeting
+      const existing = existingEvents.find(e => e.googleCalendarEventId === meeting.googleCalendarEventId);
+      if (existing) {
+        await storage.updateEvent(existing.id, { linkedMeetingId: meeting.id });
+      }
+      return;
+    }
+
+    const venue = meeting.venueId ? await storage.getVenue(meeting.venueId) : null;
+
+    await storage.createEvent({
+      userId,
+      name: meeting.title || "Mentoring Session",
+      type: "Mentoring Session",
+      startTime: new Date(meeting.startTime),
+      endTime: meeting.endTime ? new Date(meeting.endTime) : new Date(new Date(meeting.startTime).getTime() + 60 * 60 * 1000),
+      location: venue?.name || null,
+      source: "meeting",
+      linkedMeetingId: meeting.id,
+      googleCalendarEventId: meeting.googleCalendarEventId || null,
+      requiresDebrief: true,
+    });
+  } catch (e) {
+    console.warn(`Failed to create event for meeting ${meeting.id}:`, e);
+  }
+}
+
 // Map venue to the correct Google Calendar for space bookings
 async function getCalendarIdForVenue(venueIds: number[], userId: string): Promise<string> {
   if (!venueIds.length) return "primary";
