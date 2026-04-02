@@ -1,46 +1,18 @@
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useLocation, Link } from "wouter";
+import { useLocation } from "wouter";
 import {
-  Calendar,
   CalendarX,
-  MapPin,
-  Clock,
-  Users,
-  Loader2,
   RefreshCw,
-  ChevronLeft,
-  ChevronRight,
-  FileText,
-  Trash2,
-  ChevronDown,
-  ChevronUp,
-  UserPlus,
-  X,
-  Search,
-  EyeOff,
-  Eye,
   Settings,
-  AlertTriangle,
-  Building2,
-  CalendarDays,
-  Link2,
-  ArrowRightLeft,
-  User,
-  CheckCircle2,
-  CircleDashed,
-  Plus,
-  Footprints,
-  Save,
-  BarChart3,
   CircleAlert,
-  ExternalLink,
+  X,
 } from "lucide-react";
 import {
   format,
@@ -49,1130 +21,36 @@ import {
   startOfWeek,
   endOfWeek,
   isSameMonth,
-  isSameDay,
   addMonths,
   subMonths,
-  isToday,
-  isBefore,
 } from "date-fns";
 import { useCalendarGrid } from "@/hooks/use-calendar-grid";
 import type { GoogleCalendarEvent, GoogleCalendarInfo } from "@/types/google-calendar";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { DismissPopover } from "@/components/dismiss-popover";
 import { useContacts } from "@/hooks/use-contacts";
-import { useEventAttendance, useAddAttendance, useRemoveAttendance } from "@/hooks/use-event-attendance";
 import { useGroups } from "@/hooks/use-groups";
 import { useProgrammes } from "@/hooks/use-programmes";
 import { useBookings, useVenues } from "@/hooks/use-bookings";
 import type { Contact, Programme, Booking, Venue } from "@shared/schema";
-
-interface AppEvent {
-  id: number;
-  name: string;
-  type: string;
-  startTime: string;
-  endTime: string;
-  location: string | null;
-  description: string | null;
-  googleCalendarEventId: string | null;
-  tags: string[] | null;
-  attendeeCount: number | null;
-  linkedProgrammeId: number | null;
-  linkedBookingId: number | null;
-  source: string | null;
-  requiresDebrief: boolean | null;
-  eventStatus: string | null;
-  debriefSkippedReason: string | null;
-  spaceUseType: string | null;
-}
-
-function formatDate(dateStr: string) {
-  if (!dateStr) return "";
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("en-NZ", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  });
-}
-
-function formatTime(dateStr: string) {
-  if (!dateStr) return "";
-  const d = new Date(dateStr);
-  return d.toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Pacific/Auckland" });
-}
-
-const EVENT_TYPES = ["Team Meeting", "External Meeting", "Mentoring Session", "Programme", "Venue Hire", "Public Holiday"] as const;
-
-const EVENT_TYPE_DOT_COLORS: Record<string, string> = {
-  "Team Meeting": "bg-gray-400",
-  "External Meeting": "bg-teal-400",
-  "Mentoring Session": "bg-blue-400",
-  "Programme": "bg-indigo-400",
-  "Venue Hire": "bg-amber-400",
-  "Public Holiday": "bg-red-400",
-};
-
-const EVENT_TYPE_BADGE_COLORS: Record<string, string> = {
-  "Team Meeting": "bg-gray-500/10 text-gray-700 dark:text-gray-300",
-  "External Meeting": "bg-teal-500/10 text-teal-700 dark:text-teal-300",
-  "Mentoring Session": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
-  "Programme": "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
-  "Venue Hire": "bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  "Public Holiday": "bg-red-500/10 text-red-700 dark:text-red-300",
-};
-
-const EVENT_TYPE_CARD_TINTS: Record<string, string> = {
-  "Team Meeting": "border-gray-500/20 bg-gray-500/5 dark:bg-gray-500/5",
-  "External Meeting": "border-teal-500/20 bg-teal-500/5 dark:bg-teal-500/5",
-  "Mentoring Session": "border-blue-500/20 bg-blue-500/5 dark:bg-blue-500/5",
-  "Programme": "border-indigo-500/20 bg-indigo-500/5 dark:bg-indigo-500/5",
-  "Venue Hire": "border-amber-500/20 bg-amber-500/5 dark:bg-amber-500/5",
-  "Public Holiday": "border-red-500/30 bg-red-500/10 dark:bg-red-500/10",
-};
-
-const PROG_CLASSIFICATION_COLORS: Record<string, string> = {
-  "Community Workshop": "bg-blue-500/15 text-blue-700 dark:text-blue-300",
-  "Creative Workshop": "bg-purple-500/15 text-purple-700 dark:text-purple-300",
-  "Youth Workshop": "bg-pink-500/15 text-pink-700 dark:text-pink-300",
-  "Talks": "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-  "Networking": "bg-green-500/15 text-green-700 dark:text-green-300",
-};
-
-const PROG_STATUS_COLORS: Record<string, string> = {
-  planned: "bg-gray-50/50 dark:bg-gray-900/20 border-gray-200 dark:border-gray-800",
-  active: "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800",
-  completed: "bg-green-50/30 dark:bg-green-900/10 border-green-100 dark:border-green-900/20 opacity-70",
-  cancelled: "bg-gray-100/30 dark:bg-gray-900/10 border-gray-100 dark:border-gray-900/20 opacity-70",
-};
-
-const GCAL_TYPE_KEYWORDS: { type: string; keywords: string[] }[] = [
-  { type: "Mentoring Session", keywords: ["mentor", "mentoring", "mentee", "coaching", "1:1", "one on one", "1-on-1"] },
-  { type: "Programme", keywords: ["programme", "program", "community workshop", "creative workshop", "youth workshop", "talks", "activation"] },
-];
-
-const PERSONAL_EVENT_KEYWORDS = [
-  "haircut", "barber", "dentist", "doctor", "gym", "workout", "physio",
-  "optometrist", "vet", "grooming", "massage", "therapy", "appointment",
-  "pickup", "drop off", "school run", "flight", "personal",
-];
-
-function cleanDescription(desc: string | null | undefined): string {
-  if (!desc) return "";
-  // Strip Teams/Zoom join blocks
-  return desc
-    .replace(/_{3,}/g, "")
-    .replace(/Microsoft Teams meeting[\s\S]*?(?=\n\n|$)/gi, "")
-    .replace(/Join:?\s*https:\/\/teams\.microsoft\.com\S*/gi, "")
-    .replace(/Meeting ID:\s*[\d\s]+/gi, "")
-    .replace(/Passcode:\s*\S+/gi, "")
-    .replace(/Need help\?[\s\S]*?(?=\n\n|$)/gi, "")
-    .replace(/For organisers:[\s\S]*?(?=\n\n|$)/gi, "")
-    .replace(/System reference[\s\S]*?(?=\n\n|$)/gi, "")
-    .replace(/https:\/\/teams\.microsoft\.com\S*/gi, "")
-    .replace(/https:\/\/\S*zoom\S*/gi, "[Zoom link]")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-function isPersonalEvent(title: string, description?: string): boolean {
-  const text = `${title} ${description || ""}`.toLowerCase();
-  return PERSONAL_EVENT_KEYWORDS.some(kw => text.includes(kw));
-}
-
-function classifyGcalEvent(gcal: GoogleCalendarEvent): string {
-  // Prefer server-side classification from calendar source
-  if (gcal.suggestedType) return gcal.suggestedType;
-  const text = `${gcal.summary || ""} ${gcal.description || ""}`.toLowerCase();
-  for (const { type, keywords } of GCAL_TYPE_KEYWORDS) {
-    if (keywords.some(kw => text.includes(kw))) return type;
-  }
-  return "Meeting";
-}
-
-type CombinedEvent = { date: Date; type: "gcal" | "app" | "booking"; gcal?: GoogleCalendarEvent; app?: AppEvent; booking?: Booking; isPast: boolean; isDismissed?: boolean };
-
-function getEventType(e: CombinedEvent): string {
-  if (e.type === "booking" && e.booking) return "Venue Hire";
-  if (e.type === "app" && e.app) return e.app.type;
-  if (e.type === "gcal" && e.gcal) return classifyGcalEvent(e.gcal);
-  return "Meeting";
-}
-
-function getEventDotColor(e: CombinedEvent) {
-  const eventType = getEventType(e);
-  return EVENT_TYPE_DOT_COLORS[eventType] || "bg-gray-400";
-}
-
-type DebriefInfo = { debriefId: number; status: string } | null;
-
-const BOOKING_BADGE_COLORS: Record<string, string> = {
-  "Workshop": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
-  "Community Event": "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-  "Private Hire": "bg-orange-500/10 text-orange-700 dark:text-orange-300",
-  "Rehearsal": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
-  "Meeting": "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
-  "Pop-up": "bg-pink-500/10 text-pink-700 dark:text-pink-300",
-  "Other": "bg-gray-500/10 text-gray-700 dark:text-gray-300",
-  "Community Workshop": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
-  "Creative Workshop": "bg-purple-500/10 text-purple-700 dark:text-purple-300",
-  "Youth Workshop": "bg-pink-500/10 text-pink-700 dark:text-pink-300",
-  "Talks": "bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  "Networking": "bg-green-500/10 text-green-700 dark:text-green-300",
-};
-
-const BOOKING_CARD_COLORS: Record<string, string> = {
-  "Workshop": "border-blue-500/30 bg-blue-500/5",
-  "Community Event": "border-green-500/30 bg-green-500/5",
-  "Private Hire": "border-orange-500/30 bg-orange-500/5",
-  "Rehearsal": "border-purple-500/30 bg-purple-500/5",
-  "Meeting": "border-slate-500/30 bg-slate-500/5",
-  "Pop-up": "border-pink-500/30 bg-pink-500/5",
-  "Other": "border-gray-500/30 bg-gray-500/5",
-};
-
-function BookingCalendarCard({ booking, venueMap, allContacts, debriefStatus, onLogDebrief, onViewDebrief, onSkipDebrief, isSkipped }: {
-  booking: Booking;
-  venueMap: Record<number, string>;
-  allContacts: Contact[];
-  debriefStatus?: "none" | "draft" | "confirmed" | null;
-  onLogDebrief?: (booking: Booking) => void;
-  onViewDebrief?: (booking: Booking) => void;
-  onSkipDebrief?: (booking: Booking) => void;
-  isSkipped?: boolean;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [attendeeCount, setAttendeeCount] = useState<string>(booking.attendeeCount?.toString() || "");
-  const [rangatahiCount, setRangatahiCount] = useState<string>(booking.rangatahiCount?.toString() || "");
-  const [isRangatahi, setIsRangatahi] = useState<boolean>(booking.isRangatahi || false);
-  const [attendeeSearch, setAttendeeSearch] = useState("");
-  const [taggedIds, setTaggedIds] = useState<number[]>(booking.attendees || []);
-  const { toast } = useToast();
-
-  useEffect(() => {
-    setAttendeeCount(booking.attendeeCount?.toString() || "");
-    setRangatahiCount(booking.rangatahiCount?.toString() || "");
-    setIsRangatahi(booking.isRangatahi || false);
-    setTaggedIds(booking.attendees || []);
-  }, [booking]);
-
-  const attendanceMutation = useMutation({
-    mutationFn: async (data: { attendeeCount?: number | null; rangatahiCount?: number | null; attendees?: number[]; isRangatahi?: boolean }) => {
-      const res = await apiRequest("PATCH", `/api/bookings/${booking.id}/attendance`, data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
-    },
-    onError: (err: any) => {
-      toast({ title: "Failed to save attendance", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const saveAttendance = () => {
-    const parsedAttendee = attendeeCount ? parseInt(attendeeCount, 10) : null;
-    const parsedRangatahi = rangatahiCount ? parseInt(rangatahiCount, 10) : null;
-    attendanceMutation.mutate({
-      attendeeCount: parsedAttendee !== null && !isNaN(parsedAttendee) ? parsedAttendee : null,
-      rangatahiCount: parsedRangatahi !== null && !isNaN(parsedRangatahi) ? parsedRangatahi : null,
-      attendees: taggedIds,
-      isRangatahi,
-    });
-  };
-
-  const toggleRangatahi = () => {
-    const next = !isRangatahi;
-    setIsRangatahi(next);
-    const parsedAttendee = attendeeCount ? parseInt(attendeeCount, 10) : null;
-    const parsedRangatahi = rangatahiCount ? parseInt(rangatahiCount, 10) : null;
-    attendanceMutation.mutate({
-      isRangatahi: next,
-      attendeeCount: parsedAttendee !== null && !isNaN(parsedAttendee) ? parsedAttendee : null,
-      rangatahiCount: parsedRangatahi !== null && !isNaN(parsedRangatahi) ? parsedRangatahi : null,
-      attendees: taggedIds,
-    });
-  };
-
-  const addAttendee = (contactId: number) => {
-    if (taggedIds.includes(contactId)) return;
-    const next = [...taggedIds, contactId];
-    setTaggedIds(next);
-    setAttendeeSearch("");
-    attendanceMutation.mutate({ attendees: next });
-  };
-
-  const removeAttendee = (contactId: number) => {
-    const next = taggedIds.filter(id => id !== contactId);
-    setTaggedIds(next);
-    attendanceMutation.mutate({ attendees: next });
-  };
-
-  const filteredContacts = useMemo(() => {
-    if (!attendeeSearch.trim()) return [];
-    const q = attendeeSearch.toLowerCase();
-    return allContacts.filter(c => c.name?.toLowerCase().includes(q) && !taggedIds.includes(c.id)).slice(0, 8);
-  }, [attendeeSearch, allContacts, taggedIds]);
-
-  const bookingVIds = booking.venueIds || (booking.venueId ? [booking.venueId] : []);
-  const venueName = bookingVIds.map((id: number) => venueMap[id]).filter(Boolean).join(" + ") || null;
-  const defaultCardColor = BOOKING_CARD_COLORS[booking.classification] || BOOKING_CARD_COLORS["Other"];
-
-  // Card color + fade based on debrief state
-  const cardColor = debriefStatus === "confirmed"
-    ? "border-green-500/20 bg-green-500/5"
-    : debriefStatus === "draft"
-    ? "border-blue-500/20 bg-blue-500/5"
-    : defaultCardColor;
-  const cardOpacity = debriefStatus === "confirmed"
-    ? "opacity-50 hover:opacity-75 transition-opacity"
-    : debriefStatus === "draft"
-    ? "opacity-70 hover:opacity-90 transition-opacity"
-    : isSkipped ? "opacity-40 hover:opacity-75 transition-opacity" : "";
-
-  return (
-    <Card
-      className={`p-4 overflow-visible ${cardColor} ${cardOpacity}`}
-      data-testid={`card-booking-calendar-${booking.id}`}
-    >
-      <div
-        className="cursor-pointer"
-        onClick={() => setExpanded(!expanded)}
-        data-testid={`button-expand-booking-${booking.id}`}
-      >
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <h4 className="font-medium text-sm truncate">{(booking as any).displayName || booking.title || booking.classification || "Untitled booking"}</h4>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground mt-1">
-              {(booking.bookerName || booking.bookerId) && (
-                <span className="flex items-center gap-1">
-                  <Users className="w-3 h-3" />
-                  {booking.bookerName || allContacts.find(c => c.id === booking.bookerId)?.name || "Unknown"}
-                </span>
-              )}
-              {booking.startTime && (
-                <span className="flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  {booking.startTime}{booking.endTime ? ` - ${booking.endTime}` : ""}
-                </span>
-              )}
-              {venueName && (
-                <span className="flex items-center gap-1">
-                  <Building2 className="w-3 h-3" />
-                  {venueName}
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-            {isRangatahi && (
-              <Badge className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">Rangatahi</Badge>
-            )}
-            <Badge className={`text-[10px] ${EVENT_TYPE_BADGE_COLORS["Venue Hire"] || ""}`}>
-              Venue Hire
-            </Badge>
-            <Badge className={`text-[10px] ${booking.status === "completed" ? "bg-green-500/10 text-green-700 dark:text-green-300" : "bg-blue-500/10 text-blue-700 dark:text-blue-300"}`}>
-              {booking.status}
-            </Badge>
-            {expanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
-          </div>
-        </div>
-        {!expanded && (taggedIds.length > 0 || booking.attendeeCount) && (
-          <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
-            <Users className="w-3 h-3" />
-            {booking.attendeeCount ? `${booking.attendeeCount} attendees` : ""}
-            {taggedIds.length > 0 ? `${booking.attendeeCount ? " / " : ""}${taggedIds.length} tagged` : ""}
-          </div>
-        )}
-      </div>
-
-      {expanded && (
-        <div className="mt-3 pt-3 border-t space-y-3" onClick={e => e.stopPropagation()}>
-          <div className="flex items-center justify-between">
-            <button
-              onClick={toggleRangatahi}
-              className={`flex items-center gap-2 text-sm px-3 py-1.5 rounded-md border transition-colors ${isRangatahi ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300" : "border-border text-muted-foreground hover:bg-muted"}`}
-              data-testid={`toggle-rangatahi-${booking.id}`}
-            >
-              <Users className="w-3.5 h-3.5" />
-              {isRangatahi ? "Rangatahi Event" : "Mark as Rangatahi"}
-            </button>
-            {attendanceMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
-          </div>
-
-          <div className={`grid ${isRangatahi ? "grid-cols-2" : "grid-cols-1"} gap-2`}>
-            <div>
-              <Label className="text-xs text-muted-foreground">Head Count</Label>
-              <Input
-                type="number"
-                placeholder="0"
-                value={attendeeCount}
-                onChange={e => setAttendeeCount(e.target.value)}
-                onBlur={saveAttendance}
-                className="h-8 text-sm"
-                data-testid={`input-attendee-count-${booking.id}`}
-              />
-            </div>
-            {isRangatahi && (
-            <div>
-              <Label className="text-xs text-muted-foreground">Rangatahi Count</Label>
-              <Input
-                type="number"
-                placeholder="0"
-                value={rangatahiCount}
-                onChange={e => setRangatahiCount(e.target.value)}
-                onBlur={saveAttendance}
-                className="h-8 text-sm"
-                data-testid={`input-rangatahi-count-${booking.id}`}
-              />
-            </div>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2 pt-2 border-t">
-            <Button size="sm" variant="ghost" className="text-xs text-muted-foreground" onClick={(e) => { e.stopPropagation(); onSkipDebrief?.(booking); }}>
-              <EyeOff className="w-3.5 h-3.5 mr-1" />
-              Archive
-            </Button>
-          </div>
-        </div>
-      )}
-    </Card>
-  );
-}
-
-function EventCard({
-  entry,
-  appEvents,
-  programmes,
-  onLogDebrief,
-  onLogDebriefFromApp,
-  onDeleteEvent,
-  onDismissEvent,
-  onSkipDebrief,
-  onMarkNotPersonal,
-  isDismissPending,
-  isDebriefPending,
-  isMarkedNotPersonal,
-  debriefInfo,
-  onViewDebrief,
-  venueNames,
-  sourceBooking,
-  venueMap,
-  allContacts: allContactsProp,
-}: {
-  entry: CombinedEvent;
-  appEvents: AppEvent[];
-  programmes: Programme[];
-  onLogDebrief: (gcal: GoogleCalendarEvent) => void;
-  onLogDebriefFromApp: (app: AppEvent) => void;
-  onDeleteEvent: (app: AppEvent) => void;
-  onDismissEvent: (gcalId: string, reason: string) => void;
-  onSkipDebrief?: (eventId: number, reason: string) => void;
-  onMarkNotPersonal: (gcalId: string) => void;
-  isDismissPending: boolean;
-  isDebriefPending: boolean;
-  isMarkedNotPersonal: boolean;
-  debriefInfo: DebriefInfo;
-  onViewDebrief: (debriefId: number) => void;
-  venueNames?: string[];
-  sourceBooking?: Booking | null;
-  venueMap?: Record<number, string>;
-  allContacts?: Contact[];
-}) {
-  const { toast } = useToast();
-  const [expanded, setExpanded] = useState(false);
-  const [contactSearch, setContactSearch] = useState("");
-  const [showLinkProgramme, setShowLinkProgramme] = useState(false);
-  const [showConvertProgramme, setShowConvertProgramme] = useState(false);
-  const [selectedClassification, setSelectedClassification] = useState("Community Workshop");
-  const [showNewPersonDialog, setShowNewPersonDialog] = useState(false);
-  const [newPersonName, setNewPersonName] = useState("");
-  const [newPersonEmail, setNewPersonEmail] = useState("");
-  const [newPersonPhone, setNewPersonPhone] = useState("");
-  const [localSpaceUseType, setLocalSpaceUseType] = useState<string>("");
-  const { data: contacts } = useContacts();
-
-  const updateSpaceUseTypeMutation = useMutation({
-    mutationFn: async ({ eventId, spaceUseType }: { eventId: number; spaceUseType: string | null }) => {
-      const res = await apiRequest("PATCH", `/api/events/${eventId}`, { spaceUseType });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
-    },
-  });
-
-  const createContactMutation = useMutation({
-    mutationFn: async (data: { name: string; email?: string; phone?: string }) => {
-      const res = await apiRequest("POST", "/api/contacts", {
-        name: data.name,
-        email: data.email || null,
-        phone: data.phone || null,
-        role: "Entrepreneur",
-      });
-      return res.json();
-    },
-    onSuccess: async (newContact: Contact) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-      setShowNewPersonDialog(false);
-      setNewPersonName("");
-      setNewPersonEmail("");
-      setNewPersonPhone("");
-      toast({ title: "Person added", description: `${newContact.name} has been created.` });
-      await handleAddContact(newContact);
-    },
-    onError: (err: any) => {
-      toast({ title: "Failed to add person", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const isGcal = entry.type === "gcal" && entry.gcal;
-  const isApp = entry.type === "app" && entry.app;
-  const isManualLog = isApp && entry.app?.source === "internal";
-
-  const linkedAppEvent = isGcal
-    ? appEvents.find(e => e.googleCalendarEventId === entry.gcal!.id)
-    : entry.app;
-
-  const appEventId = linkedAppEvent?.id;
-
-  // Booking-aware: use booking data when available
-  const bk = sourceBooking;
-  const bkVenueIds = bk ? (bk.venueIds || (bk.venueId ? [bk.venueId] : [])) : [];
-  const bkVenueName = bk && venueMap ? bkVenueIds.map((id: number) => venueMap[id]).filter(Boolean).join(" + ") : null;
-
-  const eventName = bk
-    ? ((bk as any).displayName || bk.title || bk.classification || "Venue Hire")
-    : (isGcal ? entry.gcal!.summary : entry.app!.name);
-  const eventType = bk ? "Venue Hire" : (linkedAppEvent?.type || (isGcal ? classifyGcalEvent(entry.gcal!) : entry.app!.type));
-  const startStr = isGcal ? entry.gcal!.start : entry.app!.startTime;
-  const endStr = isGcal ? entry.gcal!.end : entry.app!.endTime;
-  const location = bkVenueName || (isGcal ? entry.gcal!.location : entry.app!.location);
-  const bookerName = bk ? (bk.bookerName || (allContactsProp || []).find(c => c.id === bk.bookerId)?.name) : null;
-
-  const { data: attendance } = useEventAttendance(appEventId);
-  const addAttendance = useAddAttendance();
-  const removeAttendance = useRemoveAttendance(appEventId);
-
-  const importGcalMutation = useMutation({
-    mutationFn: async (data: { gcalId: string; name: string; type: string; start: string; end: string; location?: string; description?: string; attendees?: Array<{ email: string; displayName?: string; responseStatus?: string; organizer?: boolean }> }) => {
-      const res = await apiRequest("POST", "/api/events", {
-        name: data.name,
-        type: data.type,
-        startTime: data.start,
-        endTime: data.end,
-        location: data.location || null,
-        description: data.description || null,
-        googleCalendarEventId: data.gcalId,
-        calendarAttendees: data.attendees || null,
-        attendeeCount: data.attendees?.length || null,
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
-    },
-    onError: (err: any) => {
-      toast({ title: "Failed to import event", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const updateTypeMutation = useMutation({
-    mutationFn: async ({ id, type }: { id: number; type: string }) => {
-      await apiRequest("PATCH", `/api/events/${id}`, { type });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
-    },
-    onError: (err: any) => {
-      toast({ title: "Failed to update type", description: err.message, variant: "destructive" });
-    },
-  });
-
-  async function ensureAppEvent(): Promise<number | undefined> {
-    if (appEventId) return appEventId;
-    if (!isGcal || !entry.gcal) return undefined;
-    try {
-      const result = await importGcalMutation.mutateAsync({
-        gcalId: entry.gcal.id,
-        name: entry.gcal.summary || "Untitled Event",
-        type: classifyGcalEvent(entry.gcal),
-        start: entry.gcal.start,
-        end: entry.gcal.end,
-        location: entry.gcal.location,
-        description: entry.gcal.description,
-        attendees: entry.gcal.attendees,
-      });
-      return result.id;
-    } catch {
-      return undefined;
-    }
-  }
-
-  const linkProgrammeMutation = useMutation({
-    mutationFn: async ({ eventId, programmeId }: { eventId: number; programmeId: number }) => {
-      const res = await apiRequest("POST", `/api/events/${eventId}/link-programme`, { programmeId });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
-      setShowLinkProgramme(false);
-      toast({ title: "Linked", description: "Event linked to programme" });
-    },
-    onError: (err: any) => {
-      toast({ title: "Failed to link", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const convertToProgrammeMutation = useMutation({
-    mutationFn: async ({ eventId, classification }: { eventId: number; classification: string }) => {
-      const res = await apiRequest("POST", `/api/events/${eventId}/convert-to-programme`, { classification });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/programmes"] });
-      setShowConvertProgramme(false);
-      toast({ title: "Converted", description: "Event converted to programme" });
-    },
-    onError: (err: any) => {
-      toast({ title: "Failed to convert", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const markPersonalMutation = useMutation({
-    mutationFn: async (eventId: number) => {
-      const res = await apiRequest("POST", `/api/events/${eventId}/mark-personal`);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
-      toast({ title: "Marked personal", description: "Event excluded from reporting" });
-    },
-    onError: (err: any) => {
-      toast({ title: "Failed", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const unlinkMutation = useMutation({
-    mutationFn: async (eventId: number) => {
-      const res = await apiRequest("POST", `/api/events/${eventId}/unlink`);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/programmes"] });
-      toast({ title: "Unlinked", description: "Programme link removed" });
-    },
-    onError: (err: any) => {
-      toast({ title: "Failed to unlink", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const isLinkedToProgramme = !!(linkedAppEvent?.linkedProgrammeId);
-  const isLinkedToBooking = !!(linkedAppEvent?.linkedBookingId);
-  const isPersonalType = linkedAppEvent?.type === "Personal";
-  const linkedProgramme = isLinkedToProgramme ? programmes.find(p => p.id === linkedAppEvent!.linkedProgrammeId) : null;
-
-  async function handleLinkProgramme(programmeId: number) {
-    let eventId = appEventId;
-    if (!eventId) {
-      eventId = await ensureAppEvent();
-    }
-    if (!eventId) return;
-    linkProgrammeMutation.mutate({ eventId, programmeId });
-  }
-
-  async function handleConvertToProgramme() {
-    let eventId = appEventId;
-    if (!eventId) {
-      eventId = await ensureAppEvent();
-    }
-    if (!eventId) return;
-    convertToProgrammeMutation.mutate({ eventId, classification: selectedClassification });
-  }
-
-  async function handleMarkPersonal() {
-    let eventId = appEventId;
-    if (!eventId) {
-      eventId = await ensureAppEvent();
-    }
-    if (!eventId) return;
-    markPersonalMutation.mutate(eventId);
-  }
-
-  async function handleTypeChange(newType: string) {
-    if (appEventId) {
-      updateTypeMutation.mutate({ id: appEventId, type: newType });
-    } else {
-      const id = await ensureAppEvent();
-      if (id) {
-        updateTypeMutation.mutate({ id, type: newType });
-      }
-    }
-  }
-
-  async function handleAddContact(contact: Contact) {
-    let eventId = appEventId;
-    if (!eventId) {
-      eventId = await ensureAppEvent();
-    }
-    if (!eventId) return;
-    addAttendance.mutate({ eventId, contactId: contact.id, role: "attendee" });
-    setContactSearch("");
-  }
-
-  const filteredContacts = useMemo(() => {
-    if (!contacts || !contactSearch.trim()) return [];
-    const term = contactSearch.toLowerCase();
-    const existingIds = new Set((attendance || []).map((a: any) => a.contactId));
-    return contacts
-      .filter((c: Contact) => !existingIds.has(c.id))
-      .filter((c: Contact) =>
-        c.name.toLowerCase().includes(term) ||
-        (c.email && c.email.toLowerCase().includes(term))
-      )
-      .slice(0, 5);
-  }, [contacts, contactSearch, attendance]);
-
-  const badgeColor = EVENT_TYPE_BADGE_COLORS[eventType] || "";
-  const cardTint = EVENT_TYPE_CARD_TINTS[eventType] || "border-gray-500/20 bg-gray-500/5 dark:bg-gray-500/5";
-  const personalEvent = isGcal && !isMarkedNotPersonal ? isPersonalEvent(entry.gcal!.summary, entry.gcal!.description) : false;
-
-  // Debrief status
-  const isConfirmed = debriefInfo?.status === "confirmed";
-  const isInProgress = debriefInfo && debriefInfo.status !== "confirmed";
-  const needsDebrief = entry.isPast && !debriefInfo
-    && entry.type !== "booking"
-    && !(entry.type === "app" && entry.app?.source === "internal");
-
-  // Card color + fade based on debrief state
-  const isVenueHire = eventType === "Venue Hire";
-  const cardState = isVenueHire
-    ? entry.isPast && isConfirmed
-      ? "opacity-50 hover:opacity-75 transition-opacity border-orange-500/20 bg-orange-500/5 dark:bg-orange-500/5"
-      : "border-orange-500/20 bg-orange-500/5 dark:bg-orange-500/5"
-    : entry.isPast && isConfirmed
-    ? "opacity-50 hover:opacity-75 transition-opacity border-green-500/20 bg-green-500/5"
-    : entry.isPast && isInProgress
-    ? "opacity-70 hover:opacity-90 transition-opacity border-blue-500/20 bg-blue-500/5"
-    : "bg-muted/40 border-border";
-
-  return (
-    <Card
-      className={`p-4 cursor-pointer ${cardState}`}
-      onClick={() => setExpanded(!expanded)} data-testid={`card-event-${isGcal ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`}`}>
-      <div className="space-y-2">
-        {personalEvent && (
-          <div className="flex items-center justify-between gap-2 pb-1">
-            <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
-              <AlertTriangle className="w-3.5 h-3.5" />
-              <span className="text-xs font-medium">Looks like a personal event</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-6 text-xs px-2"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onMarkNotPersonal(entry.gcal!.id);
-                }}
-                data-testid={`button-not-personal-${entry.gcal!.id}`}
-              >
-                <X className="w-3 h-3 mr-1" />
-                Not personal
-              </Button>
-              <DismissPopover
-                reasons={["Archive", "Ignore", "Personal"]}
-                onDismiss={(reason) => onDismissEvent(entry.gcal!.id, reason)}
-                isPending={isDismissPending}
-                testIdPrefix={`quick-dismiss-${entry.gcal!.id}`}
-              >
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-6 text-xs px-2"
-                  onClick={(e) => e.stopPropagation()}
-                  data-testid={`button-quick-dismiss-${entry.gcal!.id}`}
-                >
-                  <EyeOff className="w-3 h-3 mr-1" />
-                  Archive
-                </Button>
-              </DismissPopover>
-            </div>
-          </div>
-        )}
-        <div
-          className="w-full text-left"
-          data-testid={`button-expand-event-${isGcal ? entry.gcal!.id : entry.app!.id}`}
-        >
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex-1 min-w-0">
-              <h4 className="font-medium text-sm text-foreground truncate">{eventName}</h4>
-              {bookerName && (
-                <span className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                  <Users className="w-3 h-3" />{bookerName}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <Badge variant="secondary" className={`text-xs ${badgeColor}`}>
-                {eventType}
-              </Badge>
-              {expanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
-            </div>
-          </div>
-          {location && (
-            <div className="flex justify-end">
-              <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                <MapPin className="w-3 h-3" />{location}
-              </span>
-            </div>
-          )}
-        </div>
-
-        {(!isManualLog || (attendance && attendance.length > 0)) && (
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          {!isManualLog && (
-            <span className="flex items-center gap-1">
-              <Clock className="w-3 h-3" />
-              {formatTime(startStr)} - {formatTime(endStr)}
-            </span>
-          )}
-          {(() => {
-            const count = entry.app?.attendeeCount
-              || (isGcal && entry.gcal!.attendees ? entry.gcal!.attendees.filter(a => !a.organizer).length : 0)
-              || (attendance ? attendance.length : 0);
-            return count > 0 ? (
-              <span className="flex items-center gap-1">
-                <Users className="w-3 h-3" />
-                {count}
-              </span>
-            ) : null;
-          })()}
-          {attendance && attendance.length > 0 && !isConfirmed && !expanded && (
-            <span className="flex items-center gap-1">
-              <UserPlus className="w-3 h-3" />
-              {attendance.length} tagged
-            </span>
-          )}
-        </div>
-        )}
-
-        {entry.isPast && (isConfirmed || isInProgress || needsDebrief) && (
-          <div className={`flex items-center gap-1 text-xs mt-0.5 ${
-            isConfirmed ? "text-emerald-600/60 dark:text-emerald-400/60"
-            : isInProgress ? "text-blue-600/60 dark:text-blue-400/60"
-            : "text-amber-600/70 dark:text-amber-400/70"
-          }`}>
-            {isConfirmed ? <CheckCircle2 className="w-3 h-3" />
-              : isInProgress ? <Loader2 className="w-3 h-3 animate-spin" />
-              : <CircleDashed className="w-3 h-3" />}
-            {isConfirmed ? "Debriefed" : isInProgress ? "Debriefing" : "To debrief"}
-          </div>
-        )}
-
-        {expanded && (
-          <div className="space-y-3 pt-2 border-t border-border/50 mt-2">
-            {(() => {
-              const desc = cleanDescription(isGcal ? entry.gcal?.description : entry.app?.description);
-              return desc ? (
-                <p className="text-xs text-muted-foreground whitespace-pre-line max-h-24 overflow-y-auto">{desc}</p>
-              ) : null;
-            })()}
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Event Type</Label>
-              <Select
-                value={eventType}
-                onValueChange={handleTypeChange}
-                data-testid={`select-event-type-${isGcal ? entry.gcal!.id : entry.app!.id}`}
-              >
-                <SelectTrigger className="h-8 text-xs" data-testid={`trigger-event-type-${isGcal ? entry.gcal!.id : entry.app!.id}`}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {EVENT_TYPES.map(t => (
-                    <SelectItem key={t} value={t} data-testid={`option-type-${t.toLowerCase().replace(/\s+/g, "-")}`}>
-                      <span className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${EVENT_TYPE_DOT_COLORS[t]}`} />
-                        {t}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {entry.isPast && appEventId && (
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Space Use</Label>
-              <Select
-                value={localSpaceUseType || (linkedAppEvent?.spaceUseType ?? "")}
-                onValueChange={(val) => {
-                  setLocalSpaceUseType(val);
-                  updateSpaceUseTypeMutation.mutate({ eventId: appEventId, spaceUseType: val || null });
-                }}
-                data-testid={`select-space-use-${appEventId}`}
-              >
-                <SelectTrigger className="h-8 text-xs" data-testid={`trigger-space-use-${appEventId}`}>
-                  <SelectValue placeholder="Select space use..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {(venueNames || []).map(name => (
-                    <SelectItem key={name} value={name}>{name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            )}
-
-            {isGcal && entry.gcal!.attendees?.length > 0 && (() => {
-              const contactByEmail = new Map(
-                (contacts || []).filter((c: Contact) => c.email).map((c: Contact) => [c.email!.toLowerCase(), c])
-              );
-              const invitees = entry.gcal!.attendees.filter(a => !a.organizer);
-              if (invitees.length === 0) return null;
-              const statusIcon = (s: string) => {
-                if (s === "accepted") return <span className="text-emerald-500 text-[10px]">✓</span>;
-                if (s === "declined") return <span className="text-red-400 text-[10px]">✗</span>;
-                if (s === "tentative") return <span className="text-amber-500 text-[10px]">?</span>;
-                return <span className="text-muted-foreground text-[10px]">—</span>;
-              };
-              return (
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Users className="w-3 h-3" /> Invitees
-                    <Button size="sm" variant="ghost" className="h-5 text-[10px] px-1.5" onClick={(e) => {
-                      e.stopPropagation();
-                      const matched = invitees
-                        .map(a => contactByEmail.get(a.email.toLowerCase()))
-                        .filter((c): c is Contact => !!c);
-                      matched.forEach(c => handleAddContact(c));
-                    }}>
-                      Tag all ↓
-                    </Button>
-                  </Label>
-                  <div className="flex flex-wrap gap-x-3 gap-y-1">
-                    {invitees.map((a) => {
-                      const matched = contactByEmail.get(a.email.toLowerCase());
-                      const name = matched?.name || a.displayName || a.email;
-                      return (
-                        <span key={a.email} className="flex items-center gap-1 text-xs">
-                          {statusIcon(a.responseStatus)}
-                          {matched ? (
-                            <Link
-                              href={`/contacts/${matched.id}`}
-                              className="text-primary hover:underline"
-                              onClick={(e: React.MouseEvent) => e.stopPropagation()}
-                            >
-                              {name}
-                            </Link>
-                          ) : (
-                            <span className="text-muted-foreground">{name}</span>
-                          )}
-                        </span>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {<div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Community Members</Label>
-              {attendance && attendance.length > 0 && (
-                <div className="flex flex-wrap gap-1 mb-1.5">
-                  {attendance.map((a: any) => {
-                    const contact = (contacts || []).find((c: Contact) => c.id === a.contactId);
-                    return (
-                      <Badge key={a.id} variant="secondary" className="text-xs gap-1 pr-1">
-                        {contact?.name || "Unknown"}
-                        <button
-                          onClick={() => removeAttendance.mutate(a.id)}
-                          className="ml-0.5 hover:text-destructive transition-colors"
-                          data-testid={`button-remove-member-${a.id}`}
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </Badge>
-                    );
-                  })}
-                </div>
-              )}
-              <div className="relative">
-                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                <Input
-                  value={contactSearch}
-                  onChange={(e) => setContactSearch(e.target.value)}
-                  placeholder="Search community members..."
-                  className="h-8 text-xs pl-7"
-                  data-testid={`input-search-members-${isGcal ? entry.gcal!.id : entry.app!.id}`}
-                />
-              </div>
-              {contactSearch.trim() && (
-                <div className="border border-border rounded-md divide-y divide-border/50 max-h-[150px] overflow-y-auto">
-                  {filteredContacts.map((c: Contact) => (
-                    <button
-                      key={c.id}
-                      onClick={() => handleAddContact(c)}
-                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between"
-                      data-testid={`button-add-member-${c.id}`}
-                    >
-                      <span>{c.name}</span>
-                      <UserPlus className="w-3 h-3 text-muted-foreground" />
-                    </button>
-                  ))}
-                  <button
-                    onClick={async () => {
-                      try {
-                        const res = await apiRequest("POST", "/api/contacts", {
-                          name: contactSearch.trim(),
-                          role: "Entrepreneur",
-                        });
-                        const newContact = await res.json();
-                        queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-                        handleAddContact(newContact);
-                      } catch (err: any) {}
-                    }}
-                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between text-primary"
-                    data-testid="button-create-new-person"
-                  >
-                    <span>Create "{contactSearch.trim()}" as new contact</span>
-                    <UserPlus className="w-3 h-3" />
-                  </button>
-                </div>
-              )}
-            </div>}
-
-            {false && <Dialog open={showNewPersonDialog} onOpenChange={setShowNewPersonDialog}>
-              <DialogContent className="max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>Add New Person</DialogTitle>
-                  <DialogDescription>Create a new community member to tag on this event.</DialogDescription>
-                </DialogHeader>
-                <div className="space-y-3 py-2">
-                  <div className="space-y-1.5">
-                    <Label className="text-sm">Name</Label>
-                    <Input
-                      value={newPersonName}
-                      onChange={(e) => setNewPersonName(e.target.value)}
-                      placeholder="Full name"
-                      data-testid="input-new-person-name"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-sm">Email (optional)</Label>
-                    <Input
-                      value={newPersonEmail}
-                      onChange={(e) => setNewPersonEmail(e.target.value)}
-                      placeholder="email@example.com"
-                      type="email"
-                      data-testid="input-new-person-email"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-sm">Phone (optional)</Label>
-                    <Input
-                      value={newPersonPhone}
-                      onChange={(e) => setNewPersonPhone(e.target.value)}
-                      placeholder="Phone number"
-                      type="tel"
-                      data-testid="input-new-person-phone"
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setShowNewPersonDialog(false)} data-testid="button-cancel-new-person">
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={() => createContactMutation.mutate({
-                      name: newPersonName.trim(),
-                      email: newPersonEmail.trim() || undefined,
-                      phone: newPersonPhone.trim() || undefined,
-                    })}
-                    disabled={!newPersonName.trim() || createContactMutation.isPending}
-                    data-testid="button-save-new-person"
-                  >
-                    {createContactMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
-                    Add Person
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>}
-
-
-            <div className="flex items-center gap-2 pt-2">
-              <div className="flex items-center gap-2 flex-1">
-                <Button size="sm" variant="outline" className="text-xs" onClick={(e) => e.stopPropagation()} data-testid="button-save-event">
-                  <Save className="w-3 h-3 mr-1" /> Save
-                </Button>
-                {bk && (
-                  <Button size="sm" variant="outline" className="text-xs" onClick={(e) => { e.stopPropagation(); window.location.href = `/bookings/${bk.id}`; }}>
-                    <ExternalLink className="w-3 h-3 mr-1" /> Booking
-                  </Button>
-                )}
-                {linkedAppEvent?.linkedProgrammeId && (
-                  <Button size="sm" variant="outline" className="text-xs" onClick={(e) => { e.stopPropagation(); window.location.href = `/programmes`; }}>
-                    <ExternalLink className="w-3 h-3 mr-1" /> Programme
-                  </Button>
-                )}
-              </div>
-              {(entry.isPast && !isConfirmed && !isInProgress) || !entry.isPast ? (
-                <DismissPopover
-                  reasons={["Not relevant", "Duplicate", "Personal"]}
-                  onDismiss={(reason) => {
-                    if (appEventId && onSkipDebrief) onSkipDebrief(appEventId, reason);
-                    else if (isGcal) onDismissEvent(entry.gcal!.id, reason);
-                  }}
-                  isPending={isDismissPending}
-                  testIdPrefix={`skip-${isGcal ? entry.gcal!.id : entry.app?.id}`}
-                >
-                  <Button size="sm" variant="ghost" className="text-xs text-muted-foreground" onClick={(e) => e.stopPropagation()}>
-                    Skip
-                  </Button>
-                </DismissPopover>
-              ) : null}
-              <DismissPopover
-                reasons={["Duplicate", "Didn't happen", "Personal", "Not relevant"]}
-                onDismiss={(reason) => {
-                  if (isGcal) onDismissEvent(entry.gcal!.id, reason);
-                  else if (entry.app) onDeleteEvent(entry.app);
-                }}
-                isPending={isDismissPending}
-                testIdPrefix={`archive-${isGcal ? entry.gcal!.id : entry.app?.id}`}
-              >
-                <Button size="sm" variant="ghost" className="text-xs text-muted-foreground" onClick={(e) => e.stopPropagation()}>
-                  Archive
-                </Button>
-              </DismissPopover>
-            </div>
-          </div>
-        )}
-
-      </div>
-    </Card>
-  );
-}
+import { Card } from "@/components/ui/card";
+import {
+  CalendarGrid,
+  DayPanel,
+  MonthProgrammes,
+  DeleteEventDialog,
+  LogActivityDialog,
+  CalendarSettingsPanel,
+  MonthSummaryBar,
+  NeedsAttentionPanel,
+  AppEvent,
+  CombinedEvent,
+  DebriefInfo,
+  SpaceOccupancyItem,
+  NOT_PERSONAL_REASON,
+  classifyGcalEvent,
+  getEventType,
+  formatDate,
+  formatTime,
+} from "@/components/calendar";
 
 export default function CalendarPage() {
   const { toast } = useToast();
@@ -1230,14 +108,7 @@ export default function CalendarPage() {
     }
   }, [isMobile]);
 
-  function toggleTypeFilter(type: string) {
-    setActiveTypeFilters(prev => {
-      const next = new Set(prev);
-      if (next.has(type)) next.delete(type);
-      else next.add(type);
-      return next;
-    });
-  }
+  // ---- Data queries ----
 
   const { data: gcalEvents, isLoading: gcalLoading, error: gcalError, refetch: refetchGcal } = useQuery<GoogleCalendarEvent[]>({
     queryKey: ["/api/google-calendar/events"],
@@ -1282,6 +153,8 @@ export default function CalendarPage() {
     queryKey: ["/api/monthly-snapshots"],
   });
 
+  // ---- Debrief maps ----
+
   const debriefByEventId = useMemo(() => {
     const map = new Map<number, DebriefInfo>();
     if (!impactLogs) return map;
@@ -1297,7 +170,6 @@ export default function CalendarPage() {
 
   const debriefByGcalId = useMemo(() => {
     const map = new Map<string, DebriefInfo>();
-    // Match via internal event's googleCalendarEventId → debriefByEventId
     if (appEvents && debriefByEventId.size) {
       for (const event of appEvents) {
         if (event.googleCalendarEventId && debriefByEventId.has(event.id)) {
@@ -1318,7 +190,6 @@ export default function CalendarPage() {
     return null;
   }
 
-  // Map booking ID → debrief status (via linked event → impact log)
   const debriefByBookingId = useMemo(() => {
     const map = new Map<number, "none" | "draft" | "confirmed">();
     if (!appEvents || !impactLogs) return map;
@@ -1329,7 +200,6 @@ export default function CalendarPage() {
         map.set(Number(event.linkedBookingId), debrief.status as "draft" | "confirmed");
       }
     }
-    // Also check debriefs that reference booking title directly (for debriefs created before linking)
     return map;
   }, [appEvents, impactLogs, debriefByEventId]);
 
@@ -1347,7 +217,7 @@ export default function CalendarPage() {
     return missingDebrief || !!missingAttendance;
   }
 
-  const PROGRAMME_MONTHLY_TARGET = 2;
+  // ---- Programme metrics ----
 
   const monthProgrammes = useMemo(() => {
     if (!programmes) return [];
@@ -1377,7 +247,7 @@ export default function CalendarPage() {
     return monthProgrammes.filter((p: Programme) => p.status !== "cancelled").length;
   }, [monthProgrammes]);
 
-  const NOT_PERSONAL_REASON = "__not_personal__";
+  // ---- Dismissed / not-personal sets ----
 
   const dismissedIds = useMemo(() => new Set(
     (dismissedEvents || []).filter(d => d.reason !== NOT_PERSONAL_REASON).map(d => d.gcalEventId)
@@ -1386,6 +256,8 @@ export default function CalendarPage() {
   const notPersonalIds = useMemo(() => new Set(
     (dismissedEvents || []).filter(d => d.reason === NOT_PERSONAL_REASON).map(d => d.gcalEventId)
   ), [dismissedEvents]);
+
+  // ---- Mutations ----
 
   const dismissMutation = useMutation({
     mutationFn: async ({ gcalEventId, reason }: { gcalEventId: string; reason: string }) => {
@@ -1456,8 +328,6 @@ export default function CalendarPage() {
       toast({ title: "Failed to update", description: err.message, variant: "destructive" });
     },
   });
-
-  const ACTIVITY_TYPES = ["Hub Activity", "Drop-in", "Meeting", "Community Event", "Venue Hire", "Other"] as const;
 
   const logActivityMutation = useMutation({
     mutationFn: async (data: { name: string; type: string; date: string; description: string; contacts: Contact[]; groups: { id: number; name: string }[] }) => {
@@ -1574,14 +444,12 @@ export default function CalendarPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/impact-logs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
       queryClient.invalidateQueries({ queryKey: ["/api/events/needs-debrief"] });
-      // Check if linked app event is missing attendee count
       const linkedEv: AppEvent | null | undefined = variables._linkedAppEvent;
       if (linkedEv && linkedEv.attendeeCount === null) {
         setAttendeeNudgeEventId(linkedEv.id);
         setAttendeeNudgeEventName(linkedEv.name);
         setAttendeeNudgeValue("");
       }
-      // Check if linked app event has no group tags
       const tags: string[] = variables._linkedTags || [];
       if (linkedEv && tags.length === 0) {
         setOrgLinkEventId(linkedEv.id);
@@ -1658,7 +526,6 @@ export default function CalendarPage() {
     if (booking.bookerName) details.push(`Booker: ${booking.bookerName}`);
     if (booking.attendeeCount) details.push(`Attendees: ${booking.attendeeCount}`);
 
-    // Find linked event if one exists
     const linkedEvent = (appEvents || []).find(e => Number(e.linkedBookingId) === Number(booking.id));
 
     createDebriefMutation.mutate({
@@ -1681,10 +548,11 @@ export default function CalendarPage() {
     deleteEventMutation.mutate({ id: (deleteTarget.event as AppEvent).id, reason: deleteReason.trim() });
   }
 
+  // ---- Combined events memo ----
+
   const allEvents = useMemo(() => {
     const combined: CombinedEvent[] = [];
 
-    // Primary dedup: any GCal ID that has a matching platform event or booking
     const importedGcalIds = new Set([
       ...(appEvents || [])
         .filter(e => e.googleCalendarEventId)
@@ -1694,7 +562,6 @@ export default function CalendarPage() {
         .map((b: Booking) => b.googleCalendarEventId),
     ]);
 
-    // Fallback dedup: name+date for unlinked events (catches manual duplicates)
     const internalEventKeys = new Set(
       (appEvents || [])
         .filter(e => !e.googleCalendarEventId)
@@ -1705,9 +572,7 @@ export default function CalendarPage() {
     );
 
     (gcalEvents || []).forEach(e => {
-      // Skip if platform already has this event (by ID — reliable)
       if (importedGcalIds.has(e.id)) return;
-      // Skip if a manually-created platform event matches (by name+date — fallback)
       const gcalKey = `${(e.summary || "").trim().toLowerCase()}|${new Date(e.start).toDateString()}`;
       if (internalEventKeys.has(gcalKey)) return;
       const d = new Date(e.start);
@@ -1716,7 +581,6 @@ export default function CalendarPage() {
     });
 
     (appEvents || []).forEach(e => {
-      // Show all platform events — they're the source of truth once imported
       const d = new Date(e.startTime);
       combined.push({ date: d, type: "app", app: e, isPast: new Date(e.endTime) < new Date() });
     });
@@ -1758,11 +622,9 @@ export default function CalendarPage() {
     return events;
   }, [allEvents, activeTypeFilters, showNeedsAttention, debriefByEventId, debriefByGcalId]);
 
+  // ---- Foot traffic ----
+
   const currentMonthKey = format(startOfMonth(currentMonth), "yyyy-MM-dd");
-  const currentSnapshot = useMemo(() => {
-    if (!monthlySnapshots) return null;
-    return monthlySnapshots.find((s: any) => s.month?.slice(0, 10) === currentMonthKey) || null;
-  }, [monthlySnapshots, currentMonthKey]);
 
   const { data: dailyFootTrafficData } = useQuery<any[]>({
     queryKey: ["/api/daily-foot-traffic", currentMonthKey],
@@ -1795,8 +657,9 @@ export default function CalendarPage() {
     }
   }, [selectedDayFootTraffic]);
 
+  // ---- Month event counts ----
+
   const monthEventCount = useMemo(() => {
-    // Count ALL platform events for the month (not just filtered/displayed ones)
     const mStart = startOfMonth(currentMonth);
     const mEnd = endOfMonth(currentMonth);
     let count = 0;
@@ -1852,6 +715,8 @@ export default function CalendarPage() {
     }
   };
 
+  // ---- Date-indexed maps ----
+
   const eventsByDate = useMemo(() => {
     const map = new Map<string, CombinedEvent[]>();
     filteredEvents.forEach(e => {
@@ -1903,122 +768,7 @@ export default function CalendarPage() {
     return map;
   }, [needsAttentionEvents]);
 
-  const selectedWeekStart = useMemo(() => startOfWeek(selectedDate, { weekStartsOn: 1 }), [selectedDate]);
-  const selectedWeekEnd = useMemo(() => endOfWeek(selectedDate, { weekStartsOn: 1 }), [selectedDate]);
-
-  const baseFilteredEvents = useMemo(() => {
-    let events = allEvents.filter(e => !e.isDismissed);
-    if (activeTypeFilters.size > 0) {
-      events = events.filter(e => activeTypeFilters.has(getEventType(e)));
-    }
-    return events;
-  }, [allEvents, activeTypeFilters]);
-
-  const weekCrossesMonthBoundary = useMemo(() => {
-    return !isSameMonth(selectedWeekStart, selectedWeekEnd);
-  }, [selectedWeekStart, selectedWeekEnd]);
-
-  const adjacentMonthKey = useMemo(() => {
-    if (!weekCrossesMonthBoundary) return null;
-    const adjacentMonth = isSameMonth(selectedWeekStart, currentMonth) ? addMonths(currentMonth, 1) : subMonths(currentMonth, 1);
-    return format(startOfMonth(adjacentMonth), "yyyy-MM-dd");
-  }, [weekCrossesMonthBoundary, selectedWeekStart, currentMonth]);
-
-  const { data: adjacentMonthFootTraffic } = useQuery<any[]>({
-    queryKey: ["/api/daily-foot-traffic", adjacentMonthKey],
-    queryFn: async () => {
-      const r = await fetch(`/api/daily-foot-traffic?month=${adjacentMonthKey}`, { credentials: "include" });
-      if (!r.ok) throw new Error("Failed to fetch foot traffic");
-      return r.json();
-    },
-    enabled: !!adjacentMonthKey,
-  });
-
-  const weeklyStats = useMemo(() => {
-    const now = new Date();
-    const effectiveWeekEnd = selectedWeekEnd > now ? now : selectedWeekEnd;
-    const isCurrentWeek = selectedWeekEnd > now;
-    const weekEvents = baseFilteredEvents.filter(e => {
-      return e.date >= selectedWeekStart && e.date <= effectiveWeekEnd;
-    });
-
-    const totalEvents = weekEvents.length;
-    const typeBreakdown: Record<string, number> = {};
-    let debriefed = 0;
-    let pending = 0;
-    let totalAttendees = 0;
-
-    weekEvents.forEach(e => {
-      const eventType = getEventType(e);
-      typeBreakdown[eventType] = (typeBreakdown[eventType] || 0) + 1;
-
-      if (e.isPast && e.type !== "booking" && !(e.type === "app" && e.app?.source === "internal")) {
-        const info = getDebriefInfo(e);
-        if (info && info.status === "confirmed") {
-          debriefed++;
-        } else {
-          pending++;
-        }
-      }
-
-      if (e.type === "app" && e.app?.attendeeCount) {
-        totalAttendees += e.app.attendeeCount;
-      }
-      if (e.type === "booking" && e.booking?.attendeeCount) {
-        totalAttendees += e.booking.attendeeCount;
-      }
-    });
-
-    const allFootTrafficData = [
-      ...(Array.isArray(dailyFootTrafficData) ? dailyFootTrafficData : []),
-      ...(Array.isArray(adjacentMonthFootTraffic) ? adjacentMonthFootTraffic : []),
-    ];
-    const weekFootTraffic = allFootTrafficData
-      .filter((entry: any) => {
-        const entryDate = new Date(entry.date);
-        return entryDate >= selectedWeekStart && entryDate <= effectiveWeekEnd;
-      })
-      .reduce((sum: number, entry: any) => sum + (entry.count || 0), 0);
-
-    return { totalEvents, typeBreakdown, debriefed, pending, totalAttendees, weekFootTraffic, isCurrentWeek };
-  }, [baseFilteredEvents, selectedWeekStart, selectedWeekEnd, debriefByEventId, debriefByGcalId, dailyFootTrafficData, adjacentMonthFootTraffic]);
-
-  type SpaceOccupancyItem = {
-    kind: "booking" | "programme";
-    id: number;
-    title: string;
-    bookerName: string | null;
-    date: Date;
-    startDate: Date | null;
-    endDate: Date | null;
-    startTime: string | null;
-    endTime: string | null;
-    venue: string | null;
-    venueId: number | null;
-    status: string;
-    classification: string;
-  };
-
-  const BOOKING_DOT_COLORS: Record<string, string> = {
-    "Workshop": "bg-blue-400",
-    "Community Event": "bg-emerald-400",
-    "Private Hire": "bg-orange-400",
-    "Rehearsal": "bg-violet-400",
-    "Meeting": "bg-cyan-400",
-    "Pop-up": "bg-pink-400",
-    "Other": "bg-gray-400",
-  };
-
-  
-
-  const SPACE_STATUS_COLORS: Record<string, string> = {
-    enquiry: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300",
-    confirmed: "bg-green-500/15 text-green-700 dark:text-green-300",
-    completed: "bg-gray-500/15 text-gray-700 dark:text-gray-300",
-    cancelled: "bg-red-500/15 text-red-700 dark:text-red-300 line-through",
-    planned: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
-    active: "bg-green-500/15 text-green-700 dark:text-green-300",
-  };
+  // ---- Venue + space maps ----
 
   const venueMap = useMemo(() => {
     const map: Record<number, string> = {};
@@ -2095,6 +845,8 @@ export default function CalendarPage() {
     });
   }, [selectedDate, spaceByDate]);
 
+  // ---- Render ----
+
   return (
     <div className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
       <div className="max-w-5xl mx-auto">
@@ -2168,866 +920,144 @@ export default function CalendarPage() {
           </Card>
         )}
 
-        {showSettings && (
-          <Card className="p-4 mb-6" data-testid="panel-calendar-settings">
-            <div className="flex items-center justify-between mb-3 gap-2">
-              <h3 className="text-sm font-semibold">My Calendars</h3>
-              <Button size="icon" variant="ghost" onClick={() => setShowSettings(false)}>
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground mb-3">
-              Toggle which calendars to sync. Shared events across calendars are automatically deduplicated.
-            </p>
-            {calendarsListLoading ? (
-              <div className="flex items-center justify-center py-6 gap-2 text-sm text-muted-foreground">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Loading calendars...
-              </div>
-            ) : availableCalendars && availableCalendars.length > 0 ? (
-              <div className="space-y-1">
-                {availableCalendars.map(cal => {
-                  const setting = (calendarSettings || []).find(s => s.calendarId === cal.id);
-                  const isEnabled = cal.primary || !!setting;
-                  return (
-                    <div
-                      key={cal.id}
-                      className="flex items-center gap-3 p-2 rounded-md"
-                      data-testid={`calendar-toggle-${cal.id}`}
-                    >
-                      <div
-                        className="w-3 h-3 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: cal.backgroundColor }}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium truncate">{cal.summary}</p>
-                        {cal.description && (
-                          <p className="text-xs text-muted-foreground truncate">{cal.description}</p>
-                        )}
-                        {isEnabled && setting && (
-                          <label className="flex items-center gap-1.5 mt-1 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              className="w-3 h-3 rounded"
-                              checked={!!setting.autoImport}
-                              onChange={(e) => toggleAutoImportMutation.mutate({ settingId: setting.id, autoImport: e.target.checked })}
-                            />
-                            <span className="text-xs text-muted-foreground">Auto-import events</span>
-                          </label>
-                        )}
-                      </div>
-                      <Switch
-                        checked={isEnabled}
-                        disabled={cal.primary || toggleCalendarMutation.isPending}
-                        onCheckedChange={(checked) => {
-                          if (!cal.primary) {
-                            toggleCalendarMutation.mutate({
-                              calendarId: cal.id,
-                              label: cal.summary,
-                              enabled: checked,
-                            });
-                          }
-                        }}
-                        data-testid={`switch-calendar-${cal.id}`}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="py-4 text-center space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  Google Calendar not connected.
-                </p>
-                <Button
-                  size="sm"
-                  onClick={async () => {
-                    try {
-                      const res = await fetch("/api/google-calendar/oauth/authorize", { credentials: "include" });
-                      const data = await res.json();
-                      if (data.url) window.location.href = data.url;
-                    } catch (e) {
-                      console.error("Failed to get auth URL", e);
-                    }
-                  }}
-                >
-                  Connect Google Calendar
-                </Button>
-              </div>
-            )}
-          </Card>
-        )}
+        <CalendarSettingsPanel
+          showSettings={showSettings}
+          onClose={() => setShowSettings(false)}
+          availableCalendars={availableCalendars}
+          calendarsListLoading={calendarsListLoading}
+          calendarSettings={calendarSettings}
+          onToggleCalendar={(calendarId, label, enabled) => toggleCalendarMutation.mutate({ calendarId, label, enabled })}
+          onToggleAutoImport={(settingId, autoImport) => toggleAutoImportMutation.mutate({ settingId, autoImport })}
+          isTogglePending={toggleCalendarMutation.isPending}
+        />
 
-        <Card className="p-4 mb-6" data-testid="panel-monthly-summary">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-            <div className="flex items-center gap-2">
-              <Footprints className="w-4 h-4 text-primary" />
-              <span className="text-sm font-semibold" data-testid="text-monthly-summary-title">
-                {isSameMonth(currentMonth, new Date()) ? "This Month" : format(currentMonth, "MMMM yyyy")}
-              </span>
-            </div>
-            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-4">
-              <div className="flex items-center gap-2 text-sm">
-                <CalendarDays className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="text-muted-foreground">Events:</span>
-                <span className="font-medium" data-testid="text-month-event-count">{monthEventCount}</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <FileText className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="text-muted-foreground">Debriefed:</span>
-                <span className="font-medium" data-testid="text-month-debriefed-count">{monthDebriefedCount}</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <Footprints className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="text-muted-foreground">Foot Traffic:</span>
-                <span className="font-medium" data-testid="text-month-foot-traffic-total">{monthlyFootTrafficTotal.toLocaleString()}</span>
-              </div>
-            </div>
-          </div>
-        </Card>
+        <MonthSummaryBar
+          currentMonth={currentMonth}
+          monthEventCount={monthEventCount}
+          monthDebriefedCount={monthDebriefedCount}
+          monthlyFootTrafficTotal={monthlyFootTrafficTotal}
+        />
 
-
-        {showNeedsAttention && needsAttentionEvents.length > 0 && (
-          <Card className="p-4 mb-6 border-amber-500/30 bg-amber-500/5" data-testid="panel-needs-attention">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CircleAlert className="w-4 h-4 text-amber-500" />
-                  <span className="text-sm font-semibold">Events Needing Attention</span>
-                  <Badge variant="secondary" className="text-xs">{needsAttentionEvents.length}</Badge>
-                </div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setShowNeedsAttention(false)}
-                  data-testid="button-close-needs-attention"
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-              <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                {[...needsAttentionEvents]
-                  .sort((a, b) => b.date.getTime() - a.date.getTime())
-                  .map((e) => {
-                    const eventName = e.type === "gcal" ? e.gcal?.summary : e.app?.name;
-                    const eventType = getEventType(e);
-                    const info = getDebriefInfo(e);
-                    const missingDebrief = !info || info.status !== "confirmed";
-                    const missingAttendance = e.type === "app" && e.app && e.app.attendeeCount === null;
-                    const status = info?.status === "draft" ? "In Progress" : missingDebrief && missingAttendance ? "Missing Debrief & Attendance" : missingDebrief ? "Missing Debrief" : "Missing Attendance";
-                    const stableKey = e.type === "gcal" ? `gcal-${e.gcal!.id}` : `app-${e.app!.id}`;
-                    return (
-                      <button
-                        key={stableKey}
-                        className="w-full text-left flex items-center justify-between gap-3 p-2 rounded-md hover:bg-muted/50 transition-colors"
-                        onClick={() => handleSelectDate(e.date)}
-                        data-testid={`button-attention-event-${stableKey}`}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className={`w-2 h-2 rounded-full shrink-0 ${getEventDotColor(e)}`} />
-                          <span className="text-sm font-medium truncate">{eventName || "Untitled"}</span>
-                          <Badge variant="secondary" className={`text-[10px] shrink-0 ${EVENT_TYPE_BADGE_COLORS[eventType] || ""}`}>
-                            {eventType}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className={`text-xs px-1.5 py-0.5 rounded ${info?.status === "draft" ? "bg-blue-500/10 text-blue-700 dark:text-blue-300" : "bg-amber-500/10 text-amber-700 dark:text-amber-300"}`}>
-                            {status}
-                          </span>
-                          <span className="text-xs text-muted-foreground">{format(e.date, "MMM d")}</span>
-                        </div>
-                      </button>
-                    );
-                  })}
-              </div>
-            </div>
-          </Card>
-        )}
-
-        {false && showSchedule && (
-          <div className="flex flex-wrap items-center gap-1.5 mb-4" data-testid="type-filter-pills">
-            {Object.entries(EVENT_TYPE_BADGE_COLORS).map(([type, color]) => {
-              const isActive = activeTypeFilters.has(type);
-              const isFiltering = activeTypeFilters.size > 0;
-              return (
-                <button
-                  key={type}
-                  onClick={() => toggleTypeFilter(type)}
-                  className={`
-                    inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium transition-all
-                    ${isActive ? `${color} ring-1 ring-current` : isFiltering ? "bg-muted/40 text-muted-foreground/50" : `${color}`}
-                  `}
-                  data-testid={`pill-filter-${type}`}
-                >
-                  <span className={`w-1.5 h-1.5 rounded-full ${EVENT_TYPE_DOT_COLORS[type]}`} />
-                  {type}
-                </button>
-              );
-            })}
-            {activeTypeFilters.size > 0 && (
-              <button
-                onClick={() => setActiveTypeFilters(new Set())}
-                className="text-xs text-muted-foreground hover:text-foreground px-1.5 py-0.5"
-                data-testid="pill-clear-filters"
-              >
-                Clear
-              </button>
-            )}
-          </div>
+        {showNeedsAttention && (
+          <NeedsAttentionPanel
+            needsAttentionEvents={needsAttentionEvents}
+            onClose={() => setShowNeedsAttention(false)}
+            onSelectDate={handleSelectDate}
+            getDebriefInfo={getDebriefInfo}
+          />
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
-            <Card className="p-4 md:p-6">
-              <div className="flex items-center justify-between mb-4 gap-2">
-                <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} data-testid="button-prev-month">
-                  <ChevronLeft className="w-4 h-4" />
-                </Button>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-lg font-semibold font-display" data-testid="text-current-month">
-                    {format(currentMonth, "MMMM yyyy")}
-                  </h3>
-                  {!isSameMonth(currentMonth, new Date()) && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-xs h-6 px-2"
-                      onClick={() => { setCurrentMonth(new Date()); handleSelectDate(new Date()); }}
-                      data-testid="button-today"
-                    >
-                      Today
-                    </Button>
-                  )}
-                </div>
-                <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} data-testid="button-next-month">
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-7 gap-0">
-                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
-                  <div key={d} className="text-center text-xs font-medium text-muted-foreground py-2">
-                    {d}
-                  </div>
-                ))}
-                {calendarDays.map((day, idx) => {
-                  const key = format(day, "yyyy-MM-dd");
-                  const dayEvents = showSchedule ? (eventsByDate.get(key) || []) : [];
-                  const daySpaceItems = showSpace ? (spaceByDate.get(key) || []) : [];
-                  const isCurrentMonth = isSameMonth(day, currentMonth);
-                  const isSelected = isSameDay(day, selectedDate);
-                  const today = isToday(day);
-                  const dayNeedsAttention = needsAttentionByDate.get(key) || 0;
-                  const hasConflict = showSpace && daySpaceItems.length > 1 && daySpaceItems.some((a, i) =>
-                    daySpaceItems.some((b, j) => {
-                      if (i >= j) return false;
-                      if (!a.startTime || !a.endTime || !b.startTime || !b.endTime) return true;
-                      const aStart = parseInt(a.startTime.replace(":", ""));
-                      const aEnd = parseInt(a.endTime.replace(":", ""));
-                      const bStart = parseInt(b.startTime.replace(":", ""));
-                      const bEnd = parseInt(b.endTime.replace(":", ""));
-                      return aStart < bEnd && bStart < aEnd;
-                    })
-                  );
-                  const dayFT = footTrafficByDate.get(key);
-                  const hasPublicHoliday = dayEvents.some(e => e.type === "app" && (e.app as any)?.isPublicHoliday) || dayEvents.some(e => e.type === "app" && (e.app as any)?.type === "Public Holiday");
-                  const allDots: { color: string; key: string; reconciled?: boolean }[] = [];
-                  dayEvents.forEach((e, i) => {
-                    const isManual = e.type === "app" && e.app?.source === "internal";
-                    const skipReconcile = e.type === "booking" || isManual;
-                    const info = !skipReconcile ? getDebriefInfo(e) : null;
-                    allDots.push({ color: getEventDotColor(e), key: `ev-${i}`, reconciled: !skipReconcile && e.isPast ? !!info : undefined });
-                  });
-                  daySpaceItems.forEach((item, i) => allDots.push({ color: item.kind === "programme" ? "bg-indigo-400" : "bg-orange-400", key: `sp-${i}` }));
-
-                  return (
-                    <button
-                      key={idx}
-                      onClick={() => handleSelectDate(day)}
-                      data-testid={`button-calendar-day-${key}`}
-                      className={`
-                        relative p-1 min-h-[3rem] md:min-h-[4rem] text-sm border border-border/30 transition-colors
-                        ${!isCurrentMonth ? "text-muted-foreground/40" : "text-foreground"}
-                        ${isSelected ? "bg-primary/10 border-primary/50" : "hover:bg-muted/50"}
-                        ${hasPublicHoliday && !isSelected ? "bg-red-50 dark:bg-red-950/30 border-red-200/50 dark:border-red-800/30" : ""}
-                        ${today && !isSelected && !hasPublicHoliday ? "bg-accent/30" : ""}
-
-                      `}
-                    >
-                      <span className={`
-                        inline-flex items-center justify-center w-6 h-6 text-xs rounded-full
-                        ${today ? "bg-primary text-primary-foreground font-bold" : ""}
-                      `}>
-                        {format(day, "d")}
-                      </span>
-                      {allDots.length > 0 && (
-                        <div className="flex items-center gap-0.5 mt-0.5 flex-wrap">
-                          {allDots.slice(0, 6).map((dot) => (
-                            <div key={dot.key} className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot.color} ${dot.reconciled === false ? "ring-1 ring-amber-400/60" : ""} ${dot.reconciled === true ? "opacity-40" : ""}`} />
-                          ))}
-                          {allDots.length > 6 && (
-                            <span className="text-[9px] text-muted-foreground leading-none">+{allDots.length - 6}</span>
-                          )}
-                        </div>
-                      )}
-                      {dayFT && isCurrentMonth && (
-                        <span className="hidden md:block absolute bottom-0.5 right-1 text-[9px] text-green-600/70 dark:text-green-400/70 font-medium">{dayFT}</span>
-                      )}
-
-                    </button>
-                  );
-                })}
-              </div>
-            </Card>
+            <CalendarGrid
+              currentMonth={currentMonth}
+              selectedDate={selectedDate}
+              calendarDays={calendarDays}
+              eventsByDate={eventsByDate}
+              spaceByDate={spaceByDate}
+              footTrafficByDate={footTrafficByDate}
+              needsAttentionByDate={needsAttentionByDate}
+              showSchedule={showSchedule}
+              showSpace={showSpace}
+              onSelectDate={handleSelectDate}
+              onPrevMonth={() => setCurrentMonth(subMonths(currentMonth, 1))}
+              onNextMonth={() => setCurrentMonth(addMonths(currentMonth, 1))}
+              onToday={() => { setCurrentMonth(new Date()); handleSelectDate(new Date()); }}
+              getDebriefInfo={getDebriefInfo}
+            />
           </div>
 
-          <div className="space-y-4" ref={dayPanelRef}>
-            <h2 className="text-lg font-bold font-display" data-testid="text-selected-date">
-              {format(selectedDate, "EEEE, MMM d")}
-            </h2>
-
-            {showSchedule && gcalLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-6 h-6 animate-spin text-primary" />
-              </div>
-            ) : (showSchedule && selectedDayEvents.length > 0) || (showSpace && selectedDaySpace.length > 0) ? (
-              <div className="space-y-3">
-                {showSchedule && selectedDayEvents.map((entry) => {
-                  // If app event is linked to a booking, render as BookingCalendarCard instead
-                  const linkedBooking = entry.type === "app" && entry.app?.linkedBookingId
-                    ? (allBookings as Booking[] || []).find(b => Number(b.id) === Number(entry.app!.linkedBookingId))
-                    : null;
-                  const bookingToRender = (entry.type === "booking" && entry.booking) ? entry.booking : linkedBooking;
-
-                  return (
-                  <div key={entry.type === "gcal" ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`} className={`relative ${entry.isDismissed ? "opacity-40 hover:opacity-75 transition-opacity" : ""}`}>
-                    {entry.isDismissed && (
-                      <div className="flex items-center gap-2 mb-1">
-                        <Badge variant="secondary" className="text-xs">
-                          <EyeOff className="w-3 h-3 mr-1" />
-                          Archived
-                        </Badge>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-6 text-xs px-2"
-                          onClick={() => {
-                            const dismissed = (dismissedEvents || []).find(d => d.gcalEventId === entry.gcal?.id);
-                            if (dismissed) restoreMutation.mutate(dismissed.id);
-                          }}
-                          data-testid={`button-restore-event-${entry.gcal?.id}`}
-                        >
-                          <Eye className="w-3 h-3 mr-1" />
-                          Restore
-                        </Button>
-                      </div>
-                    )}
-                    <EventCard
-                      entry={entry}
-                      appEvents={appEvents || []}
-                      programmes={programmes || []}
-                      venueNames={(venues || []).filter((v: any) => v.active !== false).map((v: any) => v.name)}
-                      sourceBooking={bookingToRender || null}
-                      venueMap={venueMap}
-                      allContacts={(allContacts || []) as Contact[]}
-                      onLogDebrief={handleLogDebrief}
-                      onLogDebriefFromApp={handleLogDebriefFromApp}
-                      onDeleteEvent={handleDeleteEvent}
-                      onDismissEvent={handleDismissEvent}
-                      onSkipDebrief={async (eventId, reason) => {
-                        await apiRequest("POST", `/api/events/${eventId}/skip-debrief`, { reason });
-                        queryClient.invalidateQueries({ queryKey: ["/api/events/needs-debrief"] });
-                        queryClient.invalidateQueries({ queryKey: ["/api/events"] });
-                      }}
-                      onMarkNotPersonal={(gcalId) => markNotPersonalMutation.mutate(gcalId)}
-                      isDismissPending={dismissMutation.isPending}
-                      isDebriefPending={createDebriefMutation.isPending}
-                      isMarkedNotPersonal={entry.gcal ? notPersonalIds.has(entry.gcal.id) : false}
-                      debriefInfo={getDebriefInfo(entry)}
-                      onViewDebrief={(debriefId) => {
-                        const dateParam = format(selectedDate, "yyyy-MM-dd");
-                        navigate(`/debriefs/${debriefId}?from=calendar&date=${dateParam}`);
-                      }}
-                    />
-                  </div>
-                  );
-                })}
-                {showSpace && selectedDaySpace.filter(item => {
-                  // Skip bookings already shown as schedule cards
-                  if (showSchedule && item.kind === "booking") {
-                    const shownAsSchedule = selectedDayEvents.some(e =>
-                      (e.type === "booking" && Number(e.booking?.id) === item.id) ||
-                      (e.type === "app" && Number(e.app?.linkedBookingId) === item.id)
-                    );
-                    if (shownAsSchedule) return false;
-                  }
-                  // Skip programmes already shown as schedule cards (linked via event)
-                  if (showSchedule && item.kind === "programme") {
-                    const shownAsSchedule = selectedDayEvents.some(e =>
-                      e.type === "app" && Number(e.app?.linkedProgrammeId) === item.id
-                    );
-                    if (shownAsSchedule) return false;
-                  }
-                  return true;
-                }).map((item) => (
-                  <Card
-                    key={`${item.kind}-${item.id}`}
-                    className="p-4 border-orange-500/20 bg-orange-500/5 dark:bg-orange-500/5 cursor-pointer overflow-visible hover-elevate"
-                    onClick={() => navigate(item.kind === "booking" ? "/spaces?tab=venue-hire" : "/programmes")}
-                    data-testid={`card-space-${item.kind}-${item.id}`}
-                  >
-                    <div className="space-y-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <h4 className="font-medium text-sm">{item.title}</h4>
-                        <Badge className={`text-xs shrink-0 ${BOOKING_BADGE_COLORS[item.classification] || ""}`}>
-                          {item.classification}
-                        </Badge>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                        {item.bookerName && (
-                          <span className="flex items-center gap-1">
-                            <Users className="w-3 h-3" />
-                            {item.bookerName}
-                          </span>
-                        )}
-                        {item.startTime && (
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            {item.startTime}{item.endTime ? ` - ${item.endTime}` : ""}
-                          </span>
-                        )}
-                        {item.venue && (
-                          <span className="flex items-center gap-1">
-                            <Building2 className="w-3 h-3" />
-                            {item.venue}
-                          </span>
-                        )}
-                        <Badge className={`text-[10px] ${item.kind === "programme" ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300" : "bg-orange-500/10 text-orange-700 dark:text-orange-300"}`}>
-                          {item.kind === "programme" ? "Programme" : "Venue Hire"}
-                        </Badge>
-                        <Badge className={`text-[10px] ${SPACE_STATUS_COLORS[item.status] || ""}`}>
-                          {item.status}
-                        </Badge>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-                <div className="flex items-center gap-2 mt-1">
-                  <Footprints className="w-4 h-4 text-muted-foreground shrink-0" />
-                  <span className="text-sm text-muted-foreground whitespace-nowrap">Foot Traffic:</span>
-                  <Input
-                    type="number"
-                    className="w-20 min-h-[44px] md:min-h-0 md:h-8 text-sm"
-                    placeholder="0"
-                    value={dailyFootTrafficValue}
-                    onChange={e => setDailyFootTrafficValue(e.target.value)}
-                    data-testid="input-daily-foot-traffic"
-                  />
-                  <Button
-                    size="sm"
-                    className="min-h-[44px] md:min-h-0 md:h-8"
-                    onClick={handleSaveDailyFootTraffic}
-                    disabled={dailyFTSaving || dailyFootTrafficValue === ""}
-                    data-testid="button-save-daily-foot-traffic"
-                  >
-                    {dailyFTSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                  </Button>
-                </div>
-                <Button
-                  variant="outline"
-                  className="w-full border-dashed"
-                  onClick={openLogActivity}
-                  data-testid="button-log-activity"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Log Activity
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <Card className="p-6">
-                  <div className="text-center text-muted-foreground text-sm">
-                    <Calendar className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                    <p>No items on this day</p>
-                  </div>
-                </Card>
-                <div className="flex items-center gap-2">
-                  <Footprints className="w-4 h-4 text-muted-foreground shrink-0" />
-                  <span className="text-sm text-muted-foreground whitespace-nowrap">Foot Traffic:</span>
-                  <Input
-                    type="number"
-                    className="w-20 min-h-[44px] md:min-h-0 md:h-8 text-sm"
-                    placeholder="0"
-                    value={dailyFootTrafficValue}
-                    onChange={e => setDailyFootTrafficValue(e.target.value)}
-                    data-testid="input-daily-foot-traffic-empty"
-                  />
-                  <Button
-                    size="sm"
-                    className="min-h-[44px] md:min-h-0 md:h-8"
-                    onClick={handleSaveDailyFootTraffic}
-                    disabled={dailyFTSaving || dailyFootTrafficValue === ""}
-                    data-testid="button-save-daily-foot-traffic-empty"
-                  >
-                    {dailyFTSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                  </Button>
-                </div>
-                <Button
-                  variant="outline"
-                  className="w-full border-dashed"
-                  onClick={openLogActivity}
-                  data-testid="button-log-activity-empty"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Log Activity
-                </Button>
-              </div>
-            )}
-          </div>
+          <DayPanel
+            selectedDate={selectedDate}
+            selectedDayEvents={selectedDayEvents}
+            selectedDaySpace={selectedDaySpace}
+            showSchedule={showSchedule}
+            showSpace={showSpace}
+            gcalLoading={gcalLoading}
+            dayPanelRef={dayPanelRef as React.RefObject<HTMLDivElement>}
+            dailyFootTrafficValue={dailyFootTrafficValue}
+            onFootTrafficChange={setDailyFootTrafficValue}
+            onSaveFootTraffic={handleSaveDailyFootTraffic}
+            dailyFTSaving={dailyFTSaving}
+            onLogActivity={openLogActivity}
+            appEvents={appEvents || []}
+            programmes={programmes || []}
+            venues={(venues || []) as Venue[]}
+            allBookings={(allBookings || []) as Booking[]}
+            allContacts={(allContacts || []) as Contact[]}
+            venueMap={venueMap}
+            dismissedEvents={dismissedEvents || []}
+            notPersonalIds={notPersonalIds}
+            onLogDebrief={handleLogDebrief}
+            onLogDebriefFromApp={handleLogDebriefFromApp}
+            onDeleteEvent={handleDeleteEvent}
+            onDismissEvent={handleDismissEvent}
+            onSkipDebrief={async (eventId, reason) => {
+              await apiRequest("POST", `/api/events/${eventId}/skip-debrief`, { reason });
+              queryClient.invalidateQueries({ queryKey: ["/api/events/needs-debrief"] });
+              queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+            }}
+            onMarkNotPersonal={(gcalId) => markNotPersonalMutation.mutate(gcalId)}
+            isDismissPending={dismissMutation.isPending}
+            isDebriefPending={createDebriefMutation.isPending}
+            getDebriefInfo={getDebriefInfo}
+            onViewDebrief={(debriefId) => {
+              const dateParam = format(selectedDate, "yyyy-MM-dd");
+              navigate(`/debriefs/${debriefId}?from=calendar&date=${dateParam}`);
+            }}
+            onRestore={(id) => restoreMutation.mutate(id)}
+            onNavigate={navigate}
+          />
         </div>
 
         {showSchedule && (
-          <div className="mt-6" data-testid="section-month-programmes">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-display font-bold text-foreground" data-testid="text-programmes-heading">
-                Programmes this month
-              </h2>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate("/programmes")}
-                data-testid="button-view-all-programmes"
-              >
-                View all
-              </Button>
-            </div>
-            <div className={`flex items-center justify-between px-3 py-2 mb-3 rounded-lg text-sm ${
-              programmeTargetCount >= PROGRAMME_MONTHLY_TARGET
-                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                : programmeTargetCount > 0
-                  ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                  : "bg-muted text-muted-foreground"
-            }`} data-testid="programme-target-indicator">
-              <div className="flex items-center gap-2">
-                <CalendarDays className="w-4 h-4" />
-                <span className="font-medium">
-                  {programmeTargetCount} / {PROGRAMME_MONTHLY_TARGET} target
-                </span>
-              </div>
-              <span className="text-xs">
-                {programmeTargetCount >= PROGRAMME_MONTHLY_TARGET
-                  ? "Target met"
-                  : `Need ${PROGRAMME_MONTHLY_TARGET - programmeTargetCount} more to hit target`}
-              </span>
-            </div>
-            {monthProgrammes.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {monthProgrammes.map((p: Programme) => {
-                const dateDisplay = (() => {
-                  if (p.tbcMonth && p.tbcYear) return `TBC - ${p.tbcMonth} ${p.tbcYear}`;
-                  if (!p.startDate) return null;
-                  const start = format(new Date(p.startDate), "d MMM");
-                  if (p.endDate && format(new Date(p.endDate), "yyyy-MM-dd") !== format(new Date(p.startDate), "yyyy-MM-dd")) {
-                    return `${start} - ${format(new Date(p.endDate), "d MMM")}`;
-                  }
-                  return start;
-                })();
-
-                const timeDisplay = p.startTime
-                  ? p.endTime ? `${p.startTime} - ${p.endTime}` : p.startTime
-                  : null;
-
-                const totalBudget = parseFloat(p.facilitatorCost || "0") + parseFloat(p.cateringCost || "0") + parseFloat(p.promoCost || "0");
-
-                const facCount = (p.facilitators || []).length;
-                const attCount = (p.attendees || []).length;
-
-                return (
-                  <Card
-                    key={p.id}
-                    className={`p-3 hover-elevate cursor-pointer transition-all ${PROG_STATUS_COLORS[p.status] || ""}`}
-                    onClick={() => navigate("/programmes")}
-                    data-testid={`card-cal-programme-${p.id}`}
-                  >
-                    <div className="flex items-start justify-between gap-2 mb-1.5">
-                      <h4 className={`font-medium text-sm truncate ${p.status === "cancelled" ? "line-through opacity-70" : ""}`}>
-                        {p.name}
-                      </h4>
-                      <Badge className={`text-xs shrink-0 ${PROG_CLASSIFICATION_COLORS[p.classification] || ""}`}>
-                        {p.classification}
-                      </Badge>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                      {dateDisplay && (
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {dateDisplay}
-                        </span>
-                      )}
-                      {timeDisplay && (
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {timeDisplay}
-                        </span>
-                      )}
-                      {p.location && (
-                        <span className="flex items-center gap-1">
-                          <MapPin className="w-3 h-3" />
-                          <span className="truncate max-w-[100px]">{p.location}</span>
-                        </span>
-                      )}
-                      {totalBudget > 0 && (
-                        <span className="flex items-center gap-1">
-                          ${totalBudget.toLocaleString()}
-                        </span>
-                      )}
-                      {facCount > 0 && (
-                        <span className="flex items-center gap-1">
-                          <Users className="w-3 h-3" />
-                          {facCount} facilitator{facCount !== 1 ? "s" : ""}
-                        </span>
-                      )}
-                      {attCount > 0 && (
-                        <span className="flex items-center gap-1">
-                          <UserPlus className="w-3 h-3" />
-                          {attCount} attendee{attCount !== 1 ? "s" : ""}
-                        </span>
-                      )}
-                    </div>
-                  </Card>
-                );
-              })}
-            </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-4">No programmes scheduled this month</p>
-            )}
-          </div>
+          <MonthProgrammes
+            monthProgrammes={monthProgrammes}
+            programmeTargetCount={programmeTargetCount}
+            onNavigate={navigate}
+          />
         )}
 
 
       </div>
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Remove Event</DialogTitle>
-            <DialogDescription>This action cannot be undone. Please provide a reason.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            {deleteTarget?.type === "app" && (
-              <div className="bg-muted/30 p-3 rounded-lg">
-                <p className="text-sm font-medium">{(deleteTarget.event as AppEvent).name}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {formatDate((deleteTarget.event as AppEvent).startTime)}
-                </p>
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="delete-reason">Why is this event being removed?</Label>
-              <Textarea
-                id="delete-reason"
-                value={deleteReason}
-                onChange={(e) => setDeleteReason(e.target.value)}
-                placeholder="e.g. Event was cancelled, duplicate entry, never happened..."
-                className="resize-none"
-                rows={3}
-                data-testid="input-delete-reason"
-              />
-              <p className="text-xs text-muted-foreground">
-                A reason is required so we can keep accurate records.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} data-testid="button-cancel-delete">
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={confirmDelete}
-              disabled={!deleteReason.trim() || deleteEventMutation.isPending}
-              data-testid="button-confirm-delete"
-            >
-              {deleteEventMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={logActivityOpen} onOpenChange={(open) => { setLogActivityOpen(open); if (!open) resetActivityForm(); }}>
-        <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Log Activity</DialogTitle>
-            <DialogDescription>Record something that happened. It will appear on your calendar.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="activity-date">Date</Label>
-              <Input
-                id="activity-date"
-                type="date"
-                value={activityDate}
-                onChange={(e) => setActivityDate(e.target.value)}
-                data-testid="input-activity-date"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="activity-name">What happened <span className="text-destructive">*</span></Label>
-              <Input
-                id="activity-name"
-                value={activityName}
-                onChange={(e) => setActivityName(e.target.value)}
-                placeholder="e.g. Morning drop-in session, Community catch up..."
-                data-testid="input-activity-name"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Type</Label>
-              <Select value={activityType} onValueChange={setActivityType}>
-                <SelectTrigger data-testid="trigger-activity-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ACTIVITY_TYPES.map(t => (
-                    <SelectItem key={t} value={t} data-testid={`option-activity-type-${t.toLowerCase().replace(/\s+/g, "-")}`}>
-                      {t}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Tagged people</Label>
-              {activitySelectedContacts.length > 0 && (
-                <div className="flex flex-wrap gap-1 mb-1.5">
-                  {activitySelectedContacts.map(c => (
-                    <Badge key={c.id} variant="secondary" className="text-xs gap-1 pr-1" data-testid={`badge-activity-contact-${c.id}`}>
-                      {c.name}
-                      <button
-                        onClick={() => setActivitySelectedContacts(prev => prev.filter(p => p.id !== c.id))}
-                        className="ml-0.5"
-                        data-testid={`button-remove-activity-contact-${c.id}`}
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-              )}
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={activityContactSearch}
-                  onChange={(e) => setActivityContactSearch(e.target.value)}
-                  placeholder="Search people..."
-                  className="pl-8"
-                  data-testid="input-activity-contact-search"
-                />
-              </div>
-              {filteredActivityContacts.length > 0 && (
-                <div className="border rounded-md divide-y max-h-32 overflow-y-auto">
-                  {filteredActivityContacts.map(c => (
-                    <button
-                      key={c.id}
-                      onClick={() => {
-                        setActivitySelectedContacts(prev => [...prev, c]);
-                        setActivityContactSearch("");
-                      }}
-                      className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted/50 transition-colors"
-                      data-testid={`button-select-activity-contact-${c.id}`}
-                    >
-                      <span className="font-medium">{c.name}</span>
-                      {c.email && <span className="text-xs text-muted-foreground ml-2">{c.email}</span>}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label>Tagged groups</Label>
-              {activitySelectedGroups.length > 0 && (
-                <div className="flex flex-wrap gap-1 mb-1.5">
-                  {activitySelectedGroups.map(g => (
-                    <Badge key={g.id} variant="secondary" className="text-xs gap-1 pr-1" data-testid={`badge-activity-group-${g.id}`}>
-                      {g.name}
-                      <button
-                        onClick={() => setActivitySelectedGroups(prev => prev.filter(p => p.id !== g.id))}
-                        className="ml-0.5"
-                        data-testid={`button-remove-activity-group-${g.id}`}
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-              )}
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={activityGroupSearch}
-                  onChange={(e) => setActivityGroupSearch(e.target.value)}
-                  placeholder="Search groups..."
-                  className="pl-8"
-                  data-testid="input-activity-group-search"
-                />
-              </div>
-              {filteredActivityGroups.length > 0 && (
-                <div className="border rounded-md divide-y max-h-32 overflow-y-auto">
-                  {filteredActivityGroups.map(g => (
-                    <button
-                      key={g.id}
-                      onClick={() => {
-                        setActivitySelectedGroups(prev => [...prev, { id: g.id, name: g.name }]);
-                        setActivityGroupSearch("");
-                      }}
-                      className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted/50 transition-colors"
-                      data-testid={`button-select-activity-group-${g.id}`}
-                    >
-                      {g.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="activity-purpose">Why / purpose</Label>
-              <Textarea
-                id="activity-purpose"
-                value={activityPurpose}
-                onChange={(e) => setActivityPurpose(e.target.value)}
-                placeholder="What was the purpose of this activity?"
-                className="resize-none"
-                rows={2}
-                data-testid="input-activity-purpose"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="activity-outcome">Outcome / notes</Label>
-              <Textarea
-                id="activity-outcome"
-                value={activityOutcome}
-                onChange={(e) => setActivityOutcome(e.target.value)}
-                placeholder="What was the result? Any notes or follow-ups?"
-                className="resize-none"
-                rows={2}
-                data-testid="input-activity-outcome"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setLogActivityOpen(false); resetActivityForm(); }} data-testid="button-cancel-activity">
-              Cancel
-            </Button>
-            <Button
-              onClick={handleLogActivity}
-              disabled={!activityName.trim() || logActivityMutation.isPending}
-              data-testid="button-save-activity"
-            >
-              {logActivityMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
-              Save Activity
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeleteEventDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        deleteTarget={deleteTarget}
+        deleteReason={deleteReason}
+        onReasonChange={setDeleteReason}
+        onConfirm={confirmDelete}
+        isPending={deleteEventMutation.isPending}
+      />
+      <LogActivityDialog
+        open={logActivityOpen}
+        onOpenChange={(open) => { setLogActivityOpen(open); if (!open) resetActivityForm(); }}
+        activityName={activityName}
+        onActivityNameChange={setActivityName}
+        activityType={activityType}
+        onActivityTypeChange={setActivityType}
+        activityDate={activityDate}
+        onActivityDateChange={setActivityDate}
+        activityPurpose={activityPurpose}
+        onActivityPurposeChange={setActivityPurpose}
+        activityOutcome={activityOutcome}
+        onActivityOutcomeChange={setActivityOutcome}
+        activityContactSearch={activityContactSearch}
+        onActivityContactSearchChange={setActivityContactSearch}
+        activitySelectedContacts={activitySelectedContacts}
+        onRemoveContact={(id) => setActivitySelectedContacts(prev => prev.filter(p => p.id !== id))}
+        filteredActivityContacts={filteredActivityContacts}
+        onSelectContact={(c) => { setActivitySelectedContacts(prev => [...prev, c]); setActivityContactSearch(""); }}
+        activityGroupSearch={activityGroupSearch}
+        onActivityGroupSearchChange={setActivityGroupSearch}
+        activitySelectedGroups={activitySelectedGroups}
+        onRemoveGroup={(id) => setActivitySelectedGroups(prev => prev.filter(p => p.id !== id))}
+        filteredActivityGroups={filteredActivityGroups}
+        onSelectGroup={(g) => { setActivitySelectedGroups(prev => [...prev, { id: g.id, name: g.name }]); setActivityGroupSearch(""); }}
+        onSave={handleLogActivity}
+        onCancel={() => { setLogActivityOpen(false); resetActivityForm(); }}
+        isPending={logActivityMutation.isPending}
+      />
 
       {/* Attendee count nudge toast */}
       {attendeeNudgeEventId && (
@@ -3081,7 +1111,6 @@ export default function CalendarPage() {
                     key={g.id}
                     onClick={async () => {
                       try {
-                        // Get current event to preserve existing tags
                         const evRes = await apiRequest("GET", `/api/events/${orgLinkEventId}`);
                         const ev = await evRes.json();
                         const existingTags: string[] = ev.tags || [];
