@@ -230,6 +230,7 @@ export const events = pgTable("events", {
   debriefSkippedReason: text("debrief_skipped_reason"),
   calendarAttendees: jsonb("calendar_attendees").$type<Array<{ email: string; displayName?: string; responseStatus?: string; organizer?: boolean }>>(),
   spaceUseType: text("space_use_type"),
+  venueId: integer("venue_id"),
   isPublicHoliday: boolean("is_public_holiday").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });

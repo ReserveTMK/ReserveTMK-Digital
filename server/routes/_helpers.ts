@@ -161,7 +161,8 @@ export async function ensureBookingEvent(booking: any, userId: string): Promise<
     else startTime = new Date(baseDateMs + 9 * 60 * 60 * 1000);
     if (booking.endTime) { const [h, m] = booking.endTime.split(":").map(Number); endTime = new Date(baseDateMs + (h * 60 + m) * 60 * 1000); }
     else endTime = new Date(startTime.getTime() + 2 * 60 * 60 * 1000);
-    await storage.createEvent({ userId, name: title, type: "Venue Hire", startTime, endTime, location: venueName, source: "booking", linkedBookingId: booking.id, requiresDebrief: true, googleCalendarEventId: booking.googleCalendarEventId || null });
+    const primaryVenueId = bookingVenueIds[0] || null;
+    await storage.createEvent({ userId, name: title, type: "Venue Hire", startTime, endTime, location: venueName, venueId: primaryVenueId, source: "booking", linkedBookingId: booking.id, requiresDebrief: true, googleCalendarEventId: booking.googleCalendarEventId || null });
   } catch (e) { console.warn(`Failed to create event for booking ${booking.id}:`, e); }
 }
 
@@ -203,6 +204,7 @@ export async function ensureMeetingEvent(meeting: any, userId: string): Promise<
       startTime: new Date(meeting.startTime),
       endTime: meeting.endTime ? new Date(meeting.endTime) : new Date(new Date(meeting.startTime).getTime() + 60 * 60 * 1000),
       location: venue?.name || null,
+      venueId: meeting.venueId || null,
       source: "meeting",
       linkedMeetingId: meeting.id,
       googleCalendarEventId: meeting.googleCalendarEventId || null,
