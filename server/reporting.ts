@@ -930,6 +930,8 @@ export async function getOperatorInsights(filters: ReportFilters) {
     sentiment: impactLogs.sentiment,
     keyQuotes: impactLogs.keyQuotes,
     milestones: impactLogs.milestones,
+    reviewedData: impactLogs.reviewedData,
+    rawExtraction: impactLogs.rawExtraction,
   }).from(impactLogs).where(where);
 
   const wins: string[] = [];
@@ -944,7 +946,22 @@ export async function getOperatorInsights(filters: ReportFilters) {
     if (log.sentiment) sentimentCounts[log.sentiment] = (sentimentCounts[log.sentiment] || 0) + 1;
     if (log.keyQuotes) for (const q of log.keyQuotes) allQuotes.push(q);
 
-    if (log.summary) {
+    // Use structured reflections from reviewedData or rawExtraction
+    const data = (log.reviewedData || log.rawExtraction) as any;
+    const reflections = data?.reflections;
+
+    if (reflections) {
+      if (Array.isArray(reflections.wins)) {
+        for (const w of reflections.wins) wins.push(w.length > 200 ? w.slice(0, 200) + "..." : w);
+      }
+      if (Array.isArray(reflections.concerns)) {
+        for (const c of reflections.concerns) concerns.push(c.length > 200 ? c.slice(0, 200) + "..." : c);
+      }
+      if (Array.isArray(reflections.learnings)) {
+        for (const l of reflections.learnings) learnings.push(l.length > 200 ? l.slice(0, 200) + "..." : l);
+      }
+    } else if (log.summary) {
+      // Fallback to keyword matching for older debriefs without reflections
       const lower = log.summary.toLowerCase();
       if (log.sentiment === "positive" || lower.includes("success") || lower.includes("breakthrough") || lower.includes("achieved") || lower.includes("proud")) {
         wins.push(log.summary.length > 200 ? log.summary.slice(0, 200) + "..." : log.summary);
@@ -972,6 +989,78 @@ export async function getOperatorInsights(filters: ReportFilters) {
     learnings: learnings.slice(0, 5),
     standoutQuotes: allQuotes.slice(0, 6),
   };
+}
+
+// Auto-surface quotes from confirmed debriefs for report generation
+export async function getDebriefQuotesForReport(filters: ReportFilters) {
+  const where = confirmedDebriefWhere(filters);
+  const logs = await db.select({
+    id: impactLogs.id,
+    title: impactLogs.title,
+    keyQuotes: impactLogs.keyQuotes,
+    sentiment: impactLogs.sentiment,
+    milestones: impactLogs.milestones,
+  }).from(impactLogs).where(where);
+
+  // Get contact names linked to each debrief
+  const logIds = logs.map(l => l.id);
+  const contactLinks = logIds.length > 0 ? await db.select({
+    impactLogId: impactLogContacts.impactLogId,
+    contactId: impactLogContacts.contactId,
+  }).from(impactLogContacts).where(inArray(impactLogContacts.impactLogId, logIds)) : [];
+
+  const contactIds = [...new Set(contactLinks.map(c => c.contactId))];
+  const contactNames = new Map<number, string>();
+  if (contactIds.length > 0) {
+    const contactRows = await db.select({ id: contacts.id, name: contacts.name }).from(contacts).where(inArray(contacts.id, contactIds));
+    for (const c of contactRows) contactNames.set(c.id, c.name);
+  }
+
+  const logContactNames = new Map<number, string[]>();
+  for (const link of contactLinks) {
+    const name = contactNames.get(link.contactId);
+    if (name) {
+      if (!logContactNames.has(link.impactLogId)) logContactNames.set(link.impactLogId, []);
+      logContactNames.get(link.impactLogId)!.push(name);
+    }
+  }
+
+  const suggestions: Array<{
+    text: string;
+    attribution: string;
+    debriefTitle: string;
+    debriefId: number;
+    hasMilestone: boolean;
+    sentiment: string | null;
+  }> = [];
+
+  for (const log of logs) {
+    if (!log.keyQuotes?.length) continue;
+    const names = logContactNames.get(log.id) || [];
+    const attribution = names.length > 0 ? names.join(", ") : "Community member";
+    for (const quote of log.keyQuotes) {
+      suggestions.push({
+        text: quote,
+        attribution,
+        debriefTitle: log.title,
+        debriefId: log.id,
+        hasMilestone: (log.milestones?.length || 0) > 0,
+        sentiment: log.sentiment,
+      });
+    }
+  }
+
+  // Score: positive sentiment + has milestone = stronger quote
+  suggestions.sort((a, b) => {
+    let scoreA = 0, scoreB = 0;
+    if (a.sentiment === "positive") scoreA += 2;
+    if (a.hasMilestone) scoreA += 1;
+    if (b.sentiment === "positive") scoreB += 2;
+    if (b.hasMilestone) scoreB += 1;
+    return scoreB - scoreA;
+  });
+
+  return suggestions.slice(0, 20);
 }
 
 export async function getParticipantTransformationStories(filters: ReportFilters, limit = 3) {

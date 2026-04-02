@@ -1895,7 +1895,6 @@ export function registerBookingRoutes(app: Express) {
   app.get("/api/public/spaces/check-studio-booker", async (req, res) => {
     try {
       const email = parseStr(req.query.email);
-      const email = parseStr(req.query.email);
       const userIdRaw = parseStr(req.query.userId);
       if (!email || !userIdRaw) {
         return res.status(400).json({ message: "email and userId are required" });

@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import {
-  FileText, Loader2, Download, Landmark, Settings, CalendarDays, CalendarRange, Sparkles, X, Plus,
+  FileText, Loader2, Download, Landmark, Settings, CalendarDays, CalendarRange, Sparkles, X, Plus, MessageSquareQuote, Check,
 } from "lucide-react";
 import { format, subMonths, endOfQuarter } from "date-fns";
 import { Link } from "wouter";
@@ -85,6 +85,18 @@ export default function Reports() {
 
   const month = monthOptions.find((m) => m.value === selectedMonth);
   const quarter = quarterOptions.find((q) => q.value === selectedQuarter);
+
+  // Quote suggestions from debriefs
+  const periodStart = reportMode === "monthly" ? month?.start : quarter?.start;
+  const periodEnd = reportMode === "monthly" ? month?.end : quarter?.end;
+  const funderParam = activeFunder ? `&funder=${encodeURIComponent(activeFunder.name)}` : "";
+  const { data: quoteSuggestions } = useQuery<Array<{
+    text: string; attribution: string; debriefTitle: string; debriefId: number; hasMilestone: boolean; sentiment: string | null;
+  }>>({
+    queryKey: ["/api/reports/quote-suggestions", periodStart, periodEnd, activeFunder?.name],
+    queryFn: () => fetch(`/api/reports/quote-suggestions?startDate=${periodStart}&endDate=${periodEnd}${funderParam}`, { credentials: "include" }).then(r => r.json()),
+    enabled: !!periodStart && !!periodEnd,
+  });
 
   // ── Generate report ──────────────────────────────────────────────────────
 
@@ -335,15 +347,17 @@ export default function Reports() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* In Their Words */}
         <Card className="p-4 space-y-3">
-          <h3 className="font-semibold text-sm">In Their Words</h3>
-          <p className="text-xs text-muted-foreground">
-            Add community quotes, then regenerate.
-          </p>
+          <h3 className="font-semibold text-sm flex items-center gap-2">
+            <MessageSquareQuote className="h-4 w-4" />
+            In Their Words
+          </h3>
 
+          {/* Selected quotes */}
           {quotes.length > 0 && (
             <div className="space-y-2">
               {quotes.map((q, i) => (
-                <div key={i} className="flex items-start gap-2 bg-muted/50 rounded-md p-2">
+                <div key={i} className="flex items-start gap-2 bg-primary/5 border border-primary/20 rounded-md p-2">
+                  <Check className="h-3 w-3 text-primary mt-0.5 shrink-0" />
                   <div className="flex-1 text-xs">
                     <p className="italic">"{q.text}"</p>
                     <p className="text-muted-foreground mt-0.5">— {q.attribution}</p>
@@ -356,7 +370,35 @@ export default function Reports() {
             </div>
           )}
 
+          {/* Suggestions from debriefs */}
+          {quoteSuggestions && quoteSuggestions.length > 0 && (
+            <div className="space-y-1.5 pt-1 border-t">
+              <p className="text-xs text-muted-foreground">From your debriefs this period:</p>
+              <div className="max-h-[240px] overflow-y-auto space-y-1.5">
+                {quoteSuggestions
+                  .filter(s => !quotes.some(q => q.text === s.text))
+                  .map((s, i) => (
+                  <div
+                    key={i}
+                    className="flex items-start gap-2 bg-muted/30 hover:bg-muted/60 rounded-md p-2 cursor-pointer transition-colors"
+                    onClick={() => {
+                      setQuotes([...quotes, { text: s.text, attribution: s.attribution }]);
+                    }}
+                  >
+                    <Plus className="h-3 w-3 text-muted-foreground mt-0.5 shrink-0" />
+                    <div className="flex-1 text-xs">
+                      <p className="italic text-muted-foreground">"{s.text.length > 150 ? s.text.slice(0, 150) + "..." : s.text}"</p>
+                      <p className="text-muted-foreground/70 mt-0.5">— {s.attribution} · {s.debriefTitle}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Manual add */}
           <div className="space-y-2 pt-1 border-t">
+            <p className="text-xs text-muted-foreground">Or add manually:</p>
             <Textarea
               placeholder="Quote text..."
               value={newQuoteText}

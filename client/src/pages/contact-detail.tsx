@@ -49,6 +49,17 @@ export default function ContactDetail() {
   const id = parseInt(params?.id || "0");
   const { data: contact, isLoading: contactLoading } = useContact(id);
   const { data: interactions, isLoading: interactionsLoading } = useInteractions(id);
+  const { data: contactJourney } = useQuery<{
+    debriefCount: number;
+    milestones: Array<{ text: string; date: string; debriefTitle: string }>;
+    quotes: Array<{ text: string; debriefTitle: string }>;
+    sentimentArc: Array<{ date: string; sentiment: string; title: string }>;
+  }>({
+    queryKey: ['/api/contacts', id, 'journey'],
+    queryFn: () => fetch(`/api/contacts/${id}/journey`, { credentials: 'include' }).then(r => r.json()),
+    enabled: id > 0,
+  });
+
   const { data: contactDebriefs } = useQuery({
     queryKey: ['/api/contacts', id, 'debriefs'],
     queryFn: () => fetch(`/api/contacts/${id}/debriefs`, { credentials: 'include' }).then(r => r.json()),
@@ -1182,6 +1193,40 @@ export default function ContactDetail() {
                         );
                       })}
                   </div>
+                </div>
+              )}
+
+              {/* Journey Summary from debriefs */}
+              {contactJourney && contactJourney.milestones.length > 0 && (
+                <div className="bg-card rounded-2xl p-6 border border-border shadow-sm">
+                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <Rocket className="w-5 h-5 text-primary" />
+                    Journey ({contactJourney.debriefCount} debriefs)
+                  </h3>
+                  <div className="space-y-3">
+                    {contactJourney.milestones.map((m, idx) => (
+                      <div key={idx} className="flex gap-3 items-start">
+                        <div className="flex flex-col items-center">
+                          <div className={`w-2.5 h-2.5 rounded-full ${idx === 0 ? "bg-primary" : "bg-muted-foreground/40"}`} />
+                          {idx < contactJourney.milestones.length - 1 && <div className="w-0.5 flex-1 bg-border min-h-[24px]" />}
+                        </div>
+                        <div className="flex-1 pb-2">
+                          <p className="text-sm">{m.text}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{m.date} · {m.debriefTitle}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {contactJourney.quotes.length > 0 && (
+                    <div className="mt-4 pt-4 border-t space-y-2">
+                      {contactJourney.quotes.slice(0, 3).map((q, idx) => (
+                        <div key={idx} className="text-xs italic text-muted-foreground bg-muted/30 rounded-md p-2">
+                          "{q.text.length > 200 ? q.text.slice(0, 200) + "..." : q.text}"
+                          <span className="block text-[10px] mt-1 not-italic">{q.debriefTitle}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </TabsContent>

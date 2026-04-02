@@ -1909,7 +1909,6 @@ export const funders = pgTable("funders", {
   reviewDate: timestamp("review_date"),
   partnershipStrategy: text("partnership_strategy"),
   notes: text("notes"),
-  groupId: integer("group_id"),
   headContactId: integer("head_contact_id"),
   liaisonContactId: integer("liaison_contact_id"),
   leadContactId: integer("lead_contact_id"),

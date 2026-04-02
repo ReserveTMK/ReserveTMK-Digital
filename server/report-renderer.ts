@@ -6,6 +6,15 @@
 
 // ── Types ──────────────────────────────────────────────────────
 
+export interface OperatorInsightsData {
+  totalDebriefs: number;
+  sentimentBreakdown: Record<string, number>;
+  wins: string[];
+  concerns: string[];
+  learnings: string[];
+  standoutQuotes: string[];
+}
+
 export interface MonthlyReportData {
   period: { month: string; year: number; label: string; fyLabel: string };
   funderName?: string;
@@ -16,6 +25,7 @@ export interface MonthlyReportData {
   quotes: Array<{ text: string; attribution: string }>;
   plannedNextMonth: Array<{ title: string; description: string }>;
   taxonomyBreakdown?: Array<{ categoryName: string; funderName: string; entityCounts: Record<string, number>; total: number }>;
+  operatorInsights?: OperatorInsightsData;
 }
 
 export interface MaoriPipelineData {
@@ -276,16 +286,35 @@ ${hasTaxonomy ? `
   ${updateSections}
 </div>
 
+${data.operatorInsights && (data.operatorInsights.wins.length > 0 || data.operatorInsights.concerns.length > 0 || data.operatorInsights.learnings.length > 0) ? `
+<div class="section">
+  <h2>${sn(5)}. Operator Reflections</h2>
+  <p style="font-size:11px;color:#888;margin-bottom:12px;">From ${data.operatorInsights.totalDebriefs} confirmed debriefs this period</p>
+  ${data.operatorInsights.wins.length > 0 ? `
+  <h3 style="color:#003F2B;margin-bottom:6px;">Highlights</h3>
+  <ul class="bullets">${data.operatorInsights.wins.map(w => `<li>${esc(w)}</li>`).join("")}</ul>
+  ` : ""}
+  ${data.operatorInsights.concerns.length > 0 ? `
+  <h3 style="color:#b45309;margin-bottom:6px;margin-top:12px;">Challenges &amp; Risks</h3>
+  <ul class="bullets">${data.operatorInsights.concerns.map(c => `<li>${esc(c)}</li>`).join("")}</ul>
+  ` : ""}
+  ${data.operatorInsights.learnings.length > 0 ? `
+  <h3 style="color:#1e40af;margin-bottom:6px;margin-top:12px;">Learnings</h3>
+  <ul class="bullets">${data.operatorInsights.learnings.map(l => `<li>${esc(l)}</li>`).join("")}</ul>
+  ` : ""}
+</div>
+` : ""}
+
 ${quotes.length > 0 ? `
 <div class="section">
-  <h2>${sn(5)}. In Their Words</h2>
+  <h2>${sn(data.operatorInsights && (data.operatorInsights.wins.length > 0 || data.operatorInsights.concerns.length > 0 || data.operatorInsights.learnings.length > 0) ? 6 : 5)}. In Their Words</h2>
   <div class="quotes">${quoteBlocks}</div>
 </div>
 ` : ""}
 
 ${plannedNextMonth.length > 0 ? `
 <div class="section">
-  <h2>${sn(6)}. Planned Next Month</h2>
+  <h2>${sn(data.operatorInsights && (data.operatorInsights.wins.length > 0 || data.operatorInsights.concerns.length > 0 || data.operatorInsights.learnings.length > 0) ? 7 : 6)}. Planned Next Month</h2>
   <div class="next-grid">${nextItems}</div>
 </div>
 ` : ""}
