@@ -7756,7 +7756,18 @@ Important:
       const fyStartDate = `${fyStart}-07-01`;
 
       const funderName = parseStr(req.query.funder) || undefined;
-      const filters: ReportFilters = { userId, startDate, endDate };
+
+      // Look up funder profile for community lens filtering
+      let communityLens: "maori" | "pasifika" | "all" | undefined;
+      if (funderName) {
+        const allFunders = await storage.getFunders(userId);
+        const funderRecord = allFunders.find(f => f.name === funderName);
+        if (funderRecord?.communityLens && funderRecord.communityLens !== "all") {
+          communityLens = funderRecord.communityLens as "maori" | "pasifika";
+        }
+      }
+
+      const filters: ReportFilters = { userId, startDate, endDate, communityLens };
       const ytdFilters: ReportFilters = { userId, startDate: fyStartDate, endDate };
 
       // Pull all data in parallel
@@ -7933,6 +7944,17 @@ Important:
       }
 
       const funderName = parseStr(req.query.funder) || undefined;
+
+      // Look up funder profile for community lens filtering
+      let qCommunityLens: "maori" | "pasifika" | "all" | undefined;
+      if (funderName) {
+        const allFunders = await storage.getFunders(userId);
+        const funderRecord = allFunders.find(f => f.name === funderName);
+        if (funderRecord?.communityLens && funderRecord.communityLens !== "all") {
+          qCommunityLens = funderRecord.communityLens as "maori" | "pasifika";
+        }
+      }
+
       const [yearStr, qStr] = quarter.split("-Q");
       const year = parseInt(yearStr, 10);
       const qNum = parseInt(qStr, 10);
@@ -8206,7 +8228,7 @@ Important:
       // Operator insights from confirmed debriefs
       let qOperatorInsights;
       try {
-        const qInsightFilters: ReportFilters = { userId, startDate, endDate };
+        const qInsightFilters: ReportFilters = { userId, startDate, endDate, communityLens: qCommunityLens };
         qOperatorInsights = await getOperatorInsights(qInsightFilters);
       } catch (err: any) {
         console.error("Quarterly operator insights failed (non-fatal):", err.message);
@@ -8314,7 +8336,18 @@ Important:
       const userId = (req.user as any).claims.sub;
       const { startDate, endDate, funder } = req.query as { startDate?: string; endDate?: string; funder?: string };
       if (!startDate || !endDate) return res.status(400).json({ message: "startDate and endDate required" });
-      const filters: ReportFilters = { userId, startDate, endDate, funder: funder || undefined };
+
+      // Look up funder community lens
+      let quoteLens: "maori" | "pasifika" | "all" | undefined;
+      if (funder) {
+        const allFunders = await storage.getFunders(userId);
+        const funderRecord = allFunders.find(f => f.name === funder);
+        if (funderRecord?.communityLens && funderRecord.communityLens !== "all") {
+          quoteLens = funderRecord.communityLens as "maori" | "pasifika";
+        }
+      }
+
+      const filters: ReportFilters = { userId, startDate, endDate, funder: funder || undefined, communityLens: quoteLens };
       const suggestions = await getDebriefQuotesForReport(filters);
       res.json(suggestions);
     } catch (err: any) {
