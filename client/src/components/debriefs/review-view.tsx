@@ -1284,19 +1284,13 @@ export function ReviewView({ id }: { id: number }) {
                 <>
                 <Card className="p-4 md:p-5">
                   <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-                    <h2 className="font-bold text-lg font-display" data-testid="text-transcript-heading">Transcript</h2>
+                    <h2 className="font-bold text-lg font-display" data-testid="text-transcript-heading">Impact Highlights</h2>
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
                       {impactLog.createdAt && (
                         <span className="flex items-center gap-1" data-testid="text-transcript-timestamp">
                           <Clock className="w-3 h-3" />
-                          {new Date(impactLog.createdAt).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          {new Date(impactLog.createdAt).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" })}
                         </span>
-                      )}
-                      {impactLog.audioUrl && (
-                        <Badge variant="secondary" className="text-[10px]" data-testid="badge-audio-debrief">
-                          <Mic className="w-2.5 h-2.5 mr-0.5" />
-                          Audio{savedAudioDuration ? ` · ${Math.floor(savedAudioDuration / 60)}:${String(savedAudioDuration % 60).padStart(2, "0")}` : ""}
-                        </Badge>
                       )}
                     </div>
                   </div>
@@ -1324,7 +1318,6 @@ export function ReviewView({ id }: { id: number }) {
 
                   {keyQuotes.length > 0 && (
                     <div className="space-y-2 mb-4" data-testid="pull-quotes-section">
-                      <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Impact Highlights</p>
                       {keyQuotes.slice(0, 3).map((quote: string, i: number) => (
                         <blockquote
                           key={i}
@@ -1338,35 +1331,30 @@ export function ReviewView({ id }: { id: number }) {
                     </div>
                   )}
 
-                  {impactLog?.audioUrl && (
-                    <div className="mb-3 p-3 bg-muted/30 rounded-lg border border-border">
-                      <div className="flex items-center gap-3">
-                        <Play className="w-4 h-4 text-muted-foreground shrink-0" />
-                        <audio controls src={impactLog.audioUrl} className="flex-1 h-8" data-testid="audio-saved-playback-detail" />
-                      </div>
-                    </div>
-                  )}
-
                   {showFullTranscript && (
-                    <div className="prose prose-sm max-w-none text-foreground/90 whitespace-pre-wrap max-h-[60vh] overflow-y-auto mb-3" data-testid="text-transcript-content">
-                      {Array.isArray(transcriptParts) ? (
-                        transcriptParts.map((part, i) => (
-                          part.highlighted ? (
-                            <mark key={i} className="bg-primary/20 text-foreground px-0.5 rounded">{part.text}</mark>
-                          ) : (
-                            <span key={i}>{part.text}</span>
-                          )
-                        ))
-                      ) : (
-                        transcriptParts || <span className="text-muted-foreground italic">No transcript available</span>
+                    <>
+                      <div className="prose prose-sm max-w-none text-foreground/90 whitespace-pre-wrap max-h-[60vh] overflow-y-auto mb-3" data-testid="text-transcript-content">
+                        {Array.isArray(transcriptParts) ? (
+                          transcriptParts.map((part, i) => (
+                            part.highlighted ? (
+                              <mark key={i} className="bg-primary/20 text-foreground px-0.5 rounded">{part.text}</mark>
+                            ) : (
+                              <span key={i}>{part.text}</span>
+                            )
+                          ))
+                        ) : (
+                          transcriptParts || <span className="text-muted-foreground italic">No transcript available</span>
+                        )}
+                      </div>
+                      {impactLog?.audioUrl && (
+                        <div className="mb-3 p-3 bg-muted/30 rounded-lg border border-border">
+                          <div className="flex items-center gap-3">
+                            <Play className="w-4 h-4 text-muted-foreground shrink-0" />
+                            <audio controls src={impactLog.audioUrl} className="flex-1 h-8" data-testid="audio-saved-playback-detail" />
+                          </div>
+                        </div>
                       )}
-                    </div>
-                  )}
-
-                  {!showFullTranscript && impactLog.transcript && (
-                    <p className="text-sm text-muted-foreground line-clamp-3 mb-3" data-testid="text-transcript-preview">
-                      {impactLog.transcript.slice(0, 200)}{impactLog.transcript.length > 200 ? "..." : ""}
-                    </p>
+                    </>
                   )}
 
                   <div className="flex flex-col sm:flex-row gap-2">
@@ -1378,7 +1366,7 @@ export function ReviewView({ id }: { id: number }) {
                       data-testid="button-view-transcript"
                     >
                       <Eye className="w-4 h-4 mr-1.5" />
-                      {showFullTranscript ? "Collapse" : "View"}
+                      {showFullTranscript ? "Hide Transcript" : "View Transcript"}
                     </Button>
                     <Button
                       variant="outline"

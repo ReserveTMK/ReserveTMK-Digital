@@ -619,6 +619,7 @@ export function registerReportRoutes(app: Express) {
 
       const milestones: Array<{ text: string; date: string; debriefTitle: string }> = [];
       const quotes: Array<{ text: string; debriefTitle: string }> = [];
+      const wins: Array<{ text: string; date: string; debriefTitle: string }> = [];
       const sentimentArc: Array<{ date: string; sentiment: string; title: string }> = [];
 
       for (const link of links) {
@@ -643,15 +644,24 @@ export function registerReportRoutes(app: Express) {
             quotes.push({ text: q, debriefTitle: title });
           }
         }
+
+        const reviewed = (log.reviewedData || log.rawExtraction) as Record<string, any> | null;
+        if (reviewed?.reflections?.wins && Array.isArray(reviewed.reflections.wins)) {
+          for (const w of reviewed.reflections.wins) {
+            wins.push({ text: w, date, debriefTitle: title });
+          }
+        }
       }
 
-      // Sort milestones chronologically
+      // Sort chronologically
       milestones.sort((a, b) => a.date.localeCompare(b.date));
+      wins.sort((a, b) => a.date.localeCompare(b.date));
       sentimentArc.sort((a, b) => a.date.localeCompare(b.date));
 
       res.json({
         debriefCount: links.length,
         milestones,
+        wins: wins.slice(0, 15),
         quotes: quotes.slice(0, 10),
         sentimentArc,
       });

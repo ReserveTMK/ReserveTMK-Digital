@@ -52,6 +52,7 @@ export default function ContactDetail() {
   const { data: contactJourney } = useQuery<{
     debriefCount: number;
     milestones: Array<{ text: string; date: string; debriefTitle: string }>;
+    wins: Array<{ text: string; date: string; debriefTitle: string }>;
     quotes: Array<{ text: string; debriefTitle: string }>;
     sentimentArc: Array<{ date: string; sentiment: string; title: string }>;
   }>({
@@ -1217,6 +1218,19 @@ export default function ContactDetail() {
                       </div>
                     ))}
                   </div>
+                  {contactJourney.wins && contactJourney.wins.length > 0 && (
+                    <div className="mt-4 pt-4 border-t">
+                      <p className="text-[10px] uppercase tracking-wider font-semibold text-emerald-600 mb-2">Wins</p>
+                      <div className="space-y-1.5">
+                        {contactJourney.wins.slice(0, 5).map((w, idx) => (
+                          <div key={idx} className="text-xs text-foreground/80 bg-emerald-500/5 border-l-2 border-emerald-500/40 pl-2 py-1 rounded-r">
+                            {w.text}
+                            <span className="block text-[10px] text-muted-foreground mt-0.5">{w.date} · {w.debriefTitle}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {contactJourney.quotes.length > 0 && (
                     <div className="mt-4 pt-4 border-t space-y-2">
                       {contactJourney.quotes.slice(0, 3).map((q, idx) => (
