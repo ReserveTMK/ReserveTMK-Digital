@@ -17797,6 +17797,9 @@ Rules: Only include sections that have real content from the debrief data. Keep 
   const { registerGmailRoutes } = await import("./routes/gmail");
   registerGmailRoutes(app);
 
+  const { registerFunderRoutes } = await import("./routes/funders");
+  registerFunderRoutes(app);
+
   // NOTE: Old comms routes below are superseded by registerCommsRoutes above.
   // They will be removed in the deletion pass after all modules are extracted.
   app.get("/api/comms/stories", isAuthenticated, async (req, res) => {
