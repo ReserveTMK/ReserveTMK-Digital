@@ -6,7 +6,7 @@ import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { registerAudioRoutes } from "./replit_integrations/audio/routes";
 import { claudeJSON, isAnthropicKeyConfigured, AIKeyMissingError } from "./replit_integrations/anthropic/client";
-import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, getStandoutMoments, getOperatorInsights, getParticipantTransformationStories, getPeopleTierBreakdown, getImpactTagHeatmap, getTheoryOfChangeAlignment, getGrowthStory, getOutcomeChain, getQuarterlyMilestones, evaluateDeliverables, getTaxonomyBreakdown, getDebriefQuotesForReport, PASIFIKA_ETHNICITIES, type ReportFilters, type CohortDefinition, type OrgProfileContext, type FunderContext } from "./reporting";
+import { getFullMonthlyReport, generateNarrative, getCommunityComparison, getTamakiOraAlignment, getDeliveryMetrics, getImpactMetrics, getTrendMetrics, getCohortMetrics, getProgrammeAttributedOutcomes, getStandoutMoments, getOperatorInsights, getParticipantTransformationStories, getPeopleTierBreakdown, getImpactTagHeatmap, getTheoryOfChangeAlignment, getGrowthStory, getOutcomeChain, getQuarterlyMilestones, evaluateDeliverables, getTaxonomyBreakdown, getDebriefQuotesForReport, getConcernArcs, PASIFIKA_ETHNICITIES, type ReportFilters, type CohortDefinition, type OrgProfileContext, type FunderContext } from "./reporting";
 import { renderMonthlyReport, renderQuarterlyReport, type MonthlyReportData, type QuarterlyReportData, type MaoriPipelineData } from "./report-renderer";
 import { getNZWeekStart, getNZWeekEnd } from "@shared/nz-week";
 import { insertCommunitySpendSchema, insertFunderSchema, insertFunderDocumentSchema, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, insertProjectSchema, insertProjectUpdateSchema, insertProjectTaskSchema, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, insertOrganisationProfileSchema, interactions, meetings, actionItems, consentRecords, memberships, mous, milestones, communitySpend, eventAttendance, impactLogContacts, impactLogs, impactTags, groupMembers, bookings, programmes, contacts, impactLogGroups, events, groups, funderDocuments, dismissedDuplicates, mentorProfiles, meetingTypes, regularBookers, surveys, bookerLinks, SESSION_FREQUENCIES, JOURNEY_STAGES, insertMonthlySnapshotSchema, insertReportHighlightSchema, HIGHLIGHT_CATEGORIES, dailyFootTraffic, groupAssociations, programmeRegistrations, insertProgrammeRegistrationSchema, insertBookableResourceSchema, insertDeskBookingSchema, insertGearBookingSchema, bookableResources, deskBookings, gearBookings, normalizeStage, DEFAULT_AVAILABILITY_SCHEDULE, DEFAULT_VENUE_AVAILABILITY_SCHEDULE, type AvailabilitySchedule, bookingChangeRequests, funderTaxonomyCategories, funderTaxonomyClassifications, funderTaxonomyMappings, funders, } from "@shared/schema";
@@ -8227,11 +8227,17 @@ Important:
 
       // Operator insights from confirmed debriefs
       let qOperatorInsights;
+      let qConcernArcs;
       try {
         const qInsightFilters: ReportFilters = { userId, startDate, endDate, communityLens: qCommunityLens };
-        qOperatorInsights = await getOperatorInsights(qInsightFilters);
+        const [insights, arcs] = await Promise.all([
+          getOperatorInsights(qInsightFilters),
+          getConcernArcs(qInsightFilters),
+        ]);
+        qOperatorInsights = insights;
+        qConcernArcs = arcs;
       } catch (err: any) {
-        console.error("Quarterly operator insights failed (non-fatal):", err.message);
+        console.error("Quarterly operator insights/concern arcs failed (non-fatal):", err.message);
       }
 
       const reportData: QuarterlyReportData = {
@@ -8262,6 +8268,7 @@ Important:
         maoriPipeline,
         taxonomyBreakdown: qTaxonomyBreakdown.length > 0 ? qTaxonomyBreakdown : undefined,
         operatorInsights: qOperatorInsights || undefined,
+        concernArcs: qConcernArcs && qConcernArcs.arcs.length > 0 ? qConcernArcs : undefined,
       };
 
       const html = renderQuarterlyReport(reportData);
@@ -8353,6 +8360,21 @@ Important:
     } catch (err: any) {
       console.error("Quote suggestions error:", err);
       res.status(500).json({ message: "Failed to get quote suggestions", error: err.message });
+    }
+  });
+
+  // ── Concern arcs for governance/risk reporting ───────────────────────
+  app.get("/api/reports/concern-arcs", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { startDate, endDate } = req.query as { startDate?: string; endDate?: string };
+      if (!startDate || !endDate) return res.status(400).json({ message: "startDate and endDate required" });
+      const filters: ReportFilters = { userId, startDate, endDate };
+      const arcs = await getConcernArcs(filters);
+      res.json(arcs);
+    } catch (err: any) {
+      console.error("Concern arcs error:", err);
+      res.status(500).json({ message: "Failed to get concern arcs", error: err.message });
     }
   });
 

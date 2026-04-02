@@ -1063,6 +1063,138 @@ export async function getDebriefQuotesForReport(filters: ReportFilters) {
   return suggestions.slice(0, 20);
 }
 
+// Trace concern arcs: concern raised → resolution through subsequent debriefs
+export async function getConcernArcs(filters: ReportFilters) {
+  const where = confirmedDebriefWhere(filters);
+  const logs = await db.select({
+    id: impactLogs.id,
+    title: impactLogs.title,
+    reviewedData: impactLogs.reviewedData,
+    rawExtraction: impactLogs.rawExtraction,
+    sentiment: impactLogs.sentiment,
+    milestones: impactLogs.milestones,
+    createdAt: impactLogs.createdAt,
+  }).from(impactLogs).where(where);
+
+  // Get all contact links for these debriefs
+  const logIds = logs.map(l => l.id);
+  if (logIds.length === 0) return { arcs: [], unresolvedCount: 0, resolvedCount: 0 };
+
+  const contactLinks = await db.select({
+    impactLogId: impactLogContacts.impactLogId,
+    contactId: impactLogContacts.contactId,
+  }).from(impactLogContacts).where(inArray(impactLogContacts.impactLogId, logIds));
+
+  // Get contact names
+  const contactIds = [...new Set(contactLinks.map(c => c.contactId))];
+  const contactNameMap = new Map<number, string>();
+  if (contactIds.length > 0) {
+    const contactRows = await db.select({ id: contacts.id, name: contacts.name }).from(contacts).where(inArray(contacts.id, contactIds));
+    for (const c of contactRows) contactNameMap.set(c.id, c.name);
+  }
+
+  // Map logs to their linked contacts
+  const logContacts = new Map<number, number[]>();
+  for (const link of contactLinks) {
+    if (!logContacts.has(link.impactLogId)) logContacts.set(link.impactLogId, []);
+    logContacts.get(link.impactLogId)!.push(link.contactId);
+  }
+
+  // Extract concerns with their contacts and dates
+  const concerns: Array<{
+    text: string;
+    debriefId: number;
+    debriefTitle: string;
+    date: string;
+    contactIds: number[];
+    contactNames: string[];
+  }> = [];
+
+  for (const log of logs) {
+    const data = (log.reviewedData || log.rawExtraction) as any;
+    const reflections = data?.reflections;
+    if (!reflections?.concerns?.length) continue;
+
+    const linkedContacts = logContacts.get(log.id) || [];
+    const names = linkedContacts.map(id => contactNameMap.get(id) || "Unknown").filter(n => n !== "Unknown");
+    const date = log.createdAt?.toISOString().slice(0, 10) || "";
+
+    for (const concern of reflections.concerns) {
+      concerns.push({
+        text: concern,
+        debriefId: log.id,
+        debriefTitle: log.title,
+        date,
+        contactIds: linkedContacts,
+        contactNames: names,
+      });
+    }
+  }
+
+  // For each concern, look for resolution: a later debrief with the same contact
+  // that has positive sentiment or milestones
+  const arcs: Array<{
+    concern: string;
+    raisedIn: string;
+    raisedDate: string;
+    contactNames: string[];
+    resolution: string | null;
+    resolvedIn: string | null;
+    resolvedDate: string | null;
+    status: "resolved" | "unresolved";
+  }> = [];
+
+  for (const c of concerns) {
+    let resolution: string | null = null;
+    let resolvedIn: string | null = null;
+    let resolvedDate: string | null = null;
+
+    // Look through all logs for later ones involving the same contacts
+    for (const log of logs) {
+      const logDate = log.createdAt?.toISOString().slice(0, 10) || "";
+      if (logDate <= c.date) continue; // Must be after the concern
+      if (log.id === c.debriefId) continue;
+
+      const logContactIds = logContacts.get(log.id) || [];
+      const hasOverlap = c.contactIds.some(id => logContactIds.includes(id));
+      if (!hasOverlap) continue;
+
+      // Check for positive signal
+      if (log.sentiment === "positive" || (log.milestones && log.milestones.length > 0)) {
+        const data = (log.reviewedData || log.rawExtraction) as any;
+        const wins = data?.reflections?.wins;
+        if (wins?.length > 0) {
+          resolution = wins[0];
+        } else if (log.milestones?.length) {
+          resolution = log.milestones[0];
+        } else {
+          resolution = "Positive progress observed";
+        }
+        resolvedIn = log.title;
+        resolvedDate = logDate;
+        break; // Take the first resolution
+      }
+    }
+
+    arcs.push({
+      concern: c.text,
+      raisedIn: c.debriefTitle,
+      raisedDate: c.date,
+      contactNames: c.contactNames,
+      resolution,
+      resolvedIn,
+      resolvedDate,
+      status: resolution ? "resolved" : "unresolved",
+    });
+  }
+
+  return {
+    arcs: arcs.slice(0, 15),
+    resolvedCount: arcs.filter(a => a.status === "resolved").length,
+    unresolvedCount: arcs.filter(a => a.status === "unresolved").length,
+  };
+}
+
 export async function getParticipantTransformationStories(filters: ReportFilters, limit = 3) {
   const where = confirmedDebriefWhere(filters);
   const start = parseDate(filters.startDate);

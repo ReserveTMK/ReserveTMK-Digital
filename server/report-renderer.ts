@@ -51,6 +51,20 @@ export interface QuarterlyReportData {
   maoriPipeline?: MaoriPipelineData;
   taxonomyBreakdown?: Array<{ categoryName: string; funderName: string; entityCounts: Record<string, number>; total: number }>;
   operatorInsights?: OperatorInsightsData;
+  concernArcs?: {
+    arcs: Array<{
+      concern: string;
+      raisedIn: string;
+      raisedDate: string;
+      contactNames: string[];
+      resolution: string | null;
+      resolvedIn: string | null;
+      resolvedDate: string | null;
+      status: "resolved" | "unresolved";
+    }>;
+    resolvedCount: number;
+    unresolvedCount: number;
+  };
 }
 
 // ── Shared CSS ─────────────────────────────────────────────────
@@ -385,6 +399,8 @@ export function renderQuarterlyReport(data: QuarterlyReportData): string {
   const qUpdateSec = qSec++;
   const hasInsights = data.operatorInsights && (data.operatorInsights.wins.length > 0 || data.operatorInsights.concerns.length > 0 || data.operatorInsights.learnings.length > 0);
   const qInsightsSec = hasInsights ? qSec++ : 0;
+  const hasConcernArcs = data.concernArcs && data.concernArcs.arcs.length > 0;
+  const qConcernSec = hasConcernArcs ? qSec++ : 0;
   const qQuoteSec = qSec++;
   const qPlannedSec = qSec++;
 
@@ -531,6 +547,26 @@ ${hasInsights ? `
   <h3 style="color:#1e40af;margin-bottom:6px;margin-top:12px;">Learnings</h3>
   <ul class="bullets">${data.operatorInsights!.learnings.map(l => `<li>${esc(l)}</li>`).join("")}</ul>
   ` : ""}
+</div>
+` : ""}
+
+${hasConcernArcs ? `
+<div class="section">
+  <h2>${qConcernSec}. Challenges &amp; Responses</h2>
+  <p style="font-size:11px;color:#888;margin-bottom:12px;">${data.concernArcs!.resolvedCount} of ${data.concernArcs!.arcs.length} challenges addressed through subsequent engagement</p>
+  <table>
+    <thead><tr><th>Challenge Identified</th><th>People</th><th>Response</th><th style="text-align:center">Status</th></tr></thead>
+    <tbody>
+      ${data.concernArcs!.arcs.map(a => `
+        <tr>
+          <td style="font-size:11px;">${esc(a.concern.length > 120 ? a.concern.slice(0, 120) + "..." : a.concern)}<br><span style="color:#888;font-size:10px;">${esc(a.raisedIn)} · ${esc(a.raisedDate)}</span></td>
+          <td style="font-size:11px;">${a.contactNames.length > 0 ? esc(a.contactNames.join(", ")) : "<span style='color:#888;'>General</span>"}</td>
+          <td style="font-size:11px;">${a.resolution ? `${esc(a.resolution.length > 120 ? a.resolution.slice(0, 120) + "..." : a.resolution)}<br><span style="color:#888;font-size:10px;">${esc(a.resolvedIn || "")} · ${esc(a.resolvedDate || "")}</span>` : "<span style='color:#888;'>Monitoring</span>"}</td>
+          <td style="text-align:center;"><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;background:${a.status === "resolved" ? "#dcfce7;color:#166534" : "#fef3c7;color:#92400e"}">${a.status === "resolved" ? "Addressed" : "Monitoring"}</span></td>
+        </tr>
+      `).join("")}
+    </tbody>
+  </table>
 </div>
 ` : ""}
 
