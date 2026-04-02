@@ -1468,6 +1468,11 @@ export async function registerRoutes(
       const input = api.meetings.update.input.parse(updates);
       const updated = await storage.updateMeeting(id, input);
 
+      // Create calendar event when meeting becomes completed/confirmed
+      if (input.status && (input.status === "completed" || input.status === "confirmed")) {
+        ensureMeetingEvent(updated, existing.userId);
+      }
+
       if (('coMentorProfileId' in req.body || 'attendees' in req.body) && updated.googleCalendarEventId) {
         (async () => {
           try {
@@ -1566,10 +1571,32 @@ export async function registerRoutes(
         return res.status(500).json({ message: "Failed to link debrief to session" });
       }
 
+      // Create calendar event for completed meeting
+      ensureMeetingEvent({ ...meeting, status: "completed" }, meeting.userId || userId);
+
       res.json({ meeting: { ...meeting, interactionId: interaction.id, status: "completed" }, interaction });
     } catch (err: any) {
       console.error("Debrief error:", err);
       res.status(500).json({ message: "Failed to log debrief" });
+    }
+  });
+
+  // Backfill events for existing completed/confirmed meetings
+  app.post("/api/meetings/backfill-events", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const allMeetings = await storage.getMeetings(userId);
+      let processed = 0;
+      for (const m of allMeetings) {
+        if (m.status === "cancelled" || !m.startTime) continue;
+        if (m.status === "completed" || m.status === "confirmed") {
+          await ensureMeetingEvent(m, userId);
+          processed++;
+        }
+      }
+      res.json({ message: "Backfill complete", checked: allMeetings.length, processed });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
   });
 
