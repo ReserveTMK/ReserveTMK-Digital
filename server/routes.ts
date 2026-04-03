@@ -3936,6 +3936,46 @@ IMPORTANT RULES:
     }
   });
 
+  // Bulk re-extraction — re-analyse all debriefs with transcripts through the current prompt
+  app.post("/api/impact-logs/bulk-reanalyse", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const allLogs = await storage.getImpactLogs(userId);
+      const toProcess = allLogs.filter(l => l.type === "debrief" && l.transcript && l.transcript.trim().length > 0);
+
+      const taxonomy = await storage.getTaxonomy(userId);
+      const keywords = await storage.getKeywords(userId);
+      const contacts = await storage.getContacts(userId);
+      const groups = await storage.getGroups(userId);
+
+      const results: { id: number; title: string; status: string }[] = [];
+      let errors = 0;
+
+      for (const log of toProcess) {
+        try {
+          const extractRes = await fetch(`${req.protocol}://${req.get("host")}/api/impact-extract`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", cookie: req.headers.cookie || "" },
+            body: JSON.stringify({ transcript: log.transcript, title: log.title, existingLogId: log.id }),
+          });
+          if (extractRes.ok) {
+            results.push({ id: log.id, title: log.title || "Untitled", status: "ok" });
+          } else {
+            results.push({ id: log.id, title: log.title || "Untitled", status: "error" });
+            errors++;
+          }
+        } catch (e: any) {
+          results.push({ id: log.id, title: log.title || "Untitled", status: "error: " + e.message });
+          errors++;
+        }
+      }
+
+      res.json({ total: toProcess.length, processed: results.length, errors, results });
+    } catch (err: any) {
+      res.status(500).json({ message: "Bulk re-analysis failed", error: err.message });
+    }
+  });
+
   app.post("/api/impact-logs/:id/reanalyse-tags", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
