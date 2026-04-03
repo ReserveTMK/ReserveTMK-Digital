@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import {
   FileText, Loader2, Download, Landmark, Settings, CalendarDays, CalendarRange, Sparkles, X, Plus, MessageSquareQuote, Check,
@@ -57,9 +58,19 @@ function getQuarterOptions() {
   return options;
 }
 
+// ── Embeddable report generator ──────────────────────────────────────────────
+
+export function ReportGenerator({ funderId }: { funderId?: number }) {
+  return <ReportGeneratorInner funderId={funderId} />;
+}
+
 // ── Main component ───────────────────────────────────────────────────────────
 
 export default function Reports() {
+  return <ReportGeneratorInner />;
+}
+
+function ReportGeneratorInner({ funderId }: { funderId?: number } = {}) {
   const { toast } = useToast();
   const monthOptions = getMonthOptions();
   const quarterOptions = getQuarterOptions();
@@ -83,17 +94,22 @@ export default function Reports() {
   // Data
   const { data: fundersList } = useQuery<Funder[]>({ queryKey: ["/api/funders"] });
 
+  // Pre-select funder when embedded in funder detail
+  const isEmbedded = funderId !== undefined;
+  const embeddedFunder = fundersList?.find(f => f.id === funderId) || null;
+  const effectiveFunder = isEmbedded ? embeddedFunder : activeFunder;
+
   const month = monthOptions.find((m) => m.value === selectedMonth);
   const quarter = quarterOptions.find((q) => q.value === selectedQuarter);
 
   // Quote suggestions from debriefs
   const periodStart = reportMode === "monthly" ? month?.start : quarter?.start;
   const periodEnd = reportMode === "monthly" ? month?.end : quarter?.end;
-  const funderParam = activeFunder ? `&funder=${encodeURIComponent(activeFunder.name)}` : "";
+  const funderParam = effectiveFunder ? `&funder=${encodeURIComponent(effectiveFunder.name)}` : "";
   const { data: quoteSuggestions } = useQuery<Array<{
     text: string; attribution: string; debriefTitle: string; debriefId: number; hasMilestone: boolean; sentiment: string | null;
   }>>({
-    queryKey: ["/api/reports/quote-suggestions", periodStart, periodEnd, activeFunder?.name],
+    queryKey: ["/api/reports/quote-suggestions", periodStart, periodEnd, effectiveFunder?.name],
     queryFn: () => fetch(`/api/reports/quote-suggestions?startDate=${periodStart}&endDate=${periodEnd}${funderParam}`, { credentials: "include" }).then(r => r.json()),
     enabled: !!periodStart && !!periodEnd,
   });
@@ -105,7 +121,7 @@ export default function Reports() {
     try {
       let url: string;
       const body: any = { quotes, plannedNext };
-      const funderParam = activeFunder ? `&funder=${encodeURIComponent(activeFunder.name)}` : "";
+      const funderParam = effectiveFunder ? `&funder=${encodeURIComponent(effectiveFunder.name)}` : "";
       if (reportMode === "monthly" && month) {
         url = `/api/reports/html/monthly?month=${month.month}${funderParam}`;
       } else if (reportMode === "quarterly" && quarter) {
@@ -150,7 +166,7 @@ export default function Reports() {
     const blob = new Blob([reportHtml], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    const funderPrefix = activeFunder ? activeFunder.name.replace(/\s+/g, "-") + "-" : "";
+    const funderPrefix = effectiveFunder ? effectiveFunder.name.replace(/\s+/g, "-") + "-" : "";
     const period = reportMode === "monthly" ? month?.month || "report" : quarter?.value || "report";
     a.href = url;
     a.download = `ReserveTMK-${funderPrefix}${period}-Report.html`;
@@ -182,62 +198,66 @@ export default function Reports() {
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6 p-4 md:p-6 max-w-6xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <FileText className="h-6 w-6" />
-            Funder Reports
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Generate branded reports for funders. Select a funder, pick a period, generate.
-          </p>
+    <div className={cn("space-y-6", !isEmbedded && "p-4 md:p-6 max-w-6xl mx-auto")}>
+      {/* Header — only on standalone page */}
+      {!isEmbedded && (
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+              <FileText className="h-6 w-6" />
+              Funder Reports
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Generate branded reports for funders. Select a funder, pick a period, generate.
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
       <Card className="p-4 space-y-4">
-        {/* Row 1: Funder selector */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              <Landmark className="h-3 w-3 inline mr-1" />
-              Funder
-            </Label>
-            <Link href="/funders">
-              <Button variant="ghost" size="sm" className="h-6 text-xs gap-1">
-                <Settings className="h-3 w-3" /> Manage Funders
-              </Button>
-            </Link>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant={activeFunder === null ? "default" : "outline"}
-              onClick={() => setActiveFunder(null)}
-              className="h-8 text-xs"
-            >
-              All / General
-            </Button>
-            {(fundersList || []).map((f) => (
+        {/* Row 1: Funder selector — only on standalone page */}
+        {!isEmbedded && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <Landmark className="h-3 w-3 inline mr-1" />
+                Funder
+              </Label>
+              <Link href="/funders">
+                <Button variant="ghost" size="sm" className="h-6 text-xs gap-1">
+                  <Settings className="h-3 w-3" /> Manage Funders
+                </Button>
+              </Link>
+            </div>
+            <div className="flex flex-wrap gap-2">
               <Button
-                key={f.id}
                 size="sm"
-                variant={activeFunder?.id === f.id ? "default" : "outline"}
-                onClick={() => setActiveFunder(f)}
+                variant={activeFunder === null ? "default" : "outline"}
+                onClick={() => setActiveFunder(null)}
                 className="h-8 text-xs"
               >
-                {f.name}
-                {f.reportingCadence && (
-                  <Badge variant="secondary" className="ml-1 text-[10px] px-1 py-0">
-                    {f.reportingCadence}
-                  </Badge>
-                )}
+                All / General
               </Button>
-            ))}
+              {(fundersList || []).map((f) => (
+                <Button
+                  key={f.id}
+                  size="sm"
+                  variant={activeFunder?.id === f.id ? "default" : "outline"}
+                  onClick={() => setActiveFunder(f)}
+                  className="h-8 text-xs"
+                >
+                  {f.name}
+                  {f.reportingCadence && (
+                    <Badge variant="secondary" className="ml-1 text-[10px] px-1 py-0">
+                      {f.reportingCadence}
+                    </Badge>
+                  )}
+                </Button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Row 2: Mode toggle + period selector + actions */}
         <div className="flex flex-wrap items-end gap-3">

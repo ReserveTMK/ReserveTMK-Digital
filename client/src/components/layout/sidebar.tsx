@@ -79,11 +79,14 @@ const navigation: NavItem[] = [
       { name: "Meet", href: "/meet", icon: CalendarPlus },
       { name: "Community Spend", href: "/community-spend", icon: DollarSign },
       { name: "Dashboard", href: "/tracking", icon: BarChart3 },
-      { name: "Reports", href: "/reports", icon: FileText },
     ],
   },
   {
     name: "Funders", href: "/funders", icon: Handshake,
+    children: [
+      { name: "Overview", href: "/funders", icon: Handshake },
+      { name: "Reports", href: "/reports", icon: FileText },
+    ],
   },
   {
     name: "Settings", href: "/scheduling", icon: Settings,
