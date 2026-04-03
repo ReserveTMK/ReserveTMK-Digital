@@ -596,7 +596,7 @@ export async function registerRoutes(
           (SELECT MAX(m.start_time) FROM meetings m WHERE m.contact_id = c.id AND m.status IN ('completed', 'confirmed')),
           (SELECT MAX(e.start_time) FROM events e JOIN event_attendance ea ON ea.event_id = e.id WHERE ea.contact_id = c.id),
           (SELECT MAX(il.created_at) FROM impact_logs il JOIN impact_log_contacts ilc ON ilc.impact_log_id = il.id WHERE ilc.contact_id = c.id AND il.status = 'confirmed'),
-          (SELECT MAX(b.start_date) FROM bookings b WHERE b.booker_contact_id = c.id AND b.status IN ('confirmed', 'completed'))
+          (SELECT MAX(b.start_date) FROM bookings b WHERE b.booker_id = c.id AND b.status IN ('confirmed', 'completed'))
         ) as last_engaged
         FROM contacts c
         WHERE c.user_id = ${userId} AND c.active = true AND c.is_archived = false

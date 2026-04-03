@@ -64,7 +64,7 @@ export function registerContactRoutes(app: Express) {
           (SELECT MAX(m.start_time) FROM meetings m WHERE m.contact_id = c.id AND m.status IN ('completed', 'confirmed')),
           (SELECT MAX(e.start_time) FROM events e JOIN event_attendance ea ON ea.event_id = e.id WHERE ea.contact_id = c.id),
           (SELECT MAX(il.created_at) FROM impact_logs il JOIN impact_log_contacts ilc ON ilc.impact_log_id = il.id WHERE ilc.contact_id = c.id AND il.status = 'confirmed'),
-          (SELECT MAX(b.start_date) FROM bookings b WHERE b.booker_contact_id = c.id AND b.status IN ('confirmed', 'completed'))
+          (SELECT MAX(b.start_date) FROM bookings b WHERE b.booker_id = c.id AND b.status IN ('confirmed', 'completed'))
         ) as last_engaged
         FROM contacts c
         WHERE c.user_id = ${userId} AND c.active = true AND c.is_archived = false
@@ -101,8 +101,8 @@ export function registerContactRoutes(app: Express) {
               WHERE rb.contact_id = c.id AND gb.created_at >= ${sixMonthsAgoISO}::timestamp
             ) OR EXISTS (
               SELECT 1 FROM regular_bookers rb
-              JOIN desk_bookings db ON db.regular_booker_id = rb.id
-              WHERE rb.contact_id = c.id AND db.date >= ${sixMonthsAgoISO}::date
+              JOIN desk_bookings dk ON dk.regular_booker_id = rb.id
+              WHERE rb.contact_id = c.id AND dk.date >=${sixMonthsAgoISO}::date
             ) THEN true ELSE false END as has_recent_access,
             CASE WHEN EXISTS (
               SELECT 1 FROM bookings b WHERE b.booker_id = c.id AND b.status IN ('confirmed', 'completed')
@@ -112,7 +112,7 @@ export function registerContactRoutes(app: Express) {
               WHERE rb.contact_id = c.id
             ) OR EXISTS (
               SELECT 1 FROM regular_bookers rb
-              JOIN desk_bookings db ON db.regular_booker_id = rb.id
+              JOIN desk_bookings dk ON dk.regular_booker_id = rb.id
               WHERE rb.contact_id = c.id
             ) THEN true ELSE false END as has_any_access
           FROM contacts c
