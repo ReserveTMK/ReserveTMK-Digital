@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, useLocation } from "wouter";
 import { format, isPast, formatDistanceToNow } from "date-fns";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   ArrowLeft,
   Calendar,
@@ -26,7 +26,8 @@ import type { Funder } from "@shared/schema";
 import { FunderDeliverablesSection } from "@/components/funders/deliverables-section";
 import { FunderTaxonomySection } from "@/components/funders/taxonomy-section";
 import { FunderClassificationsSection } from "@/components/funders/classifications-section";
-import { Users, MapPin, TrendingUp as Growth } from "lucide-react";
+import { ReportGenerator } from "@/pages/reports";
+import { Users, MapPin, TrendingUp as Growth, FolderOpen, Tags } from "lucide-react";
 
 // Static census context by community lens (from reference_geographic_lenses.md)
 const COMMUNITY_CONTEXT: Record<string, { title: string; stats: Array<{ label: string; value: string; highlight?: boolean }> }> = {
@@ -153,6 +154,7 @@ export default function FunderDetailPage() {
 
   const isActive = funder ? ACTIVE_STATUSES.includes(funder.status) : false;
   const isPursuing = funder ? PIPELINE_STATUSES.includes(funder.status) : false;
+  const [activeTab, setActiveTab] = useState<"deliverables" | "reports" | "taxonomy" | "documents">("deliverables");
 
   const { data: innovatorStats } = useQuery<any>({
     queryKey: ["/api/funders", funderId, "innovator-stats"],
@@ -211,8 +213,8 @@ export default function FunderDetailPage() {
           )}
         </div>
         {isActive && (
-          <Button variant="outline" size="sm" onClick={() => setLocation(`/reports?funder=${funder.id}`)}>
-            <FileText className="w-4 h-4 mr-2" /> Generate Report
+          <Button variant="outline" size="sm" onClick={() => setActiveTab("reports")}>
+            <FileText className="w-4 h-4 mr-2" /> Reports
           </Button>
         )}
       </div>
@@ -464,115 +466,161 @@ export default function FunderDetailPage() {
       {/* ═══════════ ACTIVE FUNDER VIEW ═══════════ */}
       {isActive && (
         <>
-        {/* Deliverables, Taxonomy, Classifications — full width */}
-        <FunderDeliverablesSection funderId={funder.id} />
-        <FunderTaxonomySection funderId={funder.id} />
-        <FunderClassificationsSection funderId={funder.id} />
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="md:col-span-2 space-y-6">
-            {funder.outcomesFramework && (
-              <Card className="p-5">
-                <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                  <Target className="w-4 h-4 text-primary" />
-                  Outcomes Framework
-                </h3>
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{funder.outcomesFramework}</p>
-                {funder.outcomeFocus && (
-                  <p className="text-sm text-muted-foreground mt-2">
-                    <span className="font-medium">Focus:</span> {funder.outcomeFocus}
-                  </p>
-                )}
-              </Card>
-            )}
-
-            {funder.reportingGuidance && (
-              <Card className="p-5">
-                <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-primary" />
-                  Reporting Guidance
-                </h3>
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{funder.reportingGuidance}</p>
-              </Card>
-            )}
-
-            {funder.partnershipStrategy && (
-              <Card className="p-5">
-                <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                  <Handshake className="w-4 h-4 text-primary" />
-                  Partnership Strategy
-                </h3>
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{funder.partnershipStrategy}</p>
-              </Card>
-            )}
-
-            {funder.notes && (
-              <Card className="p-5">
-                <h3 className="text-sm font-semibold mb-2">Notes</h3>
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{funder.notes}</p>
-              </Card>
-            )}
-          </div>
-
-          <div className="space-y-4">
-            {(funder.contactPerson || funder.contactEmail || funder.contactPhone) && (
-              <Card className="p-4">
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Contact</h3>
-                <div className="space-y-2 text-sm">
-                  {funder.contactPerson && (
-                    <div className="flex items-center gap-2">
-                      <User className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span>{funder.contactPerson}</span>
-                    </div>
-                  )}
-                  {funder.contactEmail && (
-                    <div className="flex items-center gap-2">
-                      <Mail className="w-3.5 h-3.5 text-muted-foreground" />
-                      <a href={`mailto:${funder.contactEmail}`} className="text-primary hover:underline">{funder.contactEmail}</a>
-                    </div>
-                  )}
-                  {funder.contactPhone && (
-                    <div className="flex items-center gap-2">
-                      <Phone className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span>{funder.contactPhone}</span>
-                    </div>
-                  )}
-                </div>
-              </Card>
-            )}
-
-            <Card className="p-4">
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Key Dates</h3>
-              <div className="space-y-2 text-sm">
-                {funder.contractStart && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Start</span>
-                    <span>{format(new Date(funder.contractStart), "d MMM yyyy")}</span>
-                  </div>
-                )}
-                {funder.contractEnd && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">End</span>
-                    <span>{format(new Date(funder.contractEnd), "d MMM yyyy")}</span>
-                  </div>
-                )}
-                {funder.reviewDate && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Review</span>
-                    <span>{format(new Date(funder.reviewDate), "d MMM yyyy")}</span>
-                  </div>
-                )}
-              </div>
-            </Card>
-
-            {funder.funderTag && (
-              <Card className="p-4">
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Funder Tag</h3>
-                <Badge variant="outline">{funder.funderTag}</Badge>
-              </Card>
-            )}
+        {/* Tab navigation */}
+        <div className="border-b">
+          <div className="flex gap-0">
+            {([
+              { key: "deliverables", label: "Deliverables", icon: Target },
+              { key: "reports", label: "Reports", icon: FileText },
+              { key: "taxonomy", label: "Taxonomy", icon: Tags },
+              { key: "documents", label: "Documents", icon: FolderOpen },
+            ] as const).map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === tab.key
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/30"
+                }`}
+              >
+                <tab.icon className="w-4 h-4" />
+                {tab.label}
+              </button>
+            ))}
           </div>
         </div>
+
+        {/* Tab content */}
+        {activeTab === "deliverables" && (
+          <>
+            <FunderDeliverablesSection funderId={funder.id} />
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="md:col-span-2 space-y-6">
+                {funder.outcomesFramework && (
+                  <Card className="p-5">
+                    <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                      <Target className="w-4 h-4 text-primary" />
+                      Outcomes Framework
+                    </h3>
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{funder.outcomesFramework}</p>
+                    {funder.outcomeFocus && (
+                      <p className="text-sm text-muted-foreground mt-2">
+                        <span className="font-medium">Focus:</span> {funder.outcomeFocus}
+                      </p>
+                    )}
+                  </Card>
+                )}
+
+                {funder.reportingGuidance && (
+                  <Card className="p-5">
+                    <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-primary" />
+                      Reporting Guidance
+                    </h3>
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{funder.reportingGuidance}</p>
+                  </Card>
+                )}
+
+                {funder.partnershipStrategy && (
+                  <Card className="p-5">
+                    <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                      <Handshake className="w-4 h-4 text-primary" />
+                      Partnership Strategy
+                    </h3>
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{funder.partnershipStrategy}</p>
+                  </Card>
+                )}
+
+                {funder.notes && (
+                  <Card className="p-5">
+                    <h3 className="text-sm font-semibold mb-2">Notes</h3>
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{funder.notes}</p>
+                  </Card>
+                )}
+              </div>
+
+              <div className="space-y-4">
+                {(funder.contactPerson || funder.contactEmail || funder.contactPhone) && (
+                  <Card className="p-4">
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Contact</h3>
+                    <div className="space-y-2 text-sm">
+                      {funder.contactPerson && (
+                        <div className="flex items-center gap-2">
+                          <User className="w-3.5 h-3.5 text-muted-foreground" />
+                          <span>{funder.contactPerson}</span>
+                        </div>
+                      )}
+                      {funder.contactEmail && (
+                        <div className="flex items-center gap-2">
+                          <Mail className="w-3.5 h-3.5 text-muted-foreground" />
+                          <a href={`mailto:${funder.contactEmail}`} className="text-primary hover:underline">{funder.contactEmail}</a>
+                        </div>
+                      )}
+                      {funder.contactPhone && (
+                        <div className="flex items-center gap-2">
+                          <Phone className="w-3.5 h-3.5 text-muted-foreground" />
+                          <span>{funder.contactPhone}</span>
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                )}
+
+                <Card className="p-4">
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Key Dates</h3>
+                  <div className="space-y-2 text-sm">
+                    {funder.contractStart && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Start</span>
+                        <span>{format(new Date(funder.contractStart), "d MMM yyyy")}</span>
+                      </div>
+                    )}
+                    {funder.contractEnd && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">End</span>
+                        <span>{format(new Date(funder.contractEnd), "d MMM yyyy")}</span>
+                      </div>
+                    )}
+                    {funder.reviewDate && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Review</span>
+                        <span>{format(new Date(funder.reviewDate), "d MMM yyyy")}</span>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+
+                {funder.funderTag && (
+                  <Card className="p-4">
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Funder Tag</h3>
+                    <Badge variant="outline">{funder.funderTag}</Badge>
+                  </Card>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+
+        {activeTab === "reports" && (
+          <ReportGenerator funderId={funder.id} />
+        )}
+
+        {activeTab === "taxonomy" && (
+          <>
+            <FunderTaxonomySection funderId={funder.id} />
+            <FunderClassificationsSection funderId={funder.id} />
+          </>
+        )}
+
+        {activeTab === "documents" && (
+          <Card className="p-8 text-center">
+            <FolderOpen className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground">Documents coming soon</p>
+            <p className="text-xs text-muted-foreground mt-1">Contracts, EOIs, and reports will live here</p>
+          </Card>
+        )}
         </>
       )}
 

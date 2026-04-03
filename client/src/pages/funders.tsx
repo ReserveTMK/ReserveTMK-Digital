@@ -51,6 +51,7 @@ import {
 import { useGroups } from "@/hooks/use-groups";
 import { useContacts as useContactsHook } from "@/hooks/use-contacts";
 import { useLocation, Link } from "wouter";
+import { Target, Radar, Archive, FolderOpen } from "lucide-react";
 
 // Extracted components
 import { FunderTaxonomySection } from "@/components/funders/taxonomy-section";
@@ -58,6 +59,7 @@ import { FunderClassificationsSection } from "@/components/funders/classificatio
 import { FunderDeliverablesSection } from "@/components/funders/deliverables-section";
 import { FunderCard, ActiveFunderCard, PipelineCard, RadarRow } from "@/components/funders/funder-cards";
 import { FunderFormDialog } from "@/components/funders/funder-form";
+import { ReportGenerator } from "@/pages/reports";
 
 // Re-export for consumers that import from this file
 export { FunderTaxonomySection } from "@/components/funders/taxonomy-section";
@@ -148,6 +150,7 @@ export default function FundersPage() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
+  const [activeTab, setActiveTab] = useState<"active" | "pipeline" | "reports" | "archive">("active");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [createDefaultStatus, setCreateDefaultStatus] = useState<string | undefined>();
   const [editingFunder, setEditingFunder] = useState<Funder | null>(null);
@@ -267,18 +270,50 @@ export default function FundersPage() {
         )}
       </div>
 
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input
-          placeholder="Search all funders..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-          data-testid="input-search-funders"
-        />
+      {/* Tab navigation */}
+      <div className="border-b">
+        <div className="flex gap-0">
+          {([
+            { key: "active", label: "Active", icon: Handshake, count: active.length },
+            { key: "pipeline", label: "Pipeline", icon: Target, count: pipeline.length + radar.length },
+            { key: "reports", label: "Reports", icon: FileText },
+            { key: "archive", label: "Archive", icon: Archive, count: completed.length },
+          ] as const).map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === tab.key
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/30"
+              }`}
+            >
+              <tab.icon className="w-4 h-4" />
+              {tab.label}
+              {"count" in tab && tab.count > 0 && (
+                <span className="text-xs bg-muted text-muted-foreground rounded-full px-1.5 py-0.5">{tab.count}</span>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {filtered ? (
+      {/* Search — show on Active, Pipeline, Archive tabs */}
+      {activeTab !== "reports" && (
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Search all funders..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+            data-testid="input-search-funders"
+          />
+        </div>
+      )}
+
+      {/* Search results — override tab content when searching */}
+      {filtered && activeTab !== "reports" ? (
         <div>
           <p className="text-sm text-muted-foreground mb-3">{filtered.length} result{filtered.length !== 1 ? "s" : ""}</p>
           <div className="grid gap-3">
@@ -297,104 +332,135 @@ export default function FundersPage() {
           </Button>
         </Card>
       ) : (
-        <div className="space-y-8">
-          {/* MANAGING — active delivery funds */}
-          {active.filter(f => (f as any).fundType !== "project").length > 0 && (
-            <div>
-              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Managing</h2>
-              <div className="grid gap-3">
-                {active.filter(f => (f as any).fundType !== "project").map((funder) => (
-                  <ActiveFunderCard key={funder.id} funder={funder} onView={() => setLocation(`/funders/${funder.id}`)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/reports?funder=${funder.id}`)} />
-                ))}
+        <>
+        {/* ═══════════ ACTIVE TAB ═══════════ */}
+        {activeTab === "active" && (
+          <div className="space-y-8">
+            {active.filter(f => (f as any).fundType !== "project").length > 0 && (
+              <div>
+                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Managing</h2>
+                <div className="grid gap-3">
+                  {active.filter(f => (f as any).fundType !== "project").map((funder) => (
+                    <ActiveFunderCard key={funder.id} funder={funder} onView={() => setLocation(`/funders/${funder.id}`)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/reports?funder=${funder.id}`)} />
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* MANAGING — active project funds */}
-          {active.filter(f => (f as any).fundType === "project").length > 0 && (
-            <div>
-              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Projects</h2>
-              <div className="grid gap-3">
-                {active.filter(f => (f as any).fundType === "project").map((funder) => (
-                  <Card key={funder.id} className="p-4 hover:shadow-md transition-shadow cursor-pointer border" onClick={() => setViewingFunder(funder)}>
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-semibold text-foreground truncate">{funder.name}</h3>
-                          {funder.estimatedValue && (
-                            <span className="text-sm font-medium text-green-700 dark:text-green-400">{formatCurrency(funder.estimatedValue)}</span>
+            {active.filter(f => (f as any).fundType === "project").length > 0 && (
+              <div>
+                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Projects</h2>
+                <div className="grid gap-3">
+                  {active.filter(f => (f as any).fundType === "project").map((funder) => (
+                    <Card key={funder.id} className="p-4 hover:shadow-md transition-shadow cursor-pointer border" onClick={() => setViewingFunder(funder)}>
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="font-semibold text-foreground truncate">{funder.name}</h3>
+                            {funder.estimatedValue && (
+                              <span className="text-sm font-medium text-green-700 dark:text-green-400">{formatCurrency(funder.estimatedValue)}</span>
+                            )}
+                            <Badge variant="outline" className="text-[10px]">Project</Badge>
+                          </div>
+                          {funder.organisation && (
+                            <p className="text-sm text-muted-foreground truncate">{funder.organisation}</p>
                           )}
-                          <Badge variant="outline" className="text-[10px]">Project</Badge>
+                          {funder.nextAction && (
+                            <p className="text-xs text-muted-foreground mt-1">{funder.nextAction}</p>
+                          )}
                         </div>
-                        {funder.organisation && (
-                          <p className="text-sm text-muted-foreground truncate">{funder.organisation}</p>
-                        )}
-                        {funder.nextAction && (
-                          <p className="text-xs text-muted-foreground mt-1">{funder.nextAction}</p>
-                        )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                              <MoreVertical className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setEditingFunder(funder); }}>
+                              <Pencil className="w-4 h-4 mr-2" /> Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setDeleteConfirm(funder.id); }} className="text-red-600">
+                              <Trash2 className="w-4 h-4 mr-2" /> Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                            <MoreVertical className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setEditingFunder(funder); }}>
-                            <Pencil className="w-4 h-4 mr-2" /> Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setDeleteConfirm(funder.id); }} className="text-red-600">
-                            <Trash2 className="w-4 h-4 mr-2" /> Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </Card>
-                ))}
+                    </Card>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* PURSUING — pipeline */}
-          {pipeline.length > 0 && (
-            <div>
-              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Pursuing</h2>
-              <div className="grid gap-3">
-                {pipeline.map((funder) => (
-                  <PipelineCard key={funder.id} funder={funder} onView={() => setLocation(`/funders/${funder.id}`)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} />
-                ))}
+            {active.length === 0 && (
+              <Card className="p-8 text-center border-dashed">
+                <Handshake className="w-8 h-8 mx-auto text-muted-foreground/40 mb-3" />
+                <p className="text-sm text-muted-foreground">No active agreements</p>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {/* ═══════════ PIPELINE TAB ═══════════ */}
+        {activeTab === "pipeline" && (
+          <div className="space-y-8">
+            {pipeline.length > 0 && (
+              <div>
+                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Pursuing</h2>
+                <div className="grid gap-3">
+                  {pipeline.map((funder) => (
+                    <PipelineCard key={funder.id} funder={funder} onView={() => setLocation(`/funders/${funder.id}`)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} />
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* RADAR — opportunities spotted */}
-          {radar.length > 0 && (
-            <div>
-              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Radar</h2>
-              <div className="space-y-2">
-                {radar.map((funder) => (
-                  <RadarRow key={funder.id} funder={funder} onView={() => setLocation(`/funders/${funder.id}`)} onMoveToPipeline={() => updateMutation.mutate({ id: funder.id, data: { status: "in_conversation" } })} onDelete={() => setDeleteConfirm(funder.id)} />
-                ))}
+            {radar.length > 0 && (
+              <div>
+                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Radar</h2>
+                <div className="space-y-2">
+                  {radar.map((funder) => (
+                    <RadarRow key={funder.id} funder={funder} onView={() => setLocation(`/funders/${funder.id}`)} onMoveToPipeline={() => updateMutation.mutate({ id: funder.id, data: { status: "in_conversation" } })} onDelete={() => setDeleteConfirm(funder.id)} />
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* COMPLETED */}
-          {completed.length > 0 && (
-            <div>
-              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Completed</h2>
+            {pipeline.length === 0 && radar.length === 0 && (
+              <Card className="p-8 text-center border-dashed">
+                <Target className="w-8 h-8 mx-auto text-muted-foreground/40 mb-3" />
+                <p className="text-sm text-muted-foreground">No funders in the pipeline</p>
+              </Card>
+            )}
+
+            <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => handleAdd("radar")}>
+              <Plus className="w-4 h-4 mr-1" /> Add Opportunity
+            </Button>
+          </div>
+        )}
+
+        {/* ═══════════ REPORTS TAB ═══════════ */}
+        {activeTab === "reports" && (
+          <ReportGenerator />
+        )}
+
+        {/* ═══════════ ARCHIVE TAB ═══════════ */}
+        {activeTab === "archive" && (
+          <div className="space-y-4">
+            {completed.length > 0 ? (
               <div className="grid gap-3">
                 {completed.map((funder) => (
                   <FunderCard key={funder.id} funder={funder} onView={() => setLocation(`/funders/${funder.id}`)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/reports?funder=${funder.id}`)} />
                 ))}
               </div>
-            </div>
-          )}
-
-          <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => handleAdd("radar")}>
-            <Plus className="w-4 h-4 mr-1" /> Add Opportunity
-          </Button>
-        </div>
+            ) : (
+              <Card className="p-8 text-center border-dashed">
+                <Archive className="w-8 h-8 mx-auto text-muted-foreground/40 mb-3" />
+                <p className="text-sm text-muted-foreground">No completed agreements</p>
+              </Card>
+            )}
+          </div>
+        )}
+        </>
       )}
 
       <FunderFormDialog

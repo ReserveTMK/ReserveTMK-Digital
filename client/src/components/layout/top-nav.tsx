@@ -88,13 +88,15 @@ const navGroups: NavGroup[] = [
       { name: "Meet", href: "/meet", icon: CalendarPlus, description: "Quick schedule a meeting" },
       { name: "Community Spend", href: "/community-spend", icon: DollarSign, description: "Track community investment" },
       { name: "Dashboard", href: "/tracking", icon: BarChart3, description: "Monthly operational snapshot" },
-      { name: "Reports", href: "/reports", icon: FileText, description: "Branded funder reports" },
     ],
   },
   {
     name: "Funders",
     href: "/funders",
-    children: [],
+    children: [
+      { name: "Overview", href: "/funders", icon: Handshake, description: "Pipeline, agreements & radar" },
+      { name: "Reports", href: "/reports", icon: FileText, description: "Branded funder reports" },
+    ],
   },
   {
     name: "Comms",
