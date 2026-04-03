@@ -264,6 +264,9 @@ export function ActivationsTab() {
               typeCounts.set(t, (typeCounts.get(t) || 0) + 1);
             }
 
+            const hasHoliday = dayItems.some((item: any) => item.type === "Public Holiday" || item.eventType === "Public Holiday");
+            const hasClosure = dayItems.some((item: any) => item.type === "Staff Closure" || item.eventType === "Staff Closure");
+
             return (
               <button
                 key={key}
@@ -272,7 +275,9 @@ export function ActivationsTab() {
                   relative min-h-[80px] p-1.5 border-b border-r text-left transition-colors
                   ${inMonth ? "bg-background" : "bg-muted/20"}
                   ${selected ? "ring-2 ring-primary ring-inset" : ""}
-                  ${dayItems.length > 0 ? "hover:bg-muted/40 cursor-pointer" : "cursor-default"}
+                  ${hasHoliday && !selected ? "bg-red-50 dark:bg-red-950/30 border-red-200/50" : ""}
+                  ${hasClosure && !hasHoliday && !selected ? "bg-amber-50 dark:bg-amber-950/30 border-amber-200/50" : ""}
+                  ${dayItems.length > 0 && !hasHoliday && !hasClosure ? "hover:bg-muted/40 cursor-pointer" : "cursor-default"}
                 `}
               >
                 <div className={`
