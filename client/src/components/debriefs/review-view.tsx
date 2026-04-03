@@ -1012,7 +1012,7 @@ export function ReviewView({ id }: { id: number }) {
       queryClient.invalidateQueries({ queryKey: ['/api/events'] });
       queryClient.invalidateQueries({ queryKey: ['/api/events/needs-debrief'] });
 
-      const wasAlreadyConfirmed = impactLog.status === "confirmed";
+      const wasAlreadyConfirmed = impactLog?.status === "confirmed";
       toast({
         title: status === "confirmed"
           ? (wasAlreadyConfirmed ? "Changes Saved" : "Debrief Confirmed")
