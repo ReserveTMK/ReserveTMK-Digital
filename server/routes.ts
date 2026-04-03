@@ -3943,9 +3943,11 @@ IMPORTANT RULES:
       const batchSize = parseInt(String(req.query.batch)) || 5;
       const offset = parseInt(String(req.query.offset)) || 0;
 
+      const statusFilter = req.query.status ? String(req.query.status) : undefined;
       const allLogs = await storage.getImpactLogs(userId);
       const toProcess = allLogs
         .filter(l => l.type === "debrief" && l.transcript && l.transcript.trim().length > 0)
+        .filter(l => !statusFilter || l.status === statusFilter)
         .sort((a, b) => (a.id || 0) - (b.id || 0));
 
       const batch = toProcess.slice(offset, offset + batchSize);
