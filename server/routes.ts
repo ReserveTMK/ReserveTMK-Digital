@@ -3946,7 +3946,7 @@ IMPORTANT RULES:
       const statusFilter = req.query.status ? String(req.query.status) : undefined;
       const allLogs = await storage.getImpactLogs(userId);
       const toProcess = allLogs
-        .filter(l => l.type === "debrief" && l.transcript && l.transcript.trim().length > 0)
+        .filter(l => (l.type === "debrief" || l.type === "manual_update") && l.transcript && l.transcript.trim().length > 0)
         .filter(l => !statusFilter || l.status === statusFilter)
         .sort((a, b) => (a.id || 0) - (b.id || 0));
 
