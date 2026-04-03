@@ -105,7 +105,8 @@ export function CalendarGrid({
             })
           );
           const dayFT = footTrafficByDate.get(key);
-          const hasPublicHoliday = dayEvents.some(e => e.type === "app" && (e.app as any)?.isPublicHoliday) || dayEvents.some(e => e.type === "app" && (e.app as any)?.type === "Public Holiday");
+          const hasPublicHoliday = dayEvents.some(e => e.type === "app" && ((e.app as any)?.isPublicHoliday || (e.app as any)?.type === "Public Holiday"));
+          const hasStaffClosure = dayEvents.some(e => e.type === "app" && (e.app as any)?.type === "Staff Closure");
           const allDots: { color: string; key: string; reconciled?: boolean }[] = [];
           dayEvents.forEach((e, i) => {
             const isManual = e.type === "app" && e.app?.source === "internal";
@@ -125,7 +126,8 @@ export function CalendarGrid({
                 ${!isCurrentMonth ? "text-muted-foreground/40" : "text-foreground"}
                 ${isSelected ? "bg-primary/10 border-primary/50" : "hover:bg-muted/50"}
                 ${hasPublicHoliday && !isSelected ? "bg-red-50 dark:bg-red-950/30 border-red-200/50 dark:border-red-800/30" : ""}
-                ${today && !isSelected && !hasPublicHoliday ? "bg-accent/30" : ""}
+                ${hasStaffClosure && !hasPublicHoliday && !isSelected ? "bg-amber-50 dark:bg-amber-950/30 border-amber-200/50 dark:border-amber-800/30" : ""}
+                ${today && !isSelected && !hasPublicHoliday && !hasStaffClosure ? "bg-accent/30" : ""}
 
               `}
             >

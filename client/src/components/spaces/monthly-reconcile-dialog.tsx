@@ -358,6 +358,7 @@ function DebriefCheckSection({ periodStart, periodEnd }: { periodStart: Date; pe
         .map((d) => d.eventId)
     );
 
+    const NON_DEBRIEFABLE_TYPES = ["Public Holiday", "Staff Closure", "Other"];
     return (events || []).filter((e) => {
       const d = new Date(e.startTime);
       return (
@@ -365,7 +366,8 @@ function DebriefCheckSection({ periodStart, periodEnd }: { periodStart: Date; pe
         d <= periodEnd &&
         e.requiresDebrief &&
         !confirmedEventIds.has(e.id) &&
-        e.eventStatus !== "cancelled"
+        e.eventStatus !== "cancelled" &&
+        !NON_DEBRIEFABLE_TYPES.includes(e.type)
       );
     });
   }, [events, impactLogs, periodStart, periodEnd]);
