@@ -97,7 +97,7 @@ export async function isPublicHoliday(userId: string, date: Date): Promise<boole
   const dayEnd = new Date(date); dayEnd.setHours(23, 59, 59, 999);
   const [row] = await db.select({ count: sql<number>`count(*)` })
     .from(events)
-    .where(and(eq(events.userId, userId), eq(events.isPublicHoliday, true), lte(events.startTime, dayEnd), gte(events.endTime, dayStart)));
+    .where(and(eq(events.isPublicHoliday, true), lte(events.startTime, dayEnd), gte(events.endTime, dayStart)));
   return (row?.count || 0) > 0;
 }
 
@@ -106,7 +106,7 @@ export async function isStaffClosure(userId: string, date: Date): Promise<boolea
   const dayEnd = new Date(date); dayEnd.setHours(23, 59, 59, 999);
   const [row] = await db.select({ count: sql<number>`count(*)` })
     .from(events)
-    .where(and(eq(events.userId, userId), eq(events.isStaffClosure, true), lte(events.startTime, dayEnd), gte(events.endTime, dayStart)));
+    .where(and(eq(events.isStaffClosure, true), lte(events.startTime, dayEnd), gte(events.endTime, dayStart)));
   return (row?.count || 0) > 0;
 }
 

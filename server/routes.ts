@@ -106,7 +106,6 @@ async function isPublicHoliday(userId: string, date: Date): Promise<boolean> {
   const [row] = await db.select({ count: sql<number>`count(*)` })
     .from(events)
     .where(and(
-      eq(events.userId, userId),
       eq(events.isPublicHoliday, true),
       lte(events.startTime, dayEnd),
       gte(events.endTime, dayStart),
@@ -122,7 +121,6 @@ async function isStaffClosure(userId: string, date: Date): Promise<boolean> {
   const [row] = await db.select({ count: sql<number>`count(*)` })
     .from(events)
     .where(and(
-      eq(events.userId, userId),
       eq(events.isStaffClosure, true),
       lte(events.startTime, dayEnd),
       gte(events.endTime, dayStart),

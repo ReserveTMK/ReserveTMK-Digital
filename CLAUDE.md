@@ -221,19 +221,21 @@ If unsure — ask, don't guess and build
 
 
 SESSION PROTOCOL
-Handoff file: .claude/handoff.md (project-relative, always read this first)
+Handoff files (per branch):
+  main → .claude/handoff.md
+  branch-a → .claude/handoff-branch-a.md
+  branch-b → .claude/handoff-branch-b.md
 
 Start of every session:
 
 Read this file
-Read .claude/handoff.md if it exists — this is the relay baton from the last session
-Run /session-start (checks staleness, uncommitted work, recent activity)
-Confirm with Ra what we're working on today
+Hook fires automatically — shows branches, build health, Drop count, GCal
+Read the handoff for THIS branch (not all branches)
+Run /session-start — surfaces decisions, parked items, what needs testing
+Ask Ra what we're working on
 
 End of every session:
 
-Run /handoff to save session state to .claude/handoff.md
-Run /session-summary for Ra
-Note any new decisions or patterns Ra wants remembered
-Flag anything unresolved before closing
+Run /wrap — saves the relay baton for this branch + gives Ra the summary
+One command replaces /handoff + /session-summary
 
