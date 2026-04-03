@@ -16,6 +16,21 @@ export function registerBookingRoutes(app: Express) {
     const userId = (req.user as any).claims.sub;
     const bookingsList = await storage.getBookings(userId);
 
+    // Auto-complete confirmed bookings whose time has passed
+    const now = new Date();
+    for (const b of bookingsList) {
+      if (b.status !== "confirmed" || !b.startDate) continue;
+      const bookingDate = new Date(b.startDate);
+      const endParts = (b.endTime || "23:59").split(":").map(Number);
+      bookingDate.setHours(endParts[0] || 23, endParts[1] || 59, 0, 0);
+      if (bookingDate < now) {
+        try {
+          await storage.updateBooking(b.id, { status: "completed" });
+          (b as any).status = "completed";
+        } catch {}
+      }
+    }
+
     // Resolve display names: group name > booker org name > booker name > classification
     try {
       const groupIds = Array.from(new Set(bookingsList.filter(b => b.bookerGroupId).map(b => b.bookerGroupId!)));

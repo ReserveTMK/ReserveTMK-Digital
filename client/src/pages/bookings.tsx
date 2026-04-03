@@ -177,7 +177,7 @@ export default function Bookings({ embedded, onCreateReady }: { embedded?: boole
   const [createOpen, setCreateOpen] = useState(false);
   useEffect(() => { onCreateReady?.(() => setCreateOpen(true)); }, [onCreateReady]);
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
-  const [viewMode, setViewMode] = useState<"calendar" | "list" | "kanban">("calendar");
+  const [viewMode, setViewMode] = useState<"calendar" | "list" | "kanban">("kanban");
   const [calMonth, setCalMonth] = useState(new Date());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [hirerPreviewOpen, setHirerPreviewOpen] = useState(false);
@@ -901,7 +901,7 @@ export default function Bookings({ embedded, onCreateReady }: { embedded?: boole
                                               <div
                                                 ref={provided.innerRef}
                                                 {...provided.draggableProps}
-                                                className={`bg-card rounded-md border p-2 transition-shadow text-xs ${snapshot.isDragging ? "shadow-lg ring-2 ring-primary/30" : "shadow-sm"}`}
+                                                className={`rounded-md border p-2 transition-shadow text-xs ${snapshot.isDragging ? "shadow-lg ring-2 ring-primary/30" : "shadow-sm"} ${booking.status === "completed" ? "bg-muted/50 border-muted" : "bg-card"}`}
                                                 data-testid={`swimlane-card-${booking.id}`}
                                               >
                                                 <div className="flex items-start gap-1">
@@ -1012,9 +1012,9 @@ export default function Bookings({ embedded, onCreateReady }: { embedded?: boole
                                       <div
                                         ref={provided.innerRef}
                                         {...provided.draggableProps}
-                                        className={`bg-card rounded-lg border p-3 transition-shadow ${
+                                        className={`rounded-lg border p-3 transition-shadow ${
                                           snapshot.isDragging ? "shadow-lg ring-2 ring-primary/30" : "shadow-sm"
-                                        }`}
+                                        } ${booking.status === "completed" ? "bg-muted/50 border-muted" : "bg-card"}`}
                                         data-testid={`kanban-card-${booking.id}`}
                                       >
                                         <div className="flex items-start justify-between gap-1">
