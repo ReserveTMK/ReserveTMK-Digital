@@ -754,6 +754,19 @@ export function ReviewView({ id }: { id: number }) {
         ...p,
         section: p.section || (["primary", "mentor", "mentee", "subject"].includes(p.role) ? "primary" : "secondary"),
       }));
+      // Auto-fill primary from primaryEntity if no one is tagged as subject
+      if (extraction.primaryEntity && !extractedPeople.some((p: any) => p.section === "primary")) {
+        const pe = extraction.primaryEntity;
+        if (pe.type === "person" && pe.matchedId) {
+          const existing = extractedPeople.find((p: any) => p.contactId === pe.matchedId || p.matchedContactId === pe.matchedId);
+          if (existing) { existing.section = "primary"; existing.role = "subject"; }
+          else { extractedPeople.unshift({ name: pe.name, contactId: pe.matchedId, role: "subject", section: "primary" }); }
+        } else if (pe.type === "person") {
+          const match = extractedPeople.find((p: any) => p.name?.toLowerCase() === pe.name?.toLowerCase());
+          if (match) { match.section = "primary"; match.role = "subject"; }
+          else { extractedPeople.unshift({ name: pe.name, role: "subject", section: "primary" }); }
+        }
+      }
       if (linkedContacts && linkedContacts.length > 0) {
         const contactMap = new Map((contacts || []).map((c: any) => [c.id, c]));
         const usedContactIds = new Set<number>();
@@ -1056,7 +1069,7 @@ export function ReviewView({ id }: { id: number }) {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 {impactLog.type === "manual_update" && <HeartHandshake className="w-5 h-5 text-pink-500 shrink-0" />}
-                <h1 className="text-2xl font-display font-bold truncate" data-testid="text-review-title">{impactLog.title}</h1>
+                <h1 className="text-2xl font-display font-bold truncate" data-testid="text-review-title">{(impactLog.title || "").replace(/^Tentative:\s*/i, "").trim()}</h1>
               </div>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
                 {impactLog.type === "manual_update" && (
@@ -2183,8 +2196,8 @@ export function ReviewView({ id }: { id: number }) {
             {/* METRICS - mobile:4 desktop:right */}
             <div className="order-4 lg:order-none">
               <CollapsibleSection
-                title="Metrics"
-                count={Object.values(metrics).filter(v => v !== undefined && v !== null).length}
+                title={`Metrics (${Object.values(metrics).filter(v => typeof v === 'number' && v > 0).length} scored)`}
+                count={Object.keys(METRIC_LABELS).length}
                 testId="metrics"
               >
                 <div className="space-y-3">
