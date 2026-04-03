@@ -80,8 +80,7 @@ import { DismissPopover } from "@/components/dismiss-popover";
 import { useContacts } from "@/hooks/use-contacts";
 import { useEventAttendance, useAddAttendance, useRemoveAttendance } from "@/hooks/use-event-attendance";
 import { useGroups } from "@/hooks/use-groups";
-import { useProgrammes } from "@/hooks/use-programmes";
-import { useBookings, useVenues } from "@/hooks/use-bookings";
+import { useVenues } from "@/hooks/use-bookings";
 import type { Contact, Programme, Booking, Venue } from "@shared/schema";
 
 interface AppEvent {
@@ -149,21 +148,6 @@ const EVENT_TYPE_CARD_TINTS: Record<string, string> = {
   "Public Holiday": "border-red-500/30 bg-red-500/10 dark:bg-red-500/10",
 };
 
-const PROG_CLASSIFICATION_COLORS: Record<string, string> = {
-  "Community Workshop": "bg-blue-500/15 text-blue-700 dark:text-blue-300",
-  "Creative Workshop": "bg-purple-500/15 text-purple-700 dark:text-purple-300",
-  "Youth Workshop": "bg-pink-500/15 text-pink-700 dark:text-pink-300",
-  "Talks": "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-  "Networking": "bg-green-500/15 text-green-700 dark:text-green-300",
-};
-
-const PROG_STATUS_COLORS: Record<string, string> = {
-  planned: "bg-gray-50/50 dark:bg-gray-900/20 border-gray-200 dark:border-gray-800",
-  active: "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800",
-  completed: "bg-green-50/30 dark:bg-green-900/10 border-green-100 dark:border-green-900/20 opacity-70",
-  cancelled: "bg-gray-100/30 dark:bg-gray-900/10 border-gray-100 dark:border-gray-900/20 opacity-70",
-};
-
 const GCAL_TYPE_KEYWORDS: { type: string; keywords: string[] }[] = [
   { type: "Mentoring Session", keywords: ["mentor", "mentoring", "mentee", "coaching", "1:1", "one on one", "1-on-1"] },
   { type: "Programme", keywords: ["programme", "program", "community workshop", "creative workshop", "youth workshop", "talks", "activation"] },
@@ -223,240 +207,6 @@ function getEventDotColor(e: CombinedEvent) {
 }
 
 type DebriefInfo = { debriefId: number; status: string } | null;
-
-const BOOKING_BADGE_COLORS: Record<string, string> = {
-  "Workshop": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
-  "Community Event": "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-  "Private Hire": "bg-orange-500/10 text-orange-700 dark:text-orange-300",
-  "Rehearsal": "bg-violet-500/10 text-violet-700 dark:text-violet-300",
-  "Meeting": "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
-  "Pop-up": "bg-pink-500/10 text-pink-700 dark:text-pink-300",
-  "Other": "bg-gray-500/10 text-gray-700 dark:text-gray-300",
-  "Community Workshop": "bg-blue-500/10 text-blue-700 dark:text-blue-300",
-  "Creative Workshop": "bg-purple-500/10 text-purple-700 dark:text-purple-300",
-  "Youth Workshop": "bg-pink-500/10 text-pink-700 dark:text-pink-300",
-  "Talks": "bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  "Networking": "bg-green-500/10 text-green-700 dark:text-green-300",
-};
-
-const BOOKING_CARD_COLORS: Record<string, string> = {
-  "Workshop": "border-blue-500/30 bg-blue-500/5",
-  "Community Event": "border-green-500/30 bg-green-500/5",
-  "Private Hire": "border-orange-500/30 bg-orange-500/5",
-  "Rehearsal": "border-purple-500/30 bg-purple-500/5",
-  "Meeting": "border-slate-500/30 bg-slate-500/5",
-  "Pop-up": "border-pink-500/30 bg-pink-500/5",
-  "Other": "border-gray-500/30 bg-gray-500/5",
-};
-
-function BookingCalendarCard({ booking, venueMap, allContacts, debriefStatus, onLogDebrief, onViewDebrief, onSkipDebrief, isSkipped }: {
-  booking: Booking;
-  venueMap: Record<number, string>;
-  allContacts: Contact[];
-  debriefStatus?: "none" | "draft" | "confirmed" | null;
-  onLogDebrief?: (booking: Booking) => void;
-  onViewDebrief?: (booking: Booking) => void;
-  onSkipDebrief?: (booking: Booking) => void;
-  isSkipped?: boolean;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [attendeeCount, setAttendeeCount] = useState<string>(booking.attendeeCount?.toString() || "");
-  const [rangatahiCount, setRangatahiCount] = useState<string>(booking.rangatahiCount?.toString() || "");
-  const [isRangatahi, setIsRangatahi] = useState<boolean>(booking.isRangatahi || false);
-  const [attendeeSearch, setAttendeeSearch] = useState("");
-  const [taggedIds, setTaggedIds] = useState<number[]>(booking.attendees || []);
-  const { toast } = useToast();
-
-  useEffect(() => {
-    setAttendeeCount(booking.attendeeCount?.toString() || "");
-    setRangatahiCount(booking.rangatahiCount?.toString() || "");
-    setIsRangatahi(booking.isRangatahi || false);
-    setTaggedIds(booking.attendees || []);
-  }, [booking]);
-
-  const attendanceMutation = useMutation({
-    mutationFn: async (data: { attendeeCount?: number | null; rangatahiCount?: number | null; attendees?: number[]; isRangatahi?: boolean }) => {
-      const res = await apiRequest("PATCH", `/api/bookings/${booking.id}/attendance`, data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/bookings'] });
-    },
-    onError: (err: any) => {
-      toast({ title: "Failed to save attendance", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const saveAttendance = () => {
-    const parsedAttendee = attendeeCount ? parseInt(attendeeCount, 10) : null;
-    const parsedRangatahi = rangatahiCount ? parseInt(rangatahiCount, 10) : null;
-    attendanceMutation.mutate({
-      attendeeCount: parsedAttendee !== null && !isNaN(parsedAttendee) ? parsedAttendee : null,
-      rangatahiCount: parsedRangatahi !== null && !isNaN(parsedRangatahi) ? parsedRangatahi : null,
-      attendees: taggedIds,
-      isRangatahi,
-    });
-  };
-
-  const toggleRangatahi = () => {
-    const next = !isRangatahi;
-    setIsRangatahi(next);
-    const parsedAttendee = attendeeCount ? parseInt(attendeeCount, 10) : null;
-    const parsedRangatahi = rangatahiCount ? parseInt(rangatahiCount, 10) : null;
-    attendanceMutation.mutate({
-      isRangatahi: next,
-      attendeeCount: parsedAttendee !== null && !isNaN(parsedAttendee) ? parsedAttendee : null,
-      rangatahiCount: parsedRangatahi !== null && !isNaN(parsedRangatahi) ? parsedRangatahi : null,
-      attendees: taggedIds,
-    });
-  };
-
-  const addAttendee = (contactId: number) => {
-    if (taggedIds.includes(contactId)) return;
-    const next = [...taggedIds, contactId];
-    setTaggedIds(next);
-    setAttendeeSearch("");
-    attendanceMutation.mutate({ attendees: next });
-  };
-
-  const removeAttendee = (contactId: number) => {
-    const next = taggedIds.filter(id => id !== contactId);
-    setTaggedIds(next);
-    attendanceMutation.mutate({ attendees: next });
-  };
-
-  const filteredContacts = useMemo(() => {
-    if (!attendeeSearch.trim()) return [];
-    const q = attendeeSearch.toLowerCase();
-    return allContacts.filter(c => c.name?.toLowerCase().includes(q) && !taggedIds.includes(c.id)).slice(0, 8);
-  }, [attendeeSearch, allContacts, taggedIds]);
-
-  const bookingVIds = booking.venueIds || (booking.venueId ? [booking.venueId] : []);
-  const venueName = bookingVIds.map((id: number) => venueMap[id]).filter(Boolean).join(" + ") || null;
-  const defaultCardColor = BOOKING_CARD_COLORS[booking.classification] || BOOKING_CARD_COLORS["Other"];
-
-  // Card color + fade based on debrief state
-  const cardColor = debriefStatus === "confirmed"
-    ? "border-green-500/20 bg-green-500/5"
-    : debriefStatus === "draft"
-    ? "border-blue-500/20 bg-blue-500/5"
-    : defaultCardColor;
-  const cardOpacity = debriefStatus === "confirmed"
-    ? "opacity-50 hover:opacity-75 transition-opacity"
-    : debriefStatus === "draft"
-    ? "opacity-70 hover:opacity-90 transition-opacity"
-    : isSkipped ? "opacity-40 hover:opacity-75 transition-opacity" : "";
-
-  return (
-    <Card
-      className={`p-4 overflow-visible ${cardColor} ${cardOpacity}`}
-      data-testid={`card-booking-calendar-${booking.id}`}
-    >
-      <div
-        className="cursor-pointer"
-        onClick={() => setExpanded(!expanded)}
-        data-testid={`button-expand-booking-${booking.id}`}
-      >
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <h4 className="font-medium text-sm truncate">{(booking as any).displayName || booking.title || booking.classification || "Untitled booking"}</h4>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground mt-1">
-              {(booking.bookerName || booking.bookerId) && (
-                <span className="flex items-center gap-1">
-                  <Users className="w-3 h-3" />
-                  {booking.bookerName || allContacts.find(c => c.id === booking.bookerId)?.name || "Unknown"}
-                </span>
-              )}
-              {booking.startTime && (
-                <span className="flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  {booking.startTime}{booking.endTime ? ` - ${booking.endTime}` : ""}
-                </span>
-              )}
-              {venueName && (
-                <span className="flex items-center gap-1">
-                  <Building2 className="w-3 h-3" />
-                  {venueName}
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-            {isRangatahi && (
-              <Badge className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">Rangatahi</Badge>
-            )}
-            <Badge className={`text-[10px] ${EVENT_TYPE_BADGE_COLORS["Venue Hire"] || ""}`}>
-              Venue Hire
-            </Badge>
-            <Badge className={`text-[10px] ${booking.status === "completed" ? "bg-green-500/10 text-green-700 dark:text-green-300" : "bg-blue-500/10 text-blue-700 dark:text-blue-300"}`}>
-              {booking.status}
-            </Badge>
-            {expanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
-          </div>
-        </div>
-        {!expanded && (taggedIds.length > 0 || booking.attendeeCount) && (
-          <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
-            <Users className="w-3 h-3" />
-            {booking.attendeeCount ? `${booking.attendeeCount} attendees` : ""}
-            {taggedIds.length > 0 ? `${booking.attendeeCount ? " / " : ""}${taggedIds.length} tagged` : ""}
-          </div>
-        )}
-      </div>
-
-      {expanded && (
-        <div className="mt-3 pt-3 border-t space-y-3" onClick={e => e.stopPropagation()}>
-          <div className="flex items-center justify-between">
-            <button
-              onClick={toggleRangatahi}
-              className={`flex items-center gap-2 text-sm px-3 py-1.5 rounded-md border transition-colors ${isRangatahi ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300" : "border-border text-muted-foreground hover:bg-muted"}`}
-              data-testid={`toggle-rangatahi-${booking.id}`}
-            >
-              <Users className="w-3.5 h-3.5" />
-              {isRangatahi ? "Rangatahi Event" : "Mark as Rangatahi"}
-            </button>
-            {attendanceMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
-          </div>
-
-          <div className={`grid ${isRangatahi ? "grid-cols-2" : "grid-cols-1"} gap-2`}>
-            <div>
-              <Label className="text-xs text-muted-foreground">Head Count</Label>
-              <Input
-                type="number"
-                placeholder="0"
-                value={attendeeCount}
-                onChange={e => setAttendeeCount(e.target.value)}
-                onBlur={saveAttendance}
-                className="h-8 text-sm"
-                data-testid={`input-attendee-count-${booking.id}`}
-              />
-            </div>
-            {isRangatahi && (
-            <div>
-              <Label className="text-xs text-muted-foreground">Rangatahi Count</Label>
-              <Input
-                type="number"
-                placeholder="0"
-                value={rangatahiCount}
-                onChange={e => setRangatahiCount(e.target.value)}
-                onBlur={saveAttendance}
-                className="h-8 text-sm"
-                data-testid={`input-rangatahi-count-${booking.id}`}
-              />
-            </div>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2 pt-2 border-t">
-            <Button size="sm" variant="ghost" className="text-xs text-muted-foreground" onClick={(e) => { e.stopPropagation(); onSkipDebrief?.(booking); }}>
-              <EyeOff className="w-3.5 h-3.5 mr-1" />
-              Archive
-            </Button>
-          </div>
-        </div>
-      )}
-    </Card>
-  );
-}
 
 function EventCard({
   entry,
@@ -1196,8 +946,6 @@ export default function CalendarPage() {
   const [activeTypeFilters, setActiveTypeFilters] = useState<Set<string>>(new Set());
   const [showSettings, setShowSettings] = useState(false);
   const [showSchedule, setShowSchedule] = useState(true);
-  const [showSpace, setShowSpace] = useState(true);
-  const [skippedBookingIds, setSkippedBookingIds] = useState<Set<number>>(new Set());
   const [logActivityOpen, setLogActivityOpen] = useState(false);
   const [activityName, setActivityName] = useState("");
   const [activityType, setActivityType] = useState("Hub Activity");
@@ -1266,8 +1014,6 @@ export default function CalendarPage() {
     enabled: showSettings,
   });
 
-  const { data: programmes } = useProgrammes();
-  const { data: allBookings } = useBookings();
   const { data: venues } = useVenues();
   const { data: allContacts } = useContacts();
   const { data: allGroups } = useGroups();
@@ -1318,64 +1064,14 @@ export default function CalendarPage() {
     return null;
   }
 
-  // Map booking ID → debrief status (via linked event → impact log)
-  const debriefByBookingId = useMemo(() => {
-    const map = new Map<number, "none" | "draft" | "confirmed">();
-    if (!appEvents || !impactLogs) return map;
-    for (const event of appEvents) {
-      if (!event.linkedBookingId) continue;
-      const debrief = debriefByEventId.get(event.id);
-      if (debrief) {
-        map.set(Number(event.linkedBookingId), debrief.status as "draft" | "confirmed");
-      }
-    }
-    // Also check debriefs that reference booking title directly (for debriefs created before linking)
-    return map;
-  }, [appEvents, impactLogs, debriefByEventId]);
-
-  function getBookingDebriefStatus(bookingId: number): "none" | "draft" | "confirmed" {
-    return debriefByBookingId.get(Number(bookingId)) || "none";
-  }
-
   function eventNeedsAttention(e: CombinedEvent): boolean {
     if (!e.isPast) return false;
-    if (e.type === "booking") return false;
     if (e.type === "app" && e.app?.source === "internal") return false;
     const info = getDebriefInfo(e);
     const missingDebrief = !info || info.status !== "confirmed";
     const missingAttendance = e.type === "app" && e.app && e.app.attendeeCount === null;
     return missingDebrief || !!missingAttendance;
   }
-
-  const PROGRAMME_MONTHLY_TARGET = 2;
-
-  const monthProgrammes = useMemo(() => {
-    if (!programmes) return [];
-    const viewMonth = currentMonth.getMonth();
-    const viewYear = currentMonth.getFullYear();
-    const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    return programmes.filter((p: Programme) => {
-      if (p.tbcMonth && p.tbcYear) {
-        const tbcMonthIdx = MONTH_NAMES.indexOf(p.tbcMonth);
-        return tbcMonthIdx === viewMonth && parseInt(p.tbcYear) === viewYear;
-      }
-      if (p.startDate) {
-        const start = new Date(p.startDate);
-        if (start.getMonth() === viewMonth && start.getFullYear() === viewYear) return true;
-        if (p.endDate) {
-          const end = new Date(p.endDate);
-          const monthStart = new Date(viewYear, viewMonth, 1);
-          const monthEnd = new Date(viewYear, viewMonth + 1, 0);
-          return start <= monthEnd && end >= monthStart;
-        }
-      }
-      return false;
-    });
-  }, [programmes, currentMonth]);
-
-  const programmeTargetCount = useMemo(() => {
-    return monthProgrammes.filter((p: Programme) => p.status !== "cancelled").length;
-  }, [monthProgrammes]);
 
   const NOT_PERSONAL_REASON = "__not_personal__";
 
@@ -1649,27 +1345,6 @@ export default function CalendarPage() {
     });
   }
 
-  function handleLogDebriefFromBooking(booking: Booking) {
-    const details: string[] = [];
-    if (booking.startDate) details.push(`Date: ${formatDate(new Date(booking.startDate).toISOString())}${booking.startTime ? ` ${booking.startTime}` : ""}${booking.endTime ? ` - ${booking.endTime}` : ""}`);
-    const bookingVIds = booking.venueIds || (booking.venueId ? [booking.venueId] : []);
-    const vName = bookingVIds.map((id: number) => venueMap[id]).filter(Boolean).join(" + ");
-    if (vName) details.push(`Venue: ${vName}`);
-    if (booking.bookerName) details.push(`Booker: ${booking.bookerName}`);
-    if (booking.attendeeCount) details.push(`Attendees: ${booking.attendeeCount}`);
-
-    // Find linked event if one exists
-    const linkedEvent = (appEvents || []).find(e => Number(e.linkedBookingId) === Number(booking.id));
-
-    createDebriefMutation.mutate({
-      title: (booking as any).displayName || booking.title || booking.bookerName || booking.classification || "Venue Hire",
-      eventId: linkedEvent?.id,
-      summary: details.length > 0 ? details.join("\n") : undefined,
-      _linkedAppEvent: linkedEvent || null,
-      _linkedTags: linkedEvent?.tags || [],
-    });
-  }
-
   function handleDeleteEvent(event: AppEvent) {
     setDeleteTarget({ type: "app", event });
     setDeleteReason("");
@@ -1684,15 +1359,12 @@ export default function CalendarPage() {
   const allEvents = useMemo(() => {
     const combined: CombinedEvent[] = [];
 
-    // Primary dedup: any GCal ID that has a matching platform event or booking
-    const importedGcalIds = new Set([
-      ...(appEvents || [])
+    // Primary dedup: any GCal ID that has a matching platform event
+    const importedGcalIds = new Set(
+      (appEvents || [])
         .filter(e => e.googleCalendarEventId)
-        .map(e => e.googleCalendarEventId),
-      ...(allBookings || [])
-        .filter((b: Booking) => b.googleCalendarEventId)
-        .map((b: Booking) => b.googleCalendarEventId),
-    ]);
+        .map(e => e.googleCalendarEventId)
+    );
 
     // Fallback dedup: name+date for unlinked events (catches manual duplicates)
     const internalEventKeys = new Set(
@@ -1721,31 +1393,8 @@ export default function CalendarPage() {
       combined.push({ date: d, type: "app", app: e, isPast: new Date(e.endTime) < new Date() });
     });
 
-    const linkedBookingIds = new Set(
-      (appEvents || []).filter(e => e.linkedBookingId).map(e => Number(e.linkedBookingId))
-    );
-    (allBookings || []).forEach((b: Booking) => {
-      if (b.status !== "confirmed" && b.status !== "completed") return;
-      if (linkedBookingIds.has(Number(b.id))) return;
-      if (!b.startDate) return;
-      const d = new Date(b.startDate);
-      let endMoment: Date;
-      if (b.endDate) {
-        endMoment = new Date(b.endDate);
-      } else {
-        endMoment = new Date(d);
-      }
-      if (b.endTime) {
-        const [h, m] = b.endTime.split(":").map(Number);
-        endMoment.setHours(h, m, 59);
-      } else {
-        endMoment.setHours(23, 59, 59);
-      }
-      combined.push({ date: d, type: "booking", booking: b, isPast: endMoment < new Date() });
-    });
-
     return combined;
-  }, [gcalEvents, appEvents, dismissedIds, allBookings]);
+  }, [gcalEvents, appEvents, dismissedIds]);
 
   const filteredEvents = useMemo(() => {
     let events = allEvents.filter(e => !e.isDismissed);
@@ -1800,26 +1449,14 @@ export default function CalendarPage() {
     const mStart = startOfMonth(currentMonth);
     const mEnd = endOfMonth(currentMonth);
     let count = 0;
-    const monthLinkedBookingIds = new Set(
-      (appEvents || []).filter(e => e.linkedBookingId).map(e => Number(e.linkedBookingId))
-    );
     if (appEvents) {
       for (const e of appEvents) {
         const d = new Date(e.startTime);
         if (d >= mStart && d <= mEnd) count++;
       }
     }
-    if (allBookings) {
-      for (const b of allBookings as Booking[]) {
-        if (b.status !== "confirmed" && b.status !== "completed") continue;
-        if (monthLinkedBookingIds.has(Number(b.id))) continue;
-        if (!b.startDate) continue;
-        const d = new Date(b.startDate);
-        if (d >= mStart && d <= mEnd) count++;
-      }
-    }
     return count;
-  }, [appEvents, allBookings, currentMonth]);
+  }, [appEvents, currentMonth]);
 
   const monthDebriefedCount = useMemo(() => {
     if (!appEvents || !impactLogs) return 0;
@@ -1883,7 +1520,7 @@ export default function CalendarPage() {
   const calendarDays = useCalendarGrid(currentMonth);
 
   const pastEventsNeedingDebrief = useMemo(() => {
-    return filteredEvents.filter(e => e.isPast && e.type !== "booking" && !(e.type === "app" && e.app?.source === "internal")).length;
+    return filteredEvents.filter(e => e.isPast && !(e.type === "app" && e.app?.source === "internal")).length;
   }, [filteredEvents]);
 
   const needsAttentionEvents = useMemo(() => {
@@ -1952,7 +1589,7 @@ export default function CalendarPage() {
       const eventType = getEventType(e);
       typeBreakdown[eventType] = (typeBreakdown[eventType] || 0) + 1;
 
-      if (e.isPast && e.type !== "booking" && !(e.type === "app" && e.app?.source === "internal")) {
+      if (e.isPast && !(e.type === "app" && e.app?.source === "internal")) {
         const info = getDebriefInfo(e);
         if (info && info.status === "confirmed") {
           debriefed++;
@@ -1963,9 +1600,6 @@ export default function CalendarPage() {
 
       if (e.type === "app" && e.app?.attendeeCount) {
         totalAttendees += e.app.attendeeCount;
-      }
-      if (e.type === "booking" && e.booking?.attendeeCount) {
-        totalAttendees += e.booking.attendeeCount;
       }
     });
 
@@ -1983,117 +1617,11 @@ export default function CalendarPage() {
     return { totalEvents, typeBreakdown, debriefed, pending, totalAttendees, weekFootTraffic, isCurrentWeek };
   }, [baseFilteredEvents, selectedWeekStart, selectedWeekEnd, debriefByEventId, debriefByGcalId, dailyFootTrafficData, adjacentMonthFootTraffic]);
 
-  type SpaceOccupancyItem = {
-    kind: "booking" | "programme";
-    id: number;
-    title: string;
-    bookerName: string | null;
-    date: Date;
-    startDate: Date | null;
-    endDate: Date | null;
-    startTime: string | null;
-    endTime: string | null;
-    venue: string | null;
-    venueId: number | null;
-    status: string;
-    classification: string;
-  };
-
-  const BOOKING_DOT_COLORS: Record<string, string> = {
-    "Workshop": "bg-blue-400",
-    "Community Event": "bg-emerald-400",
-    "Private Hire": "bg-orange-400",
-    "Rehearsal": "bg-violet-400",
-    "Meeting": "bg-cyan-400",
-    "Pop-up": "bg-pink-400",
-    "Other": "bg-gray-400",
-  };
-
-  
-
-  const SPACE_STATUS_COLORS: Record<string, string> = {
-    enquiry: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300",
-    confirmed: "bg-green-500/15 text-green-700 dark:text-green-300",
-    completed: "bg-gray-500/15 text-gray-700 dark:text-gray-300",
-    cancelled: "bg-red-500/15 text-red-700 dark:text-red-300 line-through",
-    planned: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
-    active: "bg-green-500/15 text-green-700 dark:text-green-300",
-  };
-
   const venueMap = useMemo(() => {
     const map: Record<number, string> = {};
     (venues || []).forEach((v: Venue) => { map[v.id] = v.name; });
     return map;
   }, [venues]);
-
-  const spaceItems = useMemo<SpaceOccupancyItem[]>(() => {
-    const items: SpaceOccupancyItem[] = [];
-    (allBookings || []).forEach((b: Booking) => {
-      if (b.status === "cancelled") return;
-      const sDate = b.startDate ? new Date(b.startDate) : null;
-      items.push({
-        kind: "booking",
-        id: b.id,
-        title: (b as any).displayName || b.title || b.classification || "Untitled booking",
-        bookerName: b.bookerName || ((allContacts || []) as Contact[]).find(c => c.id === b.bookerId)?.name || null,
-        date: sDate || new Date(b.createdAt || Date.now()),
-        startDate: sDate,
-        endDate: b.endDate ? new Date(b.endDate) : sDate,
-        startTime: b.startTime || null,
-        endTime: b.endTime || null,
-        venue: (b.venueIds || (b.venueId ? [b.venueId] : [])).map((id: number) => venueMap[id]).filter(Boolean).join(" + ") || null,
-        venueId: b.venueId,
-        status: b.status,
-        classification: b.classification,
-      });
-    });
-    (programmes || []).forEach((p: Programme) => {
-      if (p.status === "cancelled") return;
-      const sDate = p.startDate ? new Date(p.startDate) : null;
-      items.push({
-        kind: "programme",
-        id: p.id,
-        title: p.name,
-        bookerName: null,
-        date: sDate || new Date(p.createdAt || Date.now()),
-        startDate: sDate,
-        endDate: p.endDate ? new Date(p.endDate) : sDate,
-        startTime: p.startTime || null,
-        endTime: p.endTime || null,
-        venue: p.location || null,
-        venueId: null,
-        status: p.status,
-        classification: p.classification,
-      });
-    });
-    return items;
-  }, [allBookings, programmes, venueMap, allContacts]);
-
-  const spaceByDate = useMemo(() => {
-    const map = new Map<string, SpaceOccupancyItem[]>();
-    spaceItems.forEach(item => {
-      if (!item.startDate) return;
-      const start = new Date(item.startDate);
-      const end = item.endDate ? new Date(item.endDate) : start;
-      let d = new Date(start);
-      while (d <= end) {
-        const key = format(d, "yyyy-MM-dd");
-        if (!map.has(key)) map.set(key, []);
-        map.get(key)!.push(item);
-        d = new Date(d);
-        d.setDate(d.getDate() + 1);
-      }
-    });
-    return map;
-  }, [spaceItems]);
-
-  const selectedDaySpace = useMemo(() => {
-    const key = format(selectedDate, "yyyy-MM-dd");
-    return (spaceByDate.get(key) || []).sort((a, b) => {
-      if (a.startTime && b.startTime) return a.startTime.localeCompare(b.startTime);
-      return a.date.getTime() - b.date.getTime();
-    });
-  }, [selectedDate, spaceByDate]);
 
   return (
     <div className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
@@ -2413,32 +1941,19 @@ export default function CalendarPage() {
                 {calendarDays.map((day, idx) => {
                   const key = format(day, "yyyy-MM-dd");
                   const dayEvents = showSchedule ? (eventsByDate.get(key) || []) : [];
-                  const daySpaceItems = showSpace ? (spaceByDate.get(key) || []) : [];
                   const isCurrentMonth = isSameMonth(day, currentMonth);
                   const isSelected = isSameDay(day, selectedDate);
                   const today = isToday(day);
                   const dayNeedsAttention = needsAttentionByDate.get(key) || 0;
-                  const hasConflict = showSpace && daySpaceItems.length > 1 && daySpaceItems.some((a, i) =>
-                    daySpaceItems.some((b, j) => {
-                      if (i >= j) return false;
-                      if (!a.startTime || !a.endTime || !b.startTime || !b.endTime) return true;
-                      const aStart = parseInt(a.startTime.replace(":", ""));
-                      const aEnd = parseInt(a.endTime.replace(":", ""));
-                      const bStart = parseInt(b.startTime.replace(":", ""));
-                      const bEnd = parseInt(b.endTime.replace(":", ""));
-                      return aStart < bEnd && bStart < aEnd;
-                    })
-                  );
                   const dayFT = footTrafficByDate.get(key);
                   const hasPublicHoliday = dayEvents.some(e => e.type === "app" && (e.app as any)?.isPublicHoliday) || dayEvents.some(e => e.type === "app" && (e.app as any)?.type === "Public Holiday");
                   const allDots: { color: string; key: string; reconciled?: boolean }[] = [];
                   dayEvents.forEach((e, i) => {
                     const isManual = e.type === "app" && e.app?.source === "internal";
-                    const skipReconcile = e.type === "booking" || isManual;
+                    const skipReconcile = isManual;
                     const info = !skipReconcile ? getDebriefInfo(e) : null;
                     allDots.push({ color: getEventDotColor(e), key: `ev-${i}`, reconciled: !skipReconcile && e.isPast ? !!info : undefined });
                   });
-                  daySpaceItems.forEach((item, i) => allDots.push({ color: item.kind === "programme" ? "bg-indigo-400" : "bg-orange-400", key: `sp-${i}` }));
 
                   return (
                     <button
@@ -2490,15 +2005,9 @@ export default function CalendarPage() {
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-6 h-6 animate-spin text-primary" />
               </div>
-            ) : (showSchedule && selectedDayEvents.length > 0) || (showSpace && selectedDaySpace.length > 0) ? (
+            ) : (showSchedule && selectedDayEvents.length > 0) ? (
               <div className="space-y-3">
                 {showSchedule && selectedDayEvents.map((entry) => {
-                  // If app event is linked to a booking, render as BookingCalendarCard instead
-                  const linkedBooking = entry.type === "app" && entry.app?.linkedBookingId
-                    ? (allBookings as Booking[] || []).find(b => Number(b.id) === Number(entry.app!.linkedBookingId))
-                    : null;
-                  const bookingToRender = (entry.type === "booking" && entry.booking) ? entry.booking : linkedBooking;
-
                   return (
                   <div key={entry.type === "gcal" ? `gcal-${entry.gcal!.id}` : `app-${entry.app!.id}`} className={`relative ${entry.isDismissed ? "opacity-40 hover:opacity-75 transition-opacity" : ""}`}>
                     {entry.isDismissed && (
@@ -2525,9 +2034,9 @@ export default function CalendarPage() {
                     <EventCard
                       entry={entry}
                       appEvents={appEvents || []}
-                      programmes={programmes || []}
+                      programmes={[]}
                       venueNames={(venues || []).filter((v: any) => v.active !== false).map((v: any) => v.name)}
-                      sourceBooking={bookingToRender || null}
+                      sourceBooking={null}
                       venueMap={venueMap}
                       allContacts={(allContacts || []) as Contact[]}
                       onLogDebrief={handleLogDebrief}
@@ -2552,66 +2061,6 @@ export default function CalendarPage() {
                   </div>
                   );
                 })}
-                {showSpace && selectedDaySpace.filter(item => {
-                  // Skip bookings already shown as schedule cards
-                  if (showSchedule && item.kind === "booking") {
-                    const shownAsSchedule = selectedDayEvents.some(e =>
-                      (e.type === "booking" && Number(e.booking?.id) === item.id) ||
-                      (e.type === "app" && Number(e.app?.linkedBookingId) === item.id)
-                    );
-                    if (shownAsSchedule) return false;
-                  }
-                  // Skip programmes already shown as schedule cards (linked via event)
-                  if (showSchedule && item.kind === "programme") {
-                    const shownAsSchedule = selectedDayEvents.some(e =>
-                      e.type === "app" && Number(e.app?.linkedProgrammeId) === item.id
-                    );
-                    if (shownAsSchedule) return false;
-                  }
-                  return true;
-                }).map((item) => (
-                  <Card
-                    key={`${item.kind}-${item.id}`}
-                    className="p-4 border-orange-500/20 bg-orange-500/5 dark:bg-orange-500/5 cursor-pointer overflow-visible hover-elevate"
-                    onClick={() => navigate(item.kind === "booking" ? "/spaces?tab=venue-hire" : "/programmes")}
-                    data-testid={`card-space-${item.kind}-${item.id}`}
-                  >
-                    <div className="space-y-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <h4 className="font-medium text-sm">{item.title}</h4>
-                        <Badge className={`text-xs shrink-0 ${BOOKING_BADGE_COLORS[item.classification] || ""}`}>
-                          {item.classification}
-                        </Badge>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                        {item.bookerName && (
-                          <span className="flex items-center gap-1">
-                            <Users className="w-3 h-3" />
-                            {item.bookerName}
-                          </span>
-                        )}
-                        {item.startTime && (
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            {item.startTime}{item.endTime ? ` - ${item.endTime}` : ""}
-                          </span>
-                        )}
-                        {item.venue && (
-                          <span className="flex items-center gap-1">
-                            <Building2 className="w-3 h-3" />
-                            {item.venue}
-                          </span>
-                        )}
-                        <Badge className={`text-[10px] ${item.kind === "programme" ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300" : "bg-orange-500/10 text-orange-700 dark:text-orange-300"}`}>
-                          {item.kind === "programme" ? "Programme" : "Venue Hire"}
-                        </Badge>
-                        <Badge className={`text-[10px] ${SPACE_STATUS_COLORS[item.status] || ""}`}>
-                          {item.status}
-                        </Badge>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
                 <div className="flex items-center gap-2 mt-1">
                   <Footprints className="w-4 h-4 text-muted-foreground shrink-0" />
                   <span className="text-sm text-muted-foreground whitespace-nowrap">Foot Traffic:</span>
@@ -2686,123 +2135,6 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        {showSchedule && (
-          <div className="mt-6" data-testid="section-month-programmes">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-display font-bold text-foreground" data-testid="text-programmes-heading">
-                Programmes this month
-              </h2>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate("/programmes")}
-                data-testid="button-view-all-programmes"
-              >
-                View all
-              </Button>
-            </div>
-            <div className={`flex items-center justify-between px-3 py-2 mb-3 rounded-lg text-sm ${
-              programmeTargetCount >= PROGRAMME_MONTHLY_TARGET
-                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                : programmeTargetCount > 0
-                  ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                  : "bg-muted text-muted-foreground"
-            }`} data-testid="programme-target-indicator">
-              <div className="flex items-center gap-2">
-                <CalendarDays className="w-4 h-4" />
-                <span className="font-medium">
-                  {programmeTargetCount} / {PROGRAMME_MONTHLY_TARGET} target
-                </span>
-              </div>
-              <span className="text-xs">
-                {programmeTargetCount >= PROGRAMME_MONTHLY_TARGET
-                  ? "Target met"
-                  : `Need ${PROGRAMME_MONTHLY_TARGET - programmeTargetCount} more to hit target`}
-              </span>
-            </div>
-            {monthProgrammes.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {monthProgrammes.map((p: Programme) => {
-                const dateDisplay = (() => {
-                  if (p.tbcMonth && p.tbcYear) return `TBC - ${p.tbcMonth} ${p.tbcYear}`;
-                  if (!p.startDate) return null;
-                  const start = format(new Date(p.startDate), "d MMM");
-                  if (p.endDate && format(new Date(p.endDate), "yyyy-MM-dd") !== format(new Date(p.startDate), "yyyy-MM-dd")) {
-                    return `${start} - ${format(new Date(p.endDate), "d MMM")}`;
-                  }
-                  return start;
-                })();
-
-                const timeDisplay = p.startTime
-                  ? p.endTime ? `${p.startTime} - ${p.endTime}` : p.startTime
-                  : null;
-
-                const totalBudget = parseFloat(p.facilitatorCost || "0") + parseFloat(p.cateringCost || "0") + parseFloat(p.promoCost || "0");
-
-                const facCount = (p.facilitators || []).length;
-                const attCount = (p.attendees || []).length;
-
-                return (
-                  <Card
-                    key={p.id}
-                    className={`p-3 hover-elevate cursor-pointer transition-all ${PROG_STATUS_COLORS[p.status] || ""}`}
-                    onClick={() => navigate("/programmes")}
-                    data-testid={`card-cal-programme-${p.id}`}
-                  >
-                    <div className="flex items-start justify-between gap-2 mb-1.5">
-                      <h4 className={`font-medium text-sm truncate ${p.status === "cancelled" ? "line-through opacity-70" : ""}`}>
-                        {p.name}
-                      </h4>
-                      <Badge className={`text-xs shrink-0 ${PROG_CLASSIFICATION_COLORS[p.classification] || ""}`}>
-                        {p.classification}
-                      </Badge>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                      {dateDisplay && (
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {dateDisplay}
-                        </span>
-                      )}
-                      {timeDisplay && (
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {timeDisplay}
-                        </span>
-                      )}
-                      {p.location && (
-                        <span className="flex items-center gap-1">
-                          <MapPin className="w-3 h-3" />
-                          <span className="truncate max-w-[100px]">{p.location}</span>
-                        </span>
-                      )}
-                      {totalBudget > 0 && (
-                        <span className="flex items-center gap-1">
-                          ${totalBudget.toLocaleString()}
-                        </span>
-                      )}
-                      {facCount > 0 && (
-                        <span className="flex items-center gap-1">
-                          <Users className="w-3 h-3" />
-                          {facCount} facilitator{facCount !== 1 ? "s" : ""}
-                        </span>
-                      )}
-                      {attCount > 0 && (
-                        <span className="flex items-center gap-1">
-                          <UserPlus className="w-3 h-3" />
-                          {attCount} attendee{attCount !== 1 ? "s" : ""}
-                        </span>
-                      )}
-                    </div>
-                  </Card>
-                );
-              })}
-            </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-4">No programmes scheduled this month</p>
-            )}
-          </div>
-        )}
 
 
       </div>
