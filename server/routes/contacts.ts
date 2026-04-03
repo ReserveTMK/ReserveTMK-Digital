@@ -88,74 +88,67 @@ export function registerContactRoutes(app: Express) {
       const userId = (req.user as any).claims.sub;
       const sixMonthsAgo = new Date();
       sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-      const sixMonthsAgoISO = sixMonthsAgo.toISOString();
+      const cutoff = sixMonthsAgo.toISOString();
 
-      const rows = await db.execute(sql`
-        WITH contact_access AS (
-          SELECT DISTINCT c.id as contact_id,
-            CASE WHEN EXISTS (
-              SELECT 1 FROM bookings b WHERE b.booker_id = c.id AND b.status IN ('confirmed', 'completed') AND b.start_date >= ${sixMonthsAgoISO}::timestamp
-            ) OR EXISTS (
-              SELECT 1 FROM regular_bookers rb
-              JOIN gear_bookings gb ON gb.regular_booker_id = rb.id
-              WHERE rb.contact_id = c.id AND gb.created_at >= ${sixMonthsAgoISO}::timestamp
-            ) OR EXISTS (
-              SELECT 1 FROM regular_bookers rb
-              JOIN desk_bookings dk ON dk.regular_booker_id = rb.id
-              WHERE rb.contact_id = c.id AND dk.date >=${sixMonthsAgoISO}::date
-            ) THEN true ELSE false END as has_recent_access,
-            CASE WHEN EXISTS (
-              SELECT 1 FROM bookings b WHERE b.booker_id = c.id AND b.status IN ('confirmed', 'completed')
-            ) OR EXISTS (
-              SELECT 1 FROM regular_bookers rb
-              JOIN gear_bookings gb ON gb.regular_booker_id = rb.id
-              WHERE rb.contact_id = c.id
-            ) OR EXISTS (
-              SELECT 1 FROM regular_bookers rb
-              JOIN desk_bookings dk ON dk.regular_booker_id = rb.id
-              WHERE rb.contact_id = c.id
-            ) THEN true ELSE false END as has_any_access
-          FROM contacts c
-          WHERE c.user_id = ${userId} AND c.is_archived = false
-        ),
-        contact_capability AS (
-          SELECT DISTINCT c.id as contact_id,
-            CASE WHEN EXISTS (
-              SELECT 1 FROM programme_registrations pr
-              WHERE pr.contact_id = c.id AND pr.status = 'registered' AND pr.registered_at >= ${sixMonthsAgoISO}::timestamp
-            ) OR EXISTS (
-              SELECT 1 FROM mentoring_relationships mr
-              WHERE mr.contact_id = c.id AND mr.status IN ('active', 'application')
-            ) OR EXISTS (
-              SELECT 1 FROM meetings m
-              WHERE m.contact_id = c.id AND m.status IN ('completed', 'confirmed') AND m.start_time >= ${sixMonthsAgoISO}::timestamp
-              AND m.type IN (SELECT mt.name FROM meeting_types mt WHERE mt.user_id = ${userId} AND mt.category = 'mentoring' AND mt.is_active = true)
-            ) THEN true ELSE false END as has_recent_capability,
-            CASE WHEN EXISTS (
-              SELECT 1 FROM programme_registrations pr WHERE pr.contact_id = c.id AND pr.status = 'registered'
-            ) OR EXISTS (
-              SELECT 1 FROM mentoring_relationships mr WHERE mr.contact_id = c.id
-            ) THEN true ELSE false END as has_any_capability
-          FROM contacts c
-          WHERE c.user_id = ${userId} AND c.is_archived = false
-        )
-        SELECT
-          a.contact_id,
-          a.has_recent_access,
-          a.has_any_access,
-          cap.has_recent_capability,
-          cap.has_any_capability
-        FROM contact_access a
-        JOIN contact_capability cap ON cap.contact_id = a.contact_id
-        WHERE a.has_any_access = true OR cap.has_any_capability = true
+      // Gather contact IDs with access activity (bookings, gear, desk)
+      const accessRows = await db.execute(sql`
+        SELECT DISTINCT contact_id, recent FROM (
+          SELECT b.booker_id as contact_id, CASE WHEN b.start_date >= ${cutoff}::timestamp THEN true ELSE false END as recent
+          FROM bookings b WHERE b.booker_id IS NOT NULL AND b.status IN ('confirmed', 'completed')
+          UNION ALL
+          SELECT rb.contact_id, CASE WHEN gb.created_at >= ${cutoff}::timestamp THEN true ELSE false END as recent
+          FROM gear_bookings gb JOIN regular_bookers rb ON rb.id = gb.regular_booker_id WHERE rb.contact_id IS NOT NULL
+          UNION ALL
+          SELECT rb.contact_id, CASE WHEN dk.date >= ${cutoff}::date THEN true ELSE false END as recent
+          FROM desk_bookings dk JOIN regular_bookers rb ON rb.id = dk.regular_booker_id WHERE rb.contact_id IS NOT NULL
+        ) access_union
       `);
 
+      // Gather contact IDs with capability activity (programmes, mentoring)
+      const capRows = await db.execute(sql`
+        SELECT DISTINCT contact_id, recent FROM (
+          SELECT pr.contact_id, CASE WHEN pr.registered_at >= ${cutoff}::timestamp THEN true ELSE false END as recent
+          FROM programme_registrations pr WHERE pr.contact_id IS NOT NULL AND pr.status = 'registered'
+          UNION ALL
+          SELECT mr.contact_id, CASE WHEN mr.status IN ('active', 'application') THEN true ELSE false END as recent
+          FROM mentoring_relationships mr WHERE mr.contact_id IS NOT NULL
+          UNION ALL
+          SELECT m.contact_id, CASE WHEN m.start_time >= ${cutoff}::timestamp THEN true ELSE false END as recent
+          FROM meetings m WHERE m.contact_id IS NOT NULL AND m.status IN ('completed', 'confirmed')
+            AND m.type IN (SELECT mt.name FROM meeting_types mt WHERE mt.user_id = ${userId} AND mt.category = 'mentoring' AND mt.is_active = true)
+        ) cap_union
+      `);
+
+      // Get user's contact IDs for filtering
+      const userContacts = await db.execute(sql`
+        SELECT id FROM contacts WHERE user_id = ${userId} AND is_archived = false
+      `);
+      const userContactIds = new Set(((userContacts as any).rows || []).map((r: any) => r.id));
+
+      // Build maps
+      const accessMap = new Map<number, boolean>();
+      for (const r of (accessRows as any).rows || []) {
+        if (!userContactIds.has(r.contact_id)) continue;
+        const existing = accessMap.get(r.contact_id) || false;
+        accessMap.set(r.contact_id, existing || r.recent);
+      }
+
+      const capMap = new Map<number, boolean>();
+      for (const r of (capRows as any).rows || []) {
+        if (!userContactIds.has(r.contact_id)) continue;
+        const existing = capMap.get(r.contact_id) || false;
+        capMap.set(r.contact_id, existing || r.recent);
+      }
+
+      // Compute delivery depth per contact
+      const allIds = new Set([...accessMap.keys(), ...capMap.keys()]);
       const result: Record<number, { depth: string; active: boolean }> = {};
-      for (const row of (rows as any).rows || []) {
-        const recentAccess = row.has_recent_access;
-        const recentCap = row.has_recent_capability;
-        const anyAccess = row.has_any_access;
-        const anyCap = row.has_any_capability;
+
+      for (const id of allIds) {
+        const recentAccess = accessMap.get(id) || false;
+        const recentCap = capMap.get(id) || false;
+        const anyAccess = accessMap.has(id);
+        const anyCap = capMap.has(id);
 
         let depth: string;
         if (recentAccess && recentCap) depth = "both";
@@ -164,8 +157,9 @@ export function registerContactRoutes(app: Express) {
         else if (anyAccess || anyCap) depth = "past";
         else depth = "none";
 
-        result[row.contact_id] = { depth, active: recentAccess || recentCap };
+        result[id] = { depth, active: recentAccess || recentCap };
       }
+
       res.json(result);
     } catch (err: any) {
       console.error("Delivery depth error:", err);
