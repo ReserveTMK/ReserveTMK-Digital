@@ -86,9 +86,10 @@ function classifyItem(item: SpaceEvent | SpaceBooking): string {
 
 function getItemName(item: SpaceItem): { primary: string; secondary: string } {
   if (item.source === "booking") {
+    const b = item as any;
     return {
-      primary: (item as SpaceBooking).bookerName || "Unknown",
-      secondary: (item as SpaceBooking).classification || "",
+      primary: b.displayName || b.bookerName || b.classification || "Venue Hire",
+      secondary: b.classification || "",
     };
   }
   const e = item as SpaceEvent;

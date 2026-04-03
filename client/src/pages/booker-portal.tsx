@@ -1928,6 +1928,7 @@ function CalendarView({
         return;
       }
       if (!attendeeCount || parseInt(attendeeCount) < 1) return;
+      if (isGroupLink && !bookerName.trim()) return;
     }
     setBookingSummaryError(false);
 
@@ -2864,7 +2865,7 @@ function CalendarView({
 
                     {isGroupLink && (
                       <div className="space-y-1">
-                        <Label className="text-xs">Your Name (optional)</Label>
+                        <Label className="text-xs">Your Name</Label>
                         <Input
                           value={bookerName}
                           onChange={(e) => setBookerName(e.target.value)}

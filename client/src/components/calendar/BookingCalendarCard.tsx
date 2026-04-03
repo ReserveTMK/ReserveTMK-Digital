@@ -135,7 +135,7 @@ export function BookingCalendarCard({ booking, venueMap, allContacts, debriefSta
               {(booking.bookerName || booking.bookerId) && (
                 <span className="flex items-center gap-1">
                   <Users className="w-3 h-3" />
-                  {booking.bookerName || allContacts.find(c => c.id === booking.bookerId)?.name || "Unknown"}
+                  {booking.bookerName || allContacts.find(c => c.id === booking.bookerId)?.name || (booking as any).displayName || booking.classification || "Venue Hire"}
                 </span>
               )}
               {booking.startTime && (
