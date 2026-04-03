@@ -226,10 +226,10 @@ function FilterBuilder({
           <MultiSelectField label="Classifications" options={BOOKING_CLASSIFICATIONS} selected={filter.classifications || []} onChange={v => set("classifications", v)} />
           <div>
             <Label className="text-xs">Programme Status</Label>
-            <Select value={filter.programmeStatus || ""} onValueChange={v => set("programmeStatus", v || null)}>
+            <Select value={filter.programmeStatus || ""} onValueChange={v => set("programmeStatus", v === "__any__" ? null : v)}>
               <SelectTrigger className="mt-1"><SelectValue placeholder="Any" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Any</SelectItem>
+                <SelectItem value="__any__">Any</SelectItem>
                 {PROGRAMME_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -241,10 +241,10 @@ function FilterBuilder({
       return (
         <div>
           <Label className="text-xs">Session Status</Label>
-          <Select value={filter.sessionStatus || ""} onValueChange={v => set("sessionStatus", v || null)}>
+          <Select value={filter.sessionStatus || ""} onValueChange={v => set("sessionStatus", v === "__any__" ? null : v)}>
             <SelectTrigger className="mt-1"><SelectValue placeholder="Completed + Confirmed" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Completed + Confirmed (default)</SelectItem>
+              <SelectItem value="__any__">Completed + Confirmed (default)</SelectItem>
               {SESSION_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
             </SelectContent>
           </Select>
@@ -257,10 +257,10 @@ function FilterBuilder({
           <MultiSelectField label="Ethnicity" options={ETHNICITY_OPTIONS} selected={filter.ethnicity || []} onChange={v => set("ethnicity", v)} />
           <div>
             <Label className="text-xs">Stage</Label>
-            <Select value={filter.stage || ""} onValueChange={v => set("stage", v || null)}>
+            <Select value={filter.stage || ""} onValueChange={v => set("stage", v === "__any__" ? null : v)}>
               <SelectTrigger className="mt-1"><SelectValue placeholder="Any" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Any</SelectItem>
+                <SelectItem value="__any__">Any</SelectItem>
                 {RELATIONSHIP_STAGES.map(s => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
               </SelectContent>
             </Select>
