@@ -636,23 +636,8 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
         </div>
       ) : (
         <div className="border rounded-md">
-          <div className="sticky top-0 z-10 bg-muted/60 backdrop-blur-sm border-b px-4 py-2 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Settings className="w-3.5 h-3.5" />
-              <span className="font-medium">Portal Settings</span>
-              <span className="text-muted-foreground/70">|</span>
-              <span>{filtered.length} booker{filtered.length !== 1 ? "s" : ""}</span>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs h-7"
-              onClick={() => window.location.href = "/spaces?tab=venue-hire"}
-              data-testid="button-manage-portal"
-            >
-              <Settings className="w-3 h-3 mr-1" />
-              Manage Portal
-            </Button>
+          <div className="sticky top-0 z-10 bg-muted/60 backdrop-blur-sm border-b px-4 py-2">
+            <span className="text-xs text-muted-foreground">{filtered.length} booker{filtered.length !== 1 ? "s" : ""}</span>
           </div>
           <Table>
             <TableHeader>
