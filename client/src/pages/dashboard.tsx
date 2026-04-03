@@ -1,5 +1,5 @@
 import { useContacts } from "@/hooks/use-contacts";
-import { useMeetings, useDeleteMeeting } from "@/hooks/use-meetings";
+// useMeetings removed — meetings show via events table
 import { useEvents } from "@/hooks/use-events";
 import { useAuth } from "@/hooks/use-auth";
 // useProgrammes removed — programmes show via events table
@@ -15,7 +15,7 @@ import { Link, useLocation } from "wouter";
 import {
   format, startOfMonth, endOfMonth, startOfDay,
   isSameMonth, isSameDay, addMonths, subMonths, addDays, isToday,
-  isBefore, isAfter,
+  isAfter,
 } from "date-fns";
 import { useCalendarGrid } from "@/hooks/use-calendar-grid";
 import type { GoogleCalendarEvent } from "@/types/google-calendar";
@@ -30,7 +30,7 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { BarChart, Bar, ResponsiveContainer, Tooltip, XAxis } from "recharts";
-import type { Meeting, Contact, Event, Programme, Booking, Project, ProjectTask } from "@shared/schema";
+import type { Contact, Event, Booking, Project, ProjectTask } from "@shared/schema";
 
 interface PulseData {
   needsAttention: { enquiries: number; draftDebriefs: number; needsDebrief: number; total: number };
@@ -38,16 +38,12 @@ interface PulseData {
   community: { innovators: number; kakano: number; tipu: number; ora: number; activeMentees: number };
 }
 
-const MEETING_STATUS_COLORS: Record<string, string> = {
-  scheduled: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
-  completed: "bg-green-500/15 text-green-700 dark:text-green-300",
-  cancelled: "bg-red-500/15 text-red-700 dark:text-red-300",
-};
+// MEETING_STATUS_COLORS removed — meetings render as event cards
 
 export default function Dashboard() {
   const { user } = useAuth();
   const { data: contacts } = useContacts();
-  const { data: meetings } = useMeetings();
+  // meetings query removed — show via events table
   const { data: events } = useEvents();
   // programmes removed — show via events table
   const { data: bookings } = useBookings();
@@ -57,7 +53,7 @@ export default function Dashboard() {
 
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [viewMeeting, setViewMeeting] = useState<Meeting | null>(null);
+  // viewMeeting removed — meetings render as event cards now
 
   const pulseMonth = format(currentMonth, "yyyy-MM");
   const { data: pulse } = useQuery<PulseData>({ queryKey: [`/api/dashboard/pulse?month=${pulseMonth}`] });
@@ -573,7 +569,7 @@ export default function Dashboard() {
       </div>
     </div>
 
-    <ViewMeetingDialog meeting={viewMeeting} onClose={() => setViewMeeting(null)} contacts={contacts || []} />
+    {/* ViewMeetingDialog removed — meetings render as event cards */}
     </>
   );
 }
@@ -606,73 +602,4 @@ function StatTile({ icon: Icon, label, value, color = "primary", href, testId, s
   return href ? <Link href={href}>{content}</Link> : content;
 }
 
-// ── View meeting dialog ───────────────────────────────────────────────────
-
-function ViewMeetingDialog({ meeting, onClose, contacts }: {
-  meeting: Meeting | null; onClose: () => void; contacts: Contact[];
-}) {
-  const { mutate: deleteMeeting, isPending: deleting } = useDeleteMeeting();
-
-  if (!meeting) return null;
-
-  const contact = contacts.find((c) => c.id === meeting.contactId);
-  const isPast = isBefore(new Date(meeting.endTime), new Date());
-
-  return (
-    <Dialog open={!!meeting} onOpenChange={() => onClose()}>
-      <DialogContent className="sm:max-w-[450px]">
-        <DialogHeader>
-          <DialogTitle>{meeting.title}</DialogTitle>
-          <DialogDescription className="sr-only">Meeting details</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 py-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="secondary" className={`${MEETING_STATUS_COLORS[meeting.status] || ""}`}>{meeting.status}</Badge>
-            {contact && <Badge variant="outline">with {contact.name}</Badge>}
-          </div>
-          <div className="space-y-2 text-sm">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <CalendarIcon className="w-4 h-4" />
-              <span>{format(new Date(meeting.startTime), "EEEE, MMMM d, yyyy")}</span>
-            </div>
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Clock className="w-4 h-4" />
-              <span>{format(new Date(meeting.startTime), "h:mm a")} - {format(new Date(meeting.endTime), "h:mm a")}</span>
-            </div>
-            {meeting.location && (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <MapPin className="w-4 h-4" />
-                <span>{meeting.location}</span>
-              </div>
-            )}
-          </div>
-          {meeting.description && (
-            <div className="text-sm bg-muted/30 p-3 rounded-lg">
-              <p className="text-muted-foreground">{meeting.description}</p>
-            </div>
-          )}
-        </div>
-        <DialogFooter className="flex gap-2 flex-wrap">
-          {!isPast && meeting.status !== "cancelled" && (
-            <Button
-              variant="destructive"
-              size="sm"
-              disabled={deleting}
-              onClick={() => {
-                deleteMeeting(meeting.id, { onSuccess: () => onClose() });
-              }}
-            >
-              {deleting ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Trash2 className="w-3 h-3 mr-1" />}
-              Delete
-            </Button>
-          )}
-          {contact && (
-            <Link href={`/contacts/${contact.id}`}>
-              <Button variant="outline" size="sm">View Contact</Button>
-            </Link>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
+// ViewMeetingDialog removed — meetings render as event cards on calendar
