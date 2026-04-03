@@ -912,6 +912,19 @@ export function ReviewView({ id }: { id: number }) {
   }, [impactLog?.audioUrl]);
 
   const handleSave = async (status: string) => {
+    // Update peopleIdentified in extraction to reflect user's contact links
+    const updatedPeopleIdentified = (extraction?.peopleIdentified || extraction?.people || []).map((p: any) => {
+      const linked = people.find((pp: any) => pp.contactId && (
+        pp.contactId === p.matchedContactId ||
+        pp.name?.toLowerCase() === p.name?.toLowerCase() ||
+        fuzzyMatch(pp.name || "", p.name || "") >= 60
+      ));
+      if (linked) {
+        return { ...p, name: linked.name || p.name, matchedContactId: linked.contactId, confidence: 95 };
+      }
+      return p;
+    });
+
     const reviewedData = {
       summary,
       sentiment,
@@ -919,7 +932,7 @@ export function ReviewView({ id }: { id: number }) {
       actionItems: actionItemsList,
       impactTags,
       people,
-      peopleIdentified: extraction?.peopleIdentified || extraction?.people || [],
+      peopleIdentified: updatedPeopleIdentified,
       organisationsIdentified: extraction?.organisationsIdentified || [],
       placesIdentified: extraction?.placesIdentified || [],
       metrics,
@@ -934,6 +947,13 @@ export function ReviewView({ id }: { id: number }) {
       reflections,
     };
 
+    // Also persist updated peopleIdentified into rawExtraction so it survives refetch
+    const updatedExtraction = {
+      ...(impactLog?.rawExtraction as any || {}),
+      peopleIdentified: updatedPeopleIdentified,
+      people: updatedPeopleIdentified,
+    };
+
     try {
       await apiRequest('PATCH', `/api/impact-logs/${id}`, {
         status,
@@ -942,6 +962,7 @@ export function ReviewView({ id }: { id: number }) {
         milestones,
         funderTags,
         reviewedData,
+        rawExtraction: updatedExtraction,
         reviewedAt: status === "confirmed" ? new Date().toISOString() : undefined,
       });
 
