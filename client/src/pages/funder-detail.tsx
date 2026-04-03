@@ -23,7 +23,9 @@ import {
   Radar,
 } from "lucide-react";
 import type { Funder } from "@shared/schema";
-import { FunderDeliverablesSection, FunderTaxonomySection, FunderClassificationsSection } from "@/pages/funders";
+import { FunderDeliverablesSection } from "@/components/funders/deliverables-section";
+import { FunderTaxonomySection } from "@/components/funders/taxonomy-section";
+import { FunderClassificationsSection } from "@/components/funders/classifications-section";
 import { Users, MapPin, TrendingUp as Growth } from "lucide-react";
 
 // Static census context by community lens (from reference_geographic_lenses.md)
