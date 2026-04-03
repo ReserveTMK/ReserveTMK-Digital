@@ -101,6 +101,21 @@ export async function isPublicHoliday(userId: string, date: Date): Promise<boole
   return (row?.count || 0) > 0;
 }
 
+export async function isStaffClosure(userId: string, date: Date): Promise<boolean> {
+  const dayStart = new Date(date); dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(date); dayEnd.setHours(23, 59, 59, 999);
+  const [row] = await db.select({ count: sql<number>`count(*)` })
+    .from(events)
+    .where(and(eq(events.userId, userId), eq(events.isStaffClosure, true), lte(events.startTime, dayEnd), gte(events.endTime, dayStart)));
+  return (row?.count || 0) > 0;
+}
+
+export async function isClosedForBusiness(userId: string, date: Date): Promise<{ closed: boolean; type: "public_holiday" | "staff_closure" | null }> {
+  if (await isPublicHoliday(userId, date)) return { closed: true, type: "public_holiday" };
+  if (await isStaffClosure(userId, date)) return { closed: true, type: "staff_closure" };
+  return { closed: false, type: null };
+}
+
 // Auto-promote contact to innovator
 export async function autoPromoteToInnovator(contactId: number) {
   try {

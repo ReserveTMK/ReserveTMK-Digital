@@ -114,6 +114,22 @@ async function isPublicHoliday(userId: string, date: Date): Promise<boolean> {
   return (row?.count || 0) > 0;
 }
 
+async function isStaffClosure(userId: string, date: Date): Promise<boolean> {
+  const dayStart = new Date(date);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(date);
+  dayEnd.setHours(23, 59, 59, 999);
+  const [row] = await db.select({ count: sql<number>`count(*)` })
+    .from(events)
+    .where(and(
+      eq(events.userId, userId),
+      eq(events.isStaffClosure, true),
+      lte(events.startTime, dayEnd),
+      gte(events.endTime, dayStart),
+    ));
+  return (row?.count || 0) > 0;
+}
+
 async function autoPromoteToInnovator(contactId: number) {
   try {
     const contact = await storage.getContact(contactId);
@@ -1343,9 +1359,12 @@ export async function registerRoutes(
         endTime: new Date(req.body.endTime),
       });
 
-      // Block meetings on public holidays
+      // Block meetings on public holidays and staff closures
       if (await isPublicHoliday(userId, input.startTime)) {
         return res.status(400).json({ message: "Cannot schedule a meeting on a public holiday. Reserve Tāmaki is closed." });
+      }
+      if (await isStaffClosure(userId, input.startTime)) {
+        return res.status(400).json({ message: "Cannot schedule a meeting during this period. Reserve Tāmaki is closed for business." });
       }
 
       const contact = await storage.getContact(input.contactId);
@@ -5598,11 +5617,14 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       delete body.conflictOverride;
       const input = api.bookings.create.input.parse(body);
 
-      // Block bookings on public holidays
+      // Block bookings on public holidays and staff closures
       if (input.startDate) {
         const bookingDate = new Date(input.startDate);
         if (await isPublicHoliday(userId, bookingDate)) {
           return res.status(400).json({ message: "Cannot create a booking on a public holiday. Reserve Tāmaki is closed." });
+        }
+        if (await isStaffClosure(userId, bookingDate)) {
+          return res.status(400).json({ message: "Cannot create a booking during this period. Reserve Tāmaki is closed for business." });
         }
       }
 
@@ -6396,6 +6418,9 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         const bookingDate = new Date(booking.startDate);
         if (await isPublicHoliday(userId, bookingDate)) {
           return res.status(400).json({ message: "Cannot confirm a booking on a public holiday. Reserve Tāmaki is closed." });
+        }
+        if (await isStaffClosure(userId, bookingDate)) {
+          return res.status(400).json({ message: "Cannot confirm a booking during this period. Reserve Tāmaki is closed for business." });
         }
       }
 
