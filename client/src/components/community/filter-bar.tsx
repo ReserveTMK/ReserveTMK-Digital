@@ -30,12 +30,21 @@ const VENTURE_LABELS: Record<string, string> = {
 };
 
 const CONNECTION_LABELS: Record<string, string> = {
-  known: "Known",
+  aware: "Aware",
   connected: "Connected",
-  engaged: "Engaged",
-  embedded: "Embedded",
-  partnering: "Partnering",
+  trusted: "Trusted",
+  woven: "Woven",
 };
+
+const DELIVERY_LABELS: Record<string, string> = {
+  access: "Access",
+  capability: "Capability",
+  both: "Both",
+  past: "Past",
+  none: "None",
+};
+
+const DELIVERY_OPTIONS = ["access", "capability", "both", "past", "none"];
 
 export interface ContactFilters {
   ethnicities: string[];
@@ -44,6 +53,7 @@ export interface ContactFilters {
   connectionStrengths: string[];
   ventureTypes: string[];
   stages: string[];
+  deliveryDepths: string[];
   onCatchUpList: boolean;
 }
 
@@ -54,12 +64,14 @@ export const EMPTY_FILTERS: ContactFilters = {
   connectionStrengths: [],
   ventureTypes: [],
   stages: [],
+  deliveryDepths: [],
   onCatchUpList: false,
 };
 
 export function hasActiveFilters(f: ContactFilters): boolean {
   return f.ethnicities.length > 0 || f.suburbs.length > 0 || f.supportTypes.length > 0 ||
-    f.connectionStrengths.length > 0 || f.ventureTypes.length > 0 || f.stages.length > 0 || f.onCatchUpList;
+    f.connectionStrengths.length > 0 || f.ventureTypes.length > 0 || f.stages.length > 0 ||
+    f.deliveryDepths.length > 0 || f.onCatchUpList;
 }
 
 function MultiPill({ label, options, selected, onChange, labelMap }: {
@@ -149,6 +161,14 @@ export function ContactFilterBar({ filters, onChange, availableSuburbs, catchUpC
         selected={filters.connectionStrengths}
         onChange={(connectionStrengths) => onChange({ ...filters, connectionStrengths })}
         labelMap={CONNECTION_LABELS}
+      />
+
+      <MultiPill
+        label="Delivery"
+        options={DELIVERY_OPTIONS}
+        selected={filters.deliveryDepths}
+        onChange={(deliveryDepths) => onChange({ ...filters, deliveryDepths })}
+        labelMap={DELIVERY_LABELS}
       />
 
       <MultiPill

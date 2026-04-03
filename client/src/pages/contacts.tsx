@@ -61,7 +61,7 @@ export default function Contacts() {
   const [groupFilter, setGroupFilter] = useState<number | null>(groupFilterParam ? parseInt(groupFilterParam) : null);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
-  const [viewMode, setViewMode] = useState<"community" | "innovators" | "all" | "vip">("community");
+  const [viewMode, setViewMode] = useState<"community" | "innovators" | "all">("community");
   const [vipOnly, setVipOnly] = useState(false);
   const [open, setOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -101,6 +101,7 @@ export default function Contacts() {
   const { data: allGroups } = useQuery<any[]>({ queryKey: ["/api/groups"] });
   const { data: suggestedDuplicates } = useQuery<{ reason: string; contacts: any[] }[]>({ queryKey: ["/api/contacts/suggested-duplicates"] });
   const { data: lastEngaged } = useQuery<Record<number, string>>({ queryKey: ["/api/contacts/last-engaged"] });
+  const { data: deliveryDepths } = useQuery<Record<number, { depth: string; active: boolean }>>({ queryKey: ["/api/contacts/delivery-depth"] });
 
   const dismissDuplicateMutation = useMutation({
     mutationFn: async ({ id1, id2 }: { id1: number; id2: number }) => {
@@ -421,7 +422,8 @@ export default function Contacts() {
                           contact.businessName?.toLowerCase().includes(search.toLowerCase()) ||
                           contact.email?.toLowerCase().includes(search.toLowerCase());
     const matchesRole = roleFilter === "all" || contact.role === roleFilter;
-    const matchesView = viewMode === "all" || (viewMode === "community" && c.isCommunityMember === true) || (viewMode === "innovators" && c.isInnovator === true) || (viewMode === "vip" && c.isVip === true);
+    const hasDelivery = deliveryDepths?.[contact.id]?.depth && deliveryDepths[contact.id].depth !== "none";
+    const matchesView = viewMode === "all" || (viewMode === "community" && c.isCommunityMember === true) || (viewMode === "innovators" && hasDelivery);
     const matchesVip = !vipOnly || c.isVip === true;
 
     const f = advFilters;
@@ -431,17 +433,18 @@ export default function Contacts() {
     const matchesConnection = f.connectionStrengths.length === 0 || f.connectionStrengths.includes(c.connectionStrength);
     const matchesVenture = f.ventureTypes.length === 0 || f.ventureTypes.includes(c.ventureType);
     const matchesStage = f.stages.length === 0 || f.stages.includes(c.relationshipStage || c.stage);
+    const matchesDelivery = f.deliveryDepths.length === 0 || f.deliveryDepths.includes(deliveryDepths?.[contact.id]?.depth || "none");
     const matchesCatchUp = !f.onCatchUpList || catchUpContactIds.has(contact.id);
     const matchesGroup = !groupFilter || c.linkedGroupId === groupFilter;
 
     return matchesSearch && matchesRole && matchesView && matchesVip &&
-      matchesEthnicity && matchesSuburb && matchesSupport && matchesConnection &&
+      matchesEthnicity && matchesSuburb && matchesSupport && matchesConnection && matchesDelivery &&
       matchesVenture && matchesStage && matchesCatchUp && matchesGroup;
   });
 
   const roleCounts = useMemo(() => {
     if (!contacts) return {} as Record<string, number>;
-    let pool = viewMode === "community" ? (contacts as any[]).filter(c => c.isCommunityMember) : viewMode === "innovators" ? (contacts as any[]).filter(c => c.isInnovator) : viewMode === "vip" ? (contacts as any[]).filter(c => c.isVip) : (contacts as any[]);
+    let pool = viewMode === "community" ? (contacts as any[]).filter(c => c.isCommunityMember) : viewMode === "innovators" ? (contacts as any[]).filter(c => deliveryDepths?.[c.id]?.depth && deliveryDepths[c.id].depth !== "none") : (contacts as any[]);
     if (vipOnly) pool = pool.filter(c => c.isVip);
     const counts: Record<string, number> = {};
     for (const c of pool) {
@@ -453,11 +456,11 @@ export default function Contacts() {
 
   const tierCounts = useMemo(() => {
     if (!contacts) return { innovators: 0, community: 0, all: 0, vip: 0 };
-    const innovators = (contacts as any[]).filter(c => c.isInnovator).length;
+    const innovators = deliveryDepths ? (contacts as any[]).filter(c => deliveryDepths[c.id]?.depth && deliveryDepths[c.id].depth !== "none").length : 0;
     const community = (contacts as any[]).filter(c => c.isCommunityMember).length;
     const vip = (contacts as any[]).filter(c => c.isVip).length;
     return { innovators, community, all: contacts.length, vip };
-  }, [contacts]);
+  }, [contacts, deliveryDepths]);
 
   return (
     <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
@@ -478,7 +481,7 @@ export default function Contacts() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    {(viewMode === "all" || viewMode === "community" || viewMode === "innovators") && (
+                    {(viewMode === "all" || viewMode === "community") && (
                       <DropdownMenuItem onClick={async () => {
                         for (const id of Array.from(selectedContacts)) {
                           await promoteMutation.mutateAsync({ id });
@@ -486,7 +489,7 @@ export default function Contacts() {
                         setSelectedContacts(new Set());
                       }} disabled={promoteMutation.isPending} data-testid="menu-bulk-promote">
                         <ArrowUp className="w-4 h-4 mr-2" />
-                        {viewMode === "all" ? "Add to Community" : viewMode === "community" ? "Add to Innovators" : "Mark as VIP"} ({selectedContacts.size})
+                        {viewMode === "all" ? "Add to Community" : "Promote"} ({selectedContacts.size})
                       </DropdownMenuItem>
                     )}
                     {(viewMode === "community" || viewMode === "innovators") && (
@@ -903,7 +906,7 @@ export default function Contacts() {
 
           {/* View Toggle */}
           <div className="flex items-center justify-between gap-2" data-testid="view-toggle">
-            <Tabs value={viewMode} onValueChange={(v) => { setViewMode(v as "community" | "innovators" | "all" | "vip"); if (v === "vip") setVipOnly(false); }} className="min-w-0 flex-1">
+            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "community" | "innovators" | "all")} className="min-w-0 flex-1">
               <TabsList className="overflow-x-auto flex-nowrap w-full justify-start">
                 <TabsTrigger value="innovators" className="shrink-0" data-testid="button-view-innovators">
                   <Lightbulb className="w-4 h-4 mr-1.5" />
@@ -912,10 +915,6 @@ export default function Contacts() {
                 <TabsTrigger value="community" className="shrink-0" data-testid="button-view-community">
                   <Users className="w-4 h-4 mr-1.5" />
                   Community ({tierCounts.community})
-                </TabsTrigger>
-                <TabsTrigger value="vip" className="shrink-0" data-testid="button-view-vip">
-                  <Star className="w-4 h-4 mr-1.5" />
-                  VIP ({tierCounts.vip})
                 </TabsTrigger>
                 <TabsTrigger value="all" className="shrink-0" data-testid="button-view-all">
                   <BookUser className="w-4 h-4 mr-1.5" />

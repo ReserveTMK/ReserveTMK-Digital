@@ -26,14 +26,13 @@ export const STAGE_CONFIG: Record<string, { label: string; color: string; bgColo
 };
 
 export const CONNECTION_CONFIG: Record<string, { label: string; level: number; color: string; dotColor: string }> = {
-  known: { label: "Known", level: 1, color: "text-slate-600 dark:text-slate-400", dotColor: "bg-slate-400" },
+  aware: { label: "Aware", level: 1, color: "text-slate-600 dark:text-slate-400", dotColor: "bg-slate-400" },
   connected: { label: "Connected", level: 2, color: "text-blue-600 dark:text-blue-400", dotColor: "bg-blue-500" },
-  engaged: { label: "Engaged", level: 3, color: "text-green-600 dark:text-green-400", dotColor: "bg-green-500" },
-  embedded: { label: "Embedded", level: 4, color: "text-purple-600 dark:text-purple-400", dotColor: "bg-purple-500" },
-  partnering: { label: "Partnering", level: 5, color: "text-amber-600 dark:text-amber-400", dotColor: "bg-amber-500" },
+  trusted: { label: "Trusted", level: 3, color: "text-green-600 dark:text-green-400", dotColor: "bg-green-500" },
+  woven: { label: "Woven", level: 4, color: "text-purple-600 dark:text-purple-400", dotColor: "bg-purple-500" },
 };
 
-export const CONNECTION_LEVELS = ["known", "connected", "engaged", "embedded", "partnering"];
+export const CONNECTION_LEVELS = ["aware", "connected", "trusted", "woven"];
 
 export const SUPPORT_OPTIONS = ["mentoring", "workshop_skills", "space", "venue_hire", "hot_desking", "service_trade", "paid_work", "networking"];
 

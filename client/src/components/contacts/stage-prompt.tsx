@@ -15,7 +15,7 @@ export function StagePrompt({ stage, interactionCount, connectionStrength, conta
 
   if (dismissed) return null;
 
-  const connLevel = ["known", "connected", "engaged", "embedded", "partnering"].indexOf(connectionStrength || "");
+  const connLevel = ["aware", "connected", "trusted", "woven"].indexOf(connectionStrength || "");
   let suggestion: { nextStage: string; label: string } | null = null;
 
   if (stage === "kakano" && interactionCount >= 3 && connLevel >= 2) {

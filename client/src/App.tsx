@@ -23,6 +23,7 @@ import Programmes from "@/pages/programmes";
 import Bookings from "@/pages/bookings";
 import Agreements from "@/pages/agreements";
 import GroupsPage from "@/pages/groups";
+import EcosystemPage from "@/pages/ecosystem";
 import LegacyReportsPage from "@/pages/legacy-reports";
 import MilestonesPage from "@/pages/milestones";
 import ProgrammeEffectivenessPage from "@/pages/programme-effectiveness";
@@ -126,7 +127,11 @@ function Router() {
         </Route>
 
         <Route path="/community/ecosystems">
-          <Redirect to="/community/groups" />
+          <Redirect to="/community/ecosystem" />
+        </Route>
+
+        <Route path="/community/ecosystem">
+          <ProtectedRoute component={EcosystemPage} />
         </Route>
 
         <Route path="/community">
@@ -212,7 +217,7 @@ function Router() {
         </Route>
 
         <Route path="/ecosystem">
-          <Redirect to="/community/groups" />
+          <Redirect to="/community/ecosystem" />
         </Route>
 
         <Route path="/community-spend">

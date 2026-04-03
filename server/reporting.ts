@@ -629,7 +629,7 @@ export async function getImpactMetrics(filters: ReportFilters) {
   const jobsCreated = economicRollup["job_created"]?.count || 0;
   const revenueMilestones = economicRollup["revenue_milestone"]?.totalValue || 0;
 
-  const CONNECTION_ORDER = ["known", "connected", "engaged", "embedded", "partnering"];
+  const CONNECTION_ORDER = ["aware", "connected", "trusted", "woven"];
   const stageHist = await db.select({
     entityId: relationshipStageHistory.entityId,
     previousStage: relationshipStageHistory.previousStage,
@@ -2588,7 +2588,7 @@ export async function getCommunityDiscounts(filters: ReportFilters) {
 }
 
 export async function getConnectionStrengthDistribution(filters: ReportFilters) {
-  const LEVELS = ["known", "connected", "engaged", "embedded", "partnering"];
+  const LEVELS = ["aware", "connected", "trusted", "woven"];
   const start = parseDate(filters.startDate);
   const end = parseDate(filters.endDate);
 
@@ -2602,7 +2602,7 @@ export async function getConnectionStrengthDistribution(filters: ReportFilters) 
   const distMap = new Map<string, number>();
   for (const l of LEVELS) distMap.set(l, 0);
   for (const c of filtered) {
-    const s = c.connectionStrength || "known";
+    const s = c.connectionStrength || "aware";
     distMap.set(s, (distMap.get(s) || 0) + 1);
   }
 
@@ -2898,7 +2898,7 @@ export async function getProgrammeAttributedOutcomes(userId: string, programmeId
   const start = startDate ? parseDate(startDate) : null;
   const end = endDate ? parseDate(endDate) : null;
 
-  const CONNECTION_ORDER = ["known", "connected", "engaged", "embedded", "partnering"];
+  const CONNECTION_ORDER = ["aware", "connected", "trusted", "woven"];
   const results = [];
 
   for (const prog of progRows) {

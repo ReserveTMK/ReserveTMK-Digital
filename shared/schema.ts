@@ -2068,8 +2068,11 @@ export type InsertFunderTaxonomyClassification = z.infer<typeof insertFunderTaxo
 
 export const INNOVATOR_SUPPORT_TYPES = ["mentoring", "space", "venue_hire", "hot_desking", "service_trade", "paid_work", "networking"] as const;
 
-export const CONNECTION_STRENGTHS = ["known", "connected", "engaged", "embedded", "partnering"] as const;
+export const CONNECTION_STRENGTHS = ["aware", "connected", "trusted", "woven"] as const;
 export type ConnectionStrength = typeof CONNECTION_STRENGTHS[number];
+
+export const DELIVERY_DEPTHS = ["none", "access", "capability", "both", "past"] as const;
+export type DeliveryDepth = typeof DELIVERY_DEPTHS[number];
 export type InnovatorSupportType = typeof INNOVATOR_SUPPORT_TYPES[number];
 
 export const JOURNEY_STAGES = ["kakano", "tipu", "ora", "inactive"] as const;

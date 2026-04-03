@@ -4,7 +4,7 @@ import { format } from "date-fns";
 import { formatRelativeDate } from "./ecosystem-views";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Lightbulb, UserCheck, Loader2, Coffee, Star } from "lucide-react";
+import { Plus, Lightbulb, UserCheck, Loader2, Coffee, Star, Building2, BookOpen, Layers, Clock } from "lucide-react";
 import { Button } from "@/components/ui/beautiful-button";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -58,6 +58,11 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
   const { data: engagementScores } = useQuery<Record<number, { interactions: number; debriefs: number; events: number; total: number }>>({
     queryKey: ["/api/contacts/engagement-scores"],
     enabled: !drilldownTier, // only fetch for All Contacts view
+    staleTime: 60000,
+  });
+
+  const { data: deliveryDepths } = useQuery<Record<number, { depth: string; active: boolean }>>({
+    queryKey: ["/api/contacts/delivery-depth"],
     staleTime: 60000,
   });
 
@@ -168,7 +173,7 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
           return sortDir === "asc" ? av - bv : bv - av;
         }
         case "connection":
-          const connOrder = ["known", "connected", "engaged", "embedded", "partnering"];
+          const connOrder = ["aware", "connected", "trusted", "woven"];
           av = connOrder.indexOf(a.connectionStrength || "");
           bv = connOrder.indexOf(b.connectionStrength || "");
           return sortDir === "asc" ? av - bv : bv - av;
@@ -250,6 +255,7 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
                   <SortHeader label="Area" field="area" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-20" />
                 )}
                 <SortHeader label="Connection" field="connection" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 min-w-[120px]" />
+                <th className="px-3 py-3 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider w-20">Delivery</th>
                 <SortHeader label="Last Seen" field="lastActive" activeField={sortField} dir={sortDir} onSort={handleSort} className="px-3 w-24" />
               </tr>
             </thead>
@@ -390,6 +396,31 @@ export function ContactsTableView({ contacts, allContacts, editMode, selectedCon
                   )}
                   <td className="px-1 py-2">
                     <InlineConnectionCell contactId={contact.id} connectionStrength={contact.connectionStrength} />
+                  </td>
+                  <td className="px-3 py-2">
+                    {(() => {
+                      const dd = deliveryDepths?.[contact.id];
+                      if (!dd || dd.depth === "none") return null;
+                      const config: Record<string, { icon: any; label: string; color: string }> = {
+                        access: { icon: Building2, label: "Access", color: "text-orange-600" },
+                        capability: { icon: BookOpen, label: "Capability", color: "text-blue-600" },
+                        both: { icon: Layers, label: "Both", color: "text-purple-600" },
+                        past: { icon: Clock, label: "Past", color: "text-muted-foreground" },
+                      };
+                      const c = config[dd.depth];
+                      if (!c) return null;
+                      const Icon = c.icon;
+                      return (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className={`inline-flex items-center gap-1 text-xs ${c.color}`}>
+                              <Icon className="w-3.5 h-3.5" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top"><p className="text-xs">{c.label}{dd.depth === "past" ? " (inactive)" : ""}</p></TooltipContent>
+                        </Tooltip>
+                      );
+                    })()}
                   </td>
                   <td className="px-3 py-2">
                     <span className="text-xs text-muted-foreground whitespace-nowrap">

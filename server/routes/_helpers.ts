@@ -116,19 +116,19 @@ export async function isClosedForBusiness(userId: string, date: Date): Promise<{
   return { closed: false, type: null };
 }
 
-// Auto-promote contact to innovator
+// Auto-promote contact to community member on any service activity
+// Note: isInnovator is no longer set here — innovator status is now computed from delivery depth
 export async function autoPromoteToInnovator(contactId: number) {
   try {
     const contact = await storage.getContact(contactId);
-    if (contact && (!contact.isCommunityMember || !contact.isInnovator)) {
+    if (contact && !contact.isCommunityMember) {
       const now = new Date();
-      const updates: any = { isCommunityMember: true, isInnovator: true };
-      if (!contact.isCommunityMember && !contact.movedToCommunityAt) updates.movedToCommunityAt = now;
-      if (!contact.isInnovator && !contact.movedToInnovatorsAt) updates.movedToInnovatorsAt = now;
+      const updates: any = { isCommunityMember: true };
+      if (!contact.movedToCommunityAt) updates.movedToCommunityAt = now;
       await storage.updateContact(contactId, updates);
     }
   } catch (err) {
-    console.warn(`Failed to auto-promote contact ${contactId} to innovator:`, err);
+    console.warn(`Failed to auto-promote contact ${contactId} to community:`, err);
   }
 }
 
