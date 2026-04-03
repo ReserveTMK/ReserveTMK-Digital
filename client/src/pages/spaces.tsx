@@ -18,7 +18,8 @@ import {
   ClipboardCheck,
   RefreshCw,
 } from "lucide-react";
-import { useBookings, useVenues, useBookableResources, useDeskAvailability, useDeskBookings } from "@/hooks/use-bookings";
+import { useVenues, useBookableResources, useDeskAvailability, useDeskBookings } from "@/hooks/use-bookings";
+import { useEvents } from "@/hooks/use-events";
 import { useQuery } from "@tanstack/react-query";
 import Bookings from "./bookings";
 import ResourcesTab from "@/components/spaces/resources-tab";
@@ -27,7 +28,7 @@ import RegularBookersPage from "./regular-bookers";
 import { SpacesFAB } from "@/components/spaces/quick-add-activation-dialog";
 import { MonthlyReconcileDialog } from "@/components/spaces/monthly-reconcile-dialog";
 import { RecurringBookingsTab } from "@/components/spaces/recurring-bookings-tab";
-import type { Meeting } from "@shared/schema";
+// Meeting type removed — spaces reads from events table
 
 const HOURS = Array.from({ length: 15 }, (_, i) => i + 7);
 const VENUE_HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -186,18 +187,9 @@ function SpacesCalendarTab({ initialDate, initialView }: { initialDate?: string;
   const DESK_HOURS = useMemo(() => Array.from({ length: DESK_END_HOUR - DESK_START_HOUR }, (_, i) => i + DESK_START_HOUR), [DESK_START_HOUR, DESK_END_HOUR]);
 
   const { data: venues, isLoading: venuesLoading } = useVenues();
-  const { data: bookings, isLoading: bookingsLoading } = useBookings();
+  const { data: spaceEvents, isLoading: eventsLoading } = useEvents();
   const { data: deskResources, isLoading: desksLoading } = useBookableResources("hot_desking");
   const { data: deskAvailability, isLoading: deskAvailLoading } = useDeskAvailability(dateStr);
-
-  const { data: meetings } = useQuery<Meeting[]>({
-    queryKey: ['/api/meetings', 'with-venue'],
-    queryFn: async () => {
-      const res = await fetch('/api/meetings?withVenue=true', { credentials: 'include' });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-  });
 
   const weekAvail0 = useDeskAvailability(viewMode === "week" ? formatDate(weekDays[0]) : "");
   const weekAvail1 = useDeskAvailability(viewMode === "week" ? formatDate(weekDays[1]) : "");
@@ -229,7 +221,7 @@ function SpacesCalendarTab({ initialDate, initialView }: { initialDate?: string;
 
   const activeVenues = (venues || []).filter((v) => v.active !== false);
   const activeDesks = (deskResources || []).filter((r) => r.active !== false);
-  const isLoading = venuesLoading || bookingsLoading;
+  const isLoading = venuesLoading || eventsLoading;
 
   return (
     <div className="space-y-4">
@@ -309,25 +301,24 @@ function SpacesCalendarTab({ initialDate, initialView }: { initialDate?: string;
                           <div className="flex flex-1 min-w-0">
                             {weekDays.map((day) => {
                               const dayStr = formatDate(day);
-                              const dayBookings = (bookings || []).filter(
-                                (b) => (b.venueIds || (b.venueId ? [b.venueId] : [])).includes(venue.id) && b.startDate && formatDate(new Date(b.startDate)) === dayStr && b.status !== "cancelled"
+                              const dayEvents = (spaceEvents || []).filter(
+                                (e: any) => e.venueId === venue.id && e.startTime && formatDate(new Date(e.startTime)) === dayStr && e.eventStatus !== "cancelled"
                               );
-                              const dayMeetings = (meetings || []).filter(
-                                (m: any) => m.venueId === venue.id && m.startTime && formatDate(new Date(m.startTime)) === dayStr && m.status !== "cancelled"
-                              );
-                              const hasVenueHire = dayBookings.length > 0;
-                              const hasInternal = dayMeetings.length > 0;
+                              const dayVenueHires = dayEvents.filter((e: any) => e.type === "Venue Hire");
+                              const dayInternal = dayEvents.filter((e: any) => e.type !== "Venue Hire");
+                              const hasVenueHire = dayVenueHires.length > 0;
+                              const hasInternal = dayInternal.length > 0;
                               const bgClass = hasVenueHire
                                 ? "bg-amber-200/60 dark:bg-amber-800/30"
                                 : hasInternal
                                 ? "bg-blue-200/60 dark:bg-blue-800/30"
                                 : "bg-emerald-100/60 dark:bg-emerald-900/20";
-                              const total = dayBookings.length + dayMeetings.length;
+                              const total = dayEvents.length;
                               return (
                                 <div
                                   key={day.toISOString()}
                                   className={`flex-1 h-10 border-r border-border/40 last:border-r-0 flex items-center justify-center ${bgClass}`}
-                                  title={`${shortDay(day)} - ${hasVenueHire ? `${dayBookings.length} hire(s)` : hasInternal ? `${dayMeetings.length} internal` : "Available"}`}
+                                  title={`${shortDay(day)} - ${hasVenueHire ? `${dayVenueHires.length} hire(s)` : hasInternal ? `${dayInternal.length} internal` : "Available"}`}
                                 >
                                   {total > 0 && (
                                     <span className={`text-[10px] font-medium ${hasVenueHire ? "text-amber-700 dark:text-amber-300" : "text-blue-700 dark:text-blue-300"}`}>
@@ -349,26 +340,17 @@ function SpacesCalendarTab({ initialDate, initialView }: { initialDate?: string;
                     <div className="min-w-[600px]">
                       <TimeHeader hours={VENUE_HOURS} />
                       {activeVenues.map((venue) => {
-                        const dayBookings = (bookings || []).filter(
-                          (b) => (b.venueIds || (b.venueId ? [b.venueId] : [])).includes(venue.id) && b.startDate && formatDate(new Date(b.startDate)) === dateStr && b.status !== "cancelled"
+                        const dayEvents = (spaceEvents || []).filter(
+                          (e: any) => e.venueId === venue.id && e.startTime && formatDate(new Date(e.startTime)) === dateStr && e.eventStatus !== "cancelled"
                         );
-                        const dayMeetings = (meetings || []).filter(
-                          (m: any) => m.venueId === venue.id && m.startTime && formatDate(new Date(m.startTime)) === dateStr && m.status !== "cancelled"
-                        );
-                        const blocks: BookingBlock[] = [
-                          ...dayBookings.map((b) => {
-                            const start = parseTime(b.startTime);
-                            const end = parseTime(b.endTime);
-                            if (start === null || end === null) return null;
-                            return { start, end, type: "venue_hire" as const };
-                          }).filter(Boolean) as BookingBlock[],
-                          ...dayMeetings.map((m: any) => {
-                            const start = m.startTime ? parseTime(new Date(m.startTime).toTimeString().slice(0, 5)) : null;
-                            const end = m.endTime ? parseTime(new Date(m.endTime).toTimeString().slice(0, 5)) : null;
-                            if (start === null || end === null) return null;
-                            return { start, end, type: "internal" as const };
-                          }).filter(Boolean) as BookingBlock[],
-                        ];
+                        const blocks: BookingBlock[] = dayEvents.map((e: any) => {
+                          const startStr = new Date(e.startTime).toTimeString().slice(0, 5);
+                          const endStr = e.endTime ? new Date(e.endTime).toTimeString().slice(0, 5) : null;
+                          const start = parseTime(startStr);
+                          const end = endStr ? parseTime(endStr) : null;
+                          if (start === null || end === null) return null;
+                          return { start, end, type: e.type === "Venue Hire" ? "venue_hire" as const : "internal" as const };
+                        }).filter(Boolean) as BookingBlock[];
                         return (
                           <div key={venue.id} className="flex items-center border-t border-border/40">
                             <div className="w-40 shrink-0 flex items-center gap-2 py-1 pr-2">
