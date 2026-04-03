@@ -587,10 +587,22 @@ export function ReviewView({ id }: { id: number }) {
       const placeEdits = new Map(editsToApply.filter(e => e.type === "place").map(e => [e.original.toLowerCase(), e.corrected]));
       const orgEdits = new Map(editsToApply.filter(e => e.type === "organisation").map(e => [e.original.toLowerCase(), e.corrected]));
 
+      const findContactMatch = (name: string) => {
+        const exact = (contacts || []).find(c => c.name?.toLowerCase() === name.toLowerCase());
+        if (exact) return exact;
+        // Fuzzy: "Adhi" matches "Adhi Sharma"
+        let best: any = null, bestScore = 0;
+        for (const c of (contacts || [])) {
+          const score = fuzzyMatch(name, c.name || "");
+          if (score > bestScore && score >= 60) { best = c; bestScore = score; }
+        }
+        return best;
+      };
+
       const updatedPeopleIdentified = (extraction?.peopleIdentified || extraction?.people || []).map((p: any) => {
         const corrected = nameEdits.get(p.name?.toLowerCase());
         if (!corrected) return p;
-        const match = (contacts || []).find(c => c.name?.toLowerCase() === corrected.toLowerCase());
+        const match = findContactMatch(corrected);
         return { ...p, name: corrected, matchedContactId: match?.id || p.matchedContactId, confidence: match ? 95 : p.confidence };
       });
 
@@ -609,7 +621,7 @@ export function ReviewView({ id }: { id: number }) {
       const updatedPeople = people.map((p: any) => {
         const corrected = nameEdits.get(p.name?.toLowerCase());
         if (!corrected) return p;
-        const match = (contacts || []).find(c => c.name?.toLowerCase() === corrected.toLowerCase());
+        const match = findContactMatch(corrected);
         return { ...p, name: corrected, contactId: match?.id || p.contactId };
       });
 
@@ -627,6 +639,21 @@ export function ReviewView({ id }: { id: number }) {
         transcript: updatedTranscript,
         rawExtraction: updatedExtraction,
       });
+
+      // Auto-link matched contacts to the server
+      let contactsLinked = 0;
+      for (const p of updatedPeople) {
+        if (p.contactId && nameEdits.has((people.find((pp: any) => pp.contactId === p.contactId)?.name || p.name || "").toLowerCase())) {
+          try {
+            const derivedRole = p.section === "primary" ? "primary" : "mentioned";
+            await apiRequest("POST", `/api/impact-logs/${id}/contacts`, { impactLogId: id, contactId: p.contactId, role: derivedRole });
+            contactsLinked++;
+          } catch { /* already linked */ }
+        }
+      }
+      if (contactsLinked > 0) {
+        refetchLinkedContacts();
+      }
 
       let groupsLinked = 0;
       for (const gId of matchedOrgIds) {
@@ -649,6 +676,7 @@ export function ReviewView({ id }: { id: number }) {
       const personMatches = updatedPeople.filter((p: any, i: number) => p.contactId && nameEdits.has((people[i]?.name || "").toLowerCase())).length;
       const parts: string[] = [];
       if (personMatches > 0) parts.push(`${personMatches} name${personMatches > 1 ? "s" : ""} matched to contacts`);
+      if (contactsLinked > 0) parts.push(`${contactsLinked} contact${contactsLinked > 1 ? "s" : ""} auto-linked`);
       if (groupsLinked > 0) parts.push(`${groupsLinked} group${groupsLinked > 1 ? "s" : ""} auto-linked`);
       toast({
         title: `${editCount} correction${editCount > 1 ? "s" : ""} applied`,
