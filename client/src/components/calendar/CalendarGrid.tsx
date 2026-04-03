@@ -126,7 +126,7 @@ export function CalendarGrid({
                 ${!isCurrentMonth ? "text-muted-foreground/40" : "text-foreground"}
                 ${isSelected ? "bg-primary/10 border-primary/50" : "hover:bg-muted/50"}
                 ${hasPublicHoliday && !isSelected ? "bg-red-50 dark:bg-red-950/30 border-red-200/50 dark:border-red-800/30" : ""}
-                ${hasStaffClosure && !hasPublicHoliday && !isSelected ? "bg-amber-50 dark:bg-amber-950/30 border-amber-200/50 dark:border-amber-800/30" : ""}
+                ${hasStaffClosure && !hasPublicHoliday && !isSelected ? "bg-purple-50 dark:bg-purple-950/30 border-purple-200/50 dark:border-purple-800/30" : ""}
                 ${today && !isSelected && !hasPublicHoliday && !hasStaffClosure ? "bg-accent/30" : ""}
 
               `}

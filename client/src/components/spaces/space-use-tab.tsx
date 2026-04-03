@@ -276,7 +276,7 @@ export function ActivationsTab() {
                   ${inMonth ? "bg-background" : "bg-muted/20"}
                   ${selected ? "ring-2 ring-primary ring-inset" : ""}
                   ${hasHoliday && !selected ? "bg-red-50 dark:bg-red-950/30 border-red-200/50" : ""}
-                  ${hasClosure && !hasHoliday && !selected ? "bg-amber-50 dark:bg-amber-950/30 border-amber-200/50" : ""}
+                  ${hasClosure && !hasHoliday && !selected ? "bg-purple-50 dark:bg-purple-950/30 border-purple-200/50" : ""}
                   ${dayItems.length > 0 && !hasHoliday && !hasClosure ? "hover:bg-muted/40 cursor-pointer" : "cursor-default"}
                 `}
               >

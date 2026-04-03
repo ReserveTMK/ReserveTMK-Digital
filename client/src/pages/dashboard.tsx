@@ -359,6 +359,9 @@ export default function Dashboard() {
                 const isCurrentMonth = isSameMonth(day, currentMonth);
                 const isSelected = isSameDay(day, selectedDate);
                 const today = isToday(day);
+                const dayAppEvents = eventsByDate.get(key) || [];
+                const hasHoliday = dayAppEvents.some((e: any) => e.type === "Public Holiday");
+                const hasClosure = dayAppEvents.some((e: any) => e.type === "Staff Closure");
 
                 return (
                   <button
@@ -368,7 +371,9 @@ export default function Dashboard() {
                       relative p-0.5 h-8 text-xs transition-colors rounded
                       ${!isCurrentMonth ? "text-muted-foreground/30" : ""}
                       ${isSelected ? "bg-primary/10 font-semibold" : "hover:bg-muted/50"}
-                      ${today && !isSelected ? "bg-accent/30" : ""}
+                      ${hasHoliday && !isSelected ? "bg-red-50 dark:bg-red-950/30" : ""}
+                      ${hasClosure && !hasHoliday && !isSelected ? "bg-purple-50 dark:bg-purple-950/30" : ""}
+                      ${today && !isSelected && !hasHoliday && !hasClosure ? "bg-accent/30" : ""}
                     `}
                   >
                     <span className={`
