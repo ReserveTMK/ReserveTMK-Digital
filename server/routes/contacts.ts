@@ -92,31 +92,31 @@ export function registerContactRoutes(app: Express) {
 
       // Gather contact IDs with access activity (bookings, gear, desk)
       const accessRows = await db.execute(sql`
-        SELECT DISTINCT contact_id, recent FROM (
-          SELECT b.booker_id as contact_id, CASE WHEN b.start_date >= ${cutoff}::timestamp THEN true ELSE false END as recent
+        SELECT DISTINCT x.contact_id, bool_or(x.recent) as recent FROM (
+          SELECT b.booker_id as contact_id, (b.start_date >= ${cutoff}::timestamp) as recent
           FROM bookings b WHERE b.booker_id IS NOT NULL AND b.status IN ('confirmed', 'completed')
           UNION ALL
-          SELECT rb.contact_id, CASE WHEN gb.created_at >= ${cutoff}::timestamp THEN true ELSE false END as recent
+          SELECT rb.contact_id, (gb.created_at >= ${cutoff}::timestamp) as recent
           FROM gear_bookings gb JOIN regular_bookers rb ON rb.id = gb.regular_booker_id WHERE rb.contact_id IS NOT NULL
           UNION ALL
-          SELECT rb.contact_id, CASE WHEN dk.date >= ${cutoff}::date THEN true ELSE false END as recent
+          SELECT rb.contact_id, (dk.date >= ${cutoff}::date) as recent
           FROM desk_bookings dk JOIN regular_bookers rb ON rb.id = dk.regular_booker_id WHERE rb.contact_id IS NOT NULL
-        ) access_union
+        ) x GROUP BY x.contact_id
       `);
 
       // Gather contact IDs with capability activity (programmes, mentoring)
       const capRows = await db.execute(sql`
-        SELECT DISTINCT contact_id, recent FROM (
-          SELECT pr.contact_id, CASE WHEN pr.registered_at >= ${cutoff}::timestamp THEN true ELSE false END as recent
+        SELECT DISTINCT x.contact_id, bool_or(x.recent) as recent FROM (
+          SELECT pr.contact_id, (pr.registered_at >= ${cutoff}::timestamp) as recent
           FROM programme_registrations pr WHERE pr.contact_id IS NOT NULL AND pr.status = 'registered'
           UNION ALL
-          SELECT mr.contact_id, CASE WHEN mr.status IN ('active', 'application') THEN true ELSE false END as recent
+          SELECT mr.contact_id, (mr.status IN ('active', 'application')) as recent
           FROM mentoring_relationships mr WHERE mr.contact_id IS NOT NULL
           UNION ALL
-          SELECT m.contact_id, CASE WHEN m.start_time >= ${cutoff}::timestamp THEN true ELSE false END as recent
+          SELECT m.contact_id, (m.start_time >= ${cutoff}::timestamp) as recent
           FROM meetings m WHERE m.contact_id IS NOT NULL AND m.status IN ('completed', 'confirmed')
             AND m.type IN (SELECT mt.name FROM meeting_types mt WHERE mt.user_id = ${userId} AND mt.category = 'mentoring' AND mt.is_active = true)
-        ) cap_union
+        ) x GROUP BY x.contact_id
       `);
 
       // Get user's contact IDs for filtering
@@ -125,19 +125,19 @@ export function registerContactRoutes(app: Express) {
       `);
       const userContactIds = new Set(((userContacts as any).rows || []).map((r: any) => r.id));
 
-      // Build maps
+      // Build maps (bool_or returns boolean but Drizzle may return string)
+      const toBool = (v: any) => v === true || v === "true" || v === "t";
+
       const accessMap = new Map<number, boolean>();
       for (const r of (accessRows as any).rows || []) {
         if (!userContactIds.has(r.contact_id)) continue;
-        const existing = accessMap.get(r.contact_id) || false;
-        accessMap.set(r.contact_id, existing || r.recent);
+        accessMap.set(r.contact_id, toBool(r.recent));
       }
 
       const capMap = new Map<number, boolean>();
       for (const r of (capRows as any).rows || []) {
         if (!userContactIds.has(r.contact_id)) continue;
-        const existing = capMap.get(r.contact_id) || false;
-        capMap.set(r.contact_id, existing || r.recent);
+        capMap.set(r.contact_id, toBool(r.recent));
       }
 
       // Compute delivery depth per contact
