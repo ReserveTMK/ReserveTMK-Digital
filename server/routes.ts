@@ -3852,7 +3852,9 @@ IMPORTANT RULES:
 - For reflections: capture the operator's genuine assessment — wins, concerns, learnings. These inform operator insights in reports.
 - For primaryEntity: identify the main subject of this debrief. If the debrief is about an organisation's activity (e.g. "GI Eagles x Le Va workshop"), the primary is the group. If it's a 1:1 catch-up (e.g. "Catch up Cleona"), the primary is the person. Check the title for strong hints.
 - For peopleIdentified: match names against KNOWN COMMUNITY MEMBERS using fuzzy matching. "Coach Manuel" = Manuel Walker. "Charles" = Charles Lavea. Titles like Coach, Matua, Dr are prefixes not names. Always return the real name from the contacts list when matched, not the nickname/title from the transcript.
-- For impact tags: maximum 4 tags per debrief. Choose the most relevant. Avoid overlapping categories for the same evidence.`;
+- For impact tags: maximum 4 tags per debrief. Choose the most relevant. Avoid overlapping categories for the same evidence.
+- For organisationsIdentified: do NOT include ReserveTMK, Reserve Tāmaki, or the hub itself — it's always implied. Only include external organisations.
+- For peopleIdentified: if matchedContactId is found with confidence >= 80%, include it. The UI will auto-link high-confidence matches.`;
 
       const extraction = await claudeJSON({
         model: "claude-sonnet-4-6",

@@ -752,6 +752,8 @@ export function ReviewView({ id }: { id: number }) {
       }
       const extractedPeople = (extraction.peopleIdentified || extraction.people || []).map((p: any) => ({
         ...p,
+        // Auto-link high confidence matches
+        contactId: p.contactId || (p.matchedContactId && (p.confidence || 0) >= 80 ? p.matchedContactId : undefined),
         section: p.section || (["primary", "mentor", "mentee", "subject"].includes(p.role) ? "primary" : "secondary"),
       }));
       // Auto-fill primary from primaryEntity if no one is tagged as subject
@@ -1980,7 +1982,7 @@ export function ReviewView({ id }: { id: number }) {
                             </div>
                           );
                         })}
-                        {(extraction.organisationsIdentified || []).map((o: any, i: number) => {
+                        {(extraction.organisationsIdentified || []).filter((o: any) => !/reserve\s*t[aā]maki|reservetmk/i.test(o.name || "")).map((o: any, i: number) => {
                           const linkedGroupIds = new Set((linkedGroups || []).map((lg: any) => lg.groupId));
                           const linkedGroupObjs = (linkedGroups || []).map((lg: any) => (allGroups || []).find((gg: any) => gg.id === lg.groupId)).filter(Boolean);
                           const isLinked = o.matchedGroupId ? linkedGroupIds.has(o.matchedGroupId) : linkedGroupObjs.some((g: any) => fuzzyMatch(g.name || "", o.name || "") >= 60);
