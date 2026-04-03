@@ -228,7 +228,8 @@ export default function Bookings({ embedded, onCreateReady }: { embedded?: boole
     const completed = scoped.filter((b) => b.status === "completed");
 
     let communityHours = 0;
-    completed.forEach((b) => {
+    const confirmedOrCompleted = scoped.filter((b) => b.status === "confirmed" || b.status === "completed");
+    confirmedOrCompleted.forEach((b) => {
       if (b.startTime && b.endTime) {
         const [sh, sm] = b.startTime.split(":").map(Number);
         const [eh, em] = b.endTime.split(":").map(Number);
