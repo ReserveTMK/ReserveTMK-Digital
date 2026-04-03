@@ -153,9 +153,10 @@ export function EventCard({
   const bkVenueIds = bk ? (bk.venueIds || (bk.venueId ? [bk.venueId] : [])) : [];
   const bkVenueName = bk && venueMap ? bkVenueIds.map((id: number) => venueMap[id]).filter(Boolean).join(" + ") : null;
 
-  const eventName = bk
+  const rawName = bk
     ? ((bk as any).displayName || bk.title || bk.classification || "Venue Hire")
     : (isGcal ? entry.gcal!.summary : entry.app!.name);
+  const eventName = (rawName || "").replace(/^Tentative:\s*/i, "").trim() || rawName;
   const eventType = bk ? "Venue Hire" : (linkedAppEvent?.type || (isGcal ? classifyGcalEvent(entry.gcal!) : entry.app!.type));
   const startStr = isGcal ? entry.gcal!.start : entry.app!.startTime;
   const endStr = isGcal ? entry.gcal!.end : entry.app!.endTime;

@@ -97,8 +97,23 @@ export async function isPublicHoliday(userId: string, date: Date): Promise<boole
   const dayEnd = new Date(date); dayEnd.setHours(23, 59, 59, 999);
   const [row] = await db.select({ count: sql<number>`count(*)` })
     .from(events)
-    .where(and(eq(events.userId, userId), eq(events.isPublicHoliday, true), lte(events.startTime, dayEnd), gte(events.endTime, dayStart)));
+    .where(and(eq(events.isPublicHoliday, true), lte(events.startTime, dayEnd), gte(events.endTime, dayStart)));
   return (row?.count || 0) > 0;
+}
+
+export async function isStaffClosure(userId: string, date: Date): Promise<boolean> {
+  const dayStart = new Date(date); dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(date); dayEnd.setHours(23, 59, 59, 999);
+  const [row] = await db.select({ count: sql<number>`count(*)` })
+    .from(events)
+    .where(and(eq(events.isStaffClosure, true), lte(events.startTime, dayEnd), gte(events.endTime, dayStart)));
+  return (row?.count || 0) > 0;
+}
+
+export async function isClosedForBusiness(userId: string, date: Date): Promise<{ closed: boolean; type: "public_holiday" | "staff_closure" | null }> {
+  if (await isPublicHoliday(userId, date)) return { closed: true, type: "public_holiday" };
+  if (await isStaffClosure(userId, date)) return { closed: true, type: "staff_closure" };
+  return { closed: false, type: null };
 }
 
 // Auto-promote contact to innovator
@@ -161,7 +176,8 @@ export async function ensureBookingEvent(booking: any, userId: string): Promise<
     else startTime = new Date(baseDateMs + 9 * 60 * 60 * 1000);
     if (booking.endTime) { const [h, m] = booking.endTime.split(":").map(Number); endTime = new Date(baseDateMs + (h * 60 + m) * 60 * 1000); }
     else endTime = new Date(startTime.getTime() + 2 * 60 * 60 * 1000);
-    await storage.createEvent({ userId, name: title, type: "Venue Hire", startTime, endTime, location: venueName, source: "booking", linkedBookingId: booking.id, requiresDebrief: true, googleCalendarEventId: booking.googleCalendarEventId || null });
+    const primaryVenueId = bookingVenueIds[0] || null;
+    await storage.createEvent({ userId, name: title, type: "Venue Hire", startTime, endTime, location: venueName, venueId: primaryVenueId, source: "booking", linkedBookingId: booking.id, requiresDebrief: true, googleCalendarEventId: booking.googleCalendarEventId || null });
   } catch (e) { console.warn(`Failed to create event for booking ${booking.id}:`, e); }
 }
 
@@ -179,6 +195,37 @@ export async function ensureProgrammeEvent(programme: any, userId: string): Prom
     else endTime = new Date(startTime.getTime() + 2 * 60 * 60 * 1000);
     await storage.createEvent({ userId, name: programme.name, type: "Programme", startTime, endTime, location: programme.location || null, source: "programme", linkedProgrammeId: programme.id, requiresDebrief: true });
   } catch (e) { console.warn(`Failed to create event for programme ${programme.id}:`, e); }
+}
+
+export async function ensureMeetingEvent(meeting: any, userId: string): Promise<void> {
+  try {
+    if (!meeting.id || !meeting.startTime) return;
+    if (meeting.status === "cancelled") return;
+    const existingEvents = await storage.getEvents(userId);
+    if (existingEvents.find(e => e.linkedMeetingId === meeting.id)) return;
+    // If meeting has a GCal ID and an event already imported from GCal, link them
+    if (meeting.googleCalendarEventId) {
+      const gcalMatch = existingEvents.find(e => e.googleCalendarEventId === meeting.googleCalendarEventId);
+      if (gcalMatch) {
+        await storage.updateEvent(gcalMatch.id, { linkedMeetingId: meeting.id });
+        return;
+      }
+    }
+    const venue = meeting.venueId ? await storage.getVenue(meeting.venueId) : null;
+    await storage.createEvent({
+      userId,
+      name: meeting.title || "Mentoring Session",
+      type: "Mentoring Session",
+      startTime: new Date(meeting.startTime),
+      endTime: meeting.endTime ? new Date(meeting.endTime) : new Date(new Date(meeting.startTime).getTime() + 60 * 60 * 1000),
+      location: venue?.name || null,
+      venueId: meeting.venueId || null,
+      source: "meeting",
+      linkedMeetingId: meeting.id,
+      googleCalendarEventId: meeting.googleCalendarEventId || null,
+      requiresDebrief: true,
+    });
+  } catch (e) { console.warn(`Failed to create event for meeting ${meeting.id}:`, e); }
 }
 
 // Calendar venue mapping

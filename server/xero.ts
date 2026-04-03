@@ -17,7 +17,7 @@ const XERO_API_BASE = "https://api.xero.com/api.xro/2.0";
 const XERO_CONNECTIONS_URL = "https://api.xero.com/connections";
 const XERO_AUTH_URL = "https://login.xero.com/identity/connect/authorize";
 // Granular scopes for post-March 2026 apps
-const XERO_SCOPES = "openid profile email accounting.contacts accounting.invoices offline_access";
+const XERO_SCOPES = "openid profile email accounting.contacts accounting.transactions offline_access";
 
 const pendingOAuthStates = new Map<string, { userId: string; expiresAt: number }>();
 

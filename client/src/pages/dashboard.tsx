@@ -1,8 +1,8 @@
 import { useContacts } from "@/hooks/use-contacts";
-import { useMeetings, useDeleteMeeting } from "@/hooks/use-meetings";
+// useMeetings removed — meetings show via events table
 import { useEvents } from "@/hooks/use-events";
 import { useAuth } from "@/hooks/use-auth";
-import { useProgrammes } from "@/hooks/use-programmes";
+// useProgrammes removed — programmes show via events table
 import { useBookings, useVenues } from "@/hooks/use-bookings";
 import { useGroups } from "@/hooks/use-groups";
 import {
@@ -15,7 +15,7 @@ import { Link, useLocation } from "wouter";
 import {
   format, startOfMonth, endOfMonth, startOfDay,
   isSameMonth, isSameDay, addMonths, subMonths, addDays, isToday,
-  isBefore, isAfter,
+  isAfter,
 } from "date-fns";
 import { useCalendarGrid } from "@/hooks/use-calendar-grid";
 import type { GoogleCalendarEvent } from "@/types/google-calendar";
@@ -30,7 +30,7 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { BarChart, Bar, ResponsiveContainer, Tooltip, XAxis } from "recharts";
-import type { Meeting, Contact, Event, Programme, Booking, Project, ProjectTask } from "@shared/schema";
+import type { Contact, Event, Booking, Project, ProjectTask } from "@shared/schema";
 
 interface PulseData {
   needsAttention: { enquiries: number; draftDebriefs: number; needsDebrief: number; total: number };
@@ -38,18 +38,14 @@ interface PulseData {
   community: { innovators: number; kakano: number; tipu: number; ora: number; activeMentees: number };
 }
 
-const MEETING_STATUS_COLORS: Record<string, string> = {
-  scheduled: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
-  completed: "bg-green-500/15 text-green-700 dark:text-green-300",
-  cancelled: "bg-red-500/15 text-red-700 dark:text-red-300",
-};
+// MEETING_STATUS_COLORS removed — meetings render as event cards
 
 export default function Dashboard() {
   const { user } = useAuth();
   const { data: contacts } = useContacts();
-  const { data: meetings } = useMeetings();
+  // meetings query removed — show via events table
   const { data: events } = useEvents();
-  const { data: programmes } = useProgrammes();
+  // programmes removed — show via events table
   const { data: bookings } = useBookings();
   const { data: venues } = useVenues();
   const [, navigate] = useLocation();
@@ -57,7 +53,7 @@ export default function Dashboard() {
 
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [viewMeeting, setViewMeeting] = useState<Meeting | null>(null);
+  // viewMeeting removed — meetings render as event cards now
 
   const pulseMonth = format(currentMonth, "yyyy-MM");
   const { data: pulse } = useQuery<PulseData>({ queryKey: [`/api/dashboard/pulse?month=${pulseMonth}`] });
@@ -91,73 +87,53 @@ export default function Dashboard() {
   const todayItems = useMemo(() => {
     const today = startOfDay(new Date());
     const tomorrow = addDays(today, 1);
-    const linkedBIds = new Set((events || []).filter((e: Event) => e.linkedBookingId).map((e: Event) => e.linkedBookingId));
-    const linkedPIds = new Set((events || []).filter((e: Event) => e.linkedProgrammeId).map((e: Event) => e.linkedProgrammeId));
     let count = 0;
-    meetings?.forEach((m: Meeting) => {
-      const d = new Date(m.startTime);
-      if (m.status !== "cancelled" && d >= today && d < tomorrow) count++;
-    });
     events?.forEach((ev: Event) => {
       const d = new Date(ev.startTime);
       if (d >= today && d < tomorrow) count++;
     });
-    (programmes as Programme[] | undefined)?.forEach((p) => {
-      if (p.status === "cancelled" || !p.startDate) return;
-      if (linkedPIds.has(p.id)) return;
-      const d = new Date(p.startDate);
-      if (d >= today && d < tomorrow) count++;
-    });
-    (bookings as Booking[] | undefined)?.forEach((b) => {
-      if (b.status === "cancelled" || !b.startDate) return;
-      if (linkedBIds.has(b.id)) return;
-      const d = new Date(b.startDate);
+    // Count unimported GCal events
+    gcalEvents?.forEach((gcal) => {
+      if (!gcal.start || dismissedGcalIds.has(gcal.id) || linkedGcalIds.has(gcal.id)) return;
+      const d = new Date(gcal.start);
       if (d >= today && d < tomorrow) count++;
     });
     return count;
-  }, [meetings, events, programmes, bookings]);
+  }, [events, gcalEvents, dismissedGcalIds, linkedGcalIds]);
 
   type DayItem = { date: string; name: string; time: string; type: string; typeColor: string; id: string; href?: string };
 
+  // Type-based card colours
+  const TYPE_COLORS: Record<string, string> = {
+    "Venue Hire": "bg-orange-500/15 text-orange-700 dark:text-orange-300",
+    "Mentoring Session": "bg-blue-500/15 text-blue-700 dark:text-blue-300",
+    "Programme": "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300",
+    "External Meeting": "bg-teal-500/15 text-teal-700 dark:text-teal-300",
+    "Team Meeting": "bg-gray-500/15 text-gray-700 dark:text-gray-300",
+    "Public Holiday": "bg-red-500/15 text-red-700 dark:text-red-300",
+    "Drop-in": "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+  };
+
   const buildItemsForRange = (start: Date, end: Date): DayItem[] => {
     const items: DayItem[] = [];
-    meetings?.forEach((m: Meeting) => {
-      const d = new Date(m.startTime);
-      if (m.status !== "cancelled" && d >= start && d < end) {
-        items.push({ date: format(d, "yyyy-MM-dd"), name: m.title, time: format(d, "h:mm a"), type: "Meeting", typeColor: "bg-blue-500/15 text-blue-700 dark:text-blue-300", id: `meeting-${m.id}` });
-      }
-    });
+    // Events are the single source of truth for activities
     events?.forEach((ev: Event) => {
       const d = new Date(ev.startTime);
       if (d >= start && d < end) {
-        items.push({ date: format(d, "yyyy-MM-dd"), name: ev.name, time: format(d, "h:mm a"), type: ev.type || "Event", typeColor: "bg-violet-500/15 text-violet-700 dark:text-violet-300", id: `event-${ev.id}`, href: "/calendar" });
+        items.push({
+          date: format(d, "yyyy-MM-dd"),
+          name: ev.name,
+          time: format(d, "h:mm a"),
+          type: ev.type || "Event",
+          typeColor: TYPE_COLORS[ev.type] || "bg-violet-500/15 text-violet-700 dark:text-violet-300",
+          id: `event-${ev.id}`,
+          href: "/calendar",
+        });
       }
     });
-    // Build set of booking/programme IDs that have linked events (to avoid double-ups on dashboard)
-    const linkedBookingIds = new Set((events || []).filter((e: Event) => e.linkedBookingId).map((e: Event) => e.linkedBookingId));
-    const linkedProgrammeIds = new Set((events || []).filter((e: Event) => e.linkedProgrammeId).map((e: Event) => e.linkedProgrammeId));
-
-    (programmes as Programme[] | undefined)?.forEach((p) => {
-      if (p.status === "cancelled" || !p.startDate) return;
-      if (linkedProgrammeIds.has(p.id)) return; // Already shown as event
-      const d = new Date(p.startDate);
-      if (d >= start && d < end) {
-        items.push({ date: format(d, "yyyy-MM-dd"), name: p.name, time: p.startTime ? formatTimeSlot(p.startTime) : "All day", type: "Programme", typeColor: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300", id: `prog-${p.id}`, href: "/programmes" });
-      }
-    });
-
-    (bookings as Booking[] | undefined)?.forEach((b) => {
-      if (b.status === "cancelled" || !b.startDate) return;
-      if (linkedBookingIds.has(b.id)) return; // Already shown as event
-      const d = new Date(b.startDate);
-      if (d >= start && d < end) {
-        items.push({ date: format(d, "yyyy-MM-dd"), name: (b as any).displayName || b.title || b.bookerName || b.classification || "Venue Hire", time: b.startTime ? formatTimeSlot(b.startTime) : "TBC", type: "Venue Hire", typeColor: "bg-orange-500/15 text-orange-700 dark:text-orange-300", id: `book-${b.id}`, href: `/bookings/${b.id}` });
-      }
-    });
+    // Unimported GCal events (not yet in events table)
     gcalEvents?.forEach((gcal) => {
-      if (!gcal.start) return;
-      if (dismissedGcalIds.has(gcal.id)) return;
-      if (linkedGcalIds.has(gcal.id)) return;
+      if (!gcal.start || dismissedGcalIds.has(gcal.id) || linkedGcalIds.has(gcal.id)) return;
       const d = new Date(gcal.start);
       if (d >= start && d < end) {
         items.push({ date: format(d, "yyyy-MM-dd"), name: gcal.summary, time: format(d, "h:mm a"), type: "Google Cal", typeColor: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300", id: `gcal-${gcal.id}` });
@@ -171,7 +147,7 @@ export default function Dashboard() {
     const dayStart = startOfDay(selectedDate);
     const dayEnd = addDays(dayStart, 1);
     return buildItemsForRange(dayStart, dayEnd);
-  }, [selectedDate, meetings, events, programmes, bookings, gcalEvents, dismissedGcalIds, linkedGcalIds]);
+  }, [selectedDate, events, gcalEvents, dismissedGcalIds, linkedGcalIds]);
 
   const upcomingItems = useMemo(() => {
     const now = new Date();
@@ -184,7 +160,7 @@ export default function Dashboard() {
       grouped.get(item.date)!.push(item);
     });
     return grouped;
-  }, [meetings, events, programmes, bookings, gcalEvents, dismissedGcalIds, linkedGcalIds]);
+  }, [events, gcalEvents, dismissedGcalIds, linkedGcalIds]);
 
   const bookingRevenue = useMemo(() => {
     if (!bookings) return { thisMonth: 0, lastMonth: 0, change: 0 };
@@ -252,16 +228,7 @@ export default function Dashboard() {
 
   const calendarDays = useCalendarGrid(currentMonth);
 
-  const meetingsByDate = useMemo(() => {
-    const map = new Map<string, Meeting[]>();
-    meetings?.forEach((m: Meeting) => {
-      const key = format(new Date(m.startTime), "yyyy-MM-dd");
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(m);
-    });
-    return map;
-  }, [meetings]);
-
+  // Events grouped by date — single source for calendar dots
   const eventsByDate = useMemo(() => {
     const map = new Map<string, Event[]>();
     events?.forEach((ev: Event) => {
@@ -271,28 +238,6 @@ export default function Dashboard() {
     });
     return map;
   }, [events]);
-
-  const programmesByDate = useMemo(() => {
-    const map = new Map<string, Programme[]>();
-    (programmes as Programme[] | undefined)?.forEach((p) => {
-      if (p.status === "cancelled" || !p.startDate) return;
-      const key = format(new Date(p.startDate), "yyyy-MM-dd");
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(p);
-    });
-    return map;
-  }, [programmes]);
-
-  const bookingsByDate = useMemo(() => {
-    const map = new Map<string, Booking[]>();
-    (bookings as Booking[] | undefined)?.forEach((b) => {
-      if (b.status === "cancelled" || !b.startDate) return;
-      const key = format(new Date(b.startDate), "yyyy-MM-dd");
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(b);
-    });
-    return map;
-  }, [bookings]);
 
   const gcalEventsByDate = useMemo(() => {
     const map = new Map<string, GoogleCalendarEvent[]>();
@@ -409,10 +354,7 @@ export default function Dashboard() {
               {calendarDays.map((day, idx) => {
                 const key = format(day, "yyyy-MM-dd");
                 const hasItems =
-                  (meetingsByDate.get(key)?.length || 0) +
                   (eventsByDate.get(key)?.length || 0) +
-                  (programmesByDate.get(key)?.length || 0) +
-                  (bookingsByDate.get(key)?.length || 0) +
                   (gcalEventsByDate.get(key)?.length || 0) > 0;
                 const isCurrentMonth = isSameMonth(day, currentMonth);
                 const isSelected = isSameDay(day, selectedDate);
@@ -632,7 +574,7 @@ export default function Dashboard() {
       </div>
     </div>
 
-    <ViewMeetingDialog meeting={viewMeeting} onClose={() => setViewMeeting(null)} contacts={contacts || []} />
+    {/* ViewMeetingDialog removed — meetings render as event cards */}
     </>
   );
 }
@@ -665,73 +607,4 @@ function StatTile({ icon: Icon, label, value, color = "primary", href, testId, s
   return href ? <Link href={href}>{content}</Link> : content;
 }
 
-// ── View meeting dialog ───────────────────────────────────────────────────
-
-function ViewMeetingDialog({ meeting, onClose, contacts }: {
-  meeting: Meeting | null; onClose: () => void; contacts: Contact[];
-}) {
-  const { mutate: deleteMeeting, isPending: deleting } = useDeleteMeeting();
-
-  if (!meeting) return null;
-
-  const contact = contacts.find((c) => c.id === meeting.contactId);
-  const isPast = isBefore(new Date(meeting.endTime), new Date());
-
-  return (
-    <Dialog open={!!meeting} onOpenChange={() => onClose()}>
-      <DialogContent className="sm:max-w-[450px]">
-        <DialogHeader>
-          <DialogTitle>{meeting.title}</DialogTitle>
-          <DialogDescription className="sr-only">Meeting details</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 py-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="secondary" className={`${MEETING_STATUS_COLORS[meeting.status] || ""}`}>{meeting.status}</Badge>
-            {contact && <Badge variant="outline">with {contact.name}</Badge>}
-          </div>
-          <div className="space-y-2 text-sm">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <CalendarIcon className="w-4 h-4" />
-              <span>{format(new Date(meeting.startTime), "EEEE, MMMM d, yyyy")}</span>
-            </div>
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Clock className="w-4 h-4" />
-              <span>{format(new Date(meeting.startTime), "h:mm a")} - {format(new Date(meeting.endTime), "h:mm a")}</span>
-            </div>
-            {meeting.location && (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <MapPin className="w-4 h-4" />
-                <span>{meeting.location}</span>
-              </div>
-            )}
-          </div>
-          {meeting.description && (
-            <div className="text-sm bg-muted/30 p-3 rounded-lg">
-              <p className="text-muted-foreground">{meeting.description}</p>
-            </div>
-          )}
-        </div>
-        <DialogFooter className="flex gap-2 flex-wrap">
-          {!isPast && meeting.status !== "cancelled" && (
-            <Button
-              variant="destructive"
-              size="sm"
-              disabled={deleting}
-              onClick={() => {
-                deleteMeeting(meeting.id, { onSuccess: () => onClose() });
-              }}
-            >
-              {deleting ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Trash2 className="w-3 h-3 mr-1" />}
-              Delete
-            </Button>
-          )}
-          {contact && (
-            <Link href={`/contacts/${contact.id}`}>
-              <Button variant="outline" size="sm">View Contact</Button>
-            </Link>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
+// ViewMeetingDialog removed — meetings render as event cards on calendar

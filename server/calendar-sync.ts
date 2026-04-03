@@ -133,7 +133,7 @@ async function syncCalendar(
 
     await storage.createEvent({
       userId,
-      name: gcalEvent.summary,
+      name: (gcalEvent.summary || "").replace(/^Tentative:\s*/i, "").trim(),
       type: eventType,
       startTime: new Date(start),
       endTime: new Date(end),

@@ -587,10 +587,22 @@ export function ReviewView({ id }: { id: number }) {
       const placeEdits = new Map(editsToApply.filter(e => e.type === "place").map(e => [e.original.toLowerCase(), e.corrected]));
       const orgEdits = new Map(editsToApply.filter(e => e.type === "organisation").map(e => [e.original.toLowerCase(), e.corrected]));
 
+      const findContactMatch = (name: string) => {
+        const exact = (contacts || []).find(c => c.name?.toLowerCase() === name.toLowerCase());
+        if (exact) return exact;
+        // Fuzzy: "Adhi" matches "Adhi Sharma"
+        let best: any = null, bestScore = 0;
+        for (const c of (contacts || [])) {
+          const score = fuzzyMatch(name, c.name || "");
+          if (score > bestScore && score >= 60) { best = c; bestScore = score; }
+        }
+        return best;
+      };
+
       const updatedPeopleIdentified = (extraction?.peopleIdentified || extraction?.people || []).map((p: any) => {
         const corrected = nameEdits.get(p.name?.toLowerCase());
         if (!corrected) return p;
-        const match = (contacts || []).find(c => c.name?.toLowerCase() === corrected.toLowerCase());
+        const match = findContactMatch(corrected);
         return { ...p, name: corrected, matchedContactId: match?.id || p.matchedContactId, confidence: match ? 95 : p.confidence };
       });
 
@@ -609,7 +621,7 @@ export function ReviewView({ id }: { id: number }) {
       const updatedPeople = people.map((p: any) => {
         const corrected = nameEdits.get(p.name?.toLowerCase());
         if (!corrected) return p;
-        const match = (contacts || []).find(c => c.name?.toLowerCase() === corrected.toLowerCase());
+        const match = findContactMatch(corrected);
         return { ...p, name: corrected, contactId: match?.id || p.contactId };
       });
 
@@ -627,6 +639,21 @@ export function ReviewView({ id }: { id: number }) {
         transcript: updatedTranscript,
         rawExtraction: updatedExtraction,
       });
+
+      // Auto-link matched contacts to the server
+      let contactsLinked = 0;
+      for (const p of updatedPeople) {
+        if (p.contactId && nameEdits.has((people.find((pp: any) => pp.contactId === p.contactId)?.name || p.name || "").toLowerCase())) {
+          try {
+            const derivedRole = p.section === "primary" ? "primary" : "mentioned";
+            await apiRequest("POST", `/api/impact-logs/${id}/contacts`, { impactLogId: id, contactId: p.contactId, role: derivedRole });
+            contactsLinked++;
+          } catch { /* already linked */ }
+        }
+      }
+      if (contactsLinked > 0) {
+        refetchLinkedContacts();
+      }
 
       let groupsLinked = 0;
       for (const gId of matchedOrgIds) {
@@ -649,6 +676,7 @@ export function ReviewView({ id }: { id: number }) {
       const personMatches = updatedPeople.filter((p: any, i: number) => p.contactId && nameEdits.has((people[i]?.name || "").toLowerCase())).length;
       const parts: string[] = [];
       if (personMatches > 0) parts.push(`${personMatches} name${personMatches > 1 ? "s" : ""} matched to contacts`);
+      if (contactsLinked > 0) parts.push(`${contactsLinked} contact${contactsLinked > 1 ? "s" : ""} auto-linked`);
       if (groupsLinked > 0) parts.push(`${groupsLinked} group${groupsLinked > 1 ? "s" : ""} auto-linked`);
       toast({
         title: `${editCount} correction${editCount > 1 ? "s" : ""} applied`,
@@ -752,8 +780,23 @@ export function ReviewView({ id }: { id: number }) {
       }
       const extractedPeople = (extraction.peopleIdentified || extraction.people || []).map((p: any) => ({
         ...p,
+        // Auto-link high confidence matches
+        contactId: p.contactId || (p.matchedContactId && (p.confidence || 0) >= 80 ? p.matchedContactId : undefined),
         section: p.section || (["primary", "mentor", "mentee", "subject"].includes(p.role) ? "primary" : "secondary"),
       }));
+      // Auto-fill primary from primaryEntity if no one is tagged as subject
+      if (extraction.primaryEntity && !extractedPeople.some((p: any) => p.section === "primary")) {
+        const pe = extraction.primaryEntity;
+        if (pe.type === "person" && pe.matchedId) {
+          const existing = extractedPeople.find((p: any) => p.contactId === pe.matchedId || p.matchedContactId === pe.matchedId);
+          if (existing) { existing.section = "primary"; existing.role = "subject"; }
+          else { extractedPeople.unshift({ name: pe.name, contactId: pe.matchedId, role: "subject", section: "primary" }); }
+        } else if (pe.type === "person") {
+          const match = extractedPeople.find((p: any) => p.name?.toLowerCase() === pe.name?.toLowerCase());
+          if (match) { match.section = "primary"; match.role = "subject"; }
+          else { extractedPeople.unshift({ name: pe.name, role: "subject", section: "primary" }); }
+        }
+      }
       if (linkedContacts && linkedContacts.length > 0) {
         const contactMap = new Map((contacts || []).map((c: any) => [c.id, c]));
         const usedContactIds = new Set<number>();
@@ -869,6 +912,19 @@ export function ReviewView({ id }: { id: number }) {
   }, [impactLog?.audioUrl]);
 
   const handleSave = async (status: string) => {
+    // Update peopleIdentified in extraction to reflect user's contact links
+    const updatedPeopleIdentified = (extraction?.peopleIdentified || extraction?.people || []).map((p: any) => {
+      const linked = people.find((pp: any) => pp.contactId && (
+        pp.contactId === p.matchedContactId ||
+        pp.name?.toLowerCase() === p.name?.toLowerCase() ||
+        fuzzyMatch(pp.name || "", p.name || "") >= 60
+      ));
+      if (linked) {
+        return { ...p, name: linked.name || p.name, matchedContactId: linked.contactId, confidence: 95 };
+      }
+      return p;
+    });
+
     const reviewedData = {
       summary,
       sentiment,
@@ -876,7 +932,7 @@ export function ReviewView({ id }: { id: number }) {
       actionItems: actionItemsList,
       impactTags,
       people,
-      peopleIdentified: extraction?.peopleIdentified || extraction?.people || [],
+      peopleIdentified: updatedPeopleIdentified,
       organisationsIdentified: extraction?.organisationsIdentified || [],
       placesIdentified: extraction?.placesIdentified || [],
       metrics,
@@ -891,6 +947,13 @@ export function ReviewView({ id }: { id: number }) {
       reflections,
     };
 
+    // Also persist updated peopleIdentified into rawExtraction so it survives refetch
+    const updatedExtraction = {
+      ...(impactLog?.rawExtraction as any || {}),
+      peopleIdentified: updatedPeopleIdentified,
+      people: updatedPeopleIdentified,
+    };
+
     try {
       await apiRequest('PATCH', `/api/impact-logs/${id}`, {
         status,
@@ -899,6 +962,7 @@ export function ReviewView({ id }: { id: number }) {
         milestones,
         funderTags,
         reviewedData,
+        rawExtraction: updatedExtraction,
         reviewedAt: status === "confirmed" ? new Date().toISOString() : undefined,
       });
 
@@ -948,7 +1012,7 @@ export function ReviewView({ id }: { id: number }) {
       queryClient.invalidateQueries({ queryKey: ['/api/events'] });
       queryClient.invalidateQueries({ queryKey: ['/api/events/needs-debrief'] });
 
-      const wasAlreadyConfirmed = impactLog.status === "confirmed";
+      const wasAlreadyConfirmed = impactLog?.status === "confirmed";
       toast({
         title: status === "confirmed"
           ? (wasAlreadyConfirmed ? "Changes Saved" : "Debrief Confirmed")
@@ -1041,10 +1105,9 @@ export function ReviewView({ id }: { id: number }) {
     mindset: "Mindset",
     skill: "Skill",
     confidence: "Confidence",
-    businessConfidence: "Business Confidence",
-    systems: "Systems",
-    fundingReadiness: "Funding Readiness",
-    network: "Network",
+    businessReadiness: "Business Readiness",
+    networkStrength: "Network Strength",
+    resilience: "Resilience",
   };
 
   return (
@@ -1057,7 +1120,7 @@ export function ReviewView({ id }: { id: number }) {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 {impactLog.type === "manual_update" && <HeartHandshake className="w-5 h-5 text-pink-500 shrink-0" />}
-                <h1 className="text-2xl font-display font-bold truncate" data-testid="text-review-title">{impactLog.title}</h1>
+                <h1 className="text-2xl font-display font-bold truncate" data-testid="text-review-title">{(impactLog.title || "").replace(/^Tentative:\s*/i, "").trim()}</h1>
               </div>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
                 {impactLog.type === "manual_update" && (
@@ -1067,6 +1130,14 @@ export function ReviewView({ id }: { id: number }) {
                 )}
                 <Badge variant="secondary" className={`text-xs ${STATUS_COLORS[impactLog.status] || ""}`}>
                   {STATUS_LABELS[impactLog.status] || impactLog.status}
+                </Badge>
+                <Badge
+                  variant="secondary"
+                  className={`text-xs cursor-pointer ${SENTIMENT_COLORS[sentiment] || ""}`}
+                  onClick={cycleSentiment}
+                  data-testid="badge-sentiment-title"
+                >
+                  {sentiment}
                 </Badge>
                 {impactLog.createdAt && (
                   <span className="text-xs text-muted-foreground">
@@ -1277,19 +1348,13 @@ export function ReviewView({ id }: { id: number }) {
                 <>
                 <Card className="p-4 md:p-5">
                   <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-                    <h2 className="font-bold text-lg font-display" data-testid="text-transcript-heading">Transcript</h2>
+                    <h2 className="font-bold text-lg font-display" data-testid="text-transcript-heading">Impact Highlights</h2>
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
                       {impactLog.createdAt && (
                         <span className="flex items-center gap-1" data-testid="text-transcript-timestamp">
                           <Clock className="w-3 h-3" />
-                          {new Date(impactLog.createdAt).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          {new Date(impactLog.createdAt).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" })}
                         </span>
-                      )}
-                      {impactLog.audioUrl && (
-                        <Badge variant="secondary" className="text-[10px]" data-testid="badge-audio-debrief">
-                          <Mic className="w-2.5 h-2.5 mr-0.5" />
-                          Audio{savedAudioDuration ? ` · ${Math.floor(savedAudioDuration / 60)}:${String(savedAudioDuration % 60).padStart(2, "0")}` : ""}
-                        </Badge>
                       )}
                     </div>
                   </div>
@@ -1317,7 +1382,6 @@ export function ReviewView({ id }: { id: number }) {
 
                   {keyQuotes.length > 0 && (
                     <div className="space-y-2 mb-4" data-testid="pull-quotes-section">
-                      <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Impact Highlights</p>
                       {keyQuotes.slice(0, 3).map((quote: string, i: number) => (
                         <blockquote
                           key={i}
@@ -1331,35 +1395,30 @@ export function ReviewView({ id }: { id: number }) {
                     </div>
                   )}
 
-                  {impactLog?.audioUrl && (
-                    <div className="mb-3 p-3 bg-muted/30 rounded-lg border border-border">
-                      <div className="flex items-center gap-3">
-                        <Play className="w-4 h-4 text-muted-foreground shrink-0" />
-                        <audio controls src={impactLog.audioUrl} className="flex-1 h-8" data-testid="audio-saved-playback-detail" />
-                      </div>
-                    </div>
-                  )}
-
                   {showFullTranscript && (
-                    <div className="prose prose-sm max-w-none text-foreground/90 whitespace-pre-wrap max-h-[60vh] overflow-y-auto mb-3" data-testid="text-transcript-content">
-                      {Array.isArray(transcriptParts) ? (
-                        transcriptParts.map((part, i) => (
-                          part.highlighted ? (
-                            <mark key={i} className="bg-primary/20 text-foreground px-0.5 rounded">{part.text}</mark>
-                          ) : (
-                            <span key={i}>{part.text}</span>
-                          )
-                        ))
-                      ) : (
-                        transcriptParts || <span className="text-muted-foreground italic">No transcript available</span>
+                    <>
+                      <div className="prose prose-sm max-w-none text-foreground/90 whitespace-pre-wrap max-h-[60vh] overflow-y-auto mb-3" data-testid="text-transcript-content">
+                        {Array.isArray(transcriptParts) ? (
+                          transcriptParts.map((part, i) => (
+                            part.highlighted ? (
+                              <mark key={i} className="bg-primary/20 text-foreground px-0.5 rounded">{part.text}</mark>
+                            ) : (
+                              <span key={i}>{part.text}</span>
+                            )
+                          ))
+                        ) : (
+                          transcriptParts || <span className="text-muted-foreground italic">No transcript available</span>
+                        )}
+                      </div>
+                      {impactLog?.audioUrl && (
+                        <div className="mb-3 p-3 bg-muted/30 rounded-lg border border-border">
+                          <div className="flex items-center gap-3">
+                            <Play className="w-4 h-4 text-muted-foreground shrink-0" />
+                            <audio controls src={impactLog.audioUrl} className="flex-1 h-8" data-testid="audio-saved-playback-detail" />
+                          </div>
+                        </div>
                       )}
-                    </div>
-                  )}
-
-                  {!showFullTranscript && impactLog.transcript && (
-                    <p className="text-sm text-muted-foreground line-clamp-3 mb-3" data-testid="text-transcript-preview">
-                      {impactLog.transcript.slice(0, 200)}{impactLog.transcript.length > 200 ? "..." : ""}
-                    </p>
+                    </>
                   )}
 
                   <div className="flex flex-col sm:flex-row gap-2">
@@ -1371,7 +1430,7 @@ export function ReviewView({ id }: { id: number }) {
                       data-testid="button-view-transcript"
                     >
                       <Eye className="w-4 h-4 mr-1.5" />
-                      {showFullTranscript ? "Collapse" : "View"}
+                      {showFullTranscript ? "Hide Transcript" : "View Transcript"}
                     </Button>
                     <Button
                       variant="outline"
@@ -1537,8 +1596,8 @@ export function ReviewView({ id }: { id: number }) {
               )}
             </div>
 
-            {/* SENTIMENT - mobile:2 desktop:left */}
-            <div className="order-2 lg:order-none">
+            {/* SENTIMENT - MOVED TO TITLE BADGE */}
+            {false && <div className="order-2 lg:order-none">
               <CollapsibleSection title="Sentiment" count={sentiment ? 1 : 0} testId="sentiment">
                 <Badge
                   variant="secondary"
@@ -1550,10 +1609,11 @@ export function ReviewView({ id }: { id: number }) {
                 </Badge>
                 <p className="text-xs text-muted-foreground mt-2">Tap to change</p>
               </CollapsibleSection>
-            </div>
+            </div>}
 
-            {/* COMMUNITY ACTIONS - mobile:6 desktop:left */}
-            <div className="order-6 lg:order-none">
+            {/* COMMUNITY ACTIONS - REMOVED: dead extraction, never used */}
+
+            {false && <div className="order-6 lg:order-none">
               <CollapsibleSection
                 title="Community Actions"
                 count={communityActions.length + suggestedCommunityActions.length}
@@ -1650,10 +1710,11 @@ export function ReviewView({ id }: { id: number }) {
 
                 {communityActions.length === 0 && suggestedCommunityActions.length === 0 && <p className="text-xs text-muted-foreground italic">No community actions extracted.</p>}
               </CollapsibleSection>
-            </div>
+            </div>}
 
-            {/* OPERATIONAL ACTIONS - mobile:7 desktop:left */}
-            <div className="order-7 lg:order-none">
+            {/* OPERATIONAL ACTIONS - REMOVED: dead extraction, never used */}
+
+            {false && <div className="order-7 lg:order-none">
               <CollapsibleSection
                 title="Operational Actions"
                 count={operationalActions.length + suggestedOperationalActions.length}
@@ -1754,7 +1815,7 @@ export function ReviewView({ id }: { id: number }) {
 
                 {operationalActions.length === 0 && suggestedOperationalActions.length === 0 && <p className="text-xs text-muted-foreground italic">No operational actions extracted.</p>}
               </CollapsibleSection>
-            </div>
+            </div>}
 
             {/* OPERATOR REFLECTIONS - mobile:9 desktop:left */}
             <div className="order-9 lg:order-none">
@@ -1970,7 +2031,7 @@ export function ReviewView({ id }: { id: number }) {
                             </div>
                           );
                         })}
-                        {(extraction.organisationsIdentified || []).map((o: any, i: number) => {
+                        {(extraction.organisationsIdentified || []).filter((o: any) => !/reserve\s*t[aā]maki|reservetmk/i.test(o.name || "")).map((o: any, i: number) => {
                           const linkedGroupIds = new Set((linkedGroups || []).map((lg: any) => lg.groupId));
                           const linkedGroupObjs = (linkedGroups || []).map((lg: any) => (allGroups || []).find((gg: any) => gg.id === lg.groupId)).filter(Boolean);
                           const isLinked = o.matchedGroupId ? linkedGroupIds.has(o.matchedGroupId) : linkedGroupObjs.some((g: any) => fuzzyMatch(g.name || "", o.name || "") >= 60);
@@ -2186,8 +2247,8 @@ export function ReviewView({ id }: { id: number }) {
             {/* METRICS - mobile:4 desktop:right */}
             <div className="order-4 lg:order-none">
               <CollapsibleSection
-                title="Metrics"
-                count={Object.values(metrics).filter(v => v !== undefined && v !== null).length}
+                title={`Metrics (${Object.values(metrics).filter(v => typeof v === 'number' && v > 0).length} scored)`}
+                count={Object.keys(METRIC_LABELS).length}
                 testId="metrics"
               >
                 <div className="space-y-3">
@@ -2404,8 +2465,9 @@ export function ReviewView({ id }: { id: number }) {
               </CollapsibleSection>
             </div>
 
-            {/* FUNDER TAGS - mobile:10 desktop:right */}
-            <div className="order-10 lg:order-none">
+            {/* FUNDER TAGS - REMOVED: dead field, 0 across all 64 debriefs */}
+
+            {false && <div className="order-10 lg:order-none">
               <CollapsibleSection
                 title="Funder Tags"
                 count={funderTags.length}
@@ -2461,7 +2523,7 @@ export function ReviewView({ id }: { id: number }) {
                   </Button>
                 </div>
               </CollapsibleSection>
-            </div>
+            </div>}
             </div>
           </div>
         </div>

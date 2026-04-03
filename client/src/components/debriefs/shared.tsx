@@ -13,17 +13,12 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import { useState } from "react";
 import {
   Search,
   UserPlus,
   User,
   Loader2,
-  Trash2,
-  Mic,
-  HeartHandshake,
-  RotateCcw,
   Link2,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -133,122 +128,6 @@ export function formatWeekPeriod(start: string, end: string): string {
   return `${format(s, "EEE dd MMM")} – ${format(e, "EEE dd MMM yyyy")}`;
 }
 
-export function DebriefCardList({
-  logs,
-  isLoading,
-  onSelect,
-  onDelete,
-  onCreateNew,
-  onReanalyse,
-  reanalysingId,
-  emptyIcon,
-  emptyTitle,
-  emptyDescription,
-  emptyButtonText,
-}: {
-  logs: ImpactLog[];
-  isLoading: boolean;
-  onSelect: (id: number) => void;
-  onDelete: (log: ImpactLog) => void;
-  onCreateNew: () => void;
-  onReanalyse?: (log: ImpactLog) => void;
-  reanalysingId?: number | null;
-  emptyIcon?: React.ReactNode;
-  emptyTitle?: string;
-  emptyDescription?: string;
-  emptyButtonText?: string;
-}) {
-  if (isLoading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (logs.length === 0) {
-    return (
-      <Card className="p-12 text-center border-dashed">
-        <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-          {emptyIcon || <Mic className="w-8 h-8 text-muted-foreground" />}
-        </div>
-        <h3 className="text-lg font-semibold mb-2">{emptyTitle || "No debriefs yet"}</h3>
-        <p className="text-muted-foreground mb-6">{emptyDescription || "Record or paste a debrief to get started."}</p>
-        <Button onClick={onCreateNew} variant="outline" data-testid="button-new-debrief-empty">
-          {emptyButtonText || "New Debrief"}
-        </Button>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {logs.map((log) => (
-        <Card
-          key={log.id}
-          className="p-5 cursor-pointer hover-elevate transition-all duration-200"
-          onClick={() => onSelect(log.id)}
-          data-testid={`card-debrief-${log.id}`}
-        >
-          <div className="flex items-start justify-between gap-3 mb-3">
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              {log.type === "manual_update" && (
-                <HeartHandshake className="w-4 h-4 text-pink-500 shrink-0" />
-              )}
-              <h3 className="font-bold text-lg font-display truncate" data-testid={`text-debrief-title-${log.id}`}>
-                {log.title}
-              </h3>
-            </div>
-            <div className="flex items-center gap-2 shrink-0 flex-wrap">
-              {log.type === "manual_update" && (
-                <Badge variant="secondary" className="text-xs bg-pink-500/15 text-pink-700 dark:text-pink-300" data-testid={`badge-type-${log.id}`}>
-                  Manual Update
-                </Badge>
-              )}
-              <Badge variant="secondary" className={`text-xs ${STATUS_COLORS[log.status] || ""}`} data-testid={`badge-status-${log.id}`}>
-                {STATUS_LABELS[log.status] || log.status}
-              </Badge>
-              {log.sentiment && (
-                <Badge variant="secondary" className={`text-xs ${SENTIMENT_COLORS[log.sentiment] || ""}`} data-testid={`badge-sentiment-${log.id}`}>
-                  {log.sentiment}
-                </Badge>
-              )}
-              {onReanalyse && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="shrink-0 min-h-[44px] min-w-[44px]"
-                  disabled={reanalysingId === log.id}
-                  onClick={(e) => { e.stopPropagation(); onReanalyse(log); }}
-                  data-testid={`button-reanalyse-debrief-${log.id}`}
-                >
-                  <RotateCcw className={`w-4 h-4 text-muted-foreground ${reanalysingId === log.id ? "animate-spin" : ""}`} />
-                </Button>
-              )}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="shrink-0 min-h-[44px] min-w-[44px]"
-                onClick={(e) => { e.stopPropagation(); onDelete(log); }}
-                data-testid={`button-delete-debrief-${log.id}`}
-              >
-                <Trash2 className="w-4 h-4 text-muted-foreground" />
-              </Button>
-            </div>
-          </div>
-          {log.summary && (
-            <p className="text-sm text-muted-foreground line-clamp-2 mb-3" data-testid={`text-summary-${log.id}`}>
-              {log.summary}
-            </p>
-          )}
-          <p className="text-xs text-muted-foreground" data-testid={`text-date-${log.id}`}>
-            {log.createdAt ? new Date(log.createdAt).toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" }) : ""}
-          </p>
-        </Card>
-      ))}
-    </div>
-  );
-}
 
 export function ContactSearchPicker({
   contacts,

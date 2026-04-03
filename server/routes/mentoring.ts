@@ -7,7 +7,7 @@ import { db } from "../db";
 import { eq, and } from "drizzle-orm";
 import { meetings, mentorProfiles, meetingTypes, contacts, insertMeetingTypeSchema, insertMentoringRelationshipSchema, insertMentoringApplicationSchema, SESSION_FREQUENCIES, JOURNEY_STAGES } from "@shared/schema";
 import { fromZonedTime } from "date-fns-tz";
-import { parseId, parseStr, isPublicHoliday, autoPromoteToInnovator } from "./_helpers";
+import { parseId, parseStr, isPublicHoliday, autoPromoteToInnovator, ensureMeetingEvent } from "./_helpers";
 
 // Google Calendar helper — creates event for a meeting
 async function createCalendarEventForMeeting(calUserId: string, meeting: any, options?: { mentorEmail?: string; coMentorEmail?: string; menteeEmail?: string; calendarId?: string; sendInvites?: boolean; additionalAttendees?: string[] }) {
@@ -294,6 +294,11 @@ export function registerMentoringRoutes(app: Express) {
       const input = api.meetings.update.input.parse(updates);
       const updated = await storage.updateMeeting(id, input);
 
+      // Create calendar event when meeting becomes completed/confirmed
+      if (input.status && (input.status === "completed" || input.status === "confirmed")) {
+        ensureMeetingEvent(updated, existing.userId);
+      }
+
       if (('coMentorProfileId' in req.body || 'attendees' in req.body) && updated.googleCalendarEventId) {
         (async () => {
           try {
@@ -391,6 +396,9 @@ export function registerMentoringRoutes(app: Express) {
         try { await storage.deleteInteraction(interaction.id); } catch (_) {}
         return res.status(500).json({ message: "Failed to link debrief to session" });
       }
+
+      // Create calendar event for completed meeting
+      ensureMeetingEvent({ ...meeting, status: "completed" }, meeting.userId || userId);
 
       res.json({ meeting: { ...meeting, interactionId: interaction.id, status: "completed" }, interaction });
     } catch (err: any) {
@@ -1319,6 +1327,26 @@ export function registerMentoringRoutes(app: Express) {
       })));
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch onboarding questions" });
+    }
+  });
+
+  // Backfill events for existing completed/confirmed meetings
+  app.post("/api/meetings/backfill-events", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const allMeetings = await storage.getMeetings(userId);
+      let created = 0;
+      for (const m of allMeetings) {
+        if (m.status === "cancelled") continue;
+        if (!m.startTime) continue;
+        if (m.status === "completed" || m.status === "confirmed") {
+          await ensureMeetingEvent(m, userId);
+          created++;
+        }
+      }
+      res.json({ message: "Backfill complete", checked: allMeetings.length, processed: created });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
   });
 

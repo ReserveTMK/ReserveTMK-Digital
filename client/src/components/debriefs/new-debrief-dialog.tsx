@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/beautiful-button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { useState, useRef, useCallback, useEffect } from "react";
 import {
@@ -23,7 +24,12 @@ import {
   Trash2,
   FileText,
   Save,
+  Pencil,
+  X,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import type { Contact } from "@shared/schema";
+import { ContactSearchPicker } from "./shared";
 
 export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const [title, setTitle] = useState("");
@@ -36,8 +42,12 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSavingAudio, setIsSavingAudio] = useState(false);
+  const [isSavingManual, setIsSavingManual] = useState(false);
   const [transcriptionFailed, setTranscriptionFailed] = useState(false);
   const [autoAnalyzeReady, setAutoAnalyzeReady] = useState(false);
+  // Write-it-up contacts
+  const [selectedContacts, setSelectedContacts] = useState<number[]>([]);
+  const { data: contacts } = useQuery<Contact[]>({ queryKey: ['/api/contacts'] });
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -57,8 +67,10 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
     setIsTranscribing(false);
     setIsAnalyzing(false);
     setIsSavingAudio(false);
+    setIsSavingManual(false);
     setTranscriptionFailed(false);
     setAutoAnalyzeReady(false);
+    setSelectedContacts([]);
     analyzeInProgressRef.current = false;
     chunksRef.current = [];
     if (timerRef.current) clearInterval(timerRef.current);
@@ -238,11 +250,57 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
     runAnalysis(transcript, title);
   };
 
+  const handleSaveManual = async () => {
+    if (!title.trim()) {
+      toast({ title: "Missing title", description: "Please give this a title.", variant: "destructive" });
+      return;
+    }
+    if (!transcript.trim()) {
+      toast({ title: "Missing notes", description: "Please describe what happened.", variant: "destructive" });
+      return;
+    }
+
+    setIsSavingManual(true);
+    try {
+      const res = await apiRequest("POST", "/api/impact-logs", {
+        title: title.trim(),
+        type: "manual_update",
+        transcript: transcript.trim(),
+        summary: transcript.trim(),
+        status: "draft",
+      });
+      const data = await res.json();
+
+      for (const contactId of selectedContacts) {
+        await apiRequest("POST", `/api/impact-logs/${data.id}/contacts`, {
+          contactId,
+          role: "participant",
+        });
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['/api/impact-logs'] });
+      resetState();
+      onOpenChange(false);
+      setLocation(`/debriefs/${data.id}`);
+      toast({ title: "Debrief created", description: "You can add more details or confirm it." });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to save", variant: "destructive" });
+    } finally {
+      setIsSavingManual(false);
+    }
+  };
+
+  const removeContact = (id: number) => {
+    setSelectedContacts(prev => prev.filter(c => c !== id));
+  };
+
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
     const sec = s % 60;
     return `${m}:${sec.toString().padStart(2, "0")}`;
   };
+
+  const isWriteTab = activeTab === "write";
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) resetState(); onOpenChange(v); }}>
@@ -260,14 +318,24 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               onBlur={() => { if (title.trim() && transcript.trim() && autoAnalyzeReady) runAnalysis(transcript, title); }}
-              placeholder="e.g. Weekly check-in with Jane"
+              placeholder={isWriteTab ? "e.g. Catch-up with Rangi about next steps" : "e.g. Weekly check-in with Jane"}
             />
           </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="w-full">
-              <TabsTrigger value="record" className="flex-1" data-testid="tab-record-audio">Record Audio</TabsTrigger>
-              <TabsTrigger value="text" className="flex-1" data-testid="tab-paste-text">Paste Text</TabsTrigger>
+              <TabsTrigger value="record" className="flex-1" data-testid="tab-record-audio">
+                <Mic className="w-3.5 h-3.5 mr-1.5" />
+                Record Audio
+              </TabsTrigger>
+              <TabsTrigger value="text" className="flex-1" data-testid="tab-paste-text">
+                <FileText className="w-3.5 h-3.5 mr-1.5" />
+                Paste Text
+              </TabsTrigger>
+              <TabsTrigger value="write" className="flex-1" data-testid="tab-write-it-up">
+                <Pencil className="w-3.5 h-3.5 mr-1.5" />
+                Write it up
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="record" className="space-y-4 mt-4">
@@ -387,25 +455,90 @@ export function NewDebriefDialog({ open, onOpenChange }: { open: boolean; onOpen
                 />
               </div>
             </TabsContent>
+
+            <TabsContent value="write" className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label>Community members involved</Label>
+                {selectedContacts.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {selectedContacts.map((cId) => {
+                      const contact = contacts?.find(c => c.id === cId);
+                      if (!contact) return null;
+                      return (
+                        <Badge key={cId} variant="secondary" className="flex items-center gap-1 pr-1" data-testid={`badge-contact-${cId}`}>
+                          <span className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">
+                            {contact.name[0]}
+                          </span>
+                          {contact.name}
+                          <button
+                            className="ml-1 text-muted-foreground hover:text-foreground"
+                            onClick={() => removeContact(cId)}
+                            data-testid={`button-remove-contact-${cId}`}
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                )}
+                {contacts && contacts.length > 0 && (
+                  <ContactSearchPicker
+                    contacts={contacts.filter(c => !selectedContacts.includes(c.id))}
+                    onSelect={(id) => setSelectedContacts(prev => [...prev, id])}
+                    testId="search-write-contacts"
+                  />
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>What happened?</Label>
+                <Textarea
+                  value={transcript}
+                  onChange={(e) => setTranscript(e.target.value)}
+                  placeholder="Describe the conversation, what shifted, and any outcomes or next steps..."
+                  className="min-h-[150px] resize-none"
+                  data-testid="textarea-write-notes"
+                />
+              </div>
+            </TabsContent>
           </Tabs>
         </div>
 
         <DialogFooter className="mt-4">
-          <Button
-            onClick={handleAnalyze}
-            disabled={isAnalyzing || !transcript.trim() || !title.trim()}
-            className="w-full"
-            data-testid="button-analyze"
-          >
-            {isAnalyzing ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Analyzing impact...
-              </>
-            ) : (
-              "Analyze & Extract"
-            )}
-          </Button>
+          {isWriteTab ? (
+            <Button
+              onClick={handleSaveManual}
+              disabled={isSavingManual || !title.trim() || !transcript.trim()}
+              className="w-full"
+              data-testid="button-save-write"
+            >
+              {isSavingManual ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save & Review"
+              )}
+            </Button>
+          ) : (
+            <Button
+              onClick={handleAnalyze}
+              disabled={isAnalyzing || !transcript.trim() || !title.trim()}
+              className="w-full"
+              data-testid="button-analyze"
+            >
+              {isAnalyzing ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Analyzing impact...
+                </>
+              ) : (
+                "Analyze & Extract"
+              )}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

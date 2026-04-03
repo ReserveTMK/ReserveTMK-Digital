@@ -1,70 +1,109 @@
 ---
-session_date: 2026-03-31
+session_date: 2026-04-03
 status: clean-stop
 ---
 
 # Session Handoff
 
 ## What we were building
-- Calendar audit → dedup fixes → card visual states → bookers nav → displayName on bookings
-- Funder profile population → deliverables + taxonomy for all 4 funders
-- Scoped funder page redesign (not built yet)
+Massive session across multiple areas: debrief system overhaul, calendar unification, access tiers, nav restructure, taxonomy/metrics rework, ecosystem operator model, funder profile split.
 
-## What's done (code — shipped)
-- **Calendar dedup + card states + archive rename**: `3e55baa`
-- **Bookers standalone nav item under Delivery**: `7e6cfa5`
-- **Server-side displayName on bookings API**: `2889b4a` — group name → org name → booker name → classification
-- **Delivery branch merged**: `c15cb27`
+## What's done (all shipped)
 
-## What's done (DB — no code changes)
-- **4 booking GCal backfills**: bookings 12, 13, 15, 16 linked to their GCal event IDs
-- **Funder profiles filled**: Ngā Mātārae (ID 4), EDO (ID 5), Foundation North (ID 6) — contacts, dates, outcome focus, reporting guidance, partnership strategy
-- **TRC CLC created**: ID 10, status=completed, fit_tags=['one-off','project-fund']
-- **6 duplicate funders deleted**: IDs 1-3, 7-9 (wrong user_id)
-- **Ngā Mātārae value fixed**: $200k/yr (was $600k — that's total contract)
-- **22 deliverables populated**: NM=7, EDO=9, FN=3, TRC=3
-- **17 taxonomy categories populated**: NM=5, EDO=6, FN=3, TRC=3
+### Calendar Unification (5 phases)
+- Phase 1: Dashboard reads events only — removed meetings/bookings/programmes hooks (-93 lines)
+- Phase 2: Added venueId to events schema + updated ensure functions + backfilled
+- Phase 3: Calendar reads events only — removed BookingCalendarCard, space items, multi-source merge (-682 lines)
+- Phase 4: Spaces calendar reads events instead of bookings/meetings (-18 lines)
+- Phase 5: Cleanup — removed ViewMeetingDialog, dead imports (-81 lines)
+- Total: ~868 lines removed. Events table is single source of truth for all 4 calendar views.
+
+### ensureMeetingEvent
+- Meetings now auto-create calendar events like bookings/programmes
+- Links via linkedMeetingId, GCal dedup, backfill endpoint
+- Wired into monolith routes (module not registered yet)
+
+### Debrief Extraction Overhaul
+- Removed 5 dead fields from prompt (communityActions, operationalActions, actionItems, placesIdentified, economicActivity)
+- Cleaned 65 existing debriefs + 27 orphaned action items from DB
+- Removed Community Actions, Operational Actions, Funder Tags sections from review UI
+
+### Taxonomy
+- 65 duplicate categories → 8 with signal banks (Capability Growth, Venture Progress, Rangatahi Development, Ecosystem Connections, Space Activation, Content & Creative, Wellbeing & Resilience, Leadership & Advocacy)
+- 298 tags remapped, zero data lost
+
+### Metrics
+- 9 fields → 6 (mindset, skill, confidence, businessReadiness, networkStrength, resilience)
+- Scoring rubric 1-10 added to prompt
+- Previous scores as context for relative scoring
+- Metric snapshots now save on confirm (was 0 rows)
+
+### Extraction Improvements
+- primaryEntity field (person or group, auto-detected from title + transcript)
+- Fuzzy contact matching (Coach Manuel → Manuel Walker)
+- Max 4 impact tags per debrief
+
+### Debrief UI
+- Sentiment → title badge
+- Impact Highlights primary view (transcript behind View Transcript button)
+- Dead sections removed
+
+### Report Wiring
+- Key quotes auto-populate from debriefs (no more manual typing)
+- Operator insights (wins/concerns/learnings) in branded monthly + quarterly reports
+
+### Contact Profiles
+- Wins from debrief reflections surface on contact journey page
+
+### Learnings
+- 179 operator learnings from 64 debriefs absorbed to memory
+
+### Access Tiers
+- tier + inductedAt on regular_bookers
+- Public/Casual/Regular with smart defaults
+- Portal enforcement (induction gate, approval rules)
+
+### Nav Restructure
+- Delivery → Access + Capability
+- Reporting merged into Tracking
+- Funders top-level
+- Projects + DOM → Settings
+
+### Funder Profiles
+- Split general (shareable) from org-specific
+- FN enriched with web research + insider knowledge (board process, priority stacking)
+
+### Ecosystem Operator Model
+- Model 3 (operate) scoped and saved to memory
 
 ## What's still open
-
-### Funder page redesign (Phase 1) — READY TO BUILD on main
-- **Tabs**: Core | Projects | Completed (grouped by status within each)
-- **Card: contract progress**: "Month 9 of 12" or "Year 2 of 3" with progress bar
-- **Card: financials**: Total value / annual value / quarterly value
-- **Schema: `total_contract_value`**: New field — agreement total. `estimated_value` = annual. Calculated fields: contract length, year X of Y
-- **Reporting deadlines**: Remove from funder cards, move to reporting section
-- **`funder_type` or fit_tags**: Distinguish core vs project funders for tab filtering
-- Touches: schema.ts, funders.tsx (heavy), routes.ts (migration), possibly reporting page
-
-### Fund writing module (Phase 2) — SCOPED NOT BUILT
-- Application workspace for pipeline funders
-- Template, draft editor, budget builder, attachments, status tracking
-- Lives in Pipeline tab within funders
-- Separate session
-
-### Public holidays feature — SCOPED NOT BUILT
-- `is_public_holiday` boolean on events table
-- Calendar sync auto-flag, calendar visuals (rose tint), booking/mentoring blocking
-- Both worktree slots still taken
+- **Bulk re-extraction** — 64 debriefs need re-running through new prompt. Ra wants to finish refining first.
+- **Risk register** — concerns from debriefs → visible register. Parked for separate branch.
+- **Build errors from prior sessions** — duplicate groupId in funders schema, duplicate email in bookings.ts
+- **Reports still unverified** — Tracking + Funder Reports may still 500
+- **"Tentative:" prefix stripping** from GCal-imported debrief titles
 
 ## Worktrees
-- delivery: `77e775e` — merged to main at c15cb27, can be cleaned up
-- tracking: `2bcdfe9` — previously merged, can be cleaned up
+- main: clean (a8eb7ea)
+- branch-a (delivery): behind main, has route splitting work
+- branch-b (reporting): clean, up to date with main
 
 ## Decisions Ra made
-- Funder tabs: Core | Projects | Completed (not 5 tabs)
-- No hard KPI targets — show growth and impact, trend not targets
-- Exception: Catriona needs historical numbers trending up — period-over-period comparison is the evidence base
-- Contract length, total value, annual value are important — must show on funder cards
-- Tautai is NOT a funder (RTM was contracted by them). TRC CLC is a one-off project fund, not ongoing.
-- Fund writing module belongs in pipeline — Phase 2
-- Build funder redesign on main
-- displayName should always use org name for venue hire, everywhere
+- Events table is single source of truth for all calendars
+- Taxonomy: 8 categories, max 4 tags per debrief
+- Metrics: 6 fields, rubric, null for unevidenced
+- Primary entity: person OR group, AI deduces
+- Debrief view: highlights primary, transcript behind button
+- Wins → contact profiles, concerns → risk register (future), learnings → Claude memory
+- Access tiers: public needs induction, casual has limits, regular per agreement
+- Ecosystem operator: Model 3, validate by doing one report for GI Eagles manually
+- Funder profiles: general profiles shareable, FN board decides based on priority stacking
 
 ## Uncommitted work
-None — clean.
+None.
 
 ## Next session should
-1. Build funder page redesign (Phase 1): tabs + contract progress + financials + schema change
-2. Clean up worktrees (both mergeable)
-3. Update /funder-pulse skill to use trend arrows not RAG targets
+1. Verify calendar views work end-to-end after unification
+2. Fix build errors (duplicate groupId, duplicate email)
+3. Test new debrief extraction (create a test debrief)
+4. Verify reports load

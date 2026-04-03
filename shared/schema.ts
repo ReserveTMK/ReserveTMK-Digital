@@ -223,13 +223,16 @@ export const events = pgTable("events", {
   googleCalendarEventId: text("google_calendar_event_id"),
   linkedProgrammeId: integer("linked_programme_id"),
   linkedBookingId: integer("linked_booking_id"),
+  linkedMeetingId: integer("linked_meeting_id"),
   source: text("source").default("internal"), // 'google', 'internal'
   requiresDebrief: boolean("requires_debrief").default(false),
   eventStatus: text("event_status").default("active"), // 'active', 'cancelled'
   debriefSkippedReason: text("debrief_skipped_reason"),
   calendarAttendees: jsonb("calendar_attendees").$type<Array<{ email: string; displayName?: string; responseStatus?: string; organizer?: boolean }>>(),
   spaceUseType: text("space_use_type"),
+  venueId: integer("venue_id"),
   isPublicHoliday: boolean("is_public_holiday").default(false),
+  isStaffClosure: boolean("is_staff_closure").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -723,6 +726,20 @@ export const impactLogGroups = pgTable("impact_log_groups", {
   id: serial("id").primaryKey(),
   impactLogId: integer("impact_log_id").notNull(),
   groupId: integer("group_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Whakapapa connections — typed links between people, groups, and debriefs
+export const communityConnections = pgTable("community_connections", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  fromContactId: integer("from_contact_id"),
+  fromGroupId: integer("from_group_id"),
+  toContactId: integer("to_contact_id"),
+  toGroupId: integer("to_group_id"),
+  type: text("type").notNull(), // referred_by, introduced_through, collaborates_with, mentored_by, employed_by, founded, partnered_with
+  context: text("context"),
+  sourceDebriefId: integer("source_debrief_id"), // which debrief surfaced this connection
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -2482,11 +2499,14 @@ export const metricSnapshots = pgTable("metric_snapshots", {
     mindset?: number;
     skill?: number;
     confidence?: number;
+    businessReadiness?: number;
+    networkStrength?: number;
+    resilience?: number;
+    // Legacy fields (may exist in old snapshots)
     bizConfidence?: number;
     confidenceScore?: number;
     systemsInPlace?: number;
     fundingReadiness?: number;
-    networkStrength?: number;
     communityImpact?: number;
     digitalPresence?: number;
   }>().notNull(),

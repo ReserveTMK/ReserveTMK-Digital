@@ -118,11 +118,19 @@ export function DebriefBoard() {
   }).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()), [allBoardEvents, allLogs]);
 
   // Column 2: Recorded & Reviewing — something entered but not confirmed
-  const inProgress = useMemo(() => allBoardEvents.filter(e => {
-    if (!e.existingDebriefId) return false;
-    const log = allLogs?.find(l => l.id === e.existingDebriefId);
-    return log ? isRealDebrief(log) && log.status !== "confirmed" : false;
-  }), [allBoardEvents, allLogs]);
+  const inProgress = useMemo(() => {
+    // Event-linked debriefs in progress
+    const eventLinked = allBoardEvents.filter(e => {
+      if (!e.existingDebriefId) return false;
+      const log = allLogs?.find(l => l.id === e.existingDebriefId);
+      return log ? isRealDebrief(log) && log.status !== "confirmed" : false;
+    });
+    const eventLinkedIds = new Set(eventLinked.map(e => e.existingDebriefId));
+    // Standalone logs (manual updates, paste debriefs) not linked to events
+    const standalone = (allLogs || [])
+      .filter(l => l.status !== "confirmed" && !l.eventId && isRealDebrief(l) && !eventLinkedIds.has(l.id));
+    return { eventLinked, standalone };
+  }, [allBoardEvents, allLogs]);
 
   // Column 3: Completed — confirmed debriefs (from board events + standalone logs)
   const completed = useMemo(() => {
@@ -181,7 +189,8 @@ export function DebriefBoard() {
     );
   }
 
-  const columnData = [toDebrief, inProgress, completed];
+  const inProgressCount = inProgress.eventLinked.length + inProgress.standalone.length;
+  const columnCounts = [toDebrief.length, inProgressCount, completed.length];
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -193,14 +202,14 @@ export function DebriefBoard() {
               <Icon className="w-4 h-4 text-muted-foreground" />
               <span className="font-semibold text-sm">{col.label}</span>
               <Badge variant="secondary" className="ml-auto text-xs">
-                {columnData[idx].length}
+                {columnCounts[idx]}
               </Badge>
             </div>
 
             <div className={`rounded-lg border-t-2 ${col.color} bg-muted/30 p-3 space-y-2 min-h-[200px]`}>
-              {columnData[idx].length === 0 && (
+              {columnCounts[idx] === 0 && (
                 <p className="text-xs text-muted-foreground text-center py-8">
-                  {idx === 0 ? "All caught up 🎉" : idx === 1 ? "Nothing in review" : "No completed debriefs yet"}
+                  {idx === 0 ? "All caught up" : idx === 1 ? "Nothing in review" : "No completed debriefs yet"}
                 </p>
               )}
 
@@ -213,13 +222,24 @@ export function DebriefBoard() {
                 />
               ))}
 
-              {idx === 1 && (inProgress as BoardEvent[]).map(event => (
-                <InProgressCard
-                  key={event.id}
-                  event={event}
-                  onOpen={() => event.existingDebriefId && setLocation(`/debriefs/${event.existingDebriefId}?from=board`)}
-                />
-              ))}
+              {idx === 1 && (
+                <>
+                  {inProgress.eventLinked.map(event => (
+                    <InProgressCard
+                      key={event.id}
+                      event={event}
+                      onOpen={() => event.existingDebriefId && setLocation(`/debriefs/${event.existingDebriefId}?from=board`)}
+                    />
+                  ))}
+                  {inProgress.standalone.map(log => (
+                    <InProgressLogCard
+                      key={log.id}
+                      log={log}
+                      onOpen={() => setLocation(`/debriefs/${log.id}?from=board`)}
+                    />
+                  ))}
+                </>
+              )}
 
               {idx === 2 && (completed as ImpactLog[]).map(log => (
                 <CompletedCard
@@ -297,6 +317,35 @@ function InProgressCard({ event, onOpen }: {
           <p className="text-sm font-medium truncate">{event.name}</p>
           <div className="flex items-center gap-2 mt-1">
             <Badge className={`text-[10px] px-1.5 py-0 ${statusColor}`}>{statusLabel}</Badge>
+          </div>
+        </div>
+        <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
+      </div>
+      <p className="text-xs text-muted-foreground">Tap to review and confirm →</p>
+    </Card>
+  );
+}
+
+// ── In progress log card (column 2 — standalone logs) ────────────────────────
+
+function InProgressLogCard({ log, onOpen }: {
+  log: ImpactLog;
+  onOpen: () => void;
+}) {
+  const statusLabel = log.status === "pending_review" ? "Pending Review" : "Draft";
+  const statusColor = log.status === "pending_review"
+    ? "bg-blue-500/15 text-blue-700"
+    : "bg-gray-500/15 text-gray-700";
+  const isManual = log.type === "manual_update";
+
+  return (
+    <Card className="p-3 space-y-2 border-l-2 border-l-blue-400 cursor-pointer hover:bg-muted/50" onClick={onOpen}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium truncate">{log.title}</p>
+          <div className="flex items-center gap-2 mt-1">
+            <Badge className={`text-[10px] px-1.5 py-0 ${statusColor}`}>{statusLabel}</Badge>
+            {isManual && <Badge variant="outline" className="text-[10px] px-1.5 py-0">Manual Update</Badge>}
           </div>
         </div>
         <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />

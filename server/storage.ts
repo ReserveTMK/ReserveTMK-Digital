@@ -215,7 +215,7 @@ import {
   type BookingChangeRequest,
   type InsertBookingChangeRequest,
 } from "@shared/schema";
-import { eq, desc, and, gte, lte, sql, max, count, inArray } from "drizzle-orm";
+import { eq, desc, and, or, gte, lte, sql, max, count, inArray } from "drizzle-orm";
 
 import { authStorage, type IAuthStorage } from "./replit_integrations/auth/storage";
 
@@ -931,7 +931,11 @@ export class DatabaseStorage implements IStorage {
   async getEvents(userId: string): Promise<Event[]> {
     return await db.select()
       .from(events)
-      .where(eq(events.userId, userId))
+      .where(or(
+        eq(events.userId, userId),
+        eq(events.isPublicHoliday, true),
+        eq(events.isStaffClosure, true),
+      ))
       .orderBy(desc(events.startTime));
   }
 
