@@ -232,6 +232,7 @@ export const events = pgTable("events", {
   spaceUseType: text("space_use_type"),
   venueId: integer("venue_id"),
   isPublicHoliday: boolean("is_public_holiday").default(false),
+  isStaffClosure: boolean("is_staff_closure").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
