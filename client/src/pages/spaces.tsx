@@ -14,7 +14,6 @@ import {
   Calendar as CalendarIcon,
   CalendarDays,
   Package,
-  UserCheck,
   ClipboardCheck,
   RefreshCw,
 } from "lucide-react";
@@ -23,7 +22,7 @@ import { useQuery } from "@tanstack/react-query";
 import Bookings from "./bookings";
 import ResourcesTab from "@/components/spaces/resources-tab";
 import { ActivationsTab } from "@/components/spaces/space-use-tab";
-import RegularBookersPage from "./regular-bookers";
+// Bookers tab removed — lives at /bookers
 import { SpacesFAB } from "@/components/spaces/quick-add-activation-dialog";
 import { MonthlyReconcileDialog } from "@/components/spaces/monthly-reconcile-dialog";
 import { RecurringBookingsTab } from "@/components/spaces/recurring-bookings-tab";
@@ -55,6 +54,13 @@ function getDeskScheduleFromHours(opHours: OperatingHoursEntry[] | undefined) {
     ? staffedEntries.reduce((max, h) => h.closeTime! > max ? h.closeTime! : max, staffedEntries[0].closeTime!)
     : defaultEnd;
   return { days: openDays.length > 0 ? openDays : defaultDays, startTime: earliest, endTime: latest };
+}
+
+function formatTime12(time: string): string {
+  const [h, m] = time.split(":").map(Number);
+  const ampm = h >= 12 ? "pm" : "am";
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2, "0")}${ampm}`;
 }
 
 function formatDate(date: Date): string {
@@ -558,7 +564,7 @@ function HotDeskingTab() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h3 className="text-base font-semibold">Desk Availability</h3>
-          <p className="text-xs text-muted-foreground" data-testid="text-desk-hours-info">{deskSchedule.startTime} – {deskSchedule.endTime}</p>
+          <p className="text-xs text-muted-foreground" data-testid="text-desk-hours-info">{formatTime12(deskSchedule.startTime)} – {formatTime12(deskSchedule.endTime)}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button size="icon" variant="outline" onClick={() => navigateDay(-1)} data-testid="button-desk-prev">
@@ -651,7 +657,7 @@ function HotDeskingTab() {
   );
 }
 
-const VALID_TABS = ["space-use", "venue-hire", "hot-desking", "resources", "bookers"] as const;
+const VALID_TABS = ["space-use", "venue-hire", "hot-desking", "resources"] as const;
 
 function getTabFromUrl(): string {
   const params = new URLSearchParams(window.location.search);
@@ -700,7 +706,7 @@ export default function SpacesPage() {
   const [calendarKey, setCalendarKey] = useState(0);
   const [reconcileOpen, setReconcileOpen] = useState(false);
   const venueHireCreateRef = useRef<(() => void) | null>(null);
-  const bookerAddRef = useRef<(() => void) | null>(null);
+  // bookerAddRef removed — bookers tab moved to /bookers
 
   useEffect(() => {
     const params = getCalendarParamsFromUrl();
@@ -715,7 +721,7 @@ export default function SpacesPage() {
   }, [searchString]);
 
   const handleVenueHireReady = useCallback((fn: () => void) => { venueHireCreateRef.current = fn; }, []);
-  const handleBookerAddReady = useCallback((fn: () => void) => { bookerAddRef.current = fn; }, []);
+  // handleBookerAddReady removed
 
   const handleTabChange = useCallback((tab: string) => {
     setActiveTab(tab);
@@ -728,7 +734,7 @@ export default function SpacesPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-page-title">Spaces</h1>
-          <p className="text-sm text-muted-foreground">All space use, venue hire, hot desking, and booker management</p>
+          <p className="text-sm text-muted-foreground">Calendar, bookings, and desk availability</p>
         </div>
         <Button
           variant="outline"
@@ -745,19 +751,15 @@ export default function SpacesPage() {
         <TabsList data-testid="tabs-spaces" className="h-auto flex-wrap gap-y-1">
           <TabsTrigger value="space-use" data-testid="tab-space-use">
             <Calendar className="w-4 h-4 mr-1.5" />
-            Activations
+            Calendar
           </TabsTrigger>
           <TabsTrigger value="venue-hire" data-testid="tab-venue-hire">
             <Building2 className="w-4 h-4 mr-1.5" />
-            Venue Hire
+            Bookings
           </TabsTrigger>
           <TabsTrigger value="hot-desking" data-testid="tab-hot-desking">
             <Monitor className="w-4 h-4 mr-1.5" />
-            Hot Desking
-          </TabsTrigger>
-          <TabsTrigger value="bookers" data-testid="tab-bookers">
-            <UserCheck className="w-4 h-4 mr-1.5" />
-            Bookers
+            Desks
           </TabsTrigger>
           <TabsTrigger value="resources" data-testid="tab-resources">
             <Package className="w-4 h-4 mr-1.5" />
@@ -777,10 +779,6 @@ export default function SpacesPage() {
           <HotDeskingTab />
         </TabsContent>
 
-        <TabsContent value="bookers">
-          <RegularBookersPage embedded categoryScope={["venue_hire", "hot_desking"]} onAddReady={handleBookerAddReady} />
-        </TabsContent>
-
         <TabsContent value="resources">
           <ResourcesTab />
         </TabsContent>
@@ -790,7 +788,7 @@ export default function SpacesPage() {
       <SpacesFAB
         activeTab={activeTab}
         onVenueHireCreate={() => venueHireCreateRef.current?.()}
-        onBookerAdd={() => bookerAddRef.current?.()}
+        onBookerAdd={() => {}}
       />
 
       {/* Monthly Reconcile dialog */}
