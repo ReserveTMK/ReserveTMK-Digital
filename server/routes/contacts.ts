@@ -88,32 +88,32 @@ export function registerContactRoutes(app: Express) {
       const userId = (req.user as any).claims.sub;
       const sixMonthsAgo = new Date();
       sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-      const cutoff = sixMonthsAgo.toISOString();
+      const cutoffDate = sixMonthsAgo.toISOString().split("T")[0]; // YYYY-MM-DD for date comparisons
 
       // Gather contact IDs with access activity (bookings, gear, desk)
       const accessRows = await db.execute(sql`
-        SELECT DISTINCT x.contact_id, bool_or(x.recent) as recent FROM (
-          SELECT b.booker_id as contact_id, (b.start_date >= ${cutoff}::timestamp) as recent
+        SELECT x.contact_id, bool_or(x.recent) as recent FROM (
+          SELECT b.booker_id as contact_id, (b.start_date >= ${cutoffDate}::date) as recent
           FROM bookings b WHERE b.booker_id IS NOT NULL AND b.status IN ('confirmed', 'completed')
           UNION ALL
-          SELECT rb.contact_id, (gb.created_at >= ${cutoff}::timestamp) as recent
+          SELECT rb.contact_id, (gb.created_at >= ${cutoffDate}::date) as recent
           FROM gear_bookings gb JOIN regular_bookers rb ON rb.id = gb.regular_booker_id WHERE rb.contact_id IS NOT NULL
           UNION ALL
-          SELECT rb.contact_id, (dk.date >= ${cutoff}::date) as recent
+          SELECT rb.contact_id, (dk.date >= ${cutoffDate}::date) as recent
           FROM desk_bookings dk JOIN regular_bookers rb ON rb.id = dk.regular_booker_id WHERE rb.contact_id IS NOT NULL
         ) x GROUP BY x.contact_id
       `);
 
       // Gather contact IDs with capability activity (programmes, mentoring)
       const capRows = await db.execute(sql`
-        SELECT DISTINCT x.contact_id, bool_or(x.recent) as recent FROM (
-          SELECT pr.contact_id, (pr.registered_at >= ${cutoff}::timestamp) as recent
+        SELECT x.contact_id, bool_or(x.recent) as recent FROM (
+          SELECT pr.contact_id, (pr.registered_at >= ${cutoffDate}::date) as recent
           FROM programme_registrations pr WHERE pr.contact_id IS NOT NULL AND pr.status = 'registered'
           UNION ALL
           SELECT mr.contact_id, (mr.status IN ('active', 'application')) as recent
           FROM mentoring_relationships mr WHERE mr.contact_id IS NOT NULL
           UNION ALL
-          SELECT m.contact_id, (m.start_time >= ${cutoff}::timestamp) as recent
+          SELECT m.contact_id, (m.start_time >= ${cutoffDate}::date) as recent
           FROM meetings m WHERE m.contact_id IS NOT NULL AND m.status IN ('completed', 'confirmed')
             AND m.type IN (SELECT mt.name FROM meeting_types mt WHERE mt.user_id = ${userId} AND mt.category = 'mentoring' AND mt.is_active = true)
         ) x GROUP BY x.contact_id
