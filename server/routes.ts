@@ -3936,22 +3936,23 @@ IMPORTANT RULES:
     }
   });
 
-  // Bulk re-extraction — re-analyse all debriefs with transcripts through the current prompt
+  // Bulk re-extraction — re-analyse debriefs in batches (5 per call to avoid timeout)
   app.post("/api/impact-logs/bulk-reanalyse", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
+      const batchSize = parseInt(String(req.query.batch)) || 5;
+      const offset = parseInt(String(req.query.offset)) || 0;
+
       const allLogs = await storage.getImpactLogs(userId);
-      const toProcess = allLogs.filter(l => l.type === "debrief" && l.transcript && l.transcript.trim().length > 0);
+      const toProcess = allLogs
+        .filter(l => l.type === "debrief" && l.transcript && l.transcript.trim().length > 0)
+        .sort((a, b) => (a.id || 0) - (b.id || 0));
 
-      const taxonomy = await storage.getTaxonomy(userId);
-      const keywords = await storage.getKeywords(userId);
-      const contacts = await storage.getContacts(userId);
-      const groups = await storage.getGroups(userId);
-
+      const batch = toProcess.slice(offset, offset + batchSize);
       const results: { id: number; title: string; status: string }[] = [];
       let errors = 0;
 
-      for (const log of toProcess) {
+      for (const log of batch) {
         try {
           const extractRes = await fetch(`${req.protocol}://${req.get("host")}/api/impact-extract`, {
             method: "POST",
@@ -3970,7 +3971,17 @@ IMPORTANT RULES:
         }
       }
 
-      res.json({ total: toProcess.length, processed: results.length, errors, results });
+      const nextOffset = offset + batchSize;
+      const remaining = Math.max(0, toProcess.length - nextOffset);
+
+      res.json({
+        total: toProcess.length,
+        batchProcessed: results.length,
+        errors,
+        remaining,
+        nextOffset: remaining > 0 ? nextOffset : null,
+        results,
+      });
     } catch (err: any) {
       res.status(500).json({ message: "Bulk re-analysis failed", error: err.message });
     }
