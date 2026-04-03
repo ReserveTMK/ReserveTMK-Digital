@@ -73,6 +73,13 @@ interface PulseResult {
   percentOfTarget: number | null;
 }
 
+interface PulseResponse {
+  period: { start: string; end: string };
+  contract: { start: string | null; end: string | null };
+  deliverables: PulseResult[];
+  summary: { total: number; atRisk: number; needsAttention: number; overall: string };
+}
+
 const EVENT_TYPES = ["Meeting", "Mentoring Session", "External Event", "Personal Development", "Planning", "Programme", "Catch Up", "Content"] as const;
 const ETHNICITY_OPTIONS = ["Māori", "Pasifika", "NZ European", "Asian", "Other"] as const;
 const SESSION_STATUSES = ["completed", "confirmed", "cancelled", "no-show"] as const;
@@ -424,7 +431,7 @@ export function FunderDeliverablesSection({ funderId }: { funderId: number }) {
     },
   });
 
-  const { data: pulse } = useQuery<{ deliverables: PulseResult[]; summary: { overall: string } }>({
+  const { data: pulse } = useQuery<PulseResponse>({
     queryKey: ["/api/funders", funderId, "pulse"],
     queryFn: async () => {
       const res = await fetch(`/api/funders/${funderId}/pulse`, { credentials: "include" });
@@ -433,6 +440,20 @@ export function FunderDeliverablesSection({ funderId }: { funderId: number }) {
     },
     enabled: deliverables.length > 0,
   });
+
+  const timeContext = useMemo(() => {
+    if (!pulse?.contract?.start || !pulse?.contract?.end) return null;
+    const contractStart = new Date(pulse.contract.start).getTime();
+    const contractEnd = new Date(pulse.contract.end).getTime();
+    const now = Date.now();
+    const totalDuration = contractEnd - contractStart;
+    if (totalDuration <= 0) return null;
+    const elapsed = Math.max(0, now - contractStart);
+    const percentElapsed = Math.min(100, Math.round((elapsed / totalDuration) * 100));
+    const monthsTotal = Math.round(totalDuration / (1000 * 60 * 60 * 24 * 30.44));
+    const monthsElapsed = Math.round(elapsed / (1000 * 60 * 60 * 24 * 30.44));
+    return { percentElapsed, monthsElapsed, monthsTotal };
+  }, [pulse]);
 
   const createMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", `/api/funders/${funderId}/deliverables`, data),
@@ -524,32 +545,70 @@ export function FunderDeliverablesSection({ funderId }: { funderId: number }) {
 
             return (
               <Card key={d.id} className="p-3" data-testid={`deliverable-${d.id}`}>
-                <div className="flex items-center justify-between">
+                <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium">{d.name}</span>
                       <Badge variant="outline" className="text-xs">{METRIC_TYPE_LABELS[d.metricType] || d.metricType}</Badge>
-                    </div>
-                    {d.description && <p className="text-xs text-muted-foreground mt-0.5">{d.description}</p>}
-                    {p && (
-                      <div className="flex items-center gap-3 mt-1.5 text-xs">
-                        <span className="font-medium">{p.actual} {d.unit !== "count" ? d.unit : ""}</span>
-                        {p.proRataTarget != null && (
-                          <span className="text-muted-foreground">/ {p.proRataTarget} target</span>
-                        )}
-                        {p.percentOfTarget != null && (
-                          <span className={statusConf?.color || ""}>{p.percentOfTarget}%</span>
-                        )}
-                        <span className={`flex items-center gap-1 ${statusConf?.color || ""}`}>
+                      {p && statusConf && (
+                        <span className={`flex items-center gap-1 text-xs ${statusConf.color}`}>
                           <StatusIcon className="w-3 h-3" />
-                          {statusConf?.label}
+                          {statusConf.label}
                         </span>
+                      )}
+                    </div>
+
+                    {/* Progress bar + numbers */}
+                    {p && p.proRataTarget != null && p.proRataTarget > 0 ? (
+                      <div className="mt-2 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${
+                                p.status === "exceeded" ? "bg-green-500" :
+                                p.status === "on_track" ? "bg-green-500" :
+                                p.status === "needs_attention" ? "bg-yellow-500" :
+                                p.status === "at_risk" ? "bg-red-500" : "bg-gray-400"
+                              }`}
+                              style={{ width: `${Math.min(100, p.percentOfTarget || 0)}%` }}
+                            />
+                          </div>
+                          <span className={`text-xs font-medium tabular-nums ${statusConf?.color || ""}`}>
+                            {p.percentOfTarget}%
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>
+                            <span className="font-medium text-foreground">{p.actual}</span>
+                            {" / "}{p.proRataTarget} target
+                            {p.targetAnnual != null && p.targetAnnual !== p.proRataTarget && (
+                              <span className="ml-1">(annual: {p.targetAnnual})</span>
+                            )}
+                          </span>
+                          {timeContext && (
+                            <span>{timeContext.monthsElapsed} of {timeContext.monthsTotal}mo elapsed</span>
+                          )}
+                        </div>
                       </div>
-                    )}
+                    ) : p ? (
+                      <div className="mt-1.5 flex items-center gap-3 text-xs">
+                        <span className="font-medium text-foreground">{p.actual} {d.unit !== "count" ? d.unit : ""}</span>
+                        {p.status === "no_target" && (
+                          <button
+                            className="text-primary hover:underline"
+                            onClick={() => setEditingId(d.id)}
+                          >
+                            Set target
+                          </button>
+                        )}
+                      </div>
+                    ) : null}
+
+                    {d.description && <p className="text-xs text-muted-foreground mt-1">{d.description}</p>}
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0 shrink-0">
                         <MoreVertical className="w-4 h-4" />
                       </Button>
                     </DropdownMenuTrigger>
