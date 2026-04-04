@@ -139,8 +139,8 @@ export function registerContactRoutes(app: Express) {
 
       res.json(result);
     } catch (err: any) {
-      console.error("Delivery depth error:", err);
-      res.status(500).json({ message: "Failed to compute delivery depth" });
+      console.error("Delivery depth error:", err.message, err.stack?.split("\n").slice(0, 3).join(" | "));
+      res.status(500).json({ message: `Delivery depth error: ${err.message}` });
     }
   });
 
