@@ -704,6 +704,180 @@ export async function registerRoutes(
     }
   });
 
+  // === Delivery Depth (computed innovator status) ===
+  app.get("/api/contacts/delivery-depth", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+      const allContacts = await storage.getContacts(userId);
+      const allBookings = await storage.getBookings(userId);
+      const allMentoring = await storage.getMentoringRelationships();
+
+      const contactIds = new Set(allContacts.map(c => c.id));
+
+      // Access: contacts who are bookers on confirmed/completed bookings
+      const accessMap = new Map<number, boolean>();
+      for (const b of allBookings) {
+        if (!b.bookerId || !contactIds.has(b.bookerId)) continue;
+        if (b.status !== "confirmed" && b.status !== "completed") continue;
+        const recent = b.startDate ? new Date(b.startDate) >= sixMonthsAgo : false;
+        const existing = accessMap.get(b.bookerId) || false;
+        accessMap.set(b.bookerId, existing || recent);
+      }
+
+      // Capability: contacts with mentoring relationships
+      const capMap = new Map<number, boolean>();
+      for (const mr of allMentoring) {
+        if (!mr.contactId || !contactIds.has(mr.contactId)) continue;
+        const recent = mr.status === "active" || mr.status === "application";
+        const existing = capMap.get(mr.contactId) || false;
+        capMap.set(mr.contactId, existing || recent);
+      }
+
+      // Compute delivery depth per contact
+      const allDeliveryIds: number[] = [];
+      accessMap.forEach((_, id) => { if (!allDeliveryIds.includes(id)) allDeliveryIds.push(id); });
+      capMap.forEach((_, id) => { if (!allDeliveryIds.includes(id)) allDeliveryIds.push(id); });
+      const result: Record<number, { depth: string; active: boolean }> = {};
+
+      for (const id of allDeliveryIds) {
+        const recentAccess = accessMap.get(id) || false;
+        const recentCap = capMap.get(id) || false;
+        const anyAccess = accessMap.has(id);
+        const anyCap = capMap.has(id);
+
+        let depth: string;
+        if (recentAccess && recentCap) depth = "both";
+        else if (recentAccess) depth = "access";
+        else if (recentCap) depth = "capability";
+        else if (anyAccess || anyCap) depth = "past";
+        else depth = "none";
+
+        result[id] = { depth, active: recentAccess || recentCap };
+      }
+
+      res.json(result);
+    } catch (err: any) {
+      console.error("Delivery depth error:", err.message, err.stack?.split("\n").slice(0, 3).join(" | "));
+      res.status(500).json({ message: `Delivery depth error: ${err.message}` });
+    }
+  });
+
+  // === Needs Attention (ecosystem nurture reminders) ===
+  app.get("/api/contacts/needs-attention", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const threshold = parseInt(req.query.days as string) || 60;
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - threshold);
+      const cutoffISO = cutoff.toISOString();
+
+      const rows = await db.execute(sql`
+        SELECT c.id, c.name, c.connection_strength, c.is_vip, c.email, c.linked_group_id,
+          GREATEST(
+            (SELECT MAX(m.start_time) FROM meetings m WHERE m.contact_id = c.id AND m.status IN ('completed', 'confirmed')),
+            (SELECT MAX(e.start_time) FROM events e JOIN event_attendance ea ON ea.event_id = e.id WHERE ea.contact_id = c.id),
+            (SELECT MAX(il.created_at) FROM impact_logs il JOIN impact_log_contacts ilc ON ilc.impact_log_id = il.id WHERE ilc.contact_id = c.id AND il.status = 'confirmed'),
+            (SELECT MAX(b.start_date) FROM bookings b WHERE b.booker_id = c.id AND b.status IN ('confirmed', 'completed'))
+          ) as last_touchpoint
+        FROM contacts c
+        WHERE c.user_id = ${userId}
+          AND c.is_archived = false
+          AND c.active = true
+          AND c.connection_strength IN ('trusted', 'woven')
+        HAVING GREATEST(
+          (SELECT MAX(m.start_time) FROM meetings m WHERE m.contact_id = c.id AND m.status IN ('completed', 'confirmed')),
+          (SELECT MAX(e.start_time) FROM events e JOIN event_attendance ea ON ea.event_id = e.id WHERE ea.contact_id = c.id),
+          (SELECT MAX(il.created_at) FROM impact_logs il JOIN impact_log_contacts ilc ON ilc.impact_log_id = il.id WHERE ilc.contact_id = c.id AND il.status = 'confirmed'),
+          (SELECT MAX(b.start_date) FROM bookings b WHERE b.booker_id = c.id AND b.status IN ('confirmed', 'completed'))
+        ) < ${cutoffISO}::timestamp
+        OR GREATEST(
+          (SELECT MAX(m.start_time) FROM meetings m WHERE m.contact_id = c.id AND m.status IN ('completed', 'confirmed')),
+          (SELECT MAX(e.start_time) FROM events e JOIN event_attendance ea ON ea.event_id = e.id WHERE ea.contact_id = c.id),
+          (SELECT MAX(il.created_at) FROM impact_logs il JOIN impact_log_contacts ilc ON ilc.impact_log_id = il.id WHERE ilc.contact_id = c.id AND il.status = 'confirmed'),
+          (SELECT MAX(b.start_date) FROM bookings b WHERE b.booker_id = c.id AND b.status IN ('confirmed', 'completed'))
+        ) IS NULL
+        ORDER BY last_touchpoint ASC NULLS FIRST
+      `);
+
+      const items = ((rows as any).rows || []).map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        connectionStrength: r.connection_strength,
+        isVip: r.is_vip,
+        email: r.email,
+        linkedGroupId: r.linked_group_id,
+        lastTouchpoint: r.last_touchpoint ? new Date(r.last_touchpoint).toISOString() : null,
+        daysSince: r.last_touchpoint ? Math.floor((Date.now() - new Date(r.last_touchpoint).getTime()) / (1000 * 60 * 60 * 24)) : null,
+      }));
+      res.json(items);
+    } catch (err: any) {
+      console.error("Needs attention error:", err);
+      res.status(500).json({ message: "Failed to get needs-attention contacts" });
+    }
+  });
+
+  // === Ecosystem Reach (Māori ecosystem stats) ===
+  app.get("/api/ecosystem/reach", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+
+      const groupStats = await db.execute(sql`
+        SELECT
+          COUNT(*) FILTER (WHERE is_maori = true AND is_community = true) as maori_led_trusted,
+          COUNT(*) FILTER (WHERE serves_maori = true AND is_community = true) as serves_maori_trusted,
+          COUNT(*) FILTER (WHERE is_maori = true) as maori_led_total,
+          COUNT(*) FILTER (WHERE serves_maori = true) as serves_maori_total,
+          COUNT(*) FILTER (WHERE is_community = true OR is_innovator = true) as connected_total,
+          COUNT(*) as total_orgs
+        FROM groups
+        WHERE user_id = ${userId} AND active = true
+      `);
+
+      const quarterStart = new Date();
+      quarterStart.setMonth(Math.floor(quarterStart.getMonth() / 3) * 3, 1);
+      quarterStart.setHours(0, 0, 0, 0);
+
+      const movements = await db.execute(sql`
+        SELECT
+          COUNT(*) FILTER (WHERE
+            (CASE WHEN new_stage = 'woven' THEN 4 WHEN new_stage = 'trusted' THEN 3 WHEN new_stage = 'connected' THEN 2 WHEN new_stage = 'aware' THEN 1 ELSE 0 END)
+            >
+            (CASE WHEN previous_stage = 'woven' THEN 4 WHEN previous_stage = 'trusted' THEN 3 WHEN previous_stage = 'connected' THEN 2 WHEN previous_stage = 'aware' THEN 1 ELSE 0 END)
+          ) as deepened,
+          COUNT(*) FILTER (WHERE
+            (CASE WHEN new_stage = 'woven' THEN 4 WHEN new_stage = 'trusted' THEN 3 WHEN new_stage = 'connected' THEN 2 WHEN new_stage = 'aware' THEN 1 ELSE 0 END)
+            <
+            (CASE WHEN previous_stage = 'woven' THEN 4 WHEN previous_stage = 'trusted' THEN 3 WHEN previous_stage = 'connected' THEN 2 WHEN previous_stage = 'aware' THEN 1 ELSE 0 END)
+          ) as declined
+        FROM relationship_stage_history
+        WHERE change_type = 'connection'
+          AND changed_at >= ${quarterStart.toISOString()}::timestamp
+      `);
+
+      const gs = (groupStats as any).rows?.[0] || {};
+      const mv = (movements as any).rows?.[0] || {};
+
+      res.json({
+        maoriLedTrusted: Number(gs.maori_led_trusted || 0),
+        servesMaoriTrusted: Number(gs.serves_maori_trusted || 0),
+        maoriLedTotal: Number(gs.maori_led_total || 0),
+        servesMaoriTotal: Number(gs.serves_maori_total || 0),
+        connectedTotal: Number(gs.connected_total || 0),
+        totalOrgs: Number(gs.total_orgs || 0),
+        connectionMovements: {
+          deepened: Number(mv.deepened || 0),
+          declined: Number(mv.declined || 0),
+        },
+      });
+    } catch (err: any) {
+      console.error("Ecosystem reach error:", err);
+      res.status(500).json({ message: "Failed to get ecosystem reach" });
+    }
+  });
+
   app.get(api.contacts.get.path, isAuthenticated, async (req, res) => {
     const id = parseId(req.params.id);
     const contact = await storage.getContact(id);
