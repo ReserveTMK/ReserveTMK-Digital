@@ -59,7 +59,6 @@ import { FunderClassificationsSection } from "@/components/funders/classificatio
 import { FunderDeliverablesSection } from "@/components/funders/deliverables-section";
 import { FunderCard, ActiveFunderCard, PipelineCard, RadarRow } from "@/components/funders/funder-cards";
 import { FunderFormDialog } from "@/components/funders/funder-form";
-import { ReportGenerator } from "@/pages/reports";
 
 // Re-export for consumers that import from this file
 export { FunderTaxonomySection } from "@/components/funders/taxonomy-section";
@@ -150,7 +149,7 @@ export default function FundersPage() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
-  const [activeTab, setActiveTab] = useState<"active" | "pipeline" | "reports" | "archive">("active");
+  const [activeTab, setActiveTab] = useState<"active" | "pipeline" | "archive">("active");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [createDefaultStatus, setCreateDefaultStatus] = useState<string | undefined>();
   const [editingFunder, setEditingFunder] = useState<Funder | null>(null);
@@ -276,7 +275,6 @@ export default function FundersPage() {
           {([
             { key: "active", label: "Active", icon: Handshake, count: active.length },
             { key: "pipeline", label: "Pipeline", icon: Target, count: pipeline.length + radar.length },
-            { key: "reports", label: "Reports", icon: FileText },
             { key: "archive", label: "Archive", icon: Archive, count: completed.length },
           ] as const).map(tab => (
             <button
@@ -299,7 +297,7 @@ export default function FundersPage() {
       </div>
 
       {/* Search — show on Active, Pipeline, Archive tabs */}
-      {activeTab !== "reports" && (
+      {(
         <div className="relative max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
@@ -313,12 +311,12 @@ export default function FundersPage() {
       )}
 
       {/* Search results — override tab content when searching */}
-      {filtered && activeTab !== "reports" ? (
+      {filtered ? (
         <div>
           <p className="text-sm text-muted-foreground mb-3">{filtered.length} result{filtered.length !== 1 ? "s" : ""}</p>
           <div className="grid gap-3">
             {filtered.map((funder) => (
-              <FunderCard key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/reports?funder=${funder.id}`)} />
+              <FunderCard key={funder.id} funder={funder} onView={() => setViewingFunder(funder)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/funders/${funder.id}?tab=reports`)} />
             ))}
           </div>
         </div>
@@ -341,7 +339,7 @@ export default function FundersPage() {
                 <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Managing</h2>
                 <div className="grid gap-3">
                   {active.filter(f => (f as any).fundType !== "project").map((funder) => (
-                    <ActiveFunderCard key={funder.id} funder={funder} onView={() => setLocation(`/funders/${funder.id}`)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/reports?funder=${funder.id}`)} />
+                    <ActiveFunderCard key={funder.id} funder={funder} onView={() => setLocation(`/funders/${funder.id}`)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/funders/${funder.id}?tab=reports`)} />
                   ))}
                 </div>
               </div>
@@ -438,18 +436,13 @@ export default function FundersPage() {
           </div>
         )}
 
-        {/* ═══════════ REPORTS TAB ═══════════ */}
-        {activeTab === "reports" && (
-          <ReportGenerator />
-        )}
-
         {/* ═══════════ ARCHIVE TAB ═══════════ */}
         {activeTab === "archive" && (
           <div className="space-y-4">
             {completed.length > 0 ? (
               <div className="grid gap-3">
                 {completed.map((funder) => (
-                  <FunderCard key={funder.id} funder={funder} onView={() => setLocation(`/funders/${funder.id}`)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/reports?funder=${funder.id}`)} />
+                  <FunderCard key={funder.id} funder={funder} onView={() => setLocation(`/funders/${funder.id}`)} onEdit={() => setEditingFunder(funder)} onDelete={() => setDeleteConfirm(funder.id)} onGenerateReport={() => setLocation(`/funders/${funder.id}?tab=reports`)} />
                 ))}
               </div>
             ) : (
@@ -493,7 +486,7 @@ export default function FundersPage() {
             setViewingFunder(null);
           }}
           onDelete={() => { setDeleteConfirm(viewingFunder.id); }}
-          onGenerateReport={() => setLocation(`/reports?funder=${viewingFunder.id}`)}
+          onGenerateReport={() => setLocation(`/funders/${viewingFunder.id}?tab=reports`)}
         />
       )}
 

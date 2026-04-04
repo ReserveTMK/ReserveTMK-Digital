@@ -95,7 +95,6 @@ const navGroups: NavGroup[] = [
     href: "/funders",
     children: [
       { name: "Overview", href: "/funders", icon: Handshake, description: "Pipeline, agreements & radar" },
-      { name: "Reports", href: "/reports", icon: FileText, description: "Branded funder reports" },
     ],
   },
   {

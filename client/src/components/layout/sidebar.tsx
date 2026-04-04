@@ -85,7 +85,6 @@ const navigation: NavItem[] = [
     name: "Funders", href: "/funders", icon: Handshake,
     children: [
       { name: "Overview", href: "/funders", icon: Handshake },
-      { name: "Reports", href: "/reports", icon: FileText },
     ],
   },
   {

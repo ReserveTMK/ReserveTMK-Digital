@@ -154,7 +154,10 @@ export default function FunderDetailPage() {
 
   const isActive = funder ? ACTIVE_STATUSES.includes(funder.status) : false;
   const isPursuing = funder ? PIPELINE_STATUSES.includes(funder.status) : false;
-  const [activeTab, setActiveTab] = useState<"deliverables" | "reports" | "taxonomy" | "documents">("deliverables");
+  const initialTab = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("tab") : null;
+  const [activeTab, setActiveTab] = useState<"deliverables" | "reports" | "taxonomy" | "documents">(
+    initialTab === "reports" || initialTab === "taxonomy" || initialTab === "documents" ? initialTab : "deliverables"
+  );
 
   const { data: innovatorStats } = useQuery<any>({
     queryKey: ["/api/funders", funderId, "innovator-stats"],

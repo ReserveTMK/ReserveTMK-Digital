@@ -13,7 +13,6 @@ import LandingPage from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 import Contacts from "@/pages/contacts";
 import ContactDetail from "@/pages/contact-detail";
-import Reports from "@/pages/reports";
 import TrackingDashboard from "@/pages/tracking";
 import Debriefs from "@/pages/debriefs";
 import Actions from "@/pages/actions";
@@ -151,9 +150,7 @@ function Router() {
           <ProtectedRoute component={Actions} />
         </Route>
 
-        <Route path="/reports">
-          <ProtectedRoute component={Reports} />
-        </Route>
+        {/* Reports live on funder detail pages now */}
 
         <Route path="/tracking">
           <ProtectedRoute component={TrackingDashboard} />
