@@ -831,7 +831,7 @@ function MembershipFormDialog({
 
   const availableLocations = useMemo(() => {
     if (!venues) return [];
-    return [...new Set(venues.filter(v => v.active !== false && v.spaceName).map(v => v.spaceName!))];
+    return Array.from(new Set(venues.filter(v => v.active !== false && v.spaceName).map(v => v.spaceName!)));
   }, [venues]);
   const [bookingAllowance, setBookingAllowance] = useState((membership?.bookingAllowance || 0).toString());
   const [allowancePeriod, setAllowancePeriod] = useState(membership?.allowancePeriod || "quarterly");
@@ -1409,7 +1409,7 @@ function MouFormDialog({
 
   const availableLocations = useMemo(() => {
     if (!venues) return [];
-    return [...new Set(venues.filter(v => v.active !== false && v.spaceName).map(v => v.spaceName!))];
+    return Array.from(new Set(venues.filter(v => v.active !== false && v.spaceName).map(v => v.spaceName!)));
   }, [venues]);
   const [bookingAllowance, setBookingAllowance] = useState((mou?.bookingAllowance || 0).toString());
   const [allowancePeriod, setAllowancePeriod] = useState(mou?.allowancePeriod || "quarterly");
