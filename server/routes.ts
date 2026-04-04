@@ -878,14 +878,86 @@ export async function registerRoutes(
     }
   });
 
+  // === Catch-up Suggestions (must be before :id wildcard) ===
+  app.get("/api/contacts/catch-up-suggestions", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const result = await db.execute(sql`
+        SELECT c.id, c.name, c.role, c.relationship_stage as stage,
+          c.is_community_member, c.is_innovator,
+          (SELECT MAX(i.created_at) FROM interactions i WHERE i.contact_id = c.id) as last_interaction
+        FROM contacts c
+        WHERE c.user_id = ${userId} AND c.active = true AND c.is_archived = false
+          AND (c.is_community_member = true OR c.is_innovator = true)
+          AND c.id NOT IN (SELECT contact_id FROM catch_up_list WHERE user_id = ${userId} AND dismissed_at IS NULL)
+        ORDER BY last_interaction ASC NULLS FIRST
+      `);
+
+      const now = Date.now();
+      const suggestions = (result.rows || []).map((r: any) => {
+        const lastDate = r.last_interaction ? new Date(r.last_interaction).getTime() : null;
+        const daysSince = lastDate ? Math.floor((now - lastDate) / (1000 * 60 * 60 * 24)) : null;
+        const urgency = daysSince === null ? "overdue" : daysSince > 90 ? "overdue" : daysSince > 60 ? "soon" : daysSince > 30 ? "upcoming" : null;
+        if (!urgency) return null;
+        return {
+          id: r.id,
+          name: r.name,
+          role: r.role,
+          stage: r.stage,
+          daysSinceLastInteraction: daysSince,
+          urgency,
+        };
+      }).filter(Boolean);
+
+      res.json(suggestions);
+    } catch (err: any) {
+      console.error("Catch-up suggestions error:", err);
+      res.status(500).json({ message: "Failed to get suggestions" });
+    }
+  });
+
+  // === Junk Scan (must be before :id wildcard) ===
+  app.get("/api/contacts/community/junk-scan", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const allContacts = await storage.getContacts(userId);
+
+      const JUNK_PATTERNS = [
+        /^no[-_.]?reply/i, /^do[-_.]?not[-_.]?reply/i, /^noreply/i,
+        /^mailer[-_.]?daemon/i, /^postmaster/i, /^bounce/i,
+        /^notifications?@/i, /^alerts?@/i, /^news(letter)?@/i,
+        /^support@/i, /^admin@/i, /^system@/i, /^automated/i,
+        /^billing@/i, /^invoice/i, /^receipt/i, /^orders?@/i,
+        /^feedback@/i, /^help@/i, /^contact@/i, /^enquir/i,
+        /^sales@/i, /^marketing@/i, /^team@/i, /^accounts?@/i,
+        /^subscribe/i, /^unsubscribe/i, /^updates?@/i, /^digest@/i,
+        /^daemon@/i, /^root@/i, /^webmaster@/i, /^cron@/i,
+        /^nobody@/i, /^mail@/i, /^service@/i, /^payments?@/i,
+        /^confirmation/i, /^verify/i, /^security@/i, /^privacy@/i,
+        /^compliance@/i, /^calendar-notification/i, /^drive-shares-/i,
+        /^info@.*\.(com|org|net|io|co\.\w+)$/i,
+        /^hello@.*\.(com|org|net|io|co\.\w+)$/i,
+      ];
+
+      const junkContacts = allContacts.filter((c: any) => {
+        if (!c.email) return false;
+        return JUNK_PATTERNS.some(p => p.test(c.email));
+      });
+
+      res.json({ junkContacts, totalContacts: allContacts.length });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to scan for junk contacts" });
+    }
+  });
+
   app.get(api.contacts.get.path, isAuthenticated, async (req, res) => {
     const id = parseId(req.params.id);
     const contact = await storage.getContact(id);
-    
+
     if (!contact) {
       return res.status(404).json({ message: "Contact not found" });
     }
-    
+
     // Basic authorization check
     if (contact.userId !== (req.user as any).claims.sub) {
       return res.status(403).json({ message: "Forbidden" });
@@ -11958,43 +12030,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     }
   });
 
-  // === Catch-up suggestions — contacts with no recent interaction ===
-  app.get("/api/contacts/catch-up-suggestions", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      const result = await db.execute(sql`
-        SELECT c.id, c.name, c.role, c.relationship_stage as stage,
-          c.is_community_member, c.is_innovator,
-          (SELECT MAX(i.created_at) FROM interactions i WHERE i.contact_id = c.id) as last_interaction
-        FROM contacts c
-        WHERE c.user_id = ${userId} AND c.active = true AND c.is_archived = false
-          AND (c.is_community_member = true OR c.is_innovator = true)
-          AND c.id NOT IN (SELECT contact_id FROM catch_up_list WHERE user_id = ${userId} AND dismissed_at IS NULL)
-        ORDER BY last_interaction ASC NULLS FIRST
-      `);
-
-      const now = Date.now();
-      const suggestions = (result.rows || []).map((r: any) => {
-        const lastDate = r.last_interaction ? new Date(r.last_interaction).getTime() : null;
-        const daysSince = lastDate ? Math.floor((now - lastDate) / (1000 * 60 * 60 * 24)) : null;
-        const urgency = daysSince === null ? "overdue" : daysSince > 90 ? "overdue" : daysSince > 60 ? "soon" : daysSince > 30 ? "upcoming" : null;
-        if (!urgency) return null;
-        return {
-          id: r.id,
-          name: r.name,
-          role: r.role,
-          stage: r.stage,
-          daysSinceLastInteraction: daysSince,
-          urgency,
-        };
-      }).filter(Boolean);
-
-      res.json(suggestions);
-    } catch (err: any) {
-      console.error("Catch-up suggestions error:", err);
-      res.status(500).json({ message: "Failed to get suggestions" });
-    }
-  });
+  // catch-up-suggestions moved before :id wildcard route
 
   // === REPORT HIGHLIGHTS ===
 
@@ -12722,38 +12758,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     }
   });
 
-  app.get("/api/contacts/community/junk-scan", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      const allContacts = await storage.getContacts(userId);
-
-      const JUNK_PATTERNS = [
-        /^no[-_.]?reply/i, /^do[-_.]?not[-_.]?reply/i, /^noreply/i,
-        /^mailer[-_.]?daemon/i, /^postmaster/i, /^bounce/i,
-        /^notifications?@/i, /^alerts?@/i, /^news(letter)?@/i,
-        /^support@/i, /^admin@/i, /^system@/i, /^automated/i,
-        /^billing@/i, /^invoice/i, /^receipt/i, /^orders?@/i,
-        /^feedback@/i, /^help@/i, /^contact@/i, /^enquir/i,
-        /^sales@/i, /^marketing@/i, /^team@/i, /^accounts?@/i,
-        /^subscribe/i, /^unsubscribe/i, /^updates?@/i, /^digest@/i,
-        /^daemon@/i, /^root@/i, /^webmaster@/i, /^cron@/i,
-        /^nobody@/i, /^mail@/i, /^service@/i, /^payments?@/i,
-        /^confirmation/i, /^verify/i, /^security@/i, /^privacy@/i,
-        /^compliance@/i, /^calendar-notification/i, /^drive-shares-/i,
-        /^info@.*\.(com|org|net|io|co\.\w+)$/i,
-        /^hello@.*\.(com|org|net|io|co\.\w+)$/i,
-      ];
-
-      const junkContacts = allContacts.filter((c: any) => {
-        if (!c.email) return false;
-        return JUNK_PATTERNS.some(p => p.test(c.email));
-      });
-
-      res.json({ junkContacts, totalContacts: allContacts.length });
-    } catch (err: any) {
-      res.status(500).json({ message: "Failed to scan for junk contacts" });
-    }
-  });
+  // junk-scan moved before :id wildcard route
 
   app.post("/api/contacts/community/bulk-delete", isAuthenticated, async (req, res) => {
     try {
