@@ -92,7 +92,7 @@ const PAYMENT_STATUS_BADGE: Record<string, string> = {
   refunded: "bg-gray-500/15 text-gray-700 dark:text-gray-300",
 };
 
-export default function Agreements() {
+export default function Agreements({ embedded }: { embedded?: boolean } = {}) {
   const { data: memberships, isLoading: membershipsLoading } = useMemberships();
   const { data: mous, isLoading: mousLoading } = useMous();
   const { data: contacts } = useContacts();
@@ -350,14 +350,16 @@ export default function Agreements() {
 
   return (
     <>
-    <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
-        <div className="max-w-6xl mx-auto space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-display font-bold" data-testid="text-agreements-title">Agreements</h1>
-              <p className="text-muted-foreground mt-1">Manage memberships and memoranda of understanding.</p>
+    <main className={embedded ? "space-y-6" : "flex-1 p-4 md:p-8 pb-8 overflow-y-auto"}>
+        <div className={embedded ? "space-y-6" : "max-w-6xl mx-auto space-y-6"}>
+          {!embedded && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h1 className="text-3xl font-display font-bold" data-testid="text-agreements-title">Agreements</h1>
+                <p className="text-muted-foreground mt-1">Manage memberships and memoranda of understanding.</p>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="flex items-center gap-2">
             <Button

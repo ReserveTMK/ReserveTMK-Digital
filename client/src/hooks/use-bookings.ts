@@ -58,9 +58,20 @@ export function useBookingPricingDefaults() {
 
 export function useUpdateBookingPricingDefaults() {
   return useMutation({
-    mutationFn: (data: { fullDayRate?: string; halfDayRate?: string; maxAdvanceMonths?: number }) =>
+    mutationFn: (data: { fullDayRate?: string; halfDayRate?: string; hourlyRate?: string; maxAdvanceMonths?: number }) =>
       apiRequest('PUT', '/api/booking-pricing-defaults', data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/booking-pricing-defaults'] }),
+  });
+}
+
+export function useLocations() {
+  return useQuery<any[]>({ queryKey: ['/api/locations'] });
+}
+
+export function useUpdateLocation() {
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => apiRequest('PATCH', `/api/locations/${id}`, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/locations'] }),
   });
 }
 

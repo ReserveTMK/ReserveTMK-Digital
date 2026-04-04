@@ -560,9 +560,9 @@ export function registerBookingRoutes(app: Express) {
 
   app.put("/api/booking-pricing-defaults", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
-    const { fullDayRate, halfDayRate, maxAdvanceMonths: rawMaxMonths } = req.body;
+    const { fullDayRate, halfDayRate, hourlyRate, maxAdvanceMonths: rawMaxMonths } = req.body;
     const maxAdvanceMonths = rawMaxMonths != null ? Math.max(1, Math.min(12, parseInt(rawMaxMonths) || 3)) : undefined;
-    const result = await storage.upsertBookingPricingDefaults(userId, { fullDayRate, halfDayRate, maxAdvanceMonths });
+    const result = await storage.upsertBookingPricingDefaults(userId, { fullDayRate, halfDayRate, hourlyRate, maxAdvanceMonths });
     res.json(result);
   });
 
@@ -1651,12 +1651,35 @@ export function registerBookingRoutes(app: Express) {
   // === Public Casual Hire Routes (no auth) ===
   app.get("/api/public/casual-hire/venues", async (_req, res) => {
     try {
-      const result = await db.execute(sql`SELECT id, name, space_name as "spaceName", capacity, description, user_id as "userId" FROM venues WHERE active = true ORDER BY name`);
+      const result = await db.execute(sql`
+        SELECT v.id, v.name, v.space_name as "spaceName", v.capacity, v.description, v.user_id as "userId"
+        FROM venues v
+        LEFT JOIN locations l ON l.name = v.space_name AND l.user_id = v.user_id
+        WHERE v.active = true
+          AND v.casual_enabled = true
+          AND (l.casual_enabled = true OR l.id IS NULL)
+        ORDER BY v.name
+      `);
       const rows = (result as any).rows || result;
       res.json(rows);
     } catch (err: any) {
       console.error("Casual hire venues error:", err);
       res.status(500).json({ message: "Failed to fetch venues" });
+    }
+  });
+
+  app.get("/api/public/casual-hire/pricing", async (_req, res) => {
+    try {
+      const result = await db.execute(sql`SELECT full_day_rate as "fullDayRate", half_day_rate as "halfDayRate", hourly_rate as "hourlyRate" FROM booking_pricing_defaults LIMIT 1`);
+      const row = (result as any).rows?.[0] || (result as any)[0];
+      res.json({
+        hourlyRate: row?.hourlyRate || "50",
+        halfDayRate: row?.halfDayRate || "175",
+        fullDayRate: row?.fullDayRate || "300",
+        communityDiscount: 0.20,
+      });
+    } catch (err: any) {
+      res.json({ hourlyRate: "50", halfDayRate: "175", fullDayRate: "300", communityDiscount: 0.20 });
     }
   });
 
@@ -1846,6 +1869,16 @@ export function registerBookingRoutes(app: Express) {
       if (durationHours >= 8) durationType = "full_day";
       else if (durationHours >= 4) durationType = "half_day";
 
+      // Calculate price from pricing defaults
+      const pricingDefaults = await storage.getBookingPricingDefaults(ownerUserId);
+      const hourlyRate = parseFloat((pricingDefaults as any)?.hourlyRate || "50");
+      const halfDayRate = parseFloat(pricingDefaults?.halfDayRate || "175");
+      const fullDayRate = parseFloat(pricingDefaults?.fullDayRate || "300");
+      let amount = "0";
+      if (durationType === "full_day") amount = String(fullDayRate);
+      else if (durationType === "half_day") amount = String(halfDayRate);
+      else amount = String(Math.round(hourlyRate * durationHours * 100) / 100);
+
       const booking = await storage.createBooking({
         userId: ownerUserId,
         venueId: resolvedVenueIds[0],
@@ -1858,7 +1891,7 @@ export function registerBookingRoutes(app: Express) {
         endTime,
         durationType,
         pricingTier: "full_price",
-        amount: "0",
+        amount,
         bookerId: contactId,
         bookerGroupId,
         bookingSummary: String(bookingSummary).trim(),

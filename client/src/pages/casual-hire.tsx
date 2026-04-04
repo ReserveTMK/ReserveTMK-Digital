@@ -8,9 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Skeleton } from "@/components/ui/skeleton";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Loader2,
   Check,
@@ -23,16 +21,15 @@ import {
   Mail,
   Phone,
   Building2,
-  Info,
   Users,
+  DollarSign,
+  ArrowRight,
 } from "lucide-react";
 
-const CLASSIFICATIONS = ["Meeting", "Workshop", "Rangatahi / Youth Workshop"];
-
 const PRESET_SLOTS = [
-  { label: "Morning (8am-12pm)", start: "08:00", end: "12:00" },
-  { label: "Afternoon (1pm-5pm)", start: "13:00", end: "17:00" },
-  { label: "Full Day (8am-5pm)", start: "08:00", end: "17:00" },
+  { label: "Morning", sublabel: "8am - 12pm", start: "08:00", end: "12:00", duration: "half_day" },
+  { label: "Afternoon", sublabel: "1pm - 5pm", start: "13:00", end: "17:00", duration: "half_day" },
+  { label: "Full Day", sublabel: "8am - 5pm", start: "08:00", end: "17:00", duration: "full_day" },
 ];
 
 function getMonthDays(year: number, month: number) {
@@ -69,60 +66,34 @@ function parseTimeToMinutes(timeStr: string): number {
   return parseInt(parts[0]) * 60 + parseInt(parts[1] || "0");
 }
 
-type Step = "contact" | "booking" | "confirmed";
+type Step = "space" | "datetime" | "details" | "review" | "confirmed";
 
 export default function CasualHirePage() {
-  const [step, setStep] = useState<Step>("contact");
+  const [step, setStep] = useState<Step>("space");
 
+  // Space selection
+  const [selectedVenues, setSelectedVenues] = useState<number[]>([]);
+  const [spaceSelection, setSpaceSelection] = useState<"single" | "both">("single");
+
+  // Date/time
+  const now = new Date();
+  const [currentYear, setCurrentYear] = useState(now.getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(now.getMonth());
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<string>("");
+  const [customStart, setCustomStart] = useState("09:00");
+  const [customEnd, setCustomEnd] = useState("12:00");
+
+  // Contact details
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [organisation, setOrganisation] = useState("");
-  const [invoiceEmail, setInvoiceEmail] = useState("");
-  const [showInvoiceEmail, setShowInvoiceEmail] = useState(false);
-
-  const now = new Date();
-  const [currentYear, setCurrentYear] = useState(now.getFullYear());
-  const [currentMonth, setCurrentMonth] = useState(now.getMonth());
-  const [selectedVenues, setSelectedVenues] = useState<number[]>([]);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [presetSlot, setPresetSlot] = useState<string>("");
-  const [customStart, setCustomStart] = useState("09:00");
-  const [customEnd, setCustomEnd] = useState("12:00");
-  const [classification, setClassification] = useState("");
-  const [bookingSummary, setBookingSummary] = useState("");
+  const [bookingPurpose, setBookingPurpose] = useState("");
+  const [specialRequirements, setSpecialRequirements] = useState("");
   const [attendeeCount, setAttendeeCount] = useState("");
-  const [bookingSummaryError, setBookingSummaryError] = useState(false);
 
-  // Venue grouping state
-  const [lockedSpaceType, setLockedSpaceType] = useState<string | null>(null);
-
-  // Studio check step state
-  type StudioStep = "idle" | "questions-new" | "questions-returning" | "done";
-  const [studioStep, setStudioStep] = useState<StudioStep>("idle");
-
-  // New-booker studio kaupapa questions
-  const [studioPodName, setStudioPodName] = useState("");
-  const [studioIG, setStudioIG] = useState("");
-  const [studioYT, setStudioYT] = useState("");
-  const [studioNewHost, setStudioNewHost] = useState("");
-  const [studioAbout, setStudioAbout] = useState("");
-  const [studioWhy, setStudioWhy] = useState("");
-  const [studioGoals, setStudioGoals] = useState("");
-
-  // Returning-booker studio check-in questions
-  const [studioLastRating, setStudioLastRating] = useState<number>(3);
-  const [studioEpisodeStatus, setStudioEpisodeStatus] = useState<string>("");
-  const [studioThisSession, setStudioThisSession] = useState("");
-  const [studioHost, setStudioHost] = useState("");
-  const [studioGuest1, setStudioGuest1] = useState("");
-  const [studioGuest2, setStudioGuest2] = useState("");
-  const [studioEditor, setStudioEditor] = useState("");
-
-  // Studio answers compiled into notes + isFirstBooking flag
-  const [studioNotes, setStudioNotes] = useState("");
-  const [studioIsFirstBooking, setStudioIsFirstBooking] = useState(false);
-
+  // Queries
   const { data: venues, isLoading: venuesLoading } = useQuery<any[]>({
     queryKey: ["/api/public/casual-hire/venues"],
     queryFn: async () => {
@@ -141,8 +112,17 @@ export default function CasualHirePage() {
     },
   });
 
+  const { data: pricing } = useQuery<{ hourlyRate: string; halfDayRate: string; fullDayRate: string; communityDiscount: number }>({
+    queryKey: ["/api/public/casual-hire/pricing"],
+    queryFn: async () => {
+      const res = await fetch("/api/public/casual-hire/pricing");
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+  });
+
   const monthStr = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}`;
-  const venueIds = useMemo(() => (venues || []).map((v: any) => v.id as number), [venues]);
+  const venueIds = useMemo(() => selectedVenues, [selectedVenues]);
 
   const { data: allVenueAvailability, isLoading: availLoading } = useQuery<Record<number, { dates: Record<string, { status: string; bookings: any[] }> }>>({
     queryKey: ["/api/public/casual-hire/availability", monthStr, venueIds],
@@ -150,13 +130,11 @@ export default function CasualHirePage() {
       const results: Record<number, { dates: Record<string, { status: string; bookings: any[] }> }> = {};
       await Promise.all(venueIds.map(async (vid) => {
         const res = await fetch(`/api/public/casual-hire/availability?venueId=${vid}&month=${monthStr}`);
-        if (res.ok) {
-          results[vid] = await res.json();
-        }
+        if (res.ok) results[vid] = await res.json();
       }));
       return results;
     },
-    enabled: venueIds.length > 0 && step === "booking",
+    enabled: venueIds.length > 0 && step === "datetime",
   });
 
   const mergedAvailability = useMemo(() => {
@@ -179,76 +157,17 @@ export default function CasualHirePage() {
     return merged;
   }, [allVenueAvailability]);
 
-  const { getVenueStatusForDate, getVenueBookingsForDate } = useMemo(() => ({
-    getVenueStatusForDate: (venueId: number, date: string) => {
-      return allVenueAvailability?.[venueId]?.dates?.[date]?.status || "available";
-    },
-    getVenueBookingsForDate: (venueId: number, date: string) => {
-      return allVenueAvailability?.[venueId]?.dates?.[date]?.bookings || [];
-    },
-  }), [allVenueAvailability]);
-
   const bookMutation = useMutation({
     mutationFn: async (data: any) => {
       const res = await apiRequest("POST", "/api/public/casual-hire/book", data);
       return res.json();
     },
-    onSuccess: () => {
-      setStep("confirmed");
-    },
+    onSuccess: () => setStep("confirmed"),
   });
 
-  const allSelectedAreStudio = useMemo(
-    () => selectedVenues.length > 0 && selectedVenues.every(id => venues?.find((v: any) => v.id === id)?.spaceName === "Podcast Studio"),
-    [selectedVenues, venues]
-  );
-
-  const studioCheckUserId = useMemo(() => venues && venues.length > 0 ? String((venues[0] as any).userId || "") : "", [venues]);
-
-  const { data: studioBookerCheck } = useQuery<{ isReturning: boolean; bookingCount: number }>({
-    queryKey: ["/api/public/spaces/check-studio-booker", email, studioCheckUserId],
-    queryFn: async () => {
-      const params = new URLSearchParams({ email: email.trim(), userId: studioCheckUserId });
-      const res = await fetch(`/api/public/spaces/check-studio-booker?${params}`);
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
-    },
-    enabled: allSelectedAreStudio && !!email.trim() && !!studioCheckUserId && studioStep === "idle",
-    staleTime: 60_000,
-  });
-
-  useEffect(() => {
-    if (!allSelectedAreStudio) {
-      setStudioStep("idle");
-      setStudioNotes("");
-      setStudioIsFirstBooking(false);
-      setStudioPodName("");
-      setStudioIG("");
-      setStudioYT("");
-      setStudioNewHost("");
-      setStudioAbout("");
-      setStudioWhy("");
-      setStudioGoals("");
-      setStudioLastRating(3);
-      setStudioEpisodeStatus("");
-      setStudioThisSession("");
-      setStudioHost("");
-      setStudioGuest1("");
-      setStudioGuest2("");
-      setStudioEditor("");
-      return;
-    }
-    if (!studioBookerCheck || studioStep !== "idle") return;
-    if (studioBookerCheck.isReturning) {
-      setStudioStep("questions-returning");
-    } else {
-      setStudioStep("questions-new");
-    }
-  }, [allSelectedAreStudio, studioBookerCheck]);
-
+  // Computed
   const days = useMemo(() => getMonthDays(currentYear, currentMonth), [currentYear, currentMonth]);
   const monthName = new Date(currentYear, currentMonth).toLocaleDateString("en-NZ", { month: "long", year: "numeric" });
-
   const maxAdvanceMonths = 3;
   const maxBookingDate = useMemo(() => {
     const d = new Date();
@@ -257,42 +176,39 @@ export default function CasualHirePage() {
     return d;
   }, []);
 
-  const prevMonth = () => {
-    if (currentMonth === 0) { setCurrentMonth(11); setCurrentYear(currentYear - 1); }
-    else setCurrentMonth(currentMonth - 1);
-    setSelectedDate(null);
-    setSelectedVenues([]);
-  };
-  const nextMonth = () => {
-    if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear(currentYear + 1); }
-    else setCurrentMonth(currentMonth + 1);
-    setSelectedDate(null);
-    setSelectedVenues([]);
+  const startTime = selectedSlot && selectedSlot !== "custom"
+    ? PRESET_SLOTS.find(s => s.label === selectedSlot)?.start || customStart
+    : customStart;
+  const endTime = selectedSlot && selectedSlot !== "custom"
+    ? PRESET_SLOTS.find(s => s.label === selectedSlot)?.end || customEnd
+    : customEnd;
+
+  const startMin = parseTimeToMinutes(startTime);
+  const endMin = parseTimeToMinutes(endTime);
+  const durationHours = Math.max(0, (endMin - startMin) / 60);
+
+  const getDurationType = () => {
+    if (durationHours >= 8) return "full_day";
+    if (durationHours >= 4) return "half_day";
+    return "hourly";
   };
 
-  const startTime = presetSlot ? PRESET_SLOTS.find(s => s.label === presetSlot)?.start || customStart : customStart;
-  const endTime = presetSlot ? PRESET_SLOTS.find(s => s.label === presetSlot)?.end || customEnd : customEnd;
-
-  const toggleVenue = (venueId: number) => {
-    const venue = venues?.find((v: any) => v.id === venueId);
-    const venueSN = venue?.spaceName || null;
-    setSelectedVenues(prev => {
-      if (prev.includes(venueId)) {
-        const next = prev.filter(id => id !== venueId);
-        if (next.length === 0) setLockedSpaceType(null);
-        else {
-          const types = new Set(next.map(id => venues?.find((v: any) => v.id === id)?.spaceName).filter(Boolean));
-          setLockedSpaceType(types.size === 1 ? [...types][0] as string : null);
-        }
-        return next;
-      } else {
-        if (lockedSpaceType && venueSN && venueSN !== lockedSpaceType) return prev;
-        const next = [...prev, venueId];
-        if (!lockedSpaceType && venueSN) setLockedSpaceType(venueSN);
-        return next;
-      }
-    });
+  const getPrice = () => {
+    if (!pricing) return 0;
+    const dt = getDurationType();
+    if (dt === "full_day") return parseFloat(pricing.fullDayRate);
+    if (dt === "half_day") return parseFloat(pricing.halfDayRate);
+    return parseFloat(pricing.hourlyRate) * durationHours;
   };
+
+  const estimatedPrice = getPrice();
+  const gstAmount = estimatedPrice * 0.15;
+  const totalInclGst = estimatedPrice + gstAmount;
+
+  const selectedVenueNames = useMemo(() => {
+    if (!venues) return [];
+    return selectedVenues.map(id => venues.find((v: any) => v.id === id)?.name).filter(Boolean);
+  }, [venues, selectedVenues]);
 
   const getDateColorClass = (status: string) => {
     switch (status) {
@@ -303,27 +219,34 @@ export default function CasualHirePage() {
     }
   };
 
-  const getVenueStatusBadge = (status: string) => {
-    switch (status) {
-      case "available": return <Badge variant="secondary" className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 text-xs">Available</Badge>;
-      case "booked": return <Badge variant="secondary" className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 text-xs">Fully Booked</Badge>;
-      case "partial": return <Badge variant="secondary" className="bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300 text-xs">Partial</Badge>;
-      default: return <Badge variant="secondary" className="text-xs">Available</Badge>;
-    }
+  const prevMonth = () => {
+    if (currentMonth === 0) { setCurrentMonth(11); setCurrentYear(currentYear - 1); }
+    else setCurrentMonth(currentMonth - 1);
+    setSelectedDate(null);
+  };
+  const nextMonth = () => {
+    if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear(currentYear + 1); }
+    else setCurrentMonth(currentMonth + 1);
+    setSelectedDate(null);
   };
 
-  const handleContactNext = () => {
-    if (!name.trim() || !email.trim() || !phone.trim()) return;
-    setStep("booking");
+  const handleSpaceNext = () => {
+    if (selectedVenues.length === 0) return;
+    setStep("datetime");
   };
 
-  const handleSubmitBooking = () => {
-    if (!selectedDate || selectedVenues.length === 0 || !classification) return;
-    if (!bookingSummary.trim()) {
-      setBookingSummaryError(true);
-      return;
-    }
-    setBookingSummaryError(false);
+  const handleDateTimeNext = () => {
+    if (!selectedDate || !selectedSlot) return;
+    if (selectedSlot === "custom" && endMin <= startMin) return;
+    setStep("details");
+  };
+
+  const handleDetailsNext = () => {
+    if (!name.trim() || !email.trim() || !phone.trim() || !bookingPurpose.trim()) return;
+    setStep("review");
+  };
+
+  const handleSubmit = () => {
     bookMutation.mutate({
       name: name.trim(),
       email: email.trim(),
@@ -334,19 +257,38 @@ export default function CasualHirePage() {
       startDate: selectedDate,
       startTime,
       endTime,
-      classification,
-      bookingSummary: bookingSummary.trim(),
+      classification: "Venue Hire",
+      bookingSummary: bookingPurpose.trim(),
       attendeeCount: attendeeCount ? parseInt(attendeeCount) : undefined,
-      invoiceEmail: showInvoiceEmail && invoiceEmail.trim() ? invoiceEmail.trim() : undefined,
-      notes: studioNotes || undefined,
-      isFirstBooking: studioIsFirstBooking,
+      notes: specialRequirements.trim() || undefined,
     });
   };
 
-  const startMin = parseTimeToMinutes(startTime);
-  const endMin = parseTimeToMinutes(endTime);
-  const durationHours = (endMin - startMin) / 60;
+  const resetForm = () => {
+    setStep("space");
+    setSelectedVenues([]);
+    setSpaceSelection("single");
+    setSelectedDate(null);
+    setSelectedSlot("");
+    setName("");
+    setEmail("");
+    setPhone("");
+    setOrganisation("");
+    setBookingPurpose("");
+    setSpecialRequirements("");
+    setAttendeeCount("");
+  };
 
+  // Step indicator
+  const steps: { key: Step; label: string }[] = [
+    { key: "space", label: "Space" },
+    { key: "datetime", label: "Date & Time" },
+    { key: "details", label: "Details" },
+    { key: "review", label: "Review" },
+  ];
+  const stepIndex = steps.findIndex(s => s.key === step);
+
+  // ─── CONFIRMED ───
   if (step === "confirmed") {
     return (
       <div className="min-h-screen bg-gradient-to-b from-background to-muted/30 flex items-center justify-center p-4">
@@ -356,738 +298,585 @@ export default function CasualHirePage() {
               <Check className="w-7 h-7 text-green-600" />
             </div>
           </div>
-          <h2 className="text-xl font-bold mb-2" data-testid="heading-casual-confirmed">Venue Hire Enquiry Submitted</h2>
-          <p className="text-sm text-muted-foreground mb-4" data-testid="text-casual-confirmed">
-            Thanks {name.split(" ")[0]}! Your venue hire enquiry has been submitted. The {orgInfo?.name || "ReserveTMK"} team will review your request and get back to you at {email}.
+          <h2 className="text-xl font-bold mb-2">Enquiry Submitted</h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            Thanks {name.split(" ")[0]}! We'll review your request and get back to you at {email} within 24 hours.
           </p>
           <div className="bg-muted/50 rounded-lg p-4 space-y-2 text-sm text-left mb-4">
-            <div className="flex justify-between gap-2 flex-wrap">
-              <span className="text-muted-foreground">Date</span>
-              <span className="font-medium">{selectedDate ? new Date(selectedDate + "T00:00").toLocaleDateString("en-NZ", { weekday: "long", day: "numeric", month: "long" }) : ""}</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-muted-foreground">Space</span>
+              <span className="font-medium">{selectedVenueNames.join(" + ") || "Selected space"}</span>
             </div>
-            <div className="flex justify-between gap-2 flex-wrap">
+            <div className="flex justify-between gap-2">
+              <span className="text-muted-foreground">Date</span>
+              <span className="font-medium">
+                {selectedDate ? new Date(selectedDate + "T00:00").toLocaleDateString("en-NZ", { weekday: "long", day: "numeric", month: "long" }) : ""}
+              </span>
+            </div>
+            <div className="flex justify-between gap-2">
               <span className="text-muted-foreground">Time</span>
               <span className="font-medium">{formatTimeSlot(startTime)} - {formatTimeSlot(endTime)}</span>
             </div>
-            {selectedVenues.length > 0 && venues && (
-              <div className="flex justify-between gap-2 flex-wrap">
-                <span className="text-muted-foreground">Venue{selectedVenues.length > 1 ? "s" : ""}</span>
-                <span className="font-medium">{selectedVenues.map(id => venues.find((v: any) => v.id === id)?.name).filter(Boolean).join(", ")}</span>
-              </div>
-            )}
-            <div className="flex justify-between gap-2 flex-wrap">
-              <span className="text-muted-foreground">Type</span>
-              <span className="font-medium">{classification}</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-muted-foreground">Estimated cost</span>
+              <span className="font-medium">${totalInclGst.toFixed(2)} incl. GST</span>
             </div>
           </div>
-          <Button
-            className="w-full"
-            onClick={() => {
-              setStep("contact");
-              setName("");
-              setEmail("");
-              setPhone("");
-              setOrganisation("");
-              setSelectedDate(null);
-              setSelectedVenues([]);
-              setPresetSlot("");
-              setClassification("");
-              setBookingSummary("");
-              setAttendeeCount("");
-              setStudioStep("idle");
-              setStudioNotes("");
-              setStudioIsFirstBooking(false);
-              setLockedSpaceType(null);
-            }}
-            data-testid="button-new-enquiry"
-          >
-            Submit Another Enquiry
-          </Button>
+          <Button className="w-full" onClick={resetForm}>Submit Another Enquiry</Button>
         </Card>
-      </div>
-    );
-  }
-
-  if (step === "contact") {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-background to-muted/30">
-        <div className="max-w-lg mx-auto p-4 sm:p-6 space-y-6">
-          <div className="text-center space-y-2 pt-4">
-            <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase" data-testid="text-casual-brand">
-              {orgInfo?.name || "ReserveTMK Digital"}
-            </p>
-            <h1 className="text-2xl font-bold" data-testid="heading-casual-hire">Venue Hire Enquiry</h1>
-            <p className="text-sm text-muted-foreground" data-testid="text-casual-subtitle">
-              Looking to hire a space? Fill in your details and check availability.
-            </p>
-          </div>
-
-          <Card className="p-5 space-y-4">
-            <div className="space-y-1">
-              <Label htmlFor="casual-name" className="text-sm flex items-center gap-2">
-                <User className="w-4 h-4 text-muted-foreground" />
-                Your Name <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="casual-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Full name"
-                data-testid="input-casual-name"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label htmlFor="casual-email" className="text-sm flex items-center gap-2">
-                <Mail className="w-4 h-4 text-muted-foreground" />
-                Email <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="casual-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="your@email.com"
-                data-testid="input-casual-email"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <button
-                type="button"
-                className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                onClick={() => { setShowInvoiceEmail(!showInvoiceEmail); if (!showInvoiceEmail) setInvoiceEmail(""); }}
-                data-testid="button-toggle-invoice-email"
-              >
-                <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${showInvoiceEmail ? "bg-primary border-primary" : "border-border"}`}>
-                  {showInvoiceEmail && <span className="text-primary-foreground text-[9px] font-bold">✓</span>}
-                </span>
-                Send invoice to a different email?
-              </button>
-              {showInvoiceEmail && (
-                <div className="space-y-1">
-                  <Label htmlFor="casual-invoice-email" className="text-sm flex items-center gap-2">
-                    <Mail className="w-4 h-4 text-muted-foreground" />
-                    Invoice email
-                  </Label>
-                  <Input
-                    id="casual-invoice-email"
-                    type="email"
-                    value={invoiceEmail}
-                    onChange={(e) => setInvoiceEmail(e.target.value)}
-                    placeholder="invoices@yourorg.com"
-                    data-testid="input-casual-invoice-email"
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-1">
-              <Label htmlFor="casual-phone" className="text-sm flex items-center gap-2">
-                <Phone className="w-4 h-4 text-muted-foreground" />
-                Phone <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="casual-phone"
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="021 123 4567"
-                data-testid="input-casual-phone"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label htmlFor="casual-org" className="text-sm flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-muted-foreground" />
-                Organisation <span className="text-muted-foreground text-xs">(optional)</span>
-              </Label>
-              <Input
-                id="casual-org"
-                value={organisation}
-                onChange={(e) => setOrganisation(e.target.value)}
-                placeholder="Company or group name"
-                data-testid="input-casual-org"
-              />
-            </div>
-
-            <Button
-              className="w-full"
-              disabled={!name.trim() || !email.trim() || !phone.trim()}
-              onClick={handleContactNext}
-              data-testid="button-casual-next"
-            >
-              <CalendarDays className="w-4 h-4 mr-2" />
-              Check Availability
-            </Button>
-          </Card>
-
-          {orgInfo?.location && (
-            <Card className="p-4 border-primary/10">
-              <div className="flex items-start gap-3">
-                <MapPin className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium" data-testid="text-casual-location">{orgInfo.location}</p>
-                </div>
-              </div>
-            </Card>
-          )}
-        </div>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/30">
-      <div className="max-w-4xl mx-auto p-4 sm:p-6">
-        <div className="flex items-center gap-2 mb-2 flex-wrap">
-          <Button variant="ghost" size="icon" onClick={() => setStep("contact")} data-testid="button-casual-back">
-            <ChevronLeft className="w-4 h-4" />
-          </Button>
-          <div>
-            <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase" data-testid="text-casual-brand-booking">
-              {orgInfo?.name || "ReserveTMK Digital"}
-            </p>
-            <h1 className="text-xl font-bold" data-testid="heading-casual-booking">Select Date & Venue</h1>
-          </div>
+      <div className="max-w-xl mx-auto p-4 sm:p-6 space-y-6">
+        {/* Header */}
+        <div className="text-center space-y-2 pt-4">
+          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+            {orgInfo?.name || "Reserve Tamaki"}
+          </p>
+          <h1 className="text-2xl font-bold">Book a Space</h1>
+          <p className="text-sm text-muted-foreground">
+            Pick a space, pick a time, we'll sort the rest.
+          </p>
         </div>
 
-        <Card className="p-3 mb-4 border-primary/10 bg-primary/5">
-          <div className="flex items-center gap-3 flex-wrap text-sm">
-            <User className="w-4 h-4 text-primary shrink-0" />
-            <span className="font-medium" data-testid="text-casual-booker-info">{name}</span>
-            <span className="text-muted-foreground">{email}</span>
-            <Button variant="ghost" size="sm" onClick={() => setStep("contact")} className="text-xs ml-auto" data-testid="button-edit-contact">
-              Edit
-            </Button>
-          </div>
-        </Card>
-
-        <div className="flex flex-col lg:flex-row gap-4">
-          <Card className="flex-1 p-4">
-            <div className="flex items-center justify-between gap-2 mb-4">
-              <Button variant="ghost" size="icon" onClick={prevMonth} data-testid="button-casual-prev-month">
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
-              <h2 className="font-semibold" data-testid="text-casual-month">{monthName}</h2>
-              <Button variant="ghost" size="icon" onClick={nextMonth} data-testid="button-casual-next-month">
-                <ChevronRight className="w-4 h-4" />
-              </Button>
+        {/* Step indicator */}
+        <div className="flex items-center justify-center gap-2">
+          {steps.map((s, i) => (
+            <div key={s.key} className="flex items-center gap-2">
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium transition-colors ${
+                i < stepIndex ? "bg-primary text-primary-foreground" :
+                i === stepIndex ? "bg-primary text-primary-foreground" :
+                "bg-muted text-muted-foreground"
+              }`}>
+                {i < stepIndex ? <Check className="w-3.5 h-3.5" /> : i + 1}
+              </div>
+              {i < steps.length - 1 && (
+                <div className={`w-8 h-0.5 ${i < stepIndex ? "bg-primary" : "bg-muted"}`} />
+              )}
             </div>
+          ))}
+        </div>
 
-            <div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-muted-foreground mb-1">
-              {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(d => (
-                <div key={d}>{d}</div>
-              ))}
-            </div>
+        {/* ─── STEP 1: SPACE ─── */}
+        {step === "space" && (
+          <Card className="p-5 space-y-4">
+            <h2 className="font-semibold">Which space do you need?</h2>
 
-            {(availLoading || venuesLoading) ? (
-              <div className="flex items-center justify-center py-16">
+            {venuesLoading ? (
+              <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
               </div>
-            ) : (
-              <div className="grid grid-cols-7 gap-1">
-                {days.map((cell, i) => {
-                  const status = cell.inMonth ? mergedAvailability?.[cell.date]?.status || "available" : "";
-                  const isPast = cell.inMonth && new Date(cell.date + "T23:59:59") < new Date();
-                  const isBeyondMax = cell.inMonth && new Date(cell.date + "T00:00:00") > maxBookingDate;
-                  const isClickable = cell.inMonth && !isPast && !isBeyondMax && status !== "booked";
-                  const isSelected = cell.date === selectedDate;
-
-                  return (
-                    <button
-                      key={i}
-                      disabled={!isClickable}
-                      onClick={() => isClickable ? (() => { setSelectedDate(cell.date); setSelectedVenues([]); })() : undefined}
-                      className={`
-                        aspect-square flex items-center justify-center text-sm rounded-md transition-colors
-                        ${!cell.inMonth ? "text-muted-foreground/30" : ""}
-                        ${(isPast || isBeyondMax) && cell.inMonth ? "text-muted-foreground/40" : ""}
-                        ${cell.inMonth && !isPast && !isBeyondMax ? getDateColorClass(status) : ""}
-                        ${isSelected ? "ring-2 ring-primary ring-offset-1" : ""}
-                        ${isClickable ? "cursor-pointer" : "cursor-default"}
-                      `}
-                      data-testid={`casual-day-${cell.date}`}
-                    >
-                      {cell.day}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            <div className="flex items-center gap-3 mt-4 flex-wrap text-xs">
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded-sm bg-green-200 dark:bg-green-900/50" />
-                <span className="text-muted-foreground">Available</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded-sm bg-orange-200 dark:bg-orange-900/50" />
-                <span className="text-muted-foreground">Partial</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded-sm bg-red-200 dark:bg-red-900/50" />
-                <span className="text-muted-foreground">Booked</span>
-              </div>
-            </div>
-          </Card>
-
-          <Card className="w-full lg:w-80 p-4 space-y-4" data-testid="panel-casual-booking-form">
-            {!selectedDate ? (
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <CalendarDays className="w-8 h-8 text-muted-foreground/50 mb-2" />
-                <p className="text-sm text-muted-foreground">Select a date on the calendar to get started</p>
-              </div>
+            ) : !venues || venues.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4">No spaces are currently available for casual hire.</p>
             ) : (
               <>
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="font-semibold text-sm" data-testid="heading-casual-selected-date">
-                    {new Date(selectedDate + "T00:00").toLocaleDateString("en-NZ", { weekday: "long", day: "numeric", month: "long", timeZone: "Pacific/Auckland" })}
-                  </h3>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-xs">Select Venue{(venues?.length || 0) > 1 ? "s" : ""}</Label>
-                  <div className="space-y-1">
-                    {(() => {
-                      const officeVenues = (venues || []).filter((v: any) => v.spaceName === "ReserveTMK Office");
-                      const studioVenues = (venues || []).filter((v: any) => v.spaceName === "Podcast Studio");
-                      const otherVenues = (venues || []).filter((v: any) => v.spaceName !== "ReserveTMK Office" && v.spaceName !== "Podcast Studio");
-
-                      const renderVenueBtn = (v: any) => {
-                        const venueStatus = getVenueStatusForDate(v.id, selectedDate!);
-                        const isBooked = venueStatus === "booked";
-                        const isChecked = selectedVenues.includes(v.id);
-                        const isGroupLocked = !isChecked && !!lockedSpaceType && v.spaceName !== lockedSpaceType;
-                        const venueBookings = getVenueBookingsForDate(v.id, selectedDate!);
-                        return (
-                          <button
-                            key={v.id}
-                            disabled={isBooked || isGroupLocked}
-                            onClick={() => !isBooked && !isGroupLocked && toggleVenue(v.id)}
-                            className={`w-full text-left text-sm px-3 py-2 rounded-md border transition-colors ${
-                              isChecked
-                                ? "border-primary bg-primary/5"
-                                : isBooked || isGroupLocked
-                                  ? "border-border opacity-40 cursor-not-allowed"
-                                  : "border-border hover:border-primary/50"
-                            }`}
-                            data-testid={`casual-venue-${v.id}`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-2">
-                                <Checkbox
-                                  checked={isChecked}
-                                  disabled={isBooked || isGroupLocked}
-                                  className="pointer-events-none"
-                                  data-testid={`casual-checkbox-venue-${v.id}`}
-                                />
-                                <div>
-                                  <span className={(isBooked || isGroupLocked) ? "text-muted-foreground" : ""}>{v.name}</span>
-                                  {v.capacity && (
-                                    <span className="text-xs text-muted-foreground ml-2">
-                                      <Users className="w-3 h-3 inline mr-0.5" />
-                                      {v.capacity}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              {getVenueStatusBadge(venueStatus)}
-                            </div>
-                            {venueBookings.length > 0 && (
-                              <div className="ml-6 mt-1 space-y-0.5">
-                                {venueBookings.map((b: any, idx: number) => (
-                                  <div key={idx} className="text-xs text-muted-foreground">
-                                    {b.startTime && b.endTime ? `${formatTimeSlot(b.startTime)} - ${formatTimeSlot(b.endTime)}` : "All day"}: Booked
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </button>
-                        );
-                      };
-
-                      return (
-                        <>
-                          {officeVenues.length > 0 && (
-                            <>
-                              <p className="text-xs font-medium text-muted-foreground px-1 pt-1">🏢 Office Spaces</p>
-                              {officeVenues.map(renderVenueBtn)}
-                            </>
-                          )}
-                          {studioVenues.length > 0 && (
-                            <>
-                              <p className="text-xs font-medium text-muted-foreground px-1 pt-2">🎙 Podcast Studio</p>
-                              {studioVenues.map(renderVenueBtn)}
-                            </>
-                          )}
-                          {otherVenues.length > 0 && otherVenues.map(renderVenueBtn)}
-                          {lockedSpaceType && selectedVenues.length > 0 && (
-                            <p className="text-xs text-muted-foreground px-1 pt-1 italic">Locations cannot be mixed in one booking</p>
-                          )}
-                        </>
-                      );
-                    })()}
-                  </div>
-                </div>
-
-                {selectedVenues.length > 0 && (
-                  <>
-                    {/* Studio check-in step */}
-                    {allSelectedAreStudio && studioStep === "idle" && !!studioCheckUserId && (
-                      <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        Checking studio history...
-                      </div>
-                    )}
-
-                    {allSelectedAreStudio && studioStep === "questions-new" && (
-                      <div className="space-y-3 border border-border rounded-lg p-3">
-                        <div className="flex items-center gap-2">
-                          <span className="text-base">🎙</span>
-                          <p className="text-sm font-medium">Tell us about your podcast</p>
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label className="text-xs">Does your podcast have a name? <span className="text-muted-foreground">(optional)</span></Label>
-                          <Input
-                            value={studioPodName}
-                            onChange={(e) => setStudioPodName(e.target.value)}
-                            placeholder="Podcast name"
-                            data-testid="input-studio-pod-name"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label className="text-xs">Socials <span className="text-muted-foreground">(optional)</span></Label>
-                          <div className="grid grid-cols-2 gap-2">
-                            <Input
-                              value={studioIG}
-                              onChange={(e) => setStudioIG(e.target.value)}
-                              placeholder="Instagram @handle"
-                              data-testid="input-studio-ig"
-                            />
-                            <Input
-                              value={studioYT}
-                              onChange={(e) => setStudioYT(e.target.value)}
-                              placeholder="YouTube channel"
-                              data-testid="input-studio-yt"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label className="text-xs">Name of host <span className="text-red-500">*</span></Label>
-                          <Input
-                            value={studioNewHost}
-                            onChange={(e) => setStudioNewHost(e.target.value)}
-                            placeholder="Your name"
-                            data-testid="input-studio-new-host"
-                          />
-                        </div>
-
-                        <div className="border-t border-border pt-3 space-y-1">
-                          <Label className="text-xs font-medium">Your kaupapa</Label>
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label className="text-xs">What's your podcast about? <span className="text-red-500">*</span></Label>
-                          <Textarea
-                            value={studioAbout}
-                            onChange={(e) => setStudioAbout(e.target.value)}
-                            rows={2}
-                            placeholder="Topic, theme, what you're exploring..."
-                            data-testid="input-studio-about"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label className="text-xs">Why do you want to do this? <span className="text-red-500">*</span></Label>
-                          <Textarea
-                            value={studioWhy}
-                            onChange={(e) => setStudioWhy(e.target.value)}
-                            rows={2}
-                            placeholder="What's driving you to create this?"
-                            data-testid="input-studio-why"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label className="text-xs">Where do you want to take it? <span className="text-red-500">*</span></Label>
-                          <Textarea
-                            value={studioGoals}
-                            onChange={(e) => setStudioGoals(e.target.value)}
-                            rows={2}
-                            placeholder="Goals, vision, who's the audience..."
-                            data-testid="input-studio-goals"
-                          />
-                        </div>
-
-                        <Button
-                          className="w-full"
-                          size="sm"
-                          disabled={!studioNewHost.trim() || !studioAbout.trim() || !studioWhy.trim() || !studioGoals.trim()}
-                          onClick={() => {
-                            const lines = [
-                              "[Studio Session — New Booker Kaupapa]",
-                              studioPodName.trim() ? `Podcast name: ${studioPodName.trim()}` : null,
-                              studioIG.trim() ? `Instagram: ${studioIG.trim()}` : null,
-                              studioYT.trim() ? `YouTube: ${studioYT.trim()}` : null,
-                              `Host: ${studioNewHost.trim()}`,
-                              `What it's about: ${studioAbout.trim()}`,
-                              `Why: ${studioWhy.trim()}`,
-                              `Where they want to take it: ${studioGoals.trim()}`,
-                            ].filter(Boolean).join("\n");
-                            setStudioNotes(lines);
-                            setStudioIsFirstBooking(true);
-                            setStudioStep("done");
-                          }}
-                          data-testid="button-studio-new-continue"
-                        >
-                          Continue to Date &amp; Time
-                        </Button>
-                      </div>
-                    )}
-
-                    {allSelectedAreStudio && studioStep === "questions-returning" && (
-                      <div className="space-y-3 border border-border rounded-lg p-3">
-                        <div className="flex items-center gap-2">
-                          <span className="text-base">🎙</span>
-                          <p className="text-sm font-medium">Welcome back — quick check-in</p>
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <Label className="text-xs">How did your last booking go? <span className="text-red-500">*</span></Label>
-                          <div className="flex items-center gap-3">
-                            <input
-                              type="range"
-                              min={1}
-                              max={5}
-                              value={studioLastRating}
-                              onChange={(e) => setStudioLastRating(parseInt(e.target.value))}
-                              className="flex-1 accent-primary"
-                              data-testid="input-studio-last-rating"
-                            />
-                            <span className="text-sm font-medium w-16 text-center">
-                              {["", "Rough", "OK", "Good", "Great", "Amazing"][studioLastRating]}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label className="text-xs">Where did you get with last episode? <span className="text-red-500">*</span></Label>
-                          <div className="flex gap-2 flex-wrap">
-                            {["N/A", "Recorded", "Editing", "Posted"].map(opt => (
-                              <button
-                                key={opt}
-                                type="button"
-                                onClick={() => setStudioEpisodeStatus(opt)}
-                                className={`text-sm px-3 py-1.5 rounded-md border transition-colors ${studioEpisodeStatus === opt ? "border-primary bg-primary/5" : "border-border"}`}
-                                data-testid={`button-episode-status-${opt.toLowerCase()}`}
-                              >{opt}</button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="border-t border-border pt-3 space-y-1">
-                          <Label className="text-xs">What's the plan for this session? <span className="text-red-500">*</span></Label>
-                          <Textarea
-                            value={studioThisSession}
-                            onChange={(e) => setStudioThisSession(e.target.value)}
-                            rows={2}
-                            placeholder="What you're recording or working on today..."
-                            data-testid="input-studio-this-session"
-                          />
-                        </div>
-
-                        <div className="border-t border-border pt-3 space-y-2">
-                          <Label className="text-xs font-medium">Who's in the studio this session?</Label>
-
-                          <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">Host <span className="text-red-500">*</span></Label>
-                            <Input
-                              value={studioHost}
-                              onChange={(e) => setStudioHost(e.target.value)}
-                              placeholder="Host name"
-                              data-testid="input-studio-host"
-                            />
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="space-y-1">
-                              <Label className="text-xs text-muted-foreground">Guest 1 <span className="text-muted-foreground">(optional)</span></Label>
-                              <Input
-                                value={studioGuest1}
-                                onChange={(e) => setStudioGuest1(e.target.value)}
-                                placeholder="Guest name"
-                                data-testid="input-studio-guest1"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-xs text-muted-foreground">Guest 2 <span className="text-muted-foreground">(optional)</span></Label>
-                              <Input
-                                value={studioGuest2}
-                                onChange={(e) => setStudioGuest2(e.target.value)}
-                                placeholder="Guest name"
-                                data-testid="input-studio-guest2"
-                              />
-                            </div>
-                          </div>
-
-                          <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">Live editor <span className="text-muted-foreground">(if applicable)</span></Label>
-                            <Input
-                              value={studioEditor}
-                              onChange={(e) => setStudioEditor(e.target.value)}
-                              placeholder="Editor name"
-                              data-testid="input-studio-editor"
-                            />
-                          </div>
-                        </div>
-
-                        <Button
-                          className="w-full"
-                          size="sm"
-                          disabled={!studioEpisodeStatus || !studioThisSession.trim() || !studioHost.trim()}
-                          onClick={() => {
-                            const people = [
-                              `Host: ${studioHost.trim()}`,
-                              studioGuest1.trim() ? `Guest 1: ${studioGuest1.trim()}` : null,
-                              studioGuest2.trim() ? `Guest 2: ${studioGuest2.trim()}` : null,
-                              studioEditor.trim() ? `Live editor: ${studioEditor.trim()}` : null,
-                            ].filter(Boolean).join(", ");
-                            const lines = [
-                              "[Studio Session — Returning Booker]",
-                              `Last booking: ${["", "Rough", "OK", "Good", "Great", "Amazing"][studioLastRating]} (${studioLastRating}/5)`,
-                              `Last episode: ${studioEpisodeStatus}`,
-                              `This session: ${studioThisSession.trim()}`,
-                              `People in studio: ${people}`,
-                            ].join("\n");
-                            setStudioNotes(lines);
-                            setStudioIsFirstBooking(false);
-                            setStudioStep("done");
-                          }}
-                          data-testid="button-studio-returning-continue"
-                        >
-                          Continue to Date &amp; Time
-                        </Button>
-                      </div>
-                    )}
-
-                    {(!allSelectedAreStudio || studioStep === "done") && (<>
-                    <div className="space-y-2">
-                      <Label className="text-xs">Quick Select</Label>
-                      <div className="space-y-1">
-                        {PRESET_SLOTS.map(slot => (
-                          <button
-                            key={slot.label}
-                            onClick={() => setPresetSlot(presetSlot === slot.label ? "" : slot.label)}
-                            className={`w-full text-left text-sm px-3 py-2 rounded-md border transition-colors ${
-                              presetSlot === slot.label
-                                ? "border-primary bg-primary/5"
-                                : "border-border"
-                            }`}
-                            data-testid={`casual-slot-${slot.start}-${slot.end}`}
-                          >
-                            <div className="flex items-center gap-2">
-                              <Clock className="w-3 h-3 text-muted-foreground" />
-                              {slot.label}
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {!presetSlot && (
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-1">
-                          <Label className="text-xs">Start Time</Label>
-                          <Input type="time" value={customStart} onChange={(e) => setCustomStart(e.target.value)} data-testid="input-casual-start" />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">End Time</Label>
-                          <Input type="time" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} data-testid="input-casual-end" />
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="space-y-1">
-                      <Label className="text-xs">What's the event? <span className="text-red-500">*</span></Label>
-                      <Select value={classification} onValueChange={setClassification}>
-                        <SelectTrigger data-testid="select-casual-classification">
-                          <SelectValue placeholder="Select type..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CLASSIFICATIONS.map(c => (
-                            <SelectItem key={c} value={c}>{c}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label className="text-xs">How many people? <span className="text-muted-foreground">(optional)</span></Label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={attendeeCount}
-                        onChange={(e) => setAttendeeCount(e.target.value)}
-                        placeholder="Expected attendees"
-                        data-testid="input-casual-attendees"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label className="text-xs">Tell us about your booking <span className="text-red-500">*</span></Label>
-                      <Textarea
-                        value={bookingSummary}
-                        onChange={(e) => setBookingSummary(e.target.value)}
-                        rows={3}
-                        placeholder="What's the event, any special requirements, setup needs..."
-                        data-testid="input-casual-summary"
-                        required
-                      />
-                      {bookingSummary.trim() === "" && bookingSummaryError && (
-                        <p className="text-xs text-red-500" data-testid="text-casual-summary-required">This field is required</p>
-                      )}
-                    </div>
-
-                    {durationHours > 0 && (
-                      <Card className="p-3 bg-muted/30">
-                        <div className="flex items-center gap-2 text-sm">
-                          <Info className="w-4 h-4 text-muted-foreground shrink-0" />
-                          <span className="text-muted-foreground" data-testid="text-casual-pricing-note">
-                            Pricing will be confirmed by our team after review
-                          </span>
-                        </div>
-                      </Card>
-                    )}
-
-                    <Button
-                      className="w-full"
-                      disabled={!classification || !bookingSummary.trim() || bookMutation.isPending}
-                      onClick={handleSubmitBooking}
-                      data-testid="button-casual-submit"
+                <RadioGroup
+                  value={selectedVenues.length > 1 ? "both" : selectedVenues.length === 1 ? String(selectedVenues[0]) : ""}
+                  onValueChange={(val) => {
+                    if (val === "both") {
+                      setSpaceSelection("both");
+                      setSelectedVenues(venues!.map((v: any) => v.id));
+                    } else {
+                      setSpaceSelection("single");
+                      setSelectedVenues([parseInt(val)]);
+                    }
+                  }}
+                  className="space-y-3"
+                >
+                  {venues.map((v: any) => (
+                    <label
+                      key={v.id}
+                      className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-colors ${
+                        selectedVenues.length === 1 && selectedVenues[0] === v.id
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-primary/50"
+                      }`}
                     >
-                      {bookMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CalendarDays className="w-4 h-4 mr-2" />}
-                      Submit Enquiry
-                    </Button>
-                    <p className="text-[10px] text-muted-foreground text-center">
-                      By submitting you agree to our <a href="/privacy" target="_blank" className="underline">privacy policy</a>
-                    </p>
+                      <RadioGroupItem value={String(v.id)} className="mt-0.5" />
+                      <div className="flex-1">
+                        <p className="font-medium">{v.name}</p>
+                        {v.capacity && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            <Users className="w-3 h-3 inline mr-1" />Up to {v.capacity} people
+                          </p>
+                        )}
+                        {v.description && (
+                          <p className="text-xs text-muted-foreground mt-1">{v.description}</p>
+                        )}
+                      </div>
+                    </label>
+                  ))}
 
-                    {bookMutation.isError && (
-                      <p className="text-xs text-red-500" data-testid="text-casual-booking-error">
-                        {(bookMutation.error as Error)?.message || "Failed to submit enquiry"}
-                      </p>
-                    )}
-                    </>)}
-                  </>
+                  {venues.length > 1 && (
+                    <label
+                      className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-colors ${
+                        selectedVenues.length > 1
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-primary/50"
+                      }`}
+                    >
+                      <RadioGroupItem value="both" className="mt-0.5" />
+                      <div className="flex-1">
+                        <p className="font-medium">Both spaces</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Same price as a single space</p>
+                      </div>
+                    </label>
+                  )}
+                </RadioGroup>
+
+                {/* Pricing card */}
+                {pricing && (
+                  <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                    <p className="text-sm font-medium flex items-center gap-2">
+                      <DollarSign className="w-4 h-4" />
+                      Pricing (excl. GST)
+                    </p>
+                    <div className="grid grid-cols-3 gap-2 text-sm">
+                      <div className="text-center">
+                        <p className="font-semibold">${pricing.hourlyRate}/hr</p>
+                        <p className="text-xs text-muted-foreground">Hourly</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="font-semibold">${pricing.halfDayRate}</p>
+                        <p className="text-xs text-muted-foreground">Half day (4hrs)</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="font-semibold">${pricing.fullDayRate}</p>
+                        <p className="text-xs text-muted-foreground">Full day (8hrs)</p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground text-center pt-1">
+                      Community discounts available for local groups and not-for-profits
+                    </p>
+                  </div>
                 )}
               </>
             )}
+
+            <Button
+              className="w-full"
+              disabled={selectedVenues.length === 0}
+              onClick={handleSpaceNext}
+            >
+              Next: Pick a date
+              <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
           </Card>
-        </div>
+        )}
+
+        {/* ─── STEP 2: DATE & TIME ─── */}
+        {step === "datetime" && (
+          <Card className="p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" onClick={() => setStep("space")}>
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <div>
+                <h2 className="font-semibold">When do you need it?</h2>
+                <p className="text-xs text-muted-foreground">{selectedVenueNames.join(" + ")}</p>
+              </div>
+            </div>
+
+            {/* Calendar */}
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <Button variant="ghost" size="icon" onClick={prevMonth}>
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <h3 className="font-medium text-sm">{monthName}</h3>
+                <Button variant="ghost" size="icon" onClick={nextMonth}>
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-muted-foreground mb-1">
+                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(d => (
+                  <div key={d}>{d}</div>
+                ))}
+              </div>
+
+              {availLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <div className="grid grid-cols-7 gap-1">
+                  {days.map((cell, i) => {
+                    const status = cell.inMonth ? mergedAvailability?.[cell.date]?.status || "available" : "";
+                    const isPast = cell.inMonth && new Date(cell.date + "T23:59:59") < new Date();
+                    const isBeyondMax = cell.inMonth && new Date(cell.date + "T00:00:00") > maxBookingDate;
+                    const isClickable = cell.inMonth && !isPast && !isBeyondMax && status !== "booked";
+                    const isSelected = cell.date === selectedDate;
+
+                    return (
+                      <button
+                        key={i}
+                        disabled={!isClickable}
+                        onClick={() => isClickable ? setSelectedDate(cell.date) : undefined}
+                        className={`
+                          aspect-square flex items-center justify-center text-sm rounded-md transition-colors
+                          ${!cell.inMonth ? "text-muted-foreground/30" : ""}
+                          ${(isPast || isBeyondMax) && cell.inMonth ? "text-muted-foreground/40" : ""}
+                          ${cell.inMonth && !isPast && !isBeyondMax ? getDateColorClass(status) : ""}
+                          ${isSelected ? "ring-2 ring-primary ring-offset-1" : ""}
+                          ${isClickable ? "cursor-pointer hover:opacity-80" : "cursor-default"}
+                        `}
+                      >
+                        {cell.day}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 mt-3 flex-wrap text-xs">
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-sm bg-green-200 dark:bg-green-900/50" />
+                  <span className="text-muted-foreground">Available</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-sm bg-orange-200 dark:bg-orange-900/50" />
+                  <span className="text-muted-foreground">Partial</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-sm bg-red-200 dark:bg-red-900/50" />
+                  <span className="text-muted-foreground">Booked</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Time selection */}
+            {selectedDate && (
+              <div className="space-y-3 pt-2 border-t">
+                <h3 className="font-medium text-sm flex items-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  {new Date(selectedDate + "T00:00").toLocaleDateString("en-NZ", { weekday: "long", day: "numeric", month: "long" })}
+                </h3>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {PRESET_SLOTS.map((slot) => (
+                    <button
+                      key={slot.label}
+                      onClick={() => setSelectedSlot(slot.label)}
+                      className={`p-3 rounded-lg border text-center transition-colors ${
+                        selectedSlot === slot.label
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-primary/50"
+                      }`}
+                    >
+                      <p className="text-sm font-medium">{slot.label}</p>
+                      <p className="text-xs text-muted-foreground">{slot.sublabel}</p>
+                      {pricing && (
+                        <p className="text-xs font-semibold mt-1">
+                          ${slot.duration === "full_day" ? pricing.fullDayRate : pricing.halfDayRate}
+                        </p>
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => setSelectedSlot("custom")}
+                  className={`w-full p-3 rounded-lg border text-left transition-colors ${
+                    selectedSlot === "custom"
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/50"
+                  }`}
+                >
+                  <p className="text-sm font-medium">Custom time</p>
+                  <p className="text-xs text-muted-foreground">Choose your own start and end time</p>
+                </button>
+
+                {selectedSlot === "custom" && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Start time</Label>
+                      <Input
+                        type="time"
+                        value={customStart}
+                        onChange={(e) => setCustomStart(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">End time</Label>
+                      <Input
+                        type="time"
+                        value={customEnd}
+                        onChange={(e) => setCustomEnd(e.target.value)}
+                      />
+                    </div>
+                    {durationHours > 0 && pricing && (
+                      <div className="col-span-2 text-sm text-muted-foreground">
+                        {durationHours} hours = <span className="font-medium text-foreground">${estimatedPrice.toFixed(0)} + GST</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <Button
+              className="w-full"
+              disabled={!selectedDate || !selectedSlot || (selectedSlot === "custom" && endMin <= startMin)}
+              onClick={handleDateTimeNext}
+            >
+              Next: Your details
+              <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          </Card>
+        )}
+
+        {/* ─── STEP 3: DETAILS ─── */}
+        {step === "details" && (
+          <Card className="p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" onClick={() => setStep("datetime")}>
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <h2 className="font-semibold">Your details</h2>
+            </div>
+
+            {/* Booking summary bar */}
+            <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-1">
+              <div className="flex items-center gap-2">
+                <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
+                <span>{selectedVenueNames.join(" + ")}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CalendarDays className="w-3.5 h-3.5 text-muted-foreground" />
+                <span>
+                  {selectedDate ? new Date(selectedDate + "T00:00").toLocaleDateString("en-NZ", { weekday: "short", day: "numeric", month: "short" }) : ""}
+                  {" "}{formatTimeSlot(startTime)} - {formatTimeSlot(endTime)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <DollarSign className="w-3.5 h-3.5 text-muted-foreground" />
+                <span>${estimatedPrice.toFixed(0)} + GST</span>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="ch-name" className="text-sm">
+                Name <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="ch-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Full name"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="ch-email" className="text-sm">
+                Email <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="ch-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="your@email.com"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="ch-phone" className="text-sm">
+                Phone <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="ch-phone"
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="021 123 4567"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="ch-org" className="text-sm">
+                Organisation <span className="text-xs text-muted-foreground">(optional)</span>
+              </Label>
+              <Input
+                id="ch-org"
+                value={organisation}
+                onChange={(e) => setOrganisation(e.target.value)}
+                placeholder="Company or group name"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="ch-purpose" className="text-sm">
+                What's the booking for? <span className="text-red-500">*</span>
+              </Label>
+              <Textarea
+                id="ch-purpose"
+                value={bookingPurpose}
+                onChange={(e) => setBookingPurpose(e.target.value)}
+                placeholder="e.g. Team workshop, community meeting, training session"
+                rows={2}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="ch-attendees" className="text-sm">
+                Expected attendees <span className="text-xs text-muted-foreground">(optional)</span>
+              </Label>
+              <Input
+                id="ch-attendees"
+                type="number"
+                value={attendeeCount}
+                onChange={(e) => setAttendeeCount(e.target.value)}
+                placeholder="Number of people"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="ch-requirements" className="text-sm">
+                Anything else we should know? <span className="text-xs text-muted-foreground">(optional)</span>
+              </Label>
+              <Textarea
+                id="ch-requirements"
+                value={specialRequirements}
+                onChange={(e) => setSpecialRequirements(e.target.value)}
+                placeholder="Special requirements, access needs, setup requests"
+                rows={2}
+              />
+            </div>
+
+            <Button
+              className="w-full"
+              disabled={!name.trim() || !email.trim() || !phone.trim() || !bookingPurpose.trim()}
+              onClick={handleDetailsNext}
+            >
+              Review your booking
+              <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          </Card>
+        )}
+
+        {/* ─── STEP 4: REVIEW ─── */}
+        {step === "review" && (
+          <Card className="p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" onClick={() => setStep("details")}>
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <h2 className="font-semibold">Review your enquiry</h2>
+            </div>
+
+            <div className="space-y-3">
+              <div className="bg-muted/50 rounded-lg p-4 space-y-3 text-sm">
+                <h3 className="font-medium">Booking</h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Space</span>
+                    <span className="font-medium text-right">{selectedVenueNames.join(" + ")}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Date</span>
+                    <span className="font-medium">
+                      {selectedDate ? new Date(selectedDate + "T00:00").toLocaleDateString("en-NZ", { weekday: "long", day: "numeric", month: "long" }) : ""}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Time</span>
+                    <span className="font-medium">{formatTimeSlot(startTime)} - {formatTimeSlot(endTime)} ({durationHours}hrs)</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Purpose</span>
+                    <span className="font-medium text-right max-w-[60%]">{bookingPurpose}</span>
+                  </div>
+                  {attendeeCount && (
+                    <div className="flex justify-between gap-2">
+                      <span className="text-muted-foreground">Attendees</span>
+                      <span className="font-medium">{attendeeCount}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-muted/50 rounded-lg p-4 space-y-3 text-sm">
+                <h3 className="font-medium">Your details</h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Name</span>
+                    <span className="font-medium">{name}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Email</span>
+                    <span className="font-medium">{email}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Phone</span>
+                    <span className="font-medium">{phone}</span>
+                  </div>
+                  {organisation && (
+                    <div className="flex justify-between gap-2">
+                      <span className="text-muted-foreground">Organisation</span>
+                      <span className="font-medium">{organisation}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-muted/50 rounded-lg p-4 space-y-2 text-sm">
+                <h3 className="font-medium">Estimated cost</h3>
+                <div className="flex justify-between gap-2">
+                  <span className="text-muted-foreground">{getDurationType().replace("_", " ")} rate</span>
+                  <span>${estimatedPrice.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-muted-foreground">GST (15%)</span>
+                  <span>${gstAmount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between gap-2 pt-2 border-t font-semibold">
+                  <span>Total (incl. GST)</span>
+                  <span>${totalInclGst.toFixed(2)}</span>
+                </div>
+                <p className="text-xs text-muted-foreground pt-1">
+                  Community discounts available. Let us know if you're a local community group or not-for-profit.
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground text-center">
+              This is an enquiry, not a confirmed booking. We'll review your request and confirm within 24 hours.
+            </p>
+
+            <Button
+              className="w-full"
+              onClick={handleSubmit}
+              disabled={bookMutation.isPending}
+            >
+              {bookMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  Submitting...
+                </>
+              ) : (
+                "Submit Enquiry"
+              )}
+            </Button>
+
+            {bookMutation.isError && (
+              <p className="text-sm text-red-600 text-center">
+                {(bookMutation.error as any)?.message || "Something went wrong. Please try again."}
+              </p>
+            )}
+          </Card>
+        )}
+
+        {/* Location info */}
+        {orgInfo?.location && (
+          <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+            <MapPin className="w-3.5 h-3.5" />
+            <span>{orgInfo.location}</span>
+          </div>
+        )}
       </div>
     </div>
   );

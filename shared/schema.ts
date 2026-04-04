@@ -476,14 +476,27 @@ export const programmes = pgTable("programmes", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const locations = pgTable("locations", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  address: text("address"),
+  casualEnabled: boolean("casual_enabled").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type Location = typeof locations.$inferSelect;
+
 export const venues = pgTable("venues", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
   name: text("name").notNull(),
   spaceName: text("space_name"),
+  locationId: integer("location_id"),
   description: text("description"),
   capacity: integer("capacity"),
   active: boolean("active").default(true),
+  casualEnabled: boolean("casual_enabled").default(false),
   availabilitySchedule: jsonb("availability_schedule"),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -1540,6 +1553,7 @@ export const bookingPricingDefaults = pgTable("booking_pricing_defaults", {
   userId: text("user_id").notNull(),
   fullDayRate: text("full_day_rate").default("0"),
   halfDayRate: text("half_day_rate").default("0"),
+  hourlyRate: text("hourly_rate").default("0"),
   maxAdvanceMonths: integer("max_advance_months").default(3),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

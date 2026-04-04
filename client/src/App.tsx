@@ -22,6 +22,7 @@ import CalendarPage from "@/pages/calendar";
 import Programmes from "@/pages/programmes";
 import Bookings from "@/pages/bookings";
 import Agreements from "@/pages/agreements";
+import BookersPage from "@/pages/bookers";
 import GroupsPage from "@/pages/groups";
 import EcosystemPage from "@/pages/ecosystem";
 import LegacyReportsPage from "@/pages/legacy-reports";
@@ -185,7 +186,7 @@ function Router() {
         </Route>
 
         <Route path="/bookers">
-          <ProtectedRoute component={RegularBookersPage} />
+          <ProtectedRoute component={BookersPage} />
         </Route>
 
         <Route path="/regular-bookers">
@@ -209,7 +210,7 @@ function Router() {
         </Route>
 
         <Route path="/agreements">
-          <ProtectedRoute component={Agreements} />
+          <Redirect to="/bookers?tab=agreements" />
         </Route>
 
         <Route path="/groups">

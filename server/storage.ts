@@ -63,6 +63,8 @@ import {
   type InsertProgramme,
   type ProgrammeEvent,
   type InsertProgrammeEvent,
+  locations,
+  type Location,
   venues,
   bookings,
   memberships,
@@ -347,6 +349,11 @@ export interface IStorage {
   addProgrammeEvent(data: InsertProgrammeEvent): Promise<ProgrammeEvent>;
   removeProgrammeEvent(id: number): Promise<void>;
 
+  // Locations
+  getLocations(userId: string): Promise<Location[]>;
+  getLocation(id: number): Promise<Location | undefined>;
+  updateLocation(id: number, updates: Partial<{ name: string; address: string; casualEnabled: boolean }>): Promise<Location>;
+
   // Venues
   getVenues(userId: string): Promise<Venue[]>;
   getVenue(id: number): Promise<Venue | undefined>;
@@ -364,7 +371,7 @@ export interface IStorage {
 
   // Booking Pricing Defaults
   getBookingPricingDefaults(userId: string): Promise<BookingPricingDefaults | undefined>;
-  upsertBookingPricingDefaults(userId: string, data: { fullDayRate?: string; halfDayRate?: string; maxAdvanceMonths?: number }): Promise<BookingPricingDefaults>;
+  upsertBookingPricingDefaults(userId: string, data: { fullDayRate?: string; halfDayRate?: string; hourlyRate?: string; maxAdvanceMonths?: number }): Promise<BookingPricingDefaults>;
 
   getOperatingHours(userId: string): Promise<OperatingHours[]>;
   upsertOperatingHours(userId: string, data: { dayOfWeek: string; openTime: string | null; closeTime: string | null; isStaffed: boolean }[]): Promise<OperatingHours[]>;
@@ -1340,6 +1347,21 @@ export class DatabaseStorage implements IStorage {
     await db.delete(programmeEvents).where(eq(programmeEvents.id, id));
   }
 
+  // Locations
+  async getLocations(userId: string): Promise<Location[]> {
+    return await db.select().from(locations).where(eq(locations.userId, userId));
+  }
+
+  async getLocation(id: number): Promise<Location | undefined> {
+    const [loc] = await db.select().from(locations).where(eq(locations.id, id));
+    return loc;
+  }
+
+  async updateLocation(id: number, updates: Partial<{ name: string; address: string; casualEnabled: boolean }>): Promise<Location> {
+    const [loc] = await db.update(locations).set(updates).where(eq(locations.id, id)).returning();
+    return loc;
+  }
+
   // Venues
   async getVenues(userId: string): Promise<Venue[]> {
     return await db.select()
@@ -1422,7 +1444,7 @@ export class DatabaseStorage implements IStorage {
     return defaults;
   }
 
-  async upsertBookingPricingDefaults(userId: string, data: { fullDayRate?: string; halfDayRate?: string; maxAdvanceMonths?: number }): Promise<BookingPricingDefaults> {
+  async upsertBookingPricingDefaults(userId: string, data: { fullDayRate?: string; halfDayRate?: string; hourlyRate?: string; maxAdvanceMonths?: number }): Promise<BookingPricingDefaults> {
     const existing = await this.getBookingPricingDefaults(userId);
     if (existing) {
       const [updated] = await db.update(bookingPricingDefaults)
@@ -1432,7 +1454,7 @@ export class DatabaseStorage implements IStorage {
       return updated;
     }
     const [created] = await db.insert(bookingPricingDefaults)
-      .values({ userId, fullDayRate: data.fullDayRate || "0", halfDayRate: data.halfDayRate || "0", maxAdvanceMonths: data.maxAdvanceMonths ?? 3 })
+      .values({ userId, fullDayRate: data.fullDayRate || "0", halfDayRate: data.halfDayRate || "0", hourlyRate: data.hourlyRate || "0", maxAdvanceMonths: data.maxAdvanceMonths ?? 3 })
       .returning();
     return created;
   }

@@ -147,6 +147,24 @@ export function registerSettingsRoutes(app: Express) {
     res.status(204).send();
   });
 
+  // === Locations API ===
+
+  app.get("/api/locations", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const locationsList = await storage.getLocations(userId);
+    res.json(locationsList);
+  });
+
+  app.patch("/api/locations/:id", isAuthenticated, async (req, res) => {
+    const id = parseId(req.params.id);
+    const userId = (req.user as any).claims.sub;
+    const existing = await storage.getLocation(id);
+    if (!existing) return res.status(404).json({ message: "Location not found" });
+    if (existing.userId !== userId) return res.status(403).json({ message: "Forbidden" });
+    const updated = await storage.updateLocation(id, req.body);
+    res.json(updated);
+  });
+
   // === Venues API ===
 
   app.get(api.venues.list.path, isAuthenticated, async (req, res) => {
