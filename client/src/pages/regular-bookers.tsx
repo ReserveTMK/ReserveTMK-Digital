@@ -55,7 +55,6 @@ import {
   ExternalLink,
   Settings,
 } from "lucide-react";
-import { BookerAgreementPanel } from "@/components/spaces/booker-agreement-panel";
 import {
   Table,
   TableBody,
