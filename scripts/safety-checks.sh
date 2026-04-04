@@ -46,45 +46,45 @@ echo ""
 
 # 1. Debrief confirm → reporting chain
 echo "Running fast checks..."
-if grep -r "confirmedDebriefWhere" server/routes/reports.ts server/reporting.ts > /dev/null 2>&1; then
+if grep -r "confirmedDebriefWhere" server/routes.ts server/reporting.ts > /dev/null 2>&1; then
   check_pass "Debrief confirm → reporting (confirmedDebriefWhere present)"
 else
   check_fail "Debrief confirm → reporting" "confirmedDebriefWhere missing from reporting files — draft debriefs could leak into reports"
 fi
 
 # 2. Stage moves → history
-if grep -r "createRelationshipStageHistory" server/routes/ > /dev/null 2>&1; then
+if grep -r "createRelationshipStageHistory" server/routes.ts > /dev/null 2>&1; then
   check_pass "Stage moves → history (createRelationshipStageHistory present)"
 else
-  check_fail "Stage moves → history" "createRelationshipStageHistory not called in any route module — stage progression will be lost"
+  check_fail "Stage moves → history" "createRelationshipStageHistory not called in routes — stage progression will be lost"
 fi
 
 # 3. Booking → event linkage
-if grep -r "ensureBookingEvent" server/routes/bookings.ts server/routes/portal.ts server/routes/_helpers.ts > /dev/null 2>&1; then
+if grep -r "ensureBookingEvent" server/routes.ts > /dev/null 2>&1; then
   check_pass "Booking → event linkage (ensureBookingEvent present)"
 else
   check_fail "Booking → event linkage" "ensureBookingEvent missing — confirmed bookings won't appear on debrief board"
 fi
 
 # 4. Programme attendance → array
-if grep -r "attendees\|attended" server/routes/programmes.ts > /dev/null 2>&1; then
+if grep -r "attendees\|attended" server/routes.ts > /dev/null 2>&1; then
   check_pass "Programme attendance wiring (attended flag present)"
 else
-  check_fail "Programme attendance" "attended/attendees not found in programmes routes — reporting will be blind to attendance"
+  check_fail "Programme attendance" "attended/attendees not found in routes — reporting will be blind to attendance"
 fi
 
 # 5. Contact promotion
-if grep -r "autoPromoteToInnovator" server/routes/ > /dev/null 2>&1; then
+if grep -r "autoPromoteToInnovator" server/routes.ts > /dev/null 2>&1; then
   check_pass "Contact promotion (autoPromoteToInnovator present)"
 else
-  check_fail "Contact promotion" "autoPromoteToInnovator not called in any route module — innovator counts will drop"
+  check_fail "Contact promotion" "autoPromoteToInnovator not called in routes — innovator counts will drop"
 fi
 
 # 6. Un-confirm cleanup
-if grep -r "actionItems.*impactLogId\|delete.*actionItems\|delete.*funderTaxonomyClassifications" server/routes/debriefs.ts > /dev/null 2>&1; then
+if grep -r "actionItems.*impactLogId\|delete.*actionItems\|delete.*funderTaxonomyClassifications" server/routes.ts > /dev/null 2>&1; then
   check_pass "Un-confirm cleanup (action items + taxonomy deletion present)"
 else
-  check_warn "Un-confirm cleanup" "Could not verify cleanup logic in debriefs module — check manually"
+  check_warn "Un-confirm cleanup" "Could not verify cleanup logic in routes — check manually"
 fi
 
 # 7. No empty SelectItem values
@@ -95,19 +95,25 @@ else
   check_fail "Empty SelectItem values" "Found SelectItem value=\"\" — Radix crashes on empty strings:\n$EMPTY_SELECT"
 fi
 
-# 8. Route module registration
-ROUTE_FILES=$(ls server/routes/*.ts 2>/dev/null | grep -v "_helpers\|index" | sed 's|server/routes/||' | sed 's|\.ts||')
-MISSING_REG=""
-for module in $ROUTE_FILES; do
-  FUNC_NAME="register$(echo $module | sed 's/\b\(.\)/\u\1/g' | sed 's/-//g')Routes"
-  if ! grep -q "$module" server/routes.ts 2>/dev/null; then
-    MISSING_REG="${MISSING_REG}  ${module}.ts not registered in routes.ts\n"
-  fi
-done
-if [ -z "$MISSING_REG" ]; then
-  check_pass "Route module registration (all modules registered)"
+# 8. No ghost route files (server/routes/ should only contain index.ts)
+GHOST_FILES=$(ls server/routes/*.ts 2>/dev/null | grep -v "index.ts" || true)
+if [ -z "$GHOST_FILES" ]; then
+  check_pass "No ghost route files (server/routes/ clean)"
 else
-  check_fail "Route module registration" "Unregistered modules:\n$MISSING_REG"
+  check_fail "Ghost route files" "These files exist but are never imported — code in them is dead:\n$GHOST_FILES"
+fi
+
+# 8b. Wildcard route ordering — specific /api/contacts/ routes must come before :id
+WILDCARD_LINE=$(grep -n 'api\.contacts\.get\.path' server/routes.ts 2>/dev/null | head -1 | cut -d: -f1)
+if [ -n "$WILDCARD_LINE" ]; then
+  LATE_ROUTES=$(awk -v wl="$WILDCARD_LINE" 'NR > wl && /app\.get\("\/api\/contacts\/[^:]/' server/routes.ts 2>/dev/null || true)
+  if [ -z "$LATE_ROUTES" ]; then
+    check_pass "Route ordering (no GET /api/contacts/* after :id wildcard)"
+  else
+    check_fail "Route ordering" "These GET routes are registered AFTER /api/contacts/:id and will never match:\n$LATE_ROUTES"
+  fi
+else
+  check_warn "Route ordering" "Could not find api.contacts.get.path — check manually"
 fi
 
 # 9. Import verification — check no obviously broken imports in changed files
