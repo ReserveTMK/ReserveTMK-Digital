@@ -2074,7 +2074,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createGmailImportHistory(data: InsertGmailImportHistory): Promise<GmailImportHistory> {
-    const [item] = await db.insert(gmailImportHistory).values(data).returning();
+    const [item] = await db.insert(gmailImportHistory).values(data as any).returning();
     return item;
   }
 

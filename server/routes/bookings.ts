@@ -5,13 +5,39 @@ import { storage } from "../storage";
 import { api } from "@shared/routes";
 import { db } from "../db";
 import { eq, and, or, sql, gte, lte, inArray } from "drizzle-orm";
-import { bookings, regularBookers, surveys, bookerLinks, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, bookingChangeRequests, meetings, programmeRegistrations, memberships, mous, gearBookings, deskBookings, DEFAULT_VENUE_AVAILABILITY_SCHEDULE, type AvailabilitySchedule } from "@shared/schema";
+import { bookings, regularBookers, surveys, bookerLinks, insertRegularBookerSchema, insertVenueInstructionSchema, insertSurveySchema, bookingChangeRequests, meetings, programmeRegistrations, memberships, mous, gearBookings, deskBookings, mentorProfiles, DEFAULT_VENUE_AVAILABILITY_SCHEDULE, type AvailabilitySchedule } from "@shared/schema";
 import { parseId, parseStr, parseDate, parseTimeToMinutes, coerceDateFields, timesOverlap, datesOverlap, isPublicHoliday, autoPromoteToInnovator, ensureBookingEvent, getCalendarIdForVenue } from "./_helpers";
 import { classifyForAllFunders } from "../taxonomy-engine";
 import { getBaseUrl } from "../url";
 import crypto from "crypto";
 
 export function registerBookingRoutes(app: Express) {
+  const verifyContactOwnership = async (contactId: number, userId: string) => {
+    const contact = await storage.getContact(contactId);
+    return contact && contact.userId === userId;
+  };
+
+  async function resolveMentorUserId(rawId: string): Promise<{ availabilityUserId: string; googleCalendarId: string | null; ownerUserId: string | null }> {
+    if (rawId.startsWith('mentor-')) {
+      const mentorId = parseInt(rawId.replace('mentor-', ''));
+      const profile = await storage.getMentorProfile(mentorId);
+      if (profile && profile.isActive) {
+        return {
+          availabilityUserId: profile.mentorUserId || `mentor-${profile.id}`,
+          googleCalendarId: profile.googleCalendarId,
+          ownerUserId: profile.userId,
+        };
+      }
+    }
+    const allProfiles = await db.select().from(mentorProfiles).where(and(eq(mentorProfiles.mentorUserId, rawId), eq(mentorProfiles.isActive, true)));
+    const matchingProfile = allProfiles[0];
+    return {
+      availabilityUserId: rawId,
+      googleCalendarId: matchingProfile?.googleCalendarId || null,
+      ownerUserId: matchingProfile?.userId || rawId,
+    };
+  }
+
   app.get(api.bookings.list.path, isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
     const bookingsList = await storage.getBookings(userId);
@@ -535,7 +561,7 @@ export function registerBookingRoutes(app: Express) {
   // Payment status update endpoint
   app.patch("/api/bookings/:id/payment-status", isAuthenticated, async (req, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(String(req.params.id));
       const userId = (req.user as any).claims.sub;
       const { paymentStatus } = req.body;
       const validStatuses = ["unpaid", "invoiced", "paid", "not_required"];
@@ -1562,9 +1588,9 @@ export function registerBookingRoutes(app: Express) {
       });
 
       try {
-        const user = await storage.getUser(userId);
+        const user = await storage.auth.getUser(userId);
         const { sendGrowthSurveyEmail } = await import("../email");
-        await sendGrowthSurveyEmail(contact.email, contact.name || contact.email, surveyToken, user?.username || undefined);
+        await sendGrowthSurveyEmail(contact.email, contact.name || contact.email, surveyToken, user?.firstName || undefined);
         await storage.updateSurvey(survey.id, { status: "sent", sentAt: new Date() } as any);
       } catch (emailErr: any) {
         console.error("Failed to send growth survey email:", emailErr.message);

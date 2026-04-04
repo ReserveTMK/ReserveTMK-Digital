@@ -2143,10 +2143,8 @@ OUTPUT FORMAT (JSON):
 
 Rules: Only include sections that have real content from the debrief data. Keep each section to 2-4 paragraphs. Be genuine — if something isn't there, don't fabricate it. Drop any section with no real content.`;
 
-      const result = await claudeJSON(prompt, {
-        lede: "",
-        sections: {} as Record<string, string>,
-      });
+      const result = await claudeJSON({ prompt });
+
 
       res.json({
         numbers: {
@@ -2175,7 +2173,7 @@ Rules: Only include sections that have real content from the debrief data. Keep 
   app.post("/api/gear-bookings/:id/approve", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const id = parseInt(req.params.id);
+      const id = parseInt(String(req.params.id));
       const booking = await storage.getGearBooking(id);
       if (!booking) return res.status(404).json({ message: "Gear booking not found" });
 
@@ -2218,7 +2216,7 @@ Rules: Only include sections that have real content from the debrief data. Keep 
   app.post("/api/gear-bookings/:id/deny", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const id = parseInt(req.params.id);
+      const id = parseInt(String(req.params.id));
       const { reason } = req.body;
       const booking = await storage.getGearBooking(id);
       if (!booking) return res.status(404).json({ message: "Gear booking not found" });
