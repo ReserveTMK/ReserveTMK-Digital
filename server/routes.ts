@@ -826,12 +826,14 @@ export async function registerRoutes(
 
       const groupStats = await db.execute(sql`
         SELECT
-          COUNT(*) FILTER (WHERE is_maori = true AND is_community = true) as maori_led_trusted,
-          COUNT(*) FILTER (WHERE serves_maori = true AND is_community = true) as serves_maori_trusted,
+          COUNT(*) FILTER (WHERE is_maori = true AND connection_strength IN ('trusted', 'woven')) as maori_led_trusted,
+          COUNT(*) FILTER (WHERE serves_maori = true AND connection_strength IN ('trusted', 'woven')) as serves_maori_trusted,
           COUNT(*) FILTER (WHERE is_maori = true) as maori_led_total,
           COUNT(*) FILTER (WHERE serves_maori = true) as serves_maori_total,
-          COUNT(*) FILTER (WHERE is_community = true OR is_innovator = true) as connected_total,
-          COUNT(*) as total_orgs
+          COUNT(*) FILTER (WHERE connection_strength IN ('connected', 'trusted', 'woven')) as connected_total,
+          COUNT(*) as total_orgs,
+          COUNT(*) FILTER (WHERE connection_strength = 'woven') as woven_total,
+          COUNT(*) FILTER (WHERE connection_strength = 'trusted') as trusted_total
         FROM groups
         WHERE user_id = ${userId} AND active = true
       `);
@@ -867,6 +869,8 @@ export async function registerRoutes(
         servesMaoriTotal: Number(gs.serves_maori_total || 0),
         connectedTotal: Number(gs.connected_total || 0),
         totalOrgs: Number(gs.total_orgs || 0),
+        wovenTotal: Number(gs.woven_total || 0),
+        trustedTotal: Number(gs.trusted_total || 0),
         connectionMovements: {
           deepened: Number(mv.deepened || 0),
           declined: Number(mv.declined || 0),
@@ -7688,6 +7692,251 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     }
   });
 
+  // === Groups delivery depth (computed "Working With" status) ===
+  app.get("/api/groups/delivery-depth", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+      // Recent bookings by group
+      const bookingResult = await db.execute(sql`
+        SELECT booker_group_id as group_id,
+          COUNT(*) as total,
+          COUNT(*) FILTER (WHERE start_date >= ${sixMonthsAgo.toISOString()}::timestamp) as recent
+        FROM bookings
+        WHERE user_id = ${userId}
+          AND booker_group_id IS NOT NULL
+          AND status IN ('confirmed', 'completed')
+        GROUP BY booker_group_id
+      `);
+
+      // Recent programme participation via group members
+      const programmeResult = await db.execute(sql`
+        SELECT gm.group_id,
+          COUNT(DISTINCT p.id) as total,
+          COUNT(DISTINCT p.id) FILTER (WHERE COALESCE(p.start_date, p.created_at) >= ${sixMonthsAgo.toISOString()}::timestamp) as recent
+        FROM group_members gm
+        JOIN programmes p ON p.user_id = ${userId}
+          AND (gm.contact_id = ANY(p.attendees) OR gm.contact_id = ANY(p.facilitators))
+        GROUP BY gm.group_id
+      `);
+
+      // Recent debriefs mentioning group
+      const impactResult = await db.execute(sql`
+        SELECT ilg.group_id,
+          COUNT(DISTINCT il.id) as total,
+          COUNT(DISTINCT il.id) FILTER (WHERE il.created_at >= ${sixMonthsAgo.toISOString()}::timestamp) as recent
+        FROM impact_log_groups ilg
+        JOIN impact_logs il ON il.id = ilg.impact_log_id AND il.status = 'confirmed'
+        GROUP BY ilg.group_id
+      `);
+
+      // Build depth map
+      const depthMap: Record<number, { depth: string; active: boolean; signals: string[] }> = {};
+
+      const processRows = (rows: any[], signal: string) => {
+        for (const r of rows) {
+          const gid = Number(r.group_id);
+          if (!depthMap[gid]) depthMap[gid] = { depth: "none", active: false, signals: [] };
+          if (Number(r.recent) > 0) {
+            depthMap[gid].active = true;
+            depthMap[gid].signals.push(signal);
+          } else if (Number(r.total) > 0) {
+            if (!depthMap[gid].signals.includes(signal)) depthMap[gid].signals.push(`past-${signal}`);
+          }
+        }
+      };
+
+      processRows(bookingResult.rows, "bookings");
+      processRows(programmeResult.rows, "programmes");
+      processRows(impactResult.rows, "debriefs");
+
+      // Compute depth label
+      for (const gid of Object.keys(depthMap)) {
+        const entry = depthMap[Number(gid)];
+        const activeSignals = entry.signals.filter(s => !s.startsWith("past-"));
+        if (activeSignals.length >= 2) entry.depth = "deep";
+        else if (activeSignals.length === 1) entry.depth = "active";
+        else if (entry.signals.length > 0) entry.depth = "past";
+        else entry.depth = "none";
+      }
+
+      res.json(depthMap);
+    } catch (err: any) {
+      console.error("Groups delivery depth error:", err);
+      res.status(500).json({ message: `Groups delivery depth error: ${err.message}` });
+    }
+  });
+
+  // === Groups engagement metrics (must be before :id wildcard) ===
+  app.get("/api/groups/engagement-metrics", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const metricsResult = await db.execute(sql`
+        WITH group_events AS (
+          SELECT g.id as group_id,
+            COUNT(DISTINCT CASE WHEN ea.id IS NOT NULL THEN e.id END) as event_count,
+            MAX(CASE WHEN ea.id IS NOT NULL THEN e.start_time END) as last_event_date
+          FROM groups g
+          LEFT JOIN group_members gm ON gm.group_id = g.id
+          LEFT JOIN event_attendance ea ON ea.contact_id = gm.contact_id
+          LEFT JOIN events e ON e.id = ea.event_id AND e.user_id = ${userId}
+          WHERE g.user_id = ${userId}
+          GROUP BY g.id
+        ),
+        group_programmes AS (
+          SELECT g.id as group_id,
+            COUNT(DISTINCT p.id) as programme_count,
+            MAX(COALESCE(p.start_date, p.created_at)) as last_programme_date
+          FROM groups g
+          LEFT JOIN group_members gm ON gm.group_id = g.id
+          LEFT JOIN programmes p ON p.user_id = ${userId}
+            AND (gm.contact_id = ANY(p.facilitators) OR gm.contact_id = ANY(p.attendees))
+          WHERE g.user_id = ${userId}
+          GROUP BY g.id
+        ),
+        group_bookings AS (
+          SELECT g.id as group_id,
+            COUNT(DISTINCT b.id) as booking_count,
+            MAX(COALESCE(b.start_date, b.created_at)) as last_booking_date
+          FROM groups g
+          LEFT JOIN bookings b ON b.booker_group_id = g.id AND b.user_id = ${userId}
+          WHERE g.user_id = ${userId}
+          GROUP BY g.id
+        ),
+        group_spend AS (
+          SELECT g.id as group_id,
+            COUNT(DISTINCT cs.id) as spend_count,
+            MAX(cs.date) as last_spend_date
+          FROM groups g
+          LEFT JOIN community_spend cs ON cs.group_id = g.id AND cs.user_id = ${userId}
+          WHERE g.user_id = ${userId}
+          GROUP BY g.id
+        ),
+        group_impact AS (
+          SELECT g.id as group_id,
+            COUNT(DISTINCT ilg.impact_log_id) as impact_count,
+            MAX(ilg.created_at) as last_impact_date
+          FROM groups g
+          LEFT JOIN impact_log_groups ilg ON ilg.group_id = g.id
+          WHERE g.user_id = ${userId}
+          GROUP BY g.id
+        ),
+        group_agreements AS (
+          SELECT g.id as group_id,
+            COUNT(DISTINCT m.id) + COUNT(DISTINCT mo.id) as agreement_count
+          FROM groups g
+          LEFT JOIN memberships m ON m.group_id = g.id AND m.user_id = ${userId}
+          LEFT JOIN mous mo ON mo.group_id = g.id AND mo.user_id = ${userId}
+          WHERE g.user_id = ${userId}
+          GROUP BY g.id
+        )
+        SELECT
+          g.id as group_id,
+          COALESCE(ge.event_count, 0)::int as total_events,
+          COALESCE(gp.programme_count, 0)::int as total_programmes,
+          COALESCE(gb.booking_count, 0)::int as total_bookings,
+          COALESCE(gs.spend_count, 0)::int as total_spend_entries,
+          COALESCE(gi.impact_count, 0)::int as total_impact_logs,
+          COALESCE(ga.agreement_count, 0)::int as total_agreements,
+          GREATEST(
+            ge.last_event_date,
+            gp.last_programme_date,
+            gb.last_booking_date,
+            gs.last_spend_date,
+            gi.last_impact_date
+          ) as last_engagement_date
+        FROM groups g
+        LEFT JOIN group_events ge ON ge.group_id = g.id
+        LEFT JOIN group_programmes gp ON gp.group_id = g.id
+        LEFT JOIN group_bookings gb ON gb.group_id = g.id
+        LEFT JOIN group_spend gs ON gs.group_id = g.id
+        LEFT JOIN group_impact gi ON gi.group_id = g.id
+        LEFT JOIN group_agreements ga ON ga.group_id = g.id
+        WHERE g.user_id = ${userId}
+      `);
+
+      const metricsMap: Record<number, any> = {};
+      for (const row of metricsResult.rows) {
+        metricsMap[row.group_id as number] = {
+          totalEvents: Number(row.total_events) || 0,
+          totalProgrammes: Number(row.total_programmes) || 0,
+          totalBookings: Number(row.total_bookings) || 0,
+          totalSpendEntries: Number(row.total_spend_entries) || 0,
+          totalImpactLogs: Number(row.total_impact_logs) || 0,
+          totalAgreements: Number(row.total_agreements) || 0,
+          totalCollaborations: (Number(row.total_events) || 0) + (Number(row.total_programmes) || 0) + (Number(row.total_bookings) || 0),
+          lastEngagementDate: row.last_engagement_date || null,
+        };
+      }
+
+      res.json(metricsMap);
+    } catch (err: any) {
+      console.error("Engagement metrics error:", err);
+      res.status(500).json({ message: "Failed to get engagement metrics" });
+    }
+  });
+
+  // === Groups ecosystem health (must be before :id wildcard) ===
+  app.get("/api/groups/ecosystem-health", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const healthResult = await db.execute(sql`
+        WITH last_engagement AS (
+          SELECT g.id as group_id, g.engagement_level,
+            GREATEST(
+              (SELECT MAX(e.start_time) FROM events e
+               JOIN event_attendance ea ON ea.event_id = e.id
+               JOIN group_members gm ON gm.contact_id = ea.contact_id AND gm.group_id = g.id
+               WHERE e.user_id = ${userId}),
+              (SELECT MAX(COALESCE(b.start_date, b.created_at)) FROM bookings b WHERE b.booker_group_id = g.id AND b.user_id = ${userId}),
+              (SELECT MAX(cs.date) FROM community_spend cs WHERE cs.group_id = g.id AND cs.user_id = ${userId}),
+              (SELECT MAX(ilg.created_at) FROM impact_log_groups ilg WHERE ilg.group_id = g.id)
+            ) as last_date
+          FROM groups g
+          WHERE g.user_id = ${userId}
+        )
+        SELECT
+          COUNT(*) as total,
+          COUNT(CASE WHEN last_date >= NOW() - INTERVAL '90 days' THEN 1 END) as active,
+          COUNT(CASE WHEN last_date < NOW() - INTERVAL '180 days' OR last_date IS NULL THEN 1 END) as dormant,
+          COUNT(CASE WHEN engagement_level = 'Active' AND (last_date < NOW() - INTERVAL '90 days' OR last_date IS NULL) THEN 1 END) as at_risk
+        FROM last_engagement
+      `);
+
+      const row = healthResult.rows[0] || {};
+      res.json({
+        total: Number(row.total) || 0,
+        active: Number(row.active) || 0,
+        dormant: Number(row.dormant) || 0,
+        atRisk: Number(row.at_risk) || 0,
+      });
+    } catch (err: any) {
+      console.error("Ecosystem health error:", err);
+      res.status(500).json({ message: "Failed to get ecosystem health" });
+    }
+  });
+
+  // === Groups all-associations (must be before :id wildcard) ===
+  app.get("/api/groups/all-associations", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const userGroups = await db.select({ id: groups.id }).from(groups).where(eq(groups.userId, userId));
+      const userGroupIds = userGroups.map(g => g.id);
+      if (userGroupIds.length === 0) return res.json([]);
+      const allAssocs = await db.select().from(groupAssociations).where(
+        or(
+          inArray(groupAssociations.groupId, userGroupIds),
+          inArray(groupAssociations.associatedGroupId, userGroupIds)
+        )
+      );
+      res.json(allAssocs);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get(api.groups.get.path, isAuthenticated, async (req, res) => {
     const id = parseId(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid group ID" });
@@ -7762,23 +8011,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
     res.status(204).send();
   });
 
-  app.get("/api/groups/all-associations", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      const userGroups = await db.select({ id: groups.id }).from(groups).where(eq(groups.userId, userId));
-      const userGroupIds = userGroups.map(g => g.id);
-      if (userGroupIds.length === 0) return res.json([]);
-      const allAssocs = await db.select().from(groupAssociations).where(
-        or(
-          inArray(groupAssociations.groupId, userGroupIds),
-          inArray(groupAssociations.associatedGroupId, userGroupIds)
-        )
-      );
-      res.json(allAssocs);
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
-  });
+  // all-associations moved before :id wildcard route
 
   app.get("/api/groups/:id/associations", isAuthenticated, async (req, res) => {
     try {
@@ -12448,156 +12681,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
     }
   });
 
-  // === COMMUNITY MANAGEMENT ===
-
-  app.get("/api/groups/engagement-metrics", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-
-      const metricsResult = await db.execute(sql`
-        WITH group_events AS (
-          SELECT g.id as group_id,
-            COUNT(DISTINCT CASE WHEN ea.id IS NOT NULL THEN e.id END) as event_count,
-            MAX(CASE WHEN ea.id IS NOT NULL THEN e.start_time END) as last_event_date
-          FROM groups g
-          LEFT JOIN group_members gm ON gm.group_id = g.id
-          LEFT JOIN event_attendance ea ON ea.contact_id = gm.contact_id
-          LEFT JOIN events e ON e.id = ea.event_id AND e.user_id = ${userId}
-          WHERE g.user_id = ${userId}
-          GROUP BY g.id
-        ),
-        group_programmes AS (
-          SELECT g.id as group_id,
-            COUNT(DISTINCT p.id) as programme_count,
-            MAX(COALESCE(p.start_date, p.created_at)) as last_programme_date
-          FROM groups g
-          LEFT JOIN group_members gm ON gm.group_id = g.id
-          LEFT JOIN programmes p ON p.user_id = ${userId}
-            AND (gm.contact_id = ANY(p.facilitators) OR gm.contact_id = ANY(p.attendees))
-          WHERE g.user_id = ${userId}
-          GROUP BY g.id
-        ),
-        group_bookings AS (
-          SELECT g.id as group_id,
-            COUNT(DISTINCT b.id) as booking_count,
-            MAX(COALESCE(b.start_date, b.created_at)) as last_booking_date
-          FROM groups g
-          LEFT JOIN bookings b ON b.booker_group_id = g.id AND b.user_id = ${userId}
-          WHERE g.user_id = ${userId}
-          GROUP BY g.id
-        ),
-        group_spend AS (
-          SELECT g.id as group_id,
-            COUNT(DISTINCT cs.id) as spend_count,
-            MAX(cs.date) as last_spend_date
-          FROM groups g
-          LEFT JOIN community_spend cs ON cs.group_id = g.id AND cs.user_id = ${userId}
-          WHERE g.user_id = ${userId}
-          GROUP BY g.id
-        ),
-        group_impact AS (
-          SELECT g.id as group_id,
-            COUNT(DISTINCT ilg.impact_log_id) as impact_count,
-            MAX(ilg.created_at) as last_impact_date
-          FROM groups g
-          LEFT JOIN impact_log_groups ilg ON ilg.group_id = g.id
-          WHERE g.user_id = ${userId}
-          GROUP BY g.id
-        ),
-        group_agreements AS (
-          SELECT g.id as group_id,
-            COUNT(DISTINCT m.id) + COUNT(DISTINCT mo.id) as agreement_count
-          FROM groups g
-          LEFT JOIN memberships m ON m.group_id = g.id AND m.user_id = ${userId}
-          LEFT JOIN mous mo ON mo.group_id = g.id AND mo.user_id = ${userId}
-          WHERE g.user_id = ${userId}
-          GROUP BY g.id
-        )
-        SELECT
-          g.id as group_id,
-          COALESCE(ge.event_count, 0)::int as total_events,
-          COALESCE(gp.programme_count, 0)::int as total_programmes,
-          COALESCE(gb.booking_count, 0)::int as total_bookings,
-          COALESCE(gs.spend_count, 0)::int as total_spend_entries,
-          COALESCE(gi.impact_count, 0)::int as total_impact_logs,
-          COALESCE(ga.agreement_count, 0)::int as total_agreements,
-          GREATEST(
-            ge.last_event_date,
-            gp.last_programme_date,
-            gb.last_booking_date,
-            gs.last_spend_date,
-            gi.last_impact_date
-          ) as last_engagement_date
-        FROM groups g
-        LEFT JOIN group_events ge ON ge.group_id = g.id
-        LEFT JOIN group_programmes gp ON gp.group_id = g.id
-        LEFT JOIN group_bookings gb ON gb.group_id = g.id
-        LEFT JOIN group_spend gs ON gs.group_id = g.id
-        LEFT JOIN group_impact gi ON gi.group_id = g.id
-        LEFT JOIN group_agreements ga ON ga.group_id = g.id
-        WHERE g.user_id = ${userId}
-      `);
-
-      const metricsMap: Record<number, any> = {};
-      for (const row of metricsResult.rows) {
-        metricsMap[row.group_id as number] = {
-          totalEvents: Number(row.total_events) || 0,
-          totalProgrammes: Number(row.total_programmes) || 0,
-          totalBookings: Number(row.total_bookings) || 0,
-          totalSpendEntries: Number(row.total_spend_entries) || 0,
-          totalImpactLogs: Number(row.total_impact_logs) || 0,
-          totalAgreements: Number(row.total_agreements) || 0,
-          totalCollaborations: (Number(row.total_events) || 0) + (Number(row.total_programmes) || 0) + (Number(row.total_bookings) || 0),
-          lastEngagementDate: row.last_engagement_date || null,
-        };
-      }
-
-      res.json(metricsMap);
-    } catch (err: any) {
-      console.error("Engagement metrics error:", err);
-      res.status(500).json({ message: "Failed to get engagement metrics" });
-    }
-  });
-
-  app.get("/api/groups/ecosystem-health", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-
-      const healthResult = await db.execute(sql`
-        WITH last_engagement AS (
-          SELECT g.id as group_id, g.engagement_level,
-            GREATEST(
-              (SELECT MAX(e.start_time) FROM events e
-               JOIN event_attendance ea ON ea.event_id = e.id
-               JOIN group_members gm ON gm.contact_id = ea.contact_id AND gm.group_id = g.id
-               WHERE e.user_id = ${userId}),
-              (SELECT MAX(COALESCE(b.start_date, b.created_at)) FROM bookings b WHERE b.booker_group_id = g.id AND b.user_id = ${userId}),
-              (SELECT MAX(cs.date) FROM community_spend cs WHERE cs.group_id = g.id AND cs.user_id = ${userId}),
-              (SELECT MAX(ilg.created_at) FROM impact_log_groups ilg WHERE ilg.group_id = g.id)
-            ) as last_date
-          FROM groups g
-          WHERE g.user_id = ${userId}
-        )
-        SELECT
-          COUNT(*) as total,
-          COUNT(CASE WHEN last_date >= NOW() - INTERVAL '90 days' THEN 1 END) as active,
-          COUNT(CASE WHEN last_date < NOW() - INTERVAL '180 days' OR last_date IS NULL THEN 1 END) as dormant,
-          COUNT(CASE WHEN engagement_level = 'Active' AND (last_date < NOW() - INTERVAL '90 days' OR last_date IS NULL) THEN 1 END) as at_risk
-        FROM last_engagement
-      `);
-
-      const row = healthResult.rows[0] || {};
-      res.json({
-        total: Number(row.total) || 0,
-        active: Number(row.active) || 0,
-        dormant: Number(row.dormant) || 0,
-        atRisk: Number(row.at_risk) || 0,
-      });
-    } catch (err: any) {
-      console.error("Ecosystem health error:", err);
-      res.status(500).json({ message: "Failed to get ecosystem health" });
-    }
-  });
+  // engagement-metrics + ecosystem-health moved before :id wildcard route
 
   // === Engagement Decay — preview and apply dormancy ===
   app.post("/api/groups/check-engagement-decay", isAuthenticated, async (req, res) => {

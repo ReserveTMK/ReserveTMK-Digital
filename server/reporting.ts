@@ -3,7 +3,7 @@ import { sql, eq, ne, and, or, gte, lte, inArray, count, sum, asc } from "drizzl
 import {
   impactLogs, impactLogContacts, impactLogGroups, impactTags, impactTaxonomy,
   contacts, groups, groupMembers, groupTaxonomyLinks, events, eventAttendance,
-  programmes, bookings, memberships, mous,
+  programmes, bookings, memberships, mous, mentoringRelationships,
   milestones, relationshipStageHistory, communitySpend, meetings, interactions,
   meetingTypes, monthlySnapshots, footTrafficTouchpoints, dailyFootTraffic,
   metricSnapshots, programmeRegistrations,
@@ -1376,16 +1376,41 @@ export async function getPeopleTierBreakdown(filters: ReportFilters) {
 
   let community = 0, innovators = 0;
   if (trackedContacts > 0) {
+    const engagedIds = Array.from(allEngagedIds);
+
     const cRows = await db.select({
       id: contacts.id,
       isCommunityMember: contacts.isCommunityMember,
-      isInnovator: contacts.isInnovator,
-    }).from(contacts).where(and(eq(contacts.userId, filters.userId), inArray(contacts.id, Array.from(allEngagedIds))));
+    }).from(contacts).where(and(eq(contacts.userId, filters.userId), inArray(contacts.id, engagedIds)));
 
     for (const c of cRows) {
-      if (c.isInnovator) innovators++;
       if (c.isCommunityMember) community++;
     }
+
+    // Compute innovators from delivery data (bookings + mentoring in period)
+    const bookerIds = new Set<number>();
+    const bookingRows = await db.select({ bookerId: bookings.bookerId })
+      .from(bookings)
+      .where(and(
+        eq(bookings.userId, filters.userId),
+        inArray(bookings.status, ["confirmed", "completed"]),
+        gte(bookings.startDate, start),
+        lte(bookings.startDate, end),
+      ));
+    for (const b of bookingRows) {
+      if (b.bookerId && allEngagedIds.has(b.bookerId)) bookerIds.add(b.bookerId);
+    }
+
+    const mentoreeIds = new Set<number>();
+    const mentoringRows = await db.select({ contactId: mentoringRelationships.contactId })
+      .from(mentoringRelationships)
+      .where(inArray(mentoringRelationships.status, ["active", "application"]));
+    for (const mr of mentoringRows) {
+      if (mr.contactId && allEngagedIds.has(mr.contactId)) mentoreeIds.add(mr.contactId);
+    }
+
+    const deliveryIds = new Set(Array.from(bookerIds).concat(Array.from(mentoreeIds)));
+    innovators = deliveryIds.size;
   }
 
   return {
@@ -1398,7 +1423,7 @@ export async function getPeopleTierBreakdown(filters: ReportFilters) {
     breakdown: [
       { tier: "Users", count: totalUsers, description: `All people in/out of the space (${trackedContacts} identified contacts + ${footTraffic} untracked foot traffic)` },
       { tier: "Community", count: community, description: "Active community members" },
-      { tier: "Innovators", count: innovators, description: "Innovation programme participants" },
+      { tier: "Innovators", count: innovators, description: "Contacts with delivery (bookings or mentoring) in period" },
     ],
   };
 }

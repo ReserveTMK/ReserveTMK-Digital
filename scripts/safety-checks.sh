@@ -103,17 +103,23 @@ else
   check_fail "Ghost route files" "These files exist but are never imported — code in them is dead:\n$GHOST_FILES"
 fi
 
-# 8b. Wildcard route ordering — specific /api/contacts/ routes must come before :id
-WILDCARD_LINE=$(grep -n 'api\.contacts\.get\.path' server/routes.ts 2>/dev/null | head -1 | cut -d: -f1)
-if [ -n "$WILDCARD_LINE" ]; then
-  LATE_ROUTES=$(awk -v wl="$WILDCARD_LINE" 'NR > wl && /app\.get\("\/api\/contacts\/[^:]/' server/routes.ts 2>/dev/null || true)
-  if [ -z "$LATE_ROUTES" ]; then
-    check_pass "Route ordering (no GET /api/contacts/* after :id wildcard)"
-  else
-    check_fail "Route ordering" "These GET routes are registered AFTER /api/contacts/:id and will never match:\n$LATE_ROUTES"
+# 8b. Wildcard route ordering — specific routes must come before :id wildcards
+ALL_ORDERING_OK=true
+ORDERING_ISSUES=""
+for RESOURCE in contacts groups; do
+  WILDCARD_LINE=$(grep -n "api\.${RESOURCE}\.get\.path" server/routes.ts 2>/dev/null | head -1 | cut -d: -f1)
+  if [ -n "$WILDCARD_LINE" ]; then
+    LATE=$(awk -v wl="$WILDCARD_LINE" "NR > wl && /app\.get\(\"\/api\/${RESOURCE}\/[^:]/" server/routes.ts 2>/dev/null || true)
+    if [ -n "$LATE" ]; then
+      ALL_ORDERING_OK=false
+      ORDERING_ISSUES="${ORDERING_ISSUES}  /api/${RESOURCE}/* after :id wildcard (line ${WILDCARD_LINE}):\n${LATE}\n"
+    fi
   fi
+done
+if [ "$ALL_ORDERING_OK" = true ]; then
+  check_pass "Route ordering (no GET routes after :id wildcards)"
 else
-  check_warn "Route ordering" "Could not find api.contacts.get.path — check manually"
+  check_fail "Route ordering" "These GET routes are registered AFTER their :id wildcard and will never match:\n$ORDERING_ISSUES"
 fi
 
 # 9. Import verification — check no obviously broken imports in changed files

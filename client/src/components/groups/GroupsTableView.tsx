@@ -271,13 +271,13 @@ export function GroupsTableView({ groups, communityDensity, editMode, selectedGr
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                      {viewMode && viewMode !== "innovators" && onPromote && (
+                      {viewMode && viewMode !== "network" && onPromote && !group.isCommunity && (
                         <Button
                           size="icon"
                           variant="ghost"
                           onClick={() => onPromote(group.id)}
                           disabled={isPromoting}
-                          title={viewMode === "all" ? "Add to Our Community" : "Add to Our Innovators"}
+                          title="Add to Network"
                           data-testid={`table-promote-group-${group.id}`}
                         >
                           <ArrowUp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />

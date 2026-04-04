@@ -28,6 +28,7 @@ import {
   Receipt,
   CalendarPlus,
   UserCheck,
+  Activity,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useRef, useEffect } from "react";
@@ -58,6 +59,7 @@ const navGroups: NavGroup[] = [
     children: [
       { name: "People", href: "/community/people", icon: Users, description: "Contacts & mentees" },
       { name: "Groups", href: "/community/groups", icon: Network, description: "Organisations & collectives" },
+      { name: "Ecosystem", href: "/community/ecosystem", icon: Activity, description: "Relationship health & reach" },
     ],
   },
   {

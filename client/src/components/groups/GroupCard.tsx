@@ -39,17 +39,12 @@ export function GroupCard({ group, onSelect, onEdit, onDelete, editMode, isSelec
     }
   };
 
-  const promoteIcon = viewMode === "all" ? <Users className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" /> :
-    viewMode === "community" ? <Lightbulb className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" /> :
-    viewMode === "innovators" ? <Star className="w-3.5 h-3.5 text-yellow-600 dark:text-yellow-400" /> : null;
+  const promoteIcon = viewMode === "network" ? <Star className="w-3.5 h-3.5 text-yellow-600 dark:text-yellow-400" /> :
+    <Users className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />;
 
-  const promoteTitle = viewMode === "all" ? "Add to Our Community" :
-    viewMode === "community" ? "Add to Our Innovators" :
-    viewMode === "innovators" ? "Mark as VIP" : "";
+  const promoteTitle = viewMode === "network" ? "Mark as VIP" : "Add to Network";
 
-  const showPromote = viewMode === "all" ? !group.isCommunity :
-    viewMode === "community" ? !group.isInnovator :
-    viewMode === "innovators" ? !group.isVip : false;
+  const showPromote = viewMode === "network" ? !(group as any).isVip : !group.isCommunity;
 
   return (
     <div

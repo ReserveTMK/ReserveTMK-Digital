@@ -28,6 +28,8 @@ type EcosystemReach = {
   servesMaoriTotal: number;
   connectedTotal: number;
   totalOrgs: number;
+  wovenTotal: number;
+  trustedTotal: number;
   connectionMovements: { deepened: number; declined: number };
 };
 
@@ -222,20 +224,20 @@ export default function EcosystemPage() {
                 <p className="text-2xl font-bold">{reach.maoriLedTotal}</p>
                 <p className="text-xs text-muted-foreground">Māori-led orgs</p>
                 {reach.maoriLedTrusted > 0 && (
-                  <p className="text-xs text-green-600 mt-1">{reach.maoriLedTrusted} in our community</p>
+                  <p className="text-xs text-green-600 mt-1">{reach.maoriLedTrusted} trusted or woven</p>
                 )}
               </Card>
               <Card className="p-4">
                 <p className="text-2xl font-bold">{reach.servesMaoriTotal}</p>
                 <p className="text-xs text-muted-foreground">Serves Māori</p>
                 {reach.servesMaoriTrusted > 0 && (
-                  <p className="text-xs text-green-600 mt-1">{reach.servesMaoriTrusted} in our community</p>
+                  <p className="text-xs text-green-600 mt-1">{reach.servesMaoriTrusted} trusted or woven</p>
                 )}
               </Card>
               <Card className="p-4">
                 <p className="text-2xl font-bold">{reach.connectedTotal}</p>
-                <p className="text-xs text-muted-foreground">Connected orgs</p>
-                <p className="text-xs text-muted-foreground mt-1">of {reach.totalOrgs} total</p>
+                <p className="text-xs text-muted-foreground">Connected+ orgs</p>
+                <p className="text-xs text-muted-foreground mt-1">{reach.wovenTotal} woven · {reach.trustedTotal} trusted</p>
               </Card>
               <Card className="p-4">
                 <div className="flex items-center gap-3">

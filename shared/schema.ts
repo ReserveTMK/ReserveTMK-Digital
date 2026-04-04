@@ -401,6 +401,7 @@ export const groups = pgTable("groups", {
   isPasifika: boolean("is_pasifika").default(false),
   servesMaori: boolean("serves_maori").default(false),
   servesPasifika: boolean("serves_pasifika").default(false),
+  connectionStrength: text("connection_strength"),
   active: boolean("active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

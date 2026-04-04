@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/beautiful-button";
 import { useGroups, useCreateGroup, useUpdateGroup, useDeleteGroup, useAllGroupAssociations } from "@/hooks/use-groups";
 import { useContacts } from "@/hooks/use-contacts";
-import { Plus, Search, Loader2, Building2, Users, X, Trash2, ChevronRight, Sparkles, Check, Edit3, CheckSquare, Merge, List, Table, ArrowUp, ArrowDown, Lightbulb, Star } from "lucide-react";
+import { Plus, Search, Loader2, Building2, Users, X, Trash2, ChevronRight, Sparkles, Check, Edit3, CheckSquare, Merge, List, Table, ArrowUp, ArrowDown, Handshake, Network as NetworkIcon, Star, BookUser } from "lucide-react";
 import { ConnectionManagementPanel } from "@/components/community/ecosystem-views";
 import { Link } from "wouter";
 
@@ -24,6 +24,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GROUP_TYPES, ENGAGEMENT_LEVELS, type Group } from "@shared/schema";
 
 import { GroupCard } from "@/components/groups/GroupCard";
@@ -44,8 +45,10 @@ export default function Groups() {
   const [editMode, setEditMode] = useState(false);
   const [selectedGroups, setSelectedGroups] = useState<Set<number>>(new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<"community" | "innovators" | "all" | "vip">("all");
+  const [viewMode, setViewMode] = useState<"working" | "network" | "all">("working");
   const [layoutView, setLayoutView] = useState<"list" | "table">("list");
+  const [vipOnly, setVipOnly] = useState(false);
+  const [connectionFilter, setConnectionFilter] = useState<string>("all");
 
 
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
@@ -64,6 +67,9 @@ export default function Groups() {
 
   const { data: communityDensity } = useQuery<Record<number, { communityCount: number; totalMembers: number }>>({
     queryKey: ['/api/groups/community-density'],
+  });
+  const { data: deliveryDepths } = useQuery<Record<number, { depth: string; active: boolean; signals: string[] }>>({
+    queryKey: ['/api/groups/delivery-depth'],
   });
   const { data: allAssociations } = useAllGroupAssociations();
 
@@ -175,18 +181,15 @@ export default function Groups() {
     mutationFn: async ({ groupId, vipReason }: { groupId: number; vipReason?: string }) => {
       const group = groups?.find((g: Group) => g.id === groupId);
       if (!group) throw new Error("Group not found");
-      if (viewMode === "innovators") {
+      if (viewMode === "network") {
         const res = await apiRequest("POST", `/api/groups/${groupId}/promote-vip`, vipReason ? { vipReason } : undefined);
         return res.json();
       }
-      const data: Record<string, any> = {};
-      if (viewMode === "all") {
-        data.isCommunity = true;
-        data.movedToCommunityAt = new Date().toISOString();
-      } else if (viewMode === "community") {
-        data.isInnovator = true;
-        data.movedToInnovatorsAt = new Date().toISOString();
-      }
+      // From all or working tab → add to Network
+      const data: Record<string, any> = {
+        isCommunity: true,
+        movedToCommunityAt: new Date().toISOString(),
+      };
       const res = await apiRequest("PATCH", `/api/groups/${groupId}`, data);
       return res.json();
     },
@@ -194,7 +197,7 @@ export default function Groups() {
       queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
       queryClient.invalidateQueries({ queryKey: ['/api/groups/community-density'] });
       queryClient.invalidateQueries({ queryKey: ['/api/ecosystem/vip'] });
-      const label = viewMode === "all" ? "Added to Our Community" : viewMode === "community" ? "Added to Our Innovators" : "Marked as VIP";
+      const label = viewMode === "network" ? "Marked as VIP" : "Added to Network";
       toast({ title: "Done", description: label });
       setVipReasonDialogOpen(false);
       setVipReasonGroupId(null);
@@ -206,7 +209,7 @@ export default function Groups() {
   });
 
   const handleGroupPromote = (groupId: number) => {
-    if (viewMode === "innovators") {
+    if (viewMode === "network") {
       setVipReasonGroupId(groupId);
       setVipReasonText("");
       setVipReasonDialogOpen(true);
@@ -224,17 +227,11 @@ export default function Groups() {
     mutationFn: async (groupId: number) => {
       const group = groups?.find((g: Group) => g.id === groupId);
       if (!group) throw new Error("Group not found");
-      if (viewMode === "vip") {
-        return apiRequest("POST", `/api/groups/${groupId}/demote-vip`);
-      }
-      const data: Record<string, any> = {};
-      if (viewMode === "innovators") {
-        data.isInnovator = false;
-        data.movedToInnovatorsAt = null;
-      } else if (viewMode === "community") {
-        data.isCommunity = false;
-        data.movedToCommunityAt = null;
-      }
+      // Remove from Network
+      const data: Record<string, any> = {
+        isCommunity: false,
+        movedToCommunityAt: null,
+      };
       const res = await apiRequest("PATCH", `/api/groups/${groupId}`, data);
       return res.json();
     },
@@ -252,18 +249,13 @@ export default function Groups() {
   const bulkPromoteMutation = useMutation({
     mutationFn: async (groupIds: number[]) => {
       const promises = groupIds.map(async (id) => {
-        if (viewMode === "innovators") {
+        if (viewMode === "network") {
           return apiRequest("POST", `/api/groups/${id}/promote-vip`);
         }
-        const data: Record<string, any> = {};
-        if (viewMode === "all") {
-          data.isCommunity = true;
-          data.movedToCommunityAt = new Date().toISOString();
-        } else if (viewMode === "community") {
-          data.isInnovator = true;
-          data.movedToInnovatorsAt = new Date().toISOString();
-        }
-        return apiRequest("PATCH", `/api/groups/${id}`, data);
+        return apiRequest("PATCH", `/api/groups/${id}`, {
+          isCommunity: true,
+          movedToCommunityAt: new Date().toISOString(),
+        });
       });
       await Promise.all(promises);
     },
@@ -282,18 +274,10 @@ export default function Groups() {
   const bulkDemoteMutation = useMutation({
     mutationFn: async (groupIds: number[]) => {
       const promises = groupIds.map(async (id) => {
-        if (viewMode === "vip") {
-          return apiRequest("POST", `/api/groups/${id}/demote-vip`);
-        }
-        const data: Record<string, any> = {};
-        if (viewMode === "innovators") {
-          data.isInnovator = false;
-          data.movedToInnovatorsAt = null;
-        } else if (viewMode === "community") {
-          data.isCommunity = false;
-          data.movedToCommunityAt = null;
-        }
-        return apiRequest("PATCH", `/api/groups/${id}`, data);
+        return apiRequest("PATCH", `/api/groups/${id}`, {
+          isCommunity: false,
+          movedToCommunityAt: null,
+        });
       });
       await Promise.all(promises);
     },
@@ -309,25 +293,17 @@ export default function Groups() {
     },
   });
 
-  const innovatorCount = useMemo(() => {
-    if (!groups) return 0;
-    return groups.filter((g: Group) => g.isInnovator === true).length;
-  }, [groups]);
-
-  const communityCount = useMemo(() => {
-    if (!groups) return 0;
-    return groups.filter((g: Group) => g.isCommunity === true).length;
-  }, [groups]);
-
-  const allCount = useMemo(() => {
-    if (!groups) return 0;
-    return groups.length;
-  }, [groups]);
-
-  const vipCount = useMemo(() => {
-    if (!groups) return 0;
-    return groups.filter((g: Group) => (g as any).isVip === true).length;
-  }, [groups]);
+  const tierCounts = useMemo(() => {
+    if (!groups) return { working: 0, network: 0, all: 0, vip: 0 };
+    const all = groups.length;
+    const working = groups.filter((g: Group) => {
+      const dd = deliveryDepths?.[g.id];
+      return dd && dd.depth !== "none";
+    }).length;
+    const network = groups.filter((g: Group) => g.isCommunity === true).length;
+    const vip = groups.filter((g: Group) => (g as any).isVip === true).length;
+    return { working, network, all, vip };
+  }, [groups, deliveryDepths]);
 
   const openMergeDialog = () => {
     if (selectedGroups.size < 2) {
@@ -352,17 +328,22 @@ export default function Groups() {
         g.contactEmail?.toLowerCase().includes(search.toLowerCase());
       const matchesType = typeFilter === "all" || g.type === typeFilter;
       const matchesEngagement = engagementFilter === "all" || (g.engagementLevel || "Active") === engagementFilter;
-      return matchesSearch && matchesType && matchesEngagement;
+      const matchesConnection = connectionFilter === "all" || (g as any).connectionStrength === connectionFilter;
+      return matchesSearch && matchesType && matchesEngagement && matchesConnection;
     });
-  }, [groups, search, typeFilter, engagementFilter]);
+  }, [groups, search, typeFilter, engagementFilter, connectionFilter]);
 
   const displayGroups = useMemo(() => {
     let result = filteredGroups;
-    if (viewMode === "innovators") {
-      result = result.filter((g: Group) => g.isInnovator === true);
-    } else if (viewMode === "community") {
+    if (viewMode === "working") {
+      result = result.filter((g: Group) => {
+        const dd = deliveryDepths?.[g.id];
+        return dd && dd.depth !== "none";
+      });
+    } else if (viewMode === "network") {
       result = result.filter((g: Group) => g.isCommunity === true);
-    } else if (viewMode === "vip") {
+    }
+    if (vipOnly) {
       result = result.filter((g: Group) => (g as any).isVip === true);
     }
     result.sort((a: Group, b: Group) => {
@@ -371,7 +352,7 @@ export default function Groups() {
       return bCount - aCount;
     });
     return result;
-  }, [filteredGroups, communityDensity, viewMode]);
+  }, [filteredGroups, communityDensity, viewMode, deliveryDepths, vipOnly]);
 
   const parentMap = useMemo(() => {
     const map: Record<number, { parentId: number; parentName: string }> = {};
@@ -459,7 +440,7 @@ export default function Groups() {
                   <Trash2 className="w-4 h-4 mr-2" />
                   Delete ({selectedGroups.size})
                 </Button>
-                {(viewMode === "all" || viewMode === "community" || viewMode === "innovators") && (
+                {(viewMode === "all" || viewMode === "working") && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -468,20 +449,32 @@ export default function Groups() {
                     data-testid="button-bulk-promote-groups"
                   >
                     {bulkPromoteMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowUp className="w-4 h-4 mr-2" />}
-                    {viewMode === "all" ? "Add to Community" : viewMode === "community" ? "Add to Innovators" : "Mark as VIP"} ({selectedGroups.size})
+                    Add to Network ({selectedGroups.size})
                   </Button>
                 )}
-                {(viewMode === "community" || viewMode === "innovators") && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => bulkDemoteMutation.mutate(Array.from(selectedGroups))}
-                    disabled={bulkDemoteMutation.isPending}
-                    data-testid="button-bulk-demote-groups"
-                  >
-                    {bulkDemoteMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowDown className="w-4 h-4 mr-2" />}
-                    Demote ({selectedGroups.size})
-                  </Button>
+                {viewMode === "network" && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => bulkPromoteMutation.mutate(Array.from(selectedGroups))}
+                      disabled={bulkPromoteMutation.isPending}
+                      data-testid="button-bulk-promote-vip-groups"
+                    >
+                      {bulkPromoteMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Star className="w-4 h-4 mr-2" />}
+                      Mark VIP ({selectedGroups.size})
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => bulkDemoteMutation.mutate(Array.from(selectedGroups))}
+                      disabled={bulkDemoteMutation.isPending}
+                      data-testid="button-bulk-demote-groups"
+                    >
+                      {bulkDemoteMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowDown className="w-4 h-4 mr-2" />}
+                      Remove from Network ({selectedGroups.size})
+                    </Button>
+                  </>
                 )}
                 {selectedGroups.size >= 2 && (
                   <Button
@@ -559,10 +552,10 @@ export default function Groups() {
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl md:text-3xl font-bold font-display" data-testid="text-groups-title">
-                Organisations
+                Groups
               </h1>
               <p className="text-muted-foreground text-sm mt-1">
-                Manage organisations, collectives and community groups
+                Organisations, collectives and community groups
               </p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -596,63 +589,54 @@ export default function Groups() {
             </div>
           </div>
 
-          {/* View Toggle + Search */}
+          {/* Tabs + Filters */}
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between gap-2" data-testid="view-toggle">
-              <div className="flex items-center gap-1 border rounded-lg p-0.5">
+              <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "working" | "network" | "all")} className="min-w-0 flex-1">
+                <TabsList className="overflow-x-auto flex-nowrap w-full justify-start">
+                  <TabsTrigger value="working" className="shrink-0" data-testid="button-view-working">
+                    <Handshake className="w-4 h-4 mr-1.5" />
+                    Working With ({tierCounts.working})
+                  </TabsTrigger>
+                  <TabsTrigger value="network" className="shrink-0" data-testid="button-view-network">
+                    <NetworkIcon className="w-4 h-4 mr-1.5" />
+                    Network ({tierCounts.network})
+                  </TabsTrigger>
+                  <TabsTrigger value="all" className="shrink-0" data-testid="button-view-all">
+                    <BookUser className="w-4 h-4 mr-1.5" />
+                    All ({tierCounts.all})
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+              <div className="flex items-center gap-2">
                 <Button
-                  variant={viewMode === "innovators" ? "secondary" : "ghost"}
+                  variant={vipOnly ? "secondary" : "ghost"}
                   size="sm"
-                  onClick={() => setViewMode("innovators")}
-                  data-testid="button-view-innovators"
+                  onClick={() => setVipOnly(!vipOnly)}
+                  data-testid="button-toggle-vip"
+                  title={vipOnly ? "Showing VIP only" : "Filter to VIP"}
                 >
-                  <Lightbulb className="w-4 h-4 mr-1.5" />
-                  Our Innovators ({innovatorCount})
+                  <Star className={`w-4 h-4 ${vipOnly ? "text-yellow-500 fill-yellow-500" : ""}`} />
+                  {vipOnly && <span className="ml-1 text-xs">{tierCounts.vip}</span>}
                 </Button>
-                <Button
-                  variant={viewMode === "community" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setViewMode("community")}
-                  data-testid="button-view-community"
-                >
-                  <Users className="w-4 h-4 mr-1.5" />
-                  Our Community ({communityCount})
-                </Button>
-                <Button
-                  variant={viewMode === "all" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setViewMode("all")}
-                  data-testid="button-view-all"
-                >
-                  All Groups ({allCount})
-                </Button>
-                <Button
-                  variant={viewMode === "vip" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setViewMode("vip")}
-                  data-testid="button-view-vip"
-                >
-                  <Star className="w-4 h-4 mr-1.5" />
-                  VIP ({vipCount})
-                </Button>
-              </div>
-              <div className="flex items-center gap-1 border rounded-lg p-0.5" data-testid="layout-toggle">
-                <Button
-                  variant={layoutView === "list" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setLayoutView("list")}
-                  data-testid="button-layout-list"
-                >
-                  <List className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant={layoutView === "table" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setLayoutView("table")}
-                  data-testid="button-layout-table"
-                >
-                  <Table className="w-4 h-4" />
-                </Button>
+                <div className="flex items-center gap-1 border rounded-lg p-0.5" data-testid="layout-toggle">
+                  <Button
+                    variant={layoutView === "list" ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={() => setLayoutView("list")}
+                    data-testid="button-layout-list"
+                  >
+                    <List className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant={layoutView === "table" ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={() => setLayoutView("table")}
+                    data-testid="button-layout-table"
+                  >
+                    <Table className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
@@ -681,16 +665,16 @@ export default function Groups() {
                   })}
                 </SelectContent>
               </Select>
-              <Select value={engagementFilter} onValueChange={setEngagementFilter}>
-                <SelectTrigger className="w-full sm:w-[160px]" data-testid="select-engagement-filter">
-                  <SelectValue placeholder="All engagement" />
+              <Select value={connectionFilter} onValueChange={setConnectionFilter}>
+                <SelectTrigger className="w-full sm:w-[160px]" data-testid="select-connection-filter">
+                  <SelectValue placeholder="All connections" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All engagement</SelectItem>
-                  {ENGAGEMENT_LEVELS.map((level) => {
-                    const count = groups?.filter((g: any) => (g.engagementLevel || "Active") === level).length || 0;
+                  <SelectItem value="all">All connections</SelectItem>
+                  {["aware", "connected", "trusted", "woven"].map((level) => {
+                    const count = groups?.filter((g: any) => g.connectionStrength === level).length || 0;
                     return (
-                      <SelectItem key={level} value={level}>{level} ({count})</SelectItem>
+                      <SelectItem key={level} value={level}>{level.charAt(0).toUpperCase() + level.slice(1)} ({count})</SelectItem>
                     );
                   })}
                 </SelectContent>
