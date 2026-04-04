@@ -1,5 +1,4 @@
 import { useState, useCallback } from "react";
-import { useSearch } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Users, FileText, Settings } from "lucide-react";
 import RegularBookersPage from "./regular-bookers";
@@ -12,7 +11,6 @@ function getTabFromUrl() {
 }
 
 export default function BookersPage() {
-  const searchString = useSearch();
   const [activeTab, setActiveTab] = useState(getTabFromUrl);
 
   const handleTabChange = useCallback((tab: string) => {

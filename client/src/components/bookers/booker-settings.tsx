@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { useVenues, useUpdateVenue, useLocations, useUpdateLocation, useBookingPricingDefaults, useUpdateBookingPricingDefaults } from "@/hooks/use-bookings";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
-import { Loader2, MapPin, Building2, DollarSign } from "lucide-react";
+import { Loader2, Building2, DollarSign, ExternalLink } from "lucide-react";
 import { COMMUNITY_DISCOUNT } from "@shared/schema";
 
 export function BookerSettings() {
@@ -81,136 +81,145 @@ export function BookerSettings() {
 
   return (
     <div className="space-y-6">
+      {/* Casual Hire — rates, venues, and link in one card */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <MapPin className="w-5 h-5" />
-            Casual Hire Availability
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <DollarSign className="w-5 h-5" />
+              Casual Hire
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => window.open("/casual-hire", "_blank")}
+              data-testid="button-view-casual-hire"
+            >
+              <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
+              View casual hire page
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          <p className="text-sm text-muted-foreground">
-            Toggle which locations and venues appear on the public casual hire portal.
-          </p>
+          {/* Rates */}
+          <div>
+            <h3 className="text-sm font-medium mb-3">Rates</h3>
+            <p className="text-xs text-muted-foreground mb-3">
+              Standard rates shown on the public casual hire portal. All prices exclude GST.
+            </p>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="hourly-rate">Hourly</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
+                  <Input
+                    id="hourly-rate"
+                    value={hourlyRate}
+                    onChange={(e) => { setHourlyRate(e.target.value); setPricingDirty(true); }}
+                    className="pl-7"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="half-day-rate">Half day (4hrs)</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
+                  <Input
+                    id="half-day-rate"
+                    value={halfDayRate}
+                    onChange={(e) => { setHalfDayRate(e.target.value); setPricingDirty(true); }}
+                    className="pl-7"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="full-day-rate">Full day (8hrs)</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
+                  <Input
+                    id="full-day-rate"
+                    value={fullDayRate}
+                    onChange={(e) => { setFullDayRate(e.target.value); setPricingDirty(true); }}
+                    className="pl-7"
+                  />
+                </div>
+              </div>
+            </div>
 
-          {Array.from(venuesByLocation.entries()).map(([spaceName, spaceVenues]) => {
-            const locationEnabled = getLocationCasualEnabled(spaceName);
-            return (
-              <div key={spaceName} className="border rounded-lg p-4 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Building2 className="w-5 h-5 text-muted-foreground" />
-                    <div>
-                      <p className="font-medium">{spaceName}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {spaceVenues!.length} venue{spaceVenues!.length !== 1 ? "s" : ""}
-                      </p>
+            <div className="bg-muted/50 rounded-lg p-4 space-y-2 mt-3">
+              <p className="text-sm font-medium">Community discount: {communityDiscount}% off</p>
+              <div className="grid grid-cols-3 gap-4 text-sm text-muted-foreground">
+                <span>${(parseFloat(hourlyRate || "0") * (1 - COMMUNITY_DISCOUNT)).toFixed(0)}/hr</span>
+                <span>${(parseFloat(halfDayRate || "0") * (1 - COMMUNITY_DISCOUNT)).toFixed(0)}/half day</span>
+                <span>${(parseFloat(fullDayRate || "0") * (1 - COMMUNITY_DISCOUNT)).toFixed(0)}/full day</span>
+              </div>
+            </div>
+
+            {pricingDirty && (
+              <Button onClick={handleSavePricing} disabled={updatePricing.isPending} className="mt-3">
+                {updatePricing.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                Save pricing
+              </Button>
+            )}
+          </div>
+
+          {/* Available venues */}
+          <div>
+            <h3 className="text-sm font-medium mb-3">Available venues</h3>
+            <p className="text-xs text-muted-foreground mb-3">
+              Toggle which venues appear on the public casual hire portal.
+            </p>
+
+            {Array.from(venuesByLocation.entries()).map(([spaceName, spaceVenues]) => {
+              const locationEnabled = getLocationCasualEnabled(spaceName);
+              return (
+                <div key={spaceName} className="border rounded-lg p-4 space-y-3 mb-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Building2 className="w-4 h-4 text-muted-foreground" />
+                      <div>
+                        <p className="font-medium text-sm">{spaceName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {spaceVenues!.length} venue{spaceVenues!.length !== 1 ? "s" : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor={`loc-${spaceName}`} className="text-xs">
+                        {locationEnabled ? "Available" : "Off"}
+                      </Label>
+                      <Switch
+                        id={`loc-${spaceName}`}
+                        checked={locationEnabled}
+                        onCheckedChange={(checked) => handleLocationToggle(spaceName, checked)}
+                      />
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor={`loc-${spaceName}`} className="text-sm">
-                      {locationEnabled ? "Open to casual" : "Not available"}
-                    </Label>
-                    <Switch
-                      id={`loc-${spaceName}`}
-                      checked={locationEnabled}
-                      onCheckedChange={(checked) => handleLocationToggle(spaceName, checked)}
-                    />
-                  </div>
-                </div>
 
-                {locationEnabled && (
-                  <div className="ml-8 space-y-3">
-                    {spaceVenues!.map((v) => (
-                      <div key={v.id} className="flex items-center justify-between py-2 border-t">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm">{v.name}</span>
-                          {v.capacity && (
-                            <Badge variant="secondary" className="text-xs">
-                              {v.capacity} pax
-                            </Badge>
-                          )}
+                  {locationEnabled && (
+                    <div className="ml-7 space-y-2">
+                      {spaceVenues!.map((v) => (
+                        <div key={v.id} className="flex items-center justify-between py-1.5 border-t">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">{v.name}</span>
+                            {v.capacity && (
+                              <Badge variant="secondary" className="text-xs">
+                                {v.capacity} pax
+                              </Badge>
+                            )}
+                          </div>
+                          <Switch
+                            checked={v.casualEnabled ?? false}
+                            onCheckedChange={(checked) => handleVenueToggle(v.id, v.name, checked)}
+                          />
                         </div>
-                        <Switch
-                          checked={v.casualEnabled ?? false}
-                          onCheckedChange={(checked) => handleVenueToggle(v.id, v.name, checked)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <DollarSign className="w-5 h-5" />
-            Casual Hire Pricing
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Standard rates shown on the public casual hire portal. All prices exclude GST.
-          </p>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="hourly-rate">Hourly rate</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
-                <Input
-                  id="hourly-rate"
-                  value={hourlyRate}
-                  onChange={(e) => { setHourlyRate(e.target.value); setPricingDirty(true); }}
-                  className="pl-7"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="half-day-rate">Half day (4hrs)</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
-                <Input
-                  id="half-day-rate"
-                  value={halfDayRate}
-                  onChange={(e) => { setHalfDayRate(e.target.value); setPricingDirty(true); }}
-                  className="pl-7"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="full-day-rate">Full day (8hrs)</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
-                <Input
-                  id="full-day-rate"
-                  value={fullDayRate}
-                  onChange={(e) => { setFullDayRate(e.target.value); setPricingDirty(true); }}
-                  className="pl-7"
-                />
-              </div>
-            </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-
-          <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-            <p className="text-sm font-medium">Community discount: {communityDiscount}% off</p>
-            <div className="grid grid-cols-3 gap-4 text-sm text-muted-foreground">
-              <span>${(parseFloat(hourlyRate || "0") * (1 - COMMUNITY_DISCOUNT)).toFixed(0)}/hr</span>
-              <span>${(parseFloat(halfDayRate || "0") * (1 - COMMUNITY_DISCOUNT)).toFixed(0)}/half day</span>
-              <span>${(parseFloat(fullDayRate || "0") * (1 - COMMUNITY_DISCOUNT)).toFixed(0)}/full day</span>
-            </div>
-          </div>
-
-          {pricingDirty && (
-            <Button onClick={handleSavePricing} disabled={updatePricing.isPending}>
-              {updatePricing.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Save pricing
-            </Button>
-          )}
         </CardContent>
       </Card>
     </div>
