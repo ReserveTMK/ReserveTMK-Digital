@@ -88,63 +88,40 @@ export function registerContactRoutes(app: Express) {
       const userId = (req.user as any).claims.sub;
       const sixMonthsAgo = new Date();
       sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-      const cutoffDate = sixMonthsAgo.toISOString().split("T")[0]; // YYYY-MM-DD for date comparisons
 
-      // Gather contact IDs with access activity (bookings, gear, desk)
-      const accessRows = await db.execute(sql`
-        SELECT x.contact_id, bool_or(x.recent) as recent FROM (
-          SELECT b.booker_id as contact_id, (b.start_date >= ${cutoffDate}::date) as recent
-          FROM bookings b WHERE b.booker_id IS NOT NULL AND b.status IN ('confirmed', 'completed')
-          UNION ALL
-          SELECT rb.contact_id, (gb.created_at >= ${cutoffDate}::date) as recent
-          FROM gear_bookings gb JOIN regular_bookers rb ON rb.id = gb.regular_booker_id WHERE rb.contact_id IS NOT NULL
-          UNION ALL
-          SELECT rb.contact_id, (dk.date >= ${cutoffDate}::date) as recent
-          FROM desk_bookings dk JOIN regular_bookers rb ON rb.id = dk.regular_booker_id WHERE rb.contact_id IS NOT NULL
-        ) x GROUP BY x.contact_id
-      `);
+      // Use storage layer to get data instead of raw SQL to avoid Drizzle parameter issues
+      const allContacts = await storage.getContacts(userId);
+      const allBookings = await storage.getBookings(userId);
+      const allMentoring = await storage.getMentoringRelationships();
 
-      // Gather contact IDs with capability activity (programmes, mentoring)
-      const capRows = await db.execute(sql`
-        SELECT x.contact_id, bool_or(x.recent) as recent FROM (
-          SELECT pr.contact_id, (pr.registered_at >= ${cutoffDate}::date) as recent
-          FROM programme_registrations pr WHERE pr.contact_id IS NOT NULL AND pr.status = 'registered'
-          UNION ALL
-          SELECT mr.contact_id, (mr.status IN ('active', 'application')) as recent
-          FROM mentoring_relationships mr WHERE mr.contact_id IS NOT NULL
-          UNION ALL
-          SELECT m.contact_id, (m.start_time >= ${cutoffDate}::date) as recent
-          FROM meetings m WHERE m.contact_id IS NOT NULL AND m.status IN ('completed', 'confirmed')
-            AND m.type IN (SELECT mt.name FROM meeting_types mt WHERE mt.user_id = ${userId} AND mt.category = 'mentoring' AND mt.is_active = true)
-        ) x GROUP BY x.contact_id
-      `);
+      const contactIds = new Set(allContacts.map(c => c.id));
 
-      // Get user's contact IDs for filtering
-      const userContacts = await db.execute(sql`
-        SELECT id FROM contacts WHERE user_id = ${userId} AND is_archived = false
-      `);
-      const userContactIds = new Set(((userContacts as any).rows || []).map((r: any) => r.id));
-
-      // Build maps (bool_or returns boolean but Drizzle may return string)
-      const toBool = (v: any) => v === true || v === "true" || v === "t";
-
+      // Access: contacts who are bookers on confirmed/completed bookings
       const accessMap = new Map<number, boolean>();
-      for (const r of (accessRows as any).rows || []) {
-        if (!userContactIds.has(r.contact_id)) continue;
-        accessMap.set(r.contact_id, toBool(r.recent));
+      for (const b of allBookings) {
+        if (!b.bookerId || !contactIds.has(b.bookerId)) continue;
+        if (b.status !== "confirmed" && b.status !== "completed") continue;
+        const recent = b.startDate ? new Date(b.startDate) >= sixMonthsAgo : false;
+        const existing = accessMap.get(b.bookerId) || false;
+        accessMap.set(b.bookerId, existing || recent);
       }
 
+      // Capability: contacts with mentoring relationships
       const capMap = new Map<number, boolean>();
-      for (const r of (capRows as any).rows || []) {
-        if (!userContactIds.has(r.contact_id)) continue;
-        capMap.set(r.contact_id, toBool(r.recent));
+      for (const mr of allMentoring) {
+        if (!mr.contactId || !contactIds.has(mr.contactId)) continue;
+        const recent = mr.status === "active" || mr.status === "application";
+        const existing = capMap.get(mr.contactId) || false;
+        capMap.set(mr.contactId, existing || recent);
       }
 
       // Compute delivery depth per contact
-      const allIds = new Set([...accessMap.keys(), ...capMap.keys()]);
+      const allDeliveryIds: number[] = [];
+      accessMap.forEach((_, id) => { if (!allDeliveryIds.includes(id)) allDeliveryIds.push(id); });
+      capMap.forEach((_, id) => { if (!allDeliveryIds.includes(id)) allDeliveryIds.push(id); });
       const result: Record<number, { depth: string; active: boolean }> = {};
 
-      for (const id of allIds) {
+      for (const id of allDeliveryIds) {
         const recentAccess = accessMap.get(id) || false;
         const recentCap = capMap.get(id) || false;
         const anyAccess = accessMap.has(id);
