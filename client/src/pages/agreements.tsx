@@ -92,7 +92,7 @@ const PAYMENT_STATUS_BADGE: Record<string, string> = {
   refunded: "bg-gray-500/15 text-gray-700 dark:text-gray-300",
 };
 
-export default function Agreements() {
+export default function Agreements({ embedded }: { embedded?: boolean } = {}) {
   const { data: memberships, isLoading: membershipsLoading } = useMemberships();
   const { data: mous, isLoading: mousLoading } = useMous();
   const { data: contacts } = useContacts();
@@ -106,42 +106,53 @@ export default function Agreements() {
   const deleteMouMutation = useDeleteMou();
   const { toast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<"memberships" | "mous">("memberships");
-  const [membershipSearch, setMembershipSearch] = useState("");
-  const [mouSearch, setMouSearch] = useState("");
+  const [agreementSearch, setAgreementSearch] = useState("");
   const [createMembershipOpen, setCreateMembershipOpen] = useState(false);
   const [editMembership, setEditMembership] = useState<Membership | null>(null);
   const [createMouOpen, setCreateMouOpen] = useState(false);
   const [editMou, setEditMou] = useState<Mou | null>(null);
 
-  const filteredMemberships = useMemo(() => {
-    if (!memberships) return [];
-    if (!membershipSearch.trim()) return memberships;
-    const term = membershipSearch.toLowerCase();
-    return memberships.filter((m) => {
-      const contactName = contacts?.find((c) => c.id === m.contactId)?.name || "";
+  // Unified agreement list — memberships + MOUs merged
+  type AgreementItem =
+    | { kind: "membership"; data: Membership }
+    | { kind: "mou"; data: Mou };
+
+  const allAgreements = useMemo<AgreementItem[]>(() => {
+    const items: AgreementItem[] = [];
+    (memberships || []).forEach(m => items.push({ kind: "membership", data: m }));
+    (mous || []).forEach(m => items.push({ kind: "mou", data: m }));
+    return items;
+  }, [memberships, mous]);
+
+  const filteredAgreements = useMemo(() => {
+    if (!agreementSearch.trim()) return allAgreements;
+    const term = agreementSearch.toLowerCase();
+    return allAgreements.filter((item) => {
+      const contactName = contacts?.find((c) => c.id === item.data.contactId)?.name || "";
+      if (item.kind === "membership") {
+        return (
+          item.data.name.toLowerCase().includes(term) ||
+          contactName.toLowerCase().includes(term) ||
+          item.data.notes?.toLowerCase().includes(term)
+        );
+      }
       return (
-        m.name.toLowerCase().includes(term) ||
+        item.data.title.toLowerCase().includes(term) ||
+        item.data.partnerName?.toLowerCase().includes(term) ||
         contactName.toLowerCase().includes(term) ||
-        m.notes?.toLowerCase().includes(term)
+        item.data.notes?.toLowerCase().includes(term)
       );
     });
-  }, [memberships, membershipSearch, contacts]);
+  }, [allAgreements, agreementSearch, contacts]);
+
+  // Keep filtered lists for visibility filtering with undo
+  const filteredMemberships = useMemo(() => {
+    return filteredAgreements.filter(a => a.kind === "membership").map(a => a.data as Membership);
+  }, [filteredAgreements]);
 
   const filteredMous = useMemo(() => {
-    if (!mous) return [];
-    if (!mouSearch.trim()) return mous;
-    const term = mouSearch.toLowerCase();
-    return mous.filter((m) => {
-      const contactName = contacts?.find((c) => c.id === m.contactId)?.name || "";
-      return (
-        m.title.toLowerCase().includes(term) ||
-        m.partnerName?.toLowerCase().includes(term) ||
-        contactName.toLowerCase().includes(term) ||
-        m.notes?.toLowerCase().includes(term)
-      );
-    });
-  }, [mous, mouSearch, contacts]);
+    return filteredAgreements.filter(a => a.kind === "mou").map(a => a.data as Mou);
+  }, [filteredAgreements]);
 
   const [pendingDelete, setPendingDelete] = useState<{ id: number; type: "membership" | "mou" } | null>(null);
   const pendingDeleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -334,434 +345,380 @@ export default function Agreements() {
     });
   }, [deleteMembershipMutation, deleteMouMutation, toast]);
 
-  const visibleMemberships = useMemo(() => {
-    return filteredMemberships.filter(
-      (m) => !(pendingDelete?.type === "membership" && pendingDelete.id === m.id)
+  const visibleAgreements = useMemo(() => {
+    return filteredAgreements.filter(
+      (item) => !(pendingDelete && (
+        (pendingDelete.type === "membership" && item.kind === "membership" && pendingDelete.id === item.data.id) ||
+        (pendingDelete.type === "mou" && item.kind === "mou" && pendingDelete.id === item.data.id)
+      ))
     );
-  }, [filteredMemberships, pendingDelete]);
+  }, [filteredAgreements, pendingDelete]);
 
-  const visibleMous = useMemo(() => {
-    return filteredMous.filter(
-      (m) => !(pendingDelete?.type === "mou" && pendingDelete.id === m.id)
-    );
-  }, [filteredMous, pendingDelete]);
+  // Combined stats
+  const combinedStats = useMemo(() => {
+    return {
+      total: membershipStats.total + mouStats.total,
+      active: membershipStats.active + mouStats.active,
+      revenue: membershipStats.revenue,
+      inKindValue: mouStats.inKindValue,
+      totalSubsidy: membershipStats.valueGiven + mouStats.valueGiven,
+    };
+  }, [membershipStats, mouStats]);
 
   const isLoading = membershipsLoading || mousLoading;
 
   return (
     <>
-    <main className="flex-1 p-4 md:p-8 pb-8 overflow-y-auto">
-        <div className="max-w-6xl mx-auto space-y-6">
+    <main className={embedded ? "space-y-6" : "flex-1 p-4 md:p-8 pb-8 overflow-y-auto"}>
+        <div className={embedded ? "space-y-6" : "max-w-6xl mx-auto space-y-6"}>
+          {!embedded && (
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-display font-bold" data-testid="text-agreements-title">Agreements</h1>
-              <p className="text-muted-foreground mt-1">Manage memberships and memoranda of understanding.</p>
+              <p className="text-muted-foreground mt-1">Memberships and MOUs in one view.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button className="shadow-lg" data-testid="button-new-agreement">
+                    <Plus className="w-4 h-4 mr-2" />
+                    New Agreement
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setCreateMembershipOpen(true)} data-testid="button-create-membership">
+                    <FileText className="w-4 h-4 mr-2" />
+                    New Membership
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setCreateMouOpen(true)} data-testid="button-create-mou">
+                    <Handshake className="w-4 h-4 mr-2" />
+                    New MOU
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+          )}
+
+          {embedded && (
+            <div className="flex justify-end">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button className="shadow-lg" data-testid="button-new-agreement-embedded">
+                    <Plus className="w-4 h-4 mr-2" />
+                    New Agreement
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setCreateMembershipOpen(true)}>
+                    <FileText className="w-4 h-4 mr-2" />
+                    New Membership
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setCreateMouOpen(true)}>
+                    <Handshake className="w-4 h-4 mr-2" />
+                    New MOU
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
+
+          {/* Combined dashboard */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Card className="p-4">
+              <p className="text-xs text-muted-foreground">Total</p>
+              <p className="text-2xl font-bold" data-testid="text-stat-total">{combinedStats.total}</p>
+            </Card>
+            <Card className="p-4">
+              <p className="text-xs text-muted-foreground">Active</p>
+              <p className="text-2xl font-bold" data-testid="text-stat-active">{combinedStats.active}</p>
+            </Card>
+            <Card className="p-4">
+              <p className="text-xs text-muted-foreground">Annual Revenue</p>
+              <p className="text-2xl font-bold" data-testid="text-stat-revenue">${(combinedStats.revenue + combinedStats.inKindValue).toFixed(2)}</p>
+            </Card>
+            <Card className="p-4">
+              <p className="text-xs text-muted-foreground">Value Given</p>
+              <p className="text-2xl font-bold text-green-600 dark:text-green-400" data-testid="text-stat-subsidy">${combinedStats.totalSubsidy.toFixed(2)}</p>
+              <p className="text-[10px] text-muted-foreground">subsidy provided</p>
+            </Card>
+          </div>
+
+          {/* Search */}
+          <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Search agreements..."
+                className="pl-10"
+                value={agreementSearch}
+                onChange={(e) => setAgreementSearch(e.target.value)}
+                data-testid="input-search-agreements"
+              />
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              className={`toggle-elevate ${activeTab === "memberships" ? "toggle-elevated" : ""}`}
-              onClick={() => setActiveTab("memberships")}
-              data-testid="button-tab-memberships"
-            >
-              <FileText className="w-4 h-4 mr-2" />
-              Memberships
-            </Button>
-            <Button
-              variant="ghost"
-              className={`toggle-elevate ${activeTab === "mous" ? "toggle-elevated" : ""}`}
-              onClick={() => setActiveTab("mous")}
-              data-testid="button-tab-mous"
-            >
-              <Handshake className="w-4 h-4 mr-2" />
-              MOUs
-            </Button>
-          </div>
-
-          {activeTab === "memberships" && (
-            <>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <Card className="p-4">
-                  <p className="text-xs text-muted-foreground">Total Members</p>
-                  <p className="text-2xl font-bold" data-testid="text-stat-total-members">{membershipStats.total}</p>
-                </Card>
-                <Card className="p-4">
-                  <p className="text-xs text-muted-foreground">Active</p>
-                  <p className="text-2xl font-bold" data-testid="text-stat-active-members">{membershipStats.active}</p>
-                </Card>
-                <Card className="p-4">
-                  <p className="text-xs text-muted-foreground">Annual Revenue</p>
-                  <p className="text-2xl font-bold" data-testid="text-stat-annual-revenue">${membershipStats.revenue.toFixed(2)}</p>
-                </Card>
-                <Card className="p-4">
-                  <p className="text-xs text-muted-foreground">Value Given</p>
-                  <p className="text-2xl font-bold text-green-600 dark:text-green-400" data-testid="text-stat-value-given">${membershipStats.valueGiven.toFixed(2)}</p>
-                  <p className="text-[10px] text-muted-foreground">discount / subsidy</p>
-                </Card>
+          {isLoading ? (
+            <div className="flex justify-center py-20">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+          ) : !visibleAgreements.length ? (
+            <Card className="p-12 text-center">
+              <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+                <Handshake className="w-8 h-8 text-muted-foreground" />
               </div>
+              <h3 className="text-lg font-semibold mb-2" data-testid="text-no-agreements">No agreements yet</h3>
+              <p className="text-muted-foreground mb-4">Create a membership or MOU to start tracking access agreements.</p>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {visibleAgreements.map((item) => {
+                if (item.kind === "membership") {
+                  const membership = item.data;
+                  const contactName = getContactName(membership.contactId);
+                  const groupName = getGroupName((membership as any).groupId);
+                  const bookingsUsed = getMembershipBookingsUsed(membership.id);
+                  const stdVal = parseFloat(membership.standardValue || "0");
+                  const fee = parseFloat(membership.annualFee || "0");
+                  const savings = stdVal - fee;
+                  const effectiveStatus = getEffectiveStatus(membership.status, membership.endDate);
+                  const daysLeft = getDaysUntilExpiry(membership.endDate);
 
-              <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
-                <div className="relative flex-1 min-w-[200px]">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search memberships..."
-                    className="pl-10"
-                    value={membershipSearch}
-                    onChange={(e) => setMembershipSearch(e.target.value)}
-                    data-testid="input-search-memberships"
-                  />
-                </div>
-                <Button className="shadow-lg" onClick={() => setCreateMembershipOpen(true)} data-testid="button-create-membership">
-                  <Plus className="w-4 h-4 mr-2" />
-                  New Membership
-                </Button>
-              </div>
-
-              {isLoading ? (
-                <div className="flex justify-center py-20">
-                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                </div>
-              ) : !filteredMemberships.length ? (
-                <Card className="p-12 text-center">
-                  <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-                    <FileText className="w-8 h-8 text-muted-foreground" />
-                  </div>
-                  <h3 className="text-lg font-semibold mb-2" data-testid="text-no-memberships">No memberships yet</h3>
-                  <p className="text-muted-foreground mb-4">Create your first membership to start tracking venue hire agreements.</p>
-                  <Button onClick={() => setCreateMembershipOpen(true)} data-testid="button-create-membership-empty">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Create Membership
-                  </Button>
-                </Card>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {visibleMemberships.map((membership) => {
-                    const contactName = getContactName(membership.contactId);
-                    const groupName = getGroupName((membership as any).groupId);
-                    const bookingsUsed = getMembershipBookingsUsed(membership.id);
-                    const stdVal = parseFloat(membership.standardValue || "0");
-                    const fee = parseFloat(membership.annualFee || "0");
-                    const savings = stdVal - fee;
-                    const effectiveStatus = getEffectiveStatus(membership.status, membership.endDate);
-                    const daysLeft = getDaysUntilExpiry(membership.endDate);
-
-                    return (
-                      <Card
-                        key={membership.id}
-                        className={`p-4 hover-elevate transition-all ${MEMBERSHIP_STATUS_COLORS[effectiveStatus] || ""}`}
-                        data-testid={`card-membership-${membership.id}`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap mb-1">
-                              <h3 className="font-semibold text-base truncate" data-testid={`text-membership-contact-${membership.id}`}>
-                                {groupName || contactName || "No contact assigned"}
-                              </h3>
-                              {groupName && contactName && (
-                                <Badge variant="outline" className="text-[10px]">{contactName}</Badge>
-                              )}
-                              <Badge className={PAYMENT_STATUS_BADGE[membership.paymentStatus || "unpaid"] || ""} data-testid={`badge-payment-${membership.id}`}>
-                                {membership.paymentStatus || "unpaid"}
-                              </Badge>
-                              {membership.membershipYear && (
-                                <Badge variant="outline" className="text-[10px]" data-testid={`badge-year-${membership.id}`}>
-                                  {membership.membershipYear}
-                                </Badge>
-                              )}
-                              {(membership.bookingCategories || []).includes("venue_hire") && (
-                                <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800" data-testid={`badge-category-venue-${membership.id}`}>Venue</Badge>
-                              )}
-                              {(membership.bookingCategories || []).includes("hot_desking") && (
-                                <Badge variant="outline" className="text-[10px] bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800" data-testid={`badge-category-desk-${membership.id}`}>Desk</Badge>
-                              )}
-                              {(membership.bookingCategories || []).includes("gear") && (
-                                <Badge variant="outline" className="text-[10px] bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800" data-testid={`badge-category-gear-${membership.id}`}>Gear</Badge>
-                              )}
-                            </div>
-                            <p className="text-sm text-muted-foreground mb-2" data-testid={`text-membership-name-${membership.id}`}>
-                              {membership.name}
-                            </p>
-                            <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
-                              {stdVal > 0 && (
-                                <span className="flex items-center gap-1" data-testid={`text-membership-value-${membership.id}`}>
-                                  <DollarSign className="w-3 h-3" />
-                                  Value: ${stdVal.toFixed(2)}
-                                </span>
-                              )}
-                              <span className="flex items-center gap-1" data-testid={`text-membership-fee-${membership.id}`}>
-                                <DollarSign className="w-3 h-3" />
-                                Pays: ${fee.toFixed(2)}/yr
-                              </span>
-                              {savings > 0 && (
-                                <Badge className="bg-green-500/15 text-green-700 dark:text-green-300 text-[10px]" data-testid={`badge-savings-${membership.id}`}>
-                                  <TrendingDown className="w-3 h-3 mr-0.5" />
-                                  Saves ${savings.toFixed(2)}
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap mt-1">
-                              {(membership.bookingAllowance || 0) > 0 && (
-                                <span className="flex items-center gap-1" data-testid={`text-membership-allowance-${membership.id}`}>
-                                  <Calendar className="w-3 h-3" />
-                                  {bookingsUsed} / {membership.bookingAllowance} used — resets {getNextResetDate(membership.allowancePeriod)}
-                                </span>
-                              )}
-                              {effectiveStatus === "expired" && membership.status === "active" && (
-                                <Badge className="bg-red-500/15 text-red-700 dark:text-red-300 text-[10px]">
-                                  <AlertTriangle className="w-3 h-3 mr-0.5" />
-                                  Expired (update status)
-                                </Badge>
-                              )}
-                              {daysLeft !== null && daysLeft <= 30 && (
-                                <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px]">
-                                  <Clock className="w-3 h-3 mr-0.5" />
-                                  {daysLeft} day{daysLeft !== 1 ? "s" : ""} left
-                                </Badge>
-                              )}
-                            </div>
-                            {membership.notes && (
-                              <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{membership.notes}</p>
+                  return (
+                    <Card
+                      key={`m-${membership.id}`}
+                      className={`p-4 hover-elevate transition-all ${MEMBERSHIP_STATUS_COLORS[effectiveStatus] || ""}`}
+                      data-testid={`card-membership-${membership.id}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <h3 className="font-semibold text-base truncate" data-testid={`text-membership-contact-${membership.id}`}>
+                              {groupName || contactName || "No contact assigned"}
+                            </h3>
+                            <Badge variant="outline" className="text-[10px] bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800">
+                              Membership
+                            </Badge>
+                            <Badge className={PAYMENT_STATUS_BADGE[membership.paymentStatus || "unpaid"] || ""} data-testid={`badge-payment-${membership.id}`}>
+                              {membership.paymentStatus || "unpaid"}
+                            </Badge>
+                            {(membership.bookingCategories || []).includes("venue_hire") && (
+                              <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">Venue</Badge>
+                            )}
+                            {(membership.bookingCategories || []).includes("hot_desking") && (
+                              <Badge variant="outline" className="text-[10px] bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800">Desk</Badge>
+                            )}
+                            {(membership.bookingCategories || []).includes("gear") && (
+                              <Badge variant="outline" className="text-[10px] bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800">Gear</Badge>
                             )}
                           </div>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" data-testid={`button-membership-menu-${membership.id}`}>
-                                <MoreVertical className="w-4 h-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => setEditMembership(membership)} data-testid={`button-edit-membership-${membership.id}`}>
-                                <Pencil className="w-4 h-4 mr-2" />
-                                Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleRenewMembership(membership)} data-testid={`button-renew-membership-${membership.id}`}>
-                                <RefreshCw className="w-4 h-4 mr-2" />
-                                Renew
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => handleDeleteWithUndo(membership.id, "membership")}
-                                className="text-destructive focus:text-destructive"
-                                data-testid={`button-delete-membership-${membership.id}`}
-                              >
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </Card>
-                    );
-                  })}
-                </div>
-              )}
-            </>
-          )}
-
-          {activeTab === "mous" && (
-            <>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <Card className="p-4">
-                  <p className="text-xs text-muted-foreground">Total MOUs</p>
-                  <p className="text-2xl font-bold" data-testid="text-stat-total-mous">{mouStats.total}</p>
-                </Card>
-                <Card className="p-4">
-                  <p className="text-xs text-muted-foreground">Active</p>
-                  <p className="text-2xl font-bold" data-testid="text-stat-active-mous">{mouStats.active}</p>
-                </Card>
-                <Card className="p-4">
-                  <p className="text-xs text-muted-foreground">In-Kind Value</p>
-                  <p className="text-2xl font-bold" data-testid="text-stat-inkind-value">${mouStats.inKindValue.toFixed(2)}</p>
-                </Card>
-                <Card className="p-4">
-                  <p className="text-xs text-muted-foreground">Value Given</p>
-                  <p className="text-2xl font-bold text-green-600 dark:text-green-400" data-testid="text-stat-mou-value-given">${mouStats.valueGiven.toFixed(2)}</p>
-                  <p className="text-[10px] text-muted-foreground">subsidy provided</p>
-                </Card>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
-                <div className="relative flex-1 min-w-[200px]">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search MOUs..."
-                    className="pl-10"
-                    value={mouSearch}
-                    onChange={(e) => setMouSearch(e.target.value)}
-                    data-testid="input-search-mous"
-                  />
-                </div>
-                <Button className="shadow-lg" onClick={() => setCreateMouOpen(true)} data-testid="button-create-mou">
-                  <Plus className="w-4 h-4 mr-2" />
-                  New MOU
-                </Button>
-              </div>
-
-              {isLoading ? (
-                <div className="flex justify-center py-20">
-                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                </div>
-              ) : !filteredMous.length ? (
-                <Card className="p-12 text-center">
-                  <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-                    <Handshake className="w-8 h-8 text-muted-foreground" />
-                  </div>
-                  <h3 className="text-lg font-semibold mb-2" data-testid="text-no-mous">No MOUs yet</h3>
-                  <p className="text-muted-foreground mb-4">Create your first MOU to track venue hire and gear exchange agreements.</p>
-                  <Button onClick={() => setCreateMouOpen(true)} data-testid="button-create-mou-empty">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Create MOU
-                  </Button>
-                </Card>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {visibleMous.map((mou) => {
-                    const contactName = getContactName(mou.contactId);
-                    const groupName = getGroupName((mou as any).groupId);
-                    const linkedBookings = getMouBookingsCount(mou.id);
-                    const av = parseFloat(mou.actualValue || "0");
-                    const ikv = parseFloat(mou.inKindValue || "0");
-                    const subsidy = av - ikv;
-                    const effectiveStatus = getEffectiveStatus(mou.status, mou.endDate);
-                    const daysLeft = getDaysUntilExpiry(mou.endDate);
-
-                    return (
-                      <Card
-                        key={mou.id}
-                        className={`p-4 hover-elevate transition-all ${MOU_STATUS_COLORS[effectiveStatus] || ""}`}
-                        data-testid={`card-mou-${mou.id}`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap mb-1">
-                              <h3 className="font-semibold text-base truncate" data-testid={`text-mou-title-${mou.id}`}>
-                                {mou.title}
-                              </h3>
-                              <Badge variant="outline" className="text-xs" data-testid={`badge-mou-status-${mou.id}`}>
-                                {mou.status}
-                              </Badge>
-                              {(mou.bookingCategories || []).includes("venue_hire") && (
-                                <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800" data-testid={`badge-mou-category-venue-${mou.id}`}>Venue</Badge>
-                              )}
-                              {(mou.bookingCategories || []).includes("hot_desking") && (
-                                <Badge variant="outline" className="text-[10px] bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800" data-testid={`badge-mou-category-desk-${mou.id}`}>Desk</Badge>
-                              )}
-                              {(mou.bookingCategories || []).includes("gear") && (
-                                <Badge variant="outline" className="text-[10px] bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800" data-testid={`badge-mou-category-gear-${mou.id}`}>Gear</Badge>
-                              )}
-                            </div>
-                            {(groupName || mou.partnerName || contactName) && (
-                              <p className="text-sm text-muted-foreground mb-2 flex items-center gap-1.5 flex-wrap" data-testid={`text-mou-partner-${mou.id}`}>
-                                {groupName && (
-                                  <span className="flex items-center gap-1">
-                                    <Network className="w-3 h-3" />
-                                    {groupName}
-                                  </span>
-                                )}
-                                {!groupName && (mou.partnerName || contactName)}
-                                {groupName && contactName && (
-                                  <span className="text-xs opacity-70">({contactName})</span>
-                                )}
-                              </p>
-                            )}
-                            {mou.providing && (
-                              <div className="text-xs mb-1">
-                                <span className="font-medium text-foreground">Providing:</span>{" "}
-                                <span className="text-muted-foreground">{mou.providing}</span>
-                              </div>
-                            )}
-                            {mou.receiving && (
-                              <div className="text-xs mb-1">
-                                <span className="font-medium text-foreground">Receiving:</span>{" "}
-                                <span className="text-muted-foreground">{mou.receiving}</span>
-                              </div>
-                            )}
-                            <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap mt-1">
-                              {av > 0 && (
-                                <span className="flex items-center gap-1" data-testid={`text-mou-actual-value-${mou.id}`}>
-                                  <DollarSign className="w-3 h-3" />
-                                  Actual: ${av.toFixed(2)}
-                                </span>
-                              )}
-                              <span className="flex items-center gap-1" data-testid={`text-mou-value-${mou.id}`}>
+                          <p className="text-sm text-muted-foreground mb-2">{membership.name}</p>
+                          <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                            {stdVal > 0 && (
+                              <span className="flex items-center gap-1">
                                 <DollarSign className="w-3 h-3" />
-                                In-Kind: ${ikv.toFixed(2)}
+                                Value: ${stdVal.toFixed(2)}
                               </span>
-                              {subsidy > 0 && (
-                                <Badge className="bg-green-500/15 text-green-700 dark:text-green-300 text-[10px]" data-testid={`badge-mou-subsidy-${mou.id}`}>
-                                  <TrendingDown className="w-3 h-3 mr-0.5" />
-                                  Subsidy: ${subsidy.toFixed(2)}
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap mt-1">
-                              {mou.startDate && (
-                                <span className="flex items-center gap-1" data-testid={`text-mou-dates-${mou.id}`}>
-                                  <Calendar className="w-3 h-3" />
-                                  {format(new Date(mou.startDate), "d MMM yyyy")}
-                                  {mou.endDate && ` - ${format(new Date(mou.endDate), "d MMM yyyy")}`}
-                                </span>
-                              )}
-                              <span className="flex items-center gap-1" data-testid={`text-mou-bookings-${mou.id}`}>
-                                <ArrowRightLeft className="w-3 h-3" />
-                                {linkedBookings} booking{linkedBookings !== 1 ? "s" : ""}
-                              </span>
-                              {(mou.bookingAllowance || 0) > 0 && (
-                                <span className="flex items-center gap-1" data-testid={`text-mou-allowance-${mou.id}`}>
-                                  <Clock className="w-3 h-3" />
-                                  {linkedBookings} / {mou.bookingAllowance} used — resets {getNextResetDate(mou.allowancePeriod)}
-                                </span>
-                              )}
-                              {effectiveStatus === "expired" && mou.status === "active" && (
-                                <Badge className="bg-red-500/15 text-red-700 dark:text-red-300 text-[10px]">
-                                  <AlertTriangle className="w-3 h-3 mr-0.5" />
-                                  Expired (update status)
-                                </Badge>
-                              )}
-                              {daysLeft !== null && daysLeft <= 30 && (
-                                <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px]">
-                                  <Clock className="w-3 h-3 mr-0.5" />
-                                  {daysLeft} day{daysLeft !== 1 ? "s" : ""} left
-                                </Badge>
-                              )}
-                            </div>
-                            {mou.notes && (
-                              <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{mou.notes}</p>
+                            )}
+                            <span className="flex items-center gap-1">
+                              <DollarSign className="w-3 h-3" />
+                              Pays: ${fee.toFixed(2)}/yr
+                            </span>
+                            {savings > 0 && (
+                              <Badge className="bg-green-500/15 text-green-700 dark:text-green-300 text-[10px]">
+                                <TrendingDown className="w-3 h-3 mr-0.5" />
+                                Saves ${savings.toFixed(2)}
+                              </Badge>
                             )}
                           </div>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" data-testid={`button-mou-menu-${mou.id}`}>
-                                <MoreVertical className="w-4 h-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => setEditMou(mou)} data-testid={`button-edit-mou-${mou.id}`}>
-                                <Pencil className="w-4 h-4 mr-2" />
-                                Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleRenewMou(mou)} data-testid={`button-renew-mou-${mou.id}`}>
-                                <RefreshCw className="w-4 h-4 mr-2" />
-                                Renew
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => handleDeleteWithUndo(mou.id, "mou")}
-                                className="text-destructive focus:text-destructive"
-                                data-testid={`button-delete-mou-${mou.id}`}
-                              >
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap mt-1">
+                            {(membership.bookingAllowance || 0) > 0 && (
+                              <span className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                {bookingsUsed} / {membership.bookingAllowance} used — resets {getNextResetDate(membership.allowancePeriod)}
+                              </span>
+                            )}
+                            {effectiveStatus === "expired" && membership.status === "active" && (
+                              <Badge className="bg-red-500/15 text-red-700 dark:text-red-300 text-[10px]">
+                                <AlertTriangle className="w-3 h-3 mr-0.5" />
+                                Expired (update status)
+                              </Badge>
+                            )}
+                            {daysLeft !== null && daysLeft <= 30 && (
+                              <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px]">
+                                <Clock className="w-3 h-3 mr-0.5" />
+                                {daysLeft} day{daysLeft !== 1 ? "s" : ""} left
+                              </Badge>
+                            )}
+                          </div>
+                          {membership.notes && (
+                            <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{membership.notes}</p>
+                          )}
                         </div>
-                      </Card>
-                    );
-                  })}
-                </div>
-              )}
-            </>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" data-testid={`button-membership-menu-${membership.id}`}>
+                              <MoreVertical className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => setEditMembership(membership)}>
+                              <Pencil className="w-4 h-4 mr-2" /> Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleRenewMembership(membership)}>
+                              <RefreshCw className="w-4 h-4 mr-2" /> Renew
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDeleteWithUndo(membership.id, "membership")} className="text-destructive focus:text-destructive">
+                              <Trash2 className="w-4 h-4 mr-2" /> Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </Card>
+                  );
+                }
+
+                // MOU card
+                const mou = item.data;
+                const contactName = getContactName(mou.contactId);
+                const groupName = getGroupName((mou as any).groupId);
+                const linkedBookings = getMouBookingsCount(mou.id);
+                const av = parseFloat(mou.actualValue || "0");
+                const ikv = parseFloat(mou.inKindValue || "0");
+                const subsidy = av - ikv;
+                const effectiveStatus = getEffectiveStatus(mou.status, mou.endDate);
+                const daysLeft = getDaysUntilExpiry(mou.endDate);
+
+                return (
+                  <Card
+                    key={`mou-${mou.id}`}
+                    className={`p-4 hover-elevate transition-all ${MOU_STATUS_COLORS[effectiveStatus] || ""}`}
+                    data-testid={`card-mou-${mou.id}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <h3 className="font-semibold text-base truncate" data-testid={`text-mou-title-${mou.id}`}>
+                            {mou.title}
+                          </h3>
+                          <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">
+                            MOU
+                          </Badge>
+                          <Badge variant="outline" className="text-xs" data-testid={`badge-mou-status-${mou.id}`}>
+                            {mou.status}
+                          </Badge>
+                          {(mou.bookingCategories || []).includes("venue_hire") && (
+                            <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">Venue</Badge>
+                          )}
+                          {(mou.bookingCategories || []).includes("hot_desking") && (
+                            <Badge variant="outline" className="text-[10px] bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800">Desk</Badge>
+                          )}
+                          {(mou.bookingCategories || []).includes("gear") && (
+                            <Badge variant="outline" className="text-[10px] bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800">Gear</Badge>
+                          )}
+                        </div>
+                        {(groupName || mou.partnerName || contactName) && (
+                          <p className="text-sm text-muted-foreground mb-2 flex items-center gap-1.5 flex-wrap">
+                            {groupName && (
+                              <span className="flex items-center gap-1">
+                                <Network className="w-3 h-3" />
+                                {groupName}
+                              </span>
+                            )}
+                            {!groupName && (mou.partnerName || contactName)}
+                            {groupName && contactName && (
+                              <span className="text-xs opacity-70">({contactName})</span>
+                            )}
+                          </p>
+                        )}
+                        {mou.providing && (
+                          <div className="text-xs mb-1">
+                            <span className="font-medium text-foreground">Providing:</span>{" "}
+                            <span className="text-muted-foreground">{mou.providing}</span>
+                          </div>
+                        )}
+                        {mou.receiving && (
+                          <div className="text-xs mb-1">
+                            <span className="font-medium text-foreground">Receiving:</span>{" "}
+                            <span className="text-muted-foreground">{mou.receiving}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap mt-1">
+                          {av > 0 && (
+                            <span className="flex items-center gap-1">
+                              <DollarSign className="w-3 h-3" />
+                              Actual: ${av.toFixed(2)}
+                            </span>
+                          )}
+                          <span className="flex items-center gap-1">
+                            <DollarSign className="w-3 h-3" />
+                            In-Kind: ${ikv.toFixed(2)}
+                          </span>
+                          {subsidy > 0 && (
+                            <Badge className="bg-green-500/15 text-green-700 dark:text-green-300 text-[10px]">
+                              <TrendingDown className="w-3 h-3 mr-0.5" />
+                              Subsidy: ${subsidy.toFixed(2)}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap mt-1">
+                          {mou.startDate && (
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              {format(new Date(mou.startDate), "d MMM yyyy")}
+                              {mou.endDate && ` - ${format(new Date(mou.endDate), "d MMM yyyy")}`}
+                            </span>
+                          )}
+                          <span className="flex items-center gap-1">
+                            <ArrowRightLeft className="w-3 h-3" />
+                            {linkedBookings} booking{linkedBookings !== 1 ? "s" : ""}
+                          </span>
+                          {(mou.bookingAllowance || 0) > 0 && (
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {linkedBookings} / {mou.bookingAllowance} used — resets {getNextResetDate(mou.allowancePeriod)}
+                            </span>
+                          )}
+                          {effectiveStatus === "expired" && mou.status === "active" && (
+                            <Badge className="bg-red-500/15 text-red-700 dark:text-red-300 text-[10px]">
+                              <AlertTriangle className="w-3 h-3 mr-0.5" />
+                              Expired (update status)
+                            </Badge>
+                          )}
+                          {daysLeft !== null && daysLeft <= 30 && (
+                            <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px]">
+                              <Clock className="w-3 h-3 mr-0.5" />
+                              {daysLeft} day{daysLeft !== 1 ? "s" : ""} left
+                            </Badge>
+                          )}
+                        </div>
+                        {mou.notes && (
+                          <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{mou.notes}</p>
+                        )}
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" data-testid={`button-mou-menu-${mou.id}`}>
+                            <MoreVertical className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setEditMou(mou)}>
+                            <Pencil className="w-4 h-4 mr-2" /> Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleRenewMou(mou)}>
+                            <RefreshCw className="w-4 h-4 mr-2" /> Renew
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDeleteWithUndo(mou.id, "mou")} className="text-destructive focus:text-destructive">
+                            <Trash2 className="w-4 h-4 mr-2" /> Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
           )}
         </div>
       </main>

@@ -64,6 +64,17 @@ export function useUpdateBookingPricingDefaults() {
   });
 }
 
+export function useLocations() {
+  return useQuery<any[]>({ queryKey: ['/api/locations'] });
+}
+
+export function useUpdateLocation() {
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => apiRequest('PATCH', `/api/locations/${id}`, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/locations'] }),
+  });
+}
+
 export function useRegularBookers() {
   return useQuery<RegularBooker[]>({ queryKey: ['/api/regular-bookers'] });
 }

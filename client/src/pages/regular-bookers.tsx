@@ -529,7 +529,7 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
         <div>
           {!embedded && <h1 className="text-2xl font-bold" data-testid="heading-regular-bookers">Regular Bookers</h1>}
           {embedded && <h2 className="text-lg font-semibold" data-testid="heading-regular-bookers">{scopeLabel}</h2>}
-          <p className="text-sm text-muted-foreground mt-1">Manage regular bookers, their agreements, packages, and portal links.</p>
+          <p className="text-sm text-muted-foreground mt-1">Manage regular bookers and portal access.</p>
         </div>
         <Button onClick={() => { setEditingBooker(null); setPrefillData(null); setFormOpen(true); }} data-testid="button-add-regular-booker">
           <Plus className="w-4 h-4 mr-2" />
@@ -548,60 +548,15 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
             data-testid="input-search-regular-bookers"
           />
         </div>
-        <Select value={agreementFilter} onValueChange={setAgreementFilter}>
-          <SelectTrigger className="w-[150px]" data-testid="select-agreement-filter">
-            <SelectValue placeholder="Agreement" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Agreements</SelectItem>
-            <SelectItem value="membership">Membership</SelectItem>
-            <SelectItem value="mou">MOU</SelectItem>
-            <SelectItem value="none">No Agreement</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={tierFilter} onValueChange={setTierFilter}>
-          <SelectTrigger className="w-[140px]" data-testid="select-tier-filter">
-            <SelectValue placeholder="Pricing" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Tiers</SelectItem>
-            <SelectItem value="full_price">Full Price</SelectItem>
-            <SelectItem value="discounted">Community</SelectItem>
-            <SelectItem value="free_koha">Free / Koha</SelectItem>
-          </SelectContent>
-        </Select>
         <Select value={linkFilter} onValueChange={setLinkFilter}>
-          <SelectTrigger className="w-[140px]" data-testid="select-link-filter">
-            <SelectValue placeholder="Link Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Links</SelectItem>
-            <SelectItem value="active">Has Active Link</SelectItem>
-            <SelectItem value="none">No Link</SelectItem>
-            <SelectItem value="expired">Expired</SelectItem>
-          </SelectContent>
-        </Select>
-        {!categoryScope && (
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-[150px]" data-testid="select-category-filter">
-              <SelectValue placeholder="Category" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
-              <SelectItem value="venue_hire">Venue Hire</SelectItem>
-              <SelectItem value="hot_desking">Hot Desking</SelectItem>
-              <SelectItem value="gear">Gear Borrowers</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-        <Select value={packageFilter} onValueChange={setPackageFilter}>
-          <SelectTrigger className="w-[140px]" data-testid="select-package-filter">
-            <SelectValue placeholder="Package" />
+          <SelectTrigger className="w-[150px]" data-testid="select-link-filter">
+            <SelectValue placeholder="Portal Status" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All</SelectItem>
-            <SelectItem value="has">Has Package</SelectItem>
-            <SelectItem value="none">No Package</SelectItem>
+            <SelectItem value="active">Portal Active</SelectItem>
+            <SelectItem value="none">No Portal</SelectItem>
+            <SelectItem value="expired">Expired</SelectItem>
           </SelectContent>
         </Select>
         {hasFilters && (
@@ -636,47 +591,19 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
         </div>
       ) : (
         <div className="border rounded-md">
-          <div className="sticky top-0 z-10 bg-muted/60 backdrop-blur-sm border-b px-4 py-2 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Settings className="w-3.5 h-3.5" />
-              <span className="font-medium">Portal Settings</span>
-              <span className="text-muted-foreground/70">|</span>
-              <span>{filtered.length} booker{filtered.length !== 1 ? "s" : ""}</span>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs h-7"
-              onClick={() => window.location.href = "/spaces?tab=venue-hire"}
-              data-testid="button-manage-portal"
-            >
-              <Settings className="w-3 h-3 mr-1" />
-              Manage Portal
-            </Button>
-          </div>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="min-w-[200px]" data-testid="th-booker-name">Booker</TableHead>
-                <TableHead className="min-w-[120px]" data-testid="th-categories">Categories</TableHead>
-                <TableHead className="min-w-[120px]" data-testid="th-agreement">Agreement</TableHead>
-                <TableHead className="min-w-[180px]" data-testid="th-package">Package / Balance</TableHead>
-                <TableHead className="min-w-[100px]" data-testid="th-pricing">Pricing</TableHead>
-                <TableHead className="min-w-[120px]" data-testid="th-link">Portal Link</TableHead>
-                <TableHead className="min-w-[80px]" data-testid="th-status">Status</TableHead>
-                <TableHead className="w-[100px] text-right" data-testid="th-actions">Actions</TableHead>
+                <TableHead className="min-w-[280px]" data-testid="th-booker-name">Booker</TableHead>
+                <TableHead className="min-w-[140px]" data-testid="th-portal">Portal</TableHead>
+                <TableHead className="w-[120px] text-right" data-testid="th-actions">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((booker) => {
-                const agreement = getAgreementInfo(booker);
                 const linkStatus = getLinkStatus(booker);
-                const pkg = getPackageInfo(booker);
                 const groupName = getBookerGroupName(booker);
-                const categories = getBookerCategories(booker);
-                const categoryStatus = getCategoryStatusInfo(booker);
-
-                const activeLink = linkStatus.links.length > 0 ? linkStatus.links[0] : null;
+                const email = (booker as any).notificationsEmail || booker.billingEmail;
 
                 return (
                   <TableRow key={booker.id} data-testid={`row-booker-${booker.id}`}>
@@ -699,149 +626,23 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
                           </p>
                         ) : null}
                         <p className="text-xs text-muted-foreground truncate mt-0.5" data-testid={`text-booker-email-${booker.id}`}>
-                          {(booker as any).notificationsEmail || booker.billingEmail || (
+                          {email || (
                             <span className="text-amber-600 dark:text-amber-400">No email set</span>
                           )}
                         </p>
-                        {(booker.mouId || booker.membershipId) && (
-                          <BookerAgreementPanel
-                            bookerId={booker.id}
-                            portalUrl={activeLink?.portalUrl ?? null}
-                          />
-                        )}
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {categories.includes("venue_hire") && (
-                          <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800" data-testid={`badge-cat-venue-${booker.id}`}>
-                            <Home className="w-3 h-3 mr-0.5" />
-                            {CATEGORY_LABELS["venue_hire"]}
-                          </Badge>
-                        )}
-                        {categories.includes("hot_desking") && (
-                          <Badge variant="outline" className="text-[10px] bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800" data-testid={`badge-cat-desk-${booker.id}`}>
-                            <Monitor className="w-3 h-3 mr-0.5" />
-                            {CATEGORY_LABELS["hot_desking"]}
-                          </Badge>
-                        )}
-                        {categories.includes("gear") && (
-                          <Badge variant="outline" className="text-[10px] bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800" data-testid={`badge-cat-gear-${booker.id}`}>
-                            <Wrench className="w-3 h-3 mr-0.5" />
-                            {CATEGORY_LABELS["gear"]}
-                          </Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {agreement ? (
-                        <div className="space-y-1">
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Badge variant="outline" className="text-[10px] gap-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 cursor-default" data-testid={`badge-agreement-${booker.id}`}>
-                                <FileText className="w-3 h-3" />
-                                {agreement.type}
-                              </Badge>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>{agreement.type}: {agreement.name}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                          {(() => {
-                            const ag = agreement.agreement as any;
-                            const locs: string[] = ag?.allowedLocations || [];
-                            if (locs.length === 0) return (
-                              <p className="text-[10px] text-muted-foreground flex items-center gap-0.5" data-testid={`text-locations-all-${booker.id}`}>
-                                <MapPin className="w-3 h-3 shrink-0" />
-                                All locations
-                              </p>
-                            );
-                            return (
-                              <div className="flex flex-wrap gap-0.5" data-testid={`locations-${booker.id}`}>
-                                {locs.map(loc => (
-                                  <Badge key={loc} variant="outline" className="text-[10px] gap-0.5 px-1 py-0" data-testid={`badge-location-${loc}-${booker.id}`}>
-                                    <MapPin className="w-2.5 h-2.5" />
-                                    {loc}
-                                  </Badge>
-                                ))}
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {categoryStatus && categoryStatus.length > 0 ? (
-                        <div className="space-y-1">
-                          {categoryStatus.map((cs) => (
-                            <div key={cs.category} className="text-xs flex items-center gap-1.5" data-testid={`text-cat-status-${cs.category}-${booker.id}`}>
-                              {cs.category === "venue_hire" && <Home className="w-3 h-3 text-blue-600 dark:text-blue-400 shrink-0" />}
-                              {cs.category === "hot_desking" && <Monitor className="w-3 h-3 text-purple-600 dark:text-purple-400 shrink-0" />}
-                              {cs.category === "gear" && <Wrench className="w-3 h-3 text-orange-600 dark:text-orange-400 shrink-0" />}
-                              <span className={cs.status === "expired" ? "text-red-600 dark:text-red-400" : cs.status === "active" ? "text-green-700 dark:text-green-400" : ""}>
-                                {cs.label}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : pkg ? (
-                        <div className="text-xs">
-                          <span className={`font-medium ${pkg.remaining === 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-                            {pkg.used}/{pkg.total}
-                          </span>
-                          <span className="text-muted-foreground ml-1">used</span>
-                          {pkg.remaining > 0 && (
-                            <Badge variant="secondary" className="text-[9px] ml-1.5" data-testid={`badge-remaining-${booker.id}`}>
-                              {pkg.remaining} left
-                            </Badge>
-                          )}
-                          {pkg.remaining === 0 && (
-                            <Badge variant="secondary" className="text-[9px] ml-1.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">
-                              Exhausted
-                            </Badge>
-                          )}
-                          {pkg.period && (
-                            <p className="text-[10px] text-muted-foreground mt-0.5">{pkg.source === "agreement" ? `per ${pkg.period}` : pkg.period}</p>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={`${TIER_BADGE_COLORS[booker.pricingTier] || ""} text-[10px]`} data-testid={`badge-tier-${booker.id}`}>
-                        {PRICING_LABELS[booker.pricingTier] || booker.pricingTier}
-                      </Badge>
-                      {booker.pricingTier === "discounted" && parseFloat(booker.discountPercentage || "0") > 0 && (
-                        <p className="text-[10px] text-muted-foreground mt-0.5">{booker.discountPercentage}% off</p>
-                      )}
                     </TableCell>
                     <TableCell>
                       <div className="space-y-0.5">
                         <Badge className={`${LINK_STATUS_COLORS[linkStatus.status]} text-[10px]`} data-testid={`badge-link-${booker.id}`}>
-                          {linkStatus.status === "active" ? "Active" : linkStatus.label}
+                          {linkStatus.status === "active" ? "Active" : linkStatus.status === "none" ? "No link" : "Expired"}
                         </Badge>
                         {linkStatus.status === "active" && (
                           <p className="text-[10px] text-muted-foreground" data-testid={`text-link-accessed-${booker.id}`}>
                             {linkStatus.lastAccessed
-                              ? `Last used: ${formatDistanceToNow(new Date(linkStatus.lastAccessed), { addSuffix: true })}`
+                              ? formatDistanceToNow(new Date(linkStatus.lastAccessed), { addSuffix: true })
                               : "Never accessed"}
                           </p>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-1">
-                        <Badge className={ACCOUNT_STATUS_COLORS[booker.accountStatus] || ""} data-testid={`badge-status-${booker.id}`}>
-                          {booker.accountStatus}
-                        </Badge>
-                        <Badge className={`text-[10px] ${(booker as any).tier === "public" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" : (booker as any).tier === "casual" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"}`}>
-                          {(booker as any).tier || "regular"}
-                        </Badge>
-                        {(booker as any).tier === "public" && !(booker as any).inductedAt && (
-                          <span className="text-[10px] text-amber-600">Not inducted</span>
                         )}
                       </div>
                     </TableCell>
@@ -868,7 +669,7 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
                                   variant="ghost"
                                   size="icon"
                                   onClick={() => {
-                                    if (!(booker as any).notificationsEmail) {
+                                    if (!email) {
                                       toast({ title: "No notification email set", description: "Ask the booker to set their email in the portal first.", variant: "destructive" });
                                     } else {
                                       resendLinkMutation.mutate(booker.id);
@@ -880,7 +681,7 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
                                   {resendLinkMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent>Resend link</TooltipContent>
+                              <TooltipContent>Send portal link</TooltipContent>
                             </Tooltip>
                           </>
                         ) : linkStatus.links.length > 0 ? (
@@ -924,7 +725,7 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
                               <Pencil className="w-3.5 h-3.5" />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>Edit booker</TooltipContent>
+                          <TooltipContent>Edit</TooltipContent>
                         </Tooltip>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -937,7 +738,7 @@ export default function RegularBookersPage({ embedded, categoryScope, hideSugges
                               <Trash2 className="w-3.5 h-3.5 text-destructive" />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>Delete booker</TooltipContent>
+                          <TooltipContent>Delete</TooltipContent>
                         </Tooltip>
                       </div>
                     </TableCell>
