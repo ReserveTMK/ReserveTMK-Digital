@@ -111,7 +111,7 @@ else
 fi
 
 # 9. Import verification — check no obviously broken imports in changed files
-CHANGED_TSX=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null | grep '\.tsx$' || git diff --name-only HEAD~1 2>/dev/null | grep '\.tsx$' || true)
+CHANGED_TSX=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null | grep '\.tsx$' || git diff --name-only origin/main..HEAD 2>/dev/null | grep '\.tsx$' || true)
 BROKEN_IMPORTS=""
 for file in $CHANGED_TSX; do
   if [ -f "$file" ]; then
@@ -136,9 +136,46 @@ else
   check_warn "Import verification" "Possibly broken imports:\n$BROKEN_IMPORTS"
 fi
 
+# 10. Dead imports in changed files
+CHANGED_TS=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null | grep '\.\(ts\|tsx\)$' || git diff --name-only origin/main..HEAD 2>/dev/null | grep '\.\(ts\|tsx\)$' || true)
+DEAD_IMPORTS=""
+for file in $CHANGED_TS; do
+  if [ -f "$file" ]; then
+    # Extract named imports from single-line import statements only
+    IMPORTS=$(grep '^import ' "$file" 2>/dev/null | grep '{ ' | sed 's/.*{ //' | sed 's/ }.*//' | tr ',' '\n' | sed 's/^ *//' | sed 's/ *$//' | sed 's/ as .*//' | grep -v '^$' | grep -v 'type ' || true)
+    for imp in $IMPORTS; do
+      # Count occurrences (excluding import lines) — force single integer
+      COUNT=$(grep -c "\b${imp}\b" "$file" 2>/dev/null || true)
+      COUNT=${COUNT:-0}
+      if [ "$COUNT" -le 1 ] 2>/dev/null; then
+        DEAD_IMPORTS="${DEAD_IMPORTS}  $file: unused import '$imp'\n"
+      fi
+    done
+  fi
+done
+if [ -z "$DEAD_IMPORTS" ]; then
+  check_pass "Dead import scan (no unused imports in changed files)"
+else
+  check_warn "Dead imports" "Possibly unused imports:\n$DEAD_IMPORTS"
+fi
+
+# 11. TypeScript compilation (changed files only)
+TSC_OUTPUT=$(npx tsc --noEmit 2>&1 || true)
+CHANGED_FILES_PATTERN=$(git diff --name-only origin/main..HEAD 2>/dev/null | tr '\n' '|' | sed 's/|$//')
+if [ -n "$CHANGED_FILES_PATTERN" ]; then
+  TSC_ERRORS=$(echo "$TSC_OUTPUT" | grep -E "$CHANGED_FILES_PATTERN" || true)
+  if [ -z "$TSC_ERRORS" ]; then
+    check_pass "TypeScript compilation (no errors in changed files)"
+  else
+    check_fail "TypeScript compilation" "Type errors in changed files:\n$TSC_ERRORS"
+  fi
+else
+  check_pass "TypeScript compilation (no changed files to check)"
+fi
+
 # ── SLOW CHECK (DB, only when schema changed) ─────────────────────
 
-SCHEMA_CHANGED=$(git diff --name-only HEAD~1 2>/dev/null | grep "shared/schema.ts" || true)
+SCHEMA_CHANGED=$(git diff --name-only origin/main..HEAD 2>/dev/null | grep "shared/schema.ts" || true)
 if [ -n "$SCHEMA_CHANGED" ]; then
   echo ""
   echo "Schema changed — running DB check..."
