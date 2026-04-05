@@ -691,6 +691,30 @@ export const memberships = pgTable("memberships", {
 export const MOU_STATUSES = ["draft", "active", "expired", "terminated"] as const;
 export type MouStatus = typeof MOU_STATUSES[number];
 
+export const RELATIONSHIP_ROLES = ["deliver", "enable", "align", "commercial"] as const;
+export type RelationshipRole = typeof RELATIONSHIP_ROLES[number];
+
+export const ACCESS_PROVIDED_OPTIONS = [
+  "venue", "hot_desk", "gear", "studio", "mentoring",
+  "programme_place", "promotion", "network_introductions"
+] as const;
+
+export const WHAT_WE_GAIN_OPTIONS = [
+  "content_presence", "revenue", "co_delivery", "demand_evidence",
+  "network_reach", "youth_engagement", "workshop_facilitation", "community_programme"
+] as const;
+
+export const GROWTH_POTENTIAL_OPTIONS = [
+  "co_delivery_potential", "event_collaboration", "programme_facilitation",
+  "referral_partner", "joint_content", "no_growth_expected"
+] as const;
+
+export const ACCESS_TO_BOOKING_CATEGORY: Record<string, string> = {
+  venue: "venue_hire",
+  hot_desk: "hot_desking",
+  gear: "gear",
+};
+
 export const mous = pgTable("mous", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
@@ -707,6 +731,11 @@ export const mous = pgTable("mous", {
   bookingCategories: text("booking_categories").array().default([]),
   allowedLocations: text("allowed_locations").array(),
   allowedVenueIds: integer("allowed_venue_ids").array(),
+  relationshipRole: text("relationship_role"),
+  accessProvided: text("access_provided").array().default([]),
+  whatWeGain: text("what_we_gain").array().default([]),
+  growthPotential: text("growth_potential").array().default([]),
+  growthNotes: text("growth_notes"),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
   status: text("status").notNull().default("draft"),
@@ -1708,6 +1737,7 @@ export const insertMouSchema = createInsertSchema(mous).omit({
   updatedAt: true,
 }).extend({
   status: z.enum(MOU_STATUSES).default("active"),
+  relationshipRole: z.enum(RELATIONSHIP_ROLES).nullable().optional(),
 });
 
 export type Membership = typeof memberships.$inferSelect;
