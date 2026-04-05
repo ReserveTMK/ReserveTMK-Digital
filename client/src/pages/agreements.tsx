@@ -65,12 +65,18 @@ import {
   MEMBERSHIP_STATUSES,
   MOU_STATUSES,
   PAYMENT_STATUSES,
+  RELATIONSHIP_ROLES,
+  ACCESS_PROVIDED_OPTIONS,
+  WHAT_WE_GAIN_OPTIONS,
+  GROWTH_POTENTIAL_OPTIONS,
+  ACCESS_TO_BOOKING_CATEGORY,
   type Membership,
   type Mou,
   type Contact,
   type Booking,
   type Group,
 } from "@shared/schema";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 const MEMBERSHIP_STATUS_COLORS: Record<string, string> = {
   active: "bg-green-50/50 dark:bg-green-900/20 border-green-200 dark:border-green-800",
@@ -83,6 +89,51 @@ const MOU_STATUS_COLORS: Record<string, string> = {
   active: "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800",
   expired: "bg-gray-100/30 dark:bg-gray-900/10 border-gray-100 dark:border-gray-900/20 opacity-70",
   terminated: "bg-red-50/30 dark:bg-red-900/10 border-red-100 dark:border-red-900/20 opacity-70",
+};
+
+const RELATIONSHIP_ROLE_LABELS: Record<string, { label: string; description: string }> = {
+  deliver: { label: "We deliver", description: "Our people, our methodology" },
+  enable: { label: "We enable", description: "Their delivery, our space/resource" },
+  align: { label: "We align", description: "Shared values, growing connection" },
+  commercial: { label: "Commercial", description: "Revenue relationship" },
+};
+
+const ACCESS_PROVIDED_LABELS: Record<string, string> = {
+  venue: "Venue",
+  hot_desk: "Hot Desk",
+  gear: "Gear",
+  studio: "Studio",
+  mentoring: "Mentoring",
+  programme_place: "Programme Place",
+  promotion: "Promotion",
+  network_introductions: "Network Introductions",
+};
+
+const WHAT_WE_GAIN_LABELS: Record<string, string> = {
+  content_presence: "Content & Presence",
+  revenue: "Revenue",
+  co_delivery: "Co-delivery",
+  demand_evidence: "Demand Evidence",
+  network_reach: "Network Reach",
+  youth_engagement: "Youth Engagement",
+  workshop_facilitation: "Workshop Facilitation",
+  community_programme: "Community Programme",
+};
+
+const GROWTH_POTENTIAL_LABELS: Record<string, string> = {
+  co_delivery_potential: "Co-delivery Potential",
+  event_collaboration: "Event Collaboration",
+  programme_facilitation: "Programme Facilitation",
+  referral_partner: "Referral Partner",
+  joint_content: "Joint Content",
+  no_growth_expected: "No Growth Expected",
+};
+
+const RELATIONSHIP_ROLE_COLORS: Record<string, string> = {
+  deliver: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+  enable: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
+  align: "bg-violet-500/15 text-violet-700 dark:text-violet-300",
+  commercial: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
 };
 
 const PAYMENT_STATUS_BADGE: Record<string, string> = {
@@ -601,24 +652,30 @@ export default function Agreements({ embedded }: { embedded?: boolean } = {}) {
                           <h3 className="font-semibold text-base truncate" data-testid={`text-mou-title-${mou.id}`}>
                             {mou.title}
                           </h3>
-                          <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">
-                            MOU
-                          </Badge>
+                          {(mou as any).relationshipRole && (
+                            <Badge className={`text-[10px] ${RELATIONSHIP_ROLE_COLORS[(mou as any).relationshipRole] || ""}`}>
+                              {RELATIONSHIP_ROLE_LABELS[(mou as any).relationshipRole]?.label || (mou as any).relationshipRole}
+                            </Badge>
+                          )}
                           <Badge variant="outline" className="text-xs" data-testid={`badge-mou-status-${mou.id}`}>
                             {mou.status}
                           </Badge>
-                          {(mou.bookingCategories || []).includes("venue_hire") && (
-                            <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">Venue</Badge>
-                          )}
-                          {(mou.bookingCategories || []).includes("hot_desking") && (
-                            <Badge variant="outline" className="text-[10px] bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800">Desk</Badge>
-                          )}
-                          {(mou.bookingCategories || []).includes("gear") && (
-                            <Badge variant="outline" className="text-[10px] bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800">Gear</Badge>
-                          )}
+                          {(() => {
+                            const access = (mou as any).accessProvided?.length > 0
+                              ? (mou as any).accessProvided
+                              : (mou.bookingCategories || []).map((cat: string) => {
+                                  const reverseMap: Record<string, string> = { venue_hire: "venue", hot_desking: "hot_desk", gear: "gear" };
+                                  return reverseMap[cat] || cat;
+                                });
+                            return access.map((a: string) => (
+                              <Badge key={a} variant="outline" className="text-[10px]">
+                                {ACCESS_PROVIDED_LABELS[a] || a}
+                              </Badge>
+                            ));
+                          })()}
                         </div>
                         {(groupName || mou.partnerName || contactName) && (
-                          <p className="text-sm text-muted-foreground mb-2 flex items-center gap-1.5 flex-wrap">
+                          <p className="text-sm text-muted-foreground mb-2 flex items-center gap-1.5 flex-wrap" data-testid={`text-mou-partner-${mou.id}`}>
                             {groupName && (
                               <span className="flex items-center gap-1">
                                 <Network className="w-3 h-3" />
@@ -631,13 +688,22 @@ export default function Agreements({ embedded }: { embedded?: boolean } = {}) {
                             )}
                           </p>
                         )}
-                        {mou.providing && (
+                        {(mou as any).whatWeGain?.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mb-1">
+                            {(mou as any).whatWeGain.map((g: string) => (
+                              <Badge key={g} variant="secondary" className="text-[10px]">
+                                {WHAT_WE_GAIN_LABELS[g] || g}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                        {!(mou as any).whatWeGain?.length && mou.providing && (
                           <div className="text-xs mb-1">
                             <span className="font-medium text-foreground">Providing:</span>{" "}
                             <span className="text-muted-foreground">{mou.providing}</span>
                           </div>
                         )}
-                        {mou.receiving && (
+                        {!(mou as any).whatWeGain?.length && mou.receiving && (
                           <div className="text-xs mb-1">
                             <span className="font-medium text-foreground">Receiving:</span>{" "}
                             <span className="text-muted-foreground">{mou.receiving}</span>
@@ -1386,8 +1452,7 @@ function MouFormDialog({
   const createContact = useCreateContact();
   const createGroupMutation = useCreateGroup();
 
-  const [title, setTitle] = useState(mou?.title || "");
-  const [partnerName, setPartnerName] = useState(mou?.partnerName || "");
+  // Contact & group
   const [contactId, setContactId] = useState<number | null>(mou?.contactId || null);
   const [contactSearch, setContactSearch] = useState("");
   const [groupId, setGroupId] = useState<number | null>((mou as any)?.groupId || null);
@@ -1396,13 +1461,29 @@ function MouFormDialog({
   const [quickContactName, setQuickContactName] = useState("");
   const [showQuickAddGroup, setShowQuickAddGroup] = useState(false);
   const [quickGroupName, setQuickGroupName] = useState("");
-  const [providing, setProviding] = useState(mou?.providing || "");
-  const [receiving, setReceiving] = useState(mou?.receiving || "");
+
+  // Framework fields
+  const [relationshipRole, setRelationshipRole] = useState(mou?.relationshipRole || "");
+  const [accessProvided, setAccessProvided] = useState<string[]>(
+    (mou as any)?.accessProvided?.length > 0
+      ? (mou as any).accessProvided
+      : // Back-fill from bookingCategories for old records
+        (mou?.bookingCategories || []).map((cat: string) => {
+          const reverseMap: Record<string, string> = { venue_hire: "venue", hot_desking: "hot_desk", gear: "gear" };
+          return reverseMap[cat] || cat;
+        })
+  );
+  const [whatWeGain, setWhatWeGain] = useState<string[]>((mou as any)?.whatWeGain || []);
+  const [growthPotential, setGrowthPotential] = useState<string[]>((mou as any)?.growthPotential || []);
+  const [growthNotes, setGrowthNotes] = useState((mou as any)?.growthNotes || "");
+
+  // Title
+  const [titleOverride, setTitleOverride] = useState<string | null>(mou ? mou.title : null);
+  const [editingTitle, setEditingTitle] = useState(false);
+
+  // Terms
   const [actualValue, setActualValue] = useState(mou?.actualValue || "0");
   const [inKindValue, setInKindValue] = useState(mou?.inKindValue || "0");
-  const [bookingCategories, setBookingCategories] = useState<string[]>(
-    mou?.bookingCategories || []
-  );
   const [allowedLocations, setAllowedLocations] = useState<string[]>(
     mou?.allowedLocations || []
   );
@@ -1422,13 +1503,35 @@ function MouFormDialog({
   const [status, setStatus] = useState(mou?.status || "active");
   const [notes, setNotes] = useState(mou?.notes || "");
 
-  const toggleMouCategory = (cat: string) => {
-    setBookingCategories((prev) =>
-      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
-    );
+  // Toggles
+  const toggleAccess = (item: string) => {
+    setAccessProvided(prev => prev.includes(item) ? prev.filter(i => i !== item) : [...prev, item]);
+  };
+  const toggleGain = (item: string) => {
+    setWhatWeGain(prev => prev.includes(item) ? prev.filter(i => i !== item) : [...prev, item]);
+  };
+  const toggleGrowth = (item: string) => {
+    setGrowthPotential(prev => prev.includes(item) ? prev.filter(i => i !== item) : [...prev, item]);
   };
 
-  const mouHasHotDeskingOrGear = bookingCategories.includes("hot_desking") || bookingCategories.includes("gear");
+  // Derive bookingCategories from accessProvided for booking system compat
+  const derivedBookingCategories = useMemo(() => {
+    return accessProvided
+      .filter(a => a in ACCESS_TO_BOOKING_CATEGORY)
+      .map(a => ACCESS_TO_BOOKING_CATEGORY[a]);
+  }, [accessProvided]);
+
+  const hasHotDeskOrGear = accessProvided.includes("hot_desk") || accessProvided.includes("gear");
+
+  // Auto-title
+  const selectedContact = contacts?.find(c => c.id === contactId);
+  const selectedGroup = (allGroups as Group[])?.find(g => g.id === groupId);
+  const primaryAccessLabel = accessProvided.length > 0
+    ? ACCESS_PROVIDED_LABELS[accessProvided[0]] || accessProvided[0]
+    : "General";
+  const titleYear = startDate ? new Date(startDate).getFullYear() : new Date().getFullYear();
+  const autoTitle = `${selectedContact?.name || selectedGroup?.name || "Untitled"} — ${primaryAccessLabel} Access ${titleYear}`;
+  const effectiveTitle = titleOverride || autoTitle;
 
   const filteredContacts = useMemo(() => {
     if (!contacts || !contactSearch.trim()) return [];
@@ -1470,18 +1573,20 @@ function MouFormDialog({
   };
 
   const handleSubmit = () => {
-    if (!title.trim()) return;
     const data: any = {
-      title: title.trim(),
-      partnerName: partnerName.trim() || undefined,
+      title: effectiveTitle,
+      partnerName: selectedGroup?.name || "",
       contactId: contactId || undefined,
       groupId: groupId || undefined,
-      providing: providing.trim() || undefined,
-      receiving: receiving.trim() || undefined,
+      relationshipRole: relationshipRole || undefined,
+      accessProvided,
+      whatWeGain,
+      growthPotential,
+      growthNotes: growthNotes.trim() || undefined,
+      bookingCategories: derivedBookingCategories,
+      allowedLocations: allowedLocations.length > 0 ? allowedLocations : null,
       actualValue: actualValue || "0",
       inKindValue: inKindValue || "0",
-      bookingCategories,
-      allowedLocations: allowedLocations.length > 0 ? allowedLocations : null,
       bookingAllowance: parseInt(bookingAllowance) || 0,
       allowancePeriod,
       startDate: startDate ? new Date(startDate).toISOString() : null,
@@ -1506,31 +1611,11 @@ function MouFormDialog({
             {mou ? "Edit MOU" : "New MOU"}
           </DialogTitle>
           <DialogDescription>
-            {mou ? "Update memorandum of understanding details." : "Set up a new memorandum of understanding for venue/gear exchange."}
+            {mou ? "Update agreement details." : "Set up a new agreement."}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div>
-            <Label>Title *</Label>
-            <Input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="MOU title"
-              data-testid="input-mou-title"
-            />
-          </div>
-
-          <div>
-            <Label>Partner Name</Label>
-            <Input
-              value={partnerName}
-              onChange={(e) => setPartnerName(e.target.value)}
-              placeholder="Organisation name"
-              data-testid="input-mou-partner-name"
-            />
-          </div>
-
           <div className="space-y-2">
             <Label>Contact</Label>
             {contactId && (
@@ -1721,110 +1806,66 @@ function MouFormDialog({
             )}
           </div>
 
+          {/* Relationship */}
           <div>
-            <Label>Providing</Label>
-            <Textarea
-              value={providing}
-              onChange={(e) => setProviding(e.target.value)}
-              placeholder="What you provide: e.g., venue hire 4hrs/week, PA system access"
-              data-testid="input-mou-providing"
-            />
+            <Label className="mb-2 block">Relationship</Label>
+            <RadioGroup value={relationshipRole} onValueChange={setRelationshipRole} className="grid grid-cols-2 gap-2">
+              {RELATIONSHIP_ROLES.map((role) => (
+                <label
+                  key={role}
+                  className={`flex items-start gap-2 cursor-pointer rounded-md border p-2.5 transition-colors ${
+                    relationshipRole === role ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
+                  }`}
+                >
+                  <RadioGroupItem value={role} className="mt-0.5" />
+                  <div>
+                    <span className="text-sm font-medium">{RELATIONSHIP_ROLE_LABELS[role].label}</span>
+                    <p className="text-[10px] text-muted-foreground">{RELATIONSHIP_ROLE_LABELS[role].description}</p>
+                  </div>
+                </label>
+              ))}
+            </RadioGroup>
           </div>
 
+          {/* Access Provided */}
           <div>
-            <Label>Receiving</Label>
-            <Textarea
-              value={receiving}
-              onChange={(e) => setReceiving(e.target.value)}
-              placeholder="What you receive: e.g., free youth workshops, community program delivery"
-              data-testid="input-mou-receiving"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Actual Value</Label>
-              <p className="text-[10px] text-muted-foreground">Full commercial value</p>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={actualValue}
-                  onChange={(e) => setActualValue(e.target.value)}
-                  className="pl-7"
-                  data-testid="input-mou-actual-value"
-                />
+            <Label className="mb-1 block">Access Provided</Label>
+            <p className="text-[10px] text-muted-foreground mb-2">What resource access does this agreement grant?</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+              {ACCESS_PROVIDED_OPTIONS.map((opt) => (
+                <label key={opt} className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={accessProvided.includes(opt)}
+                    onCheckedChange={() => toggleAccess(opt)}
+                  />
+                  <span className="text-sm">{ACCESS_PROVIDED_LABELS[opt]}</span>
+                </label>
+              ))}
+            </div>
+            {accessProvided.includes("hot_desk") && (
+              <div className="ml-6 flex items-start gap-1.5 text-xs text-muted-foreground bg-muted/30 rounded-md p-2 mt-2">
+                <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <span>Unlimited desk access within the agreement date range</span>
               </div>
-            </div>
-            <div>
-              <Label>In-Kind Value</Label>
-              <p className="text-[10px] text-muted-foreground">What they pay / exchange</p>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={inKindValue}
-                  onChange={(e) => setInKindValue(e.target.value)}
-                  className="pl-7"
-                  data-testid="input-mou-inkind-value"
-                />
+            )}
+            {accessProvided.includes("gear") && (
+              <div className="ml-6 flex items-start gap-1.5 text-xs text-muted-foreground bg-muted/30 rounded-md p-2 mt-2">
+                <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <span>Unlimited gear access within the agreement date range</span>
               </div>
-            </div>
+            )}
           </div>
 
-          <div>
-            <Label>Booking Categories</Label>
-            <p className="text-[10px] text-muted-foreground mb-2">Select which resource types this MOU grants access to</p>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 cursor-pointer" data-testid="checkbox-mou-venue-hire">
-                <Checkbox
-                  checked={bookingCategories.includes("venue_hire")}
-                  onCheckedChange={() => toggleMouCategory("venue_hire")}
-                />
-                <span className="text-sm">Venue Hire</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer" data-testid="checkbox-mou-hot-desking">
-                <Checkbox
-                  checked={bookingCategories.includes("hot_desking")}
-                  onCheckedChange={() => toggleMouCategory("hot_desking")}
-                />
-                <span className="text-sm">Hot Desking</span>
-              </label>
-              {bookingCategories.includes("hot_desking") && (
-                <div className="ml-6 flex items-start gap-1.5 text-xs text-muted-foreground bg-muted/30 rounded-md p-2">
-                  <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                  <span>Unlimited desk access within the agreement date range</span>
-                </div>
-              )}
-              <label className="flex items-center gap-2 cursor-pointer" data-testid="checkbox-mou-gear">
-                <Checkbox
-                  checked={bookingCategories.includes("gear")}
-                  onCheckedChange={() => toggleMouCategory("gear")}
-                />
-                <span className="text-sm">Gear Booking</span>
-              </label>
-              {bookingCategories.includes("gear") && (
-                <div className="ml-6 flex items-start gap-1.5 text-xs text-muted-foreground bg-muted/30 rounded-md p-2">
-                  <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                  <span>Unlimited gear access within the agreement date range</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {bookingCategories.includes("venue_hire") && (
+          {/* Allowed Locations — conditional on venue */}
+          {accessProvided.includes("venue") && (
             <>
               {availableLocations.length > 0 && (
                 <div>
                   <Label>Allowed Locations</Label>
-                  <p className="text-[10px] text-muted-foreground mb-2">Restrict which locations this MOU can book. Leave empty to allow all locations.</p>
-                  <div className="space-y-2">
+                  <p className="text-[10px] text-muted-foreground mb-2">Restrict which locations this agreement can book. Leave empty to allow all.</p>
+                  <div className="space-y-1.5">
                     {availableLocations.map((loc) => (
-                      <label key={loc} className="flex items-center gap-2 cursor-pointer" data-testid={`checkbox-mou-location-${loc}`}>
+                      <label key={loc} className="flex items-center gap-2 cursor-pointer">
                         <Checkbox
                           checked={allowedLocations.includes(loc)}
                           onCheckedChange={() => toggleMouLocation(loc)}
@@ -1870,45 +1911,125 @@ function MouFormDialog({
             </>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Start Date{mouHasHotDeskingOrGear ? " *" : ""}</Label>
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                data-testid="input-mou-start-date"
-              />
-            </div>
-            <div>
-              <Label>End Date{mouHasHotDeskingOrGear ? " *" : ""}</Label>
-              <Input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                data-testid="input-mou-end-date"
-              />
+          {/* What We Gain */}
+          <div>
+            <Label className="mb-1 block">What We Gain</Label>
+            <p className="text-[10px] text-muted-foreground mb-2">What does Reserve Tāmaki get from this relationship?</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+              {WHAT_WE_GAIN_OPTIONS.map((opt) => (
+                <label key={opt} className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={whatWeGain.includes(opt)}
+                    onCheckedChange={() => toggleGain(opt)}
+                  />
+                  <span className="text-sm">{WHAT_WE_GAIN_LABELS[opt]}</span>
+                </label>
+              ))}
             </div>
           </div>
-          {mouHasHotDeskingOrGear && !startDate && !endDate && (
-            <div className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-900/20 rounded-md p-2">
-              <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-              <span>Start and end dates define the access window for hot desking and gear booking</span>
-            </div>
-          )}
 
+          {/* Growth Potential */}
           <div>
-            <Label>Status</Label>
-            <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger data-testid="select-mou-status">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {MOU_STATUSES.map((s) => (
-                  <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label className="mb-1 block">Growth Potential</Label>
+            <p className="text-[10px] text-muted-foreground mb-2">Where could this relationship go?</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+              {GROWTH_POTENTIAL_OPTIONS.map((opt) => (
+                <label key={opt} className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={growthPotential.includes(opt)}
+                    onCheckedChange={() => toggleGrowth(opt)}
+                  />
+                  <span className="text-sm">{GROWTH_POTENTIAL_LABELS[opt]}</span>
+                </label>
+              ))}
+            </div>
+            <Textarea
+              value={growthNotes}
+              onChange={(e) => setGrowthNotes(e.target.value)}
+              placeholder="Growth notes (optional)"
+              className="mt-2 text-xs"
+              rows={2}
+            />
+          </div>
+
+          {/* Terms */}
+          <div className="space-y-3 pt-2 border-t">
+            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Terms</Label>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Actual Value</Label>
+                <p className="text-[10px] text-muted-foreground">Full commercial value</p>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={actualValue}
+                    onChange={(e) => setActualValue(e.target.value)}
+                    className="pl-7"
+                    data-testid="input-mou-actual-value"
+                  />
+                </div>
+              </div>
+              <div>
+                <Label>In-Kind Value</Label>
+                <p className="text-[10px] text-muted-foreground">What they pay / exchange</p>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={inKindValue}
+                    onChange={(e) => setInKindValue(e.target.value)}
+                    className="pl-7"
+                    data-testid="input-mou-inkind-value"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Start Date{hasHotDeskOrGear ? " *" : ""}</Label>
+                <Input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  data-testid="input-mou-start-date"
+                />
+              </div>
+              <div>
+                <Label>End Date{hasHotDeskOrGear ? " *" : ""}</Label>
+                <Input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  data-testid="input-mou-end-date"
+                />
+              </div>
+            </div>
+            {hasHotDeskOrGear && !startDate && !endDate && (
+              <div className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-900/20 rounded-md p-2">
+                <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <span>Start and end dates define the access window for hot desking and gear booking</span>
+              </div>
+            )}
+
+            <div>
+              <Label>Status</Label>
+              <Select value={status} onValueChange={setStatus}>
+                <SelectTrigger data-testid="select-mou-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MOU_STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div>
@@ -1920,6 +2041,41 @@ function MouFormDialog({
               data-testid="input-mou-notes"
             />
           </div>
+
+          {/* Auto-title */}
+          <div className="pt-2 border-t">
+            <div className="flex items-center justify-between">
+              {editingTitle ? (
+                <div className="flex items-center gap-2 flex-1">
+                  <Input
+                    value={titleOverride || autoTitle}
+                    onChange={(e) => setTitleOverride(e.target.value)}
+                    className="h-8 text-sm flex-1"
+                    onBlur={() => setEditingTitle(false)}
+                    onKeyDown={(e) => { if (e.key === "Enter") setEditingTitle(false); }}
+                    autoFocus
+                  />
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm font-medium text-muted-foreground truncate flex-1" data-testid="text-mou-auto-title">
+                    {effectiveTitle}
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0 shrink-0"
+                    onClick={() => {
+                      if (!titleOverride) setTitleOverride(autoTitle);
+                      setEditingTitle(true);
+                    }}
+                  >
+                    <Pencil className="w-3 h-3" />
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
         </div>
 
         <DialogFooter>
@@ -1928,11 +2084,11 @@ function MouFormDialog({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={isPending || !title.trim()}
+            disabled={isPending}
             data-testid="button-save-mou"
           >
             {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            {mou ? "Save Changes" : "Create MOU"}
+            {mou ? "Save Changes" : "Create Agreement"}
           </Button>
         </DialogFooter>
       </DialogContent>

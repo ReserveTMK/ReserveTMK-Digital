@@ -112,7 +112,6 @@ export const contacts = pgTable("contacts", {
   isRangatahi: boolean("is_rangatahi").default(false),
   supportType: text("support_type").array(),
   connectionStrength: text("connection_strength"),
-  connectionStrengthOverride: boolean("connection_strength_override").default(false),
   relationshipCircle: text("relationship_circle"),
   relationshipCircleOverride: boolean("relationship_circle_override").default(false),
   isArchived: boolean("is_archived").default(false),
@@ -402,7 +401,6 @@ export const groups = pgTable("groups", {
   isPasifika: boolean("is_pasifika").default(false),
   servesMaori: boolean("serves_maori").default(false),
   servesPasifika: boolean("serves_pasifika").default(false),
-  connectionStrength: text("connection_strength"),
   active: boolean("active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -478,27 +476,14 @@ export const programmes = pgTable("programmes", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const locations = pgTable("locations", {
-  id: serial("id").primaryKey(),
-  userId: text("user_id").notNull(),
-  name: text("name").notNull(),
-  address: text("address"),
-  casualEnabled: boolean("casual_enabled").default(false),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-export type Location = typeof locations.$inferSelect;
-
 export const venues = pgTable("venues", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
   name: text("name").notNull(),
   spaceName: text("space_name"),
-  locationId: integer("location_id"),
   description: text("description"),
   capacity: integer("capacity"),
   active: boolean("active").default(true),
-  casualEnabled: boolean("casual_enabled").default(false),
   availabilitySchedule: jsonb("availability_schedule"),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -706,6 +691,30 @@ export const memberships = pgTable("memberships", {
 export const MOU_STATUSES = ["draft", "active", "expired", "terminated"] as const;
 export type MouStatus = typeof MOU_STATUSES[number];
 
+export const RELATIONSHIP_ROLES = ["deliver", "enable", "align", "commercial"] as const;
+export type RelationshipRole = typeof RELATIONSHIP_ROLES[number];
+
+export const ACCESS_PROVIDED_OPTIONS = [
+  "venue", "hot_desk", "gear", "studio", "mentoring",
+  "programme_place", "promotion", "network_introductions"
+] as const;
+
+export const WHAT_WE_GAIN_OPTIONS = [
+  "content_presence", "revenue", "co_delivery", "demand_evidence",
+  "network_reach", "youth_engagement", "workshop_facilitation", "community_programme"
+] as const;
+
+export const GROWTH_POTENTIAL_OPTIONS = [
+  "co_delivery_potential", "event_collaboration", "programme_facilitation",
+  "referral_partner", "joint_content", "no_growth_expected"
+] as const;
+
+export const ACCESS_TO_BOOKING_CATEGORY: Record<string, string> = {
+  venue: "venue_hire",
+  hot_desk: "hot_desking",
+  gear: "gear",
+};
+
 export const mous = pgTable("mous", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
@@ -722,6 +731,11 @@ export const mous = pgTable("mous", {
   bookingCategories: text("booking_categories").array().default([]),
   allowedLocations: text("allowed_locations").array(),
   allowedVenueIds: integer("allowed_venue_ids").array(),
+  relationshipRole: text("relationship_role"),
+  accessProvided: text("access_provided").array().default([]),
+  whatWeGain: text("what_we_gain").array().default([]),
+  growthPotential: text("growth_potential").array().default([]),
+  growthNotes: text("growth_notes"),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
   status: text("status").notNull().default("draft"),
@@ -1555,7 +1569,6 @@ export const bookingPricingDefaults = pgTable("booking_pricing_defaults", {
   userId: text("user_id").notNull(),
   fullDayRate: text("full_day_rate").default("0"),
   halfDayRate: text("half_day_rate").default("0"),
-  hourlyRate: text("hourly_rate").default("0"),
   maxAdvanceMonths: integer("max_advance_months").default(3),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1724,6 +1737,7 @@ export const insertMouSchema = createInsertSchema(mous).omit({
   updatedAt: true,
 }).extend({
   status: z.enum(MOU_STATUSES).default("active"),
+  relationshipRole: z.enum(RELATIONSHIP_ROLES).nullable().optional(),
 });
 
 export type Membership = typeof memberships.$inferSelect;
@@ -2084,11 +2098,8 @@ export type InsertFunderTaxonomyClassification = z.infer<typeof insertFunderTaxo
 
 export const INNOVATOR_SUPPORT_TYPES = ["mentoring", "space", "venue_hire", "hot_desking", "service_trade", "paid_work", "networking"] as const;
 
-export const CONNECTION_STRENGTHS = ["aware", "connected", "trusted", "woven"] as const;
+export const CONNECTION_STRENGTHS = ["known", "connected", "engaged", "embedded", "partnering"] as const;
 export type ConnectionStrength = typeof CONNECTION_STRENGTHS[number];
-
-export const DELIVERY_DEPTHS = ["none", "access", "capability", "both", "past"] as const;
-export type DeliveryDepth = typeof DELIVERY_DEPTHS[number];
 export type InnovatorSupportType = typeof INNOVATOR_SUPPORT_TYPES[number];
 
 export const JOURNEY_STAGES = ["kakano", "tipu", "ora", "inactive"] as const;
