@@ -18,6 +18,7 @@ import { fromZonedTime } from "date-fns-tz";
 import { db } from "./db";
 import { eq, and, or, sql, gte, lte, inArray } from "drizzle-orm";
 import { classifyForAllFunders, reclassifyAllForFunder } from "./taxonomy-engine";
+import { recalcContact, recalcAll } from "./community-automation";
 
 function parseId(val: unknown): number {
   if (Array.isArray(val)) return parseInt(String(val[0]), 10);
@@ -780,7 +781,9 @@ export async function registerRoutes(
             (SELECT MAX(m.start_time) FROM meetings m WHERE m.contact_id = c.id AND m.status IN ('completed', 'confirmed')),
             (SELECT MAX(e.start_time) FROM events e JOIN event_attendance ea ON ea.event_id = e.id WHERE ea.contact_id = c.id),
             (SELECT MAX(il.created_at) FROM impact_logs il JOIN impact_log_contacts ilc ON ilc.impact_log_id = il.id WHERE ilc.contact_id = c.id AND il.status = 'confirmed'),
-            (SELECT MAX(b.start_date) FROM bookings b WHERE b.booker_id = c.id AND b.status IN ('confirmed', 'completed'))
+            (SELECT MAX(b.start_date) FROM bookings b WHERE b.booker_id = c.id AND b.status IN ('confirmed', 'completed')),
+            (SELECT MAX(cs.date) FROM community_spend cs WHERE cs.contact_id = c.id),
+            (SELECT MAX(i.date) FROM interactions i WHERE i.contact_id = c.id)
           ) as last_touchpoint
         FROM contacts c
         WHERE c.user_id = ${userId}
@@ -816,6 +819,112 @@ export async function registerRoutes(
     } catch (err: any) {
       console.error("Needs attention error:", err);
       res.status(500).json({ message: "Failed to get needs-attention contacts" });
+    }
+  });
+
+  // === Connection Strength Recalc ===
+  app.get("/api/community/connection-strength/preview", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const result = await recalcAll(userId, true);
+      res.json(result);
+    } catch (err: any) {
+      console.error("Connection strength preview error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/community/connection-strength/recalc", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const result = await recalcAll(userId, false);
+      res.json(result);
+    } catch (err: any) {
+      console.error("Connection strength recalc error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/community/connection-strength/recalc/:contactId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const contactId = parseId(req.params.contactId);
+      const changes = await recalcContact(contactId, userId);
+      res.json({ changes });
+    } catch (err: any) {
+      console.error("Single contact recalc error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // === Groups Needs Attention ===
+  app.get("/api/groups/needs-attention", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const threshold = parseInt(req.query.days as string) || 60;
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - threshold);
+      const cutoffISO = cutoff.toISOString();
+
+      const rows = await db.execute(sql`
+        SELECT g.id, g.name, g.connection_strength, g.is_vip, g.type as group_type,
+          GREATEST(
+            (SELECT MAX(e.start_time) FROM events e
+             JOIN event_attendance ea ON ea.event_id = e.id
+             JOIN group_members gm ON gm.contact_id = ea.contact_id AND gm.group_id = g.id
+             WHERE e.user_id = ${userId}),
+            (SELECT MAX(COALESCE(b.start_date, b.created_at)) FROM bookings b
+             WHERE b.booker_group_id = g.id AND b.user_id = ${userId}),
+            (SELECT MAX(cs.date) FROM community_spend cs
+             WHERE cs.group_id = g.id AND cs.user_id = ${userId}),
+            (SELECT MAX(ilg.created_at) FROM impact_log_groups ilg
+             WHERE ilg.group_id = g.id)
+          ) as last_touchpoint
+        FROM groups g
+        WHERE g.user_id = ${userId}
+          AND g.active = true
+          AND g.connection_strength IN ('trusted', 'woven')
+        HAVING GREATEST(
+          (SELECT MAX(e.start_time) FROM events e
+           JOIN event_attendance ea ON ea.event_id = e.id
+           JOIN group_members gm ON gm.contact_id = ea.contact_id AND gm.group_id = g.id
+           WHERE e.user_id = ${userId}),
+          (SELECT MAX(COALESCE(b.start_date, b.created_at)) FROM bookings b
+           WHERE b.booker_group_id = g.id AND b.user_id = ${userId}),
+          (SELECT MAX(cs.date) FROM community_spend cs
+           WHERE cs.group_id = g.id AND cs.user_id = ${userId}),
+          (SELECT MAX(ilg.created_at) FROM impact_log_groups ilg
+           WHERE ilg.group_id = g.id)
+        ) < ${cutoffISO}::timestamp
+        OR GREATEST(
+          (SELECT MAX(e.start_time) FROM events e
+           JOIN event_attendance ea ON ea.event_id = e.id
+           JOIN group_members gm ON gm.contact_id = ea.contact_id AND gm.group_id = g.id
+           WHERE e.user_id = ${userId}),
+          (SELECT MAX(COALESCE(b.start_date, b.created_at)) FROM bookings b
+           WHERE b.booker_group_id = g.id AND b.user_id = ${userId}),
+          (SELECT MAX(cs.date) FROM community_spend cs
+           WHERE cs.group_id = g.id AND cs.user_id = ${userId}),
+          (SELECT MAX(ilg.created_at) FROM impact_log_groups ilg
+           WHERE ilg.group_id = g.id)
+        ) IS NULL
+        ORDER BY last_touchpoint ASC NULLS FIRST
+      `);
+
+      const items = ((rows as any).rows || []).map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        type: "group" as const,
+        connectionStrength: r.connection_strength,
+        isVip: r.is_vip,
+        groupType: r.group_type,
+        lastTouchpoint: r.last_touchpoint ? new Date(r.last_touchpoint).toISOString() : null,
+        daysSince: r.last_touchpoint ? Math.floor((Date.now() - new Date(r.last_touchpoint).getTime()) / (1000 * 60 * 60 * 24)) : null,
+      }));
+      res.json(items);
+    } catch (err: any) {
+      console.error("Groups needs attention error:", err);
+      res.status(500).json({ message: "Failed to get groups needs-attention" });
     }
   });
 
@@ -1369,6 +1478,7 @@ export async function registerRoutes(
 
       const input = api.interactions.create.input.parse(req.body);
       const interaction = await storage.createInteraction(input);
+      recalcContact(input.contactId, (req.user as any).claims.sub).catch(() => {});
       res.status(201).json(interaction);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -2857,6 +2967,7 @@ export async function registerRoutes(
         contactId = existingContact.id;
         await storage.updateContact(existingContact.id, { updatedAt: new Date() } as any);
         await autoPromoteToInnovator(existingContact.id);
+        recalcContact(existingContact.id, programme.userId).catch(() => {});
       } else {
         const now = new Date();
         const newContact = await storage.createContact({
@@ -5241,6 +5352,7 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         if (existing) {
           resolvedContactId = existing.id;
           await autoPromoteToInnovator(existing.id);
+          recalcContact(existing.id, userId).catch(() => {});
         } else {
           const now = new Date();
           const newContact = await storage.createContact({
@@ -5493,7 +5605,10 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const body = coerceDateFields({ ...req.body, userId });
       const input = api.memberships.create.input.parse(body);
       const membership = await storage.createMembership(input);
-      if (input.contactId) await autoPromoteToInnovator(input.contactId);
+      if (input.contactId) {
+        await autoPromoteToInnovator(input.contactId);
+        recalcContact(input.contactId, (req.user as any).claims.sub).catch(() => {});
+      }
       res.status(201).json(membership);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -5551,7 +5666,10 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const body = coerceDateFields({ ...req.body, userId });
       const input = api.mous.create.input.parse(body);
       const mou = await storage.createMou(input);
-      if (input.contactId) await autoPromoteToInnovator(input.contactId);
+      if (input.contactId) {
+        await autoPromoteToInnovator(input.contactId);
+        recalcContact(input.contactId, (req.user as any).claims.sub).catch(() => {});
+      }
       res.status(201).json(mou);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -11859,6 +11977,7 @@ Only suggest items with confidence >= 60. Limit to 10 categories and 15 keywords
       if (body.amount !== undefined && typeof body.amount === 'number') body.amount = String(body.amount);
       const input = insertCommunitySpendSchema.parse(body);
       const item = await storage.createCommunitySpend(input);
+      if (input.contactId) recalcContact(input.contactId, userId).catch(() => {});
       res.status(201).json(item);
     } catch (err: any) {
       if (err instanceof z.ZodError) {
@@ -14783,6 +14902,7 @@ Be specific, practical, and grounded in the actual documents and context provide
       }
       const relationship = await storage.createMentoringRelationship(input);
       await autoPromoteToInnovator(input.contactId);
+      recalcContact(input.contactId, userId).catch(() => {});
       res.status(201).json(relationship);
     } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
@@ -16362,7 +16482,10 @@ Rules:
         status: "booked",
       });
 
-      if (booker.contactId) await autoPromoteToInnovator(booker.contactId);
+      if (booker.contactId) {
+        await autoPromoteToInnovator(booker.contactId);
+        recalcContact(booker.contactId, booker.userId).catch(() => {});
+      }
 
       // Send confirmation email
       const deskResource = await storage.getBookableResource(resourceId);
@@ -16444,7 +16567,10 @@ Rules:
         approved: !resource.requiresApproval,
       });
 
-      if (booker.contactId) await autoPromoteToInnovator(booker.contactId);
+      if (booker.contactId) {
+        await autoPromoteToInnovator(booker.contactId);
+        recalcContact(booker.contactId, booker.userId).catch(() => {});
+      }
 
       // Send confirmation email
       const gearEmail = booker.notificationsEmail || (booker.contactId ? (await storage.getContact(booker.contactId))?.email : null);
@@ -17503,7 +17629,10 @@ Rules:
       const data = insertDeskBookingSchema.parse(body);
       const booking = await storage.createDeskBookingWithConflictCheck(data);
       const deskBooker = await storage.getRegularBooker(data.regularBookerId);
-      if (deskBooker?.contactId) await autoPromoteToInnovator(deskBooker.contactId);
+      if (deskBooker?.contactId) {
+        await autoPromoteToInnovator(deskBooker.contactId);
+        recalcContact(deskBooker.contactId, userId).catch(() => {});
+      }
       res.status(201).json(booking);
     } catch (err: any) {
       if (err instanceof z.ZodError) {
@@ -17656,7 +17785,10 @@ Rules:
       const data = insertGearBookingSchema.parse(body);
       const booking = await storage.createGearBookingWithConflictCheck(data);
       const gearBooker = await storage.getRegularBooker(data.regularBookerId);
-      if (gearBooker?.contactId) await autoPromoteToInnovator(gearBooker.contactId);
+      if (gearBooker?.contactId) {
+        await autoPromoteToInnovator(gearBooker.contactId);
+        recalcContact(gearBooker.contactId, userId).catch(() => {});
+      }
       res.status(201).json(booking);
     } catch (err: any) {
       if (err instanceof z.ZodError) {

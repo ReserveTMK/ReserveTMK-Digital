@@ -112,6 +112,7 @@ export const contacts = pgTable("contacts", {
   isRangatahi: boolean("is_rangatahi").default(false),
   supportType: text("support_type").array(),
   connectionStrength: text("connection_strength"),
+  connectionStrengthOverride: boolean("connection_strength_override").default(false),
   relationshipCircle: text("relationship_circle"),
   relationshipCircleOverride: boolean("relationship_circle_override").default(false),
   isArchived: boolean("is_archived").default(false),
