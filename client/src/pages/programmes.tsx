@@ -63,7 +63,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import { QRCodeSVG } from "qrcode.react";
-import { PROGRAMME_CLASSIFICATIONS, PROGRAMME_STATUSES, PROGRAMME_LOCATION_TYPES, type Programme, type Contact } from "@shared/schema";
+import { PROGRAMME_CLASSIFICATIONS, PROGRAMME_STATUSES, type Programme, type Contact } from "@shared/schema";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { MetricCard } from "@/components/ui/metric-card";
 
@@ -1997,7 +1997,7 @@ function ProgrammeFormDialog({
                   <SelectValue placeholder="Select location" />
                 </SelectTrigger>
                 <SelectContent>
-                  {venues && [...new Set(venues.filter(v => v.active).map(v => v.spaceName).filter(Boolean))].map((spaceName) => (
+                  {venues && Array.from(new Set(venues.filter(v => v.active).map(v => v.spaceName).filter(Boolean))).map((spaceName) => (
                     <SelectItem key={spaceName} value={spaceName!}>ReserveTMK {spaceName}</SelectItem>
                   ))}
                   <SelectItem value="ReserveTMK">ReserveTMK (general)</SelectItem>
