@@ -27,6 +27,14 @@ Local: Mac mini at hub (Daddy Korg)
 Repo: GitHub — every push auto-deploys to Railway
 
 
+CODEBASE INDEX
+.codex/ contains auto-generated index files (gitignored, regenerated each session):
+  routes.md — all 487 API routes with method, path, line number
+  schema.md — all 81 tables with column names
+  pages.md — all 47 frontend pages with component names and line counts
+Read these FIRST when navigating unfamiliar code. Saves exploring routes.ts (18K lines).
+Regenerate manually: bash scripts/generate-codex.sh
+
 ARCHITECTURE — WHAT EXISTS
 Mentoring
 Routes: /mentoring · /scheduling · /debriefs

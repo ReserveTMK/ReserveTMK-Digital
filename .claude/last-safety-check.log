@@ -1,0 +1,84 @@
+Safety check — Sun  5 Apr 2026 12:25:23 NZST
+✓ Debrief confirm → reporting (confirmedDebriefWhere present)
+✓ Stage moves → history (createRelationshipStageHistory present)
+✓ Booking → event linkage (ensureBookingEvent present)
+✓ Programme attendance wiring (attended flag present)
+✓ Contact promotion (autoPromoteToInnovator present)
+✓ Un-confirm cleanup (action items + taxonomy deletion present)
+✓ No empty SelectItem values (Radix safe)
+✓ No ghost route files (server/routes/ clean)
+✓ Route ordering (no GET routes after :id wildcards)
+✓ Import verification (no broken imports in changed files)
+⚠ Dead imports — Possibly unused imports:
+  server/routes.ts: unused import 'isAnthropicKeyConfigured'
+  server/routes.ts: unused import 'getImpactMetrics'
+  server/routes.ts: unused import 'insertSurveySchema'
+  server/routes.ts: unused import 'funderDocuments'
+  server/routes.ts: unused import 'meetingTypes'
+  server/routes.ts: unused import 'insertMonthlySnapshotSchema'
+  server/routes.ts: unused import 'insertReportHighlightSchema'
+  server/routes.ts: unused import 'HIGHLIGHT_CATEGORIES'
+  server/routes.ts: unused import 'insertProgrammeRegistrationSchema'
+  server/routes.ts: unused import 'bookableResources'
+  server/routes.ts: unused import 'normalizeStage'
+  server/routes.ts: unused import 'DEFAULT_AVAILABILITY_SCHEDULE'
+  server/routes.ts: unused import 'bookingChangeRequests'
+
+✗ TypeScript compilation — Type errors in changed files:
+server/routes.ts(670,58): error TS7006: Parameter 'e' implicitly has an 'any' type.
+server/routes.ts(670,84): error TS7006: Parameter 'e' implicitly has an 'any' type.
+server/routes.ts(671,58): error TS7006: Parameter 'e' implicitly has an 'any' type.
+server/routes.ts(671,84): error TS7006: Parameter 'e' implicitly has an 'any' type.
+server/routes.ts(672,30): error TS7006: Parameter 'ae' implicitly has an 'any' type.
+server/routes.ts(2083,74): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'Record<string, string> | null | undefined'.
+server/routes.ts(2084,72): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'Record<string, string> | null | undefined'.
+server/routes.ts(2085,74): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'Record<string, string> | null | undefined'.
+server/routes.ts(2086,92): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'Record<string, string> | null | undefined'.
+server/routes.ts(2189,34): error TS2339: Property 'getUser' does not exist on type 'DatabaseStorage'.
+server/routes.ts(3013,13): error TS2322: Type 'Date | null' is not assignable to type 'string | null | undefined'.
+server/routes.ts(3081,13): error TS7053: Element implicitly has an 'any' type because expression of type '"confirmed" | "in_progress" | "overdue" | "due"' can't be used to index type '{ overdue: number; due: number; in_progress: number; }'.
+server/routes.ts(3081,41): error TS7053: Element implicitly has an 'any' type because expression of type '"confirmed" | "in_progress" | "overdue" | "due"' can't be used to index type '{ overdue: number; due: number; in_progress: number; }'.
+server/routes.ts(3082,18): error TS7053: Element implicitly has an 'any' type because expression of type '"confirmed" | "in_progress" | "overdue" | "due"' can't be used to index type '{ overdue: number; due: number; in_progress: number; }'.
+server/routes.ts(3082,44): error TS7053: Element implicitly has an 'any' type because expression of type '"confirmed" | "in_progress" | "overdue" | "due"' can't be used to index type '{ overdue: number; due: number; in_progress: number; }'.
+server/routes.ts(5398,13): error TS2322: Type 'Date | null' is not assignable to type 'string | null | undefined'.
+server/routes.ts(5776,28): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+server/routes.ts(5777,29): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+server/routes.ts(6281,27): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+server/routes.ts(7311,36): error TS2339: Property 'getUser' does not exist on type 'DatabaseStorage'.
+server/routes.ts(9929,43): error TS2345: Argument of type '{ userId: any; name: any; type: "Business" | "Community Organisation" | "Iwi / Hapū" | "Government / Council" | "Education / Training" | "Funder" | "Resident Company" | "NGO" | "Uncategorised"; ... 4 more ...; active: true; }' is not assignable to parameter of type '{ userId: string; name: string; type: "Business" | "Social Enterprise" | "Creative / Arts" | "Community Organisation" | "Iwi / Hapū" | "Government / Council" | "Education / Training" | ... 5 more ... | "Uncategorised"; ... 23 more ...; servesPasifika?: boolean | ... 1 more ... | undefined; }'.
+server/routes.ts(10023,41): error TS2345: Argument of type '{ userId: any; name: any; type: "Business" | "Community Organisation" | "Iwi / Hapū" | "Government / Council" | "Education / Training" | "Funder" | "Resident Company" | "NGO" | "Uncategorised"; ... 4 more ...; active: true; }' is not assignable to parameter of type '{ userId: string; name: string; type: "Business" | "Social Enterprise" | "Creative / Arts" | "Community Organisation" | "Iwi / Hapū" | "Government / Council" | "Education / Training" | ... 5 more ... | "Uncategorised"; ... 23 more ...; servesPasifika?: boolean | ... 1 more ... | undefined; }'.
+server/routes.ts(11600,33): error TS2802: Type 'Map<string, number[]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+server/routes.ts(11601,31): error TS2802: Type 'Set<unknown>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+server/routes.ts(14346,60): error TS2339: Property 'default' does not exist on type 'typeof import("/Users/rabeazley/.openclaw/workspace/ReserveTMK-Digital/node_modules/pdf-parse/dist/pdf-parse/esm/index")'.
+server/routes.ts(14367,28): error TS2339: Property 'name' does not exist on type '{ id: number; userId: string; location: string | null; createdAt: Date | null; updatedAt: Date | null; description: string | null; values: string | null; mission: string | null; targetCommunity: string | null; focusAreas: string[] | null; locationInstructions: Record<...> | null; }'.
+server/routes.ts(14630,51): error TS2304: Cannot find name 'relationshipStageHistory'.
+server/routes.ts(14631,17): error TS2304: Cannot find name 'relationshipStageHistory'.
+server/routes.ts(14652,56): error TS2769: No overload matches this call.
+server/routes.ts(16102,46): error TS2339: Property 'name' does not exist on type '{ id: number; userId: string; notes: string | null; createdAt: Date | null; updatedAt: Date | null; contactId: number | null; groupId: number | null; pricingTier: string; ... 24 more ...; notificationsEmail: string | null; }'.
+server/routes.ts(16139,11): error TS7034: Variable 'myBookings' implicitly has type 'any[]' in some locations where its type cannot be determined.
+server/routes.ts(16148,16): error TS7005: Variable 'myBookings' implicitly has an 'any[]' type.
+server/routes.ts(16284,43): error TS2339: Property 'createdAt' does not exist on type 'PgTableWithColumns<{ name: "programme_registrations"; schema: undefined; columns: { id: PgColumn<{ name: "id"; tableName: "programme_registrations"; dataType: "number"; columnType: "PgSerial"; data: number; driverParam: number; ... 8 more ...; generated: undefined; }, {}, {}>; ... 14 more ...; cancelledAt: PgColumn<...'.
+server/routes.ts(16290,27): error TS2802: Type 'Set<number>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+server/routes.ts(16498,35): error TS2339: Property 'name' does not exist on type '{ id: number; userId: string; notes: string | null; createdAt: Date | null; updatedAt: Date | null; contactId: number | null; groupId: number | null; pricingTier: string; ... 24 more ...; notificationsEmail: string | null; }'.
+server/routes.ts(16582,35): error TS2339: Property 'name' does not exist on type '{ id: number; userId: string; notes: string | null; createdAt: Date | null; updatedAt: Date | null; contactId: number | null; groupId: number | null; pricingTier: string; ... 24 more ...; notificationsEmail: string | null; }'.
+server/routes.ts(16616,11): error TS7034: Variable 'venueBookings' implicitly has type 'any[]' in some locations where its type cannot be determined.
+server/routes.ts(16633,9): error TS7005: Variable 'venueBookings' implicitly has an 'any[]' type.
+server/routes.ts(16644,16): error TS7005: Variable 'venueBookings' implicitly has an 'any[]' type.
+server/routes.ts(17064,21): error TS2339: Property 'email' does not exist on type '{ id: number; userId: string; notes: string | null; createdAt: Date | null; updatedAt: Date | null; contactId: number | null; groupId: number | null; pricingTier: string; ... 24 more ...; notificationsEmail: string | null; }'.
+server/routes.ts(17069,53): error TS2339: Property 'email' does not exist on type '{ id: number; userId: string; notes: string | null; createdAt: Date | null; updatedAt: Date | null; contactId: number | null; groupId: number | null; pricingTier: string; ... 24 more ...; notificationsEmail: string | null; }'.
+server/routes.ts(17069,67): error TS2339: Property 'name' does not exist on type '{ id: number; userId: string; notes: string | null; createdAt: Date | null; updatedAt: Date | null; contactId: number | null; groupId: number | null; pricingTier: string; ... 24 more ...; notificationsEmail: string | null; }'.
+server/routes.ts(17105,21): error TS2339: Property 'email' does not exist on type '{ id: number; userId: string; notes: string | null; createdAt: Date | null; updatedAt: Date | null; contactId: number | null; groupId: number | null; pricingTier: string; ... 24 more ...; notificationsEmail: string | null; }'.
+server/routes.ts(17110,53): error TS2339: Property 'email' does not exist on type '{ id: number; userId: string; notes: string | null; createdAt: Date | null; updatedAt: Date | null; contactId: number | null; groupId: number | null; pricingTier: string; ... 24 more ...; notificationsEmail: string | null; }'.
+server/routes.ts(17110,67): error TS2339: Property 'name' does not exist on type '{ id: number; userId: string; notes: string | null; createdAt: Date | null; updatedAt: Date | null; contactId: number | null; groupId: number | null; pricingTier: string; ... 24 more ...; notificationsEmail: string | null; }'.
+server/routes.ts(17218,30): error TS2802: Type 'Set<string | null>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+server/routes.ts(17696,29): error TS2802: Type 'Set<any>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+server/routes.ts(17747,54): error TS2345: Argument of type '{ userId: any; billingEmail: string; organizationName: string; contactId: number | undefined; pricingTier: "full_price"; accountStatus: "active"; }' is not assignable to parameter of type '{ userId: string; pricingTier: "full_price" | "discounted" | "free_koha"; billingEmail: string; paymentTerms: "immediate" | "net_7" | "net_14" | "net_30"; accountStatus: "inactive" | "active" | "suspended"; ... 24 more ...; notificationsEmail?: string | ... 1 more ... | undefined; }'.
+server/routes.ts(18210,47): error TS2554: Expected 1 arguments, but got 2.
+server/routes.ts(18293,27): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+server/routes.ts(18370,27): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+server/routes.ts(18488,27): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+server/routes.ts(18559,27): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+server/routes.ts(18602,27): error TS2345: Argument of type 'string | string[]' is not assignable to parameter of type 'string'.
+⚠ Schema sync — shared/schema.ts changed — run /schema-check before deploying
+
+10 passed, 1 failed, 2 warnings
