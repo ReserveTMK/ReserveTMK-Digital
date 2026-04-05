@@ -1,9 +1,13 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { Venue, Booking, BookingPricingDefaults, RegularBooker, VenueInstruction, BookableResource, DeskBooking, GearBooking } from "@shared/schema";
+import type { Venue, Booking, BookingPricingDefaults, RegularBooker, VenueInstruction, BookableResource, DeskBooking, GearBooking, Funder } from "@shared/schema";
 
 export function useVenues() {
   return useQuery<Venue[]>({ queryKey: ['/api/venues'] });
+}
+
+export function useFunders() {
+  return useQuery<Funder[]>({ queryKey: ['/api/funders'] });
 }
 
 export function useCreateVenue() {

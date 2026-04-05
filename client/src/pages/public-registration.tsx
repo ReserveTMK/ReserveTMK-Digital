@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/beautiful-button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState } from "react";
@@ -374,14 +375,19 @@ export default function PublicRegistrationPage() {
 
             <div className="space-y-1.5">
               <Label htmlFor="referral" className="text-xs">How did you hear about us?</Label>
-              <Textarea
-                id="referral"
-                value={referralSource}
-                onChange={(e) => setReferralSource(e.target.value)}
-                className="resize-none text-sm"
-                rows={2}
-                data-testid="input-referral"
-              />
+              <Select value={referralSource} onValueChange={setReferralSource}>
+                <SelectTrigger className="text-sm" data-testid="input-referral">
+                  <SelectValue placeholder="Select one..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Social media">Social media</SelectItem>
+                  <SelectItem value="Friend / whānau">Friend / whānau</SelectItem>
+                  <SelectItem value="Email">Email</SelectItem>
+                  <SelectItem value="Wix website">Wix website</SelectItem>
+                  <SelectItem value="Community board">Community board</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {submitError && (
