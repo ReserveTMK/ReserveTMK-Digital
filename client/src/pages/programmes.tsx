@@ -19,6 +19,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useProgrammes, useCreateProgramme, useUpdateProgramme, useDeleteProgramme } from "@/hooks/use-programmes";
 import { useContacts, useCreateContact } from "@/hooks/use-contacts";
+import { useFunders, useVenues } from "@/hooks/use-bookings";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useMemo, useCallback } from "react";
 import {
@@ -323,7 +324,7 @@ export default function Programmes() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-display font-bold" data-testid="text-programmes-title">Programmes</h1>
-              <p className="text-muted-foreground mt-1">Manage internal events and activations.</p>
+              <p className="text-muted-foreground mt-1">Plan and deliver community programmes.</p>
             </div>
             <div className="flex items-center gap-2">
               <div className="flex items-center border border-border rounded-lg overflow-hidden" data-testid="view-toggle">
@@ -508,6 +509,12 @@ export default function Programmes() {
                 onDuplicate={handleDuplicate}
                 onDelete={handleDelete}
                 onRegistrations={setRegistrationsProgramme}
+                onCopyLink={(p) => {
+                  if (p.slug) {
+                    navigator.clipboard.writeText(`${window.location.origin}/register/${p.slug}`);
+                    toast({ title: "Registration link copied" });
+                  }
+                }}
                 onWixContent={setWixContentProgramme}
                 onReminder={setReminderProgramme}
                 onSurvey={setSurveyProgramme}
@@ -515,6 +522,7 @@ export default function Programmes() {
                 getFacilitatorNames={getFacilitatorNames}
                 getTotalBudget={getTotalBudget}
                 getAttendeeCount={getAttendeeCount}
+                regCounts={regCounts}
                 contacts={contacts}
               />
             )
@@ -525,6 +533,12 @@ export default function Programmes() {
               onDuplicate={handleDuplicate}
               onDelete={handleDelete}
               onRegistrations={setRegistrationsProgramme}
+              onCopyLink={(p) => {
+                if (p.slug) {
+                  navigator.clipboard.writeText(`${window.location.origin}/register/${p.slug}`);
+                  toast({ title: "Registration link copied" });
+                }
+              }}
               onWixContent={setWixContentProgramme}
               onReminder={setReminderProgramme}
               onSurvey={setSurveyProgramme}
@@ -532,6 +546,7 @@ export default function Programmes() {
               getFacilitatorNames={getFacilitatorNames}
               getTotalBudget={getTotalBudget}
               getAttendeeCount={getAttendeeCount}
+              regCounts={regCounts}
             />
           ) : (
             <div className="space-y-3">
@@ -600,7 +615,13 @@ export default function Programmes() {
                             <DollarSign className="w-3 h-3" />
                             Budget: ${getTotalBudget(programme).toFixed(2)}
                           </span>
-                          {getAttendeeCount(programme) > 0 && (
+                          {programme.publicRegistrations && (regCounts?.[programme.id] || 0) > 0 && (
+                            <span className="flex items-center gap-1 text-blue-600" data-testid={`text-reg-count-${programme.id}`}>
+                              <Link2 className="w-3 h-3" />
+                              {regCounts?.[programme.id]} registered
+                            </span>
+                          )}
+                          {!programme.publicRegistrations && getAttendeeCount(programme) > 0 && (
                             <span className="flex items-center gap-1" data-testid={`text-attendee-count-${programme.id}`}>
                               <Users className="w-3 h-3" />
                               {getAttendeeCount(programme)} attendee{getAttendeeCount(programme) !== 1 ? "s" : ""}
@@ -646,6 +667,15 @@ export default function Programmes() {
                             <DropdownMenuItem onClick={() => setRegistrationsProgramme(programme)} data-testid={`button-registrations-${programme.id}`}>
                               <ClipboardList className="w-4 h-4 mr-2" />
                               Registrations
+                            </DropdownMenuItem>
+                          )}
+                          {programme.publicRegistrations && programme.slug && (
+                            <DropdownMenuItem onClick={() => {
+                              navigator.clipboard.writeText(`${window.location.origin}/register/${programme.slug}`);
+                              toast({ title: "Registration link copied" });
+                            }} data-testid={`button-copy-link-${programme.id}`}>
+                              <Link2 className="w-4 h-4 mr-2" />
+                              Copy Registration Link
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem onClick={() => setWixContentProgramme(programme)} data-testid={`button-wix-content-${programme.id}`}>
@@ -1204,6 +1234,7 @@ function MonthlyView({
   onDuplicate,
   onDelete,
   onRegistrations,
+  onCopyLink,
   onWixContent,
   onReminder,
   onSurvey,
@@ -1211,12 +1242,14 @@ function MonthlyView({
   getFacilitatorNames,
   getTotalBudget,
   getAttendeeCount,
+  regCounts,
 }: {
   monthlyGroups: { month: string; monthIndex: number; programmes: Programme[] }[];
   onEdit: (p: Programme) => void;
   onDuplicate: (p: Programme) => void;
   onDelete: (id: number) => void;
   onRegistrations: (p: Programme) => void;
+  onCopyLink: (p: Programme) => void;
   onWixContent: (p: Programme) => void;
   onReminder: (p: Programme) => void;
   onSurvey: (p: Programme) => void;
@@ -1224,6 +1257,7 @@ function MonthlyView({
   getFacilitatorNames: (p: Programme) => string[];
   getTotalBudget: (p: Programme) => number;
   getAttendeeCount: (p: Programme) => number;
+  regCounts?: Record<number, number>;
 }) {
   const currentMonth = new Date().getMonth();
 
@@ -1320,7 +1354,13 @@ function MonthlyView({
                                 ${budget.toFixed(2)}
                               </span>
                             )}
-                            {getAttendeeCount(programme) > 0 && (
+                            {programme.publicRegistrations && (regCounts?.[programme.id] || 0) > 0 && (
+                              <span className="flex items-center gap-1 text-blue-600">
+                                <Link2 className="w-3 h-3" />
+                                {regCounts?.[programme.id]} registered
+                              </span>
+                            )}
+                            {!programme.publicRegistrations && getAttendeeCount(programme) > 0 && (
                               <span className="flex items-center gap-1">
                                 <Users className="w-3 h-3" />
                                 {getAttendeeCount(programme)}
@@ -1344,6 +1384,12 @@ function MonthlyView({
                             <DropdownMenuItem onClick={() => onRegistrations(programme)} data-testid={`button-monthly-registrations-${programme.id}`}>
                               <ClipboardList className="w-3.5 h-3.5 mr-2" />
                               Registrations
+                            </DropdownMenuItem>
+                          )}
+                          {programme.publicRegistrations && programme.slug && (
+                            <DropdownMenuItem onClick={() => onCopyLink(programme)} data-testid={`button-monthly-copy-link-${programme.id}`}>
+                              <Link2 className="w-3.5 h-3.5 mr-2" />
+                              Copy Registration Link
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem onClick={() => onWixContent(programme)} data-testid={`button-monthly-wix-${programme.id}`}>
@@ -1391,6 +1437,7 @@ function KanbanBoard({
   onDuplicate,
   onDelete,
   onRegistrations,
+  onCopyLink,
   onWixContent,
   onReminder,
   onSurvey,
@@ -1398,6 +1445,7 @@ function KanbanBoard({
   getFacilitatorNames,
   getTotalBudget,
   getAttendeeCount,
+  regCounts,
   contacts,
 }: {
   columns: Record<string, Programme[]>;
@@ -1406,6 +1454,7 @@ function KanbanBoard({
   onDuplicate: (p: Programme) => void;
   onDelete: (id: number) => void;
   onRegistrations: (p: Programme) => void;
+  onCopyLink: (p: Programme) => void;
   onWixContent: (p: Programme) => void;
   onReminder: (p: Programme) => void;
   onSurvey: (p: Programme) => void;
@@ -1413,6 +1462,7 @@ function KanbanBoard({
   getFacilitatorNames: (p: Programme) => string[];
   getTotalBudget: (p: Programme) => number;
   getAttendeeCount: (p: Programme) => number;
+  regCounts?: Record<number, number>;
   contacts?: Contact[];
 }) {
   const columnOrder = ["planned", "active", "completed", "cancelled"];
@@ -1476,6 +1526,12 @@ function KanbanBoard({
                                         Registrations
                                       </DropdownMenuItem>
                                     )}
+                                    {programme.publicRegistrations && programme.slug && (
+                                      <DropdownMenuItem onClick={() => onCopyLink(programme)} data-testid={`kanban-copy-link-${programme.id}`}>
+                                        <Link2 className="w-3.5 h-3.5 mr-2" />
+                                        Copy Registration Link
+                                      </DropdownMenuItem>
+                                    )}
                                     <DropdownMenuItem onClick={() => onWixContent(programme)} data-testid={`kanban-wix-${programme.id}`}>
                                       <FileText className="w-3.5 h-3.5 mr-2" />
                                       Generate for Wix
@@ -1536,7 +1592,13 @@ function KanbanBoard({
                                     </span>
                                   )}
                                   <div className="flex items-center gap-2 ml-auto">
-                                    {getAttendeeCount(programme) > 0 && (
+                                    {programme.publicRegistrations && (regCounts?.[programme.id] || 0) > 0 && (
+                                      <span className="text-[11px] text-blue-600 flex items-center gap-0.5">
+                                        <Link2 className="w-3 h-3" />
+                                        {regCounts?.[programme.id]} registered
+                                      </span>
+                                    )}
+                                    {!programme.publicRegistrations && getAttendeeCount(programme) > 0 && (
                                       <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
                                         <ClipboardList className="w-3 h-3" />
                                         {getAttendeeCount(programme)}
@@ -1633,6 +1695,8 @@ function ProgrammeFormDialog({
   const [newPersonPhone, setNewPersonPhone] = useState("");
   const [funderTags, setFunderTags] = useState<string[]>(programme?.funderTags || []);
   const [funderTagInput, setFunderTagInput] = useState("");
+  const { data: allFunders } = useFunders();
+  const { data: venues } = useVenues();
   const [publicRegistrations, setPublicRegistrations] = useState(programme?.publicRegistrations || false);
   const [capacity, setCapacity] = useState(programme?.capacity?.toString() || "");
   const [slug, setSlug] = useState(programme?.slug || "");
@@ -1918,23 +1982,26 @@ function ProgrammeFormDialog({
             </div>
 
             <div>
-              <Label>Location Type</Label>
+              <Label>Location</Label>
               <Select value={locationType} onValueChange={(val) => {
                 setLocationType(val);
-                if (val !== "Other") {
-                  setLocation(val);
+                if (val === "Other") {
+                  setLocation("");
                   setCustomDirections("");
                 } else {
-                  setLocation("");
+                  setLocation(val === "ReserveTMK" ? "ReserveTMK" : val);
+                  setCustomDirections("");
                 }
               }}>
                 <SelectTrigger data-testid="select-programme-location-type">
-                  <SelectValue placeholder="Select location type" />
+                  <SelectValue placeholder="Select location" />
                 </SelectTrigger>
                 <SelectContent>
-                  {PROGRAMME_LOCATION_TYPES.map((lt) => (
-                    <SelectItem key={lt} value={lt}>{lt}</SelectItem>
+                  {venues && [...new Set(venues.filter(v => v.active).map(v => v.spaceName).filter(Boolean))].map((spaceName) => (
+                    <SelectItem key={spaceName} value={spaceName!}>ReserveTMK {spaceName}</SelectItem>
                   ))}
+                  <SelectItem value="ReserveTMK">ReserveTMK (general)</SelectItem>
+                  <SelectItem value="Other">Other (off-site)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -2152,7 +2219,7 @@ function ProgrammeFormDialog({
                 <div className="flex flex-wrap gap-1.5">
                   {funderTags.map((tag, i) => (
                     <Badge key={i} variant="secondary" className="text-xs gap-1 pr-1" data-testid={`badge-funder-tag-${i}`}>
-                      {tag}
+                      {allFunders?.find(f => f.funderTag === tag)?.name || tag}
                       <button
                         onClick={() => setFunderTags(funderTags.filter(t => t !== tag))}
                         className="ml-0.5 transition-colors"
@@ -2165,12 +2232,28 @@ function ProgrammeFormDialog({
                   ))}
                 </div>
               )}
+              {allFunders && allFunders.filter(f => f.funderTag && !funderTags.includes(f.funderTag)).length > 0 && (
+                <Select onValueChange={(tag) => {
+                  if (tag && !funderTags.includes(tag)) {
+                    setFunderTags([...funderTags, tag]);
+                  }
+                }}>
+                  <SelectTrigger data-testid="select-funder-tag">
+                    <SelectValue placeholder="Select funder..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allFunders.filter(f => f.funderTag && !funderTags.includes(f.funderTag)).map(f => (
+                      <SelectItem key={f.id} value={f.funderTag!}>{f.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <div className="flex items-center gap-2">
                 <Input
                   value={funderTagInput}
                   onChange={(e) => setFunderTagInput(e.target.value)}
-                  placeholder="Add funder tag..."
-                  className="flex-1"
+                  placeholder="Add custom tag..."
+                  className="flex-1 text-xs"
                   data-testid="input-funder-tag"
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {

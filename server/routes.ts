@@ -17460,6 +17460,98 @@ Rules:
   }
 
   setInterval(runBookingReminderAutoSend, 30 * 60 * 1000);
+
+  async function runProgrammeReminderAutoSend() {
+    try {
+      const allProgrammes = await db.select().from(programmes).where(
+        and(
+          eq(programmes.status, "active"),
+          eq(programmes.autoReminderSent, false),
+        )
+      );
+
+      const now = new Date();
+      const nzNow = new Date(now.toLocaleString("en-US", { timeZone: "Pacific/Auckland" }));
+
+      for (const programme of allProgrammes) {
+        if (!programme.startDate) continue;
+
+        const progDate = new Date(new Date(programme.startDate).toLocaleString("en-US", { timeZone: "Pacific/Auckland" }));
+        const todayNz = new Date(nzNow.getFullYear(), nzNow.getMonth(), nzNow.getDate());
+        if (progDate < todayNz) continue;
+
+        // Send 24 hours before start, but not before 8am NZ
+        const progStartTime = programme.startTime || "10:00";
+        const [ph, pm] = progStartTime.split(":").map(Number);
+        const progDateTime = new Date(progDate.getFullYear(), progDate.getMonth(), progDate.getDate(), ph, pm);
+
+        const sendAt = new Date(progDateTime.getTime() - 24 * 60 * 60 * 1000);
+        const eightAm = new Date(sendAt.getFullYear(), sendAt.getMonth(), sendAt.getDate(), 8, 0);
+        const effectiveSendAt = sendAt > eightAm ? sendAt : eightAm;
+
+        if (nzNow >= effectiveSendAt) {
+          try {
+            const registrations = await storage.getProgrammeRegistrations(programme.id);
+            const activeRegs = registrations.filter(r => r.status === "registered" && r.email);
+            if (activeRegs.length === 0) continue;
+
+            // Build directions
+            let directions: string | null = null;
+            if (programme.locationType === "Other") {
+              directions = programme.customDirections || null;
+            } else if (programme.locationType) {
+              const orgProfile = await storage.getOrganisationProfile(programme.userId);
+              const locInstructions = orgProfile?.locationInstructions as Record<string, { howToFindUs?: string; parking?: string; generalInfo?: string }> | null;
+              if (locInstructions && locInstructions[programme.locationType]) {
+                const info = locInstructions[programme.locationType];
+                const parts = [];
+                if (info.howToFindUs) parts.push(info.howToFindUs);
+                if (info.parking) parts.push(`Parking: ${info.parking}`);
+                if (info.generalInfo) parts.push(info.generalInfo);
+                directions = parts.join('\n') || null;
+              }
+            }
+
+            const { sendProgrammeReminderEmail } = await import("./email");
+            let sent = 0;
+            for (const reg of activeRegs) {
+              try {
+                await sendProgrammeReminderEmail(
+                  reg.email,
+                  reg.firstName || reg.email,
+                  {
+                    name: programme.name,
+                    startDate: programme.startDate,
+                    startTime: programme.startTime,
+                    endTime: programme.endTime,
+                    location: programme.location,
+                  },
+                  directions
+                );
+                sent++;
+              } catch (emailErr: any) {
+                console.error(`Failed to send programme reminder to ${reg.email}:`, emailErr.message);
+              }
+            }
+
+            await db.update(programmes).set({
+              autoReminderSent: true,
+              autoReminderSentAt: new Date(),
+            }).where(eq(programmes.id, programme.id));
+
+            console.log(`Programme reminder sent for "${programme.name}" — ${sent}/${activeRegs.length} emails`);
+          } catch (progErr) {
+            console.error(`Failed to send programme reminder for ${programme.id}:`, progErr);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Programme reminder auto-send error:", err);
+    }
+  }
+
+  setInterval(runProgrammeReminderAutoSend, 30 * 60 * 1000);
+
   // === Bookable Resources API ===
 
   app.get("/api/bookable-resources", isAuthenticated, async (req, res) => {
@@ -17910,6 +18002,7 @@ Rules:
   });
 
   setTimeout(runBookingReminderAutoSend, 10000);
+  setTimeout(runProgrammeReminderAutoSend, 15000);
 
   startAutoSync();
   startCalendarAutoSync();

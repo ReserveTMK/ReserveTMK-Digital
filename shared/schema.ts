@@ -472,6 +472,8 @@ export const programmes = pgTable("programmes", {
   publicRegistrations: boolean("public_registrations").default(false),
   slug: text("slug").unique(),
   capacity: integer("capacity"),
+  autoReminderSent: boolean("auto_reminder_sent").default(false),
+  autoReminderSentAt: timestamp("auto_reminder_sent_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1460,6 +1462,15 @@ export type ProgrammeStatus = typeof PROGRAMME_STATUSES[number];
 
 export const PROGRAMME_LOCATION_TYPES = ["Studio", "Workshop Space", "Other"] as const;
 export type ProgrammeLocationType = typeof PROGRAMME_LOCATION_TYPES[number];
+
+export const REFERRAL_SOURCES = [
+  "Social media",
+  "Friend / whānau",
+  "Email",
+  "Wix website",
+  "Community board",
+  "Other",
+] as const;
 
 export const insertProgrammeSchema = createInsertSchema(programmes).omit({
   id: true,
