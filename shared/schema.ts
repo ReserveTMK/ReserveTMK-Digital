@@ -478,6 +478,15 @@ export const programmes = pgTable("programmes", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const locations = pgTable("locations", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  address: text("address"),
+  casualEnabled: boolean("casual_enabled").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const venues = pgTable("venues", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
