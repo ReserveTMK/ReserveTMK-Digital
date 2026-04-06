@@ -3003,6 +3003,18 @@ export async function registerRoutes(
         attended: false,
       });
 
+      // Sync attended flag → programmes.attendees array (defensive: handles future cases where attended could be true on creation)
+      if (registration.attended && contactId) {
+        try {
+          const currentAttendees: number[] = Array.isArray(programme.attendees) ? (programme.attendees as number[]) : [];
+          if (!currentAttendees.includes(contactId)) {
+            await storage.updateProgramme(programme.id, { attendees: [...currentAttendees, contactId] } as any);
+          }
+        } catch (syncErr) {
+          console.warn("[programmes] Failed to sync attendees array on registration create:", syncErr);
+        }
+      }
+
       // Send confirmation email
       (async () => {
         try {
@@ -3463,6 +3475,19 @@ export async function registerRoutes(
         userId,
         eventId,
       });
+
+      // If eventId is provided and no programmeId set, inherit from event
+      if (input.eventId && !input.programmeId) {
+        try {
+          const event = await storage.getEvent(input.eventId);
+          if (event?.linkedProgrammeId) {
+            input.programmeId = event.linkedProgrammeId;
+          }
+        } catch (err) {
+          console.warn('[debriefs] Failed to look up event for programme link:', err);
+        }
+      }
+
       const log = await storage.createImpactLog(input);
 
       if (input.eventId) {
@@ -5240,6 +5265,9 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       const updated = await storage.updateProgrammeRegistration(regId, allowedUpdates);
 
       // Sync attended flag → programmes.attendees array
+      if (typeof attended === 'boolean' && !reg.contactId) {
+        console.warn(`[programmes] Registration ${regId} has no contactId — cannot sync to attendees array`);
+      }
       if (typeof attended === 'boolean' && reg.contactId) {
         try {
           const currentAttendees: number[] = Array.isArray(programme.attendees) ? (programme.attendees as number[]) : [];
@@ -5314,6 +5342,19 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
       if (!reg || reg.programmeId !== programmeId) {
         return res.status(404).json({ message: "Registration not found" });
       }
+      // Remove contactId from programmes.attendees if present
+      if (reg.contactId) {
+        try {
+          const currentAttendees: number[] = Array.isArray(programme.attendees) ? (programme.attendees as number[]) : [];
+          const newAttendees = currentAttendees.filter(id => id !== reg.contactId);
+          if (newAttendees.length !== currentAttendees.length) {
+            await storage.updateProgramme(programmeId, { attendees: newAttendees } as any);
+          }
+        } catch (syncErr) {
+          console.warn("[programmes] Failed to sync attendees array on registration delete:", syncErr);
+        }
+      }
+
       await storage.deleteProgrammeRegistration(regId);
       res.status(204).send();
     } catch (err) {
@@ -5387,6 +5428,18 @@ Be precise. Only tag impact categories where there is clear evidence in the tran
         status: "registered",
         attended: false,
       });
+
+      // Sync attended flag → programmes.attendees array (defensive: handles future cases where attended could be true on creation)
+      if (registration.attended && resolvedContactId) {
+        try {
+          const currentAttendees: number[] = Array.isArray(programme.attendees) ? (programme.attendees as number[]) : [];
+          if (!currentAttendees.includes(resolvedContactId)) {
+            await storage.updateProgramme(programmeId, { attendees: [...currentAttendees, resolvedContactId] } as any);
+          }
+        } catch (syncErr) {
+          console.warn("[programmes] Failed to sync attendees array on admin registration create:", syncErr);
+        }
+      }
 
       // Send confirmation
       (async () => {
