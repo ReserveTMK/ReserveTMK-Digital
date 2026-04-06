@@ -42,7 +42,7 @@ type GroupHealth = {
   total: number;
   active: number;
   dormant: number;
-  at_risk: number;
+  atRisk: number;
 };
 
 type RecalcSummary = {
@@ -184,8 +184,8 @@ export default function EcosystemPage() {
                 <p className="text-xs text-muted-foreground">Dormant (180+ days)</p>
               </Card>
               <Card className="p-4">
-                <p className={`text-2xl font-bold ${groupHealth.at_risk > 0 ? "text-amber-500" : "text-muted-foreground"}`}>
-                  {groupHealth.at_risk}
+                <p className={`text-2xl font-bold ${groupHealth.atRisk > 0 ? "text-amber-500" : "text-muted-foreground"}`}>
+                  {groupHealth.atRisk}
                 </p>
                 <p className="text-xs text-muted-foreground">At risk</p>
               </Card>
